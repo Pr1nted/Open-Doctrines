@@ -2437,6 +2437,7 @@ void Game::run() {
             // so the walk answers it here or waits for a click that is never
             // coming. See Game_TutorialWalk.cpp.
             if (m_walk) walkDismissPopup();
+            if (m_ojhFps) m_popupQueue.clear();
             continue;
         }
         // The queue is empty: the picture has done its job.
@@ -2470,6 +2471,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_MENU) drawMenuBackground();
             endFrame();
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_ojhFps && !tickOjhFps()) m_running = false;
             if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
@@ -2481,6 +2483,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_PLAYING) { drawInner(); endFrame(); }
             else { BeginDrawing(); ClearBackground(BLACK); endFrame(); }
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_ojhFps && !tickOjhFps()) m_running = false;
             if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
@@ -2527,6 +2530,7 @@ void Game::run() {
             if (m_currentScreen == SCREEN_PLAYING) { drawInner(); endFrame(); }
             else { BeginDrawing(); ClearBackground(BLACK); endFrame(); }
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_ojhFps && !tickOjhFps()) m_running = false;
             if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
@@ -2552,6 +2556,7 @@ void Game::run() {
             // The tour photographs this form, and its tick is below the
             // `continue`. Without this the tour stops dead on that shot.
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
+            if (m_ojhFps && !tickOjhFps()) m_running = false;
             if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;
             continue;
         }
@@ -2852,6 +2857,7 @@ void Game::run() {
         // just been drawn rather than one that is about to be. Inert unless
         // --screenshots asked for a tour; see Game_Screenshots.cpp.
         if (m_shotTour && !tickScreenshotTour()) m_running = false;
+        if (m_ojhFps && !tickOjhFps()) m_running = false;
         // Same place, same reason: the walk asks what the frame just drew.
         if (m_walk && !tickTutorialWalk()) m_running = false;
         if (m_llmLetter && !tickLlmLetterWalk()) m_running = false;

@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     // is meant to run unattended. The text still goes to stderr.
     for (int i = 1; i < argc; ++i) {
         static const char* kHeadless[] = {
-            "--train-ai", "--eval-ai", "--simulate", "--screenshots", "--tutorial-walk",
+            "--train-ai", "--eval-ai", "--simulate", "--screenshots", "--ojh-fps", "--tutorial-walk",
             "--export-timelapse", "--merge-ai", "--reset-ai-head",
         };
         for (const char* f : kHeadless)
@@ -196,6 +196,23 @@ int main(int argc, char** argv) {
         break;
     }
 
+    // --ojh-fps <seconds> <save.odsv> [turns]
+    // Frame-rate scenes for Objective Judge Horizon: see Game_OjhFps.cpp.
+    double ojhFpsSeconds = 0.0;
+    std::string ojhFpsSave;
+    int ojhFpsTurns = 20;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--ojh-fps") != 0) continue;
+        if (i + 2 >= argc) {
+            fprintf(stderr, "--ojh-fps needs seconds per scene and a save\n");
+            return 2;
+        }
+        ojhFpsSeconds = atof(argv[i + 1]);
+        ojhFpsSave = argv[i + 2];
+        if (i + 3 < argc && strncmp(argv[i + 3], "--", 2) != 0) ojhFpsTurns = atoi(argv[i + 3]);
+        break;
+    }
+
     Game game;
     if (!game.init(1600, 900, "OpenDoctrines")) {
         return 1;
@@ -223,6 +240,11 @@ int main(int argc, char** argv) {
     }
     if (!shotDir.empty()) {
         game.beginScreenshotTour(shotDir, shotSave);
+        game.run();
+        return 0;
+    }
+    if (ojhFpsSeconds > 0.0) {
+        game.beginOjhFps(ojhFpsSeconds, ojhFpsSave, ojhFpsTurns);
         game.run();
         return 0;
     }

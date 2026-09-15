@@ -7,6 +7,7 @@
 #include "ai/AISystem.h"
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <array>
 #include <cstdio>
 #include <random>
@@ -1041,6 +1042,16 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         return n;
     };
 
+    // OD_EVAL_MAP=<file.odmap>: every map of the run is that one file. For a
+    // benchmark that has to put Open Doctrines on the same world as another
+    // game (Objective Judge Horizon converts one with Dragoman), where neither
+    // a generated archetype nor a shipped scenario is the map being compared.
+    const char* evalMap = std::getenv("OD_EVAL_MAP");
+    if (evalMap && !*evalMap) evalMap = nullptr;
+    std::string evalMapName = evalMap ? evalMap : "";
+    evalMapName = evalMapName.substr(evalMapName.find_last_of("/\\") + 1);
+    evalMapName = evalMapName.substr(0, evalMapName.rfind('.'));
+
     for (int m = 0; m < numMaps && !aborted; ++m) {
         // Which world this map is. Under --scenarios the run walks the shipped
         // list instead of the archetypes; the two are never mixed inside one
@@ -1094,7 +1105,13 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
 
         unloadGameData();
         std::string odmPath;
-        if (ship) {
+        if (evalMap) {
+            odmPath = evalMap;
+            if (!FileExists(odmPath.c_str())) {
+                printf("[EVAL] map %d: %s not found, skipping\n", m + 1, odmPath.c_str());
+                continue;
+            }
+        } else if (ship) {
             // Loaded, not generated -- but still seeded above, because the map
             // being fixed does not make the GAME deterministic: combat rolls,
             // rebellion chances and breakaway names all come from rand(), and
@@ -1136,7 +1153,7 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         m_aiTraining = true;
 
         MapResult r;
-        r.scenario = ship ? ship->name : sc.name;
+        r.scenario = evalMap ? evalMapName.c_str() : ship ? ship->name : sc.name;
         r.seed = p.seed;
         // COUNTED, not requested. numCountries is what the generator was asked
         // for; a shipped map was never asked anything, and every per-country
@@ -1301,9 +1318,24 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         int bestTerritory = 0, fewestAlive = 1 << 30, turnsSinceProgress = 0;
         auto mapStart = std::chrono::steady_clock::now();
 
+        // OD_OJH=1 prints the Objective Judge Horizon protocol: every turn's own time, so a
+        // benchmark gets the median, spread and late-game pace instead of 250-turn averages.
+        const bool ojhLines = std::getenv("OD_OJH") != nullptr;
+        if (ojhLines) {
+            printf("OJH players %d\nOJH regions %d provinces\nOJH ready\n", r.startCountries,
+                   (int)m_provinces.getAllProvinces().size());
+            fflush(stdout);
+        }
+
         for (int t = 0; t < turnsPerMap; ++t) {
             if (WindowShouldClose()) { aborted = true; break; }
+            const auto turnStart = std::chrono::steady_clock::now();
             processTurn();
+            if (ojhLines) {
+                printf("OJH turn %d %.6f\n", t + 1,
+                       std::chrono::duration<double>(std::chrono::steady_clock::now() - turnStart).count());
+                fflush(stdout);
+            }
             r.turns = t + 1;
 
             for (auto& [cid, n] : m_rebellionsThisTurnByCid)
