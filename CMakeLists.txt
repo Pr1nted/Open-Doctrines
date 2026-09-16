@@ -918,6 +918,7 @@ set(GAME_SOURCES
     src/Game_ChatPlays.cpp
     src/Game_Announcements.cpp
     src/Game_Lfg.cpp
+    src/Game_ModDir.cpp
     src/Game_AdminAnnounce.cpp
     src/Game_Llm.cpp
     # Threads on desktop, an ASYNCIFY queue in the browser. See its header.
@@ -987,6 +988,7 @@ set(GAME_SOURCES
     src/net/Host.cpp
     src/net/Announcements.cpp
     src/net/Lfg.cpp
+    src/net/ModDir.cpp
     src/net/HttpClient.cpp
     src/net/JoinTicket.cpp
     src/net/Lobby.cpp
@@ -2192,6 +2194,19 @@ endif()
 # --- looking for a game ---
 # The board's rules, as a parser. No socket: a listing is a string, and every
 # refusal it makes is testable without a service to refuse it.
+# --- the mod directory, as the game reads it ---
+# A listing is a stranger's text carrying a URL a button will open, so the
+# parser is tested the same way the board's is.
+add_executable(ModDirTest EXCLUDE_FROM_ALL tests/mod_dir_test.cpp
+               src/net/ModDir.cpp src/net/Announcements.cpp src/net/HttpClient.cpp
+               src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+target_include_directories(ModDirTest PRIVATE src tests)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_compile_definitions(ModDirTest PRIVATE OD_ENABLE_NET=1)
+    target_link_libraries(ModDirTest PRIVATE
+                          MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+
 add_executable(LfgTest EXCLUDE_FROM_ALL tests/lfg_test.cpp
                src/net/Lfg.cpp src/net/Announcements.cpp src/net/HttpClient.cpp
                src/net/TlsSocket.cpp src/net/NetUrl.cpp)

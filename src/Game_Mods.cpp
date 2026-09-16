@@ -1685,6 +1685,13 @@ void Game::drawModReloadingOverlay() {
 // ------------------------------------------------------- mod menu input ---
 
 void Game::updateModsMenu() {
+    // The directory refreshes itself while it is open, and owns the input
+    // while it is up -- the list behind it must not also answer a click.
+    pumpModDir();
+    if (m_modDirPage) {
+        if (IsKeyPressed(KEY_ESCAPE)) m_modDirPage = false;
+        return;
+    }
     // One round of update checks per visit to this menu, and only ever with the
     // player's opt-in. checkAll() is a no-op when the setting is off and when a
     // round is already in flight, so this cannot turn into per-frame traffic.
