@@ -91,29 +91,117 @@ async function discord(env: Env, path: string, init: RequestInit): Promise<Respo
     });
 }
 
+// ── A FORUM IS NOT A TEXT CHANNEL, AND #looking-for-a-game IS A FORUM ──
+//
+// Posting a message to a forum channel is refused by Discord: a forum holds
+// THREADS, and a post is a thread whose starter message carries the content.
+// The first version posted to /channels/{id}/messages, which worked in every
+// text channel and silently returned nothing in the one channel this feature
+// exists for -- the listing appeared in the game and never in Discord.
+//
+// Both shapes are handled rather than the forum alone, because a fork may well
+// use a plain text channel and the code should not care which it was given.
+const FORUM = 15, MEDIA = 16;
+
+interface ChannelInfo { forum: boolean; tags: { id: string; name: string }[]; }
+let channelCache: { id: string; info: ChannelInfo } | undefined;
+
+/** What kind of channel we were pointed at, asked once per isolate. */
+async function channelInfo(env: Env): Promise<ChannelInfo | null> {
+    const id = env.DISCORD_LFG_CHANNEL_ID;
+    if (!id) return null;
+    if (channelCache && channelCache.id === id) return channelCache.info;
+    const res = await discord(env, `/channels/${id}`, { method: "GET" });
+    if (!res || !res.ok) return null;
+    const ch = (await res.json()) as { type?: number; available_tags?: { id: string; name: string }[] };
+    const info: ChannelInfo = {
+        forum: ch.type === FORUM || ch.type === MEDIA,
+        tags: ch.available_tags ?? [],
+    };
+    channelCache = { id, info };
+    return info;
+}
+
 /**
- * Put a listing in the channel. Returns the message id, or undefined when no
- * bot is configured -- which is a fork without Discord, not an error: the board
- * works in the game either way.
+ * The forum tag that matches the listing's own tag.
+ *
+ * The channel's rules say "use the correct tag", and a forum makes that a
+ * first-class field rather than a convention -- so the bot applies it and the
+ * rule stops depending on anybody remembering. Matched by NAME because tag ids
+ * are per-server and a fork's will differ: a hosting listing is looking for
+ * players, a looking listing is looking for a game.
+ */
+function tagFor(listing: Listing, tags: { id: string; name: string }[]): string[] {
+    const want = listing.kind === "hosting" ? "player" : "game";
+    const hit = tags.find((t) => t.name.toLowerCase().includes(want));
+    return hit ? [hit.id] : [];
+}
+
+/** What the thread is called in the forum's list. Discord caps this at 100. */
+function threadName(listing: Listing): string {
+    const what = listing.kind === "hosting" ? "Hosting" : "Looking";
+    return `${what}: ${listing.map} - ${listing.nick}`.slice(0, 100);
+}
+
+/**
+ * Put a listing in the channel. Returns the id to edit later, or undefined when
+ * no bot is configured -- which is a fork without Discord, not an error: the
+ * board works in the game either way.
+ *
+ * For a forum that id is the THREAD's, and a thread's starter message shares
+ * its id, which is what makes closeMessage below work for both shapes.
  */
 export async function postListing(env: Env, listing: Listing): Promise<string | undefined> {
     if (!env.DISCORD_LFG_CHANNEL_ID) return undefined;
+    const info = await channelInfo(env);
+    const payload = { embeds: [embedFor(listing)], components: componentsFor(env, listing) };
+
+    if (info?.forum) {
+        const res = await discord(env, `/channels/${env.DISCORD_LFG_CHANNEL_ID}/threads`, {
+            method: "POST",
+            body: JSON.stringify({
+                name: threadName(listing),
+                // The thread tidies itself away an hour after the last message,
+                // which is about when the listing expires anyway.
+                auto_archive_duration: 60,
+                applied_tags: tagFor(listing, info.tags),
+                message: payload,
+            }),
+        });
+        if (!res || !res.ok) return undefined;
+        const thread = (await res.json()) as { id?: string };
+        return thread.id;
+    }
+
     const res = await discord(env, `/channels/${env.DISCORD_LFG_CHANNEL_ID}/messages`, {
         method: "POST",
-        body: JSON.stringify({ embeds: [embedFor(listing)], components: componentsFor(env, listing) }),
+        body: JSON.stringify(payload),
     });
     if (!res || !res.ok) return undefined;
     const message = (await res.json()) as { id?: string };
     return message.id;
 }
 
-/** Grey the message out and take the buttons off. The game is gone. */
+/** Grey the post out and take the buttons off. The game is gone. */
 export async function closeMessage(env: Env, messageId: string, listing: Listing, why: string): Promise<void> {
     if (!env.DISCORD_LFG_CHANNEL_ID) return;
-    await discord(env, `/channels/${env.DISCORD_LFG_CHANNEL_ID}/messages/${messageId}`, {
+    const info = await channelInfo(env);
+    // In a forum the starter message lives in the THREAD and carries the
+    // thread's own id, so the edit is addressed to the thread rather than to
+    // the forum -- editing /channels/<forum>/messages/<id> finds nothing.
+    const channel = info?.forum ? messageId : env.DISCORD_LFG_CHANNEL_ID;
+    await discord(env, `/channels/${channel}/messages/${messageId}`, {
         method: "PATCH",
         body: JSON.stringify({ embeds: [embedFor(listing, why)], components: [] }),
     });
+    // And close the thread, so a dead listing stops collecting replies and
+    // drops out of the forum's active list.
+    if (info?.forum) {
+        await discord(env, `/channels/${messageId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ archived: true, locked: true }),
+        });
+    }
 }
 
 /** The moderation channel already used for reports, reused for listings. */
