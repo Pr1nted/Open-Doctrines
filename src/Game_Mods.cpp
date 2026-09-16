@@ -1248,6 +1248,17 @@ void Game::drawModPanels() {
 
 // --------------------------------------------------------- mod menu ------
 
+// Where mods are found. ONE constant, because the draw and the click both need
+// it and two literals are two things to keep in step.
+//
+// It opens a PAGE, and that is the whole design rather than a limitation: the
+// game never downloads or installs a mod (see ModUpdates.h, "LOOKS, NEVER
+// TOUCHES"), so the directory is somewhere to look, and a player fetches the
+// file and adds it the same way they add any other. What was missing until now
+// was not a download button -- it was any way at all to learn the directory
+// exists without being told out of band.
+static const char* kModDirectoryUrl = "https://opendoctrines.pages.dev/mods";
+
 void Game::drawModsMenu() {
     drawMenuBackground(true);
     Color accent = hexToColor(m_config.accent());
@@ -1284,6 +1295,11 @@ void Game::drawModsMenu() {
                  Color{140, 140, 150, 255});
         const char* hint = "Drag a .odmod file onto this window, or use Add from computer";
         DrawText(hint, m_screenW / 2 - MeasureText(hint, 15) / 2, startY + 76, 15,
+                 Color{110, 110, 120, 255});
+        // The emptiest screen is where somebody most needs to know there is
+        // somewhere to look, so the pointer goes here as well as in the bar.
+        const char* where = T("Find mods online opens the mod directory in your browser");
+        DrawText(where, m_screenW / 2 - MeasureText(where, 15) / 2, startY + 100, 15,
                  Color{110, 110, 120, 255});
     }
 
@@ -1435,6 +1451,7 @@ void Game::drawModsMenu() {
     };
     bar("Add from computer", 40, 200, WHITE);
     bar("Reload modloader", 250, 190, WHITE);
+    bar("Find mods online", 450, 180, WHITE);
     bar("Back", m_screenW - 140, 100, WHITE);
 
     if (m_modFeedbackTimer > 0.0f) {
@@ -1848,9 +1865,20 @@ void Game::updateModsMenu() {
     int by = m_screenH - 52;
     Rectangle addB{40.0f, (float)by, 200.0f, 36.0f};
     Rectangle relB{250.0f, (float)by, 190.0f, 36.0f};
+    Rectangle findB{450.0f, (float)by, 180.0f, 36.0f};
     Rectangle backB{(float)(m_screenW - 140), (float)by, 100.0f, 36.0f};
 
     if (click && CheckCollisionPointRec(mouse, backB)) { Audio::get().playSfx("back"); m_currentScreen = SCREEN_MENU; return; }
+    if (click && CheckCollisionPointRec(mouse, findB)) {
+        Audio::get().playSfx("click_light");
+        // Opening a browser is as far as this goes, exactly as the "Can be
+        // updated" button does: the game does not fetch a mod, and a directory
+        // is not a reason to change that.
+        odlink::open(kModDirectoryUrl);
+        m_modFeedback = "Opened the mod directory in your browser";
+        m_modFeedbackTimer = 3.0f;
+        return;
+    }
     if (click && CheckCollisionPointRec(mouse, relB)) {
         Audio::get().playSfx("click_light");
         m_modReloading = true;

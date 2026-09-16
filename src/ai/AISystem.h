@@ -234,6 +234,12 @@ public:
     void navalReflex(int cid);
     void industryReflex(int cid);
     void researchAusterityReflex(int cid);
+    /** Journal 399: enact an attack doctrine the politics head never takes.
+     *  OD_DOCTRINE_REFLEX, off by default; counters printed at exit. */
+    void doctrineReflex(int cid);
+    static void dumpDoctrineReflex();
+    static std::atomic<long long> s_doctrineReflexFired;
+    static std::map<std::string, long long> s_doctrineReflexBy;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port
     std::unordered_map<int,int> m_lastIndustryBuy;///< cid -> turn of last industry level
     // Politics: 0 hold, 1 enact policy, 2 pac up, 3 pac down, 4 cancel policy,

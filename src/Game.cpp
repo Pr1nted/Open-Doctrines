@@ -159,8 +159,8 @@ const int MENU_COUNT = 6;
 // developer badge, and mainMenuCount() simply stops counting before it for
 // everybody else. Last rather than somewhere sensible precisely so hiding it is
 // a subtraction and cannot renumber anything above it.
-const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate", "Admin"};
-const int MAIN_MENU_COUNT = 11;
+const char* MAIN_MENU_ITEMS[] = {"Quick Start", "Play Singleplayer", "Play Multiplayer", "Looking for a Game", "Map Editor", "Mod Menu", "Community", "Account", "Credits", "Save .odstate", "Load .odstate", "Admin"};
+const int MAIN_MENU_COUNT = 12;
 const char* SINGLEPLAYER_ITEMS[] = {"New World", "Load World"};
 const int SINGLEPLAYER_COUNT = 2;
 

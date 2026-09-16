@@ -3136,6 +3136,38 @@ static void wmBar(int cid, double side, double need) {
     s_wmNeed += (long long)need;
 }
 
+// ── [PROBE] WHICH DOCTRINES DOES THE AI ENACT? (OD_POLICY_HIST, off) ──
+//
+// Journal 397. Journal 373 split the army modifiers into research and doctrine and
+// found the attack lean is research; the doctrine half was left unmeasured. These
+// counters name the doctrines actually enacted, so "doctrines are net slightly
+// negative" can be read as a list rather than a residual. Counters only; honours
+// OD_ACT_HIST_CID when set. Nothing here is read by a decision.
+namespace {
+std::map<std::string, long long> s_policyHist;
+long long s_policyHistTotal = 0;
+void dumpPolicyHist() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[POLHIST] doctrine enactments: %lld\n", s_policyHistTotal);
+    std::vector<std::pair<long long, std::string>> rows;
+    for (const auto& [id, n] : s_policyHist) rows.push_back({n, id});
+    std::sort(rows.rbegin(), rows.rend());
+    for (const auto& [n, id] : rows)
+        fprintf(stderr, "[POLHIST]   %-28s %lld\n", id.c_str(), n);
+}
+void policyHistNote(int cid, const std::string& id) {
+    static const bool on = std::getenv("OD_POLICY_HIST") &&
+                           atoi(std::getenv("OD_POLICY_HIST")) != 0;
+    if (!on || !actHistCountsCid(cid)) return;
+    static const bool reg = (atexit(&dumpPolicyHist), true);
+    (void)reg;
+    ++s_policyHistTotal;
+    ++s_policyHist[id];
+}
+}  // namespace
+
 void AISystem::takeTurn(int cid) {
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -3973,6 +4005,7 @@ void AISystem::takeTurn(int cid) {
     if (!reflexAblated("siege") && !m_g->llmSuppressesReflex(cid, "siege"))
         siegeReflex(cid);
     researchAusterityReflex(cid);
+    doctrineReflex(cid);
     industryReflex(cid);
     navalReflex(cid);
     if (!reflexAblated("campaign") && !m_g->llmSuppressesReflex(cid, "campaign"))
@@ -5726,6 +5759,7 @@ std::string AISystem::execPolitics(int cid, int action) {
             const Policy* best = enactablePolicy(cid);
             if (!best) return didNothing("policy: none enactable");
             const std::string pid = best->id;
+            policyHistNote(cid, pid);
             g.enactPolicy(cid, pid);
             // The budget this turn has just changed, and a module gets several
             // goes in one -- a stale answer would send the next pick at a
@@ -5913,6 +5947,7 @@ std::string AISystem::execPolitics(int cid, int action) {
                 if (score > bestScore) { bestScore = score; best = &p; }
             }
             if (!best) return didNothing("calm: no policy would help");
+            policyHistNote(cid, best->id);
             g.enactPolicy(cid, best->id);
             statsFor(cid).calmingPolicies++;
             return "enact calming policy " + best->id;
@@ -13709,6 +13744,8 @@ double AISystem::s_landRatio = 0.0;
 double AISystem::s_warBarAtk = 0.0;
 double AISystem::s_warBarDef = 0.0;
 double AISystem::s_warBarAtkRes = 0.0;
+std::atomic<long long> AISystem::s_doctrineReflexFired{0};
+std::map<std::string, long long> AISystem::s_doctrineReflexBy;
 double AISystem::s_warBarDefRes = 0.0;
 long long AISystem::s_gateWhy[4][6] = {};
 int AISystem::s_netPicked[4][12] = {};
@@ -14137,6 +14174,81 @@ void AISystem::industryReflex(int cid) {
 // That asymmetry is the test -- a rule derived from a difference between two
 // models ought to close the difference and do nothing to the model it was
 // derived from.
+// ── DOCTRINE REFLEX (OD_DOCTRINE_REFLEX, off by default) ──
+//
+// Journal 398 measured the politics head on three seats: "enact doctrine" is
+// OFFERED 201-250 times per 400-turn game and PICKED zero times, at pi(a) =
+// 0.00e+00. The refusal is learned, not structural, so no bias, weight or mask
+// change can reach it (memories masking-waste-costs, mask-changes-need-a-retrain).
+// Journal 397 measured the consequence: across both enactment paths, every army
+// lever any country ever holds is DEFENCE-ONLY, and the one army doctrine the
+// world enacts is demobilisation at -10 defence. The attack-bearing doctrines --
+// professional_army +18/+12, mercenary_contracts +14, continental_army +12/+12,
+// war_economy_total +10 -- are never taken by anyone.
+//
+// This reflex takes one, directly, the way the naval and industry reflexes act
+// where their head will not. It reuses the game's OWN legality and budget tests
+// (canCountryEnactPolicy and enactablePolicy's budget share), so it can only do
+// what the mask would have allowed the head to do (memory
+// expose-the-resolvers-numbers). It fires only while at war and solvent, and only
+// if no attack doctrine is already in force.
+void AISystem::doctrineReflex(int cid) {
+    static const bool on = std::getenv("OD_DOCTRINE_REFLEX") &&
+                           atoi(std::getenv("OD_DOCTRINE_REFLEX")) != 0;
+    if (!on) return;
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return;
+    // At war: an attack modifier is worth paying for only when there is a war to
+    // spend it on, and this is the condition the journal registered.
+    auto w = m_warWith.find(cid);
+    if (w == m_warWith.end() || w->second.empty()) return;
+    static const double floorCash = std::getenv("OD_DOCTRINE_CASH")
+                                  ? atof(std::getenv("OD_DOCTRINE_CASH")) : 50.0;
+    if (c->treasury < floorCash) return;
+    auto atkOf = [&](const Policy& p) {
+        auto it = p.levers.find("armyAtkPct");
+        return it == p.levers.end() ? 0.0f : it->second;
+    };
+    // Already carrying one: the point is to hold an attack doctrine, not to
+    // collect them.
+    for (const auto& ap : g.m_activePolicies) {
+        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        for (const auto& q : g.m_allPolicies)
+            if (q.id == ap.policyId) { if (atkOf(q) > 0.0f) return; break; }
+    }
+    // The same budget the mask costs the head's own doctrine action with.
+    if (losingGround(cid)) return;
+    const CountryIncomeSnapshot inc = g.projectIncome(cid, planHorizon());
+    const float committed = inc.policyCosts + inc.minorityCosts + inc.pacificationCost;
+    const float budget = std::max(0.0f, inc.total * AI_DOCTRINE_BUDGET_SHARE);
+    if (committed >= budget) return;
+    const Policy* best = nullptr; float bestAtk = 0.0f;
+    for (const auto& p : g.m_allPolicies) {
+        const float a = atkOf(p);
+        if (a <= 0.0f) continue;
+        if (!g.canCountryEnactPolicy(cid, p)) continue;
+        if (committed + (float)p.costPerTurn > budget) continue;
+        if (a > bestAtk) { bestAtk = a; best = &p; }
+    }
+    if (!best) return;
+    ++s_doctrineReflexFired;
+    s_doctrineReflexBy[best->id]++;
+    static const bool reg = (atexit(&AISystem::dumpDoctrineReflex), true);
+    (void)reg;
+    g.enactPolicy(cid, best->id);
+}
+
+void AISystem::dumpDoctrineReflex() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[DOCREFLEX] doctrines enacted by the reflex: %lld\n",
+            s_doctrineReflexFired.load());
+    for (const auto& [id, n] : s_doctrineReflexBy)
+        fprintf(stderr, "[DOCREFLEX]   %-26s %lld\n", id.c_str(), n);
+}
+
 void AISystem::researchAusterityReflex(int cid) {
     static const bool on = std::getenv("OD_RESEARCH_AUSTERITY") &&
                            atoi(std::getenv("OD_RESEARCH_AUSTERITY")) != 0;
