@@ -127,9 +127,55 @@ the tab closes. That is the most plausible cause of 0% retention.
 5. **GEGI is working.** 83 downloads in its first 13 hours on CurseForge, with
    Open Doctrines as its first recommendation. Best acquisition-per-effort in
    the portfolio.
-6. **Open Fly is not a growth channel.** 43 views, 8 browser plays, and Hacker
-   News sent 9 visits. Keep it as a portfolio piece; stop spending campaign
-   effort on it.
+6. **Open Fly &mdash; CORRECTED 2026-09-17.** The original call here was "not a
+   growth channel, stop spending effort on it", from 43 itch views, 8 browser
+   plays and 9 visits from Hacker News. That was wrong, or at least far too
+   early: a post to r/StrategyGames on 16 September did **32,000 views, 47
+   upvotes at an 84% ratio and 24 comments**, and went first in the subreddit.
+
+   What the numbers say on a second look:
+
+   - **Hacker News was the wrong room, not the wrong idea.** 9 visits there
+     against 32,000 impressions on a games subreddit.
+   - **The title did the work**, not the page: *"I wired a simulated fruit-fly
+     brain (138,639 neurons) into my grand strategy game. Here it is running a
+     country."* One concrete claim, one number, no adjectives.
+   - **24 comments against 47 upvotes** is a very high ratio &mdash; roughly five
+     times typical. Most people scrolled past; the ones who stopped asked real
+     questions. That is a small, technical, high-intent audience, which is the
+     kind that installs things.
+   - **0.15% upvote rate on views is low.** The title travelled much further
+     than the pitch closed. Reach is not the constraint; what happens after the
+     click is.
+
+   **Still unmeasured, and it is the whole question:** whether any of those
+   32,000 became a play or a download. Reddit sent 17 visits to the Open
+   Doctrines itch page in the whole of the previous 30 days. Check Open Fly's
+   itch analytics and the OD referrer table for 16&ndash;17 September before
+   drawing any conclusion from this.
+
+### Move 4a — make the wait shorter, since 3,964 people a month do it
+
+Not in the original plan, because it did not show up until the package was
+opened. The browser preload is downloaded **in full before the menu draws**,
+and 5.6 MB of it was the sixty-five translation files — 46% of the package, of
+which a player reads exactly one. Another 12 KB was two `.DS_Store` files.
+
+- **SHIPPED** `setLanguage()` fetches its one language through `odEnsureAsset()`,
+  the same way the scenarios, the music, the model and the full font already
+  do. English costs nothing either way: the English text *is* the lookup key, so
+  the game never opens `en.json` at all.
+- **SHIPPED** The web staging drops dot-files, as the Android staging already
+  did. What ships is decided by `OD_SHIPPED_DATA`, not by which folders were
+  opened in Finder.
+- **Measured:** `OpenDoctrines.data` **13.33 MB → 7.68 MB**, a 42% cut. With the
+  wasm, first load goes from about 24.1 MB to 18.5 MB raw, and 8.8 MB to 6.9 MB
+  gzipped. The menu still draws and every language still serves at the URL
+  `odEnsureAsset()` asks for.
+
+The remaining 4.2 MB of the preload is `data/flags` — 496 SVGs, of which five
+are 1.45 MB between them. Optimising the worst offenders is pure data work with
+no code change, and is the obvious next cut.
 
 ### Move 5 — measure, so the next decision is not a guess
 
