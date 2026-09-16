@@ -1479,7 +1479,20 @@ void Game::updateMainMenu() {
             case 2: // Play Multiplayer
                 openMultiplayerMenu();
                 break;
-            case 3: // Map Editor
+            case 3: // Looking for a Game
+                // Straight to the board rather than the multiplayer hub. This
+                // entry exists for somebody who has decided they want to play
+                // WITH someone and does not yet have a game to join -- making
+                // them walk through the hub to find it is asking them to know
+                // the board is in there.
+                //
+                // Not a second implementation of anything: the board, its
+                // posting form and its reporting all live in Game_Lfg.cpp and
+                // are the same ones the hub reaches.
+                openMultiplayerMenu();
+                lfgOpenBoard();
+                break;
+            case 4: // Map Editor
                 if (!m_mapEditor) {
                     m_mapEditor = new MapEditor();
                     // Loads the map synchronously, right here on the main
@@ -1491,7 +1504,7 @@ void Game::updateMainMenu() {
                 }
                 m_currentScreen = SCREEN_MAP_EDITOR;
                 break;
-            case 4: // Mod Menu
+            case 5: // Mod Menu
                 m_modIndex = 0;
                 m_modScroll = 0;
                 m_modAdvancedFor = m_modDeleteFor = m_modAiWarnFor = -1;
@@ -1499,24 +1512,24 @@ void Game::updateMainMenu() {
                 m_currentScreen = SCREEN_MODS;
                 Audio::get().playSfx("click_light");
                 break;
-            case 5: // Community
+            case 6: // Community
                 m_currentScreen = SCREEN_COMMUNITY;
                 break;
-            case 10: // Reports -- only reachable with the developer badge
+            case 11: // Reports -- only reachable with the developer badge
                 openDevReports();
                 break;
-            case 6: // Account
+            case 7: // Account
                 openAccountMenu();
                 break;
-            case 7: // Credits
+            case 8: // Credits
                 if (!m_creditsLoaded) loadCredits();
                 m_creditsScroll = 0.0f;
                 m_currentScreen = SCREEN_CREDITS;
                 break;
-            case 8: // Save .odstate
+            case 9: // Save .odstate
                 openOdStateSave();
                 break;
-            case 9: // Load .odstate
+            case 10: // Load .odstate
                 openOdStateLoad();
                 break;
         }
