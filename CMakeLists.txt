@@ -1482,6 +1482,24 @@ if(EMSCRIPTEN)
     # inside the package every browser visitor waits on.
     file(REMOVE_RECURSE "${OD_WEB_DATA}/flags/.orig")
 
+    # ── AND THE FINDER'S LEFTOVERS ──
+    #
+    # macOS writes a .DS_Store into every directory it has been looked at with
+    # Finder, and the staging step copies whole directories, so two of them
+    # were inside the package every browser visitor waits on. The Android
+    # staging already drops dot-files, because aapt2 skips them silently and a
+    # manifest listing what aapt2 declined produces a first run reporting
+    # unreadable assets. Nothing dropped them here.
+    #
+    # They are 12 KB, so this is not about the bytes: it is that the contents
+    # of the package should be decided by OD_SHIPPED_DATA and not by which
+    # folders the developer happened to open in Finder. Deleting the two that
+    # exist today would fix this build and nothing after it.
+    file(GLOB_RECURSE od_web_junk "${OD_WEB_DATA}/.DS_Store")
+    if(od_web_junk)
+        file(REMOVE ${od_web_junk})
+    endif()
+
     # The font, cut down to the characters that can actually be drawn.
     #
     # unifont.ttf is 11 MB because Unifont covers the whole BMP. Game::init()
