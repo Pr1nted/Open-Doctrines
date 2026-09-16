@@ -3,6 +3,7 @@
 #include "ReleaseRules.h"
 #include "net/Announcements.h"
 #include "net/Lfg.h"
+#include "net/ModDir.h"
 #include "stream/ChatReader.h"
 #include "stream/ChatVote.h"
 #include "stream/DiscordRpc.h"
@@ -1038,6 +1039,14 @@ private:
     // What a listing may CONTAIN is decided in src/net/Lfg.h; this is the
     // part that asks, holds and draws. No service and no internet both mean
     // an empty board, which is not an error worth showing anybody.
+    // ── the mod directory, in the mod menu ──
+    // Lists what has been published so a player can find a mod at all. It
+    // never fetches a mod: every row offers a page to open. See net/ModDir.h.
+    void modDirOpen();
+    void modDirRefresh(bool force);
+    void pumpModDir();
+    void drawModDirectory(Vector2 mouse, bool click);
+
     void lfgOpenBoard();
     /** Ask the service, at most once every few seconds. `force` ignores that. */
     void lfgRefresh(bool force);
@@ -1076,6 +1085,12 @@ private:
     std::string m_lfgReporting;
     std::string m_lfgReportNote;
     bool        m_lfgBusy = false;
+
+    std::vector<odmoddir::Listing> m_modDirListings;
+    bool        m_modDirPage = false;   ///< the mod menu is showing the directory
+    bool        m_modDirBusy = false;
+    int         m_modDirScroll = 0;
+    std::string m_modDirNote;
 
     MpPage      m_mpPage = MpPage::Hub;
     std::string m_mpNote;
