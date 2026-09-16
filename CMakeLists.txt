@@ -1796,6 +1796,26 @@ if(EMSCRIPTEN)
         # ~160 KB in total and they are what the new-game browser draws, so the
         # list of worlds is complete and pictured before any world is fetched.
         "--exclude-file=*/STDmaps/*.odmap"
+        # ── THE SIXTY-FIVE TRANSLATIONS, OF WHICH A PLAYER READS ONE ──
+        #
+        # 5.6 MB across 65 files, and it was 46 per cent of everything in the
+        # package -- the single largest item left in it, bigger than the flags
+        # and five times the fonts. Every browser visitor downloaded sixty-four
+        # languages they were never going to open, before the menu drew.
+        #
+        # setLanguage() now fetches the one it needs through odEnsureAsset(),
+        # exactly as the scenarios, the music, the model and the full font
+        # already do, so the cost moves from every visitor to the ones who pick
+        # a language -- and it is ~150 KB when they do.
+        #
+        # ENGLISH PAYS NOTHING EITHER WAY. The English text IS the lookup key,
+        # so the game never opens en.json at all; it exists for
+        # tools/i18n_extract.py. Excluding it costs the default language
+        # nothing and saves 106 KB.
+        #
+        # The *.names.json proper-noun files go with them, by the same rule and
+        # the same fetch. Only twenty languages have one.
+        "--exclude-file=*/lang/*.json"
         # The trained AI weights, read when a game starts and never before.
         "--exclude-file=*/ai/model.bin"
         # The complete unifont, 11 MB, for the languages the 147 KB subset
@@ -1833,6 +1853,14 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${OD_WEB_DATA}/ai/model.bin"
                 "$<TARGET_FILE_DIR:OpenDoctrines>/data/ai/model.bin"
+        # The translations, excluded from the preload above and fetched one at
+        # a time by setLanguage(). Deployed whole because which one is wanted
+        # is the player's choice, made at runtime.
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/lang"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${OD_WEB_DATA}/lang"
+                "$<TARGET_FILE_DIR:OpenDoctrines>/data/lang"
         # The full font, excluded from the preload above and therefore needing
         # to be reachable over HTTP at the path the virtual filesystem knows it
         # by, exactly like the scenarios and the model.
@@ -2765,7 +2793,7 @@ add_executable(OdmodCheck
     tools/map_generator/miniz_zip.c
 )
 set_target_properties(OdmodCheck PROPERTIES OUTPUT_NAME odmod-check)
-target_include_directories(OdmodCheck PRIVATE src tools/map_generator)
+target_include_directories(OdmodCheck PRIVATE src tests tools/map_generator)
 if(OD_MODS_BACKEND STREQUAL "wamr")
     target_link_libraries(OdmodCheck vmlib)
     target_compile_definitions(OdmodCheck PRIVATE OD_MODS_WAMR=1)

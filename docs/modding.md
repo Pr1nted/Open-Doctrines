@@ -173,8 +173,11 @@ Enforced field rules:
 - `fuelPerDecision` — the budget for **one `mod_ai_choose` call**, which is one
   decision rather than one turn. A mod that decides by running a model spends
   more on a single choice than a turn of ordinary hook work: a whole-connectome
-  neural simulation costs ~19M neuron integrations for one decision, which is
-  past the 100M per-turn ceiling on its own. Rather than make such a mod inflate
+  neural simulation measures at **700M-1,000M instructions** through WAMR for a
+  single 200 ms window. Note that figure is roughly six times what counting the
+  operations by hand suggested — an interpreter's instruction count is not an
+  operation count, so **measure with `odmod-check --decide` rather than
+  estimating**. Rather than make such a mod inflate
   `fuelPerTurn` thirtyfold — and lose that protection for every other hook — the
   decision hook has its own budget. Omit it and the host gives 500,000,000; the
   ceiling is 2,000,000,000, which sits deliberately below `INT32_MAX` because the

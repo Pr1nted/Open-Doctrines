@@ -1,5 +1,8 @@
 #include "i18n/Locale.h"
 #include "util/LoadLog.h"
+#ifdef __EMSCRIPTEN__
+#include "util/WebAssets.h"
+#endif
 #include "i18n/Normalize.h"
 
 // Defined in Text.cpp; toggles the HarfBuzz Arabic path for Urdu.
@@ -597,6 +600,27 @@ bool setLanguage(const std::string& code, const std::string& dataDir) {
 
     if (code != "en") {
         const std::string path = dataDir + "lang/" + code + ".json";
+        // ── FETCHED, NOT PRELOADED ──
+        //
+        // The sixty-five translation files are 5.6 MB, and a player reads
+        // exactly one of them. Preloaded, that was 46% of everything a browser
+        // visitor downloaded before the menu drew -- sixty-four languages they
+        // were never going to see. Excluded from the preload in CMakeLists.txt
+        // and pulled down here, by the same odEnsureAsset() the scenarios, the
+        // music, the model and the full font already use.
+        //
+        // English needs no file at all: the English text IS the key, so the
+        // whole of en.json exists for tools/i18n_extract.py and never for the
+        // game. That is why this sits inside the `code != "en"` branch and
+        // costs the default language nothing.
+        //
+        // GUARDED, although odEnsureAsset is a FileExists off the web: three
+        // test targets compile this file without raylib, which WebAssets.cpp
+        // needs, so an unconditional call would fail their link rather than do
+        // nothing.
+#ifdef __EMSCRIPTEN__
+        odEnsureAsset(path);
+#endif
         std::ifstream f(path);
         if (!f) {
             LoadLog() << "[i18n] cannot open " << path << std::endl;
@@ -625,6 +649,12 @@ bool setLanguage(const std::string& code, const std::string& dataDir) {
 
         // Proper nouns, if this language has been given any.
         const std::string npath = dataDir + "lang/" + code + ".names.json";
+        // Only twenty of the sixty-five languages have one, so a miss here is
+        // ordinary rather than a fault -- and odEnsureAsset remembering the
+        // miss is exactly right: the file will not appear later in the session.
+#ifdef __EMSCRIPTEN__
+        odEnsureAsset(npath);
+#endif
         std::ifstream nf(npath);
         if (nf) {
             nlohmann::json nj;

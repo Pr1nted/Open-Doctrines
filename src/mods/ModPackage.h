@@ -262,9 +262,18 @@ struct ModHostCaps {
     // silently stops being a limit is the one failure this must not have, so
     // the maximum sits well under it.
     static constexpr uint64_t kMaxFuelPerDecision     = 2000000000ull;
-    // Roughly three times the measured cost of a whole-connectome decision, so
-    // a model-driven mod runs without declaring anything, and a runaway is
-    // still stopped in bounded time.
+    // NOT ENOUGH FOR A WHOLE-CONNECTOME DECISION, on purpose, and the number
+    // is measured rather than reasoned about: running the FlyWire brain through
+    // WAMR costs between 700,000,000 and 1,000,000,000 instructions for one
+    // 200 ms window -- about six times what counting operations by hand
+    // suggested, because an interpreter's instruction count is not an operation
+    // count.
+    //
+    // The default stays below that deliberately. It bounds a runaway hook to a
+    // few seconds, and a mod that genuinely needs more says so in its manifest
+    // and gets a clear "instruction limit exceeded" if it forgot. A default
+    // generous enough for the heaviest imaginable mod would be a default that
+    // lets every buggy one hang a turn for ten seconds.
     static constexpr uint64_t kDefaultFuelPerDecision =  500000000ull;
 
     // What mod_load gets when the manifest does not ask for something smaller.
