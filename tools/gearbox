@@ -28,6 +28,19 @@ default_mods_dir() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# True when at least one of the given globs matched a real file.
+#
+# `ls "$d"/*.cpp "$d"/*.cc` looks like it asks that and does not: ls exits
+# non-zero when ANY argument is missing, so a directory holding mod.cpp and no
+# .cc answered "no C++ here" and gearbox build refused every C++ mod in the
+# tree. An unmatched glob stays literal, so testing each word for existence
+# asks the question that was meant.
+any_file() {
+    local p
+    for p in "$@"; do [ -e "$p" ] && return 0; done
+    return 1
+}
+
 # A clang that can target wasm32. Apple's cannot; Emscripten's and upstream
 # LLVM's can.
 find_wasm_clang() {
@@ -47,11 +60,11 @@ detect_lang() {
     [ -f "$d/Cargo.toml" ]            && { echo rust;  return; }
     [ -f "$d/go.mod" ]                && { echo go;    return; }
     [ -d "$d/assembly" ]              && { echo as;    return; }
-    ls "$d"/*.wat        >/dev/null 2>&1 && { echo wat;   return; }
-    ls "$d"/*.swift      >/dev/null 2>&1 && { echo swift; return; }
-    ls "$d"/*.zig        >/dev/null 2>&1 && { echo zig;   return; }
-    ls "$d"/*.cpp "$d"/*.cc >/dev/null 2>&1 && { echo cpp; return; }
-    ls "$d"/*.c          >/dev/null 2>&1 && { echo c;     return; }
+    any_file "$d"/*.wat        && { echo wat;   return; }
+    any_file "$d"/*.swift      && { echo swift; return; }
+    any_file "$d"/*.zig        && { echo zig;   return; }
+    any_file "$d"/*.cpp "$d"/*.cc && { echo cpp; return; }
+    any_file "$d"/*.c          && { echo c;     return; }
     echo unknown
 }
 
@@ -65,7 +78,13 @@ cmd_doctor() {
     printf '  %-16s %s\n' "C++" "${cxx:-MISSING}"
     for t in "rust:$TC/cargo/bin/cargo:cargo" "zig:$TC/zig/zig:zig" \
              "tinygo:$TC/tinygo/bin/tinygo:tinygo" "wat2wasm:$TC/wabt/bin/wat2wasm:wat2wasm"; do
-        local name="${t%%:*}" rest="${t#*:}" local_p="${rest%%:*}" global_p="${rest##*:}"
+        # Declared first, assigned after. `local` is a builtin, so bash expands
+        # every one of its arguments BEFORE running it -- writing these on one
+        # line made ${rest%%:*} read the previous iteration's `rest`, which is
+        # why rust reported MISSING and every later tool showed the path of the
+        # one above it.
+        local name rest local_p global_p
+        name="${t%%:*}"; rest="${t#*:}"; local_p="${rest%%:*}"; global_p="${rest##*:}"
         if [ -x "$local_p" ]; then printf '  %-16s %s\n' "$name" "$local_p"
         elif have "$global_p"; then printf '  %-16s %s\n' "$name" "$(command -v $global_p)"
         else printf '  %-16s %s\n' "$name" "MISSING"; fi
