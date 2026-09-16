@@ -253,11 +253,13 @@
       <label for="f-gearbox">Gearbox API
         <input type="text" id="f-gearbox" class="mono" autocomplete="off" placeholder="1.2">
       </label>
-      <label for="f-side">Runs on
+      <label for="f-side">Where it runs
+        <span class="hint">From your manifest's "side". Shown on the listing, because
+          it decides whether other players need your file too.</span>
         <select id="f-side">
-          <option value="client">the client</option>
-          <option value="both">client and server</option>
-          <option value="server">the host only</option>
+          <option value="client">Client — only the player who installs it</option>
+          <option value="both">Synchronised — everyone in the game needs it</option>
+          <option value="server">Host only — joiners need nothing</option>
         </select>
       </label>
     </div>

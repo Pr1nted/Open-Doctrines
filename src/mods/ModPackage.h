@@ -57,6 +57,14 @@ enum ModModuleBit : uint32_t {
     MODULE_ECONOMY_WRITE   = 1u << 20,
     // The editor can rewrite the world, so it is deliberately its own thing and
     // is refused outside the map editor screen -- see ModHost's inEditor gate.
+    // ── Gearbox 1.3 ──────────────────────────────────────────────────────────
+    //
+    // Neural (bit 4) is READ-ONLY and stays that way: it watches the AI. This
+    // is the separate grant that lets a mod CHOOSE, through mod_ai_choose. A
+    // player agreeing to "watch the AI" has not agreed to "be the AI", so the
+    // two cannot be one capability.
+    MODULE_NEURAL_DECIDE   = 1u << 22,
+
     MODULE_MAPEDITOR       = 1u << 21,
 };
 
@@ -143,6 +151,21 @@ struct ModLimits {
     // 0 means "let the host decide", which is the normal case: see
     // ModHostCaps::kDefaultLoadFuel. A mod only sets this if it wants LESS.
     uint64_t loadFuel = 0;
+
+    // Budget for mod_ai_choose, which is a different kind of cost again: one
+    // DECISION rather than one turn. A mod that decides by running a model can
+    // spend more on a single choice than a whole turn of ordinary hook work.
+    //
+    // MEASURED, NOT GUESSED. The FlyWire connectome brain takes ~19.1M neuron
+    // integrations and ~277k synapse events for one 200 ms decision window --
+    // on the order of 150M instructions, against a fuelPerTurn CEILING of 100M.
+    // A decision hook replaces work the host would otherwise do itself, so it
+    // gets its own budget rather than forcing such a mod to inflate its
+    // per-turn budget thirtyfold and lose the protection that budget gives
+    // every other hook.
+    //
+    // 0 means "let the host decide": ModHostCaps::kDefaultFuelPerDecision.
+    uint64_t fuelPerDecision = 0;
 };
 
 // The Gearbox ABI this build provides.
@@ -160,7 +183,7 @@ struct ModLimits {
 // simply is not there. sdk/compat/abi-1.0.json and abi-1.1.json freeze the two
 // earlier surfaces and tools/check_abi_compat.py holds this to it.
 inline constexpr int kHostGearboxMajor = 1;
-inline constexpr int kHostGearboxMinor = 2;
+inline constexpr int kHostGearboxMinor = 3;
 
 struct ModManifest {
     int schema = 0;
@@ -229,6 +252,20 @@ struct ModArchiveLimits {
 struct ModHostCaps {
     static constexpr uint32_t kMaxMemoryPages = 1024;         // 64 MiB
     static constexpr uint64_t kMaxFuelPerTurn = 100000000ull;
+
+    // ── the decision budget ──
+    //
+    // BELOW INT32_MAX ON PURPOSE, and that is not a rounding choice. ModRuntime
+    // hands the budget to wasm_runtime_set_instruction_count_limit(), which
+    // takes an int and reads -1 as "unlimited" -- so a budget at or above
+    // INT32_MAX does not raise the ceiling, it REMOVES it. A limit that
+    // silently stops being a limit is the one failure this must not have, so
+    // the maximum sits well under it.
+    static constexpr uint64_t kMaxFuelPerDecision     = 2000000000ull;
+    // Roughly three times the measured cost of a whole-connectome decision, so
+    // a model-driven mod runs without declaring anything, and a runaway is
+    // still stopped in bounded time.
+    static constexpr uint64_t kDefaultFuelPerDecision =  500000000ull;
 
     // What mod_load gets when the manifest does not ask for something smaller.
     // Every mod gets this; nothing has to declare that it is interpreted, which

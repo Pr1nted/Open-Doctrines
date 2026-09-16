@@ -223,7 +223,8 @@ int main(int argc, char** argv) {
         std::set<std::string> names;
         for (const auto& e : *exports) names.insert(e.value("name", std::string()));
         for (const char* required : {"mod_load", "mod_unload", "mod_pre_turn",
-                                     "mod_post_turn", "mod_draw_panel"})
+                                     "mod_post_turn", "mod_draw_panel",
+                                     "mod_ai_choose"})
             check(std::string("export ") + required + " is described",
                   names.count(required) == 1);
     }

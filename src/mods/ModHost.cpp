@@ -787,6 +787,25 @@ uint32_t neural_features(ExecEnv e, uint32_t cid, uint32_t buf, uint32_t cap) {
     return need;                    // full length, per two-call sizing
 }
 
+// Which actions the host will accept for the decision being made right now.
+//
+// Staged and copied exactly like neural_features above: sized first, then
+// written through memWrite, so a mod handing over a bogus pointer cannot make
+// the host write anywhere it chose.
+uint32_t neural_decide_action_valid(ExecEnv e, uint32_t module, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_NEURAL_DECIDE)) return 0;
+    // Outside a decision, or asking about a different module than the one being
+    // decided: no mask exists, so none is given.
+    if (!g_modHost.decideMask || (int32_t)module != g_modHost.decideModule) return 0;
+
+    const uint32_t need = g_modHost.decideMaskLen;
+    if (need == 0 || cap == 0 || buf == 0) return need;
+    const uint32_t take = need < cap ? need : cap;
+    if (!mi->memWrite(buf, take, g_modHost.decideMask)) return 0;
+    return need;                    // full length, per two-call sizing
+}
+
 uint32_t neural_reward_count(ExecEnv e) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_NEURAL) || !g_modGame) return 0;
@@ -1776,6 +1795,9 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:neural", "country_stance", "(i)i",   (void*)neu_country_stance, MODULE_NEURAL},
     {"gearbox:neural", "stance_name",    "(iii)i", (void*)neu_stance_name,    MODULE_NEURAL},
     {"gearbox:neural", "stance_count",   "()i",    (void*)neu_stance_count,   MODULE_NEURAL},
+    // ── Gearbox 1.3: the mask a mod needs to choose legally ──
+    {"gearbox:neural.decide", "action_valid", "(iii)i",
+     (void*)neural_decide_action_valid, MODULE_NEURAL_DECIDE},
 
     // Not a gearbox: namespace -- these must carry the names the interpreters
     // actually import. Gated on WasiStub like any other capability.

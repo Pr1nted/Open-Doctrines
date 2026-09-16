@@ -606,6 +606,49 @@ void ModManager::postTurn(int turn) {
     serviceQueuedReload();
 }
 
+int ModManager::aiChoose(int country, int module, const std::vector<bool>& valid) {
+    if (m_mods.empty()) return -1;
+
+    // std::vector<bool> is a bitset with no contiguous bytes behind it, so the
+    // mask has to be laid out as real bytes before it can cross the ABI.
+    std::vector<uint8_t> mask(valid.size());
+    for (size_t i = 0; i < valid.size(); ++i) mask[i] = valid[i] ? 1u : 0u;
+
+    g_modHost.decideMask    = mask.data();
+    g_modHost.decideMaskLen = (uint32_t)mask.size();
+    g_modHost.decideModule  = module;
+
+    int chosen = -1;
+    for (auto& e : m_mods) {
+        if (e.state != ModState::Active || !e.instance) continue;
+        if (!(e.instance->granted() & MODULE_NEURAL_DECIDE)) continue;
+        if (!e.instance->hasExport("mod_ai_choose")) continue;
+
+        uint32_t args[2] = {(uint32_t)country, (uint32_t)module};
+        uint32_t ret = 0xFFFFFFFFu;
+        std::string err;
+        if (!e.instance->callExport("mod_ai_choose", args, 2, &ret, err)) {
+            fail(e, err);
+            continue;
+        }
+        if (ret == 0xFFFFFFFFu) continue;                    // declined, on purpose
+        // AN ILLEGAL ANSWER IS NOT AN ERROR, IT IS A NO. A mod reading a stale
+        // mask, or built against a different action space, should cost the game
+        // nothing -- so it is ignored exactly like a decline rather than failing
+        // the mod, which would punish an author for the host changing under them.
+        if (ret >= mask.size() || !mask[ret]) continue;
+
+        chosen = (int)ret;
+        break;   // FIRST answer wins; load order settles two deciders, and the
+                 // Advanced panel is where a player reorders them.
+    }
+
+    g_modHost.decideMask    = nullptr;
+    g_modHost.decideMaskLen = 0;
+    g_modHost.decideModule  = -1;
+    return chosen;
+}
+
 void ModManager::drawPanels() {
     if (g_modHost.headless) return;
 

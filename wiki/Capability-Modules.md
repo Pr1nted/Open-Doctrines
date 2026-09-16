@@ -20,6 +20,7 @@ it asked for**.
 | `GameProcess` | Turn lifecycle hooks. Grants exports, not imports. | — | yes | implemented |
 | `GameState.Write` | Mutate the world. Implies GameState.Read. | `set_country_treasury`, `add_country_treasury`, `set_province_owner`, `set_province_population` | yes | implemented |
 | `Neural` | Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model) | `feature_count`, `features`, `reward_count`, `reward_mean`, `module_count`, `module_name`, `action_count`, `action_name`, `country_is_ai`, `update_count`, `model_loaded`, `ai_version`, `ai_arch`, `country_stance`, `stance_name`, `stance_count` | yes | implemented |
+| `Neural.Decide` | Choose the AI's action for a country, in place of the built-in AI | `action_valid` | yes | implemented |
 | `Map` | Province geometry and adjacency | `width`, `height`, `province_count`, `province_at`, `province_name`, `province_center_x`, `province_center_y`, `province_is_land`, `province_neighbor_count`, `province_neighbor_at`, `province_is_coastal`, `sea_route_exists`, `point_is_land` | yes | implemented |
 | `Diplomacy` | Read and propose diplomatic actions | `at_war`, `allied`, `non_aggression`, `guaranteed`, `propose_war` | yes | implemented |
 | `Storage` | Persistent key-value store namespaced to your mod id | `get`, `set`, `remove` | yes | implemented |

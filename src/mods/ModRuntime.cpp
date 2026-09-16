@@ -212,6 +212,7 @@ std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
     mi->m_impl = w;
     mi->m_fuelBudget = pkg.manifest().limits.fuelPerTurn;
     mi->m_loadFuelBudget = pkg.manifest().limits.loadFuel;
+    mi->m_decisionFuelBudget = pkg.manifest().limits.fuelPerDecision;
 
     // So host natives can find their way back from an exec_env.
     wasm_runtime_set_custom_data(w->inst, mi.get());
@@ -281,6 +282,14 @@ static bool isLoadHook(const char* name) {
                     strcmp(name, "_initialize") == 0);
 }
 
+// The decision hook, which draws on its own budget for the same kind of reason:
+// it is one CHOICE rather than one turn, and a mod that decides by running a
+// model spends more on a single choice than a turn of ordinary hook work.
+// A closed list again, so a new export defaults to the tight budget.
+static bool isDecisionHook(const char* name) {
+    return name && strcmp(name, "mod_ai_choose") == 0;
+}
+
 bool ModInstance::callExport(const char* name, const uint32_t* args,
                              uint32_t argc, uint32_t* ret, std::string& err) {
     auto* w = (WamrInstance*)m_impl;
@@ -303,7 +312,10 @@ bool ModInstance::callExport(const char* name, const uint32_t* args,
     // does per turn. Charging that to fuelPerTurn would mean a Ruby or Python
     // mod could only load by declaring a per-turn budget it never needs.
     const bool loadHook = isLoadHook(name);
-    const uint64_t budget = loadHook ? m_loadFuelBudget : m_fuelBudget;
+    const bool decisionHook = isDecisionHook(name);
+    const uint64_t budget = loadHook     ? m_loadFuelBudget
+                          : decisionHook ? m_decisionFuelBudget
+                                         : m_fuelBudget;
     if (budget > 0 && budget < (uint64_t)INT32_MAX)
         wasm_runtime_set_instruction_count_limit(w->env, (int)budget);
     else
@@ -312,11 +324,14 @@ bool ModInstance::callExport(const char* name, const uint32_t* args,
     // Restored rather than cleared: mod_load may call back into the host, and a
     // nested call must not leave the outer hook reporting the wrong budget.
     const bool wasInLoadHook = m_inLoadHook;
+    const bool wasInDecisionHook = m_inDecisionHook;
     m_inLoadHook = loadHook;
+    m_inDecisionHook = decisionHook;
     struct Restore {
         bool* flag; bool prev;
         ~Restore() { *flag = prev; }
-    } restore{&m_inLoadHook, wasInLoadHook};
+    } restore{&m_inLoadHook, wasInLoadHook},
+      restoreDecision{&m_inDecisionHook, wasInDecisionHook};
 
     wasm_runtime_clear_exception(w->inst);
     bool ok = wasm_runtime_call_wasm(w->env, fn, argc, argv);
@@ -336,7 +351,9 @@ uint64_t ModInstance::fuelRemaining() const {
     // WAMR enforces the instruction limit but exposes no live counter, so this
     // is the budget for the current hook, not a countdown. See the note on
     // gearbox_fuel_budget in sdk/gearbox.h.
-    const uint64_t budget = m_inLoadHook ? m_loadFuelBudget : m_fuelBudget;
+    const uint64_t budget = m_inLoadHook     ? m_loadFuelBudget
+                          : m_inDecisionHook ? m_decisionFuelBudget
+                                             : m_fuelBudget;
     return budget == 0 ? UINT64_MAX : budget;
 }
 
@@ -552,6 +569,7 @@ std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
     mi->m_package = &pkg;
     mi->m_fuelBudget = pkg.manifest().limits.fuelPerTurn;
     mi->m_loadFuelBudget = pkg.manifest().limits.loadFuel;
+    mi->m_decisionFuelBudget = pkg.manifest().limits.fuelPerDecision;
     mi->m_impl = mi.get();          // the handle JS keys on is the instance itself
 
     auto& tbl = webTable();

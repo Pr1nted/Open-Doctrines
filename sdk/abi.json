@@ -22,7 +22,7 @@
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
     "1.0 baseline so a future edit cannot quietly drop one."
   ],
-  "gearbox": "1.2",
+  "gearbox": "1.3",
   "schema": 1,
   "modules": [
     {
@@ -73,6 +73,13 @@
       "revocable": true,
       "implemented": true,
       "grants": "Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model)"
+    },
+    {
+      "name": "Neural.Decide",
+      "import": "gearbox:neural.decide",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Choose the AI's action for a country, in place of the built-in AI"
     },
     {
       "name": "Map",
@@ -5210,6 +5217,34 @@
         "type": "i32"
       },
       "doc": "How many stances there are to choose between."
+    },
+    {
+      "module": "gearbox:neural.decide",
+      "name": "action_valid",
+      "capability": "Neural.Decide",
+      "since": "1.3",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "module",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Which actions the host will accept for this module right now, one byte per action: 1 legal, 0 not. Two-call sizing, like every other copy here. MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact about a decision in progress; outside one it returns 0 and writes nothing. Choosing an action whose byte is 0 is the same as deciding nothing -- the host keeps its own choice, because an illegal action is not a move it can make."
     }
   ],
   "exports": [
@@ -5282,6 +5317,28 @@
       ],
       "result": null,
       "doc": "Called once per frame per visible panel you registered. Never called when headless. Re-issue all your draw calls every frame; the command list is cleared between frames."
+    },
+    {
+      "name": "mod_ai_choose",
+      "required": false,
+      "capability": "Neural.Decide",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "module",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "Choose this country's action for one of the AI's decision modules, in place of the built-in AI. Called once per AI country per module per turn, and only if Neural.Decide is granted. Read the position with neural.features() and the legal moves with neural.decide.action_valid(); return an action index in [0, action_count(module)). Return GEARBOX_INVALID to decide nothing this time, which is not a failure -- the built-in AI chooses instead, so a mod may answer only the turns it has an opinion about. An out-of-range or illegal answer is treated the same way. The host keeps the last word either way: whatever is returned is still put through the same legality and execution path as its own choice, so this changes WHICH legal move is made and never what a legal move is."
     }
   ],
   "enums": {
@@ -5320,7 +5377,7 @@
   "constants": {
     "GEARBOX_INVALID": "0xFFFFFFFF",
     "GEARBOX_MAJOR": 1,
-    "GEARBOX_MINOR": 2
+    "GEARBOX_MINOR": 3
   },
   "env_struct": {
     "$comment": "Layout is ABI. Fields are only ever appended, never reordered or resized. Total size is 28 bytes on wasm32.",

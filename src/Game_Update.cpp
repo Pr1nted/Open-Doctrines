@@ -170,6 +170,7 @@ void Game::handlePauseMenu() {
                 unloadGameData();
                 m_paused = false;
                 m_currentScreen = SCREEN_MENU;
+                offerMultiplayerAfterGame();
             }
         }
     }
@@ -185,6 +186,11 @@ void Game::update(float dt) {
     // off while the other is open, so in practice they are never both up.
     maybeOfferUsage(dt);
     if (updateUsagePrompt()) return;
+    // Before the rating question, and it holds that question off while it is
+    // up: "do you like it?" on top of "this tab is losing your game" asks the
+    // wrong thing at the worst moment.
+    maybeWarnAboutThisTab(dt);
+    if (updatePersistWarning()) return;
     maybeOfferRating(dt);
     if (updateRatingPrompt()) return;
 
@@ -1914,6 +1920,7 @@ void Game::update(float dt) {
                 m_paused = false;
                 m_showUnsavedWarning = false;
                 m_currentScreen = SCREEN_MENU;
+                offerMultiplayerAfterGame();
             } else if (m_unsavedChoice == 1) {
                 // Quit Without Saving
                 m_popupQueue.clear();
@@ -1922,6 +1929,7 @@ void Game::update(float dt) {
                 m_paused = false;
                 m_showUnsavedWarning = false;
                 m_currentScreen = SCREEN_MENU;
+                offerMultiplayerAfterGame();
             } else {
                 // Cancel — close dialog
                 m_showUnsavedWarning = false;

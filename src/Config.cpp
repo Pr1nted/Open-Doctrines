@@ -220,6 +220,7 @@ bool Config::load(const std::string& path) {
     minutesPlayed     = (int)findFloat(json, "minutesPlayed", 0.0f);
     ratingAsked       = findBool(json, "ratingAsked", false);
     ratingGiven       = findBool(json, "ratingGiven", false);
+    mpInviteAsked     = findBool(json, "mpInviteAsked", false);
     usageAsked        = findBool(json, "usageAsked", false);
     mailPolicy        = (int)findFloat(json, "mailPolicy", 3.0f);
     mailLock          = (int)findFloat(json, "mailLock", 0.0f);
@@ -350,6 +351,7 @@ bool Config::save(const std::string& path) {
     file << "  \"minutesPlayed\": " << minutesPlayed << ",\n";
     file << "  \"ratingAsked\": " << (ratingAsked ? "true" : "false") << ",\n";
     file << "  \"ratingGiven\": " << (ratingGiven ? "true" : "false") << ",\n";
+    file << "  \"mpInviteAsked\": " << (mpInviteAsked ? "true" : "false") << ",\n";
     file << "  \"usageAsked\": " << (usageAsked ? "true" : "false") << ",\n";
     file << "  \"mailPolicy\": " << mailPolicy << ",\n";
     file << "  \"mailLock\": " << mailLock << ",\n";

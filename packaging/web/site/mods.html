@@ -229,6 +229,8 @@
       <a href="https://github.com/Pr1nted/Open-Doctrines">GitHub</a>
       <a href="https://discord.gg/wqS65jzVv5">Discord</a>
       <a href="/terms">Terms</a>
+      <a href="https://opendoctrines-net.opendoctrines.workers.dev/eula">Mod terms</a>
+      <a href="https://opendoctrines-net.opendoctrines.workers.dev/dmca">Copyright</a>
       <a href="/privacy">Privacy</a>
       <a href="/cookies">Cookies</a>
     </div>
@@ -328,7 +330,14 @@
     var chips = el("div", "chips");
     var sc = scanChip(mod.scan);
     chips.appendChild(el("span", sc.cls, sc.text));
-    if (mod.side && mod.side !== "client") chips.appendChild(el("span", "chip", mod.side));
+    /* ALWAYS shown, including for "client". Hiding the commonest case meant the
+       absence of a chip had to be read as a claim, and a player who has never
+       seen the other two would not know there was anything to read. */
+    if (mod.sideLabel) {
+      var side = el("span", mod.side === "both" ? "chip deep" : "chip", mod.sideLabel.short);
+      side.title = mod.sideLabel.means;
+      chips.appendChild(side);
+    }
     (mod.modules || []).forEach(function (m) {
       if (DEEP[m]) chips.appendChild(el("span", "chip deep", "changes turns"));
     });
@@ -405,8 +414,9 @@
     }
 
     fact(dl, "Capabilities", (mod.modules || []).join(", ") || "none declared");
-    fact(dl, "Runs on", mod.side === "both" ? "client and server"
-                      : mod.side === "server" ? "the host only" : "the client");
+    fact(dl, "Runs on", (mod.sideLabel && mod.sideLabel.means)
+        || (mod.side === "both" ? "client and server"
+            : mod.side === "server" ? "the host only" : "the client"));
     fact(dl, "Gearbox API", mod.gearbox || "?");
     if (mod.sizeBytes) fact(dl, "Size", (mod.sizeBytes / 1048576).toFixed(1) + " MB");
 

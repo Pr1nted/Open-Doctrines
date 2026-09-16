@@ -84,6 +84,36 @@ cannot point the game at a machine of the poster's choosing.
 somebody reading this board has just decided they want to play with people, and
 that is the only moment the ask means anything.
 
+A host sitting in an empty lobby gets **Find players for this game**, which
+fills the listing in from that lobby — code, seats, pace, map — and shows it for
+editing. That is where a host actually is when they want players, and asking
+them to leave the page and retype what the lobby already knows is asking most
+people to give up instead.
+
+## The one ask, after a solo game
+
+Leaving a single-player game to the menu offers the board once: *the AI does not
+negotiate — people are playing right now*. It is a sibling of the itch.io rating
+prompt and answered on the same terms.
+
+- **After 25 minutes of play**, counted across the whole install rather than the
+  session — below the rating prompt's 45-minute fallback, above its 10-minute
+  moment. Somebody who opened the game, looked at the map and quit has not
+  decided they like it enough to want company.
+- **Asked once.** `mpInviteAsked` is set the moment it is *shown*, not when it
+  is answered, and never cleared. A player who ignored it has answered, and the
+  second answer is always worse than the first.
+- **Never after a multiplayer game** — that player already knows where the board
+  is — and never when no account service is configured.
+- **It does not promise other people.** With games on the board it says how
+  many; with an empty board it says a game is posted from the lobby, which is
+  something this player can do rather than a claim that may not hold.
+
+Why the menu and not mid-game: the rating prompt asks during play because what
+it wants is an opinion, and an opinion forms while you are playing. This wants
+somebody to go and find people, and asking that mid-game is asking a player to
+abandon the game they are in.
+
 ## The parser is sealed
 
 A listing is written by a stranger, fetched over the network and drawn on your

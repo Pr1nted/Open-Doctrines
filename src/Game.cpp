@@ -3244,7 +3244,9 @@ void Game::endFrame() {
     drawFeedbackForm();
     drawFeedbackNotice();   // over the form, not under it
     drawUsagePrompt();
+    drawPersistWarning();
     drawRatingPrompt();
+    drawMpInvite();       // self-gates on the main menu
     drawPadCursor();
 
     EndDrawing();

@@ -1,0 +1,68 @@
+name: Suggestion
+description: Something the game should do, or should do differently.
+labels: ["suggestion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggestions are welcome and most of them are declined, which is not the
+        same as unwelcome. The ones that land describe a **problem** clearly
+        enough that someone can disagree about the solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is the problem
+      description: >-
+        What goes wrong, or what you cannot do, as it stands. Not the feature —
+        the reason you want it.
+      placeholder: >-
+        I cannot tell why the AI declared war on me. By the time I see it, the
+        reasoning is several turns in the past and nothing on screen refers to it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would do about it
+      description: If you have something in mind. "No idea" is a fine answer.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - Gameplay rules
+        - The AI
+        - Interface
+        - Multiplayer
+        - Mods and the Gearbox API
+        - The mod directory
+        - Maps and scenarios
+        - Performance
+        - Accessibility or translation
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >-
+        Whether anything in the game nearly does this already. If something
+        nearly does, the answer is often to fix that rather than add a second
+        way to do it.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Worth knowing
+      options:
+        - label: >-
+            I understand this may be declined, and that a clear description of
+            the problem is useful even then.
+        - label: >-
+            This is not a request to add a mod to the directory — anyone can
+            publish one there without asking.

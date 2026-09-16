@@ -111,6 +111,17 @@ struct ModHostContext {
     uint32_t   screenW = 0;
     uint32_t   screenH = 0;
     ModNetRole netRole = ModNetRole::Standalone;
+
+    // ── the decision in progress ──
+    //
+    // Set only while mod_ai_choose is on the stack, and cleared the moment it
+    // returns. A legality mask is a fact ABOUT one decision, so outside that
+    // window neural.decide.action_valid has nothing true to say and says
+    // nothing -- rather than handing back a stale mask from whichever country
+    // was decided last, which is the failure that would be invisible.
+    const uint8_t* decideMask = nullptr;
+    uint32_t       decideMaskLen = 0;
+    int32_t        decideModule = -1;
 };
 
 extern ModHostContext g_modHost;

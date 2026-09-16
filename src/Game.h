@@ -1050,6 +1050,23 @@ private:
     void lfgJoin(const odlfg::Listing& listing);
     void drawLfgCallToAction(int x, int y, int w, Vector2 mouse, bool click);
 
+    /**
+     * The one invitation to play with people, offered after a solo game.
+     *
+     * A sibling of the rating prompt and answered on the same terms: asked
+     * once, "not now" means never, and nothing is asked of somebody who has
+     * only just opened the game. See Game_Lfg.cpp for why this moment and no
+     * other.
+     */
+    void offerMultiplayerAfterGame();
+    void drawMpInvite();
+    /** @return true when the pointer is over the invitation. */
+    bool updateMpInvite();
+    Rectangle mpInviteRect() const;
+    Rectangle mpInviteGoRect() const;
+    Rectangle mpInviteDismissRect() const;
+    bool m_mpInviteOpen = false;
+
     std::vector<odlfg::Listing> m_lfgListings;
     odlfg::Draft m_lfgDraft;
     /// My own open listing's id, so the board offers to take it down.
@@ -5826,6 +5843,25 @@ private:
      * is an interruption; maybeOfferRating() waits for the next quiet frame.
      */
     bool  m_ratingMoment = false;
+
+    // ─── "this tab will lose your game" ──────────────────────────────────
+    //
+    // Shown ONLY to a browser player whose storage the browser actually
+    // refused, which is a real and invisible state -- see odPersistWorking().
+    // Runtime-only, and that is not an oversight: a flag saved to the config
+    // of a session whose config cannot be saved would be asked again every
+    // time regardless, so it is honest about being per-session.
+    bool m_persistWarnOpen = false;
+    bool m_persistWarnDone = false;
+    void maybeWarnAboutThisTab(float dt);
+    void drawPersistWarning();
+    /** @return true when the pointer is over the warning. */
+    bool updatePersistWarning();
+    void backUpStateNow();
+    Rectangle persistWarnRect() const;
+    Rectangle persistWarnGetRect() const;
+    Rectangle persistWarnBackupRect() const;
+    Rectangle persistWarnDismissRect() const;
 
     /**
      * The usage-reporting question, asked once and early.

@@ -661,3 +661,139 @@ void Game::drawMpPost(Vector2 mouse, bool click) {
                problem.empty() && !m_lfgBusy);
     if (click && send.hovered && problem.empty() && !m_lfgBusy) lfgSubmitDraft();
 }
+
+// ──────────────────────────────────────────── the one ask, after a solo game ──
+//
+// ── WHY HERE AND NOWHERE ELSE ──
+//
+// The rating prompt asks during play, because what it wants is an opinion and
+// an opinion forms while you are playing. This wants something else: for
+// somebody to go and find people. Asking that mid-game is asking a player to
+// abandon the game they are in, which is both rude and ineffective.
+//
+// The moment is leaving a single-player game. They have just finished an
+// evening of this, the next thing in front of them is the main menu, and
+// "Multiplayer" is two items down it. That is the only moment when the ask is
+// neither an interruption nor an afterthought.
+//
+// ── AND IT IS ASKED ONCE ──
+//
+// `mpInviteAsked` is set the moment it is SHOWN, not when it is answered, and
+// is never cleared. A player who ignored it has answered. The rating prompt
+// learned this the hard way and the reasoning is the same: the second answer is
+// always worse than the first, and a box that keeps coming back is a box people
+// learn to dismiss without reading.
+
+namespace {
+
+/**
+ * Minutes of play before the invitation is worth putting.
+ *
+ * Deliberately below the rating prompt's 45-minute fallback and above its
+ * 10-minute moment. Somebody who opened the game, looked at the map and quit
+ * has not decided they like it enough to want company; somebody who played an
+ * hour has. The number is a floor on the WHOLE install, not this session, so a
+ * returning player meets it on their way out of the first game they finish.
+ */
+constexpr int kInviteAfterMinutes = 25;
+
+}  // namespace
+
+void Game::offerMultiplayerAfterGame() {
+    if (m_config.mpInviteAsked || m_mpInviteOpen) return;
+    // Not after a multiplayer game. Somebody who has just left one already
+    // knows where the board is, and being handed it on the way out reads as
+    // the game not noticing what they were doing.
+    if (m_netHost || m_netSession) return;
+    // No service, no board, nothing to invite anybody to.
+    if (m_config.accountIssuer.empty()) return;
+    if (m_config.minutesPlayed < kInviteAfterMinutes) return;
+
+    m_mpInviteOpen = true;
+    // Marked asked HERE rather than on the answer: a player who quits the game
+    // with it on screen has been asked, and asking again next time is exactly
+    // the nagging this is meant not to be.
+    m_config.mpInviteAsked = true;
+    m_config.save(m_configPath);
+    // Ask the board on the way in, so the invitation can say how many games are
+    // open by the time somebody reads it.
+    lfgRefresh(false);
+}
+
+// The same corner as the rating and usage prompts, and they cannot collide:
+// those two draw only on SCREEN_PLAYING (promptsAreHidden) and this one only on
+// SCREEN_MENU. Two boxes in one corner is how both get clicked away unread.
+Rectangle Game::mpInviteRect() const {
+    return {(float)(m_screenW - 372 - 24), (float)(m_screenH - 146 - 24), 372, 146};
+}
+Rectangle Game::mpInviteGoRect() const {
+    const Rectangle b = mpInviteRect();
+    return {b.x + 16, b.y + 96, 196, 34};
+}
+Rectangle Game::mpInviteDismissRect() const {
+    const Rectangle b = mpInviteRect();
+    return {b.x + b.width - 90, b.y + 100, 78, 26};
+}
+
+void Game::drawMpInvite() {
+    if (!m_mpInviteOpen || m_currentScreen != SCREEN_MENU) return;
+
+    const Vector2 mouse = getMouse();
+    const Color accent = hexToColor(m_config.accent());
+    const Rectangle box = mpInviteRect();
+
+    DrawRectangleRounded(box, 0.08f, 8, Color{18, 20, 27, 245});
+    DrawRectangleRoundedLines(box, 0.08f, 8, Color{70, 74, 96, 220});
+    const int x = (int)box.x, y = (int)box.y;
+
+    DrawText(T("The AI does not negotiate."), x + 16, y + 14, 15, accent);
+
+    // ── WHAT IT SAYS DEPENDS ON WHAT IS TRUE ──
+    //
+    // With games on the board it says so and the number is the invitation.
+    // With an empty board it does not pretend otherwise: it says a game is
+    // posted from the lobby, which is a thing this player can do rather than a
+    // promise about other people that may not be kept.
+    const size_t open = m_lfgListings.size();
+    const char* second = open > 0
+        ? "People are playing right now. The board has the codes."
+        : "Post a game on the board and people will come to it.";
+    wrapText(T(second), x + 16, y + 38, (int)box.width - 32, 12,
+             Color{160, 166, 186, 255}, true);
+
+    if (open > 0) {
+        const std::string count = std::to_string(open) +
+            (open == 1 ? " game open now" : " games open now");
+        DrawText(count.c_str(), x + 16, y + 74, 12, Color{150, 200, 165, 255});
+    }
+
+    const Rectangle go = mpInviteGoRect();
+    const bool gh = CheckCollisionPointRec(mouse, go);
+    DrawRectangleRounded(go, 0.2f, 6, gh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235});
+    DrawRectangleRoundedLines(go, 0.2f, 6, Color{110, 180, 130, 220});
+    DrawText(T("Find people to play"), (int)go.x + 12, (int)go.y + 10, 13, WHITE);
+
+    const bool nh = CheckCollisionPointRec(mouse, mpInviteDismissRect());
+    DrawText(T("Not now"), (int)box.x + (int)box.width - 82, (int)box.y + 104, 12,
+             nh ? WHITE : Color{130, 134, 152, 255});
+}
+
+bool Game::updateMpInvite() {
+    if (!m_mpInviteOpen || m_currentScreen != SCREEN_MENU) return false;
+    const Vector2 mouse = getMouse();
+    // Reported whether or not it was pressed, so the menu underneath does not
+    // also take a click meant for this.
+    if (!CheckCollisionPointRec(mouse, mpInviteRect())) return false;
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+
+    if (CheckCollisionPointRec(mouse, mpInviteGoRect())) {
+        m_mpInviteOpen = false;
+        Audio::get().playSfx("confirm");
+        openMultiplayerMenu();
+        lfgOpenBoard();
+    } else if (CheckCollisionPointRec(mouse, mpInviteDismissRect())) {
+        m_mpInviteOpen = false;
+        Audio::get().playSfx("back");
+    }
+    return true;
+}

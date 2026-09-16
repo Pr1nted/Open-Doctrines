@@ -67,3 +67,19 @@ void odPersistTick(const std::string& dataDir);
  * finished save, leaving a world for the menu.
  */
 void odPersistFlush(const std::string& dataDir);
+
+/**
+ * Whether anything written this session will still be here next time.
+ *
+ * FALSE IS NOT RARE. A private-mode tab, a browser set to block site data, a
+ * quota prompt nobody answered, and -- the common one -- a third-party iframe
+ * whose storage the browser partitions or refuses outright. The game comes up
+ * and plays perfectly in all of those, writes every save successfully, and
+ * loses the lot when the tab closes.
+ *
+ * Exposed because a player in that state is the one player who needs to be
+ * told something, and telling everybody instead would be a warning that is
+ * false for most of the people reading it. Always true off the web, where a
+ * file written to disk is a file on the disk.
+ */
+bool odPersistWorking();

@@ -1,0 +1,107 @@
+name: Bug report
+description: Something in the game does the wrong thing.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One thing to know before you write: **rules live in the resolvers, not
+        in the renderer.** If a number looks wrong on screen, it is usually
+        wrong for the AI and the network too — so say what you *expected* the
+        rule to be, not only what you saw. That is what makes a report
+        reproducible instead of a screenshot.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what the game did instead of what you expected.
+      placeholder: |
+        I moved an army into a province I had just taken, and the supply
+        reading stayed at the old owner's value for the rest of the turn.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened, and why you think so
+      description: >-
+        A rule, a tooltip, the wiki, or just "this is obviously not right".
+        All are fine. Saying which tells us whether the bug is the behaviour or
+        the documentation.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Main menu, bottom corner. For example: 1.2.1a"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where you were playing
+      options:
+        - Desktop — Windows
+        - Desktop — macOS
+        - Desktop — Linux
+        - Browser — itch.io
+        - Browser — opendoctrines.pages.dev
+        - Discord Activity
+        - Android
+    validations:
+      required: true
+
+  - type: dropdown
+    id: multiplayer
+    attributes:
+      label: Single or multiplayer
+      options:
+        - Singleplayer
+        - Multiplayer — I was the host
+        - Multiplayer — I joined
+    validations:
+      required: true
+
+  - type: input
+    id: seat
+    attributes:
+      label: Scenario, country and turn
+      description: >-
+        The turn number matters more than it looks — a lot of behaviour is
+        conditional on how far in you are.
+      placeholder: 1914, Sweden, turn 37
+
+  - type: textarea
+    id: mods
+    attributes:
+      label: Mods you had enabled
+      description: >-
+        Names and versions, or "none". **Please check whether it still happens
+        with them off.** A mod can change how turns resolve, so this decides
+        whether the bug is ours or the mod's, and it is the first thing we
+        would ask.
+      placeholder: none
+
+  - type: textarea
+    id: save
+    attributes:
+      label: A save, if you have one
+      description: >-
+        Drag the `.odsv` in. A save from the turn BEFORE it goes wrong is worth
+        far more than one from after, because we can watch it happen.
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before you send it
+      options:
+        - label: I searched the existing issues.
+        - label: >-
+            This is not a security hole. (Those go through the private advisory
+            link on the previous page, never here.)
+          required: true

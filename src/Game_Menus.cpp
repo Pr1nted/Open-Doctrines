@@ -1400,6 +1400,11 @@ void Game::updateMainMenu() {
 #endif
     if (m_odStatePrompt != ODP_NONE) { updateOdStatePrompt(); return; }
 
+    // The invitation to go and play with people, offered on the way out of a
+    // solo game. It takes its own clicks so a press on it is not also a press
+    // on the menu entry behind it. See Game_Lfg.cpp.
+    if (updateMpInvite()) return;
+
     // The last row is the developer queue; without the badge it is simply
     // not counted, which hides it without renumbering anything above it.
     const int count = MAIN_MENU_COUNT - (isDeveloper() ? 0 : 1);

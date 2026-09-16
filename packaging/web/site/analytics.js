@@ -44,6 +44,46 @@ var OD_GA_ID = "G-6DXCXHCNRL";   /* Empty string = analytics off entirely. */
     s.async = true;
     s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(OD_GA_ID);
     document.head.appendChild(s);
+    countClicks();
+  }
+
+  /* ── THE FIVE THINGS WORTH COUNTING ───────────────────────────────────
+   *
+   * GA4 arrived with no key events configured at all, which meant the
+   * property could say 358 people visited and nothing whatsoever about what
+   * any of them did. In the 30 days to 15 Sep 2026 it recorded 784 page views,
+   * 46 scrolls and 35 clicks -- and no way to tell a visitor who bounced from
+   * one who found the download, because no click was distinguished from any
+   * other.
+   *
+   * These five are the site's whole job, in order: did they reach the game,
+   * did they take a build, did they go to the store page where a rating
+   * lives, did they join the community, did they look at the source. Mark any
+   * of them as a key event in the GA4 UI and the funnel becomes readable
+   * without another line of code here.
+   *
+   * ONE DELEGATED LISTENER, and it sends a name and nothing else. No path, no
+   * identifier, no dwell time -- the consent this file collects is for
+   * counting visits, and an event that carried more than a name would be
+   * collecting something the visitor was not asked about.
+   *
+   * It is installed only after consent, so declining leaves the page with no
+   * listener rather than a listener that decides not to send. */
+  function countClicks() {
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var href = a.getAttribute("href") || "";
+      var name = null;
+
+      if (/^\/play\/?$/.test(href)) name = "play_opened";
+      else if (/\.(zip|apk|exe|dmg|AppImage|tar\.gz)$/i.test(href)) name = "download_started";
+      else if (href.indexOf("itch.io/open-doctrines") !== -1) name = "itch_opened";
+      else if (href.indexOf("discord.gg/") !== -1) name = "discord_opened";
+      else if (href.indexOf("github.com/Pr1nted/Open-Doctrines") !== -1) name = "source_opened";
+
+      if (name && window.gtag) gtag("event", name);
+    }, true);
   }
 
   function banner() {

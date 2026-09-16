@@ -1177,4 +1177,15 @@ public final class GearboxRaw {
     @Import(module = "gearbox:neural", name = "stance_count")
     public static native int stanceCount();
 
+    // Which actions the host will accept for this module right now, one byte
+    // per action: 1 legal, 0 not. Two-call sizing, like every other copy here.
+    // MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact
+    // about a decision in progress; outside one it returns 0 and writes
+    // nothing. Choosing an action whose byte is 0 is the same as deciding
+    // nothing -- the host keeps its own choice, because an illegal action is
+    // not a move it can make.
+    // `(iii)i`
+    @Import(module = "gearbox:neural.decide", name = "action_valid")
+    public static native int actionValid(int module, int buf, int cap);
+
 }

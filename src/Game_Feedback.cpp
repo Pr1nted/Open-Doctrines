@@ -24,8 +24,13 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include "OdState.h"
 #include "util/OpenLink.h"
+#include "util/WebPersist.h"
+#include "MpWidgets.h"   // wrapText, shared with the multiplayer screens
 #include "TextInput.h"
+
+#include <cstdio>
 
 std::string Game::feedbackDiagnostics() const {
     std::ostringstream o;
@@ -808,12 +813,34 @@ bool Game::updateUsagePrompt() {
 constexpr int RATING_MOMENT_MINUTES   = 10;
 constexpr int RATING_FALLBACK_MINUTES = 45;
 
+/**
+ * The same fallback, for a player in a browser tab.
+ *
+ * ── WHY IT IS NOT 45 ──
+ *
+ * 45 is a number for somebody who installed this. In the month to 15 Sep 2026
+ * the itch page took 3,964 browser plays and 629 downloads: six of every seven
+ * people who play this game play it in a tab, and a tab is not where anybody
+ * spends three quarters of an hour on their first visit. The fallback existed
+ * for the player whose game never produces a good moment -- a builder, a
+ * peaceful run, somebody losing slowly -- and for six sevenths of the audience
+ * it silently never fired at all.
+ *
+ * It shows in the count: three ratings from 3,964 plays. Not three people who
+ * disliked it -- three people who were asked.
+ *
+ * 15 is a real session rather than a lower bar for its own sake: long enough
+ * to have resolved turns, fought something and formed a view, short enough to
+ * be reachable before the tab closes.
+ */
+constexpr int RATING_FALLBACK_WEB_MINUTES = 15;
+
 void Game::maybeOfferRating(float dt) {
     (void)dt;   // the clock is tickPlayClock()'s job now
     if (m_config.ratingAsked || m_config.ratingGiven || m_ratingPromptOpen) return;
     // Never two boxes in the same corner. The usage question is asked far
     // earlier, so in practice this only holds for the frames it is open.
-    if (m_usagePromptOpen) return;
+    if (m_usagePromptOpen || m_persistWarnOpen) return;
     if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
 
     // Between turns rather than during one: nobody wants to be asked how they
@@ -825,7 +852,174 @@ void Game::maybeOfferRating(float dt) {
         m_ratingPromptOpen = true;
         return;
     }
-    if (m_config.minutesPlayed >= RATING_FALLBACK_MINUTES) {
+#ifdef __EMSCRIPTEN__
+    const int fallback = RATING_FALLBACK_WEB_MINUTES;
+#else
+    const int fallback = RATING_FALLBACK_MINUTES;
+#endif
+    if (m_config.minutesPlayed >= fallback) {
         m_ratingPromptOpen = true;
     }
+}
+
+// ─────────────────────────────────────── "this tab will lose your game" ────
+//
+// ── THE NUMBER THAT PUT THIS HERE ──
+//
+// In the 30 days to 15 Sep 2026 the itch.io page recorded 3,964 browser plays,
+// 629 downloads, and -- on the site those players are sent to -- 358 users of
+// whom 0% came back the following week. Nothing accumulated. A player who
+// spends an evening on a campaign and finds it gone is not a player who
+// bounced; they are a player who was robbed by something the game knew about
+// and did not mention.
+//
+// ── IT IS SHOWN TO ALMOST NOBODY, ON PURPOSE ──
+//
+// The browser build keeps everything in IndexedDB and most of the time that
+// works. It fails in specific, invisible ways: a private tab, a browser
+// blocking site data, an unanswered quota prompt, or a third-party iframe
+// whose storage is partitioned away -- and itch.io serves this game in exactly
+// such an iframe. In all of those the game plays perfectly, reports every save
+// as written, and loses the lot when the tab closes.
+//
+// odPersistWorking() is the difference between warning the people it is true
+// for and putting a scary box in front of everybody. A warning shown to the
+// majority for whom it is false is a warning that teaches people to ignore
+// warnings.
+//
+// ── AND IT OFFERS THE TWO REAL ANSWERS ──
+//
+// A backup file they can load back, and the installed build where this cannot
+// happen. Not "OK". A warning with one button that dismisses it has told
+// somebody their evening is at risk and left them holding it.
+
+namespace {
+
+/**
+ * Minutes before there is something worth losing.
+ *
+ * Not at startup, when the honest answer is "nothing has happened yet" and the
+ * warning is noise. Not at 30 minutes either -- by then it is an obituary.
+ * Six is a few turns in: enough that the player would mind, early enough that
+ * acting on it costs them nothing.
+ */
+constexpr int PERSIST_WARN_MINUTES = 6;
+
+}  // namespace
+
+void Game::maybeWarnAboutThisTab(float dt) {
+    (void)dt;   // tickPlayClock() keeps the clock
+    if (m_persistWarnDone || m_persistWarnOpen) return;
+    if (odPersistWorking()) return;          // always true off the web
+    if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
+    if (m_usagePromptOpen || m_ratingPromptOpen) return;
+    if (m_turnState != TURN_NORMAL) return;
+    if (m_config.minutesPlayed < PERSIST_WARN_MINUTES) return;
+
+    m_persistWarnOpen = true;
+}
+
+Rectangle Game::persistWarnRect() const {
+    return {(float)(m_screenW - 380 - 24), (float)(m_screenH - 162 - 24), 380, 162};
+}
+Rectangle Game::persistWarnGetRect() const {
+    const Rectangle b = persistWarnRect();
+    return {b.x + 16, b.y + 112, 176, 34};
+}
+Rectangle Game::persistWarnBackupRect() const {
+    const Rectangle b = persistWarnRect();
+    return {b.x + 200, b.y + 112, 164, 34};
+}
+Rectangle Game::persistWarnDismissRect() const {
+    const Rectangle b = persistWarnRect();
+    return {b.x + b.width - 92, b.y + 10, 80, 24};
+}
+
+void Game::drawPersistWarning() {
+    if (!m_persistWarnOpen || promptsAreHidden()) return;
+
+    const Vector2 mouse = getMouse();
+    const Rectangle box = persistWarnRect();
+
+    // Amber rather than the usual panel grey, and the only prompt in the game
+    // that is: this one is not a question, it is a thing going wrong.
+    DrawRectangleRounded(box, 0.08f, 8, Color{30, 24, 16, 248});
+    DrawRectangleRoundedLines(box, 0.08f, 8, Color{190, 140, 60, 230});
+    const int x = (int)box.x, y = (int)box.y;
+
+    DrawText(T("This tab cannot save your game."), x + 16, y + 14, 15,
+             Color{240, 190, 110, 255});
+    wrapText(T("Your browser is refusing storage to this page, so everything here disappears when the tab closes."),
+             x + 16, y + 38, (int)box.width - 32, 12, Color{180, 172, 158, 255}, true);
+    wrapText(T("The game still plays. Nothing you do will be here tomorrow."),
+             x + 16, y + 78, (int)box.width - 32, 12, Color{200, 165, 120, 255}, true);
+
+    const Rectangle get = persistWarnGetRect();
+    const Rectangle backup = persistWarnBackupRect();
+    const bool gh = CheckCollisionPointRec(mouse, get);
+    const bool bh = CheckCollisionPointRec(mouse, backup);
+
+    DrawRectangleRounded(get, 0.2f, 6, gh ? Color{46, 92, 60, 250} : Color{34, 68, 46, 235});
+    DrawRectangleRoundedLines(get, 0.2f, 6, Color{110, 180, 130, 220});
+    DrawText(T("Get the free download"), (int)get.x + 12, (int)get.y + 10, 13, WHITE);
+
+    DrawRectangleRounded(backup, 0.2f, 6, bh ? Color{52, 56, 72, 250} : Color{36, 40, 52, 235});
+    DrawRectangleRoundedLines(backup, 0.2f, 6, Color{120, 130, 160, 220});
+    DrawText(T("Save a backup file"), (int)backup.x + 12, (int)backup.y + 10, 13, WHITE);
+
+    const bool nh = CheckCollisionPointRec(mouse, persistWarnDismissRect());
+    DrawText(T("Dismiss"), (int)box.x + (int)box.width - 76, (int)box.y + 14, 12,
+             nh ? WHITE : Color{150, 140, 125, 255});
+}
+
+/**
+ * Write the whole session out as a .odstate the browser downloads.
+ *
+ * The same archive and the same writer the main menu's "Save .odstate" uses --
+ * not a second, smaller emergency format, because a player who takes the
+ * backup has to be able to load it back through the door that already exists.
+ * No name is asked for: somebody being told their evening is at risk should
+ * not then be made to think of a filename.
+ */
+void Game::backUpStateNow() {
+#ifdef __EMSCRIPTEN__
+    const std::string name = OdState::suggestedFilename();
+    const std::string tmp = "/odstate_out.odstate";
+    std::string err;
+    int n = 0;
+    if (OdState::save(m_dataDir, tmp, err, &n)) {
+        OdState::webDownload(tmp, name);
+        std::remove(tmp.c_str());
+        setOdStateMsg("Downloaded " + name + "  (" + std::to_string(n) + " files)", false);
+    } else {
+        setOdStateMsg(err, true);
+    }
+#endif
+}
+
+bool Game::updatePersistWarning() {
+    if (!m_persistWarnOpen || promptsAreHidden()) return false;
+    const Vector2 mouse = getMouse();
+    if (!CheckCollisionPointRec(mouse, persistWarnRect())) return false;
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+
+    if (CheckCollisionPointRec(mouse, persistWarnGetRect())) {
+        // Answered for this session either way: somebody who has been handed
+        // the download has been told, and telling them again in ten minutes is
+        // how a true warning starts reading as a nag for a download.
+        m_persistWarnOpen = false;
+        m_persistWarnDone = true;
+        Audio::get().playSfx("confirm");
+        odlink::open(feedback::ratingUrl());
+    } else if (CheckCollisionPointRec(mouse, persistWarnBackupRect())) {
+        m_persistWarnOpen = false;
+        m_persistWarnDone = true;
+        Audio::get().playSfx("confirm");
+        backUpStateNow();
+    } else if (CheckCollisionPointRec(mouse, persistWarnDismissRect())) {
+        m_persistWarnOpen = false;
+        m_persistWarnDone = true;
+        Audio::get().playSfx("back");
+    }
+    return true;
 }

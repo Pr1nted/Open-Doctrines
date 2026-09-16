@@ -95,8 +95,41 @@ export function isPublishableUrl(u: string): boolean {
 
 // ------------------------------------------------------------- the record ----
 
+/**
+ * Where a mod runs, which is the thing a player most needs to know before
+ * installing one -- and it is never typed by hand: MANIFEST.json carries it and
+ * the publish form fills it in from the file you drop.
+ *
+ *   client  only your copy of the game needs it.
+ *   server  only the host needs it; joiners need nothing.
+ *   both    EVERY PLAYER NEEDS THE SAME FILE. The game refuses a joiner whose
+ *           mod set does not match the host by id, version and SHA-256, so a
+ *           mismatch is a failed join rather than a desync -- which is why this
+ *           is shown as "synchronised" rather than the manifest's own word.
+ */
 export type Side = "client" | "server" | "both";
 export const SIDES: Side[] = ["client", "server", "both"];
+
+/** How a side reads to somebody deciding whether to install it. */
+export function sideLabel(side: Side): { short: string; means: string } {
+    if (side === "server") {
+        return {
+            short: "host only",
+            means: "Only whoever hosts the game needs this. Joiners need nothing.",
+        };
+    }
+    if (side === "both") {
+        return {
+            short: "synchronised",
+            means: "Everyone in the game needs this exact file. A joiner whose "
+                 + "mods do not match the host is refused, so nobody desyncs.",
+        };
+    }
+    return {
+        short: "client",
+        means: "Only your own copy needs this. It changes nothing for anyone else.",
+    };
+}
 
 /**
  * Where a listing is in its life.
@@ -554,6 +587,9 @@ export function publicListing(l: Listing, counts?: { downloads: number; unique: 
         ...(l.sizeBytes ? { sizeBytes: l.sizeBytes } : {}),
         gearbox: l.gearbox,
         side: l.side,
+        // Sent already worded, so every client says the same thing about it
+        // rather than each inventing its own gloss for "both".
+        sideLabel: sideLabel(l.side),
         modules: l.modules,
         tags: l.tags,
         ...(l.thumbnail ? { thumbnail: l.thumbnail } : {}),

@@ -2,7 +2,7 @@
      Source: sdk/abi.json   Generator: tools/gen_abi_docs.py
      Regenerate with: python3 tools/gen_abi_docs.py -->
 
-# Gearbox ABI Reference — v1.2
+# Gearbox ABI Reference — v1.3
 
 The complete wire contract between a mod and the host. Every SDK under
 `sdk/` is a transcription of this; if an SDK disagrees with this page, the
@@ -34,6 +34,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `GameProcess` | — | Turn lifecycle hooks. Grants exports, not imports. | yes | implemented |
 | `GameState.Write` | `gearbox:gamestate.write` | Mutate the world. Implies GameState.Read. | yes | implemented |
 | `Neural` | `gearbox:neural` | Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model) | yes | implemented |
+| `Neural.Decide` | `gearbox:neural.decide` | Choose the AI's action for a country, in place of the built-in AI | yes | implemented |
 | `Map` | `gearbox:map` | Province geometry and adjacency | yes | implemented |
 | `Diplomacy` | `gearbox:diplomacy` | Read and propose diplomatic actions | yes | implemented |
 | `Storage` | `gearbox:storage` | Persistent key-value store namespaced to your mod id | yes | implemented |
@@ -3396,6 +3397,26 @@ Set the author recorded in the exported .odmap. Up to 96 bytes.
 
 Set the licence recorded in the exported .odmap. Up to 96 bytes.
 
+### `gearbox:neural.decide`
+
+Requires the **Neural.Decide** capability.
+
+#### `action_valid`
+
+```wat
+(import "gearbox:neural.decide" "action_valid" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `module` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32`.
+
+Which actions the host will accept for this module right now, one byte per action: 1 legal, 0 not. Two-call sizing, like every other copy here. MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact about a decision in progress; outside one it returns 0 and writes nothing. Choosing an action whose byte is 0 is the same as deciding nothing -- the host keeps its own choice, because an illegal action is not a move it can make.
+
 ## Exports
 
 Only `mod_load` is mandatory. A missing optional export is simply not
@@ -3465,6 +3486,21 @@ Called after the host processes a turn. Only invoked if GameProcess is granted.
 
 Called once per frame per visible panel you registered. Never called when headless. Re-issue all your draw calls every frame; the command list is cleared between frames.
 
+### `mod_ai_choose`
+
+```wat
+(func (export "mod_ai_choose") (param i32 i32) (result i32) ...)
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `module` | `i32` | — |
+
+**Required:** no.  **Capability:** `Neural.Decide`
+
+Choose this country's action for one of the AI's decision modules, in place of the built-in AI. Called once per AI country per module per turn, and only if Neural.Decide is granted. Read the position with neural.features() and the legal moves with neural.decide.action_valid(); return an action index in [0, action_count(module)). Return GEARBOX_INVALID to decide nothing this time, which is not a failure -- the built-in AI chooses instead, so a mod may answer only the turns it has an opinion about. An out-of-range or illegal answer is treated the same way. The host keeps the last word either way: whatever is returned is still put through the same legality and execution path as its own choice, so this changes WHICH legal move is made and never what a legal move is.
+
 ## The `env` struct
 
 `28` bytes on wasm32. **Layout is part of the ABI:**
@@ -3503,7 +3539,7 @@ struct is safe against a newer host that has appended fields.
 
 - `GEARBOX_INVALID` = `0xFFFFFFFF`
 - `GEARBOX_MAJOR` = `1`
-- `GEARBOX_MINOR` = `2`
+- `GEARBOX_MINOR` = `3`
 
 ## Writing a binding for a language we do not ship
 

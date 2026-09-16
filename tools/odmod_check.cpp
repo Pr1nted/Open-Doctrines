@@ -91,7 +91,8 @@ int main(int argc, char** argv) {
     if (ret != 0) { printf("mod_load refused the load, code %u\n", ret); return 1; }
 
     printf("mod_load OK\n");
-    for (const char* h : {"mod_unload", "mod_pre_turn", "mod_post_turn", "mod_draw_panel"})
+    for (const char* h : {"mod_unload", "mod_pre_turn", "mod_post_turn", "mod_draw_panel",
+                          "mod_ai_choose"})
         printf("  %-16s %s\n", h, inst->hasExport(h) ? "yes" : "-");
 
     if (inst->hasExport("mod_unload"))

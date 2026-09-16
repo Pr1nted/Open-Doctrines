@@ -33,6 +33,7 @@ const ModuleEntry kModules[] = {
     {"GameState.Write", MODULE_GAMESTATE_WRITE},
     {"GameProcess",     MODULE_GAMEPROCESS},
     {"Neural",          MODULE_NEURAL},
+    {"Neural.Decide",   MODULE_NEURAL_DECIDE},
     {"UI",              MODULE_UI},
     {"Map",             MODULE_MAP},
     {"Diplomacy",       MODULE_DIPLOMACY},
@@ -497,6 +498,9 @@ ModLoadResult parseModManifest(const std::string& text,
         auto lf = lit->find("loadFuel");
         if (lf != lit->end() && lf->is_number_unsigned())
             out.limits.loadFuel = lf->get<uint64_t>();
+        auto fd = lit->find("fuelPerDecision");
+        if (fd != lit->end() && fd->is_number_unsigned())
+            out.limits.fuelPerDecision = fd->get<uint64_t>();
     }
     if (out.limits.memoryPages == 0) out.limits.memoryPages = 1;
     if (out.limits.memoryPages > ModHostCaps::kMaxMemoryPages) {
@@ -521,6 +525,17 @@ ModLoadResult parseModManifest(const std::string& text,
                            " load fuel, clamped to " +
                            std::to_string(ModHostCaps::kMaxLoadFuel));
         out.limits.loadFuel = ModHostCaps::kMaxLoadFuel;
+    }
+    // Same shape as loadFuel: unstated means the host picks, and a mod only
+    // names this if it wants less. Clamped rather than refused, because asking
+    // for too much is optimism and not hostility.
+    if (out.limits.fuelPerDecision == 0) {
+        out.limits.fuelPerDecision = ModHostCaps::kDefaultFuelPerDecision;
+    } else if (out.limits.fuelPerDecision > ModHostCaps::kMaxFuelPerDecision) {
+        warnings.push_back("requested " + std::to_string(out.limits.fuelPerDecision) +
+                           " fuel/decision, clamped to " +
+                           std::to_string(ModHostCaps::kMaxFuelPerDecision));
+        out.limits.fuelPerDecision = ModHostCaps::kMaxFuelPerDecision;
     }
     // A load budget below the per-turn budget is almost certainly a mistake,
     // and silently honouring it would make a mod fail at load for no visible

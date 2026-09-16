@@ -84,6 +84,16 @@ sell anything about the people who download your mod. The only numbers we keep
 are how many times your link was followed, and roughly how many different people
 followed it each day.
 
+## If somebody copies your mod
+
+Report the listing — "somebody else's work" is one of the reasons — and a
+moderator takes it down. That is faster than a legal notice and does the same
+thing here.
+
+If you would rather file a formal copyright notice, the procedure is at
+`/dmca`. Note what a takedown can and cannot do: we can remove the listing, but
+the file is on the other person's own server and only that host can remove it.
+
 ## If you stop
 
 Withdraw a listing whenever you like; it disappears from the directory and its

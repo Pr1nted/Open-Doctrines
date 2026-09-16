@@ -274,6 +274,17 @@ struct Config {
      */
     bool        ratingAsked = false;
     bool        ratingGiven = false;
+
+    /**
+     * Whether the "play this with people" invitation has been put.
+     *
+     * Same rule as `ratingAsked`, and for the same reason: it is offered once,
+     * when a player comes out of a solo game with enough hours behind them to
+     * want another one, and "not now" means never. A second ask is worse than
+     * the first, and a prompt that keeps coming back is a prompt people learn
+     * to click away without reading.
+     */
+    bool        mpInviteAsked = false;
     /// Whether the usage-reporting question has been put to the player. Set
     /// the first time the prompt is shown, whichever way they answer, so it is
     /// asked once and never again. Separate from `usageReports`, which is the

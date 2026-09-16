@@ -134,6 +134,15 @@ public:
     void preTurn(int turn);
     void postTurn(int turn);
 
+    // --- the AI's move, if a mod wants to make it ------------------------------
+    //
+    // Returns the action a mod chose for this country and decision module, or
+    // -1 for "nobody had an opinion" -- which is the ordinary case and not a
+    // failure. Declining, answering out of range, and answering something the
+    // mask says is illegal are all the same answer: the built-in AI's choice
+    // stands. See docs/modding.md, Neural.Decide.
+    int aiChoose(int country, int module, const std::vector<bool>& valid);
+
     // --- per-frame UI ---------------------------------------------------------
     // Calls mod_draw_panel on every visible panel. The caller has already put
     // each panel's rect and input state into ModUI.

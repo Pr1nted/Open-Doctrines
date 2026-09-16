@@ -91,6 +91,8 @@ import { modsRestricted, putAccount, type Account } from "./accounts/store.js";
 import MOD_GUIDELINES from "../MOD_GUIDELINES.md";
 import PRIVACY_POLICY from "../PRIVACY.md";
 import TERMS_OF_USE from "../TERMS.md";
+import DMCA_POLICY from "../DMCA.md";
+import MOD_EULA from "../EULA.md";
 
 export { LobbyDO } from "./lobby/LobbyDO.js";
 export { ModCountsDO } from "./mods/counts.js";
@@ -209,8 +211,16 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // the one that goes stale. And Discord will not accept a workers.dev URL
     // for a policy link at all, so a rendered copy has to exist over there
     // regardless.
-    if (get && (path === "/privacy" || path === "/terms")) {
-        const doc = path === "/privacy" ? PRIVACY_POLICY : TERMS_OF_USE;
+    // Four documents, one route, one copy of each. They are markdown because
+    // that is what they are in the tree; a browser gets the rendered page and
+    // anything else gets the source, byte for byte. Adding /dmca and /eula here
+    // rather than pasting HTML anywhere keeps that true for them too.
+    if (get && (path === "/privacy" || path === "/terms" ||
+                path === "/dmca" || path === "/eula")) {
+        const doc = path === "/privacy" ? PRIVACY_POLICY
+                  : path === "/terms"   ? TERMS_OF_USE
+                  : path === "/dmca"    ? DMCA_POLICY
+                                        : MOD_EULA;
         if (env.DOCS_BASE && wantsHtml(request)) {
             return Response.redirect(`${env.DOCS_BASE}${path}`, 302);
         }

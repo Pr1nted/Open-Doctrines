@@ -28,8 +28,18 @@ channel as an Activity.
 - Languages: 44, including Arabic, Chinese, Czech, German, Hindi, Japanese, Korean,
   Polish, Turkish, Ukrainian and Urdu.
 - Platforms: web browser, Windows, macOS, Linux, Android, Discord Activity.
-- Multiplayer joins by invite code and needs no port forwarding.
+- Multiplayer joins by invite code and needs no port forwarding. There is a
+  looking-for-a-game board in the game, mirrored to the project's Discord channel,
+  so a player with nobody to play with can find an open game from the menu.
 - Mods are compiled to WebAssembly from Go, Rust, Zig, C and others, and run sandboxed.
+- Speed: measured against comparable games on identical worlds by an independent
+  benchmark, Objective Judge Horizon. On a 906-province 1939 world with 35 to 37
+  AI players on an Apple M1 Pro, OpenDoctrines resolved 2,373 turns per minute,
+  against 300 for Unciv, 74 for Greater Diplomacy 5 and 52 for Freeciv. It also
+  sent the least data per turn of any of them, 10.7 KiB against 79.9 KiB to
+  11.5 MiB. The benchmark, its method and its caveats are public, and it measures
+  competing games with hooks contributed to those projects rather than by guessing
+  from outside.
 - Current version: 1.2.1a.
 
 ## Links
@@ -37,6 +47,9 @@ channel as an Activity.
 - [Play in a browser](https://opendoctrines.pages.dev/play/): the game itself, no download.
 - [itch.io page](https://pr1nted.itch.io/open-doctrines): downloads, ratings and comments.
 - [Source](https://github.com/Pr1nted/Open-Doctrines): the repository.
+- [Benchmark](https://github.com/Pr1nted/objective-judge-horizon): Objective Judge
+  Horizon, the turn-speed, frame-rate, network and memory benchmark the speed figures
+  above come from, with the raw results for every game it measured.
 - [Press kit](https://opendoctrines.pages.dev/press): fact sheet, screenshots, footage,
   and the licence terms for coverage.
 - [For teachers](https://opendoctrines.pages.dev/classroom): what it teaches, how long a
@@ -49,4 +62,6 @@ channel as an Activity.
 It suits a person who wants a grand strategy game and does not want to pay or install
 one, a teacher who needs something that runs on school hardware with no accounts, or
 somebody curious about the genre who would not commit to a large purchase to find out.
+It also suits someone who wants a Hearts of Iron-like they can play on a laptop that
+cannot run one, which is the most common reason people arrive at it.
 It is not finished software, and saying so is fairer to them than not.

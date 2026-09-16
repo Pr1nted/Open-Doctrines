@@ -132,10 +132,14 @@ private:
     // interpreter costs far more than any single turn, and it happens once.
     // See ModLimits::loadFuel.
     uint64_t m_loadFuelBudget = 0;
+    // Applied to mod_ai_choose: one decision, not one turn. See
+    // ModLimits::fuelPerDecision for the measurement behind the default.
+    uint64_t m_decisionFuelBudget = 0;
     // True only while a load hook is on the stack, so gearbox_fuel_budget can
     // answer for the hook that is actually running. sdk/gearbox.h promises "the
     // budget for the current hook"; with two budgets that needs saying which.
     bool     m_inLoadHook = false;
+    bool     m_inDecisionHook = false;
     void*    m_impl = nullptr;   // backend state
 };
 

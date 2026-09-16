@@ -10,7 +10,7 @@
 /* ------------------------------------------------- constants -- */
 #define GEARBOX_INVALID 0xFFFFFFFFu
 #define GEARBOX_MAJOR 1
-#define GEARBOX_MINOR 2
+#define GEARBOX_MINOR 3
 
 typedef enum {
     GEARBOX_LOG_TRACE  = 0,
@@ -1378,6 +1378,18 @@ uint32_t gearbox_stance_name(uint32_t index, char* buf, uint32_t cap);
 GEARBOX_IMPORT("neural", "stance_count")
 uint32_t gearbox_stance_count(void);
 
+/* Which actions the host will accept for this module right now, one byte
+ * per action: 1 legal, 0 not. Two-call sizing, like every other copy here.
+ * MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact
+ * about a decision in progress; outside one it returns 0 and writes
+ * nothing. Choosing an action whose byte is 0 is the same as deciding
+ * nothing -- the host keeps its own choice, because an illegal action is
+ * not a move it can make.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("neural.decide", "action_valid")
+uint32_t gearbox_action_valid(uint32_t module, char* buf, uint32_t cap);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to
@@ -1418,5 +1430,22 @@ void mod_post_turn(uint32_t turn);
  */
 GEARBOX_EXPORT("mod_draw_panel")
 void mod_draw_panel(gearbox_panel panel, uint32_t width, uint32_t height);
+
+/* Choose this country's action for one of the AI's decision modules, in
+ * place of the built-in AI. Called once per AI country per module per
+ * turn, and only if Neural.Decide is granted. Read the position with
+ * neural.features() and the legal moves with neural.decide.action_valid();
+ * return an action index in [0, action_count(module)). Return
+ * GEARBOX_INVALID to decide nothing this time, which is not a failure --
+ * the built-in AI chooses instead, so a mod may answer only the turns it
+ * has an opinion about. An out-of-range or illegal answer is treated the
+ * same way. The host keeps the last word either way: whatever is returned
+ * is still put through the same legality and execution path as its own
+ * choice, so this changes WHICH legal move is made and never what a legal
+ * move is.
+ * `(ii)i`
+ */
+GEARBOX_EXPORT("mod_ai_choose")
+uint32_t mod_ai_choose(uint32_t country, uint32_t module);
 
 #endif /* GEARBOX_GENERATED_H */

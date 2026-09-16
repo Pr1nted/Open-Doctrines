@@ -7,6 +7,7 @@
 #include "../BuildCosts.h"
 #include "../GameInternals.h"
 #include "../util/WebAssets.h"
+#include "../mods/ModManager.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -3631,6 +3632,23 @@ void AISystem::takeTurn(int cid) {
                                      /*bookTurn=*/inBook && !m_scriptedThisCountry)
                     : pickAction(brainFor(mod), useEmb, valid, score, graveAction,
                                  qBiasFor(mod), &lp, netDriven ? &nprob : nullptr);
+            }
+            // ── A MOD MAY CHOOSE INSTEAD (Gearbox 1.3, Neural.Decide) ──
+            //
+            // Asked AFTER the built-in AI has decided rather than instead of
+            // it, so a mod that declines -- or answers something illegal --
+            // costs the turn nothing and play continues on ParrotZero's own
+            // choice. That also means the fallback needs no separate code path.
+            //
+            // Safe to sit inside the learning path only because mods and AI
+            // learning can never both be live: Game_Mods.cpp switches learning
+            // off when a mod is enabled and refuses to enable one while it is
+            // on, and --train-ai loads no mods at all. So the `lp` and visit
+            // targets recorded around here can never describe a mod's move.
+            if (ModManager::get().anyActive()) {
+                const int modAct = ModManager::get().aiChoose(cid, mod, valid);
+                if (modAct >= 0 && modAct < (int)valid.size() && valid[(size_t)modAct])
+                    act = modAct;
             }
             // A booked move was not sampled from the policy AT ALL: the book
             // is deterministic, so the behaviour probability is 1 and the

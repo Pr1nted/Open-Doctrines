@@ -108,7 +108,26 @@ void odPersistInit(const std::string& dataDir) {
 
     waitForSync();
 
-    if (EM_ASM_INT({ return Module.odPersistFailed | 0; })) return;
+    // ── ONE LINE, EITHER WAY, WHERE ANYBODY CAN READ IT ──
+    //
+    // Whether a browser will keep this session is decided by the browser, not
+    // by us, and it varies by browser, by private mode, by site-data settings
+    // and by whether the page is inside somebody else's iframe -- which on
+    // itch.io it always is. Until now success was SILENT and the only visible
+    // line on a fresh visit was "no previous session stored", which reads like
+    // a fault and is not one.
+    //
+    // So both outcomes say so plainly. Checking whether a given browser loses
+    // players' games is then opening the console and reading one line, on any
+    // machine, without a build or a tool -- which is the difference between a
+    // question somebody answers and one that stays open.
+    if (EM_ASM_INT({ return Module.odPersistFailed | 0; })) {
+        LoadLog() << "[persist] THIS BROWSER IS NOT KEEPING YOUR GAME. "
+                     "Storage was refused; everything will be lost when the tab closes."
+                  << std::endl;
+        return;
+    }
+    LoadLog() << "[persist] storage is working; this session will be kept" << std::endl;
     g_ready = true;
     g_lastWrite = GetTime();
 
@@ -181,5 +200,14 @@ void odPersistFlush(const std::string& dataDir) {
             again();
         });
     });
+#endif
+}
+
+bool odPersistWorking() {
+#ifndef __EMSCRIPTEN__
+    // A desktop write went to a file on a disk. There is nothing to doubt.
+    return true;
+#else
+    return g_ready;
 #endif
 }

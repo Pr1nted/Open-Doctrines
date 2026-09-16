@@ -40,11 +40,43 @@ host is cheap, and it is the same guarantee one step removed.
 `docs/gearbox-abi.md` is generated from the same file by
 `tools/gen_abi_docs.py`, so the reference cannot drift either.
 
-**Implemented capabilities:** `Core`, `UI`, `GameState.Read`, `GameProcess`,
-`Assets`.
-**Not implemented:** `GameState.Write`, `Neural`, `Diplomacy`, `Map`, `Storage`.
-A mod requesting one is refused at load with a diagnostic naming the import,
-rather than running without a capability it believes it holds.
+**Every capability in `sdk/abi.json` is implemented.** As of Gearbox 1.3 that
+is:
+
+- `Assets`
+- `Audio`
+- `Core`
+- `Diplomacy`
+- `Economy.Read`
+- `Economy.Write`
+- `GameProcess`
+- `GameState.Read`
+- `GameState.Write`
+- `Map`
+- `MapEditor`
+- `Military.Read`
+- `Military.Write`
+- `Net`
+- `Neural`
+- `Neural.Decide`
+- `Politics.Read`
+- `Politics.Write`
+- `Research.Read`
+- `Research.Write`
+- `Storage`
+- `UI`
+- `WasiStub`
+
+That list is generated from `sdk/abi.json`, which carries an `implemented`
+flag per module and is what `ModAbiTest` checks the host against. This
+paragraph previously named `Neural`, `Diplomacy`, `Map`, `Storage` and
+`GameState.Write` as missing, long after they shipped -- it described
+Phase 1 and was never revised, which is the worst kind of stale: an author
+reading it would not have attempted a mod the host would have run.
+
+A mod requesting a capability the host does not have is still refused at
+load with a diagnostic naming the import, rather than running without a
+capability it believes it holds.
 
 **Signature verification is still not enforced.** `publicKey` is parsed and
 format-checked; nothing verifies `signature.bin` yet.
@@ -116,7 +148,8 @@ unacceptable is rejected before any bulk inflation happens.
   "limits": {                          // mod-declared, clamped by host maxima
     "memoryPages": 512,               // 64 KiB pages -> 32 MiB
     "fuelPerTurn": 5000000,           // per hook call
-    "loadFuel": 500000000             // mod_load only; omit and the host decides
+    "loadFuel": 500000000,            // mod_load only; omit and the host decides
+    "fuelPerDecision": 500000000      // mod_ai_choose only; omit and the host decides
   }
 }
 ```
@@ -137,6 +170,15 @@ Enforced field rules:
 - `limits` — **clamped, not rejected**. A mod asking for more memory or fuel
   than the host allows is being optimistic, not hostile, and still loads with a
   warning. Ceilings are 1024 memory pages (64 MiB) and 100,000,000 fuel/turn.
+- `fuelPerDecision` — the budget for **one `mod_ai_choose` call**, which is one
+  decision rather than one turn. A mod that decides by running a model spends
+  more on a single choice than a turn of ordinary hook work: a whole-connectome
+  neural simulation costs ~19M neuron integrations for one decision, which is
+  past the 100M per-turn ceiling on its own. Rather than make such a mod inflate
+  `fuelPerTurn` thirtyfold — and lose that protection for every other hook — the
+  decision hook has its own budget. Omit it and the host gives 500,000,000; the
+  ceiling is 2,000,000,000, which sits deliberately below `INT32_MAX` because the
+  interpreter reads a limit at or above that as *no limit at all*.
 - `publicKey` — must carry the `ed25519:` prefix if present. Not verified yet.
 - `side` — optional, defaults to `"both"`. An unrecognised value is a warning
   and falls back to `"both"`, so a future release adding a side does not stop
@@ -274,6 +316,62 @@ Deliberately absent: any filesystem, process, or clock-with-identity capability.
 There is no module that grants them, so they cannot be requested. `Net` carries
 messages between players of the same game through the host's own transport; it
 is not a socket, and there is no capability that opens one.
+
+## `Neural.Decide`: letting a mod play
+
+`Neural` watches the AI. **`Neural.Decide` lets a mod be it**, and the two are
+separate grants on purpose: a player who agreed to "read what the AI sees" has
+not agreed to "choose what the AI does".
+
+```jsonc
+"modules": ["Core", "Neural", "Neural.Decide"],
+```
+
+Export the hook, and the host asks it once per AI country per decision module
+per turn:
+
+```c
+int32_t mod_ai_choose(int32_t country, int32_t module) {
+    float feats[512];
+    uint32_t n = gearbox_neural_features(country, feats, 512);
+
+    uint8_t legal[64];
+    uint32_t actions = gearbox_neural_decide_action_valid(module, legal, 64);
+
+    for (uint32_t a = 0; a < actions; a++)
+        if (legal[a] && i_like_this_one(feats, n, a)) return (int32_t)a;
+
+    return GEARBOX_INVALID;      /* no opinion: the built-in AI chooses */
+}
+```
+
+**Returning `GEARBOX_INVALID` is the ordinary case, not a failure.** A mod may
+answer only the turns it has something to say about, and the built-in AI handles
+the rest — so there is no need to reimplement a whole AI to change one thing.
+
+Three rules worth knowing before you build against it:
+
+- **An illegal answer is a no, not an error.** An index out of range, or one the
+  mask says is not legal, is ignored exactly like a decline. A mod built against
+  a different action space costs the game nothing and is not failed for it.
+- **`action_valid` is meaningful only inside the hook.** A legality mask is a
+  fact about a decision in progress; outside one it returns 0 and writes
+  nothing, rather than handing back a stale mask from whichever country was
+  decided last.
+- **The host keeps the last word.** Whatever comes back goes through the same
+  legality and execution path as the AI's own choice. This changes *which legal
+  move* is made; it can never change what a legal move is.
+
+The first mod to answer wins, so load order settles two deciders.
+
+### It cannot corrupt a trained model
+
+`mod_ai_choose` sits inside the same code that records PPO's log-probabilities
+and visit targets, which would be poisoned by a move the policy did not make.
+That is safe only because of the interlock described below: mods and AI learning
+are never live at once, and `--train-ai` loads no mods at all. If that interlock
+were ever relaxed, this hook would have to be excluded from learning runs
+explicitly.
 
 ## Doing a full reskin
 

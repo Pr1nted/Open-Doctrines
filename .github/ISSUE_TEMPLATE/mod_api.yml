@@ -1,0 +1,100 @@
+name: Gearbox (mod API)
+description: Something about writing, building or loading a mod.
+labels: ["mods", "gearbox"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For the **API** — a capability that does not do what its docs say, a
+        host function you need and cannot reach, an SDK that will not build.
+
+        Two things that belong somewhere else, both on the previous page: a bad
+        mod in the directory (use the listing's own Report button), and a way
+        past the sandbox (private advisory, never a public issue).
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of thing
+      options:
+        - A host function behaves differently from its documentation
+        - I need something the ABI does not expose
+        - My mod will not load, and the diagnostic does not explain why
+        - An SDK binding is wrong or will not compile
+        - The documentation is wrong or missing
+    validations:
+      required: true
+
+  - type: input
+    id: gearbox
+    attributes:
+      label: Gearbox version you targeted
+      description: >-
+        Your manifest's `"gearbox"` field. The host provides every minor at or
+        below its own, so this decides what you should have been able to see.
+      placeholder: "1.3"
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Game version
+      placeholder: 1.2.1a
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Which runtime
+      description: >-
+        They are genuinely different. Fuel metering is enforced on desktop and
+        **not** in the browser, so "it hangs on web and not on desktop" is
+        expected rather than a bug.
+      options:
+        - Desktop (WAMR)
+        - Browser (WebAssembly)
+        - Both
+    validations:
+      required: true
+
+  - type: input
+    id: modules
+    attributes:
+      label: Capabilities your manifest asks for
+      placeholder: Core, UI, GameState.Read
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you expected, and what happened
+      description: >-
+        If the host refused to load the mod, paste the diagnostic verbatim — it
+        names the import it could not resolve, and that is usually the whole
+        answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest thing that shows it
+      description: >-
+        A few lines against the C ABI beat a whole mod. If it needs the mod,
+        link the repository — please do not attach a `.wasm`.
+      render: c
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before you send it
+      options:
+        - label: >-
+            I checked `docs/gearbox-abi.md` for this symbol. (It is generated
+            from `sdk/abi.json`, so it cannot have drifted from the host.)
+        - label: >-
+            If a capability seemed missing, I checked it is not simply one I did
+            not list in `"modules"` — an ungranted import is absent, not broken.

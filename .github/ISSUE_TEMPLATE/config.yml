@@ -1,0 +1,27 @@
+# Two of the things people arrive here to report must NOT become public issues,
+# and a chooser is the only place that can say so before they type it.
+blank_issues_enabled: false
+contact_links:
+  - name: A security hole, in the game or the mod sandbox
+    url: https://github.com/Pr1nted/Open-Doctrines/security/advisories/new
+    about: >-
+      Report privately, never as an issue. "Here is how to get past the mod
+      sandbox" in a public thread is a working exploit anyone can read while
+      it is still unfixed.
+
+  - name: A mod in the directory that should not be there
+    url: https://opendoctrines.pages.dev/mods
+    about: >-
+      Use the Report button on the listing itself. It reaches a moderator who
+      can take the listing down; a GitHub issue does not, and is slower.
+
+  - name: A copyright complaint about a mod
+    url: https://opendoctrines-net.opendoctrines.workers.dev/dmca
+    about: >-
+      Formal notices go to the designated agent, not to an issue tracker. Note
+      what a takedown can do: the listing goes, but the file is on the author's
+      own server.
+
+  - name: A question, or not sure it is a bug
+    url: https://discord.gg/wqS65jzVv5
+    about: Ask in Discord. Faster than an issue, and nobody minds.
