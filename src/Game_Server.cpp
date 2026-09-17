@@ -607,6 +607,11 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         console.info("no tunnel: this server is relayed, so there is no port to "
                      "expose and no address to publish.");
     } else if (config.tunnel != ServerTunnelMode::Off) {
+        // The ONLY place a dedicated server opens a tunnel. mpOpenHost has its
+        // own start for the host screen; it is gated on !m_headless precisely so
+        // that this stays the only one, because that block reads a checkbox this
+        // function does not set.
+
         TunnelProvider want = TunnelProvider::None;
         if (config.tunnel == ServerTunnelMode::Cloudflared)  want = TunnelProvider::Cloudflared;
         if (config.tunnel == ServerTunnelMode::LocalhostRun) want = TunnelProvider::LocalhostRun;

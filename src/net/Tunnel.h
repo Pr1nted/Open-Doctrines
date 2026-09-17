@@ -90,6 +90,34 @@ std::string tunnelResolveProgram(const char* name);
  */
 std::string tunnelParseAddress(TunnelProvider provider, const std::string& output);
 
+/**
+ * What a host knows about itself when deciding whether to open a tunnel.
+ *
+ * A struct rather than four positional bools: transposing two of these is how
+ * you publish a server that was asked to stay private, and the compiler cannot
+ * catch that.
+ */
+struct TunnelWanted {
+    bool wanted   = true;   ///< the host screen's own checkbox
+    bool headless = false;  ///< no host screen: something else is driving
+    bool bindAll  = false;  ///< reachable directly, so there is nothing to publish
+    bool viaRelay = false;  ///< relayed, so it binds no port a tunnel could reach
+};
+
+/**
+ * Whether the host screen should open a tunnel of its own.
+ *
+ * Separated from mpOpenHost so the rule can be tested, because the rule is a
+ * PRIVACY decision and the code path that carries it cannot be reached without
+ * an account and a live session. It is the only thing standing between
+ * `tunnel: off` and a public address.
+ *
+ * `headless` is the one that was missing. The dedicated server opens tunnels
+ * itself, from ServerConfig::tunnel, for every mode -- so a headless process
+ * must never open one here, whatever the checkbox says.
+ */
+bool tunnelWantedByHost(const TunnelWanted& h);
+
 class Tunnel {
 public:
     Tunnel();

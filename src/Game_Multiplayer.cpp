@@ -460,7 +460,23 @@ void Game::mpOpenHost() {
     const std::vector<TunnelProvider> providers = tunnelProvidersAvailable();
     // A relayed host binds no port, so there is nothing for a tunnel to reach:
     // starting one would publish an address that answers nothing.
-    if (m_mpUseTunnel && !providers.empty() && !m_mpBindAll && !m_mpViaRelay) {
+    //
+    // NOT WHEN THERE IS NO HOST SCREEN. m_mpUseTunnel is a checkbox on that
+    // screen and defaults to on, and serverBegin maps eleven config fields onto
+    // these m_mp* members -- bindAll and relay among them -- but not this one.
+    // So the dedicated server started a cloudflared tunnel here on every
+    // session, then reported "no tunnel is running" from its own block, which
+    // correctly honoured `tunnel: off`, and announced the address five seconds
+    // later. An operator who set the flag specifically to stay off the public
+    // internet was published to it and told they were not.
+    //
+    // The condition is m_headless rather than a new flag because the dedicated
+    // server owns tunnels through ServerConfig::tunnel and starts them itself,
+    // for every mode -- so nothing headless should ever open one HERE, and
+    // there is no assignment left for a future config field to forget. It also
+    // stops `tunnel: auto` starting two.
+    const TunnelWanted want{m_mpUseTunnel, m_headless, m_mpBindAll, m_mpViaRelay};
+    if (tunnelWantedByHost(want) && !providers.empty()) {
         const TunnelProvider p =
             providers[(size_t)std::clamp(m_mpTunnelChoice, 0, (int)providers.size() - 1)];
 

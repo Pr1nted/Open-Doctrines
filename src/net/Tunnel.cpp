@@ -166,6 +166,14 @@ std::string g_toolsDir;
 
 void tunnelSetToolsDir(const std::string& dir) { g_toolsDir = dir; }
 
+bool tunnelWantedByHost(const TunnelWanted& h) {
+    if (!h.wanted)   return false;   // the host said no
+    if (h.headless)  return false;   // no host screen: not this code's call
+    if (h.bindAll)   return false;   // already reachable; a tunnel adds exposure
+    if (h.viaRelay)  return false;   // no bound port for a tunnel to reach
+    return true;
+}
+
 /** Where cloudflared is, preferring the game's own copy. Empty if absent. */
 std::string tunnelResolveProgram(const char* name) {
     if (!g_toolsDir.empty()) {

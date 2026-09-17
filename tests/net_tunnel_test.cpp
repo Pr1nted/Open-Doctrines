@@ -118,6 +118,48 @@ int main() {
     check("and there is advice even with no tunnel at all",
           !tunnelProviderHowToGet(TunnelProvider::None).empty());
 
+    // ── WHO IS ALLOWED TO OPEN ONE ──
+    //
+    // This is the privacy decision, and it is tested here because the path that
+    // carries it -- mpOpenHost, after a session opens -- needs an account and a
+    // live server registration, so nothing automated can reach it.
+    //
+    // What went wrong: the dedicated server maps eleven config fields onto the
+    // host screen's members and never mapped this checkbox, which defaults to
+    // ON. So `--no-tunnel` opened a cloudflared tunnel anyway, reported "no
+    // tunnel is running", and announced a public trycloudflare address five
+    // seconds later. Confirmed twice on 2026-09-17 with two different
+    // hostnames, so each run opened its own.
+    printf("\n=== who may open a tunnel ===\n");
+    {
+        // A host at the screen, who asked for one, behind a router: the only
+        // case that should start anything.
+        TunnelWanted screen;
+        check("a host who asked for one gets one", tunnelWantedByHost(screen));
+
+        TunnelWanted off; off.wanted = false;
+        check("a host who declined does not", !tunnelWantedByHost(off));
+
+        // THE REGRESSION. Note `wanted` is left at its default of true, which
+        // is exactly the state the dedicated server was in.
+        TunnelWanted headless; headless.headless = true;
+        check("a headless process never opens one, whatever the checkbox says",
+              !tunnelWantedByHost(headless));
+
+        TunnelWanted direct; direct.bindAll = true;
+        check("a directly reachable host does not need one",
+              !tunnelWantedByHost(direct));
+
+        TunnelWanted relayed; relayed.viaRelay = true;
+        check("a relayed host has no port for one to reach",
+              !tunnelWantedByHost(relayed));
+
+        // Any single reason is enough on its own: a rule that only refused when
+        // several lined up would be one an operator could not rely on.
+        TunnelWanted all; all.headless = all.bindAll = all.viaRelay = true;
+        check("the reasons do not have to agree to count", !tunnelWantedByHost(all));
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
