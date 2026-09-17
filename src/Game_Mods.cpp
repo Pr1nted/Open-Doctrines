@@ -170,6 +170,15 @@ private:
     std::string provinceMinorityName(uint32_t p, uint32_t i) override { return m_game->modProvinceMinorityName((int)p, (int)i); }
     double provinceMinorityShare(uint32_t p, uint32_t i) override { return m_game->modProvinceMinorityShare((int)p, (int)i); }
 
+    uint32_t countryPartyCount(uint32_t c) override { return (uint32_t)m_game->modCountryPartyCount((int)c); }
+    std::string countryPartyName(uint32_t c, uint32_t i) override { return m_game->modCountryPartyName((int)c, (int)i); }
+    std::string countryPartyShortName(uint32_t c, uint32_t i) override { return m_game->modCountryPartyShortName((int)c, (int)i); }
+    double countryPartySupport(uint32_t c, uint32_t i) override { return m_game->modCountryPartySupport((int)c, (int)i); }
+    double countryPartyCompassEcon(uint32_t c, uint32_t i) override { return m_game->modCountryPartyCompassEcon((int)c, (int)i); }
+    double countryPartyCompassSocial(uint32_t c, uint32_t i) override { return m_game->modCountryPartyCompassSocial((int)c, (int)i); }
+    int32_t countryPartyIsHistorical(uint32_t c, uint32_t i) override { return m_game->modCountryPartyIsHistorical((int)c, (int)i); }
+    int32_t countryRulingParty(uint32_t c) override { return m_game->modCountryRulingParty((int)c); }
+
     double countryIncomeGross(uint32_t c) override { return m_game->modCountryIncomeGross((int)c); }
     double countryIncomeNet(uint32_t c) override { return m_game->modCountryIncomeNet((int)c); }
     double countryArmyUpkeep(uint32_t c) override { return m_game->modCountryArmyUpkeep((int)c); }
@@ -2188,6 +2197,61 @@ double Game::modProvinceMinorityShare(int pid, int index) const {
     if (it == m_provinceMinorities.end() || index < 0 || (size_t)index >= it->second.size())
         return 0.0;
     return (double)it->second[index].pct;
+}
+
+// ── ABI 1.3: who governs ────────────────────────────────────────────────────
+//
+// One lookup helper, because eight accessors that each index the vector
+// themselves are eight chances to forget a bound -- and an index a mod chose
+// is a stranger's number.
+namespace {
+const odparty::Party* partyAt(const std::unordered_map<int, odparty::Legislature>& all,
+                              int cid, int index) {
+    auto it = all.find(cid);
+    if (it == all.end() || index < 0 || (size_t)index >= it->second.parties.size())
+        return nullptr;
+    return &it->second.parties[(size_t)index];
+}
+}  // namespace
+
+int Game::modCountryPartyCount(int cid) const {
+    auto it = m_countryParties.find(cid);
+    return it == m_countryParties.end() ? 0 : (int)it->second.parties.size();
+}
+std::string Game::modCountryPartyName(int cid, int index) const {
+    const odparty::Party* p = partyAt(m_countryParties, cid, index);
+    return p ? p->name : std::string();
+}
+std::string Game::modCountryPartyShortName(int cid, int index) const {
+    const odparty::Party* p = partyAt(m_countryParties, cid, index);
+    return p ? p->shortName : std::string();
+}
+double Game::modCountryPartySupport(int cid, int index) const {
+    const odparty::Party* p = partyAt(m_countryParties, cid, index);
+    // 0..1 on the wire, as province_minority_share is, while the game stores a
+    // percentage. The ABI's unit is the one the doc promises; converting here
+    // keeps the promise in one place.
+    return p ? (double)p->support * 0.01 : 0.0;
+}
+double Game::modCountryPartyCompassEcon(int cid, int index) const {
+    const odparty::Party* p = partyAt(m_countryParties, cid, index);
+    return p ? (double)p->stance.economic : 0.0;
+}
+double Game::modCountryPartyCompassSocial(int cid, int index) const {
+    const odparty::Party* p = partyAt(m_countryParties, cid, index);
+    return p ? (double)p->stance.social : 0.0;
+}
+int Game::modCountryPartyIsHistorical(int cid, int index) const {
+    const odparty::Party* p = partyAt(m_countryParties, cid, index);
+    return (p && p->historical) ? 1 : 0;
+}
+int Game::modCountryRulingParty(int cid) const {
+    auto it = m_countryParties.find(cid);
+    if (it == m_countryParties.end()) return -1;
+    const int r = it->second.ruling;
+    // -1 for "nobody", and also for an index that is not in the list: a mod
+    // must never be handed an index it cannot safely pass straight back.
+    return (r >= 0 && (size_t)r < it->second.parties.size()) ? r : -1;
 }
 
 // ── ABI 1.2 ─────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 #pragma once
+#include "Parties.h"
 #include "GameStructs.h"
 #include "ReleaseRules.h"
 #include "net/Announcements.h"
@@ -1417,6 +1418,20 @@ public:
     int         modProvinceMinorityCount(int pid) const;
     std::string modProvinceMinorityName(int pid, int index) const;
     double      modProvinceMinorityShare(int pid, int index) const;
+    // ── ABI 1.3: who governs ──
+    //
+    // Every one of these answers 0 / empty / -1 when the party rules are off,
+    // which is the default. That is a real answer and not an error: a mod is
+    // told "this world has no party politics" and can say so, rather than
+    // being handed a plausible-looking legislature that does not exist.
+    int         modCountryPartyCount(int cid) const;
+    std::string modCountryPartyName(int cid, int index) const;
+    std::string modCountryPartyShortName(int cid, int index) const;
+    double      modCountryPartySupport(int cid, int index) const;
+    double      modCountryPartyCompassEcon(int cid, int index) const;
+    double      modCountryPartyCompassSocial(int cid, int index) const;
+    int         modCountryPartyIsHistorical(int cid, int index) const;
+    int         modCountryRulingParty(int cid) const;
     double      modCountryIncomeGross(int cid) const;
     double      modCountryIncomeNet(int cid) const;
     double      modCountryArmyUpkeep(int cid) const;
@@ -2772,6 +2787,15 @@ public:
     mutable std::unordered_map<int, CountryIncomeSnapshot> m_countryIncomeCache;
     std::unordered_map<int, std::vector<CountryIncomeSnapshot>> m_incomeHistory;
     std::string m_mapDate;
+    /**
+     * Which scenario this is, for data keyed by scenario: the map archive's
+     * filename stem ("1914", "map"). NOT the display name, which is
+     * translated and which an author may change without meaning to rekey
+     * their data, and not m_mpMapId, which single-player never sets.
+     */
+    std::string m_scenarioKey;
+    /** Who governs each country. Empty unless the party rules are on. */
+    std::unordered_map<int, odparty::Legislature> m_countryParties;
     std::unordered_map<int, long long> m_provincePopulations;
     /**
      * Men a province can still be asked for: its population less whatever is
@@ -3172,6 +3196,24 @@ public:
     bool doctrineCommitment() const;
 
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
+    // ── WHO GOVERNS ──
+    /**
+     * Build every country's legislature: real parties from data/parties.json
+     * where this scenario and country have them, generated otherwise.
+     * Idempotent, and a no-op unless the rules are on. See src/Parties.h.
+     */
+    void loadParties();
+    /**
+     * Apply one turn of the ruling party's pull to every government compass.
+     * Called from updatePoliticalIdentities, which already runs once a turn
+     * after policy effects and is where the compass is read -- so a party that
+     * moves it can restyle the country in the same turn.
+     */
+    void applyPartyPull();
+    /** Who governs `countryId`, or nullptr. */
+    const odparty::Party* rulingParty(int countryId) const;
+    /** Whether the party rules are on at all. */
+    bool partiesOn() const;
     /**
      * Rename and restyle countries whose government has moved far enough.
      * Once a turn, after policy effects have shifted the compass. See

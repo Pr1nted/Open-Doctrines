@@ -1184,3 +1184,59 @@ func rawStanceCount() uint32
 // `(iii)i`
 //go:wasmimport gearbox:neural.decide action_valid
 func rawActionValid(module uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// How many parties sit in a country's legislature. 0 when the party rules
+// are off, which is the default -- so a mod must treat 0 as 'this world
+// has no party politics' rather than as an error.
+// `(i)i`
+//go:wasmimport gearbox:politics.read country_party_count
+func rawCountryPartyCount(country uint32) uint32
+
+// The party's name. Two-call sizing: call with cap 0 to learn the length,
+// allocate, call again. Returns the full length either way; the copy is
+// truncated to cap.
+// `(iiii)i`
+//go:wasmimport gearbox:politics.read country_party_name
+func rawCountryPartyName(country uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// The party's abbreviation, for a list that has to fit -- "SPD", "INC".
+// Same two-call sizing as country_party_name. May be empty.
+// `(iiii)i`
+//go:wasmimport gearbox:politics.read country_party_short_name
+func rawCountryPartyShortName(country uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// That party's share of the country, 0..1. The shares of one country's
+// parties are a partition and sum to 1, so they may be compared directly
+// but must never be added across countries.
+// `(ii)F`
+//go:wasmimport gearbox:politics.read country_party_support
+func rawCountryPartySupport(country uint32, index uint32) float64
+
+// Where the party stands on the economic axis, -100 (planned) to 100
+// (market) -- the same axis and scale as country_compass_econ, so the
+// distance between a party and its government is meaningful.
+// `(ii)F`
+//go:wasmimport gearbox:politics.read country_party_compass_econ
+func rawCountryPartyCompassEcon(country uint32, index uint32) float64
+
+// Where the party stands on the social axis, -100 (authoritarian) to 100
+// (libertarian). Same scale as country_compass_social.
+// `(ii)F`
+//go:wasmimport gearbox:politics.read country_party_compass_social
+func rawCountryPartyCompassSocial(country uint32, index uint32) float64
+
+// 1 when this party is a matter of record for the scenario's date -- it
+// existed, under this name -- and 0 when the name was generated from its
+// stance. A mod that displays party names should say which it is showing:
+// "Workers' Party" is a description, "SPD" is a claim. See
+// data/parties.json.
+// `(ii)i`
+//go:wasmimport gearbox:politics.read country_party_is_historical
+func rawCountryPartyIsHistorical(country uint32, index uint32) uint32
+
+// The index of the party that governs, or -1 if none does. That party
+// pulls the government compass toward its own stance every turn it holds
+// power, which is why the two are on the same scale.
+// `(i)i`
+//go:wasmimport gearbox:politics.read country_ruling_party
+func rawCountryRulingParty(country uint32) uint32

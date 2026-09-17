@@ -1642,6 +1642,35 @@ std::string Game::saveStateJson() {
         j["activePolicies"].push_back(entry);
     }
 
+    // ── Who governs ──
+    //
+    // Saved because it MOVES: support shifts and a ruling party changes, so
+    // rebuilding from data/parties.json on load would rewind a campaign's
+    // politics to its opening day. Written only when the rules are on, so a
+    // save from a world without them carries no key at all and stays
+    // comparable with one written before parties existed.
+    if (partiesOn()) {
+        for (const auto& [cid, leg] : m_countryParties) {
+            nlohmann::json e;
+            e["countryId"] = cid;
+            e["ruling"] = leg.ruling;
+            for (const odparty::Party& p : leg.parties) {
+                nlohmann::json pe;
+                pe["name"] = p.name;
+                pe["short"] = p.shortName;
+                pe["econ"] = p.stance.economic;
+                pe["soc"] = p.stance.social;
+                pe["support"] = p.support;
+                // Carried through: a screen that says "representative parties"
+                // for a generated set must still say it after a reload, and
+                // the coverage numbers must not change because somebody saved.
+                pe["historical"] = p.historical;
+                e["parties"].push_back(pe);
+            }
+            j["parties"].push_back(e);
+        }
+    }
+
     // Research
     for (auto& [cid, researched] : m_countryResearched) {
         for (auto& nodeId : researched) {
@@ -2536,6 +2565,37 @@ void Game::loadStateJsonBody(const std::string& json) {
     }
 
     if (j.contains("mapDate")) m_mapDate = j["mapDate"].get<std::string>();
+
+    // Who governs. A save written before parties existed, or by a world with
+    // the rules off, has no key -- and loadParties() has already run for the
+    // world underneath, so the fallback is a valid legislature, not an empty
+    // one.
+    if (j.contains("parties") && j["parties"].is_array()) {
+        for (const auto& e : j["parties"]) {
+            if (!e.is_object() || !e.contains("countryId")) continue;
+            odparty::Legislature leg;
+            if (e.contains("parties") && e["parties"].is_array()) {
+                for (const auto& pe : e["parties"]) {
+                    if (!pe.is_object() || !pe.contains("name")) continue;
+                    odparty::Party p;
+                    p.name      = pe["name"].get<std::string>();
+                    p.shortName = pe.value("short", std::string());
+                    p.stance    = makeCompass(pe.value("econ", 0.0f), pe.value("soc", 0.0f));
+                    p.support   = pe.value("support", 0.0f);
+                    p.historical = pe.value("historical", false);
+                    leg.parties.push_back(p);
+                }
+            }
+            if (leg.parties.empty()) continue;
+            leg.ruling = e.value("ruling", -1);
+            // Re-derived rather than trusted: a hand-edited or truncated save
+            // can name a ruling index that is not in the list, and a stale
+            // index would steer the compass from a party that is not there.
+            if (leg.ruling < 0 || leg.ruling >= (int)leg.parties.size())
+                odparty::chooseRuling(leg);
+            m_countryParties[e["countryId"].get<int>()] = std::move(leg);
+        }
+    }
 
     // Turn number
     if (j.contains("turnNumber")) {

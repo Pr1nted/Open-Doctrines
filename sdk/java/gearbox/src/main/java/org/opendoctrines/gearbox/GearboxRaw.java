@@ -1188,4 +1188,60 @@ public final class GearboxRaw {
     @Import(module = "gearbox:neural.decide", name = "action_valid")
     public static native int actionValid(int module, int buf, int cap);
 
+    // How many parties sit in a country's legislature. 0 when the party rules
+    // are off, which is the default -- so a mod must treat 0 as 'this world
+    // has no party politics' rather than as an error.
+    // `(i)i`
+    @Import(module = "gearbox:politics.read", name = "country_party_count")
+    public static native int countryPartyCount(int country);
+
+    // The party's name. Two-call sizing: call with cap 0 to learn the length,
+    // allocate, call again. Returns the full length either way; the copy is
+    // truncated to cap.
+    // `(iiii)i`
+    @Import(module = "gearbox:politics.read", name = "country_party_name")
+    public static native int countryPartyName(int country, int index, int buf, int cap);
+
+    // The party's abbreviation, for a list that has to fit -- "SPD", "INC".
+    // Same two-call sizing as country_party_name. May be empty.
+    // `(iiii)i`
+    @Import(module = "gearbox:politics.read", name = "country_party_short_name")
+    public static native int countryPartyShortName(int country, int index, int buf, int cap);
+
+    // That party's share of the country, 0..1. The shares of one country's
+    // parties are a partition and sum to 1, so they may be compared directly
+    // but must never be added across countries.
+    // `(ii)F`
+    @Import(module = "gearbox:politics.read", name = "country_party_support")
+    public static native double countryPartySupport(int country, int index);
+
+    // Where the party stands on the economic axis, -100 (planned) to 100
+    // (market) -- the same axis and scale as country_compass_econ, so the
+    // distance between a party and its government is meaningful.
+    // `(ii)F`
+    @Import(module = "gearbox:politics.read", name = "country_party_compass_econ")
+    public static native double countryPartyCompassEcon(int country, int index);
+
+    // Where the party stands on the social axis, -100 (authoritarian) to 100
+    // (libertarian). Same scale as country_compass_social.
+    // `(ii)F`
+    @Import(module = "gearbox:politics.read", name = "country_party_compass_social")
+    public static native double countryPartyCompassSocial(int country, int index);
+
+    // 1 when this party is a matter of record for the scenario's date -- it
+    // existed, under this name -- and 0 when the name was generated from its
+    // stance. A mod that displays party names should say which it is showing:
+    // "Workers' Party" is a description, "SPD" is a claim. See
+    // data/parties.json.
+    // `(ii)i`
+    @Import(module = "gearbox:politics.read", name = "country_party_is_historical")
+    public static native int countryPartyIsHistorical(int country, int index);
+
+    // The index of the party that governs, or -1 if none does. That party
+    // pulls the government compass toward its own stance every turn it holds
+    // power, which is why the two are on the same scale.
+    // `(i)i`
+    @Import(module = "gearbox:politics.read", name = "country_ruling_party")
+    public static native int countryRulingParty(int country);
+
 }

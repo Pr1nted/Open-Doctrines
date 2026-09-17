@@ -2854,6 +2854,128 @@ The display name of regional law `index`, untranslated. Two-call sizing: call wi
 
 Whether this country publishes that figure in its profile: 1 if it does, 0 if it keeps it to itself. See the disclosure_field enum. Publishing is a decision with a consequence -- migrants read it -- rather than a display setting.
 
+#### `country_party_count`
+
+```wat
+(import "gearbox:politics.read" "country_party_count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many parties sit in a country's legislature. 0 when the party rules are off, which is the default -- so a mod must treat 0 as 'this world has no party politics' rather than as an error.
+
+#### `country_party_name`
+
+```wat
+(import "gearbox:politics.read" "country_party_name" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The party's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+#### `country_party_short_name`
+
+```wat
+(import "gearbox:politics.read" "country_party_short_name" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The party's abbreviation, for a list that has to fit -- "SPD", "INC". Same two-call sizing as country_party_name. May be empty.
+
+#### `country_party_support`
+
+```wat
+(import "gearbox:politics.read" "country_party_support" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `f64`.
+
+That party's share of the country, 0..1. The shares of one country's parties are a partition and sum to 1, so they may be compared directly but must never be added across countries.
+
+#### `country_party_compass_econ`
+
+```wat
+(import "gearbox:politics.read" "country_party_compass_econ" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `f64`.
+
+Where the party stands on the economic axis, -100 (planned) to 100 (market) -- the same axis and scale as country_compass_econ, so the distance between a party and its government is meaningful.
+
+#### `country_party_compass_social`
+
+```wat
+(import "gearbox:politics.read" "country_party_compass_social" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `f64`.
+
+Where the party stands on the social axis, -100 (authoritarian) to 100 (libertarian). Same scale as country_compass_social.
+
+#### `country_party_is_historical`
+
+```wat
+(import "gearbox:politics.read" "country_party_is_historical" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `index` | `i32` | — |
+
+**Returns** `i32`.
+
+1 when this party is a matter of record for the scenario's date -- it existed, under this name -- and 0 when the name was generated from its stance. A mod that displays party names should say which it is showing: "Workers' Party" is a description, "SPD" is a claim. See data/parties.json.
+
+#### `country_ruling_party`
+
+```wat
+(import "gearbox:politics.read" "country_ruling_party" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+The index of the party that governs, or -1 if none does. That party pulls the government compass toward its own stance every turn it holds power, which is why the two are on the same scale.
+
 ### `gearbox:politics.write`
 
 Requires the **Politics.Write** capability.

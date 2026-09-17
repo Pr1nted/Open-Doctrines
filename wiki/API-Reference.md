@@ -28,7 +28,7 @@ into your memory after a call returns.
 - **Military.Write** (`gearbox:military.write`): [order_army_move](#order-army-move), [order_ship_move](#order-ship-move), [order_ship_engage](#order-ship-engage), [order_ship_bombard](#order-ship-bombard)
 - **Research.Read** (`gearbox:research.read`): [node_count](#node-count), [node_id](#node-id), [node_name](#node-name), [node_category](#node-category), [node_cost](#node-cost), [country_has_researched](#country-has-researched), [country_funding](#country-funding), [country_research_groups](#country-research-groups)
 - **Research.Write** (`gearbox:research.write`): [set_country_funding](#set-country-funding), [set_country_research_groups](#set-country-research-groups)
-- **Politics.Read** (`gearbox:politics.read`): [country_compass_econ](#country-compass-econ), [country_compass_social](#country-compass-social), [province_unrest](#province-unrest), [policy_count](#policy-count), [policy_id](#policy-id), [policy_name](#policy-name), [country_has_policy](#country-has-policy), [province_minority_count](#province-minority-count), [province_minority_name](#province-minority-name), [province_minority_share](#province-minority-share), [country_district_count](#country-district-count), [country_district_name](#country-district-name), [country_district_share](#country-district-share), [country_district_province_count](#country-district-province-count), [country_district_province](#country-district-province), [country_district_law_count](#country-district-law-count), [country_district_law](#country-district-law), [district_law_count](#district-law-count), [district_law_id](#district-law-id), [district_law_name](#district-law-name), [country_discloses](#country-discloses)
+- **Politics.Read** (`gearbox:politics.read`): [country_compass_econ](#country-compass-econ), [country_compass_social](#country-compass-social), [province_unrest](#province-unrest), [policy_count](#policy-count), [policy_id](#policy-id), [policy_name](#policy-name), [country_has_policy](#country-has-policy), [province_minority_count](#province-minority-count), [province_minority_name](#province-minority-name), [province_minority_share](#province-minority-share), [country_district_count](#country-district-count), [country_district_name](#country-district-name), [country_district_share](#country-district-share), [country_district_province_count](#country-district-province-count), [country_district_province](#country-district-province), [country_district_law_count](#country-district-law-count), [country_district_law](#country-district-law), [district_law_count](#district-law-count), [district_law_id](#district-law-id), [district_law_name](#district-law-name), [country_discloses](#country-discloses), [country_party_count](#country-party-count), [country_party_name](#country-party-name), [country_party_short_name](#country-party-short-name), [country_party_support](#country-party-support), [country_party_compass_econ](#country-party-compass-econ), [country_party_compass_social](#country-party-compass-social), [country_party_is_historical](#country-party-is-historical), [country_ruling_party](#country-ruling-party)
 - **Politics.Write** (`gearbox:politics.write`): [set_country_policy](#set-country-policy), [set_country_district_share](#set-country-district-share), [set_country_district_law](#set-country-district-law), [set_country_disclosure](#set-country-disclosure)
 - **Economy.Read** (`gearbox:economy.read`): [country_income_gross](#country-income-gross), [country_income_net](#country-income-net), [country_army_upkeep](#country-army-upkeep), [country_navy_upkeep](#country-navy-upkeep), [country_is_bankrupt](#country-is-bankrupt), [province_industry_level](#province-industry-level), [province_industry_specialization](#province-industry-specialization), [province_resource](#province-resource), [country_expenses](#country-expenses), [country_national_value](#country-national-value), [country_population](#country-population)
 - **Economy.Write** (`gearbox:economy.write`): [set_province_industry_level](#set-province-industry-level)
@@ -2825,6 +2825,128 @@ The display name of regional law `index`, untranslated. Two-call sizing: call wi
 **Returns:** `i32`
 
 Whether this country publishes that figure in its profile: 1 if it does, 0 if it keeps it to itself. See the disclosure_field enum. Publishing is a decision with a consequence -- migrants read it -- rather than a display setting.
+
+### country_party_count
+
+```wat
+(import "gearbox:politics.read" "country_party_count" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+How many parties sit in a country's legislature. 0 when the party rules are off, which is the default -- so a mod must treat 0 as 'this world has no party politics' rather than as an error.
+
+### country_party_name
+
+```wat
+(import "gearbox:politics.read" "country_party_name" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `index` | `i32` |  |
+| `buf` | `i32` | pointer into your memory |
+| `cap` | `i32` | byte length |
+
+**Returns:** `i32`
+
+The party's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap.
+
+### country_party_short_name
+
+```wat
+(import "gearbox:politics.read" "country_party_short_name" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `index` | `i32` |  |
+| `buf` | `i32` | pointer into your memory |
+| `cap` | `i32` | byte length |
+
+**Returns:** `i32`
+
+The party's abbreviation, for a list that has to fit -- "SPD", "INC". Same two-call sizing as country_party_name. May be empty.
+
+### country_party_support
+
+```wat
+(import "gearbox:politics.read" "country_party_support" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `index` | `i32` |  |
+
+**Returns:** `f64`
+
+That party's share of the country, 0..1. The shares of one country's parties are a partition and sum to 1, so they may be compared directly but must never be added across countries.
+
+### country_party_compass_econ
+
+```wat
+(import "gearbox:politics.read" "country_party_compass_econ" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `index` | `i32` |  |
+
+**Returns:** `f64`
+
+Where the party stands on the economic axis, -100 (planned) to 100 (market) -- the same axis and scale as country_compass_econ, so the distance between a party and its government is meaningful.
+
+### country_party_compass_social
+
+```wat
+(import "gearbox:politics.read" "country_party_compass_social" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `index` | `i32` |  |
+
+**Returns:** `f64`
+
+Where the party stands on the social axis, -100 (authoritarian) to 100 (libertarian). Same scale as country_compass_social.
+
+### country_party_is_historical
+
+```wat
+(import "gearbox:politics.read" "country_party_is_historical" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `index` | `i32` |  |
+
+**Returns:** `i32`
+
+1 when this party is a matter of record for the scenario's date -- it existed, under this name -- and 0 when the name was generated from its stance. A mod that displays party names should say which it is showing: "Workers' Party" is a description, "SPD" is a claim. See data/parties.json.
+
+### country_ruling_party
+
+```wat
+(import "gearbox:politics.read" "country_ruling_party" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+The index of the party that governs, or -1 if none does. That party pulls the government compass toward its own stance every turn it holds power, which is why the two are on the same scale.
 
 ## Politics.Write
 

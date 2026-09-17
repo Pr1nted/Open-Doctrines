@@ -1,0 +1,1221 @@
+{
+  "$comment": [
+    "WHO GOVERNS, PER SCENARIO -- the real parties, where they can be stated as fact.",
+    "",
+    "Each country lists the parties that actually sat in its legislature on that",
+    "map's date, with the share the `source` line names. `econ` and `soc` place the",
+    "party on the same compass a government uses: econ -100 left to +100 right, soc",
+    "-100 authoritarian to +100 libertarian.",
+    "",
+    "WHAT THIS FILE IS NOT: complete. The shipped maps carry between 55 and 185",
+    "countries and this covers the states whose party systems are a matter of",
+    "record. A country absent from here gets GENERATED parties with descriptive",
+    "names -- 'Workers' Party', 'National Union' -- which are honest about being",
+    "descriptions rather than claims. Nothing here invents a proper noun.",
+    "",
+    "That distinction is load-bearing. tools/check_flag_dates.py exists because",
+    "Iran flew the Islamic Republic's flag on a 1962 map for seventeen years of",
+    "game history; a fabricated party for a country nobody checked is the same",
+    "fault. tools/check_party_coverage.py reports the gap per scenario, worst",
+    "first, and that report is the backlog rather than a failure.",
+    "",
+    "ALT-HISTORY MAPS ARE DELIBERATELY ABSENT. 1936cp, 1962ax, 1984 and mars are",
+    "worlds where the recorded history did not happen -- there are no real parties",
+    "for a Germany that won the First World War -- so they generate, by design and",
+    "not by omission.",
+    "",
+    "The support figures are election results, which are facts about a date and",
+    "not about the whole scenario: a 1914 map opens two years after the 1912",
+    "Reichstag election, and that election is what the Reichstag was made of.",
+    "Where a state had one legal party, it holds 100 and that is the fact."
+  ],
+  "schema": 1,
+  "scenarios": {
+    "1914": {
+      "GER": {
+        "source": "1912 Reichstag election, vote share",
+        "parties": [
+          {
+            "name": "Social Democratic Party of Germany",
+            "short": "SPD",
+            "econ": -58,
+            "soc": 22,
+            "support": 34.8
+          },
+          {
+            "name": "Centre Party",
+            "short": "Zentrum",
+            "econ": -5,
+            "soc": -18,
+            "support": 16.4
+          },
+          {
+            "name": "National Liberal Party",
+            "short": "NLP",
+            "econ": 42,
+            "soc": 8,
+            "support": 13.6
+          },
+          {
+            "name": "Progressive People's Party",
+            "short": "FVP",
+            "econ": 22,
+            "soc": 34,
+            "support": 12.3
+          },
+          {
+            "name": "German Conservative Party",
+            "short": "DkP",
+            "econ": 45,
+            "soc": -52,
+            "support": 9.2
+          }
+        ]
+      },
+      "GBR": {
+        "source": "December 1910 general election, vote share",
+        "parties": [
+          {
+            "name": "Conservative and Unionist Party",
+            "short": "Con",
+            "econ": 48,
+            "soc": -22,
+            "support": 46.6
+          },
+          {
+            "name": "Liberal Party",
+            "short": "Lib",
+            "econ": 20,
+            "soc": 40,
+            "support": 43.9
+          },
+          {
+            "name": "Labour Party",
+            "short": "Lab",
+            "econ": -48,
+            "soc": 30,
+            "support": 6.4
+          },
+          {
+            "name": "Irish Parliamentary Party",
+            "short": "IPP",
+            "econ": -5,
+            "soc": 28,
+            "support": 2.5
+          }
+        ]
+      },
+      "FRA": {
+        "source": "1914 legislative election, approximate seat share of the Chamber",
+        "parties": [
+          {
+            "name": "Radical-Socialist Party",
+            "short": "PRRRS",
+            "econ": 5,
+            "soc": 42,
+            "support": 34.0
+          },
+          {
+            "name": "French Section of the Workers' International",
+            "short": "SFIO",
+            "econ": -62,
+            "soc": 25,
+            "support": 17.4
+          },
+          {
+            "name": "Democratic Republican Alliance",
+            "short": "ARD",
+            "econ": 35,
+            "soc": 20,
+            "support": 15.0
+          },
+          {
+            "name": "Republican Federation",
+            "short": "FR",
+            "econ": 46,
+            "soc": -20,
+            "support": 12.6
+          }
+        ]
+      },
+      "RUS": {
+        "source": "Fourth State Duma, 1912, seats",
+        "parties": [
+          {
+            "name": "Union of 17 October",
+            "short": "Octobrists",
+            "econ": 34,
+            "soc": -18,
+            "support": 22.3
+          },
+          {
+            "name": "Russian Nationalists and Centrists",
+            "short": "Nationalists",
+            "econ": 30,
+            "soc": -46,
+            "support": 20.9
+          },
+          {
+            "name": "Rightists",
+            "short": "Right",
+            "econ": 32,
+            "soc": -62,
+            "support": 14.5
+          },
+          {
+            "name": "Constitutional Democratic Party",
+            "short": "Kadets",
+            "econ": 18,
+            "soc": 42,
+            "support": 13.4
+          },
+          {
+            "name": "Progressist Party",
+            "short": "Progressists",
+            "econ": 28,
+            "soc": 32,
+            "support": 10.9
+          },
+          {
+            "name": "Russian Social Democratic Labour Party",
+            "short": "RSDLP",
+            "econ": -72,
+            "soc": -10,
+            "support": 3.2
+          },
+          {
+            "name": "Labour Group",
+            "short": "Trudoviks",
+            "econ": -40,
+            "soc": 26,
+            "support": 2.3
+          }
+        ]
+      },
+      "AUH": {
+        "source": "1911 Austrian Reichsrat election, seats (Austrian half of the Dual Monarchy)",
+        "parties": [
+          {
+            "name": "Social Democratic Workers' Party",
+            "short": "SDAP",
+            "econ": -60,
+            "soc": 24,
+            "support": 19.8
+          },
+          {
+            "name": "Christian Social Party",
+            "short": "CS",
+            "econ": -2,
+            "soc": -34,
+            "support": 18.4
+          },
+          {
+            "name": "German National Association",
+            "short": "DNV",
+            "econ": 38,
+            "soc": -30,
+            "support": 12.1
+          },
+          {
+            "name": "Polish Club",
+            "short": "Polish",
+            "econ": 16,
+            "soc": -8,
+            "support": 11.1
+          },
+          {
+            "name": "Czech Agrarian Party",
+            "short": "Agrarian",
+            "econ": 10,
+            "soc": 6,
+            "support": 9.4
+          }
+        ]
+      },
+      "ITA": {
+        "source": "1913 general election, seats in the Chamber of Deputies",
+        "parties": [
+          {
+            "name": "Liberals",
+            "short": "Lib",
+            "econ": 36,
+            "soc": 18,
+            "support": 55.0
+          },
+          {
+            "name": "Radical Party",
+            "short": "PR",
+            "econ": 8,
+            "soc": 38,
+            "support": 11.9
+          },
+          {
+            "name": "Italian Socialist Party",
+            "short": "PSI",
+            "econ": -64,
+            "soc": 20,
+            "support": 10.0
+          },
+          {
+            "name": "Italian Catholic Electoral Union",
+            "short": "UECI",
+            "econ": 2,
+            "soc": -26,
+            "support": 5.6
+          }
+        ]
+      },
+      "USA": {
+        "source": "1912 presidential and congressional elections, popular vote",
+        "parties": [
+          {
+            "name": "Democratic Party",
+            "short": "Dem",
+            "econ": 18,
+            "soc": 24,
+            "support": 41.8
+          },
+          {
+            "name": "Progressive Party",
+            "short": "Prog",
+            "econ": 8,
+            "soc": 36,
+            "support": 27.4
+          },
+          {
+            "name": "Republican Party",
+            "short": "Rep",
+            "econ": 50,
+            "soc": 6,
+            "support": 23.2
+          },
+          {
+            "name": "Socialist Party of America",
+            "short": "SPA",
+            "econ": -66,
+            "soc": 32,
+            "support": 6.0
+          }
+        ]
+      },
+      "JPN": {
+        "source": "House of Representatives, 1912-1915, the two constitutional parties",
+        "parties": [
+          {
+            "name": "Rikken Seiyukai",
+            "short": "Seiyukai",
+            "econ": 28,
+            "soc": -16,
+            "support": 58.0
+          },
+          {
+            "name": "Rikken Doshikai",
+            "short": "Doshikai",
+            "econ": 34,
+            "soc": -6,
+            "support": 33.0
+          }
+        ]
+      },
+      "OTT": {
+        "source": "After the 1913 coup: the CUP governed as effectively the sole party",
+        "parties": [
+          {
+            "name": "Committee of Union and Progress",
+            "short": "CUP",
+            "econ": 12,
+            "soc": -52,
+            "support": 92.0
+          },
+          {
+            "name": "Freedom and Accord Party",
+            "short": "Hurriyet",
+            "econ": 26,
+            "soc": 8,
+            "support": 8.0
+          }
+        ]
+      }
+    },
+    "1918": {
+      "GER": {
+        "source": "1912 Reichstag election, the Reichstag still sitting in 1918",
+        "parties": [
+          {
+            "name": "Social Democratic Party of Germany",
+            "short": "SPD",
+            "econ": -58,
+            "soc": 22,
+            "support": 34.8
+          },
+          {
+            "name": "Centre Party",
+            "short": "Zentrum",
+            "econ": -5,
+            "soc": -18,
+            "support": 16.4
+          },
+          {
+            "name": "National Liberal Party",
+            "short": "NLP",
+            "econ": 42,
+            "soc": 8,
+            "support": 13.6
+          },
+          {
+            "name": "Progressive People's Party",
+            "short": "FVP",
+            "econ": 22,
+            "soc": 34,
+            "support": 12.3
+          },
+          {
+            "name": "German Conservative Party",
+            "short": "DkP",
+            "econ": 45,
+            "soc": -52,
+            "support": 9.2
+          },
+          {
+            "name": "Independent Social Democratic Party",
+            "short": "USPD",
+            "econ": -74,
+            "soc": 14,
+            "support": 5.0
+          }
+        ]
+      },
+      "GBR": {
+        "source": "December 1910 general election; the wartime coalition governed until December 1918",
+        "parties": [
+          {
+            "name": "Conservative and Unionist Party",
+            "short": "Con",
+            "econ": 48,
+            "soc": -22,
+            "support": 46.6
+          },
+          {
+            "name": "Liberal Party",
+            "short": "Lib",
+            "econ": 20,
+            "soc": 40,
+            "support": 43.9
+          },
+          {
+            "name": "Labour Party",
+            "short": "Lab",
+            "econ": -48,
+            "soc": 30,
+            "support": 6.4
+          },
+          {
+            "name": "Irish Parliamentary Party",
+            "short": "IPP",
+            "econ": -5,
+            "soc": 28,
+            "support": 2.5
+          }
+        ]
+      },
+      "FRA": {
+        "source": "1914 legislative election; the Union sacree governed to 1917",
+        "parties": [
+          {
+            "name": "Radical-Socialist Party",
+            "short": "PRRRS",
+            "econ": 5,
+            "soc": 42,
+            "support": 34.0
+          },
+          {
+            "name": "French Section of the Workers' International",
+            "short": "SFIO",
+            "econ": -62,
+            "soc": 25,
+            "support": 17.4
+          },
+          {
+            "name": "Democratic Republican Alliance",
+            "short": "ARD",
+            "econ": 35,
+            "soc": 20,
+            "support": 15.0
+          },
+          {
+            "name": "Republican Federation",
+            "short": "FR",
+            "econ": 46,
+            "soc": -20,
+            "support": 12.6
+          }
+        ]
+      },
+      "USA": {
+        "source": "1918 midterm elections, House popular vote",
+        "parties": [
+          {
+            "name": "Republican Party",
+            "short": "Rep",
+            "econ": 50,
+            "soc": 6,
+            "support": 53.5
+          },
+          {
+            "name": "Democratic Party",
+            "short": "Dem",
+            "econ": 18,
+            "soc": 24,
+            "support": 43.5
+          },
+          {
+            "name": "Socialist Party of America",
+            "short": "SPA",
+            "econ": -66,
+            "soc": 32,
+            "support": 2.5
+          }
+        ]
+      },
+      "RUS": {
+        "source": "After the October Revolution: the Bolsheviks governed, the Left SRs to March 1918",
+        "parties": [
+          {
+            "name": "Russian Communist Party (Bolsheviks)",
+            "short": "RCP(b)",
+            "econ": -92,
+            "soc": -70,
+            "support": 88.0
+          },
+          {
+            "name": "Left Socialist-Revolutionaries",
+            "short": "Left SR",
+            "econ": -70,
+            "soc": -10,
+            "support": 12.0
+          }
+        ]
+      },
+      "ITA": {
+        "source": "1913 general election, seats in the Chamber of Deputies",
+        "parties": [
+          {
+            "name": "Liberals",
+            "short": "Lib",
+            "econ": 36,
+            "soc": 18,
+            "support": 55.0
+          },
+          {
+            "name": "Radical Party",
+            "short": "PR",
+            "econ": 8,
+            "soc": 38,
+            "support": 11.9
+          },
+          {
+            "name": "Italian Socialist Party",
+            "short": "PSI",
+            "econ": -64,
+            "soc": 20,
+            "support": 10.0
+          },
+          {
+            "name": "Italian Catholic Electoral Union",
+            "short": "UECI",
+            "econ": 2,
+            "soc": -26,
+            "support": 5.6
+          }
+        ]
+      }
+    },
+    "1939": {
+      "GER": {
+        "source": "Sole legal party under the Law against the Formation of Parties, 1933",
+        "parties": [
+          {
+            "name": "National Socialist German Workers' Party",
+            "short": "NSDAP",
+            "econ": 20,
+            "soc": -96,
+            "support": 100.0
+          }
+        ]
+      },
+      "ITA": {
+        "source": "Sole legal party from 1928",
+        "parties": [
+          {
+            "name": "National Fascist Party",
+            "short": "PNF",
+            "econ": 22,
+            "soc": -92,
+            "support": 100.0
+          }
+        ]
+      },
+      "SOV": {
+        "source": "Sole legal party; 1937 Supreme Soviet election",
+        "parties": [
+          {
+            "name": "All-Union Communist Party (Bolsheviks)",
+            "short": "VKP(b)",
+            "econ": -94,
+            "soc": -88,
+            "support": 100.0
+          }
+        ]
+      },
+      "GBR": {
+        "source": "1935 general election, vote share; the National Government still in office",
+        "parties": [
+          {
+            "name": "Conservative Party",
+            "short": "Con",
+            "econ": 46,
+            "soc": -18,
+            "support": 47.8
+          },
+          {
+            "name": "Labour Party",
+            "short": "Lab",
+            "econ": -52,
+            "soc": 26,
+            "support": 38.0
+          },
+          {
+            "name": "Liberal Party",
+            "short": "Lib",
+            "econ": 24,
+            "soc": 40,
+            "support": 6.7
+          }
+        ]
+      },
+      "FRA": {
+        "source": "1936 legislative election, seats; the Daladier government in office",
+        "parties": [
+          {
+            "name": "French Section of the Workers' International",
+            "short": "SFIO",
+            "econ": -58,
+            "soc": 28,
+            "support": 24.9
+          },
+          {
+            "name": "Radical-Socialist Party",
+            "short": "PRRRS",
+            "econ": 6,
+            "soc": 40,
+            "support": 18.2
+          },
+          {
+            "name": "French Communist Party",
+            "short": "PCF",
+            "econ": -84,
+            "soc": -34,
+            "support": 12.0
+          },
+          {
+            "name": "Republican Federation",
+            "short": "FR",
+            "econ": 48,
+            "soc": -28,
+            "support": 10.5
+          }
+        ]
+      },
+      "USA": {
+        "source": "1938 midterm elections, House popular vote",
+        "parties": [
+          {
+            "name": "Democratic Party",
+            "short": "Dem",
+            "econ": -18,
+            "soc": 22,
+            "support": 48.6
+          },
+          {
+            "name": "Republican Party",
+            "short": "Rep",
+            "econ": 52,
+            "soc": 4,
+            "support": 47.0
+          }
+        ]
+      },
+      "JPN": {
+        "source": "1937 House of Representatives election, seats",
+        "parties": [
+          {
+            "name": "Rikken Minseito",
+            "short": "Minseito",
+            "econ": 30,
+            "soc": -14,
+            "support": 38.7
+          },
+          {
+            "name": "Rikken Seiyukai",
+            "short": "Seiyukai",
+            "econ": 32,
+            "soc": -22,
+            "support": 37.8
+          },
+          {
+            "name": "Social Masses Party",
+            "short": "Shakai Taishuto",
+            "econ": -44,
+            "soc": -20,
+            "support": 8.0
+          }
+        ]
+      },
+      "ESP": {
+        "source": "Sole legal party from April 1937, the Civil War ended April 1939",
+        "parties": [
+          {
+            "name": "Falange Espanola Tradicionalista y de las JONS",
+            "short": "FET-JONS",
+            "econ": 12,
+            "soc": -92,
+            "support": 100.0
+          }
+        ]
+      },
+      "POL": {
+        "source": "1938 Sejm election under the Sanation regime",
+        "parties": [
+          {
+            "name": "Camp of National Unity",
+            "short": "OZN",
+            "econ": 14,
+            "soc": -62,
+            "support": 80.0
+          },
+          {
+            "name": "National Party",
+            "short": "SN",
+            "econ": 34,
+            "soc": -54,
+            "support": 20.0
+          }
+        ]
+      }
+    },
+    "1945": {
+      "GBR": {
+        "source": "July 1945 general election, vote share",
+        "parties": [
+          {
+            "name": "Labour Party",
+            "short": "Lab",
+            "econ": -56,
+            "soc": 28,
+            "support": 47.7
+          },
+          {
+            "name": "Conservative Party",
+            "short": "Con",
+            "econ": 46,
+            "soc": -16,
+            "support": 36.2
+          },
+          {
+            "name": "Liberal Party",
+            "short": "Lib",
+            "econ": 22,
+            "soc": 42,
+            "support": 9.0
+          }
+        ]
+      },
+      "USA": {
+        "source": "1944 congressional elections, House popular vote",
+        "parties": [
+          {
+            "name": "Democratic Party",
+            "short": "Dem",
+            "econ": -16,
+            "soc": 24,
+            "support": 50.6
+          },
+          {
+            "name": "Republican Party",
+            "short": "Rep",
+            "econ": 52,
+            "soc": 6,
+            "support": 47.2
+          }
+        ]
+      },
+      "SOV": {
+        "source": "Sole legal party",
+        "parties": [
+          {
+            "name": "All-Union Communist Party (Bolsheviks)",
+            "short": "VKP(b)",
+            "econ": -94,
+            "soc": -88,
+            "support": 100.0
+          }
+        ]
+      },
+      "FRA": {
+        "source": "October 1945 Constituent Assembly election, vote share",
+        "parties": [
+          {
+            "name": "French Communist Party",
+            "short": "PCF",
+            "econ": -84,
+            "soc": -30,
+            "support": 26.2
+          },
+          {
+            "name": "Popular Republican Movement",
+            "short": "MRP",
+            "econ": 8,
+            "soc": 10,
+            "support": 23.9
+          },
+          {
+            "name": "French Section of the Workers' International",
+            "short": "SFIO",
+            "econ": -56,
+            "soc": 30,
+            "support": 23.4
+          },
+          {
+            "name": "Radical-Socialist Party",
+            "short": "PRRRS",
+            "econ": 10,
+            "soc": 40,
+            "support": 10.5
+          }
+        ]
+      },
+      "CHN": {
+        "source": "The two parties of the 1945 negotiations and the civil war that followed",
+        "parties": [
+          {
+            "name": "Kuomintang",
+            "short": "KMT",
+            "econ": 26,
+            "soc": -64,
+            "support": 62.0
+          },
+          {
+            "name": "Communist Party of China",
+            "short": "CPC",
+            "econ": -88,
+            "soc": -66,
+            "support": 38.0
+          }
+        ]
+      }
+    },
+    "1962": {
+      "USA": {
+        "source": "1962 midterm elections, House popular vote",
+        "parties": [
+          {
+            "name": "Democratic Party",
+            "short": "Dem",
+            "econ": -14,
+            "soc": 28,
+            "support": 52.1
+          },
+          {
+            "name": "Republican Party",
+            "short": "Rep",
+            "econ": 52,
+            "soc": 8,
+            "support": 47.1
+          }
+        ]
+      },
+      "SOV": {
+        "source": "Sole legal party",
+        "parties": [
+          {
+            "name": "Communist Party of the Soviet Union",
+            "short": "CPSU",
+            "econ": -92,
+            "soc": -80,
+            "support": 100.0
+          }
+        ]
+      },
+      "GBR": {
+        "source": "1959 general election, vote share; the Macmillan government in office",
+        "parties": [
+          {
+            "name": "Conservative Party",
+            "short": "Con",
+            "econ": 48,
+            "soc": -12,
+            "support": 49.4
+          },
+          {
+            "name": "Labour Party",
+            "short": "Lab",
+            "econ": -50,
+            "soc": 30,
+            "support": 43.8
+          },
+          {
+            "name": "Liberal Party",
+            "short": "Lib",
+            "econ": 24,
+            "soc": 44,
+            "support": 5.9
+          }
+        ]
+      },
+      "FRA": {
+        "source": "November 1962 legislative election, first-round vote share",
+        "parties": [
+          {
+            "name": "Union for the New Republic",
+            "short": "UNR-UDT",
+            "econ": 34,
+            "soc": -18,
+            "support": 31.9
+          },
+          {
+            "name": "French Communist Party",
+            "short": "PCF",
+            "econ": -84,
+            "soc": -28,
+            "support": 21.8
+          },
+          {
+            "name": "French Section of the Workers' International",
+            "short": "SFIO",
+            "econ": -52,
+            "soc": 32,
+            "support": 12.6
+          },
+          {
+            "name": "Popular Republican Movement",
+            "short": "MRP",
+            "econ": 12,
+            "soc": 14,
+            "support": 8.9
+          }
+        ]
+      },
+      "CHN": {
+        "source": "Sole governing party",
+        "parties": [
+          {
+            "name": "Communist Party of China",
+            "short": "CPC",
+            "econ": -90,
+            "soc": -82,
+            "support": 100.0
+          }
+        ]
+      },
+      "IND": {
+        "source": "1962 general election, vote share",
+        "parties": [
+          {
+            "name": "Indian National Congress",
+            "short": "INC",
+            "econ": -26,
+            "soc": 30,
+            "support": 44.7
+          },
+          {
+            "name": "Communist Party of India",
+            "short": "CPI",
+            "econ": -78,
+            "soc": 10,
+            "support": 9.9
+          },
+          {
+            "name": "Swatantra Party",
+            "short": "Swatantra",
+            "econ": 56,
+            "soc": 26,
+            "support": 7.9
+          },
+          {
+            "name": "Bharatiya Jana Sangh",
+            "short": "Jan Sangh",
+            "econ": 30,
+            "soc": -44,
+            "support": 6.4
+          }
+        ]
+      },
+      "DEU": {
+        "source": "1961 Bundestag election, vote share (Federal Republic)",
+        "parties": [
+          {
+            "name": "Christian Democratic Union/Christian Social Union",
+            "short": "CDU/CSU",
+            "econ": 40,
+            "soc": 2,
+            "support": 45.3
+          },
+          {
+            "name": "Social Democratic Party of Germany",
+            "short": "SPD",
+            "econ": -40,
+            "soc": 30,
+            "support": 36.2
+          },
+          {
+            "name": "Free Democratic Party",
+            "short": "FDP",
+            "econ": 52,
+            "soc": 40,
+            "support": 12.8
+          }
+        ]
+      },
+      "JPN": {
+        "source": "1960 House of Representatives election, vote share",
+        "parties": [
+          {
+            "name": "Liberal Democratic Party",
+            "short": "LDP",
+            "econ": 44,
+            "soc": -14,
+            "support": 57.6
+          },
+          {
+            "name": "Japan Socialist Party",
+            "short": "JSP",
+            "econ": -56,
+            "soc": 26,
+            "support": 27.6
+          },
+          {
+            "name": "Democratic Socialist Party",
+            "short": "DSP",
+            "econ": -28,
+            "soc": 30,
+            "support": 8.8
+          }
+        ]
+      }
+    },
+    "map": {
+      "$comment": [
+        "Present day. The shortest-lived entries in this file: a party system is",
+        "a fact about a year, and this map's year keeps moving. Only states whose",
+        "governing parties have been stable for long enough that the entry is not",
+        "stale on arrival."
+      ],
+      "USA": {
+        "source": "The two parties that hold every seat in Congress",
+        "parties": [
+          {
+            "name": "Democratic Party",
+            "short": "Dem",
+            "econ": -20,
+            "soc": 34,
+            "support": 48.0
+          },
+          {
+            "name": "Republican Party",
+            "short": "Rep",
+            "econ": 52,
+            "soc": -14,
+            "support": 50.0
+          }
+        ]
+      },
+      "CHN": {
+        "source": "Sole governing party",
+        "parties": [
+          {
+            "name": "Communist Party of China",
+            "short": "CPC",
+            "econ": -48,
+            "soc": -84,
+            "support": 100.0
+          }
+        ]
+      },
+      "GBR": {
+        "source": "The three largest parties of the House of Commons",
+        "parties": [
+          {
+            "name": "Labour Party",
+            "short": "Lab",
+            "econ": -34,
+            "soc": 34,
+            "support": 42.0
+          },
+          {
+            "name": "Conservative Party",
+            "short": "Con",
+            "econ": 46,
+            "soc": -10,
+            "support": 30.0
+          },
+          {
+            "name": "Liberal Democrats",
+            "short": "LD",
+            "econ": 16,
+            "soc": 46,
+            "support": 12.0
+          }
+        ]
+      },
+      "DEU": {
+        "source": "The parties of the Bundestag",
+        "parties": [
+          {
+            "name": "Christian Democratic Union/Christian Social Union",
+            "short": "CDU/CSU",
+            "econ": 38,
+            "soc": 8,
+            "support": 30.0
+          },
+          {
+            "name": "Social Democratic Party of Germany",
+            "short": "SPD",
+            "econ": -34,
+            "soc": 34,
+            "support": 22.0
+          },
+          {
+            "name": "Alliance 90/The Greens",
+            "short": "Grune",
+            "econ": -28,
+            "soc": 48,
+            "support": 15.0
+          },
+          {
+            "name": "Free Democratic Party",
+            "short": "FDP",
+            "econ": 52,
+            "soc": 38,
+            "support": 9.0
+          }
+        ]
+      },
+      "FRA": {
+        "source": "The three blocs of the National Assembly",
+        "parties": [
+          {
+            "name": "Renaissance",
+            "short": "RE",
+            "econ": 34,
+            "soc": 26,
+            "support": 28.0
+          },
+          {
+            "name": "National Rally",
+            "short": "RN",
+            "econ": 10,
+            "soc": -56,
+            "support": 26.0
+          },
+          {
+            "name": "La France Insoumise",
+            "short": "LFI",
+            "econ": -70,
+            "soc": 34,
+            "support": 20.0
+          }
+        ]
+      },
+      "RUS": {
+        "source": "The parties of the State Duma",
+        "parties": [
+          {
+            "name": "United Russia",
+            "short": "UR",
+            "econ": 22,
+            "soc": -74,
+            "support": 72.0
+          },
+          {
+            "name": "Communist Party of the Russian Federation",
+            "short": "CPRF",
+            "econ": -66,
+            "soc": -40,
+            "support": 13.0
+          },
+          {
+            "name": "Liberal Democratic Party of Russia",
+            "short": "LDPR",
+            "econ": 20,
+            "soc": -62,
+            "support": 8.0
+          }
+        ]
+      },
+      "IND": {
+        "source": "The two national alliances of the Lok Sabha",
+        "parties": [
+          {
+            "name": "Bharatiya Janata Party",
+            "short": "BJP",
+            "econ": 36,
+            "soc": -46,
+            "support": 45.0
+          },
+          {
+            "name": "Indian National Congress",
+            "short": "INC",
+            "econ": -22,
+            "soc": 28,
+            "support": 22.0
+          }
+        ]
+      },
+      "JPN": {
+        "source": "The parties of the House of Representatives",
+        "parties": [
+          {
+            "name": "Liberal Democratic Party",
+            "short": "LDP",
+            "econ": 40,
+            "soc": -20,
+            "support": 42.0
+          },
+          {
+            "name": "Constitutional Democratic Party of Japan",
+            "short": "CDP",
+            "econ": -26,
+            "soc": 32,
+            "support": 20.0
+          },
+          {
+            "name": "Komeito",
+            "short": "Komeito",
+            "econ": -6,
+            "soc": 6,
+            "support": 10.0
+          }
+        ]
+      },
+      "BRA": {
+        "source": "The two parties of the last presidential run-off",
+        "parties": [
+          {
+            "name": "Workers' Party",
+            "short": "PT",
+            "econ": -56,
+            "soc": 32,
+            "support": 30.0
+          },
+          {
+            "name": "Liberal Party",
+            "short": "PL",
+            "econ": 42,
+            "soc": -44,
+            "support": 28.0
+          }
+        ]
+      }
+    }
+  }
+}

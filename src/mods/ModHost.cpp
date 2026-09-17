@@ -1380,6 +1380,32 @@ uint32_t pol_province_minority_name(ExecEnv e, uint32_t p, uint32_t i, uint32_t 
 double pol_province_minority_share(ExecEnv e, uint32_t p, uint32_t i) {
     MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->provinceMinorityShare(p, i);
 }
+
+// ---- politics: who governs (ABI 1.3) ----
+uint32_t pol_country_party_count(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryPartyCount(c);
+}
+uint32_t pol_country_party_name(ExecEnv e, uint32_t c, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->countryPartyName(c, i), buf, cap);
+}
+uint32_t pol_country_party_short_name(ExecEnv e, uint32_t c, uint32_t i, uint32_t buf, uint32_t cap) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return retStr(mi, g_modGame->countryPartyShortName(c, i), buf, cap);
+}
+double pol_country_party_support(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->countryPartySupport(c, i);
+}
+double pol_country_party_compass_econ(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->countryPartyCompassEcon(c, i);
+}
+double pol_country_party_compass_social(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0.0) return g_modGame->countryPartyCompassSocial(c, i);
+}
+uint32_t pol_country_party_is_historical(ExecEnv e, uint32_t c, uint32_t i) {
+    MOD_GUARD(MODULE_POLITICS_READ, 0) return (uint32_t)g_modGame->countryPartyIsHistorical(c, i);
+}
+int32_t pol_country_ruling_party(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_POLITICS_READ, -1) return g_modGame->countryRulingParty(c);
+}
 uint32_t polw_set_country_policy(ExecEnv e, uint32_t c, uint32_t pPtr, uint32_t pLen, uint32_t on) {
     MOD_GUARD(MODULE_POLITICS_WRITE, 0)
     std::string id;
@@ -1721,6 +1747,14 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:politics.read", "country_has_policy",     "(iii)i",  (void*)pol_country_has_policy,     MODULE_POLITICS_READ},
     {"gearbox:politics.read", "province_minority_count","(i)i",    (void*)pol_province_minority_count, MODULE_POLITICS_READ},
     {"gearbox:politics.read", "province_minority_name", "(iiii)i", (void*)pol_province_minority_name, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_count", "(i)i", (void*)pol_country_party_count, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_name", "(iiii)i", (void*)pol_country_party_name, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_short_name", "(iiii)i", (void*)pol_country_party_short_name, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_support", "(ii)F", (void*)pol_country_party_support, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_compass_econ", "(ii)F", (void*)pol_country_party_compass_econ, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_compass_social", "(ii)F", (void*)pol_country_party_compass_social, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_party_is_historical", "(ii)i", (void*)pol_country_party_is_historical, MODULE_POLITICS_READ},
+    {"gearbox:politics.read", "country_ruling_party", "(i)i", (void*)pol_country_ruling_party, MODULE_POLITICS_READ},
     {"gearbox:politics.read", "province_minority_share","(ii)F",   (void*)pol_province_minority_share,MODULE_POLITICS_READ},
 
     {"gearbox:politics.read", "country_district_count",         "(i)i",     (void*)pol_country_district_count,          MODULE_POLITICS_READ},

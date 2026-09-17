@@ -904,6 +904,8 @@ set(GAME_SOURCES
     src/Game_Mods.cpp
     src/Game_Multiplayer.cpp
     src/Game_Policies.cpp
+    src/Game_Parties.cpp
+    src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
     src/Game_Mail.cpp
@@ -2174,6 +2176,14 @@ target_include_directories(TouchGestureTest PRIVATE
 # and no Game behind it.
 add_executable(MinorityShareTest EXCLUDE_FROM_ALL tests/minority_share_test.cpp)
 target_include_directories(MinorityShareTest PRIVATE src tests)
+
+# Who governs, and what a legislature may do to a government compass. Pure
+# rules plus the shipped party table -- no world, because the pull is
+# arithmetic and the data is the other half of the risk.
+add_executable(PartyRulesTest EXCLUDE_FROM_ALL tests/party_rules_test.cpp
+               src/Parties.cpp)
+target_include_directories(PartyRulesTest PRIVATE src tests
+    $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # The relay's framing. No network in it: the bytes are the whole risk, and a
 # peer id read the wrong way round misdelivers a turn rather than failing.

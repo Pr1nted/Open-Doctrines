@@ -88,6 +88,21 @@ struct StubWorld : ModGameAccess {
     uint32_t provinceMinorityCount(uint32_t) override { return 0; }
     std::string provinceMinorityName(uint32_t, uint32_t) override { return {}; }
     double provinceMinorityShare(uint32_t, uint32_t) override { return 0.0; }
+
+    // ABI 1.3: who governs. A stub world has no party rules on, so these
+    // answer exactly what the real host answers in that case -- 0, empty, and
+    // -1 for "nobody governs". Stated rather than defaulted in the interface,
+    // because every other accessor here is pure virtual for the same reason:
+    // a host that has not thought about a question should not silently be
+    // given an answer to it.
+    uint32_t countryPartyCount(uint32_t) override { return 0; }
+    std::string countryPartyName(uint32_t, uint32_t) override { return {}; }
+    std::string countryPartyShortName(uint32_t, uint32_t) override { return {}; }
+    double countryPartySupport(uint32_t, uint32_t) override { return 0.0; }
+    double countryPartyCompassEcon(uint32_t, uint32_t) override { return 0.0; }
+    double countryPartyCompassSocial(uint32_t, uint32_t) override { return 0.0; }
+    int32_t countryPartyIsHistorical(uint32_t, uint32_t) override { return 0; }
+    int32_t countryRulingParty(uint32_t) override { return -1; }
     double countryIncomeGross(uint32_t) override { return 0.0; }
     double countryIncomeNet(uint32_t) override { return 0.0; }
     double countryArmyUpkeep(uint32_t) override { return 0.0; }

@@ -2020,6 +2020,18 @@ bool Game::loadFromFiles() {
 }
 
 bool Game::loadFromODM(const std::string& odmPath) {
+    // The scenario's key for data keyed by scenario, taken from the archive
+    // name rather than anything inside it: an author who renames their map's
+    // title should not silently lose its party data, and a path is the one
+    // identifier every load path here has.
+    {
+        std::string stem = odmPath;
+        const size_t slash = stem.find_last_of("/\\");
+        if (slash != std::string::npos) stem = stem.substr(slash + 1);
+        const size_t dot = stem.find_last_of('.');
+        if (dot != std::string::npos) stem = stem.substr(0, dot);
+        m_scenarioKey = stem;
+    }
     // On the web the scenario archives are not in the preload -- they are the
     // bulk of it, and none of them is touched until a player has picked one, so
     // preloading all six meant waiting for five worlds nobody asked for before
@@ -2920,6 +2932,10 @@ bool Game::loadGameDataStep2() {
     initEthnicPolicyCategories();
     initCountryCompass();
     applyStartingPolicies();
+    // After initCountryCompass and applyStartingPolicies: a generated
+    // legislature is built FROM where the government already stands, so it has
+    // to be built after the compass has one.
+    loadParties();
     initResearchTrees();
 
     // Auto-unlock techs matching built industry/fort/port levels for all countries

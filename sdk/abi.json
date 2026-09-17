@@ -20,7 +20,8 @@
     "so a mod written against 1.0 resolves every import it declares and behaves",
     "exactly as it did. tests/mod_abi_test.cpp enforces that in both directions,",
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
-    "1.0 baseline so a future edit cannot quietly drop one."
+    "1.0 baseline so a future edit cannot quietly drop one.",
+    "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 has not shipped -- sdk/compat has baselines for 1.0, 1.1 and 1.2 and none for 1.3 -- so no minor is burned and a mod declaring \"gearbox\": \"1.3\" keeps meaning one thing."
   ],
   "gearbox": "1.3",
   "schema": 1,
@@ -5245,6 +5246,198 @@
         "type": "i32"
       },
       "doc": "Which actions the host will accept for this module right now, one byte per action: 1 legal, 0 not. Two-call sizing, like every other copy here. MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact about a decision in progress; outside one it returns 0 and writes nothing. Choosing an action whose byte is 0 is the same as deciding nothing -- the host keeps its own choice, because an illegal action is not a move it can make."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_count",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many parties sit in a country's legislature. 0 when the party rules are off, which is the default -- so a mod must treat 0 as 'this world has no party politics' rather than as an error."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_name",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The party's name. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full length either way; the copy is truncated to cap."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_short_name",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The party's abbreviation, for a list that has to fit -- \"SPD\", \"INC\". Same two-call sizing as country_party_name. May be empty."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_support",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(ii)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "That party's share of the country, 0..1. The shares of one country's parties are a partition and sum to 1, so they may be compared directly but must never be added across countries."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_compass_econ",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(ii)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Where the party stands on the economic axis, -100 (planned) to 100 (market) -- the same axis and scale as country_compass_econ, so the distance between a party and its government is meaningful."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_compass_social",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(ii)F",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "Where the party stands on the social axis, -100 (authoritarian) to 100 (libertarian). Same scale as country_compass_social."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_party_is_historical",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        },
+        {
+          "name": "index",
+          "type": "i32"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "1 when this party is a matter of record for the scenario's date -- it existed, under this name -- and 0 when the name was generated from its stance. A mod that displays party names should say which it is showing: \"Workers' Party\" is a description, \"SPD\" is a claim. See data/parties.json."
+    },
+    {
+      "module": "gearbox:politics.read",
+      "name": "country_ruling_party",
+      "capability": "Politics.Read",
+      "since": "1.3",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "id:country"
+        }
+      ],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "The index of the party that governs, or -1 if none does. That party pulls the government compass toward its own stance every turn it holds power, which is why the two are on the same scale."
     }
   ],
   "exports": [

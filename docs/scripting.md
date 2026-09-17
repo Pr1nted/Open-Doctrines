@@ -62,6 +62,15 @@ Included libraries must not carry the `#OD/MapEngine/` header.
 
 ## Variables & References
 
+> **Party properties answer emptily on a world without the party rules**, which
+> is every world by default: `ruling_party` is `""`, the numbers are 0 and
+> `party_count` is 0. That is a real answer a comparison handles, not an error
+> — a script must not read `""` as "no government" when it means "this world
+> has no party politics". And check `ruling_party_historical` before printing a
+> name as fact: on the alt-history maps every party is generated, and a script
+> announcing "the SPD has won" about a generated party makes exactly the claim
+> data/parties.json refuses to make.
+
 ### Country References
 ```
 country.ISO.treasury           → (float) country's gold reserve
@@ -76,6 +85,16 @@ country.ISO.troops.TYPE         → (int) only that kind — line, militia,
                                   assault, mech (the ids in TROOP_TYPES,
                                   never translated)
 country.ISO.income              → (float) gross income last turn
+country.ISO.ruling_party        → (string) name of the party in power, or ""
+country.ISO.ruling_party_short  → (string) its abbreviation, or ""
+country.ISO.ruling_party_econ   → (float) where it stands, -100..100
+country.ISO.ruling_party_social → (float) same, authoritarian..libertarian
+country.ISO.ruling_party_support→ (float) its share of the country, 0..100
+country.ISO.ruling_party_historical
+                                → (bool) whether that name is a matter of
+                                  record for this scenario's date, or was
+                                  generated from the party's stance
+country.ISO.party_count         → (int) how many parties sit in it
 country.ISO.expenses            → (float) what it spent last turn
 country.ISO.national_value      → (float) what the whole country is worth
 country.ISO.population          → (int) everyone living in it

@@ -1468,6 +1468,42 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
         if (prop == "iso") return ScriptValue::makeStr(c->isoA3);
         if (prop == "color") return ScriptValue::makeStr("color");
 
+        // ── who governs (ABI 1.3) ──
+        //
+        // A scenario script's whole job is asking what the world is, and
+        // "which party is in power" is the question the party rules exist to
+        // make askable. Read-only: a script may branch on a government, and
+        // installing one is an election's business, not a condition's.
+        //
+        // EMPTY WHEN THE RULES ARE OFF, which is the default. A script that
+        // tests ruling_party on a world without parties gets "" -- a real
+        // answer that a comparison handles -- rather than a fabricated party
+        // it would then branch on.
+        if (prop == "ruling_party" || prop == "ruling_party_short" ||
+            prop == "ruling_party_econ" || prop == "ruling_party_social" ||
+            prop == "ruling_party_support" || prop == "ruling_party_historical" ||
+            prop == "party_count") {
+            if (prop == "party_count")
+                return ScriptValue::makeFloat((float)m_game->modCountryPartyCount(cid));
+            const odparty::Party* rp = m_game->rulingParty(cid);
+            if (!rp) {
+                if (prop == "ruling_party" || prop == "ruling_party_short")
+                    return ScriptValue::makeStr("");
+                if (prop == "ruling_party_historical") return ScriptValue::makeBool(false);
+                return ScriptValue::makeFloat(0.0f);
+            }
+            if (prop == "ruling_party")       return ScriptValue::makeStr(rp->name);
+            if (prop == "ruling_party_short") return ScriptValue::makeStr(rp->shortName);
+            if (prop == "ruling_party_econ")  return ScriptValue::makeFloat(rp->stance.economic);
+            if (prop == "ruling_party_social") return ScriptValue::makeFloat(rp->stance.social);
+            if (prop == "ruling_party_support") return ScriptValue::makeFloat(rp->support);
+            // Whether the name is a matter of record. A script that prints it
+            // should know: on an alt-history map every party is generated, and
+            // a script that says "the SPD wins" about a generated party is
+            // making the same false claim the data file refuses to make.
+            return ScriptValue::makeBool(rp->historical);
+        }
+
         // country.ISO.at_war_with ISO
         if (prop == "at_war_with" && dots.size() >= 4) {
             std::string otherIso = dots[3];

@@ -1390,6 +1390,70 @@ uint32_t gearbox_stance_count(void);
 GEARBOX_IMPORT("neural.decide", "action_valid")
 uint32_t gearbox_action_valid(uint32_t module, char* buf, uint32_t cap);
 
+/* How many parties sit in a country's legislature. 0 when the party rules
+ * are off, which is the default -- so a mod must treat 0 as 'this world
+ * has no party politics' rather than as an error.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_count")
+uint32_t gearbox_country_party_count(uint32_t country);
+
+/* The party's name. Two-call sizing: call with cap 0 to learn the length,
+ * allocate, call again. Returns the full length either way; the copy is
+ * truncated to cap.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_name")
+uint32_t gearbox_country_party_name(uint32_t country, uint32_t index, char* buf, uint32_t cap);
+
+/* The party's abbreviation, for a list that has to fit -- "SPD", "INC".
+ * Same two-call sizing as country_party_name. May be empty.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_short_name")
+uint32_t gearbox_country_party_short_name(uint32_t country, uint32_t index, char* buf, uint32_t cap);
+
+/* That party's share of the country, 0..1. The shares of one country's
+ * parties are a partition and sum to 1, so they may be compared directly
+ * but must never be added across countries.
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_support")
+double gearbox_country_party_support(uint32_t country, uint32_t index);
+
+/* Where the party stands on the economic axis, -100 (planned) to 100
+ * (market) -- the same axis and scale as country_compass_econ, so the
+ * distance between a party and its government is meaningful.
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_compass_econ")
+double gearbox_country_party_compass_econ(uint32_t country, uint32_t index);
+
+/* Where the party stands on the social axis, -100 (authoritarian) to 100
+ * (libertarian). Same scale as country_compass_social.
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_compass_social")
+double gearbox_country_party_compass_social(uint32_t country, uint32_t index);
+
+/* 1 when this party is a matter of record for the scenario's date -- it
+ * existed, under this name -- and 0 when the name was generated from its
+ * stance. A mod that displays party names should say which it is showing:
+ * "Workers' Party" is a description, "SPD" is a claim. See
+ * data/parties.json.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("politics.read", "country_party_is_historical")
+uint32_t gearbox_country_party_is_historical(uint32_t country, uint32_t index);
+
+/* The index of the party that governs, or -1 if none does. That party
+ * pulls the government compass toward its own stance every turn it holds
+ * power, which is why the two are on the same scale.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("politics.read", "country_ruling_party")
+uint32_t gearbox_country_ruling_party(uint32_t country);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to

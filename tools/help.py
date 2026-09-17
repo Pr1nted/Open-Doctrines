@@ -141,7 +141,11 @@ GROUPS = [
     ]),
     ("Licensing and provenance", [
         "gen_notices.py", "audit_flag_licenses.py", "check_data_licences.py",
-        "check_flag_dates.py",
+        # Both of these compare shipped data against the record and report a
+        # backlog rather than failing on it: an unverifiable gap must not read
+        # as finished. check_flag_dates does it for flags, check_party_coverage
+        # for who governs.
+        "check_flag_dates.py", "check_party_coverage.py",
     ]),
     ("Flags, icons and symbols", [
         "download_flags.py", "download_flags_fast.py",

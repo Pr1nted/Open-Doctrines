@@ -4851,6 +4851,9 @@ void Game::updateAIDistricts(int countryId) {
 }
 
 void Game::updatePoliticalIdentities() {
+    // BEFORE the classify pass below, so a compass the ruling party moved this
+    // turn can restyle the country this turn rather than next.
+    applyPartyPull();
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
 

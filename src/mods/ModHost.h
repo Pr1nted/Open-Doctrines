@@ -237,6 +237,17 @@ struct ModGameAccess {
     virtual std::string provinceMinorityName(uint32_t pid, uint32_t index) = 0;
     virtual double   provinceMinorityShare(uint32_t pid, uint32_t index) = 0;
 
+    // ABI 1.3: who governs. All of these answer emptily when the party rules
+    // are off, which is the default -- see Game.h.
+    virtual uint32_t countryPartyCount(uint32_t cid) = 0;
+    virtual std::string countryPartyName(uint32_t cid, uint32_t index) = 0;
+    virtual std::string countryPartyShortName(uint32_t cid, uint32_t index) = 0;
+    virtual double   countryPartySupport(uint32_t cid, uint32_t index) = 0;
+    virtual double   countryPartyCompassEcon(uint32_t cid, uint32_t index) = 0;
+    virtual double   countryPartyCompassSocial(uint32_t cid, uint32_t index) = 0;
+    virtual int32_t  countryPartyIsHistorical(uint32_t cid, uint32_t index) = 0;
+    virtual int32_t  countryRulingParty(uint32_t cid) = 0;
+
     // ── Districts, and what a country publishes about itself (ABI 1.2) ───────
     //
     // A district is a slice of a country governed as a unit: it takes a share
