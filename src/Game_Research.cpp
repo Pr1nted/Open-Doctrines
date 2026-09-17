@@ -1075,6 +1075,12 @@ std::string Game::policyBlockReason(int countryId, const Policy& p) const {
     auto cs = computeCountryIncome(countryId);
     float available = cs.total - (cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts);
     available = std::max(0.0f, available);
+    // FULL PRICE, deliberately, even though policyUpkeep charges less while the
+    // doctrine is being built. The phased bill is relief during construction,
+    // not a licence to sign something you could never sustain -- a country let
+    // in on the first turn's discount would enact, ramp, and be repealed by its
+    // own austerity three turns later, which is the churn the commitment rules
+    // exist to stop.
     if (p.costPerTurn > 0 && available < p.costPerTurn)
         return TextFormat(T("Costs %d/turn and only %.0f is spare."), p.costPerTurn, available);
 

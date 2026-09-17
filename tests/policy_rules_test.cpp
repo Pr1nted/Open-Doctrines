@@ -223,6 +223,66 @@ struct PolicyRules {
         check(game.policyTenure(ap) == 1.0f, "a dropped doctrine earns none");
     }
 
+    // ── the other half: what a doctrine costs while it is being built ──
+    //
+    // The bill must never be able to exceed the sticker price, and it must
+    // never go DOWN as the work progresses -- a country that is charged less
+    // the closer it gets to finishing would be paid to stall.
+    void upkeep() {
+        const bool on = game.doctrineCommitment();
+        printf("\n-- the phased bill (flag %s) --\n", on ? "ON" : "off");
+
+        Policy* p = find("professional_army");
+        if (!p) { check(false, "the fixture's doctrine exists"); return; }
+        p->costPerTurn = 40;
+        p->implementationTurns = 4;
+        const float full = 40.0f;
+
+        ActivePolicy ap;
+        ap.countryId = cid;
+        ap.policyId = p->id;
+
+        ap.turnsRemaining = 0;                       // in force
+        check(game.policyUpkeep(ap, *p) == full, "in force, it costs its full price");
+        ap.turnsRemaining = -1;                      // repealed
+        check(game.policyUpkeep(ap, *p) == full, "a repealed doctrine is not discounted");
+        ap.turnsRemaining = -3;                      // propaganda still running
+        check(game.policyUpkeep(ap, *p) == full, "a running propaganda term is not either");
+
+        // Walk the build from signed to finished. turnsRemaining counts DOWN.
+        float prev = -1.0f;
+        bool monotone = true, bounded = true;
+        for (int left = p->implementationTurns; left >= 1; --left) {
+            ap.turnsRemaining = left;
+            const float bill = game.policyUpkeep(ap, *p);
+            if (bill < prev) monotone = false;
+            if (bill > full) bounded = false;
+            prev = bill;
+        }
+        check(monotone, "the bill never falls as the work goes on");
+        check(bounded, "and never rises above the price on the tin");
+
+        ap.turnsRemaining = p->implementationTurns;  // signed this turn, nothing built
+        const float first = game.policyUpkeep(ap, *p);
+        ap.turnsRemaining = 1;                       // one turn from being in force
+        const float last = game.policyUpkeep(ap, *p);
+        if (on) {
+            check(first == 0.0f, "the turn you sign it, it costs nothing yet");
+            check(last > first && last < full, "and the bill is nearly full by the end");
+            // A doctrine with no implementation period cannot be part-built.
+            p->implementationTurns = 0;
+            ap.turnsRemaining = 3;
+            check(game.policyUpkeep(ap, *p) == full,
+                  "a doctrine with no build period pays in full from the start");
+            p->implementationTurns = 4;
+        } else {
+            // Bit-identical, not merely close: policyCosts feeds the austerity
+            // rules and the decision hash pins what they do.
+            check(first == full && last == full,
+                  "with the flag off, a doctrine costs the same every turn of its life");
+        }
+    }
+
     // Tenure is only worth anything if it OUTLIVES A SAVE. A number that
     // resets every time the player loads is a mechanic that punishes closing
     // the game, so the round trip is part of the rule, not part of the I/O.
@@ -273,6 +333,7 @@ int main(int argc, char** argv) {
     }
     t.run();
     t.tenure();
+    t.upkeep();
     t.survivesASave();
 
     printf("%s\n", failures ? "FAILED" : "all ok");

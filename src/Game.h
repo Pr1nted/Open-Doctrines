@@ -3120,6 +3120,12 @@ public:
     // more. One function, because every effect site must scale by the same
     // number or the mechanic is half-on. See Game_Policies.cpp.
     float policyTenure(const ActivePolicy& ap) const;
+    // What a doctrine actually costs this turn: full price once it is in force,
+    // and the part of it already built while it is still being implemented.
+    // Every site that sums or refunds a doctrine's bill goes through this.
+    float policyUpkeep(const ActivePolicy& ap, const Policy& p) const;
+    /// Whether the commitment rules (tenure and the phased bill) are switched on.
+    bool doctrineCommitment() const;
 
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
     /**

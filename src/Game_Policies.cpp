@@ -493,10 +493,43 @@ constexpr float kTenureMax   = 1.5f;   // a long-held doctrine is worth half aga
 constexpr int   kTenureTurns = 30;     // turns in force to get there
 }
 
-float Game::policyTenure(const ActivePolicy& ap) const {
+// ── THE OTHER HALF OF THE COMMITMENT: THE BILL ARRIVES AS THE DOCTRINE DOES ──
+//
+// Enacting a doctrine used to cost full price from the turn you signed it,
+// for implementationTurns of nothing at all. That is a lump sum wearing an
+// upkeep's clothes, and a lump sum is a PROHIBITION to anyone living at zero
+// -- which is where AI treasuries live. It is the shape of the measured
+// problem: 201-250 offers, zero picks.
+//
+// So the bill phases in with the work. A doctrine part-built costs that part
+// of its upkeep, reaching full price exactly when it goes into force and the
+// effect arrives. It never costs MORE than it did before this existed; like
+// tenure, this only ever relieves.
+//
+// Charged from the STORED turnsRemaining, which is also what
+// computeCountryIncome projects from, so the bill a country is shown and the
+// bill it pays are the same number rather than two copies a turn apart.
+float Game::policyUpkeep(const ActivePolicy& ap, const Policy& p) const {
+    const float full = (float)p.costPerTurn;
+    if (!doctrineCommitment()) return full;
+    // In force, cancelled, or running out a propaganda duration: full price.
+    // Only the build-up is discounted.
+    if (ap.turnsRemaining <= 0 || p.implementationTurns <= 0) return full;
+    const int done = std::max(0, p.implementationTurns - ap.turnsRemaining);
+    return full * ((float)done / (float)p.implementationTurns);
+}
+
+// One flag for both halves, read once. They are one mechanic -- a doctrine that
+// grew into its strength but never into its price is not a commitment, it is a
+// discount -- and measuring half of what ships measures nothing.
+bool Game::doctrineCommitment() const {
     static const bool on = std::getenv("OD_DOCTRINE_TENURE") &&
                            atoi(std::getenv("OD_DOCTRINE_TENURE")) != 0;
-    if (!on) return 1.0f;
+    return on;
+}
+
+float Game::policyTenure(const ActivePolicy& ap) const {
+    if (!doctrineCommitment()) return 1.0f;
     if (ap.turnsRemaining != 0) return 1.0f;   // not in force: nothing to scale
     const float held = (float)std::min(ap.turnsHeld, kTenureTurns);
     return 1.0f + (kTenureMax - 1.0f) * (held / (float)kTenureTurns);
@@ -531,13 +564,18 @@ void Game::applyPolicyEffects(int countryId) {
         if (!p) continue;
  
         if (ap.turnsRemaining > 0) {
-            // Still implementing
+            // Still implementing.
+            //
+            // CHARGED BEFORE THE DECREMENT, so the bill matches the one
+            // computeCountryIncome projects from the same stored number. With a
+            // flat cost the order never mattered; with a phased one it is the
+            // difference between what a country is shown and what it pays.
+            totalCost += policyUpkeep(ap, *p);
             ap.turnsRemaining--;
             // Hitting 0 means it just went live — flag the Politics button so
             // the player notices without having to poll the panel every turn.
             if (ap.turnsRemaining == 0 && countryId == m_playerCountryId)
                 m_politicsAlert = true;
-            totalCost += p->costPerTurn;
             // Apply compass shift during implementation
             shiftCountryCompass(countryId, p->econShift / p->implementationTurns, p->socShift / p->implementationTurns);
         } else if (ap.turnsRemaining == 0) {
@@ -546,7 +584,7 @@ void Game::applyPolicyEffects(int countryId) {
             // a doctrine cannot earn tenure while implementing or after it is
             // dropped.
             ap.turnsHeld++;
-            totalCost += p->costPerTurn;
+            totalCost += policyUpkeep(ap, *p);
             // Continuous compass shift
             shiftCountryCompass(countryId, p->econShift / 50.0f, p->socShift / 50.0f);
             // Apply public opinion shift
@@ -568,7 +606,7 @@ void Game::applyPolicyEffects(int countryId) {
             }
         } else if (ap.turnsRemaining < -1) {
             // Finite-duration propaganda policy still active
-            totalCost += p->costPerTurn;
+            totalCost += policyUpkeep(ap, *p);
             shiftCountryCompass(countryId, p->econShift / 50.0f, p->socShift / 50.0f);
             // Apply public opinion shift
             if (p->effect.publicOpinionShift != 0.0f) {

@@ -909,7 +909,7 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
             for (const auto& policy : m_allPolicies) {
                 if (policy.id == ap.policyId) { p = &policy; break; }
             }
-            if (p) cs.policyCosts += p->costPerTurn;
+            if (p) cs.policyCosts += policyUpkeep(ap, *p);
         }
     }
     // Doctrines a district runs on its own, priced by how much of the country
@@ -1050,7 +1050,7 @@ void Game::refreshIncomeCache() {
                 auto& ap = m_activePolicies[apIdx];
                 if (ap.countryId != cid || ap.turnsRemaining < 0) continue;
                 for (const auto& policy : m_allPolicies)
-                    if (policy.id == ap.policyId) { cs.policyCosts += policy.costPerTurn; break; }
+                    if (policy.id == ap.policyId) { cs.policyCosts += policyUpkeep(ap, policy); break; }
             }
         }
         cs.policyCosts += districtPolicyCost(cid);

@@ -3073,14 +3073,19 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
     if (remaining > 0.0f) {
         auto apIt = m_countryActivePolicyIndices.find(countryId);
         if (apIt != m_countryActivePolicyIndices.end()) {
-            std::vector<std::pair<int, int>> costly;  // (costPerTurn, activeIndex)
+            // (this turn's bill, activeIndex). The BILL, not the sticker price:
+            // repealing a half-built doctrine frees only what it is costing
+            // today, and counting the full price here would have the country
+            // stop repealing while it was still overdrawn.
+            std::vector<std::pair<float, int>> costly;
             for (int idx : apIt->second) {
                 if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
                 const ActivePolicy& ap = m_activePolicies[idx];
                 if (ap.countryId != countryId || ap.turnsRemaining < 0) continue;
                 for (const auto& p : m_allPolicies)
                     if (p.id == ap.policyId) {
-                        if (p.costPerTurn > 0) costly.push_back({p.costPerTurn, idx});
+                        const float bill = policyUpkeep(ap, p);
+                        if (bill > 0.0f) costly.push_back({bill, idx});
                         break;
                     }
             }
@@ -3089,7 +3094,7 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
             for (const auto& [cost, idx] : costly) {
                 if (remaining <= 0.0f) break;
                 cancelPolicy(idx);
-                remaining -= (float)cost;
+                remaining -= cost;
                 repealed++;
             }
         }
