@@ -394,6 +394,135 @@ struct PolicyRules {
               "a country with no income holds no bank");
     }
 
+    // ── whose grievance a province carries ──
+    //
+    // The rule can only ever LOWER the number (a maximum of terms cannot
+    // exceed their sum, and every term here is non-negative), so that is the
+    // property to pin: not a value, but that it never goes up and that a
+    // trivial group can never be the one that sets it.
+    void grievance() {
+        const bool on = game.minorityWorstOn();
+        printf("\n-- ethnic unrest (worst-sets-it %s) --\n", on ? "ON" : "off");
+
+        // A province of this country, with a breakdown we control. The shares
+        // are a 100% partition of one population, which is the whole reason
+        // adding the groups up was wrong.
+        // Straight from the province table, not provincesOf: this fixture
+        // loads the map without the pass that builds the owner index, so that
+        // helper is empty here. ethnicUnrestOf takes the country separately
+        // anyway -- it asks what THIS government's minorities feel, not who
+        // holds the ground.
+        int pid = -1;
+        for (const auto& [q, pr] : game.m_provinces.getAllProvinces()) { (void)pr; pid = q; break; }
+        if (pid < 0) { check(false, "the fixture has a province"); return; }
+
+        auto& groups = game.m_provinceMinorities[pid];
+        groups.clear();
+        groups.push_back({"Alpha", 60.0f});
+        groups.push_back({"Beta",  25.0f});
+        groups.push_back({"Gamma",  2.0f});
+
+        // Expected terms from the game's OWN alignment numbers, so this tests
+        // the combination and not the alignment source.
+        float sum = 0.0f, worst = 0.0f;
+        for (const auto& mg : groups) {
+            const float coeff = (100.0f - game.getMinorityAlignment(cid, mg.name)) / 100.0f;
+            const float pct01 = mg.pct * 0.01f;
+            const float term = (coeff * pct01) * (coeff * pct01) * 5.0f;
+            sum += term;
+            if (term > worst) worst = term;
+        }
+        const float got = game.ethnicUnrestOf(pid, cid);
+        check(got <= sum + 1e-6f, "a province never carries more than the sum of its groups");
+        if (on) {
+            check(std::fabs(got - worst) < 1e-6f, "the worst-treated group sets it");
+            check(worst <= sum + 1e-6f, "...which cannot be more than the sum");
+        } else {
+            // Bit-identical: rebellion chance is rolled against simRand, so a
+            // changed bit here is a different world.
+            check(got == sum, "with the rule off it is exactly the sum, as before");
+        }
+
+        // A trivial group cannot be the province's grievance. Share is
+        // SQUARED, so 2% at total disaffection stays below 60% at almost none
+        // -- which is why "large" needs no threshold of its own.
+        groups.clear();
+        groups.push_back({"Gamma", 2.0f});
+        const float tiny = game.ethnicUnrestOf(pid, cid);
+        groups.clear();
+        groups.push_back({"Alpha", 60.0f});
+        const float big = game.ethnicUnrestOf(pid, cid);
+        check(tiny < big, "a 2% group carries less than a 60% one");
+
+        // No breakdown at all is no grievance, not a default.
+        game.m_provinceMinorities.erase(pid);
+        check(game.ethnicUnrestOf(pid, cid) == 0.0f,
+              "a province with no minorities carries none");
+    }
+
+    // ── what feeding your people buys ──
+    //
+    // A bonus, never a penalty, so the property to pin is that the ceiling
+    // never ends up BELOW the one a country had before this rule existed --
+    // including for a country that is starving, whose consequence stays in
+    // unrest where a player can see it.
+    void wellFed() {
+        const bool on = game.wellFedRoomOn();
+        printf("\n-- political room from living standards (rule %s) --\n", on ? "ON" : "off");
+
+        CountryIncomeSnapshot inc;
+        inc.total = 200.0f;
+        const float share = 200.0f * Game::kPoliticsShare;
+
+        game.m_goodsEconomy = false;
+        game.m_countryProduction[cid].livingStandards = 1.0f;
+        // WITHOUT THE GOODS ECONOMY THERE IS NO SUCH THING AS LIVING
+        // STANDARDS, and that is true in every world by default -- so this
+        // must be exactly zero however well fed the number claims the country
+        // is, and whatever the rule's own flag says.
+        check(game.wellFedRoom(inc, cid) == 0.0f,
+              "no goods economy means no room, whatever the rule says");
+
+        game.m_goodsEconomy = true;
+        const float atFed = game.wellFedRoom(inc, cid);
+        game.m_countryProduction[cid].livingStandards = 0.0f;
+        const float starving = game.wellFedRoom(inc, cid);
+        check(starving == 0.0f, "a starving country earns none");
+        check(starving >= 0.0f, "and is never charged for it either");
+
+        if (on) {
+            check(atFed > 0.0f, "a fed country earns room");
+            // Fed is the TOP of the scale, not a point on the way up:
+            // livingStandards is ate/wantC and a country cannot eat more than
+            // it wants, so a rule that asked for more than 1.0 would never
+            // fire. It did, and was inert in every world until this moved.
+            game.m_countryProduction[cid].livingStandards = 2.0f;
+            check(game.wellFedRoom(inc, cid) == atFed,
+                  "and a number above fed earns no more -- fed is the top");
+            // Monotone, and bounded by a quarter of the share so a consumer
+            // economy cannot buy unlimited government.
+            game.m_countryProduction[cid].livingStandards = 0.5f;
+            const float half = game.wellFedRoom(inc, cid);
+            check(half > 0.0f && half < atFed, "half fed earns part of it");
+            check(atFed <= share * 0.25f + 1e-6f, "the bonus is capped");
+        } else {
+            check(atFed == 0.0f, "with the rule off a fed country earns none");
+        }
+
+        // The ceiling itself can never come out below the bare share, which is
+        // what every caller had before either of these rules existed.
+        game.m_politicalCapital.clear();
+        for (float ls : {0.0f, 0.5f, 1.0f, 2.0f}) {
+            game.m_countryProduction[cid].livingStandards = ls;
+            if (game.politicsCeiling(inc, cid) < share) {
+                check(false, "the ceiling never falls below the plain share");
+                break;
+            }
+        }
+        check(true, "the ceiling never falls below the plain share");
+        game.m_goodsEconomy = false;
+    }
+
     // Tenure is only worth anything if it OUTLIVES A SAVE. A number that
     // resets every time the player loads is a mechanic that punishes closing
     // the game, so the round trip is part of the rule, not part of the I/O.
@@ -446,6 +575,8 @@ int main(int argc, char** argv) {
     t.tenure();
     t.upkeep();
     t.capital();
+    t.grievance();
+    t.wellFed();
     t.survivesASave();
 
     printf("%s\n", failures ? "FAILED" : "all ok");

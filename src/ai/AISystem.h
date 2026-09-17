@@ -167,6 +167,10 @@ public:
      * offers are rare because the gate binds or because the world is quiet.
      */
     static long long s_enactGate[4];
+    /** Which posture was chosen, how often, and how often it CHANGED. */
+    static long long s_stanceChosen[4];
+    static long long s_stanceSwitch;
+    static long long s_stancePick;
     static long long s_portCapSeen[4];
     static long long s_fleetUseful[2];
     /// Journal 337: is OD_WAR_BAR_RESEARCH live? 0 evaluations, 1 pass under

@@ -2553,10 +2553,15 @@ public:
     /**
      * Consumer supply over consumer demand, 0..1+. 1 means fed.
      *
-     * Read by getProvinceRebellionChance and by population growth, and by
-     * nothing else. See the note there: two visible consequences, and no third
-     * hidden multiplier, because an economy with one of those stops being
-     * explainable to the person playing it.
+     * Read by getProvinceRebellionChance and by population growth, and -- only
+     * when OD_WELLFED_ROOM is set -- by wellFedRoom. See the note there: two
+     * visible consequences, and no third hidden multiplier, because an economy
+     * with one of those stops being explainable to the person playing it.
+     *
+     * wellFedRoom is why that list grew by one, and it is a BONUS rather than
+     * a multiplier: above fed it buys political room, below fed it does
+     * nothing at all, so no consequence of hunger is hidden in it. It is also
+     * off by default and inert without m_goodsEconomy.
      */
     float livingStandards(int countryId) const;
     /** Assign a province's factories to a good. -1 clears. Rules, not UI. */
@@ -3137,12 +3142,27 @@ public:
     static float politicsCommitted(const CountryIncomeSnapshot& inc);
     /// The ceiling on that, this turn, including anything banked.
     float politicsCeiling(const CountryIncomeSnapshot& inc, int countryId) const;
+    /// Extra political room a country earns by feeding its people. Never negative.
+    float wellFedRoom(const CountryIncomeSnapshot& inc, int countryId) const;
+    /// Whether living standards buy political room at all.
+    bool wellFedRoomOn() const;
     /// Unspent political room this country has banked. 0 unless the rule is on.
     float politicalCapital(int countryId) const;
     /// One turn's arithmetic on the bank. Pure, so it can be tested directly.
     static float bankAfterTurn(float bank, float share, float committed);
     /// Bank what politics did not use, or draw on the bank. Once per turn.
     void updatePoliticalCapital(int countryId);
+    /**
+     * The ethnic unrest a province carries, from its minority breakdown.
+     *
+     * One function, because this is the only place a province's groups are
+     * combined and the question of HOW they combine is the mechanic. See the
+     * definition for what the sum was measured to be worth.
+     */
+    float ethnicUnrestOf(int provinceId, int countryId) const;
+    /// Whether the worst-treated group sets ethnic unrest, rather than the sum.
+    bool minorityWorstOn() const;
+
     /// Remove the save a map load created, if this run never played it.
     void dropAutoCreatedSave();
     /// Whether political capital accumulates at all.

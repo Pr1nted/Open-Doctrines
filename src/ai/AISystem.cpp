@@ -3391,6 +3391,14 @@ void AISystem::takeTurn(int cid) {
                                                           : m_stanceHead,
                                       emb, anyStance, sScore,
                                       /*graveAction=*/-1, nullptr, &sLogProb);
+            // [STANCE] -- does this decision ever get made? A switching cost
+            // on a head that never switches would be friction on nothing, and
+            // saturated-heads-return-one-number says a rule built on a head
+            // that returns one number vanishes. Counted at the point of
+            // CHOICE, not per turn held, so the denominator is decisions.
+            if (stIt != m_stance.end() && stIt->second.first != sc) ++s_stanceSwitch;
+            ++s_stancePick;
+            if (sc >= 0 && sc < STANCE_COUNT) ++s_stanceChosen[sc];
             m_stance[cid] = {sc, m_turn};
             exp.action[MOD_COUNT + 1] = sc;
             exp.acted[MOD_COUNT + 1]  = true;
@@ -13731,6 +13739,9 @@ std::string AISystem::countrySummary(int cid) const {
 int AISystem::s_actHist[AISystem::MOD_COUNT][AISystem::MAX_MODULE_ACTIONS] = {};
 long long AISystem::s_portFail[3] = {0,0,0};
 long long AISystem::s_enactGate[4] = {0,0,0,0};
+long long AISystem::s_stanceChosen[4] = {0,0,0,0};
+long long AISystem::s_stanceSwitch = 0;
+long long AISystem::s_stancePick = 0;
 long long AISystem::s_portCapSeen[4] = {0,0,0,0};
 long long AISystem::s_fleetUseful[2] = {0,0};
 long long AISystem::s_warBar[8] = {};
@@ -14007,6 +14018,16 @@ void AISystem::dumpActionHistogram() {
                     s_expense[7] > 0 ? 100.0 * s_expense[i] / s_expense[7] : 0.0);
     }
     {
+        extern double g_ethSum; extern double g_ethWorst;
+        extern long long g_ethGroups; extern long long g_ethMulti; extern long long g_ethN;
+        if (g_ethN > 0)
+            fprintf(stderr, "[ETHUNREST] sum %.3f  worst-alone %.3f  (%.1f%% of the sum)"
+                    "  groups/province %.2f  more-than-one %lld (%.1f%%)"
+                    "  over %lld province-turns\n",
+                    g_ethSum / (double)g_ethN, g_ethWorst / (double)g_ethN,
+                    g_ethSum > 0 ? 100.0 * g_ethWorst / g_ethSum : 0.0,
+                    (double)g_ethGroups / (double)g_ethN,
+                    g_ethMulti, 100.0 * g_ethMulti / (double)g_ethN, g_ethN);
         extern double g_pacApplied; extern double g_pacNeeded; extern long long g_pacN;
         if (g_pacN > 0)
             fprintf(stderr, "[ACTHIST] pacification: applied %.1f  needed %.1f  WASTED %.1f%%"
@@ -14030,6 +14051,11 @@ void AISystem::dumpActionHistogram() {
                     s_enactGate[2], 100.0 * s_enactGate[2] / tot,
                     s_enactGate[3], 100.0 * s_enactGate[3] / tot);
     }
+    if (s_stancePick > 0)
+        fprintf(stderr, "[STANCE] picks %lld  switched %lld (%.1f%%)  "
+                "expand %lld  consolidate %lld  defend %lld  develop %lld\n",
+                s_stancePick, s_stanceSwitch, 100.0 * s_stanceSwitch / s_stancePick,
+                s_stanceChosen[0], s_stanceChosen[1], s_stanceChosen[2], s_stanceChosen[3]);
     fprintf(stderr, "[ACTHIST] austerity branches: research-first %lld  pacification %lld  "
             "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",
             s_austBranch[0], s_austBranch[1], s_austBranch[2],

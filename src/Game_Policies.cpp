@@ -564,10 +564,64 @@ float Game::politicalCapital(int countryId) const {
     return it == m_politicalCapital.end() ? 0.0f : it->second;
 }
 
+// ── A FED COUNTRY GOVERNS MORE AMBITIOUSLY ──
+//
+// The idea as I first put it was "living standards decide WHICH doctrines are
+// enactable -- a hungry country cannot pass the market reform". Three things
+// measured here say build it the other way round, and all three are in the
+// tree rather than a matter of taste:
+//
+//  1. [ENACTGATE] nothing-eligible 0 (0.0%). Legality and affordability never
+//     refuse a doctrine. An eligibility condition would have nothing to bite
+//     on except refusals it creates itself, and conditions-are-expensive says
+//     remove a condition rather than narrow one.
+//  2. The action is picked 0 times out of 59 offers. Tightening a decision
+//     nobody takes makes a dead action deader.
+//  3. Game.h's own note on livingStandards limits it to two consumers on
+//     purpose -- "no third HIDDEN multiplier, because an economy with one of
+//     those stops being explainable to the person playing it".
+//
+// So this is a bonus and never a penalty: at or above fed (>= 1.0) a country
+// gets extra political room, and below it the ceiling is exactly what it was.
+// Hunger already has its consequence, in unrest, priced where the player can
+// see it. Being well fed now buys something too, and a bonus is the half of
+// the coupling that (3) can live with -- it is not a tax hidden in a
+// multiplier, it is room a country can see it has earned.
+//
+// Zero in every world that has not opted into the goods economy, which is all
+// of them by default: livingStandards is meaningless without m_goodsEconomy,
+// and this asks first.
+float Game::wellFedRoom(const CountryIncomeSnapshot& inc, int countryId) const {
+    if (!wellFedRoomOn() || !m_goodsEconomy) return 0.0f;
+    const float fed = livingStandards(countryId);
+    // FULL AT FED, not above it. The first version of this asked for fed > 1
+    // and was inert in every world -- livingStandards is `ate / wantC` and a
+    // country cannot eat more than it wants, so the number is a satisfaction
+    // ratio bounded at 1 by construction. Measured over a 40-turn goods world
+    // before the threshold moved: 30 samples, median 0.836, p90 1.000, max
+    // 1.000, and NOTHING above 1.0. A bonus gated above fed is a bonus nobody
+    // can ever earn.
+    //
+    // So it scales with how well fed the country is: all of it at 1.0, none at
+    // 0, proportional between. Still only ever additive -- a hungry country's
+    // ceiling is exactly what it was, and hunger keeps its one visible
+    // consequence in unrest rather than gaining a second in politics.
+    return std::max(0.0f, inc.total * kPoliticsShare) * 0.25f
+         * std::clamp(fed, 0.0f, 1.0f);
+}
+
+bool Game::wellFedRoomOn() const {
+    static const bool on = std::getenv("OD_WELLFED_ROOM") &&
+                           atoi(std::getenv("OD_WELLFED_ROOM")) != 0;
+    return on;
+}
+
 float Game::politicsCeiling(const CountryIncomeSnapshot& inc, int countryId) const {
-    // Adding exactly 0.0f when the rule is off, which is why the ceiling is
-    // bit-identical to the bare share it replaced.
-    return std::max(0.0f, inc.total * kPoliticsShare) + politicalCapital(countryId);
+    // Both additions are exactly 0.0f when their rules are off, which is why
+    // the ceiling stays bit-identical to the bare share it replaced.
+    return std::max(0.0f, inc.total * kPoliticsShare)
+         + politicalCapital(countryId)
+         + wellFedRoom(inc, countryId);
 }
 
 // Pure, and separate from the turn, because a country on a freshly loaded map
@@ -1044,9 +1098,75 @@ float Game::getCountryUnrest(int countryId) const {
     return std::min(100.0f, std::max(0.0f, unrest));
 }
 
+// [ETHUNREST] probe: what the sum across a province's minorities adds over the
+// worst-treated one alone. Read once, to decide whether that sum is a mechanic
+// or an accident. See getProvinceRebellionChance.
+double g_ethSum = 0.0, g_ethWorst = 0.0;
+long long g_ethGroups = 0, g_ethMulti = 0, g_ethN = 0;
+
 double g_pacApplied = 0.0;   ///< suppression points actually applied
 double g_pacNeeded  = 0.0;   ///< of those, how many cancelled real unrest
 long long g_pacN    = 0;
+
+// ── WHOSE GRIEVANCE IS IT ──
+//
+// A province's ethnic unrest was the SUM of a term per minority group, and
+// minorities-partition-provinces says share-weight, never sum: the groups are
+// a 100% breakdown of one population, not separate populations to add up. So
+// a province with three mildly disaffected groups came out as unstable as one
+// with a single badly treated group of the same size, and unrest was a
+// function of how many names the census listed.
+//
+// WHAT THE SUM WAS WORTH, measured over 190,120 province-turns of a 40-turn
+// 1914 world before changing it:
+//
+//   [ETHUNREST] sum 0.518  worst-alone 0.448 (86.4% of the sum)
+//               groups/province 2.65  more-than-one 108203 (56.9%)
+//
+// Two thirds of provinces list more than one group, and the worst-treated one
+// already accounts for 86.4% of what the sum produces. So the sum is not
+// carrying a mechanic; it is adding a seventh of the number for having a
+// longer census.
+//
+// Under the rule, the worst-treated group SETS it. "Large" needs no threshold
+// of its own: the term is share SQUARED, so a 2% group at zero alignment
+// contributes 1/900th of what a 60% one does and can never be the worst. That
+// is the whole of idea (3) that was actually missing -- a per-minority
+// disposition the government's acts move already exists, in
+// m_minorityAlignmentDrift.
+float Game::ethnicUnrestOf(int provinceId, int countryId) const {
+    auto mit = m_provinceMinorities.find(provinceId);
+    if (mit == m_provinceMinorities.end()) return 0.0f;
+
+    float sum = 0.0f, worst = 0.0f;
+    int contributing = 0;
+    for (const auto& mg : mit->second) {
+        const float align = getMinorityAlignment(countryId, mg.name);
+        const float coeff = (100.0f - align) / 100.0f;
+        const float pct01 = mg.pct * 0.01f;
+        const float term = (coeff * pct01) * (coeff * pct01) * 5.0f;
+        sum += term;
+        if (term > worst) worst = term;
+        if (term > 0.001f) ++contributing;
+    }
+    g_ethSum += sum;
+    g_ethWorst += worst;
+    g_ethGroups += contributing;
+    if (contributing > 1) ++g_ethMulti;
+    ++g_ethN;
+
+    // Returning `sum` when the rule is off, which is the same float the
+    // accumulate-in-place loop produced: same terms, same order, same
+    // additions. Rebellion chance is rolled against simRand, so a changed
+    // bit here is a different world.
+    return minorityWorstOn() ? worst : sum;
+}
+
+bool Game::minorityWorstOn() const {
+    static const bool on = std::getenv("OD_MINORITY_WORST") &&
+                           atoi(std::getenv("OD_MINORITY_WORST")) != 0;
+    return on;
+}
 
 float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     // A province that has just risen cannot rise again yet. Gated here rather
@@ -1084,15 +1204,7 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
         float dist = sqrtf(dx*dx + dy*dy);
         if (dist > 80) polUnrest = std::min(15.0f, (dist - 80) * 0.1f);
     }
-    auto mit = m_provinceMinorities.find(provinceId);
-    if (mit != m_provinceMinorities.end()) {
-        for (auto& mg : mit->second) {
-            float align = getMinorityAlignment(countryId, mg.name);
-            float coeff = (100.0f - align) / 100.0f;
-            float pct01 = mg.pct * 0.01f;
-            ethUnrest += (coeff * pct01) * (coeff * pct01) * 5.0f;
-        }
-    }
+    ethUnrest = ethnicUnrestOf(provinceId, countryId);
     // Claims on this province increase unrest (foreign claims agitate population)
     // Claimant resolved via the ISO index — this function runs for every owned
     // province of every country each turn plus per-frame in three UI panels,

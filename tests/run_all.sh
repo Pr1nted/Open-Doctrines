@@ -142,6 +142,10 @@ OD_DOCTRINE_TENURE=1 run "doctrine tenure"  "$bin/PolicyRulesTest" "$root/data/"
 # And once for political capital, for the same reason: the rule caches its
 # flag per process, and the arm that is never run is the arm nobody knows works.
 OD_POLITICAL_CAPITAL=1 run "political capital"  "$bin/PolicyRulesTest" "$root/data/"
+# Each new politics rule caches its flag in a function-local static, so one
+# process only ever sees one state and every ON contract needs its own run.
+OD_MINORITY_WORST=1 run "minority grievance"  "$bin/PolicyRulesTest" "$root/data/"
+OD_WELLFED_ROOM=1 run "living standards"  "$bin/PolicyRulesTest" "$root/data/"
 # Where a factory may stand: the capacity rule's shape, its pinned constants,
 # and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
 run "industry capacity" "$bin/IndustryCapacityTest"
