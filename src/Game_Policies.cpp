@@ -467,6 +467,41 @@ void Game::cancelPolicy(int activePolicyIndex) {
     }
 }
  
+// A DOCTRINE IS A COMMITMENT, NOT A SWITCH.
+//
+// Before this, an active doctrine could be dropped for nothing: you paid
+// costPerTurn while it ran and lost only that. So there was never a reason to
+// KEEP one rather than swap to whichever looked best this turn, and "enact"
+// was a move with no tail. The game is named after these.
+//
+// Tenure is what holding buys. A doctrine in force grows toward
+// kTenureMax over kTenureTurns, and cancelling loses all of it -- re-enacting
+// starts a fresh ActivePolicy at turnsHeld 0, so unwinding refunds nothing.
+//
+// IT ONLY EVER ADDS. The scale starts at 1.0, so a freshly live doctrine is
+// exactly as strong as it was before this existed. Weakening a system nobody
+// uses would be the wrong way to make it worth using -- the measured problem
+// (journal 398) is that "enact doctrine" is picked zero times out of 201-250
+// offers, not that doctrines are too strong.
+//
+// OFF BY DEFAULT, like goods and the doctrine reflex. It moves every number
+// getTotalEffect returns, which the decision hash pins (journal 373), so it
+// changes AI play and every bench baseline -- and the two constants below were
+// chosen, not swept. The flag is how this gets measured before it ships.
+namespace {
+constexpr float kTenureMax   = 1.5f;   // a long-held doctrine is worth half again
+constexpr int   kTenureTurns = 30;     // turns in force to get there
+}
+
+float Game::policyTenure(const ActivePolicy& ap) const {
+    static const bool on = std::getenv("OD_DOCTRINE_TENURE") &&
+                           atoi(std::getenv("OD_DOCTRINE_TENURE")) != 0;
+    if (!on) return 1.0f;
+    if (ap.turnsRemaining != 0) return 1.0f;   // not in force: nothing to scale
+    const float held = (float)std::min(ap.turnsHeld, kTenureTurns);
+    return 1.0f + (kTenureMax - 1.0f) * (held / (float)kTenureTurns);
+}
+
 void Game::shiftCountryCompass(int countryId, float econDelta, float socDelta) {
     auto it = m_countryCompass.find(countryId);
     if (it != m_countryCompass.end()) {
@@ -507,6 +542,10 @@ void Game::applyPolicyEffects(int countryId) {
             shiftCountryCompass(countryId, p->econShift / p->implementationTurns, p->socShift / p->implementationTurns);
         } else if (ap.turnsRemaining == 0) {
             // Active policy - check if finite duration
+            // Counted here, where a turn of being in force actually happens, so
+            // a doctrine cannot earn tenure while implementing or after it is
+            // dropped.
+            ap.turnsHeld++;
             totalCost += p->costPerTurn;
             // Continuous compass shift
             shiftCountryCompass(countryId, p->econShift / 50.0f, p->socShift / 50.0f);

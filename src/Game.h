@@ -3116,6 +3116,11 @@ public:
     void enactPolicy(int countryId, const std::string& policyId, int targetProvince = -1, const std::string& targetMinority = "");
     void cancelPolicy(int activePolicyIndex);
     void applyPolicyEffects(int countryId);
+    // How much of a doctrine's advertised effect is actually in force, 1.0 or
+    // more. One function, because every effect site must scale by the same
+    // number or the mechanic is half-on. See Game_Policies.cpp.
+    float policyTenure(const ActivePolicy& ap) const;
+
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
     /**
      * Rename and restyle countries whose government has moved far enough.

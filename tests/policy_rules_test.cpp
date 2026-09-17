@@ -28,6 +28,8 @@
 // It runs against the SERVER build (no GL), which is what lets a test load a
 // real map with no window.
 
+#include <cmath>
+#include <cstdlib>
 #include "../src/Game.h"
 
 #include <algorithm>
@@ -167,6 +169,97 @@ struct PolicyRules {
               "a start position holding both halves keeps only one");
         check(holds(A) || holds(B), "...and does keep one of them");
     }
+
+    // ── tenure: a doctrine is a commitment, not a switch ──
+    //
+    // The flag decides which contract holds, and the test asserts the one that
+    // matches its environment rather than picking a side -- run_all.sh runs this
+    // binary twice so BOTH are covered. Reading the flag from the environment is
+    // also the only way to test it: policyTenure caches it in a function-local
+    // static on first use, exactly as the doctrine reflex does.
+    void tenure() {
+        const bool on = std::getenv("OD_DOCTRINE_TENURE") &&
+                        atoi(std::getenv("OD_DOCTRINE_TENURE")) != 0;
+        printf("\n-- tenure (flag %s) --\n", on ? "ON" : "off");
+
+        ActivePolicy ap;
+        ap.countryId = 1;
+        ap.policyId = "professional_army";
+        ap.turnsRemaining = 0;          // in force
+
+        ap.turnsHeld = 0;
+        const float fresh = game.policyTenure(ap);
+        check(fresh == 1.0f,
+              "a freshly live doctrine is worth exactly what it always was");
+
+        ap.turnsHeld = 30;
+        const float matured = game.policyTenure(ap);
+        if (on) {
+            check(matured > fresh, "holding it makes it stronger");
+            check(std::fabs(matured - 1.5f) < 1e-6f, "and tops out at half again");
+            ap.turnsHeld = 3000;
+            check(std::fabs(game.policyTenure(ap) - 1.5f) < 1e-6f,
+                  "the cap holds however long it is kept");
+            // The half-way point, so the curve is a ramp and not a step.
+            ap.turnsHeld = 15;
+            const float half = game.policyTenure(ap);
+            check(half > 1.0f && half < 1.5f, "it ramps rather than stepping");
+        } else {
+            // THE PROPERTY THAT MATTERS WITH THE FLAG OFF: not "about the same"
+            // but bit-identical, because getTotalEffect multiplies by this and
+            // the decision hash pins that float (journal 373).
+            check(matured == 1.0f, "with the flag off, tenure changes nothing at all");
+            ap.turnsHeld = 3000;
+            check(game.policyTenure(ap) == 1.0f, "...however long it is held");
+        }
+
+        // Tenure is only what being IN FORCE buys. A doctrine still being
+        // enacted, or one already dropped, scales nothing -- otherwise
+        // cancelling would keep paying out.
+        ap.turnsHeld = 30;
+        ap.turnsRemaining = 2;
+        check(game.policyTenure(ap) == 1.0f, "a doctrine still implementing earns none");
+        ap.turnsRemaining = -1;
+        check(game.policyTenure(ap) == 1.0f, "a dropped doctrine earns none");
+    }
+
+    // Tenure is only worth anything if it OUTLIVES A SAVE. A number that
+    // resets every time the player loads is a mechanic that punishes closing
+    // the game, so the round trip is part of the rule, not part of the I/O.
+    //
+    // Run last: loadStateJsonBody replaces the world.
+    void survivesASave() {
+        printf("\n-- tenure across a save --\n");
+        reset();
+        makeAlwaysAffordable("professional_army");   // the gate under test is the save, not the budget
+        game.enactPolicy(cid, "professional_army");
+        if (game.m_activePolicies.empty()) { check(false, "the fixture enacted one"); return; }
+        game.m_activePolicies[0].turnsRemaining = 0;
+        game.m_activePolicies[0].turnsHeld = 17;
+
+        const std::string saved = game.saveStateJson();
+        game.loadStateJsonBody(saved);
+
+        const ActivePolicy* back = nullptr;
+        for (const auto& ap : game.m_activePolicies)
+            if (ap.countryId == cid && ap.policyId == "professional_army") back = &ap;
+        check(back != nullptr, "the doctrine comes back");
+        if (back) check(back->turnsHeld == 17, "and remembers how long it has been held");
+
+        // A campaign saved before tenure existed has no such field. It must
+        // read as new-to-the-rule rather than as garbage -- never as a number
+        // inherited from whatever ActivePolicy happened to be there.
+        std::string older = saved;
+        for (size_t at = older.find("\"turnsHeld\":"); at != std::string::npos;
+             at = older.find("\"turnsHeld\":", at))
+            older.replace(at, 12, "\"turnsOld_\":");
+        game.loadStateJsonBody(older);
+        const ActivePolicy* old = nullptr;
+        for (const auto& ap : game.m_activePolicies)
+            if (ap.countryId == cid && ap.policyId == "professional_army") old = &ap;
+        check(old && old->turnsHeld == 0,
+              "a save written before the rule existed starts at zero");
+    }
 };
 
 int main(int argc, char** argv) {
@@ -179,6 +272,8 @@ int main(int argc, char** argv) {
         return 2;
     }
     t.run();
+    t.tenure();
+    t.survivesASave();
 
     printf("%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;

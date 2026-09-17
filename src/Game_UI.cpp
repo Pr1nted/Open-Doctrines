@@ -1636,6 +1636,7 @@ std::string Game::saveStateJson() {
         entry["policyId"] = ap.policyId;
         entry["countryId"] = ap.countryId;
         entry["turnsRemaining"] = ap.turnsRemaining;
+        entry["turnsHeld"] = ap.turnsHeld;
         entry["targetProvince"] = ap.targetProvince;
         entry["targetMinority"] = ap.targetMinority;
         j["activePolicies"].push_back(entry);
@@ -2180,6 +2181,11 @@ void Game::loadStateJsonBody(const std::string& json) {
             ap.policyId = entry["policyId"].get<std::string>();
             ap.countryId = entry["countryId"];
             ap.turnsRemaining = entry.value("turnsRemaining", 0);
+            // Absent in a save written before tenure existed, and 0 is the
+            // right reading of that: an old campaign's doctrines start earning
+            // tenure from the load rather than being credited for a past the
+            // save never recorded.
+            ap.turnsHeld = entry.value("turnsHeld", 0);
             ap.targetProvince = entry.value("targetProvince", -1);
             ap.targetMinority = entry.value("targetMinority", "");
             if (!seen.emplace(ap.countryId, ap.policyId, ap.targetProvince,

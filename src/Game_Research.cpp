@@ -1010,7 +1010,10 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
         for (const auto& q : m_allPolicies) {
             if (q.id != ap.policyId) continue;
             auto lv = q.levers.find(effectField);
-            if (lv != q.levers.end()) total += lv->second;
+            // Scaled by how long it has been held: see Game::policyTenure for
+            // why that is the whole mechanic, and why it is 1.0 with the flag
+            // off so this line is bit-identical to before.
+            if (lv != q.levers.end()) total += lv->second * policyTenure(ap);
             break;
         }
     }

@@ -847,6 +847,14 @@ struct ActivePolicy {
     std::string policyId;
     int countryId = 0;
     int turnsRemaining = 0;  // >0 = implementing, 0 = active, -1 = completed/removed
+    // Turns this doctrine has been IN FORCE, counted only while active.
+    //
+    // A doctrine is meant to be a commitment, and until this existed it was a
+    // switch: an active one could be dropped for nothing, so there was never a
+    // reason to keep one rather than chase whichever was best this turn. Tenure
+    // is what holding buys, and cancelling loses it -- a re-enacted doctrine
+    // starts a fresh ActivePolicy at zero. See Game::policyTenure.
+    int turnsHeld = 0;
     int targetProvince = -1; // -1 = nationwide
     std::string targetMinority;
 };

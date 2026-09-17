@@ -135,6 +135,10 @@ run "png writer"       "$bin/PngWriteTest" "$build/pngtest"
 # allowed to say, and it is the check a modified client goes at first.
 run "order validation" "$bin/OrderValidationTest" "$root/data/"
 run "doctrine rules"   "$bin/PolicyRulesTest" "$root/data/"
+# Twice: the tenure rule ships OFF, and a flag that is never exercised is a
+# flag nobody knows works. The second run is the only place the ON contract is
+# checked, because policyTenure caches the flag per process.
+OD_DOCTRINE_TENURE=1 run "doctrine tenure"  "$bin/PolicyRulesTest" "$root/data/"
 # Where a factory may stand: the capacity rule's shape, its pinned constants,
 # and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
 run "industry capacity" "$bin/IndustryCapacityTest"
