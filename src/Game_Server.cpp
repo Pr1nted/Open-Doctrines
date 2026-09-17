@@ -490,6 +490,25 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     }
     hideLoadingScreen();
     m_currentScreen = SCREEN_PLAYING;
+
+    // ── A WORLD NOBODY IS GOING TO PLAY ──
+    //
+    // Loading a map auto-creates the save it will be played in, and that has
+    // already happened by here. --check had a hand-written cleanup for this
+    // (the comment below it counts 2,668 abandoned worlds, 1.7 GB) but --check
+    // is only ONE of six ways out of this function, and the other five leaked:
+    // an unknown map, a failed load, a stop during loading, a required mod
+    // that is not installed, and a session that would not open. Running the
+    // shipped smoke test on a misconfigured server left one world per run.
+    //
+    // So the cleanup is a scope guard instead of a statement somebody has to
+    // remember at each return, and `keep` is set in exactly one place: once
+    // the session is actually open and somebody can join it.
+    struct DropUnplayedWorld {
+        Game* g;
+        bool keep = false;
+        ~DropUnplayedWorld() { if (!keep) g->dropAutoCreatedSave(); }
+    } unplayed{this};
     m_playerCountryId = 0;      // the server holds nothing; see the header
 
     // ── mods ──
@@ -577,12 +596,8 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         // m_currentSavePath and sets this flag false, and then a health check
         // erased somebody's game. The comment above was already right; the
         // code below it was not.
-        if (m_autoCreatedSave && !m_currentSavePath.empty()) {
-            std::error_code ec;
-            std::filesystem::remove(m_currentSavePath, ec);
-            std::filesystem::remove(m_currentSavePath + ".odkey", ec);
-            m_currentSavePath.clear();
-        }
+        // The removal itself is DropUnplayedWorld's, above: this return is
+        // one of six and they all need it.
         unloadGameData();
         return 0;
     }
@@ -594,6 +609,9 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
                            ? ": " + m_netHost->error() : std::string(".")));
         return 3;
     }
+    // Open. Somebody can join, so the world is theirs now and stays on disk
+    // when this returns -- the shutdown path prints where it is.
+    unplayed.keep = true;
 
     // ── reachability ──
     //

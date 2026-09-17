@@ -493,6 +493,23 @@ constexpr float kTenureMax   = 1.5f;   // a long-held doctrine is worth half aga
 constexpr int   kTenureTurns = 30;     // turns in force to get there
 }
 
+// Remove the save a map load created, if this run never played it.
+//
+// Guarded on m_autoCreatedSave, which is the distinction that matters: --load
+// names an EXISTING world and clears that flag, and an earlier version of the
+// --check cleanup without this test deleted the save it had been asked to
+// open. A world somebody already has is never this function's to remove.
+void Game::dropAutoCreatedSave() {
+    if (!m_autoCreatedSave || m_currentSavePath.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(m_currentSavePath, ec);
+    std::filesystem::remove(m_currentSavePath + ".odkey", ec);
+    // The host book entry too: it is derived from this save and means nothing
+    // without it, and leaving it behind is how data/saves/ collected orphans.
+    std::filesystem::remove(m_currentSavePath + ".odhost", ec);
+    m_currentSavePath.clear();
+}
+
 // ── POLITICAL CAPITAL: THE ROOM A GOVERNMENT DID NOT USE ──
 //
 // WHAT WAS MEASURED, because this relieves a gate and a gate worth relieving

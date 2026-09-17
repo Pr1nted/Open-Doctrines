@@ -3143,6 +3143,8 @@ public:
     static float bankAfterTurn(float bank, float share, float committed);
     /// Bank what politics did not use, or draw on the bank. Once per turn.
     void updatePoliticalCapital(int countryId);
+    /// Remove the save a map load created, if this run never played it.
+    void dropAutoCreatedSave();
     /// Whether political capital accumulates at all.
     bool politicalCapitalOn() const;
 
