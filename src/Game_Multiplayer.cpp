@@ -1346,7 +1346,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                 DrawRectangleRounded(listBox, 0.06f, 8, Color{18, 20, 26, 240});
                 DrawRectangleRoundedLines(listBox, 0.06f, 8, Color{90, 100, 120, 200});
                 if (CheckCollisionPointRec(mouse, listBox)) {
-                    const float w = odMouseWheel();
+                    const float w = odScrollWheel(listBox);
                     if (w != 0.0f) m_mpSaveScroll -= (int)w;
                     m_mpSaveScroll = std::clamp(m_mpSaveScroll, 0,
                                                 std::max(0, total - visible));
@@ -1493,7 +1493,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                 DrawRectangleRounded(lb, 0.06f, 8, Color{18, 20, 26, 240});
                 DrawRectangleRoundedLines(lb, 0.06f, 8, Color{90, 100, 120, 200});
                 if (CheckCollisionPointRec(mouse, lb)) {
-                    const float w = odMouseWheel();
+                    const float w = odScrollWheel(lb);
                     if (w != 0.0f) m_mpMapScroll -= (int)w;
                     m_mpMapScroll = std::clamp(m_mpMapScroll, 0, std::max(0, total - visible));
                 }
@@ -2159,7 +2159,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
         const Rectangle listArea{(float)(centerX - panelW / 2), (float)y,
                                  (float)panelW, (float)(visibleRows * 44)};
         if (CheckCollisionPointRec(mouse, listArea)) {
-            const float wheel = odMouseWheel();
+            const float wheel = odScrollWheel(listArea);
             if (wheel != 0.0f) m_mpRosterScroll -= (int)wheel;
             m_mpRosterScroll = std::clamp(m_mpRosterScroll, 0,
                                           std::max(0, total - visibleRows));
@@ -2323,7 +2323,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             DrawRectangleRoundedLines(box, 0.06f, 8, Color{90, 100, 120, 200});
 
             if (CheckCollisionPointRec(mouse, box)) {
-                const float wheel = odMouseWheel();
+                const float wheel = odScrollWheel(box);
                 if (wheel != 0.0f) m_mpCountryScroll -= (int)wheel;
                 m_mpCountryScroll = std::clamp(m_mpCountryScroll, 0,
                                                std::max(0, total - visible));
@@ -4782,7 +4782,7 @@ void Game::drawMpChat(int x, int y, int w, int h, Vector2 mouse, bool click) {
     }
     EndScissorMode();
     if (CheckCollisionPointRec(mouse, view)) {
-        const float wheel = odMouseWheel();
+        const float wheel = odScrollWheel(view);
         if (wheel != 0.0f)
             m_chatScroll = std::clamp(m_chatScroll + (int)(wheel * 32), 0,
                                       std::max(0, (int)m_chatLog.size() * 16));

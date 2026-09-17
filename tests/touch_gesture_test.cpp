@@ -157,6 +157,114 @@ int main() {
         ok(odTouch::cursor().x > 0.0f, "but the cursor persists, for hover");
     }
 
+    // ── THE REPORTED BUG ──
+    //
+    // "The fix for android swiping did not work." It did not, and nothing here
+    // could tell: the wheel was set in exactly ONE place, the two-finger
+    // pinch, so the shipped answer to "scroll this list" was "pinch it".
+    // Sixteen panels read the wheel and none of them could be reached with one
+    // finger. These are the properties that were missing.
+    //
+    // A swipe is many frames: a real finger crosses TAP_SLOP (14px) over
+    // several, and the notch threshold over several more, so each case drives
+    // the gesture the way a hand does rather than teleporting.
+    const Rectangle list = {100, 100, 300, 400};   // a panel's list area
+
+    section("a swipe on a list scrolls it");
+    {
+        lift(); frame();
+        odTouch::armScrollRegion(list);
+        oneFinger(200, 150); frame();              // lands inside the list
+        float notches = 0.0f;
+        for (int i = 0; i < 10; ++i) {             // 10 x 10px = 100px down
+            odTouch::armScrollRegion(list);
+            oneFinger(200, 150.0f + 10.0f * (i + 1));
+            frame();
+            notches += odTouch::takeDragScroll();
+        }
+        ok(notches > 0.0f, "a swipe DOWN produces wheel notches");
+        // 100px at 26px a notch is 3 whole ones; the point is the sign and
+        // the rough scale, not the exact figure.
+        ok(notches >= 3.0f && notches <= 4.0f, "and about one per 26px of travel");
+        ok(odTouch::dragScrolling(), "the gesture knows it is scrolling");
+    }
+
+    section("and does not press the row it started on");
+    {
+        // THE ONE THAT MAKES IT USABLE. A drag holds the left button once it
+        // passes TAP_SLOP, so before this a swipe opened whatever was under
+        // the finger at 14px of travel -- scrolling a list by opening one of
+        // its rows is worse than not scrolling at all.
+        lift(); frame();
+        odTouch::armScrollRegion(list);
+        oneFinger(200, 150); frame();
+        bool pressed = false, down = false;
+        for (int i = 0; i < 10; ++i) {
+            odTouch::armScrollRegion(list);
+            oneFinger(200, 150.0f + 10.0f * (i + 1));
+            frame();
+            if (odTouch::mousePressed(MOUSE_BUTTON_LEFT)) pressed = true;
+            if (odTouch::mouseDown(MOUSE_BUTTON_LEFT))    down = true;
+        }
+        ok(!pressed, "no left click during the swipe");
+        ok(!down, "and the button is never held either");
+    }
+
+    section("a tap on a list is still a tap");
+    {
+        // A swipe must not eat the click: a list you cannot scroll is a bug,
+        // and a list you cannot press is a worse one.
+        lift(); frame();
+        odTouch::armScrollRegion(list);
+        oneFinger(200, 150); frame();
+        odTouch::armScrollRegion(list);
+        oneFinger(202, 151); frame();              // within TAP_SLOP
+        lift(); frame();
+        ok(odTouch::mousePressed(MOUSE_BUTTON_LEFT), "a short touch still clicks");
+    }
+
+    section("a swipe on the MAP still pans it");
+    {
+        // The reason the region matters. The map wants one finger to drag, and
+        // a rule that turned every drag into a wheel would zoom the map every
+        // time somebody moved it.
+        lift(); frame();
+        odTouch::armScrollRegion(list);
+        oneFinger(600, 150); frame();              // OUTSIDE the list
+        float notches = 0.0f;
+        bool down = false;
+        Vector2 lastDelta = {0, 0};
+        for (int i = 0; i < 10; ++i) {
+            odTouch::armScrollRegion(list);
+            oneFinger(600, 150.0f + 10.0f * (i + 1));
+            frame();
+            notches += odTouch::takeDragScroll();
+            if (odTouch::mouseDown(MOUSE_BUTTON_LEFT)) down = true;
+            lastDelta = odTouch::delta();
+        }
+        ok(notches == 0.0f, "a drag outside the list produces no wheel");
+        ok(down, "it holds the left button, as a mouse drag would");
+        ok(!isZero(lastDelta), "and still reports the travel the pan needs");
+        ok(!odTouch::dragScrolling(), "and is not a scroll");
+    }
+
+    section("the origin decides, once");
+    {
+        // A finger that starts on a list and wanders off the edge of it is
+        // still scrolling that list -- which is what a thumb actually does.
+        lift(); frame();
+        odTouch::armScrollRegion(list);
+        oneFinger(390, 150); frame();              // inside, near the right edge
+        float notches = 0.0f;
+        for (int i = 0; i < 10; ++i) {
+            odTouch::armScrollRegion(list);
+            oneFinger(390.0f + 10.0f * (i + 1), 150.0f + 10.0f * (i + 1));
+            frame();                               // drifts out past x=400
+            notches += odTouch::takeDragScroll();
+        }
+        ok(notches > 0.0f, "it keeps scrolling after leaving the rectangle");
+    }
+
     printf("\n%d checks, %d failed\n", checks, fails);
     return fails == 0 ? 0 : 1;
 }

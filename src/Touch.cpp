@@ -13,6 +13,26 @@ constexpr float TAP_SECONDS   = 0.35f;   // longer than this is not a tap
 constexpr float HOLD_SECONDS  = 0.55f;   // and past this it is a right click
 constexpr float PINCH_PER_NOTCH = 44.0f; // px of pinch travel per wheel notch
 constexpr float PINCH_DEADZONE  = 6.0f;
+// ── ONE FINGER, ON A LIST ──
+//
+// The gesture set had no one-finger scroll. A swipe on a list produced a
+// held left button and a cursor move, and the WHEEL -- which is what all
+// sixteen scrollable panels read -- was set in exactly one place: the
+// two-finger pinch. So the shipped answer to "scroll this list" on a phone
+// was "pinch it", which is also the zoom gesture, and the bug report was
+// simply that swiping does nothing.
+//
+// A drag whose origin is inside a region a list armed this frame becomes
+// wheel notches instead of a button drag. Travel ACCUMULATES, so a slow swipe
+// still scrolls rather than being rounded away frame by frame.
+constexpr float DRAG_PER_NOTCH  = 26.0f;  // px of finger travel per wheel notch
+
+/// Point in rectangle. Written out rather than taken from raylib so this
+/// file links in touch_gesture_test, which stubs the library away.
+inline bool inRect(Vector2 p, Rectangle r) {
+    return p.x >= r.x && p.x <= r.x + r.width &&
+           p.y >= r.y && p.y <= r.y + r.height;
+}
 
 bool  s_active = false;
 bool  s_present = false;
@@ -38,6 +58,12 @@ bool  s_holdFired = false;   // right click already emitted for this press
 bool s_lDown = false, s_lPressed = false, s_lReleased = false;
 bool s_rPressed = false, s_rReleased = false;
 float s_wheel = 0.0f;
+Rectangle s_scrollArm = {0, 0, 0, 0};   ///< armed by odScrollWheel, one frame behind
+bool  s_scrollArmed = false;
+Vector2 s_dragOrigin = {0, 0};
+bool  s_dragScrolling = false;          ///< this drag is scrolling a list, not dragging
+float s_dragAccum = 0.0f;               ///< sub-notch travel carried between frames
+float s_dragNotches = 0.0f;             ///< whole notches waiting to be read
 
 float dist(Vector2 a, Vector2 b) {
     const float dx = a.x - b.x, dy = a.y - b.y;
@@ -49,6 +75,13 @@ float dist(Vector2 a, Vector2 b) {
 void update(float dt, int screenW, int screenH) {
     s_lPressed = s_lReleased = s_rPressed = s_rReleased = false;
     s_wheel = 0.0f;
+    // Notches expire with the frame, exactly as s_wheel does, and for the same
+    // reason. They were only cleared when somebody read them -- so a swipe on
+    // a panel that closed before the read left them standing, and the next
+    // list to ask got a jolt of scroll from a gesture made in another screen.
+    // The sub-notch remainder is NOT cleared here: that is what lets a slow
+    // swipe accumulate across frames, and it is reset when a finger lands.
+    s_dragNotches = 0.0f;
     s_delta = {0.0f, 0.0f};
 
     const Vector2 mouseNow = GetMousePosition();
@@ -124,6 +157,13 @@ void update(float dt, int screenW, int screenH) {
             s_downTime = 0.0f;
             s_travel = 0.0f;
             s_holdFired = false;
+            // Where the finger landed decides what this drag IS, once, at
+            // contact -- not per frame. A swipe that starts on a list stays a
+            // scroll even when it wanders off the edge of it, which is what a
+            // finger actually does.
+            s_dragOrigin = p;
+            s_dragAccum = 0.0f;
+            s_dragScrolling = s_scrollArmed && inRect(p, s_scrollArm);
         }
         s_cursor = p;
         s_prevP0 = p;
@@ -135,9 +175,24 @@ void update(float dt, int screenW, int screenH) {
             s_holdFired = true;
         }
 
-        // A drag holds the left button down, so dragging the map, box-select
-        // and the ship action overlay all behave as they do with a mouse.
-        if (s_travel > TAP_SLOP) {
+        if (s_dragScrolling) {
+            // Content follows the finger: dragging DOWN reveals what is above,
+            // which is a positive wheel, because every panel here scrolls with
+            // `scroll -= wheel`.
+            s_dragAccum += s_delta.y;
+            const float whole = std::trunc(s_dragAccum / DRAG_PER_NOTCH);
+            if (whole != 0.0f) {
+                s_dragNotches += whole;
+                s_dragAccum -= whole * DRAG_PER_NOTCH;
+            }
+            // AND NO BUTTON. Without this the swipe presses the row it started
+            // on the moment it passes TAP_SLOP -- touch a list to scroll it and
+            // you have opened whatever was under your finger. A tap is
+            // unaffected: it never reaches TAP_SLOP, so it still clicks.
+        } else if (s_travel > TAP_SLOP) {
+            // A drag holds the left button down, so dragging the map,
+            // box-select and the ship action overlay all behave as they do
+            // with a mouse.
             if (!s_lDown) { s_lPressed = true; s_lDown = true; }
         }
 
@@ -167,6 +222,8 @@ void update(float dt, int screenW, int screenH) {
     s_prevCount = 0;
     s_downTime = 0.0f;
     s_travel = 0.0f;
+    s_dragScrolling = false;
+    s_dragAccum = 0.0f;
 }
 
 bool active() { return s_active; }
@@ -190,5 +247,9 @@ bool mouseReleased(int button) {
     return false;
 }
 float wheel() { return s_wheel; }
+
+void armScrollRegion(Rectangle area) { s_scrollArm = area; s_scrollArmed = true; }
+bool dragScrolling() { return s_dragScrolling; }
+float takeDragScroll() { const float n = s_dragNotches; s_dragNotches = 0.0f; return n; }
 
 }  // namespace odTouch

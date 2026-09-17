@@ -28,6 +28,10 @@
  *   long press        right click, same place -- the context menus have no
  *                     other way in
  *   pinch two fingers the mouse wheel, which is map zoom at 42 call sites
+ *   swipe on a list  the mouse wheel too, so a list scrolls the way a phone
+ *                    has taught everyone it should. It is the ORIGIN of the
+ *                    drag that decides, and only a list that armed its own
+ *                    rectangle can claim one -- so the map still pans.
  *
  * WHO IS DRIVING. On desktop this arbitrates with the mouse exactly as odPad
  * does. On Android it must go further: raylib's own core maps touch point zero
@@ -80,6 +84,21 @@ bool mouseReleased(int button);
 
 /** Wheel notches this frame, from a pinch. */
 float wheel();
+
+/**
+ * Arm a list's rectangle for the NEXT frame's gesture decision.
+ *
+ * Called from odScrollWheel, which is the only thing that should call it: a
+ * list asking for a wheel is exactly a list saying where it is. One frame
+ * behind because panels arm during the draw and update() runs before it --
+ * harmless, because a swipe takes many frames to pass TAP_SLOP and the
+ * rectangle does not move between them.
+ */
+void armScrollRegion(Rectangle area);
+/** Whether the finger down now is scrolling a list rather than dragging. */
+bool dragScrolling();
+/** Whole wheel notches from the current swipe, consumed by the first reader. */
+float takeDragScroll();
 
 /** Whether the device has reported any touch at all, for the settings screen. */
 bool present();

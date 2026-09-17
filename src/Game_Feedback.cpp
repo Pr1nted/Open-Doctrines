@@ -214,7 +214,7 @@ void Game::drawFeedbackForm() {
         }
         EndScissorMode();
         if (CheckCollisionPointRec(mouse, box)) {
-            const float wheel = odMouseWheel();
+            const float wheel = odScrollWheel(box);
             if (wheel != 0.0f) {
                 const int maxScroll = std::max(0, ly - (int)box.y - (int)box.height + 20 +
                                                     m_feedbackPreviewScroll);

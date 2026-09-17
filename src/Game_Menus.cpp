@@ -2776,7 +2776,7 @@ void Game::updateSettingsFromMenu() {
         return;
 
     // Scroll wheel
-    float wheel = odMouseWheel();
+    float wheel = odScrollWheelScreen();
     if (wheel != 0) {
         m_settingsScroll -= (int)wheel;
         m_settingsScroll = std::clamp(m_settingsScroll, 0, maxScroll);

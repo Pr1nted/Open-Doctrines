@@ -770,7 +770,7 @@ void Game::updateHistoryScreen() {
         if (IsKeyPressed(KEY_DOWN)) m_historyIndex = std::min(n - 1, m_historyIndex + 1);
         if (m_historyIndex != prev) m_historyConfirmRevert = false;
     }
-    float wheel = odMouseWheel();
+    float wheel = odScrollWheelScreen();
     if (wheel != 0) m_historyScroll = std::max(0, m_historyScroll - (int)(wheel * 3));
 
     // Rebuild the preview only when the selection or view actually changes.

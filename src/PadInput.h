@@ -52,6 +52,36 @@ inline float odMouseWheel() {
     return GetMouseWheelMove() + odPad::wheel();
 }
 
+// ── THE WHEEL A SCROLLABLE LIST SHOULD ASK FOR ──
+//
+// Same value as odMouseWheel on a mouse, a pad, or a pinch -- plus a one-finger
+// swipe that began inside `area`. Lists call THIS; the map keeps odMouseWheel,
+// because the map wants a one-finger drag to pan and would otherwise zoom
+// itself every time somebody moved it.
+//
+// Three call sites opt out (MapRenderer's pan/zoom) and every list opts in,
+// which is the right way round: a list that has not been converted behaves
+// exactly as it does today rather than breaking, and there are sixteen of them
+// against one map.
+inline float odScrollWheel(Rectangle area) {
+    const float w = odMouseWheel();
+    if (!odTouch::suppressesMouse()) return w;
+    odTouch::armScrollRegion(area);
+    return odTouch::dragScrolling() ? w + odTouch::takeDragScroll() : w;
+}
+
+// A WHOLE-SCREEN page, where the page IS the list.
+//
+// Settings, the mod list, history, the server browsers: these replace the map
+// rather than sitting over it, so there is nothing else a swipe could have
+// meant and the region is the screen. Deliberately a separate call from
+// odScrollWheel, because getting this wrong on an in-game PANEL would make
+// dragging the map scroll whatever was open underneath -- so a panel over the
+// map has to name its own rectangle and cannot reach for this by accident.
+inline float odScrollWheelScreen() {
+    return odScrollWheel({0.0f, 0.0f, 1.0e6f, 1.0e6f});
+}
+
 // Pointer travel this frame, for the things that pan rather than point.
 //
 // Touch keeps its own, because raylib's is unusable on the one platform that

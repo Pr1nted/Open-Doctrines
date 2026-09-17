@@ -835,7 +835,7 @@ void Game::updateWorldBrowser() {
     }
 
     // Mouse wheel
-    float wheel = odMouseWheel();
+    float wheel = odScrollWheelScreen();
     if (wheel != 0) {
         m_fileScroll -= (int)wheel;
         m_fileScroll = std::clamp(m_fileScroll, 0, maxScroll);
@@ -1905,7 +1905,7 @@ void Game::drawMapBrowser() {
 
         // Scroll wheel
         if (CheckCollisionPointRec(mouse, {(float)textAreaX, (float)textAreaY, (float)textAreaW, (float)textAreaH})) {
-            float wheel = odMouseWheel();
+            float wheel = odScrollWheel({(float)textAreaX, (float)textAreaY, (float)textAreaW, (float)textAreaH});
             if (wheel != 0) {
                 m_licenseScroll -= (int)wheel * 3;
                 m_licenseScroll = std::clamp(m_licenseScroll, 0, maxScroll);
@@ -2457,7 +2457,7 @@ void Game::updateMapBrowser() {
     int maxScroll = std::max(0, totalItems - maxVisibleCards);
 
     // Mouse wheel
-    float wheel = odMouseWheel();
+    float wheel = odScrollWheelScreen();
     if (wheel != 0) {
         m_mapScroll -= (int)wheel;
         m_mapScroll = std::clamp(m_mapScroll, 0, maxScroll);

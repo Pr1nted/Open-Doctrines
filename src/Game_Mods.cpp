@@ -1866,7 +1866,7 @@ void Game::updateModsMenu() {
     if (IsKeyPressed(KEY_UP)) m_modIndex = std::max(m_modIndex - 1, 0);
     if (m_modIndex < m_modScroll) m_modScroll = m_modIndex;
     if (m_modIndex >= m_modScroll + maxVisible) m_modScroll = m_modIndex - maxVisible + 1;
-    m_modScroll = std::clamp(m_modScroll - (int)odMouseWheel(), 0, maxScroll);
+    m_modScroll = std::clamp(m_modScroll - (int)odScrollWheelScreen(), 0, maxScroll);
 
     // --- bottom bar -----------------------------------------------------------
     int by = m_screenH - 52;

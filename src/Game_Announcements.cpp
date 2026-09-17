@@ -325,7 +325,7 @@ void Game::drawAnnouncementBoard(int x, int y, int w, int h, Vector2 mouse, bool
     // board with one short notice on it.
     const int contentH = (cy + m_announcementScroll) - y;
     if (contentH > h && CheckCollisionPointRec(mouse, {(float)x, (float)y, (float)w, (float)h})) {
-        const float wheel = odMouseWheel();
+        const float wheel = odScrollWheel({(float)x, (float)y, (float)w, (float)h});
         if (wheel != 0.0f)
             m_announcementScroll = std::clamp(m_announcementScroll - (int)(wheel * 40),
                                               0, contentH - h + 20);

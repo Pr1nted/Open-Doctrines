@@ -560,7 +560,7 @@ void Game::drawCountryPanel() {
             Vector2 mouse = getMouse();
             Rectangle pRect = {(float)panelX, (float)panelY, (float)panelW, (float)panelH};
             if (!m_paused && CheckCollisionPointRec(mouse, pRect)) {
-                float wheel = odMouseWheel();
+                float wheel = odScrollWheel(pRect);
                 if (wheel != 0) {
                     m_shipPanelScroll -= wheel * 20.0f;
                 }
