@@ -157,6 +157,16 @@ public:
     /// exists but sits outside the top-4-by-population window, 2 none
     /// exists at all. Journal 325. Filled only under OD_ACT_HIST.
     static long long s_portFail[3];
+    /**
+     * WHY enactablePolicy SAID NO -- the question that decides whether the
+     * doctrine ceiling is worth raising.
+     *
+     * 0 losing ground, 1 the politics budget is already committed, 2 nothing
+     * was legal/affordable/compatible, 3 it offered one. Journal 398 measured
+     * that the action is offered and never picked; this says whether the
+     * offers are rare because the gate binds or because the world is quiet.
+     */
+    static long long s_enactGate[4];
     static long long s_portCapSeen[4];
     static long long s_fleetUseful[2];
     /// Journal 337: is OD_WAR_BAR_RESEARCH live? 0 evaluations, 1 pass under
@@ -237,6 +247,10 @@ public:
     /** Journal 399: enact an attack doctrine the politics head never takes.
      *  OD_DOCTRINE_REFLEX, off by default; counters printed at exit. */
     void doctrineReflex(int cid);
+    /** Median army among living non-rebel countries, cached per turn (journal 400). */
+    long long medianLivingArmy() const;
+    mutable int m_medArmyTurn = -1;
+    mutable long long m_medArmy = 0;
     static void dumpDoctrineReflex();
     static std::atomic<long long> s_doctrineReflexFired;
     static std::map<std::string, long long> s_doctrineReflexBy;

@@ -1075,6 +1075,10 @@ std::string Game::policyBlockReason(int countryId, const Policy& p) const {
     auto cs = computeCountryIncome(countryId);
     float available = cs.total - (cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts);
     available = std::max(0.0f, available);
+    // Plus anything politics banked by not spending it. Only ever adds, so no
+    // doctrine reachable before this existed becomes unreachable; with the
+    // rule off it adds exactly 0.0f. See Game::updatePoliticalCapital.
+    available += politicalCapital(countryId);
     // FULL PRICE, deliberately, even though policyUpkeep charges less while the
     // doctrine is being built. The phased bill is relief during construction,
     // not a licence to sign something you could never sustain -- a country let

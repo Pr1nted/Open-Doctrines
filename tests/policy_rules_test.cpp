@@ -283,6 +283,117 @@ struct PolicyRules {
         }
     }
 
+    // ── political capital: the room a government did not use ──
+    //
+    // This rule RELIEVES a gate, so the only way it can be wrong is by
+    // refusing something that used to be allowed. Every case below is
+    // therefore about the ceiling never going DOWN, and about the bank never
+    // going negative -- a negative bank would be a debt, which is a new gate,
+    // which is the one thing this must not add.
+    void capital() {
+        const bool on = game.politicalCapitalOn();
+        printf("\n-- political capital (rule %s) --\n", on ? "ON" : "off");
+
+        CountryIncomeSnapshot inc;
+        inc.total = 200.0f;
+        inc.policyCosts = 4.0f;
+        inc.minorityCosts = 5.0f;
+        inc.pacificationCost = 1.0f;
+        check(Game::politicsCommitted(inc) == 10.0f,
+              "what politics costs is doctrines, minorities and pacification");
+        // Research is the biggest bill in the game and is deliberately NOT in
+        // it: charging it here would price a quarter of gross against a
+        // ceiling research alone already exceeds.
+        inc.researchCost = 90.0f;
+        check(Game::politicsCommitted(inc) == 10.0f, "and not research");
+
+        const float bare = 200.0f * Game::kPoliticsShare;
+        game.m_politicalCapital.clear();
+        check(game.politicsCeiling(inc, cid) == bare,
+              "with nothing banked the ceiling is exactly the share");
+
+        game.m_politicalCapital[cid] = 12.0f;
+        const float withBank = game.politicsCeiling(inc, cid);
+        if (on) {
+            check(withBank == bare + 12.0f, "a bank raises the ceiling by what it holds");
+            check(game.politicalCapital(cid) == 12.0f, "and can be read back");
+        } else {
+            // BIT-IDENTICAL, not approximately: this ceiling is what decides
+            // whether the AI is offered a doctrine at all, and the decision
+            // hash pins that.
+            check(withBank == bare, "with the rule off a bank cannot change the ceiling");
+            check(game.politicalCapital(cid) == 0.0f, "and reads as empty whatever is stored");
+        }
+
+        // Accrual, through the real per-turn entry point.
+        game.m_politicalCapital.clear();
+        // Against the REAL snapshot, because a fresh map's country may have no
+        // income at all and then there is nothing to bank -- asserting "it
+        // banks something" would then be a claim about the fixture, not the
+        // rule. This asserts the rule either way round.
+        const CountryIncomeSnapshot real = game.computeCountryIncome(cid);
+        const float realShare = std::max(0.0f, real.total * Game::kPoliticsShare);
+        const bool hadRoom = realShare > Game::politicsCommitted(real);
+        printf("      (fixture: total %.2f, committed %.2f, room %s)\n",
+               real.total, Game::politicsCommitted(real), hadRoom ? "yes" : "no");
+        game.updatePoliticalCapital(cid);
+        const float afterQuiet = game.politicalCapital(cid);
+        if (on) {
+            check(hadRoom ? afterQuiet > 0.0f : afterQuiet == 0.0f,
+                  hadRoom ? "a turn with room to spare banks some of it"
+                          : "a turn with no room to spare banks nothing");
+            // Many quiet turns must stop somewhere, or one old country would
+            // carry a ceiling nothing else could reach.
+            for (int i = 0; i < 400; ++i) game.updatePoliticalCapital(cid);
+            const float capped = game.politicalCapital(cid);
+            check(capped >= afterQuiet, "the bank does not shrink on a quiet turn");
+            for (int i = 0; i < 50; ++i) game.updatePoliticalCapital(cid);
+            check(game.politicalCapital(cid) == capped, "and stops at a cap");
+        } else {
+            check(afterQuiet == 0.0f, "with the rule off nothing is ever banked");
+        }
+
+        // A bank is drawn down, never driven below empty.
+        game.m_politicalCapital[cid] = 0.0f;
+        for (int i = 0; i < 20; ++i) game.updatePoliticalCapital(cid);
+        check(game.politicalCapital(cid) >= 0.0f, "a bank never goes negative");
+
+        // ── the arithmetic itself ──
+        //
+        // Driven directly, because the fixture's country has no income (see
+        // the line printed above) and so cannot reach the accrual through
+        // updatePoliticalCapital. This is where banking, the cap and the
+        // draw-down are actually pinned; the rule's flag does not reach here.
+        const float share = 40.0f;
+        check(Game::bankAfterTurn(0.0f, share, 10.0f) > 0.0f,
+              "unused room is banked");
+        check(Game::bankAfterTurn(0.0f, share, share) == 0.0f,
+              "a turn that used all its room banks nothing");
+        // Monotone in what was left over: banking less when MORE was spare
+        // would pay a government for spending.
+        check(Game::bankAfterTurn(0.0f, share, 5.0f) >
+              Game::bankAfterTurn(0.0f, share, 25.0f),
+              "the quieter the turn, the more is banked");
+        // Overspending draws it down, by the whole overspend rather than a
+        // fraction of it -- the discount is on saving, not on borrowing.
+        const float drawn = Game::bankAfterTurn(30.0f, share, share + 10.0f);
+        check(drawn == 20.0f, "going over the share spends the bank, in full");
+        check(Game::bankAfterTurn(3.0f, share, share + 100.0f) == 0.0f,
+              "and cannot take it below empty");
+        // A cap, and one that is reached by repeating quiet turns rather than
+        // asserted from the constant -- the constant may change; the property
+        // that it stops must not.
+        float b = 0.0f;
+        for (int i = 0; i < 500; ++i) b = Game::bankAfterTurn(b, share, 0.0f);
+        const float settled = b;
+        for (int i = 0; i < 50; ++i) b = Game::bankAfterTurn(b, share, 0.0f);
+        check(b == settled && settled > 0.0f, "quiet turns fill the bank and then stop");
+        // No income means no ceiling and no bank: a collapsed country cannot
+        // bank political room it has no economy to generate.
+        check(Game::bankAfterTurn(settled, 0.0f, 0.0f) == 0.0f,
+              "a country with no income holds no bank");
+    }
+
     // Tenure is only worth anything if it OUTLIVES A SAVE. A number that
     // resets every time the player loads is a mechanic that punishes closing
     // the game, so the round trip is part of the rule, not part of the I/O.
@@ -334,6 +445,7 @@ int main(int argc, char** argv) {
     t.run();
     t.tenure();
     t.upkeep();
+    t.capital();
     t.survivesASave();
 
     printf("%s\n", failures ? "FAILED" : "all ok");

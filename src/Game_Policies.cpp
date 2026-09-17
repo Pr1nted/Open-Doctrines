@@ -493,6 +493,90 @@ constexpr float kTenureMax   = 1.5f;   // a long-held doctrine is worth half aga
 constexpr int   kTenureTurns = 30;     // turns in force to get there
 }
 
+// ── POLITICAL CAPITAL: THE ROOM A GOVERNMENT DID NOT USE ──
+//
+// WHAT WAS MEASURED, because this relieves a gate and a gate worth relieving
+// has to be shown to bind first. [ENACTGATE] over a 40-turn 1914 world:
+//
+//   asked 1871  losing-ground 0 (0.0%)  budget-committed 992 (53.0%)
+//   nothing-eligible 0 (0.0%)  OFFERED 879 (47.0%)
+//
+// So the politics ceiling is what refuses a doctrine, on more than half of
+// every ask, and legality never refuses at all -- whenever there is room,
+// something is always enactable. The mean hid this completely: politics
+// commits 15.7% of gross on average against a 25% ceiling, which reads like
+// nine points of slack and is really a distribution where half the
+// country-turns are hard against the wall.
+//
+// And the room is per-turn, so a government that spends nothing this turn
+// banks nothing. There is never a reason to wait, which is the opposite of
+// how a parliament works: you spend a quiet decade to afford one unpopular
+// reform.
+//
+// SO IT ACCUMULATES. Unused room is banked, up to a ceiling of its own, and
+// the bank is added to what politics may commit. It is NOT a new
+// requirement: nothing a country can enact today becomes unaffordable,
+// because the stock only ever raises the ceiling. That is deliberate --
+// ai-treasuries-run-at-zero says a lump-sum gate reads as a prohibition to
+// these players, so this is priced as extra room, never as a wall.
+//
+// Drawn down the other way round: a country over its share is spending the
+// bank, and when the bank is empty its own austerity repeals something. So
+// "run a doctrine you cannot quite afford, for as long as the savings last"
+// is a real position rather than a bug.
+namespace {
+/// Turns of unused room the bank may hold. Chosen, not swept.
+constexpr float kCapitalTurns = 6.0f;
+/// How much of a turn's unused room is actually keepable.
+constexpr float kCapitalAccrual = 0.5f;
+}
+
+bool Game::politicalCapitalOn() const {
+    static const bool on = std::getenv("OD_POLITICAL_CAPITAL") &&
+                           atoi(std::getenv("OD_POLITICAL_CAPITAL")) != 0;
+    return on;
+}
+
+float Game::politicsCommitted(const CountryIncomeSnapshot& inc) {
+    return inc.policyCosts + inc.minorityCosts + inc.pacificationCost;
+}
+
+float Game::politicalCapital(int countryId) const {
+    if (!politicalCapitalOn()) return 0.0f;
+    auto it = m_politicalCapital.find(countryId);
+    return it == m_politicalCapital.end() ? 0.0f : it->second;
+}
+
+float Game::politicsCeiling(const CountryIncomeSnapshot& inc, int countryId) const {
+    // Adding exactly 0.0f when the rule is off, which is why the ceiling is
+    // bit-identical to the bare share it replaced.
+    return std::max(0.0f, inc.total * kPoliticsShare) + politicalCapital(countryId);
+}
+
+// Pure, and separate from the turn, because a country on a freshly loaded map
+// has no income yet -- so a test driven through updatePoliticalCapital can
+// only ever exercise the do-nothing branch, and the accrual would be covered
+// by nothing but a whole game run.
+float Game::bankAfterTurn(float bank, float share, float committed) {
+    share = std::max(0.0f, share);
+    const float spare = share - committed;
+    // Over the share the bank pays the difference; under it, part of what was
+    // left is keepable. Either way it cannot go negative -- a debt would be a
+    // new gate, and this rule does not add gates.
+    bank += (spare >= 0.0f) ? spare * kCapitalAccrual : spare;
+    return std::clamp(bank, 0.0f, share * kCapitalTurns);
+}
+
+void Game::updatePoliticalCapital(int countryId) {
+    if (!politicalCapitalOn()) return;
+    // The resolver's own current-turn numbers. The AI's gate projects a few
+    // turns ahead instead, and that difference is deliberate: what a country
+    // BANKED is a fact about the turn that happened, not about a forecast.
+    const CountryIncomeSnapshot inc = computeCountryIncome(countryId);
+    float& bank = m_politicalCapital[countryId];
+    bank = bankAfterTurn(bank, inc.total * kPoliticsShare, politicsCommitted(inc));
+}
+
 // ── THE OTHER HALF OF THE COMMITMENT: THE BILL ARRIVES AS THE DOCTRINE DOES ──
 //
 // Enacting a doctrine used to cost full price from the turn you signed it,
@@ -847,6 +931,9 @@ void Game::updatePolicies() {
         if (cid == UNC_CID || cid == BLC_CID || cid == SPC_CID) continue;
         applyPolicyEffects(cid);
         applyEthnicPolicyEffects(cid);
+        // AFTER both, so the bank is measured against what this turn actually
+        // committed rather than against last turn's bill.
+        updatePoliticalCapital(cid);
         growCountryPopulation(cid);
         // NOTE: artillery is deliberately NOT processed here. processCountryTurn()
         // already calls processArtilleryOrders() for every country earlier in the

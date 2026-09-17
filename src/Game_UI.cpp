@@ -1702,6 +1702,12 @@ std::string Game::saveStateJson() {
     for (auto& [cid, val] : m_countryPacification) {
         j["pacification"][std::to_string(cid)] = val;
     }
+    // Political room banked but not spent. Written whatever the rule's state,
+    // so switching it on mid-campaign does not silently discard a bank, and
+    // absent on load means zero -- see Game::updatePoliticalCapital.
+    for (auto& [cid, val] : m_politicalCapital) {
+        j["politicalCapital"][std::to_string(cid)] = val;
+    }
 
     // ── WHAT EACH COUNTRY PUBLISHES ABOUT ITSELF ──
     //
@@ -2309,6 +2315,15 @@ void Game::loadStateJsonBody(const std::string& json) {
     if (j.contains("pacification")) {
         for (auto& [key, val] : j["pacification"].items()) {
             m_countryPacification[std::stoi(key)] = val.get<float>();
+        }
+    }
+
+    // Banked political room. Absent in every save written before the rule
+    // existed, and an empty bank is the right reading of that: a campaign
+    // cannot be credited for quiet turns nobody recorded.
+    if (j.contains("politicalCapital")) {
+        for (auto& [key, val] : j["politicalCapital"].items()) {
+            m_politicalCapital[std::stoi(key)] = val.get<float>();
         }
     }
 

@@ -804,11 +804,15 @@ const Policy* AISystem::enactablePolicy(int cid) const {
     if (!c || g.m_allPolicies.empty()) return nullptr;
     // No new upkeep while the map moves against us: the projection below
     // still counts the provinces about to be lost. See AI_LOSS_FREEZE_TURNS.
-    if (losingGround(cid)) return nullptr;
+    if (losingGround(cid)) { ++s_enactGate[0]; return nullptr; }
     const CountryIncomeSnapshot inc = g.projectIncome(cid, planHorizon());
-    const float committed = inc.policyCosts + inc.minorityCosts + inc.pacificationCost;
-    const float budget = std::max(0.0f, inc.total * AI_DOCTRINE_BUDGET_SHARE);
-    if (committed >= budget) return nullptr;
+    // Both numbers come from Game, which owns the share and the bank. This
+    // gate is what [ENACTGATE] showed refusing 53.0% of asks, so it is also
+    // the gate political capital exists to relieve -- and it must read the
+    // same ceiling the bank was measured against or the bank buys nothing.
+    const float committed = Game::politicsCommitted(inc);
+    const float budget = g.politicsCeiling(inc, cid);
+    if (committed >= budget) { ++s_enactGate[1]; return nullptr; }
 
     // Compass fit dominates -- a government does not enact things it disagrees
     // with -- but a cheap doctrine wins ties, which over a long game is the
@@ -829,6 +833,7 @@ const Policy* AISystem::enactablePolicy(int cid) const {
             score += AI_LLM_DOCTRINE;
         if (score > bestScore) { bestScore = score; best = &p; }
     }
+    ++s_enactGate[best ? 3 : 2];
     slot.policy = best;
     return best;
 }
@@ -13725,6 +13730,7 @@ std::string AISystem::countrySummary(int cid) const {
 // Action histogram storage and dump. See OD_ACT_HIST at the module dispatch.
 int AISystem::s_actHist[AISystem::MOD_COUNT][AISystem::MAX_MODULE_ACTIONS] = {};
 long long AISystem::s_portFail[3] = {0,0,0};
+long long AISystem::s_enactGate[4] = {0,0,0,0};
 long long AISystem::s_portCapSeen[4] = {0,0,0,0};
 long long AISystem::s_fleetUseful[2] = {0,0};
 long long AISystem::s_warBar[8] = {};
@@ -14013,6 +14019,17 @@ void AISystem::dumpActionHistogram() {
             s_anchorWhy[0].load(), s_anchorWhy[1].load(), s_anchorWhy[2].load(), s_anchorWhy[3].load());
     fprintf(stderr, "[ACTHIST] anchor pulls: %lld\n",
             s_anchorFired.load(std::memory_order_relaxed));
+    {
+        const long long tot = s_enactGate[0] + s_enactGate[1] + s_enactGate[2] + s_enactGate[3];
+        if (tot > 0)
+            fprintf(stderr, "[ENACTGATE] asked %lld  losing-ground %lld (%.1f%%)  "
+                    "budget-committed %lld (%.1f%%)  nothing-eligible %lld (%.1f%%)  "
+                    "OFFERED %lld (%.1f%%)\n", tot,
+                    s_enactGate[0], 100.0 * s_enactGate[0] / tot,
+                    s_enactGate[1], 100.0 * s_enactGate[1] / tot,
+                    s_enactGate[2], 100.0 * s_enactGate[2] / tot,
+                    s_enactGate[3], 100.0 * s_enactGate[3] / tot);
+    }
     fprintf(stderr, "[ACTHIST] austerity branches: research-first %lld  pacification %lld  "
             "doctrine %lld  minority %lld  scrap-ship %lld  research-last %lld\n",
             s_austBranch[0], s_austBranch[1], s_austBranch[2],
@@ -14192,10 +14209,31 @@ void AISystem::industryReflex(int cid) {
 // what the mask would have allowed the head to do (memory
 // expose-the-resolvers-numbers). It fires only while at war and solvent, and only
 // if no attack doctrine is already in force.
+// The median army among living non-rebel countries, once per turn. Used by the
+// narrowed doctrine reflex (journal 400) as its one size test: a country at or
+// above the median is one that can turn an attack modifier into land.
+long long AISystem::medianLivingArmy() const {
+    if (m_medArmyTurn == m_turn) return m_medArmy;
+    m_medArmyTurn = m_turn;
+    std::vector<long long> armies;
+    armies.reserve(m_stats.size());
+    for (const auto& [ocid, st] : m_stats) {
+        if (ocid <= 0 || ocid >= Game::REBEL_CID_MIN) continue;
+        if (st.provinces <= 0) continue;
+        armies.push_back(st.army);
+    }
+    if (armies.empty()) { m_medArmy = 0; return m_medArmy; }
+    const size_t mid = armies.size() / 2;
+    std::nth_element(armies.begin(), armies.begin() + mid, armies.end());
+    m_medArmy = armies[mid];
+    return m_medArmy;
+}
+
 void AISystem::doctrineReflex(int cid) {
-    static const bool on = std::getenv("OD_DOCTRINE_REFLEX") &&
-                           atoi(std::getenv("OD_DOCTRINE_REFLEX")) != 0;
-    if (!on) return;
+    // 0/unset off; 1 = as journal 399 measured it; 2 = narrowed, see below.
+    static const int mode = std::getenv("OD_DOCTRINE_REFLEX")
+                          ? atoi(std::getenv("OD_DOCTRINE_REFLEX")) : 0;
+    if (mode <= 0) return;
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
     if (!c) return;
@@ -14206,6 +14244,43 @@ void AISystem::doctrineReflex(int cid) {
     static const double floorCash = std::getenv("OD_DOCTRINE_CASH")
                                   ? atof(std::getenv("OD_DOCTRINE_CASH")) : 50.0;
     if (c->treasury < floorCash) return;
+    // ── NARROWED (OD_DOCTRINE_REFLEX=2, journal 400) ──
+    //
+    // Journal 399 measured the unnarrowed rule: the three great-power seats gain
+    // +72.4 rating while 1914:SWE is annihilated 16/32 against 6/32 (p 0.017). A
+    // world-wide push toward attack doctrines helps whoever can convert force into
+    // land and kills whoever cannot. ONE condition, not a conjunction (memory
+    // conditions-are-expensive): the country's army must be at or above the median
+    // of living countries. It is also the mechanism test -- it removes Sweden's own
+    // purchase while leaving its larger neighbours buying, so if Sweden still dies
+    // the harm was never its own doctrine.
+    if (mode >= 2) {
+        auto meIt = m_stats.find(cid);
+        if (meIt == m_stats.end()) return;
+        if (meIt->second.army < medianLivingArmy()) return;
+    }
+    // ── WORLD-SIDE LEVER (OD_DOCTRINE_REFLEX=3, journal 401) ──
+    //
+    // Journal 400 located the harm: under mode 2 Sweden never buys a doctrine and
+    // is still annihilated 16/32, because its LARGER neighbours buy and use them
+    // on it. So condition the buyer on its opponent: arm only when at war with a
+    // country that is itself at or above the median army. A great power arming
+    // against a great power keeps the gain; one arming to finish a small
+    // neighbour -- the case that kills Sweden -- does not. Reuses mode 2's median,
+    // so no second statistic is invented.
+    if (mode >= 3) {
+        bool bigEnemy = false;
+        auto wit = m_warWith.find(cid);
+        if (wit != m_warWith.end())
+            for (int e : wit->second) {
+                if (e <= 0 || e >= Game::REBEL_CID_MIN) continue;
+                auto eIt = m_stats.find(e);
+                if (eIt != m_stats.end() && eIt->second.army >= medianLivingArmy()) {
+                    bigEnemy = true; break;
+                }
+            }
+        if (!bigEnemy) return;
+    }
     auto atkOf = [&](const Policy& p) {
         auto it = p.levers.find("armyAtkPct");
         return it == p.levers.end() ? 0.0f : it->second;

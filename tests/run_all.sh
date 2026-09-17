@@ -139,6 +139,9 @@ run "doctrine rules"   "$bin/PolicyRulesTest" "$root/data/"
 # flag nobody knows works. The second run is the only place the ON contract is
 # checked, because policyTenure caches the flag per process.
 OD_DOCTRINE_TENURE=1 run "doctrine tenure"  "$bin/PolicyRulesTest" "$root/data/"
+# And once for political capital, for the same reason: the rule caches its
+# flag per process, and the arm that is never run is the arm nobody knows works.
+OD_POLITICAL_CAPITAL=1 run "political capital"  "$bin/PolicyRulesTest" "$root/data/"
 # Where a factory may stand: the capacity rule's shape, its pinned constants,
 # and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
 run "industry capacity" "$bin/IndustryCapacityTest"

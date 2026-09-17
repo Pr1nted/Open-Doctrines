@@ -3124,6 +3124,28 @@ public:
     // and the part of it already built while it is still being implemented.
     // Every site that sums or refunds a doctrine's bill goes through this.
     float policyUpkeep(const ActivePolicy& ap, const Policy& p) const;
+    // ── POLITICAL ROOM, AND THE STOCK OF WHAT WAS NOT USED ──
+    //
+    // A government may commit this share of gross income to politics --
+    // doctrines, minority settlements and pacification together. ONE
+    // definition, read by the AI's offer gate and by the capital accrual
+    // alike: a stock that banks "unspent room" measured against a different
+    // ceiling from the one that refuses would be a stock of nothing.
+    static constexpr float kPoliticsShare = 0.25f;
+
+    /// What this country has already committed to politics, per turn.
+    static float politicsCommitted(const CountryIncomeSnapshot& inc);
+    /// The ceiling on that, this turn, including anything banked.
+    float politicsCeiling(const CountryIncomeSnapshot& inc, int countryId) const;
+    /// Unspent political room this country has banked. 0 unless the rule is on.
+    float politicalCapital(int countryId) const;
+    /// One turn's arithmetic on the bank. Pure, so it can be tested directly.
+    static float bankAfterTurn(float bank, float share, float committed);
+    /// Bank what politics did not use, or draw on the bank. Once per turn.
+    void updatePoliticalCapital(int countryId);
+    /// Whether political capital accumulates at all.
+    bool politicalCapitalOn() const;
+
     /// Whether the commitment rules (tenure and the phased bill) are switched on.
     bool doctrineCommitment() const;
 
@@ -3359,6 +3381,13 @@ public:
     // ─── Rebellion System ─────────────────────────
     int m_nextRebelCid = 60000;
     std::unordered_map<int, float> m_countryPacification;
+    /**
+     * Political room a government banked by not using it.
+     *
+     * Absent means zero, so an old save and a quiet country read the same and
+     * neither needs a migration. See updatePoliticalCapital.
+     */
+    std::unordered_map<int, float> m_politicalCapital;
 
     // ─── Districts ──────────────────────────────────────────────────────────
     /**
