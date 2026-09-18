@@ -568,11 +568,18 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
     m_researchNodes.back().migrationRate=1.0f;
 
     // ─── Population > Indoctrination ───
-    add("indoctrinate1","Cultural Programs","Minority alignment +5%/turn",
+    //
+    // These three sold "Minority alignment +X%/turn" and did NOTHING: nothing
+    // ever called getResearchEffect("indoctrinationPct"). They now convert
+    // people toward the country's own culture (Game_Assimilation.cpp), which
+    // is what the tooltips are rewritten to say. They do not touch alignment
+    // and never did -- alignment is the ethnic policy dial, and claiming it
+    // here was the false half of the promise.
+    add("indoctrinate1","Cultural Programs","Minorities adopt the national culture, slowly",
         "population","indoctrination",{},10,700,80).indoctrinationPct=5;
-    add("indoctrinate2","Educational Reform","Minority alignment +10%/turn",
+    add("indoctrinate2","Educational Reform","They adopt it faster",
         "population","indoctrination",{"indoctrinate1"},20,700,180).indoctrinationPct=10;
-    add("indoctrinate3","National Identity","Minority alignment +20%/turn",
+    add("indoctrinate3","National Identity","Faster still -- but only where they are content",
         "population","indoctrination",{"indoctrinate2"},30,700,280).indoctrinationPct=20;
 
     // ─── Misc > Repeatable Research ───

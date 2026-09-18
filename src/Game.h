@@ -2794,6 +2794,9 @@ public:
      * their data, and not m_mpMapId, which single-player never sets.
      */
     std::string m_scenarioKey;
+    /** The titular culture per country, and the turn it was worked out. */
+    mutable std::unordered_map<int, std::string> m_titularGroup;
+    mutable int m_titularTurn = -1;
     /** Who governs each country. Empty unless the party rules are on. */
     std::unordered_map<int, odparty::Legislature> m_countryParties;
     std::unordered_map<int, long long> m_provincePopulations;
@@ -3194,6 +3197,20 @@ public:
 
     /// Whether the commitment rules (tenure and the phased bill) are switched on.
     bool doctrineCommitment() const;
+
+    // ── ASSIMILATION ──
+    /**
+     * Move a slice of every minority's share toward the country's own culture.
+     * One phase of processPopulation; does nothing unless the rule is on.
+     * See src/Game_Assimilation.cpp for why alignment gates it.
+     */
+    void assimilateMinorities();
+    /** The country's largest culture by population. Cached once per turn. */
+    const std::string& titularGroupOf(int countryId) const;
+    /** Assimilation points per turn: research plus doctrines. 0 when off. */
+    float assimilationRate(int countryId) const;
+    /** Whether indoctrination converts anyone at all. */
+    bool assimilationOn() const;
 
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
     // ── WHO GOVERNS ──

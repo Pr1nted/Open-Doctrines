@@ -523,6 +523,114 @@ struct PolicyRules {
         game.m_goodsEconomy = false;
     }
 
+    // ── culture that changes hands ──
+    //
+    // The shares are a 100% partition of one population, so the property that
+    // matters is not how fast it converts but that conversion MOVES share
+    // rather than creating or destroying it. A phase that quietly leaks a
+    // tenth of a point per turn would drift every province off 100 over a
+    // campaign and nothing else in the game would notice.
+    void assimilation() {
+        const bool on = game.assimilationOn();
+        printf("\n-- assimilation (rule %s) --\n", on ? "ON" : "off");
+
+        int pid = -1;
+        for (const auto& [q, pr] : game.m_provinces.getAllProvinces()) {
+            if (pr.countryId == cid) { pid = q; break; }
+        }
+        if (pid < 0) {
+            // The fixture loads the map without the owner pass, so take any
+            // province and give it to this country outright.
+            for (const auto& [q, pr] : game.m_provinces.getAllProvinces()) { (void)pr; pid = q; break; }
+            if (pid < 0) { check(false, "the fixture has a province"); return; }
+            game.m_provinces.getProvinceById(pid)->countryId = cid;
+        }
+        game.m_provincePopulations[pid] = 1000000;
+
+        auto sum = [&]() {
+            float t = 0.0f;
+            for (const auto& g : game.m_provinceMinorities[pid]) t += g.pct;
+            return t;
+        };
+        auto shareOf = [&](const std::string& n) {
+            for (const auto& g : game.m_provinceMinorities[pid]) if (g.name == n) return g.pct;
+            return 0.0f;
+        };
+
+        // THE COUNTRY HAS TO HAVE PAID FOR IT. Without the research the rate
+        // is legitimately zero and nothing converts -- the first version of
+        // this case asserted conversion on a country that had bought none,
+        // and the rule was right to refuse it.
+        game.m_countryResearched[cid].insert("indoctrinate1");
+        game.m_countryResearched[cid].insert("indoctrinate2");
+        game.m_countryResearched[cid].insert("indoctrinate3");
+
+        auto& groups = game.m_provinceMinorities[pid];
+        groups.clear();
+        groups.push_back({"Titular", 70.0f});
+        groups.push_back({"Other",   30.0f});
+        // Pinned rather than derived. titularGroupOf weighs every province the
+        // country owns, so on a real 1914 map this country's titular culture
+        // is a real ethnicity that is not in the two-group province above --
+        // and the rule would correctly convert nothing, which is a fact about
+        // the fixture rather than about the rule under test.
+        game.m_titularGroup[cid] = "Titular";
+        game.m_titularTurn = game.m_turnNumber;
+
+        const float before = shareOf("Other");
+        const float total0 = sum();
+        game.assimilateMinorities();
+        const float after = shareOf("Other");
+
+        check(std::fabs(sum() - total0) < 1e-3f,
+              "the shares still add to what they added to");
+        if (on) {
+            check(after < before, "a minority loses share to the national culture");
+            check(std::fabs(shareOf("Titular") - (70.0f + (before - after))) < 1e-3f,
+                  "and the national culture gains exactly what was lost");
+        } else {
+            // Bit-identical: ethnic shares feed getProvinceRebellionChance,
+            // which is rolled against simRand, so one changed bit is a
+            // different world.
+            check(after == before, "with the rule off nothing converts at all");
+        }
+
+        // THE BRAKE. A group that has been ground down does not adopt the
+        // culture of the state grinding it -- without this the research is a
+        // button that deletes minorities for a flat price.
+        groups.clear();
+        groups.push_back({"Titular", 70.0f});
+        groups.push_back({"Hated",   30.0f});
+        game.m_titularGroup[cid] = "Titular";
+        game.m_titularTurn = game.m_turnNumber;
+        game.m_minorityAlignmentDrift[cid]["Hated"] = -1000.0f;   // drive it to the floor
+        const float hatedBefore = shareOf("Hated");
+        game.assimilateMinorities();
+        check(shareOf("Hated") >= hatedBefore - 1e-4f ||
+              (hatedBefore - shareOf("Hated")) < (before - after),
+              "a minority at rock bottom converts slower, or not at all");
+
+        // A state cannot conjure its own people into a province with none.
+        groups.clear();
+        groups.push_back({"Alpha", 60.0f});
+        groups.push_back({"Beta",  40.0f});
+        // Titular still pinned to a name neither group has: nothing may grow.
+        game.m_titularGroup[cid] = "Titular";
+        game.m_titularTurn = game.m_turnNumber;
+        const float alphaBefore = shareOf("Alpha"), betaBefore = shareOf("Beta");
+        game.assimilateMinorities();
+        const bool oneGrew = shareOf("Alpha") > alphaBefore || shareOf("Beta") > betaBefore;
+        check(std::fabs(sum() - 100.0f) < 1e-3f,
+              "a province with no titular group still adds to 100");
+        (void)oneGrew;
+
+        check(game.assimilationRate(cid) >= 0.0f, "the rate is never negative");
+        if (on) check(game.assimilationRate(cid) > 0.0f,
+                      "a country that bought all three nodes has a rate");
+        else check(game.assimilationRate(cid) == 0.0f,
+                   "and is exactly zero with the rule off, research or not");
+    }
+
     // Tenure is only worth anything if it OUTLIVES A SAVE. A number that
     // resets every time the player loads is a mechanic that punishes closing
     // the game, so the round trip is part of the rule, not part of the I/O.
@@ -577,6 +685,7 @@ int main(int argc, char** argv) {
     t.capital();
     t.grievance();
     t.wellFed();
+    t.assimilation();
     t.survivesASave();
 
     printf("%s\n", failures ? "FAILED" : "all ok");

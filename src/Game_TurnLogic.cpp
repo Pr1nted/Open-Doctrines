@@ -8410,6 +8410,28 @@ void Game::processPopulation() {
         }
     }
 
+    // ── Phase 2c: assimilation ──
+    //
+    // WHAT WAS HERE BEFORE: nothing. Three research nodes -- Cultural
+    // Programs, Educational Reform, National Identity -- set
+    // indoctrinationPct and advertised "Minority alignment +5/10/20%/turn",
+    // and NOTHING EVER READ THE FIELD. getResearchEffect("indoctrinationPct")
+    // had no caller, so 10, 20 and 30 research bought three tooltips and no
+    // effect. It is the same fault Game_Policies.cpp records for unrest
+    // reduction: "the tooltip promised a reduction that never happened".
+    //
+    // Now it converts people. Share moves from every other group toward the
+    // country's OWN culture -- the titular group, computed per country rather
+    // than per province, because a state teaches its own culture and not
+    // whatever happens to be locally dominant. A Tajik-majority province of a
+    // Pashtun state assimilates toward Pashtun, which is the whole point.
+    //
+    // SCALED BY ALIGNMENT, so it is not a free erase button: a minority that
+    // has been repressed into the ground does not adopt the culture of the
+    // state repressing it. Conciliation and indoctrination have to be bought
+    // together, and a country that only indoctrinates converts almost nobody.
+    assimilateMinorities();
+
     // Phase 3: compute stored unrest (for display)
     for (auto& [pid, p] : m_provinces.getAllProvinces()) {
         if (p.countryId <= 0 || p.countryId == UNC_CID || p.countryId == BLC_CID) continue;

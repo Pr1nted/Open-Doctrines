@@ -147,6 +147,7 @@ OD_POLITICAL_CAPITAL=1 run "political capital"  "$bin/PolicyRulesTest" "$root/da
 # process only ever sees one state and every ON contract needs its own run.
 OD_MINORITY_WORST=1 run "minority grievance"  "$bin/PolicyRulesTest" "$root/data/"
 OD_WELLFED_ROOM=1 run "living standards"  "$bin/PolicyRulesTest" "$root/data/"
+OD_INDOCTRINATION=1 run "assimilation"  "$bin/PolicyRulesTest" "$root/data/"
 # Where a factory may stand: the capacity rule's shape, its pinned constants,
 # and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
 run "industry capacity" "$bin/IndustryCapacityTest"

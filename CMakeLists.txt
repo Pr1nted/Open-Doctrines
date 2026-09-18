@@ -905,6 +905,7 @@ set(GAME_SOURCES
     src/Game_Multiplayer.cpp
     src/Game_Policies.cpp
     src/Game_Parties.cpp
+    src/Game_Assimilation.cpp
     src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
