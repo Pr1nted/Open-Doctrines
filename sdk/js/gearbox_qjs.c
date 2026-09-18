@@ -157,142 +157,12 @@ static JSValue j_fuel_budget(JSContext *ctx, JSValueConst this_val, int argc, JS
 }
 
 /* --- gamestate.read ------------------------------------------------------ */
-#if GBX_WITH_GAMESTATE
+/* The hand-written few, named by wire id so they read as bound rather than
+ * missing: gearbox:core "log" / "env" / "abort" / "fuel_budget",
+ * gearbox:assets "read" (bytes, not text) and gearbox:net "recv" (two
+ * results through one call). Everything else is generated. */
+#include "gearbox_js_generated.h"
 
-static JSValue j_turn_number(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t; (void)argc; (void)argv;
-    return JS_NewInt32(ctx, (int32_t)gearbox_turn_number());
-}
-
-static JSValue j_country_count(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t; (void)argc; (void)argv;
-    return JS_NewInt32(ctx, (int32_t)gearbox_country_count());
-}
-
-/* 0-based, as the ABI is -- JS arrays are 0-based too, so matching is also the
- * least surprising choice. Returns null when out of range. */
-static JSValue j_country_at(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    int32_t i = 0;
-    if (argc < 1 || !arg_i32(ctx, argv[0], &i)) return JS_EXCEPTION;
-    gearbox_country c = gearbox_country_at((uint32_t)i);
-    if (c == GEARBOX_INVALID) return JS_NULL;
-    return JS_NewUint32(ctx, c);
-}
-
-static JSValue j_country_name(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    int32_t c = 0;
-    if (argc < 1 || !arg_i32(ctx, argv[0], &c)) return JS_EXCEPTION;
-    uint32_t need = gearbox_country_name((gearbox_country)c, 0, 0);
-    if (need == 0) return JS_NewStringLen(ctx, "", 0);
-
-    char stackbuf[128];
-    char *buf = stackbuf;
-    if (need > sizeof stackbuf) {
-        buf = js_malloc(ctx, need);
-        if (!buf) return JS_EXCEPTION;
-    }
-    uint32_t got = gearbox_country_name((gearbox_country)c, buf, need);
-    if (got > need) got = need;
-    JSValue v = JS_NewStringLen(ctx, buf, got);
-    if (buf != stackbuf) js_free(ctx, buf);
-    return v;
-}
-
-static JSValue j_country_treasury(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    int32_t c = 0;
-    if (argc < 1 || !arg_i32(ctx, argv[0], &c)) return JS_EXCEPTION;
-    return JS_NewFloat64(ctx, gearbox_country_treasury((gearbox_country)c));
-}
-
-static JSValue j_country_province_count(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    int32_t c = 0;
-    if (argc < 1 || !arg_i32(ctx, argv[0], &c)) return JS_EXCEPTION;
-    return JS_NewInt32(ctx, (int32_t)gearbox_country_province_count((gearbox_country)c));
-}
-
-static JSValue j_province_population(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    int32_t p = 0;
-    if (argc < 1 || !arg_i32(ctx, argv[0], &p)) return JS_EXCEPTION;
-    /* A population can exceed 2^53 only in absurd worlds, so a double is a
-     * safer return than a BigInt a script would have to special-case. */
-    return JS_NewFloat64(ctx, (double)gearbox_province_population((gearbox_province)p));
-}
-
-static JSValue j_province_owner(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    int32_t p = 0;
-    if (argc < 1 || !arg_i32(ctx, argv[0], &p)) return JS_EXCEPTION;
-    gearbox_country c = gearbox_province_owner((gearbox_province)p);
-    if (c == GEARBOX_INVALID) return JS_NULL;
-    return JS_NewUint32(ctx, c);
-}
-
-#endif /* GBX_WITH_GAMESTATE */
-
-/* --- ui ------------------------------------------------------------------ */
-#if GBX_WITH_UI
-
-static JSValue j_panel_register(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    if (argc < 1) return JS_EXCEPTION;
-    size_t n = 0;
-    const char *title = JS_ToCStringLen(ctx, &n, argv[0]);
-    if (!title) return JS_EXCEPTION;
-    int32_t w = 240, h = 120;
-    if (argc > 1) JS_ToInt32(ctx, &w, argv[1]);
-    if (argc > 2) JS_ToInt32(ctx, &h, argv[2]);
-    gearbox_panel p = gearbox_panel_register(title, (uint32_t)n, (uint32_t)w, (uint32_t)h);
-    JS_FreeCString(ctx, title);
-    return JS_NewUint32(ctx, p);
-}
-
-static JSValue j_draw_text(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    if (argc < 5) return JS_EXCEPTION;
-    int32_t p = 0, x = 0, y = 0;
-    if (!arg_i32(ctx, argv[0], &p) || !arg_i32(ctx, argv[1], &x) ||
-        !arg_i32(ctx, argv[2], &y)) return JS_EXCEPTION;
-    uint32_t rgba = arg_rgba(ctx, argv[3]);
-    size_t n = 0;
-    const char *s = JS_ToCStringLen(ctx, &n, argv[4]);
-    if (!s) return JS_EXCEPTION;
-    gearbox_draw_text((gearbox_panel)p, x, y, rgba, s, (uint32_t)n);
-    JS_FreeCString(ctx, s);
-    return JS_UNDEFINED;
-}
-
-static JSValue j_draw_rect(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    if (argc < 6) return JS_EXCEPTION;
-    int32_t p = 0, x = 0, y = 0, w = 0, h = 0;
-    if (!arg_i32(ctx, argv[0], &p) || !arg_i32(ctx, argv[1], &x) ||
-        !arg_i32(ctx, argv[2], &y) || !arg_i32(ctx, argv[3], &w) ||
-        !arg_i32(ctx, argv[4], &h)) return JS_EXCEPTION;
-    gearbox_draw_rect((gearbox_panel)p, x, y, w, h, arg_rgba(ctx, argv[5]));
-    return JS_UNDEFINED;
-}
-
-static JSValue j_button(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-    (void)t;
-    if (argc < 6) return JS_EXCEPTION;
-    int32_t p = 0, x = 0, y = 0, w = 0, h = 0;
-    if (!arg_i32(ctx, argv[0], &p) || !arg_i32(ctx, argv[1], &x) ||
-        !arg_i32(ctx, argv[2], &y) || !arg_i32(ctx, argv[3], &w) ||
-        !arg_i32(ctx, argv[4], &h)) return JS_EXCEPTION;
-    size_t n = 0;
-    const char *s = JS_ToCStringLen(ctx, &n, argv[5]);
-    if (!s) return JS_EXCEPTION;
-    uint32_t hit = gearbox_button((gearbox_panel)p, x, y, w, h, s, (uint32_t)n);
-    JS_FreeCString(ctx, s);
-    return JS_NewBool(ctx, hit != 0);
-}
-
-#endif /* GBX_WITH_UI */
 
 /* --- assets -------------------------------------------------------------- */
 #if GBX_WITH_ASSETS
@@ -339,22 +209,7 @@ static const JSCFunctionListEntry gbx_funcs[] = {
     JS_CFUNC_DEF("env",                 0, j_env),
     JS_CFUNC_DEF("abort",               1, j_abort),
     JS_CFUNC_DEF("fuelBudget",          0, j_fuel_budget),
-#if GBX_WITH_GAMESTATE
-    JS_CFUNC_DEF("turnNumber",          0, j_turn_number),
-    JS_CFUNC_DEF("countryCount",        0, j_country_count),
-    JS_CFUNC_DEF("countryAt",           1, j_country_at),
-    JS_CFUNC_DEF("countryName",         1, j_country_name),
-    JS_CFUNC_DEF("countryTreasury",     1, j_country_treasury),
-    JS_CFUNC_DEF("countryProvinceCount",1, j_country_province_count),
-    JS_CFUNC_DEF("provincePopulation",  1, j_province_population),
-    JS_CFUNC_DEF("provinceOwner",       1, j_province_owner),
-#endif
-#if GBX_WITH_UI
-    JS_CFUNC_DEF("panelRegister",       3, j_panel_register),
-    JS_CFUNC_DEF("drawText",            5, j_draw_text),
-    JS_CFUNC_DEF("drawRect",            6, j_draw_rect),
-    JS_CFUNC_DEF("button",              6, j_button),
-#endif
+#include "gearbox_js_funcs.inc"
 #if GBX_WITH_ASSETS
     JS_CFUNC_DEF("assetSize",           1, j_asset_size),
     JS_CFUNC_DEF("assetRead",           1, j_asset_read),

@@ -165,116 +165,12 @@ static int l_fuel_budget(lua_State *L) {
 }
 
 /* --- gamestate.read ----------------------------------------------------- */
-#if GBX_WITH_GAMESTATE
+/* The hand-written few, named by wire id so they read as bound rather than
+ * missing: gearbox:core "log" / "env" / "abort" / "fuel_budget",
+ * gearbox:assets "read" (bytes, not text) and gearbox:net "recv" (two
+ * results through one call). Everything else is generated. */
+#include "gearbox_lua_generated.h"
 
-static int l_turn_number(lua_State *L) {
-    lua_pushinteger(L, (lua_Integer)gearbox_turn_number());
-    return 1;
-}
-
-static int l_country_count(lua_State *L) {
-    lua_pushinteger(L, (lua_Integer)gearbox_country_count());
-    return 1;
-}
-
-static int l_country_at(lua_State *L) {
-    /* Lua is 1-based; the ABI is 0-based. Convert here so scripts read
-     * naturally, and document it in the README. */
-    lua_Integer i = luaL_checkinteger(L, 1);
-    gearbox_country c = gearbox_country_at((uint32_t)(i - 1));
-    if (c == GEARBOX_INVALID) lua_pushnil(L);
-    else                      lua_pushinteger(L, (lua_Integer)c);
-    return 1;
-}
-
-static int l_country_name(lua_State *L) {
-    gearbox_country c = (gearbox_country)luaL_checkinteger(L, 1);
-    uint32_t need = gearbox_country_name(c, NULL, 0);
-    if (need == 0) { lua_pushliteral(L, ""); return 1; }
-
-    luaL_Buffer b;
-    char *dst = luaL_buffinitsize(L, &b, need);
-    uint32_t got = gearbox_country_name(c, dst, need);
-    if (got > need) got = need;     /* host grew the name between calls */
-    luaL_pushresultsize(&b, got);
-    return 1;
-}
-
-static int l_country_treasury(lua_State *L) {
-    gearbox_country c = (gearbox_country)luaL_checkinteger(L, 1);
-    lua_pushnumber(L, (lua_Number)gearbox_country_treasury(c));
-    return 1;
-}
-
-static int l_country_province_count(lua_State *L) {
-    gearbox_country c = (gearbox_country)luaL_checkinteger(L, 1);
-    lua_pushinteger(L, (lua_Integer)gearbox_country_province_count(c));
-    return 1;
-}
-
-static int l_province_population(lua_State *L) {
-    gearbox_province p = (gearbox_province)luaL_checkinteger(L, 1);
-    lua_pushinteger(L, (lua_Integer)gearbox_province_population(p));
-    return 1;
-}
-
-static int l_province_owner(lua_State *L) {
-    gearbox_province p = (gearbox_province)luaL_checkinteger(L, 1);
-    gearbox_country c = gearbox_province_owner(p);
-    if (c == GEARBOX_INVALID) lua_pushnil(L);
-    else                      lua_pushinteger(L, (lua_Integer)c);
-    return 1;
-}
-
-#endif /* GBX_WITH_GAMESTATE */
-
-/* --- ui ----------------------------------------------------------------- */
-#if GBX_WITH_UI
-
-static int l_panel_register(lua_State *L) {
-    size_t n = 0;
-    const char *title = luaL_checklstring(L, 1, &n);
-    uint32_t w = (uint32_t)luaL_optinteger(L, 2, 240);
-    uint32_t h = (uint32_t)luaL_optinteger(L, 3, 120);
-    lua_pushinteger(L, (lua_Integer)gearbox_panel_register(title, (uint32_t)n, w, h));
-    return 1;
-}
-
-static int l_draw_text(lua_State *L) {
-    gearbox_panel p = (gearbox_panel)luaL_checkinteger(L, 1);
-    int32_t x = (int32_t)luaL_checkinteger(L, 2);
-    int32_t y = (int32_t)luaL_checkinteger(L, 3);
-    uint32_t rgba = (uint32_t)luaL_checkinteger(L, 4);
-    size_t n = 0;
-    const char *s = luaL_checklstring(L, 5, &n);
-    gearbox_draw_text(p, x, y, rgba, s, (uint32_t)n);
-    return 0;
-}
-
-static int l_draw_rect(lua_State *L) {
-    gearbox_panel p = (gearbox_panel)luaL_checkinteger(L, 1);
-    int32_t x = (int32_t)luaL_checkinteger(L, 2);
-    int32_t y = (int32_t)luaL_checkinteger(L, 3);
-    int32_t w = (int32_t)luaL_checkinteger(L, 4);
-    int32_t h = (int32_t)luaL_checkinteger(L, 5);
-    uint32_t rgba = (uint32_t)luaL_checkinteger(L, 6);
-    gearbox_draw_rect(p, x, y, w, h, rgba);
-    return 0;
-}
-
-static int l_button(lua_State *L) {
-    gearbox_panel p = (gearbox_panel)luaL_checkinteger(L, 1);
-    int32_t x = (int32_t)luaL_checkinteger(L, 2);
-    int32_t y = (int32_t)luaL_checkinteger(L, 3);
-    int32_t w = (int32_t)luaL_checkinteger(L, 4);
-    int32_t h = (int32_t)luaL_checkinteger(L, 5);
-    size_t n = 0;
-    const char *s = luaL_checklstring(L, 6, &n);
-    lua_pushboolean(L, gearbox_button(p, x, y, w, h, s, (uint32_t)n) != 0);
-    return 1;
-}
-
-#endif /* GBX_WITH_UI */
 
 /* --- assets ------------------------------------------------------------- */
 #if GBX_WITH_ASSETS
@@ -310,24 +206,7 @@ static const luaL_Reg gbx_funcs[] = {
     {"abort",               l_abort},
     {"fuelBudget",          l_fuel_budget},
 
-#if GBX_WITH_GAMESTATE
-    {"turnNumber",          l_turn_number},
-    {"countryCount",        l_country_count},
-    {"countryAt",           l_country_at},
-    {"countryName",         l_country_name},
-    {"countryTreasury",     l_country_treasury},
-    {"countryProvinceCount",l_country_province_count},
-    {"provincePopulation",  l_province_population},
-    {"provinceOwner",       l_province_owner},
-#endif
-
-#if GBX_WITH_UI
-    {"panelRegister",       l_panel_register},
-    {"drawText",            l_draw_text},
-    {"drawRect",            l_draw_rect},
-    {"button",              l_button},
-#endif
-
+#include "gearbox_lua_funcs.inc"
 #if GBX_WITH_ASSETS
     {"assetSize",           l_asset_size},
     {"assetRead",           l_asset_read},

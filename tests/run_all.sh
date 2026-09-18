@@ -282,7 +282,7 @@ check "sdk bindings vs abi.json" $PY "$root/tools/check_bindings.py"
 # And do the generated Python bindings COMPILE? check_bindings.py is a text
 # lint by its own admission; this asks the compiler, which is the only thing
 # that can catch a generated call with the wrong arity.
-check "generated python bindings compile" bash "$root/tools/check_python_bindings.sh"
+check "generated script bindings compile" bash "$root/tools/check_script_bindings.sh"
 
 # THE COMPATIBILITY GATE, and a different question from the two checks above.
 #

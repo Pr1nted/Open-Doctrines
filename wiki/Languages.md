@@ -16,6 +16,42 @@ a `.odmod`, and loaded by the host with `odmod-check`. "Written" means the
 binding exists and was transcribed from `abi.json`, but no toolchain was
 available to compile it.
 
+### Every language reaches the whole ABI
+
+Until 2026-09-19 that was not true, and the table below hid it: "verified" said
+a hello-world compiled, not that the binding could reach anything. The six
+compiled SDKs bound all 184 imports because they are **generated** from
+`sdk/abi.json`; the three interpreted ones were written by hand and bound
+**6 (Python), 14 (Lua) and 34 (JavaScript)**. A Python mod could not read a
+doctrine, move an army or ask who governs — not because the capability was
+refused, but because nobody had typed the function.
+
+All three are generated now, from the same `tools/gen_bindings.py` that feeds
+the other six, so **every language is at 184/184** and a new ABI import appears
+everywhere at once instead of in six places and eventually in three more.
+
+Six functions per language stay hand-written, and the generator names each one
+so it reads as deliberate rather than missing: `log` takes the level enum and
+`print` routes through it, `env` fills a struct, `abort` does not return,
+`fuel_budget`'s `u64` sentinel means infinity, an asset is **bytes** and UTF-8
+decoding a PNG would corrupt it, and `recv` returns two results through one
+call.
+
+Two conventions are applied per language rather than globally, because each SDK
+had already chosen and documented one:
+
+| | |
+|---|---|
+| **Lua indices are 1-based** | The ABI is 0-based. The 36 parameters named `index` convert at the boundary; a country or province **handle** is an opaque id, not an ordinal, and is never shifted. |
+| **JS indices are 0-based** | As the ABI and JS arrays both are. |
+
+`tools/check_bindings.py` is a text lint and says so — it "cannot tell you the
+argument order is right", which is exactly the mistake generation makes likely.
+`tools/check_script_bindings.sh` asks the compiler instead, against real
+CPython, Lua and QuickJS headers with **every capability group switched on**,
+which is stricter than any real mod. It skips loudly when a toolchain's headers
+are absent rather than passing quietly.
+
 | Language | Binding | Status | Hello-world |
 |---|---|---|---|
 | **C** | [`sdk/gearbox.h`](https://github.com/Pr1nted/Open-Doctrines/blob/main/sdk/gearbox.h) | **verified** — clang 21 | 1.1 KB |
