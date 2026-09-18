@@ -11,8 +11,10 @@
  *
  * Two halves, as in every other SDK here:
  *
- *   1. A builtin `gearbox` module -- each of the 18 host imports as a Python
- *      function. Two-call sizing is handled here so a script gets a str back.
+ *   1. A builtin `gearbox` module -- EVERY host import the build declares,
+ *      generated from sdk/abi.json by tools/gen_bindings.py. Two-call
+ *      sizing is handled for you, so a script gets a str back.
+ *      It used to be 18 hand-written ones out of 184.
  *   2. Export glue -- mod_load and friends look up same-named globals in the
  *      script and call them.
  *
@@ -154,119 +156,55 @@ static PyObject *py_fuel_budget(PyObject *self, PyObject *args) {
 }
 
 /* --- gamestate.read ------------------------------------------------------ */
-#if GBX_WITH_GAMESTATE
+/* The hand-written five, named by their wire ids so a reader -- and
+ * check_bindings.py -- can see they are bound rather than missing:
+ *   gearbox:core "log"           the level enum, and print() routes through it
+ *   gearbox:core "env"           fills a struct; this returns a dict
+ *   gearbox:core "abort"         does not return, so it builds no PyObject
+ *   gearbox:core "fuel_budget"   a u64 sentinel that means float('inf')
+ *   gearbox:assets "read"        bytes, not text: UTF-8 decoding a PNG
+ *   gearbox:net "recv"           two results through one call
+ *
+ * The generated bindings live here. Everything this file still defines
+ * by hand is a case the generator cannot derive: log takes the level enum and
+ * print() routes through it, env fills a struct, abort does not return,
+ * fuelBudget's u64 sentinel means infinity, and an asset is bytes rather than
+ * text. See tools/gen_bindings.py, PY_SKIP. */
+#include "gearbox_py_generated.h"
 
-static PyObject *py_turn_number(PyObject *s, PyObject *a) {
-    (void)s; (void)a; return PyLong_FromUnsignedLong(gearbox_turn_number());
-}
-static PyObject *py_country_count(PyObject *s, PyObject *a) {
-    (void)s; (void)a; return PyLong_FromUnsignedLong(gearbox_country_count());
-}
-
-/* 0-based, as the ABI is -- Python sequences are 0-based too. None when out of
- * range, which is what a Python caller expects instead of a sentinel int. */
-static PyObject *py_country_at(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int i = 0;
-    if (!PyArg_ParseTuple(args, "I", &i)) return NULL;
-    gearbox_country c = gearbox_country_at(i);
-    if (c == GEARBOX_INVALID) Py_RETURN_NONE;
-    return PyLong_FromUnsignedLong(c);
-}
-
-static PyObject *py_country_name(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int c = 0;
-    if (!PyArg_ParseTuple(args, "I", &c)) return NULL;
-    uint32_t need = gearbox_country_name(c, NULL, 0);
-    if (need == 0) return PyUnicode_FromString("");
-
-    char *buf = (char *)PyMem_Malloc(need);
+/* gearbox:net "recv" -- the one import the generator cannot derive.
+ *
+ * It has TWO results: the message bytes and the sender's peer id, returned
+ * through an out buffer and an out pointer. Every other sized getter in the
+ * ABI has exactly one out buffer in the last position, which is the shape the
+ * two-call sizing idiom covers; this does not, so it is written here.
+ *
+ * Returns (bytes, peer) or None when the queue is empty -- a tuple rather than
+ * a buffer the caller has to size, and None rather than an empty bytes, since
+ * an empty message is a real message and "nothing waiting" is not.
+ */
+#if GBX_WITH_NET
+static PyObject *gbxpy_recv(PyObject *self, PyObject *args) {
+    (void)self; (void)args;
+    /* A message longer than the buffer is TRUNCATED rather than dropped (see
+     * the ABI doc), so the buffer is the largest message this binding will
+     * hand back whole. 64 KiB matches the send limit. */
+    enum { CAP = 65536 };
+    char *buf = (char *)PyMem_Malloc(CAP);
     if (!buf) return PyErr_NoMemory();
-    uint32_t got = gearbox_country_name(c, buf, need);
-    if (got > need) got = need;
-    PyObject *v = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)got, "replace");
+    uint32_t peer = 0;
+    uint32_t n = gearbox_recv(buf, (uint32_t)CAP, &peer);
+    if (n == 0) { PyMem_Free(buf); Py_RETURN_NONE; }
+    if (n > (uint32_t)CAP) n = (uint32_t)CAP;
+    PyObject *payload = PyBytes_FromStringAndSize(buf, (Py_ssize_t)n);
     PyMem_Free(buf);
-    return v;
+    if (!payload) return NULL;
+    PyObject *t = Py_BuildValue("(Ok)", payload, (long)peer);
+    Py_DECREF(payload);
+    return t;
 }
+#endif /* GBX_WITH_NET */
 
-static PyObject *py_country_treasury(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int c = 0;
-    if (!PyArg_ParseTuple(args, "I", &c)) return NULL;
-    return PyFloat_FromDouble(gearbox_country_treasury(c));
-}
-static PyObject *py_country_province_count(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int c = 0;
-    if (!PyArg_ParseTuple(args, "I", &c)) return NULL;
-    return PyLong_FromUnsignedLong(gearbox_country_province_count(c));
-}
-static PyObject *py_province_population(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int p = 0;
-    if (!PyArg_ParseTuple(args, "I", &p)) return NULL;
-    return PyLong_FromLongLong((long long)gearbox_province_population(p));
-}
-static PyObject *py_province_owner(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int p = 0;
-    if (!PyArg_ParseTuple(args, "I", &p)) return NULL;
-    gearbox_country c = gearbox_province_owner(p);
-    if (c == GEARBOX_INVALID) Py_RETURN_NONE;
-    return PyLong_FromUnsignedLong(c);
-}
-
-#endif /* GBX_WITH_GAMESTATE */
-
-/* --- ui ------------------------------------------------------------------ */
-#if GBX_WITH_UI
-
-static PyObject *py_panel_register(PyObject *s, PyObject *args) {
-    (void)s;
-    const char *title = NULL;
-    Py_ssize_t n = 0;
-    unsigned int w = 240, h = 120;
-    if (!PyArg_ParseTuple(args, "s#|II", &title, &n, &w, &h)) return NULL;
-    return PyLong_FromUnsignedLong(gearbox_panel_register(title, (uint32_t)n, w, h));
-}
-
-static PyObject *py_draw_text(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int panel = 0, rgba = 0;
-    int x = 0, y = 0;
-    const char *text = NULL;
-    Py_ssize_t n = 0;
-    if (!PyArg_ParseTuple(args, "IiiIs#", &panel, &x, &y, &rgba, &text, &n))
-        return NULL;
-    gearbox_draw_text(panel, x, y, rgba, text, (uint32_t)n);
-    Py_RETURN_NONE;
-}
-
-static PyObject *py_draw_rect(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int panel = 0, rgba = 0;
-    int x = 0, y = 0, w = 0, h = 0;
-    if (!PyArg_ParseTuple(args, "IiiiiI", &panel, &x, &y, &w, &h, &rgba))
-        return NULL;
-    gearbox_draw_rect(panel, x, y, w, h, rgba);
-    Py_RETURN_NONE;
-}
-
-static PyObject *py_button(PyObject *s, PyObject *args) {
-    (void)s;
-    unsigned int panel = 0;
-    int x = 0, y = 0, w = 0, h = 0;
-    const char *label = NULL;
-    Py_ssize_t n = 0;
-    if (!PyArg_ParseTuple(args, "Iiiiis#", &panel, &x, &y, &w, &h, &label, &n))
-        return NULL;
-    /* True/False, not 0/1: `if gearbox.button(...)` should read as Python. */
-    if (gearbox_button(panel, x, y, w, h, label, (uint32_t)n)) Py_RETURN_TRUE;
-    Py_RETURN_FALSE;
-}
-
-#endif /* GBX_WITH_UI */
 
 /* --- assets -------------------------------------------------------------- */
 #if GBX_WITH_ASSETS
@@ -306,22 +244,10 @@ static PyMethodDef gbx_methods[] = {
     {"env",         py_env,         METH_NOARGS,  "env() -> dict"},
     {"abort",       py_abort,       METH_VARARGS, "abort(message) -- does not return"},
     {"fuelBudget",  py_fuel_budget, METH_NOARGS,  "fuelBudget() -> int or inf"},
-#if GBX_WITH_GAMESTATE
-    {"turnNumber",          py_turn_number,          METH_NOARGS,  "turnNumber() -> int"},
-    {"countryCount",        py_country_count,        METH_NOARGS,  "countryCount() -> int"},
-    {"countryAt",           py_country_at,           METH_VARARGS, "countryAt(index) -> int or None"},
-    {"countryName",         py_country_name,         METH_VARARGS, "countryName(country) -> str"},
-    {"countryTreasury",     py_country_treasury,     METH_VARARGS, "countryTreasury(country) -> float"},
-    {"countryProvinceCount",py_country_province_count,METH_VARARGS,"countryProvinceCount(country) -> int"},
-    {"provincePopulation",  py_province_population,  METH_VARARGS, "provincePopulation(province) -> int"},
-    {"provinceOwner",       py_province_owner,       METH_VARARGS, "provinceOwner(province) -> int or None"},
+#if GBX_WITH_NET
+    {"recv", gbxpy_recv, METH_NOARGS, "recv() -> (bytes, peer) or None"},
 #endif
-#if GBX_WITH_UI
-    {"panelRegister",       py_panel_register,       METH_VARARGS, "panelRegister(title, minW, minH) -> int"},
-    {"drawText",            py_draw_text,            METH_VARARGS, "drawText(panel, x, y, rgba, text)"},
-    {"drawRect",            py_draw_rect,            METH_VARARGS, "drawRect(panel, x, y, w, h, rgba)"},
-    {"button",              py_button,               METH_VARARGS, "button(panel, x, y, w, h, label) -> bool"},
-#endif
+#include "gearbox_py_methods.inc"
 #if GBX_WITH_ASSETS
     {"assetSize",           py_asset_size,           METH_VARARGS, "assetSize(name) -> int"},
     {"assetRead",           py_asset_read,           METH_VARARGS, "assetRead(name) -> bytes or None"},
@@ -331,7 +257,7 @@ static PyMethodDef gbx_methods[] = {
 
 static struct PyModuleDef gbx_module = {
     PyModuleDef_HEAD_INIT, "gearbox",
-    "OpenDoctrines mod ABI, Gearbox v1.0.", -1, gbx_methods,
+    "OpenDoctrines mod ABI, Gearbox. Every import the manifest declares.", -1, gbx_methods,
     NULL, NULL, NULL, NULL
 };
 

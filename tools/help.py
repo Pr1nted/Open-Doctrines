@@ -33,6 +33,10 @@ GROUPS = [
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",
         "check_bindings.py", "check_abi_compat.py", "wasm_imports.py",
+        # check_bindings.py is a text lint and says so; this one asks the
+        # compiler, which is the only thing that catches a generated call
+        # with the wrong arity.
+        "check_python_bindings.sh",
         "pack_odmod.sh",
         "sdk_toolchains.sh", "test_all_sdks.sh", "find_python.sh",
     ]),
