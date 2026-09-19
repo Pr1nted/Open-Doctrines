@@ -364,6 +364,7 @@ uint32_t audio_is_playing(ExecEnv e, uint32_t handle) {
 
 ModNetBridge g_netBridge;
 ModListBridge g_listBridge;
+ModCountryBridge g_countryBridge;
 
 uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
     ModInstance* mi = self(e);
@@ -1138,6 +1139,77 @@ uint32_t retStr(ModInstance* mi, const std::string& v, uint32_t buf, uint32_t ca
     return len;
 }
 
+// ---- Country: fields a mod adds to every country ----
+//
+// THE CALLING MOD'S ID IS SUPPLIED BY THE HOST, NEVER BY THE MOD. Every one of
+// these reads mi->id() and passes it down, so a mod has no way to name another
+// mod and reach its fields -- the argument simply does not exist in the ABI.
+// That is the same isolation Storage has and for the same reason.
+uint32_t ctry_field_add(ExecEnv e, uint32_t nPtr, uint32_t nLen,
+                        uint32_t mode, uint32_t type) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.fieldAdd) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return g_countryBridge.fieldAdd(mi->id(), name, mode, type) ? 1u : 0u;
+}
+uint32_t ctry_field_remove(ExecEnv e, uint32_t nPtr, uint32_t nLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.fieldRemove) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return g_countryBridge.fieldRemove(mi->id(), name) ? 1u : 0u;
+}
+uint32_t ctry_field_has(ExecEnv e, uint32_t nPtr, uint32_t nLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.fieldHas) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return g_countryBridge.fieldHas(mi->id(), name) ? 1u : 0u;
+}
+uint32_t ctry_field_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.fieldCount) return 0;
+    return g_countryBridge.fieldCount(mi->id());
+}
+uint32_t ctry_field_name(ExecEnv e, uint32_t index, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.fieldName) return 0;
+    return retStr(mi, g_countryBridge.fieldName(mi->id(), index), buf, cap);
+}
+uint32_t ctry_set_number(ExecEnv e, uint32_t nPtr, uint32_t nLen,
+                         uint32_t country, double value) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.setNumber) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return g_countryBridge.setNumber(mi->id(), name, country, value) ? 1u : 0u;
+}
+double ctry_get_number(ExecEnv e, uint32_t nPtr, uint32_t nLen, uint32_t country) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.getNumber) return 0.0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0.0;
+    return g_countryBridge.getNumber(mi->id(), name, country);
+}
+uint32_t ctry_set_text(ExecEnv e, uint32_t nPtr, uint32_t nLen, uint32_t country,
+                       uint32_t vPtr, uint32_t vLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.setText) return 0;
+    std::string name, value;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    if (!mi->readString(vPtr, vLen, value)) return 0;
+    return g_countryBridge.setText(mi->id(), name, country, value) ? 1u : 0u;
+}
+uint32_t ctry_get_text(ExecEnv e, uint32_t nPtr, uint32_t nLen, uint32_t country,
+                       uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_COUNTRY) || !g_countryBridge.getText) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return retStr(mi, g_countryBridge.getText(mi->id(), name, country), buf, cap);
+}
+
 // ---- Core.Protected ----
 //
 // EVERY ONE OF THESE RECORDS THE CALL BEFORE IT ANSWERS, unconditionally.
@@ -1729,6 +1801,15 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:net", "recv",       "(iii)i", (void*)net_recv,       MODULE_NET},
     {"gearbox:net", "peer_count", "()i",    (void*)net_peer_count, MODULE_NET},
     {"gearbox:net", "self_peer",  "()i",    (void*)net_self_peer,  MODULE_NET},
+    {"gearbox:country", "field_add", "(iiii)i", (void*)ctry_field_add, MODULE_COUNTRY},
+    {"gearbox:country", "field_remove", "(ii)i", (void*)ctry_field_remove, MODULE_COUNTRY},
+    {"gearbox:country", "field_has", "(ii)i", (void*)ctry_field_has, MODULE_COUNTRY},
+    {"gearbox:country", "field_count", "()i", (void*)ctry_field_count, MODULE_COUNTRY},
+    {"gearbox:country", "field_name", "(iii)i", (void*)ctry_field_name, MODULE_COUNTRY},
+    {"gearbox:country", "set_number", "(iiid)i", (void*)ctry_set_number, MODULE_COUNTRY},
+    {"gearbox:country", "get_number", "(iii)F", (void*)ctry_get_number, MODULE_COUNTRY},
+    {"gearbox:country", "set_text", "(iiiii)i", (void*)ctry_set_text, MODULE_COUNTRY},
+    {"gearbox:country", "get_text", "(iiiii)i", (void*)ctry_get_text, MODULE_COUNTRY},
     {"gearbox:core.protected", "process_bytes", "()I", (void*)prot_process_bytes, MODULE_CORE_PROTECTED},
     {"gearbox:core.protected", "image_bytes", "()I", (void*)prot_image_bytes, MODULE_CORE_PROTECTED},
     {"gearbox:core.protected", "mod_count", "()i", (void*)prot_mod_count, MODULE_CORE_PROTECTED},
@@ -1963,6 +2044,7 @@ void modReleaseAudio(const std::string& modId) {
 }
 
 void modSetListBridge(const ModListBridge& bridge) { g_listBridge = bridge; }
+void modSetCountryBridge(const ModCountryBridge& b) { g_countryBridge = b; }
 
 
 const ModHostFn* modHostFunctions(size_t& count) {

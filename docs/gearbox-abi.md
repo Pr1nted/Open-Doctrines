@@ -51,6 +51,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `Economy.Write` | `gearbox:economy.write` | Set province industry level | yes | implemented |
 | `MapEditor` | `gearbox:mapeditor` | Read and write the open map editor project; inert outside the editor | yes | implemented |
 | `Core.Protected` | `gearbox:core.protected` | Resident memory, executable size, and the installed mod list | yes | implemented |
+| `Country` | `gearbox:country` | Declaring custom fields on countries, and reading and writing them | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -3634,6 +3635,156 @@ The installed mod's manifest id -- the stable one, safe to compare. Two-call siz
 
 Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id.
 
+### `gearbox:country`
+
+Requires the **Country** capability.
+
+#### `field_add`
+
+```wat
+(import "gearbox:country" "field_add" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+| `mode` | `i32` | see [field_mode](#enums) |
+| `type` | `i32` | see [field_type](#enums) |
+
+**Returns** `i32` — 0 or 1.
+
+Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0 number, 1 text.
+
+PERSIST is written into the save and read back. HOLLOW is not: the mod redeclares it on every load and fills it from whatever it can recompute, which is right for a cache and wrong for anything a player would be upset to lose.
+
+Redeclaring the same field identically SUCCEEDS -- that is what a hollow field does on every load. Redeclaring it with a different type fails, because the values already stored are of the old one. Refused for an empty name, a name over 64 bytes, or one containing anything but printable ASCII.
+
+#### `field_remove`
+
+```wat
+(import "gearbox:country" "field_remove" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Forget one of YOUR fields and every country's value for it. Returns whether it existed. A mod cannot remove another mod's field: fields are keyed by (mod, name), so two mods may both add a field called morale and neither can see the other's.
+
+#### `field_has`
+
+```wat
+(import "gearbox:country" "field_has" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Whether you have declared this field AND own it right now. False for a field read back from a save whose mod is not loaded -- such a field is inert, though its values are kept.
+
+#### `field_count`
+
+```wat
+(import "gearbox:country" "field_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many fields YOU have declared. Not how many exist: another mod's fields are not yours to enumerate.
+
+#### `field_name`
+
+```wat
+(import "gearbox:country" "field_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The name of your field at index, sorted by name so the order does not shift between runs. Two-call sizing.
+
+#### `set_number`
+
+```wat
+(import "gearbox:country" "set_number" (func $x (param i32 i32 i32 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+| `country` | `i32` | opaque country handle |
+| `value` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set a country's value for one of your NUMBER fields. Refused if the field is text, was never declared, or belongs to a mod that is not loaded.
+
+#### `get_number`
+
+```wat
+(import "gearbox:country" "get_number" (func $x (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+| `country` | `i32` | opaque country handle |
+
+**Returns** `f64`.
+
+A country's value, or 0 when the field or the country has none. 0 is a real value too, so a mod that needs to tell unset from zero should keep its own sentinel.
+
+#### `set_text`
+
+```wat
+(import "gearbox:country" "set_text" (func $x (param i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+| `country` | `i32` | opaque country handle |
+| `value` | `i32` | pointer into your linear memory |
+| `value_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Set a country's value for one of your TEXT fields.
+
+#### `get_text`
+
+```wat
+(import "gearbox:country" "get_text" (func $x (param i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+| `country` | `i32` | opaque country handle |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+A country's text value, or empty. Two-call sizing.
+
 ## Exports
 
 Only `mod_load` is mandatory. A missing optional export is simply not
@@ -3751,6 +3902,10 @@ struct is safe against a newer host that has appended fields.
 **`disclosure_field`** — `EXPENSES` = 0, `DOCTRINES` = 1, `TREASURY` = 2, `DISTRICT_LAWS` = 3
 
 **`ai_stance`** — `EXPAND` = 0, `CONSOLIDATE` = 1, `DEFEND` = 2, `DEVELOP` = 3
+
+**`field_mode`** — `hollow` = 0, `persist` = 1
+
+**`field_type`** — `number` = 0, `text` = 1
 
 ## Constants
 

@@ -23,6 +23,19 @@
     JS_CFUNC_DEF("modName", 1, gbxjs_mod_name),
 #endif /* GBX_WITH_CORE_PROTECTED */
 
+/* ---- Country (9) ---- */
+#if GBX_WITH_COUNTRY
+    JS_CFUNC_DEF("fieldAdd", 3, gbxjs_field_add),
+    JS_CFUNC_DEF("fieldRemove", 1, gbxjs_field_remove),
+    JS_CFUNC_DEF("fieldHas", 1, gbxjs_field_has),
+    JS_CFUNC_DEF("fieldCount", 0, gbxjs_field_count),
+    JS_CFUNC_DEF("fieldName", 1, gbxjs_field_name),
+    JS_CFUNC_DEF("setNumber", 3, gbxjs_set_number),
+    JS_CFUNC_DEF("getNumber", 2, gbxjs_get_number),
+    JS_CFUNC_DEF("setText", 3, gbxjs_set_text),
+    JS_CFUNC_DEF("getText", 2, gbxjs_get_text),
+#endif /* GBX_WITH_COUNTRY */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
     JS_CFUNC_DEF("atWar", 2, gbxjs_at_war),

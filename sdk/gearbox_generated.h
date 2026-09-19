@@ -1516,6 +1516,79 @@ uint32_t gearbox_mod_id(uint32_t index, char* buf, uint32_t cap);
 GEARBOX_IMPORT("core.protected", "mod_name")
 uint32_t gearbox_mod_name(uint32_t index, char* buf, uint32_t cap);
 
+/* Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0
+ * number, 1 text. PERSIST is written into the save and read back. HOLLOW
+ * is not: the mod redeclares it on every load and fills it from whatever
+ * it can recompute, which is right for a cache and wrong for anything a
+ * player would be upset to lose. Redeclaring the same field identically
+ * SUCCEEDS -- that is what a hollow field does on every load. Redeclaring
+ * it with a different type fails, because the values already stored are of
+ * the old one. Refused for an empty name, a name over 64 bytes, or one
+ * containing anything but printable ASCII.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("country", "field_add")
+uint32_t gearbox_field_add(const char* name, uint32_t name_len, uint32_t mode, uint32_t type);
+
+/* Forget one of YOUR fields and every country's value for it. Returns
+ * whether it existed. A mod cannot remove another mod's field: fields are
+ * keyed by (mod, name), so two mods may both add a field called morale and
+ * neither can see the other's.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("country", "field_remove")
+uint32_t gearbox_field_remove(const char* name, uint32_t name_len);
+
+/* Whether you have declared this field AND own it right now. False for a
+ * field read back from a save whose mod is not loaded -- such a field is
+ * inert, though its values are kept.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("country", "field_has")
+uint32_t gearbox_field_has(const char* name, uint32_t name_len);
+
+/* How many fields YOU have declared. Not how many exist: another mod's
+ * fields are not yours to enumerate.
+ * `()i`
+ */
+GEARBOX_IMPORT("country", "field_count")
+uint32_t gearbox_field_count(void);
+
+/* The name of your field at index, sorted by name so the order does not
+ * shift between runs. Two-call sizing.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("country", "field_name")
+uint32_t gearbox_field_name(uint32_t index, char* buf, uint32_t cap);
+
+/* Set a country's value for one of your NUMBER fields. Refused if the
+ * field is text, was never declared, or belongs to a mod that is not
+ * loaded.
+ * `(iiid)i`
+ */
+GEARBOX_IMPORT("country", "set_number")
+uint32_t gearbox_set_number(const char* name, uint32_t name_len, gearbox_country country, double value);
+
+/* A country's value, or 0 when the field or the country has none. 0 is a
+ * real value too, so a mod that needs to tell unset from zero should keep
+ * its own sentinel.
+ * `(iii)F`
+ */
+GEARBOX_IMPORT("country", "get_number")
+double gearbox_get_number(const char* name, uint32_t name_len, gearbox_country country);
+
+/* Set a country's value for one of your TEXT fields.
+ * `(iiiii)i`
+ */
+GEARBOX_IMPORT("country", "set_text")
+uint32_t gearbox_set_text(const char* name, uint32_t name_len, gearbox_country country, const char* value, uint32_t value_len);
+
+/* A country's text value, or empty. Two-call sizing.
+ * `(iiiii)i`
+ */
+GEARBOX_IMPORT("country", "get_text")
+uint32_t gearbox_get_text(const char* name, uint32_t name_len, gearbox_country country, char* buf, uint32_t cap);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to

@@ -23,6 +23,19 @@
     {"modName", gbxpy_mod_name, METH_VARARGS, "Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id."},
 #endif /* GBX_WITH_CORE_PROTECTED */
 
+/* ---- Country (9) ---- */
+#if GBX_WITH_COUNTRY
+    {"fieldAdd", gbxpy_field_add, METH_VARARGS, "Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0 number, 1 text.  PERSIST is written into the save and read back. HOLLOW is not: the mod redeclares it on every lo"},
+    {"fieldRemove", gbxpy_field_remove, METH_VARARGS, "Forget one of YOUR fields and every country's value for it. Returns whether it existed. A mod cannot remove another mod's field: fields are keyed by (mod, name), so two mods may bo"},
+    {"fieldHas", gbxpy_field_has, METH_VARARGS, "Whether you have declared this field AND own it right now. False for a field read back from a save whose mod is not loaded -- such a field is inert, though its values are kept."},
+    {"fieldCount", gbxpy_field_count, METH_NOARGS, "How many fields YOU have declared. Not how many exist: another mod's fields are not yours to enumerate."},
+    {"fieldName", gbxpy_field_name, METH_VARARGS, "The name of your field at index, sorted by name so the order does not shift between runs. Two-call sizing."},
+    {"setNumber", gbxpy_set_number, METH_VARARGS, "Set a country's value for one of your NUMBER fields. Refused if the field is text, was never declared, or belongs to a mod that is not loaded."},
+    {"getNumber", gbxpy_get_number, METH_VARARGS, "A country's value, or 0 when the field or the country has none. 0 is a real value too, so a mod that needs to tell unset from zero should keep its own sentinel."},
+    {"setText", gbxpy_set_text, METH_VARARGS, "Set a country's value for one of your TEXT fields."},
+    {"getText", gbxpy_get_text, METH_VARARGS, "A country's text value, or empty. Two-call sizing."},
+#endif /* GBX_WITH_COUNTRY */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
     {"atWar", gbxpy_at_war, METH_VARARGS, "1 if the two countries are at war. Relations are symmetric, so the argument order does not matter. 0 for unknown countries or for a country with itself."},

@@ -1,5 +1,6 @@
 #pragma once
 #include "WorldProvenance.h"
+#include "CountryFields.h"
 #include "Parties.h"
 #include "GameStructs.h"
 #include "ReleaseRules.h"
@@ -2815,6 +2816,8 @@ public:
     /** The titular culture per country, and the turn it was worked out. */
     mutable std::unordered_map<int, std::string> m_titularGroup;
     mutable int m_titularTurn = -1;
+    /** Fields mods have added to countries. See src/CountryFields.h. */
+    odcountry::Store m_countryFields;
     /** Who governs each country. Empty unless the party rules are on. */
     std::unordered_map<int, odparty::Legislature> m_countryParties;
     std::unordered_map<int, long long> m_provincePopulations;

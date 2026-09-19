@@ -195,6 +195,197 @@ static JSValue gbxjs_mod_name(JSContext *ctx, JSValueConst this_val,
 }
 #endif /* GBX_WITH_CORE_PROTECTED */
 
+/* ---- Country (9) ---- */
+#if GBX_WITH_COUNTRY
+
+/* gearbox:country "field_add" */
+/* Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0 */
+/* number, 1 text. PERSIST is written into the save and read back. HOLLOW */
+/* is not: the mod redeclares it on every load and fills it from whatever */
+/* it can recompute, which is right for a cache and wrong for anything a */
+/* player would be upset to lose. Redeclaring the same field identically */
+/* SUCCEEDS -- that is what a hollow field does on every load. Redeclaring */
+/* it with a different type fails, because the values already stored are of */
+/* the old one. Refused for an empty name, a name over 64 bytes, or one */
+/* containing anything but printable ASCII. */
+/* `(iiii)i` */
+static JSValue gbxjs_field_add(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "fieldAdd expects 3 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_field_add(a0, (uint32_t)a0_n, (uint32_t)a1, (uint32_t)a2);
+    JS_FreeCString(ctx, a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:country "field_remove" */
+/* Forget one of YOUR fields and every country's value for it. Returns */
+/* whether it existed. A mod cannot remove another mod's field: fields are */
+/* keyed by (mod, name), so two mods may both add a field called morale and */
+/* neither can see the other's. */
+/* `(ii)i` */
+static JSValue gbxjs_field_remove(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "fieldRemove expects 1 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_field_remove(a0, (uint32_t)a0_n);
+    JS_FreeCString(ctx, a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:country "field_has" */
+/* Whether you have declared this field AND own it right now. False for a */
+/* field read back from a save whose mod is not loaded -- such a field is */
+/* inert, though its values are kept. */
+/* `(ii)i` */
+static JSValue gbxjs_field_has(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "fieldHas expects 1 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_field_has(a0, (uint32_t)a0_n);
+    JS_FreeCString(ctx, a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:country "field_count" */
+/* How many fields YOU have declared. Not how many exist: another mod's */
+/* fields are not yours to enumerate. */
+/* `()i` */
+static JSValue gbxjs_field_count(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_field_count();
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:country "field_name" */
+/* The name of your field at index, sorted by name so the order does not */
+/* shift between runs. Two-call sizing. */
+/* `(iii)i` */
+static JSValue gbxjs_field_name(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "fieldName expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint32_t need = gearbox_field_name((uint32_t)a0, 0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_field_name((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+
+/* gearbox:country "set_number" */
+/* Set a country's value for one of your NUMBER fields. Refused if the */
+/* field is text, was never declared, or belongs to a mod that is not */
+/* loaded. */
+/* `(iiid)i` */
+static JSValue gbxjs_set_number(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "setNumber expects 3 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    double a2 = 0;
+    if (JS_ToFloat64(ctx, &a2, argv[2])) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_set_number(a0, (uint32_t)a0_n, (uint32_t)a1, a2);
+    JS_FreeCString(ctx, a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:country "get_number" */
+/* A country's value, or 0 when the field or the country has none. 0 is a */
+/* real value too, so a mod that needs to tell unset from zero should keep */
+/* its own sentinel. */
+/* `(iii)F` */
+static JSValue gbxjs_get_number(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "getNumber expects 2 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    double r = (double)gearbox_get_number(a0, (uint32_t)a0_n, (uint32_t)a1);
+    JS_FreeCString(ctx, a0);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:country "set_text" */
+/* Set a country's value for one of your TEXT fields. */
+/* `(iiiii)i` */
+static JSValue gbxjs_set_text(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "setText expects 3 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    size_t a2_n = 0;
+    const char *a2 = JS_ToCStringLen(ctx, &a2_n, argv[2]);
+    if (!a2) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_set_text(a0, (uint32_t)a0_n, (uint32_t)a1, a2, (uint32_t)a2_n);
+    JS_FreeCString(ctx, a0);
+    JS_FreeCString(ctx, a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:country "get_text" */
+/* A country's text value, or empty. Two-call sizing. */
+/* `(iiiii)i` */
+static JSValue gbxjs_get_text(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "getText expects 2 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    uint32_t need = gearbox_get_text(a0, (uint32_t)a0_n, (uint32_t)a1, 0, 0);
+    JS_FreeCString(ctx, a0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_get_text(a0, (uint32_t)a0_n, (uint32_t)a1, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+#endif /* GBX_WITH_COUNTRY */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
 

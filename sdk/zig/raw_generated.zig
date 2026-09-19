@@ -1098,3 +1098,58 @@ pub extern "gearbox:core.protected" fn mod_id(index: u32, buf: ?[*]u8, cap: u32)
 /// Match on mod_id.
 /// `(iii)i`
 pub extern "gearbox:core.protected" fn mod_name(index: u32, buf: ?[*]u8, cap: u32) u32;
+
+/// Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0
+/// number, 1 text. PERSIST is written into the save and read back. HOLLOW
+/// is not: the mod redeclares it on every load and fills it from whatever
+/// it can recompute, which is right for a cache and wrong for anything a
+/// player would be upset to lose. Redeclaring the same field identically
+/// SUCCEEDS -- that is what a hollow field does on every load. Redeclaring
+/// it with a different type fails, because the values already stored are of
+/// the old one. Refused for an empty name, a name over 64 bytes, or one
+/// containing anything but printable ASCII.
+/// `(iiii)i`
+pub extern "gearbox:country" fn field_add(name: ?[*]const u8, name_len: u32, mode: u32, type: u32) u32;
+
+/// Forget one of YOUR fields and every country's value for it. Returns
+/// whether it existed. A mod cannot remove another mod's field: fields are
+/// keyed by (mod, name), so two mods may both add a field called morale and
+/// neither can see the other's.
+/// `(ii)i`
+pub extern "gearbox:country" fn field_remove(name: ?[*]const u8, name_len: u32) u32;
+
+/// Whether you have declared this field AND own it right now. False for a
+/// field read back from a save whose mod is not loaded -- such a field is
+/// inert, though its values are kept.
+/// `(ii)i`
+pub extern "gearbox:country" fn field_has(name: ?[*]const u8, name_len: u32) u32;
+
+/// How many fields YOU have declared. Not how many exist: another mod's
+/// fields are not yours to enumerate.
+/// `()i`
+pub extern "gearbox:country" fn field_count() u32;
+
+/// The name of your field at index, sorted by name so the order does not
+/// shift between runs. Two-call sizing.
+/// `(iii)i`
+pub extern "gearbox:country" fn field_name(index: u32, buf: ?[*]u8, cap: u32) u32;
+
+/// Set a country's value for one of your NUMBER fields. Refused if the
+/// field is text, was never declared, or belongs to a mod that is not
+/// loaded.
+/// `(iiid)i`
+pub extern "gearbox:country" fn set_number(name: ?[*]const u8, name_len: u32, country: u32, value: f64) u32;
+
+/// A country's value, or 0 when the field or the country has none. 0 is a
+/// real value too, so a mod that needs to tell unset from zero should keep
+/// its own sentinel.
+/// `(iii)F`
+pub extern "gearbox:country" fn get_number(name: ?[*]const u8, name_len: u32, country: u32) f64;
+
+/// Set a country's value for one of your TEXT fields.
+/// `(iiiii)i`
+pub extern "gearbox:country" fn set_text(name: ?[*]const u8, name_len: u32, country: u32, value: ?[*]const u8, value_len: u32) u32;
+
+/// A country's text value, or empty. Two-call sizing.
+/// `(iiiii)i`
+pub extern "gearbox:country" fn get_text(name: ?[*]const u8, name_len: u32, country: u32, buf: ?[*]u8, cap: u32) u32;

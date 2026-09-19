@@ -37,6 +37,7 @@ it asked for**.
 | `Economy.Write` | Set province industry level | `set_province_industry_level` | yes | implemented |
 | `MapEditor` | Read and write the open map editor project; inert outside the editor | `editor_active`, `editor_province_count`, `editor_province_at`, `editor_province_population`, `editor_province_industry_level`, `editor_province_fortification`, `editor_province_port_level`, `editor_province_resource`, `editor_province_compass_econ`, `editor_province_compass_social`, `editor_set_province_population`, `editor_set_province_industry_level`, `editor_set_province_fortification`, `editor_set_province_port_level`, `editor_set_province_resource`, `editor_set_province_compass`, `editor_map_name`, `editor_set_map_name`, `editor_set_author`, `editor_set_license` | yes | implemented |
 | `Core.Protected` | Resident memory, executable size, and the installed mod list | `process_bytes`, `image_bytes`, `mod_count`, `mod_id`, `mod_name` | yes | implemented |
+| `Country` | Declaring custom fields on countries, and reading and writing them | `field_add`, `field_remove`, `field_has`, `field_count`, `field_name`, `set_number`, `get_number`, `set_text`, `get_text` | yes | implemented |
 
 `GameProcess` grants no imports — it gates whether the host *calls* your
 `mod_pre_turn` / `mod_post_turn` exports.

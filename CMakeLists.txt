@@ -930,6 +930,7 @@ set(GAME_SOURCES
     src/Game_Parties.cpp
     src/Game_Assimilation.cpp
     src/WorldProvenance.cpp
+    src/CountryFields.cpp
     src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
@@ -2221,6 +2222,13 @@ target_include_directories(WorldProvenanceTest PRIVATE src tests)
 add_executable(ModProtectedTest EXCLUDE_FROM_ALL
                tests/mod_protected_test.cpp src/mods/ModProtected.cpp)
 target_include_directories(ModProtectedTest PRIVATE src tests)
+
+# Fields a mod adds to a country. The two properties that carry the design --
+# uninstalling a mod does not destroy its data, and one mod cannot reach
+# another's -- are both properties of the store, so no world is needed.
+add_executable(CountryFieldsTest EXCLUDE_FROM_ALL
+               tests/country_fields_test.cpp src/CountryFields.cpp)
+target_include_directories(CountryFieldsTest PRIVATE src tests)
 target_include_directories(PartyRulesTest PRIVATE src tests
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 

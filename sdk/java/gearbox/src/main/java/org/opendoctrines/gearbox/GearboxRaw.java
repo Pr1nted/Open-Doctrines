@@ -1299,4 +1299,68 @@ public final class GearboxRaw {
     @Import(module = "gearbox:core.protected", name = "mod_name")
     public static native int modName(int index, int buf, int cap);
 
+    // Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0
+    // number, 1 text. PERSIST is written into the save and read back. HOLLOW
+    // is not: the mod redeclares it on every load and fills it from whatever
+    // it can recompute, which is right for a cache and wrong for anything a
+    // player would be upset to lose. Redeclaring the same field identically
+    // SUCCEEDS -- that is what a hollow field does on every load. Redeclaring
+    // it with a different type fails, because the values already stored are of
+    // the old one. Refused for an empty name, a name over 64 bytes, or one
+    // containing anything but printable ASCII.
+    // `(iiii)i`
+    @Import(module = "gearbox:country", name = "field_add")
+    public static native int fieldAdd(int name, int nameLen, int mode, int type);
+
+    // Forget one of YOUR fields and every country's value for it. Returns
+    // whether it existed. A mod cannot remove another mod's field: fields are
+    // keyed by (mod, name), so two mods may both add a field called morale and
+    // neither can see the other's.
+    // `(ii)i`
+    @Import(module = "gearbox:country", name = "field_remove")
+    public static native int fieldRemove(int name, int nameLen);
+
+    // Whether you have declared this field AND own it right now. False for a
+    // field read back from a save whose mod is not loaded -- such a field is
+    // inert, though its values are kept.
+    // `(ii)i`
+    @Import(module = "gearbox:country", name = "field_has")
+    public static native int fieldHas(int name, int nameLen);
+
+    // How many fields YOU have declared. Not how many exist: another mod's
+    // fields are not yours to enumerate.
+    // `()i`
+    @Import(module = "gearbox:country", name = "field_count")
+    public static native int fieldCount();
+
+    // The name of your field at index, sorted by name so the order does not
+    // shift between runs. Two-call sizing.
+    // `(iii)i`
+    @Import(module = "gearbox:country", name = "field_name")
+    public static native int fieldName(int index, int buf, int cap);
+
+    // Set a country's value for one of your NUMBER fields. Refused if the
+    // field is text, was never declared, or belongs to a mod that is not
+    // loaded.
+    // `(iiid)i`
+    @Import(module = "gearbox:country", name = "set_number")
+    public static native int setNumber(int name, int nameLen, int country, double value);
+
+    // A country's value, or 0 when the field or the country has none. 0 is a
+    // real value too, so a mod that needs to tell unset from zero should keep
+    // its own sentinel.
+    // `(iii)F`
+    @Import(module = "gearbox:country", name = "get_number")
+    public static native double getNumber(int name, int nameLen, int country);
+
+    // Set a country's value for one of your TEXT fields.
+    // `(iiiii)i`
+    @Import(module = "gearbox:country", name = "set_text")
+    public static native int setText(int name, int nameLen, int country, int value, int valueLen);
+
+    // A country's text value, or empty. Two-call sizing.
+    // `(iiiii)i`
+    @Import(module = "gearbox:country", name = "get_text")
+    public static native int getText(int name, int nameLen, int country, int buf, int cap);
+
 }

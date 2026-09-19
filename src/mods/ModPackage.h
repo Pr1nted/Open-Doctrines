@@ -83,6 +83,12 @@ enum ModModuleBit : uint32_t {
     // player is told plainly when a mod wants it. See kProtectedWarning.
     MODULE_CORE_PROTECTED  = 1u << 23,
 
+    // Fields a mod adds to every country, persisted into the save or hollow
+    // and redeclared each load. Its own bit because a PERSISTED field puts the
+    // mod's data inside the player's save -- which is the point, and is also
+    // the reason it should be refusable. See src/CountryFields.h.
+    MODULE_COUNTRY         = 1u << 24,
+
     MODULE_MAPEDITOR       = 1u << 21,
 };
 

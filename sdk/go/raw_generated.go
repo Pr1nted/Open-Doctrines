@@ -1295,3 +1295,67 @@ func rawModId(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // `(iii)i`
 //go:wasmimport gearbox:core.protected mod_name
 func rawModName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0
+// number, 1 text. PERSIST is written into the save and read back. HOLLOW
+// is not: the mod redeclares it on every load and fills it from whatever
+// it can recompute, which is right for a cache and wrong for anything a
+// player would be upset to lose. Redeclaring the same field identically
+// SUCCEEDS -- that is what a hollow field does on every load. Redeclaring
+// it with a different type fails, because the values already stored are of
+// the old one. Refused for an empty name, a name over 64 bytes, or one
+// containing anything but printable ASCII.
+// `(iiii)i`
+//go:wasmimport gearbox:country field_add
+func rawFieldAdd(name unsafe.Pointer, name_len uint32, mode uint32, type uint32) uint32
+
+// Forget one of YOUR fields and every country's value for it. Returns
+// whether it existed. A mod cannot remove another mod's field: fields are
+// keyed by (mod, name), so two mods may both add a field called morale and
+// neither can see the other's.
+// `(ii)i`
+//go:wasmimport gearbox:country field_remove
+func rawFieldRemove(name unsafe.Pointer, name_len uint32) uint32
+
+// Whether you have declared this field AND own it right now. False for a
+// field read back from a save whose mod is not loaded -- such a field is
+// inert, though its values are kept.
+// `(ii)i`
+//go:wasmimport gearbox:country field_has
+func rawFieldHas(name unsafe.Pointer, name_len uint32) uint32
+
+// How many fields YOU have declared. Not how many exist: another mod's
+// fields are not yours to enumerate.
+// `()i`
+//go:wasmimport gearbox:country field_count
+func rawFieldCount() uint32
+
+// The name of your field at index, sorted by name so the order does not
+// shift between runs. Two-call sizing.
+// `(iii)i`
+//go:wasmimport gearbox:country field_name
+func rawFieldName(index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Set a country's value for one of your NUMBER fields. Refused if the
+// field is text, was never declared, or belongs to a mod that is not
+// loaded.
+// `(iiid)i`
+//go:wasmimport gearbox:country set_number
+func rawSetNumber(name unsafe.Pointer, name_len uint32, country uint32, value float64) uint32
+
+// A country's value, or 0 when the field or the country has none. 0 is a
+// real value too, so a mod that needs to tell unset from zero should keep
+// its own sentinel.
+// `(iii)F`
+//go:wasmimport gearbox:country get_number
+func rawGetNumber(name unsafe.Pointer, name_len uint32, country uint32) float64
+
+// Set a country's value for one of your TEXT fields.
+// `(iiiii)i`
+//go:wasmimport gearbox:country set_text
+func rawSetText(name unsafe.Pointer, name_len uint32, country uint32, value unsafe.Pointer, value_len uint32) uint32
+
+// A country's text value, or empty. Two-call sizing.
+// `(iiiii)i`
+//go:wasmimport gearbox:country get_text
+func rawGetText(name unsafe.Pointer, name_len uint32, country uint32, buf unsafe.Pointer, cap uint32) uint32

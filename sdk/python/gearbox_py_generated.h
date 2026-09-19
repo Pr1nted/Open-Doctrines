@@ -158,6 +158,141 @@ static PyObject *gbxpy_mod_name(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_CORE_PROTECTED */
 
+/* ---- Country (9) ---- */
+#if GBX_WITH_COUNTRY
+
+/* gearbox:country "field_add" */
+/* Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0 */
+/* number, 1 text. PERSIST is written into the save and read back. HOLLOW */
+/* is not: the mod redeclares it on every load and fills it from whatever */
+/* it can recompute, which is right for a cache and wrong for anything a */
+/* player would be upset to lose. Redeclaring the same field identically */
+/* SUCCEEDS -- that is what a hollow field does on every load. Redeclaring */
+/* it with a different type fails, because the values already stored are of */
+/* the old one. Refused for an empty name, a name over 64 bytes, or one */
+/* containing anything but printable ASCII. */
+/* `(iiii)i` */
+static PyObject *gbxpy_field_add(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "s#II", &a0, &a0_n, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_field_add(a0, (uint32_t)a0_n, (uint32_t)a1, (uint32_t)a2));
+}
+
+/* gearbox:country "field_remove" */
+/* Forget one of YOUR fields and every country's value for it. Returns */
+/* whether it existed. A mod cannot remove another mod's field: fields are */
+/* keyed by (mod, name), so two mods may both add a field called morale and */
+/* neither can see the other's. */
+/* `(ii)i` */
+static PyObject *gbxpy_field_remove(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    if (!PyArg_ParseTuple(args, "s#", &a0, &a0_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_field_remove(a0, (uint32_t)a0_n));
+}
+
+/* gearbox:country "field_has" */
+/* Whether you have declared this field AND own it right now. False for a */
+/* field read back from a save whose mod is not loaded -- such a field is */
+/* inert, though its values are kept. */
+/* `(ii)i` */
+static PyObject *gbxpy_field_has(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    if (!PyArg_ParseTuple(args, "s#", &a0, &a0_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_field_has(a0, (uint32_t)a0_n));
+}
+
+/* gearbox:country "field_count" */
+/* How many fields YOU have declared. Not how many exist: another mod's */
+/* fields are not yours to enumerate. */
+/* `()i` */
+static PyObject *gbxpy_field_count(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_field_count());
+}
+
+/* gearbox:country "field_name" */
+/* The name of your field at index, sorted by name so the order does not */
+/* shift between runs. Two-call sizing. */
+/* `(iii)i` */
+static PyObject *gbxpy_field_name(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    uint32_t need = gearbox_field_name((uint32_t)a0, NULL, 0);
+    if (need == 0) return PyUnicode_FromString("");
+    char *buf = (char *)PyMem_Malloc(need);
+    if (!buf) return PyErr_NoMemory();
+    uint32_t got = gearbox_field_name((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    PyObject *v = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)got, "replace");
+    PyMem_Free(buf);
+    return v;
+}
+
+/* gearbox:country "set_number" */
+/* Set a country's value for one of your NUMBER fields. Refused if the */
+/* field is text, was never declared, or belongs to a mod that is not */
+/* loaded. */
+/* `(iiid)i` */
+static PyObject *gbxpy_set_number(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    unsigned int a1 = 0;
+    double a2 = 0;
+    if (!PyArg_ParseTuple(args, "s#Id", &a0, &a0_n, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_set_number(a0, (uint32_t)a0_n, (uint32_t)a1, a2));
+}
+
+/* gearbox:country "get_number" */
+/* A country's value, or 0 when the field or the country has none. 0 is a */
+/* real value too, so a mod that needs to tell unset from zero should keep */
+/* its own sentinel. */
+/* `(iii)F` */
+static PyObject *gbxpy_get_number(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "s#I", &a0, &a0_n, &a1)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_get_number(a0, (uint32_t)a0_n, (uint32_t)a1));
+}
+
+/* gearbox:country "set_text" */
+/* Set a country's value for one of your TEXT fields. */
+/* `(iiiii)i` */
+static PyObject *gbxpy_set_text(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    unsigned int a1 = 0;
+    const char *a2 = NULL; Py_ssize_t a2_n = 0;
+    if (!PyArg_ParseTuple(args, "s#Is#", &a0, &a0_n, &a1, &a2, &a2_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_set_text(a0, (uint32_t)a0_n, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:country "get_text" */
+/* A country's text value, or empty. Two-call sizing. */
+/* `(iiiii)i` */
+static PyObject *gbxpy_get_text(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *a0 = NULL; Py_ssize_t a0_n = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "s#I", &a0, &a0_n, &a1)) return NULL;
+    uint32_t need = gearbox_get_text(a0, (uint32_t)a0_n, (uint32_t)a1, NULL, 0);
+    if (need == 0) return PyUnicode_FromString("");
+    char *buf = (char *)PyMem_Malloc(need);
+    if (!buf) return PyErr_NoMemory();
+    uint32_t got = gearbox_get_text(a0, (uint32_t)a0_n, (uint32_t)a1, buf, need);
+    if (got > need) got = need;
+    PyObject *v = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)got, "replace");
+    PyMem_Free(buf);
+    return v;
+}
+#endif /* GBX_WITH_COUNTRY */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
 

@@ -1660,6 +1660,26 @@ std::string Game::saveStateJson() {
         j["activePolicies"].push_back(entry);
     }
 
+    // ── Fields mods added to countries ──
+    //
+    // PERSIST fields only; a hollow one is the mod's to recompute. Written
+    // even when the owning mod is not loaded, which is what makes uninstalling
+    // a mod reversible instead of destructive -- see src/CountryFields.h.
+    for (const auto& sv : m_countryFields.toSave()) {
+        nlohmann::json f;
+        f["mod"] = sv.field.modId;
+        f["name"] = sv.field.name;
+        f["type"] = (int)sv.field.type;
+        for (const auto& v : sv.values) {
+            nlohmann::json e;
+            e["c"] = v.countryId;
+            if (sv.field.type == odcountry::Type::Text) e["t"] = v.text;
+            else                                        e["n"] = v.number;
+            f["v"].push_back(e);
+        }
+        j["countryFields"].push_back(f);
+    }
+
     // ── Who governs ──
     //
     // Saved because it MOVES: support shifts and a ruling party changes, so
@@ -2608,6 +2628,41 @@ void Game::loadStateJsonBody(const std::string& json) {
         odprov::compare(m_provenance, runningMods(), GAME_VERSION);
     for (const std::string& line : odprov::describe(m_provenanceMismatch))
         printf("[WORLD] %s\n", line.c_str());
+
+    // Fields mods added to countries. Read back whether or not the mod that
+    // owns them is installed: the values are held and written out again, so
+    // reinstalling the mod finds its data where it left it.
+    {
+        std::vector<odcountry::Store::Saved> in;
+        if (j.contains("countryFields") && j["countryFields"].is_array()) {
+            for (const auto& f : j["countryFields"]) {
+                if (!f.is_object() || !f.contains("mod") || !f.contains("name")) continue;
+                odcountry::Store::Saved sv;
+                sv.field.modId = f["mod"].get<std::string>();
+                sv.field.name = f["name"].get<std::string>();
+                sv.field.mode = odcountry::Mode::Persist;
+                sv.field.type = f.value("type", 0) == 1 ? odcountry::Type::Text
+                                                        : odcountry::Type::Number;
+                if (f.contains("v") && f["v"].is_array()) {
+                    for (const auto& e : f["v"]) {
+                        if (!e.is_object() || !e.contains("c")) continue;
+                        odcountry::Store::Value v;
+                        v.countryId = e["c"].get<int>();
+                        v.number = e.value("n", 0.0);
+                        v.text = e.value("t", std::string());
+                        sv.values.push_back(v);
+                    }
+                }
+                in.push_back(std::move(sv));
+            }
+        }
+        m_countryFields.fromSave(in);
+        // Which owners are actually here. A field whose mod is absent goes
+        // inert rather than writable-by-nobody.
+        std::vector<std::string> live;
+        for (const odprov::ModRecord& m : runningMods()) live.push_back(m.id);
+        m_countryFields.setLoadedMods(live);
+    }
 
     // Who governs. A save written before parties existed, or by a world with
     // the rules off, has no key -- and loadParties() has already run for the

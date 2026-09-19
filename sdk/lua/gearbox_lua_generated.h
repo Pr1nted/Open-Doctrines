@@ -153,6 +153,138 @@ static int gbxlua_mod_name(lua_State *L) {
 }
 #endif /* GBX_WITH_CORE_PROTECTED */
 
+/* ---- Country (9) ---- */
+#if GBX_WITH_COUNTRY
+
+/* gearbox:country "field_add" */
+/* Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0 */
+/* number, 1 text. PERSIST is written into the save and read back. HOLLOW */
+/* is not: the mod redeclares it on every load and fills it from whatever */
+/* it can recompute, which is right for a cache and wrong for anything a */
+/* player would be upset to lose. Redeclaring the same field identically */
+/* SUCCEEDS -- that is what a hollow field does on every load. Redeclaring */
+/* it with a different type fails, because the values already stored are of */
+/* the old one. Refused for an empty name, a name over 64 bytes, or one */
+/* containing anything but printable ASCII. */
+/* `(iiii)i` */
+static int gbxlua_field_add(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_Integer a3 = luaL_checkinteger(L, 3);
+    lua_pushboolean(L, (int)gearbox_field_add(a1, (uint32_t)a1_n, (uint32_t)(a2), (uint32_t)(a3)));
+    return 1;
+}
+
+/* gearbox:country "field_remove" */
+/* Forget one of YOUR fields and every country's value for it. Returns */
+/* whether it existed. A mod cannot remove another mod's field: fields are */
+/* keyed by (mod, name), so two mods may both add a field called morale and */
+/* neither can see the other's. */
+/* `(ii)i` */
+static int gbxlua_field_remove(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_pushboolean(L, (int)gearbox_field_remove(a1, (uint32_t)a1_n));
+    return 1;
+}
+
+/* gearbox:country "field_has" */
+/* Whether you have declared this field AND own it right now. False for a */
+/* field read back from a save whose mod is not loaded -- such a field is */
+/* inert, though its values are kept. */
+/* `(ii)i` */
+static int gbxlua_field_has(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_pushboolean(L, (int)gearbox_field_has(a1, (uint32_t)a1_n));
+    return 1;
+}
+
+/* gearbox:country "field_count" */
+/* How many fields YOU have declared. Not how many exist: another mod's */
+/* fields are not yours to enumerate. */
+/* `()i` */
+static int gbxlua_field_count(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_field_count());
+    return 1;
+}
+
+/* gearbox:country "field_name" */
+/* The name of your field at index, sorted by name so the order does not */
+/* shift between runs. Two-call sizing. */
+/* `(iii)i` */
+static int gbxlua_field_name(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    uint32_t need = gearbox_field_name((uint32_t)(a1 - 1), NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_field_name((uint32_t)(a1 - 1), dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+
+/* gearbox:country "set_number" */
+/* Set a country's value for one of your NUMBER fields. Refused if the */
+/* field is text, was never declared, or belongs to a mod that is not */
+/* loaded. */
+/* `(iiid)i` */
+static int gbxlua_set_number(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    double a3 = (double)luaL_checknumber(L, 3);
+    lua_pushboolean(L, (int)gearbox_set_number(a1, (uint32_t)a1_n, (uint32_t)(a2), a3));
+    return 1;
+}
+
+/* gearbox:country "get_number" */
+/* A country's value, or 0 when the field or the country has none. 0 is a */
+/* real value too, so a mod that needs to tell unset from zero should keep */
+/* its own sentinel. */
+/* `(iii)F` */
+static int gbxlua_get_number(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushnumber(L, (lua_Number)gearbox_get_number(a1, (uint32_t)a1_n, (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:country "set_text" */
+/* Set a country's value for one of your TEXT fields. */
+/* `(iiiii)i` */
+static int gbxlua_set_text(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    size_t a3_n = 0;
+    const char *a3 = luaL_checklstring(L, 3, &a3_n);
+    lua_pushboolean(L, (int)gearbox_set_text(a1, (uint32_t)a1_n, (uint32_t)(a2), a3, (uint32_t)a3_n));
+    return 1;
+}
+
+/* gearbox:country "get_text" */
+/* A country's text value, or empty. Two-call sizing. */
+/* `(iiiii)i` */
+static int gbxlua_get_text(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    uint32_t need = gearbox_get_text(a1, (uint32_t)a1_n, (uint32_t)(a2), NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_get_text(a1, (uint32_t)a1_n, (uint32_t)(a2), dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+#endif /* GBX_WITH_COUNTRY */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
 

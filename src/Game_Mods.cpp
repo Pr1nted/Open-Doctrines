@@ -1124,6 +1124,48 @@ void Game::installModBridges() {
     };
     modSetListBridge(list);
 
+    // Country: fields a mod adds to every country. The store is the game's;
+    // the mod's id is filled in by ModHost, never by the mod.
+    ModCountryBridge ctry;
+    ctry.fieldAdd = [this](const std::string& mod, const std::string& n,
+                           uint32_t mode, uint32_t type) {
+        return m_countryFields.add(mod, n,
+            mode == 1 ? odcountry::Mode::Persist : odcountry::Mode::Hollow,
+            type == 1 ? odcountry::Type::Text : odcountry::Type::Number);
+    };
+    ctry.fieldRemove = [this](const std::string& mod, const std::string& n) {
+        return m_countryFields.remove(mod, n);
+    };
+    ctry.fieldHas = [this](const std::string& mod, const std::string& n) {
+        return m_countryFields.has(mod, n);
+    };
+    ctry.fieldCount = [this](const std::string& mod) {
+        return (uint32_t)m_countryFields.fieldsOf(mod).size();
+    };
+    ctry.fieldName = [this](const std::string& mod, uint32_t i) -> std::string {
+        const auto f = m_countryFields.fieldsOf(mod);
+        return i < f.size() ? f[i].name : std::string();
+    };
+    ctry.setNumber = [this](const std::string& mod, const std::string& n,
+                            uint32_t cid, double v) {
+        // The country has to exist. Without this a mod could grow the store
+        // one entry per garbage id, which is a memory leak a mod controls.
+        if (!modCountryExists((int)cid)) return false;
+        return m_countryFields.setNumber(mod, n, (int)cid, v);
+    };
+    ctry.getNumber = [this](const std::string& mod, const std::string& n, uint32_t cid) {
+        return m_countryFields.number(mod, n, (int)cid);
+    };
+    ctry.setText = [this](const std::string& mod, const std::string& n,
+                          uint32_t cid, const std::string& v) {
+        if (!modCountryExists((int)cid)) return false;
+        return m_countryFields.setText(mod, n, (int)cid, v);
+    };
+    ctry.getText = [this](const std::string& mod, const std::string& n, uint32_t cid) {
+        return m_countryFields.text(mod, n, (int)cid);
+    };
+    modSetCountryBridge(ctry);
+
     modSetNetBridge(net);
 
     // ── UI ── the three things the mod host cannot do without raylib ──────────
@@ -2265,7 +2307,11 @@ std::vector<odprov::ModRecord> Game::runningMods() const {
         odprov::ModRecord m;
         m.id = e.id;
         m.version = e.version;
-        m.persisted = false;
+        // TRUE ONLY IF THIS MOD ACTUALLY PUT SOMETHING IN THE SAVE. It was
+        // hard-coded false until Country existed and there was nothing a mod
+        // could persist; now it is the real answer, and it decides whether
+        // losing the mod is reported as costly or as merely a shame.
+        m.persisted = m_countryFields.persistsAnything(e.id);
         out.push_back(m);
     }
     // Sorted by id so two saves of the same world compare equal regardless of

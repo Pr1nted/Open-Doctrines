@@ -22,7 +22,8 @@
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
     "1.0 baseline so a future edit cannot quietly drop one.",
     "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 has not shipped -- sdk/compat has baselines for 1.0, 1.1 and 1.2 and none for 1.3 -- so no minor is burned and a mod declaring \"gearbox\": \"1.3\" keeps meaning one thing.",
-    "1.3 also adds Core.Protected: resident memory, executable size and the installed mod list. It is the only capability that reports the MACHINE rather than the game, so it is a separate bit a player can refuse, the mod menu warns when a mod asks for it, and every call is logged for the debug console -- unconditionally, so a mod cannot tell whether anyone is looking."
+    "1.3 also adds Core.Protected: resident memory, executable size and the installed mod list. It is the only capability that reports the MACHINE rather than the game, so it is a separate bit a player can refuse, the mod menu warns when a mod asks for it, and every call is logged for the debug console -- unconditionally, so a mod cannot tell whether anyone is looking.",
+    "1.3 adds Country: a mod declares fields on countries, persisted into the save or hollow and redeclared each load. A PERSISTED field survives its mod being uninstalled -- the values are held and written back out, so removing a mod is reversible rather than destructive."
   ],
   "gearbox": "1.3",
   "schema": 1,
@@ -207,6 +208,13 @@
       "revocable": true,
       "implemented": true,
       "grants": "Resident memory, executable size, and the installed mod list"
+    },
+    {
+      "name": "Country",
+      "import": "gearbox:country",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Declaring custom fields on countries, and reading and writing them"
     }
   ],
   "imports": [
@@ -5580,6 +5588,277 @@
         "role": "len"
       },
       "doc": "Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "field_add",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(iiii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "mode",
+          "type": "i32",
+          "role": "enum:field_mode"
+        },
+        {
+          "name": "type",
+          "type": "i32",
+          "role": "enum:field_type"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Declare a field on every country. mode 0 HOLLOW, 1 PERSIST; type 0 number, 1 text.\n\nPERSIST is written into the save and read back. HOLLOW is not: the mod redeclares it on every load and fills it from whatever it can recompute, which is right for a cache and wrong for anything a player would be upset to lose.\n\nRedeclaring the same field identically SUCCEEDS -- that is what a hollow field does on every load. Redeclaring it with a different type fails, because the values already stored are of the old one. Refused for an empty name, a name over 64 bytes, or one containing anything but printable ASCII."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "field_remove",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Forget one of YOUR fields and every country's value for it. Returns whether it existed. A mod cannot remove another mod's field: fields are keyed by (mod, name), so two mods may both add a field called morale and neither can see the other's."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "field_has",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether you have declared this field AND own it right now. False for a field read back from a save whose mod is not loaded -- such a field is inert, though its values are kept."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "field_count",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many fields YOU have declared. Not how many exist: another mod's fields are not yours to enumerate."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "field_name",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The name of your field at index, sorted by name so the order does not shift between runs. Two-call sizing."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "set_number",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(iiid)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "value",
+          "type": "f64"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set a country's value for one of your NUMBER fields. Refused if the field is text, was never declared, or belongs to a mod that is not loaded."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "get_number",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(iii)F",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "f64"
+      },
+      "doc": "A country's value, or 0 when the field or the country has none. 0 is a real value too, so a mod that needs to tell unset from zero should keep its own sentinel."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "set_text",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "value",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "value_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Set a country's value for one of your TEXT fields."
+    },
+    {
+      "module": "gearbox:country",
+      "name": "get_text",
+      "capability": "Country",
+      "since": "1.3",
+      "signature": "(iiiii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        },
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "A country's text value, or empty. Two-call sizing."
     }
   ],
   "exports": [
@@ -5707,6 +5986,14 @@
       "CONSOLIDATE": 1,
       "DEFEND": 2,
       "DEVELOP": 3
+    },
+    "field_mode": {
+      "hollow": 0,
+      "persist": 1
+    },
+    "field_type": {
+      "number": 0,
+      "text": 1
     }
   },
   "constants": {

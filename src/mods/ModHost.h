@@ -71,6 +71,26 @@ struct ModNetBridge {
  * is why every other crossing here is a std::function the game fills in. See
  * ModNetBridge above for the same shape and the same reason.
  */
+/**
+ * Custom country fields, for the Country capability.
+ *
+ * A bridge for the same reason as ModListBridge: the store lives in the game
+ * and this file is the wasm boundary. Every call carries the CALLING mod's id,
+ * which the host fills in -- a mod cannot name another mod and reach its
+ * fields, because it never gets to supply that argument.
+ */
+struct ModCountryBridge {
+    std::function<bool(const std::string&, const std::string&, uint32_t, uint32_t)> fieldAdd;
+    std::function<bool(const std::string&, const std::string&)> fieldRemove;
+    std::function<bool(const std::string&, const std::string&)> fieldHas;
+    std::function<uint32_t(const std::string&)> fieldCount;
+    std::function<std::string(const std::string&, uint32_t)> fieldName;
+    std::function<bool(const std::string&, const std::string&, uint32_t, double)> setNumber;
+    std::function<double(const std::string&, const std::string&, uint32_t)> getNumber;
+    std::function<bool(const std::string&, const std::string&, uint32_t, const std::string&)> setText;
+    std::function<std::string(const std::string&, const std::string&, uint32_t)> getText;
+};
+
 struct ModListBridge {
     std::function<uint32_t()> count;
     /** (index) -> the manifest id, stable and safe to compare. */
@@ -110,6 +130,7 @@ void modSetAudioBridge(const ModAudioBridge& bridge);
 /** Hand the mod host a session, or take it away with a default-constructed one. */
 void modSetNetBridge(const ModNetBridge& bridge);
 void modSetListBridge(const ModListBridge& bridge);
+void modSetCountryBridge(const ModCountryBridge& bridge);
 void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;

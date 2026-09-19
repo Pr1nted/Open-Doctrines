@@ -23,6 +23,19 @@
     {"modName", gbxlua_mod_name},
 #endif /* GBX_WITH_CORE_PROTECTED */
 
+/* ---- Country (9) ---- */
+#if GBX_WITH_COUNTRY
+    {"fieldAdd", gbxlua_field_add},
+    {"fieldRemove", gbxlua_field_remove},
+    {"fieldHas", gbxlua_field_has},
+    {"fieldCount", gbxlua_field_count},
+    {"fieldName", gbxlua_field_name},
+    {"setNumber", gbxlua_set_number},
+    {"getNumber", gbxlua_get_number},
+    {"setText", gbxlua_set_text},
+    {"getText", gbxlua_get_text},
+#endif /* GBX_WITH_COUNTRY */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
     {"atWar", gbxlua_at_war},

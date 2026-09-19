@@ -45,6 +45,7 @@ const ModuleEntry kModules[] = {
     // Last in the list because it is the one a player should look hardest at:
     // the only capability that reports the machine rather than the game.
     {"Core.Protected",  MODULE_CORE_PROTECTED},
+    {"Country",         MODULE_COUNTRY},
 };
 
 }  // namespace
