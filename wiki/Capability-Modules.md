@@ -14,7 +14,7 @@ it asked for**.
 | Module | Grants | Functions | Revocable | Status |
 |---|---|---|---|---|
 | `Core` | Logging, environment introspection, abort, fuel budget | `log`, `env`, `abort`, `fuel_budget` | **no** | implemented |
-| `GameState.Read` | Read the turn, countries, treasuries, provinces | `turn_number`, `country_count`, `country_at`, `country_name`, `country_treasury`, `country_province_count`, `province_population`, `province_owner` | yes | implemented |
+| `GameState.Read` | Read the turn, countries, treasuries, provinces | `turn_number`, `country_count`, `country_at`, `country_name`, `country_treasury`, `country_province_count`, `province_population`, `province_owner`, `country_exists`, `province_exists` | yes | implemented |
 | `UI` | Register panels and draw inside them | `panel_register`, `draw_rect`, `draw_text`, `button`, `draw_line`, `draw_circle`, `draw_image`, `draw_text_sized`, `measure_text`, `panel_width`, `panel_height`, `panel_set_visible`, `mouse_x`, `mouse_y`, `mouse_inside`, `theme_accent`, `set_theme_accent` | yes | implemented |
 | `Assets` | Read your own data/ directory | `size`, `read` | yes | implemented |
 | `GameProcess` | Turn lifecycle hooks. Grants exports, not imports. | — | yes | implemented |

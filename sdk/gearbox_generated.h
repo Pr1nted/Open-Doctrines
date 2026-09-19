@@ -1454,6 +1454,24 @@ uint32_t gearbox_country_party_is_historical(uint32_t country, uint32_t index);
 GEARBOX_IMPORT("politics.read", "country_ruling_party")
 uint32_t gearbox_country_ruling_party(uint32_t country);
 
+/* Whether a country id names a country that exists. A mod holding an id
+ * from its own storage, a save, or a previous turn has no other way to ask
+ * before using it -- a country can be annexed between turns, and every
+ * other accessor answers 0 or an empty string for a dead id, which is
+ * indistinguishable from a live country with nothing in it.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("gamestate.read", "country_exists")
+uint32_t gearbox_country_exists(gearbox_country country);
+
+/* Whether a province id names a province that exists. Same reason as
+ * country_exists: a stored id needs a validity check that is not 'iterate
+ * every province and compare'.
+ * `(i)i`
+ */
+GEARBOX_IMPORT("gamestate.read", "province_exists")
+uint32_t gearbox_province_exists(gearbox_province province);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to

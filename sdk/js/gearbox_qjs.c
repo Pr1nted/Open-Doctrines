@@ -125,6 +125,12 @@ static JSValue j_console_log(JSContext *ctx, JSValueConst this_val, int argc, JS
     return JS_UNDEFINED;
 }
 
+/* netRole: without it a script cannot tell single player from multiplayer at
+ * all. sdk/gearbox.h derives gearbox_is_server() and gearbox_is_multiplayer()
+ * from this field and a C mod has had both since 1.0; the interpreted bindings
+ * dropped it from env(). A mod must answer "which side am I on" before writing
+ * to the world, because one that mutates wherever it runs desynchronises the
+ * game. 0 standalone, 1 client, 2 server, 3 host-player. */
 static JSValue j_env(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
     (void)this_val; (void)argc; (void)argv;
     JSValue o = JS_NewObject(ctx);
@@ -136,6 +142,7 @@ static JSValue j_env(JSContext *ctx, JSValueConst this_val, int argc, JSValueCon
     JS_SetPropertyStr(ctx, o, "isHeadless",   JS_NewBool(ctx, g_env.is_headless != 0));
     JS_SetPropertyStr(ctx, o, "screenW",      JS_NewInt32(ctx, (int32_t)g_env.screen_w));
     JS_SetPropertyStr(ctx, o, "screenH",      JS_NewInt32(ctx, (int32_t)g_env.screen_h));
+    JS_SetPropertyStr(ctx, o, "netRole",      JS_NewInt32(ctx, (int32_t)g_env.net_role));
     return o;
 }
 

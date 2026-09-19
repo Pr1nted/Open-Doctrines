@@ -1240,3 +1240,19 @@ func rawCountryPartyIsHistorical(country uint32, index uint32) uint32
 // `(i)i`
 //go:wasmimport gearbox:politics.read country_ruling_party
 func rawCountryRulingParty(country uint32) uint32
+
+// Whether a country id names a country that exists. A mod holding an id
+// from its own storage, a save, or a previous turn has no other way to ask
+// before using it -- a country can be annexed between turns, and every
+// other accessor answers 0 or an empty string for a dead id, which is
+// indistinguishable from a live country with nothing in it.
+// `(i)i`
+//go:wasmimport gearbox:gamestate.read country_exists
+func rawCountryExists(country uint32) uint32
+
+// Whether a province id names a province that exists. Same reason as
+// country_exists: a stored id needs a validity check that is not 'iterate
+// every province and compare'.
+// `(i)i`
+//go:wasmimport gearbox:gamestate.read province_exists
+func rawProvinceExists(province uint32) uint32

@@ -131,8 +131,14 @@ static int l_print(lua_State *L) {
     return 0;
 }
 
+/* netRole: without it a script cannot tell single player from multiplayer at
+ * all. sdk/gearbox.h derives gearbox_is_server() and gearbox_is_multiplayer()
+ * from this field and a C mod has had both since 1.0; the interpreted bindings
+ * dropped it from env(). A mod must answer "which side am I on" before writing
+ * to the world, because one that mutates wherever it runs desynchronises the
+ * game. 0 standalone, 1 client, 2 server, 3 host-player. */
 static int l_env(lua_State *L) {
-    lua_createtable(L, 0, 8);
+    lua_createtable(L, 0, 9);
 #define SET_I(k, v) lua_pushinteger(L, (lua_Integer)(v)); lua_setfield(L, -2, k)
 #define SET_B(k, v) lua_pushboolean(L, (int)(v));         lua_setfield(L, -2, k)
     SET_I("gearboxMajor", g_env.gearbox_major);
@@ -143,6 +149,7 @@ static int l_env(lua_State *L) {
     SET_B("isHeadless",   g_env.is_headless);
     SET_I("screenW",      g_env.screen_w);
     SET_I("screenH",      g_env.screen_h);
+    SET_I("netRole",      g_env.net_role);
 #undef SET_I
 #undef SET_B
     return 1;

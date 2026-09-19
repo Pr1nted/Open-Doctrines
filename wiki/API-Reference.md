@@ -13,7 +13,7 @@ into your memory after a call returns.
 ## Index
 
 - **Core** (`gearbox:core`): [log](#log), [env](#env), [abort](#abort), [fuel_budget](#fuel-budget)
-- **GameState.Read** (`gearbox:gamestate.read`): [turn_number](#turn-number), [country_count](#country-count), [country_at](#country-at), [country_name](#country-name), [country_treasury](#country-treasury), [country_province_count](#country-province-count), [province_population](#province-population), [province_owner](#province-owner)
+- **GameState.Read** (`gearbox:gamestate.read`): [turn_number](#turn-number), [country_count](#country-count), [country_at](#country-at), [country_name](#country-name), [country_treasury](#country-treasury), [country_province_count](#country-province-count), [province_population](#province-population), [province_owner](#province-owner), [country_exists](#country-exists), [province_exists](#province-exists)
 - **UI** (`gearbox:ui`): [panel_register](#panel-register), [draw_rect](#draw-rect), [draw_text](#draw-text), [button](#button), [draw_line](#draw-line), [draw_circle](#draw-circle), [draw_image](#draw-image), [draw_text_sized](#draw-text-sized), [measure_text](#measure-text), [panel_width](#panel-width), [panel_height](#panel-height), [panel_set_visible](#panel-set-visible), [mouse_x](#mouse-x), [mouse_y](#mouse-y), [mouse_inside](#mouse-inside), [theme_accent](#theme-accent), [set_theme_accent](#set-theme-accent)
 - **Assets** (`gearbox:assets`): [size](#size), [read](#read)
 - **Audio** (`gearbox:audio`): [play](#play), [stop](#stop), [set_volume](#set-volume), [is_playing](#is-playing)
@@ -203,6 +203,34 @@ Population of a province. 0 for an unknown province.
 **Returns:** `i32`
 
 Owning country, or GEARBOX_INVALID if unowned or unknown.
+
+### country_exists
+
+```wat
+(import "gearbox:gamestate.read" "country_exists" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns:** `i32`
+
+Whether a country id names a country that exists. A mod holding an id from its own storage, a save, or a previous turn has no other way to ask before using it -- a country can be annexed between turns, and every other accessor answers 0 or an empty string for a dead id, which is indistinguishable from a live country with nothing in it.
+
+### province_exists
+
+```wat
+(import "gearbox:gamestate.read" "province_exists" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Whether a province id names a province that exists. Same reason as country_exists: a stored id needs a validity check that is not 'iterate every province and compare'.
 
 ## UI
 

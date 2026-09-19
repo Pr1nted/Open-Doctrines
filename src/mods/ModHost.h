@@ -52,6 +52,15 @@ struct ModNetBridge {
     std::function<uint32_t()> peerCount;
     std::function<uint32_t()> selfPeer;
     std::function<bool()>     isHost;
+    /**
+     * Whether this is a networked game at all.
+     *
+     * Separate from isHost because isHost is false in SINGLE PLAYER -- there
+     * is no host object there -- while the copy is authoritative for
+     * everything. A mod that gated world mutation on isHost alone therefore
+     * did nothing in the mode most people play.
+     */
+    std::function<bool()>     isMultiplayer;
 };
 
 /**

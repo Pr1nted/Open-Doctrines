@@ -43,7 +43,7 @@
     {"setProvinceIndustryLevel", gbxlua_set_province_industry_level},
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (8) ---- */
+/* ---- GameState.Read (10) ---- */
 #if GBX_WITH_GAMESTATE_READ
     {"turnNumber", gbxlua_turn_number},
     {"countryCount", gbxlua_country_count},
@@ -53,6 +53,8 @@
     {"countryProvinceCount", gbxlua_country_province_count},
     {"provincePopulation", gbxlua_province_population},
     {"provinceOwner", gbxlua_province_owner},
+    {"countryExists", gbxlua_country_exists},
+    {"provinceExists", gbxlua_province_exists},
 #endif /* GBX_WITH_GAMESTATE_READ */
 
 /* ---- GameState.Write (4) ---- */

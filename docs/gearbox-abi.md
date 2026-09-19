@@ -232,6 +232,34 @@ Population of a province. 0 for an unknown province.
 
 Owning country, or GEARBOX_INVALID if unowned or unknown.
 
+#### `country_exists`
+
+```wat
+(import "gearbox:gamestate.read" "country_exists" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a country id names a country that exists. A mod holding an id from its own storage, a save, or a previous turn has no other way to ask before using it -- a country can be annexed between turns, and every other accessor answers 0 or an empty string for a dead id, which is indistinguishable from a live country with nothing in it.
+
+#### `province_exists`
+
+```wat
+(import "gearbox:gamestate.read" "province_exists" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32` — 0 or 1.
+
+Whether a province id names a province that exists. Same reason as country_exists: a stored id needs a validity check that is not 'iterate every province and compare'.
+
 ### `gearbox:ui`
 
 Requires the **UI** capability.

@@ -43,7 +43,7 @@
     {"setProvinceIndustryLevel", gbxpy_set_province_industry_level, METH_VARARGS, "Set a province's industry level, clamped to 0..10. This writes the built level directly and does not charge for it -- it is a scenario-authoring tool, not a build order."},
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (8) ---- */
+/* ---- GameState.Read (10) ---- */
 #if GBX_WITH_GAMESTATE_READ
     {"turnNumber", gbxpy_turn_number, METH_NOARGS, "The current turn. 0 when no world is loaded."},
     {"countryCount", gbxpy_country_count, METH_NOARGS, "How many countries exist. 0 when no world is loaded. Rebel factions are not included."},
@@ -53,6 +53,8 @@
     {"countryProvinceCount", gbxpy_country_province_count, METH_VARARGS, "How many provinces the country owns. 0 for an unknown country."},
     {"provincePopulation", gbxpy_province_population, METH_VARARGS, "Population of a province. 0 for an unknown province."},
     {"provinceOwner", gbxpy_province_owner, METH_VARARGS, "Owning country, or GEARBOX_INVALID if unowned or unknown."},
+    {"countryExists", gbxpy_country_exists, METH_VARARGS, "Whether a country id names a country that exists. A mod holding an id from its own storage, a save, or a previous turn has no other way to ask before using it -- a country can be a"},
+    {"provinceExists", gbxpy_province_exists, METH_VARARGS, "Whether a province id names a province that exists. Same reason as country_exists: a stored id needs a validity check that is not 'iterate every province and compare'."},
 #endif /* GBX_WITH_GAMESTATE_READ */
 
 /* ---- GameState.Write (4) ---- */

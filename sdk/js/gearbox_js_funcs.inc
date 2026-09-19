@@ -43,7 +43,7 @@
     JS_CFUNC_DEF("setProvinceIndustryLevel", 2, gbxjs_set_province_industry_level),
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (8) ---- */
+/* ---- GameState.Read (10) ---- */
 #if GBX_WITH_GAMESTATE_READ
     JS_CFUNC_DEF("turnNumber", 0, gbxjs_turn_number),
     JS_CFUNC_DEF("countryCount", 0, gbxjs_country_count),
@@ -53,6 +53,8 @@
     JS_CFUNC_DEF("countryProvinceCount", 1, gbxjs_country_province_count),
     JS_CFUNC_DEF("provincePopulation", 1, gbxjs_province_population),
     JS_CFUNC_DEF("provinceOwner", 1, gbxjs_province_owner),
+    JS_CFUNC_DEF("countryExists", 1, gbxjs_country_exists),
+    JS_CFUNC_DEF("provinceExists", 1, gbxjs_province_exists),
 #endif /* GBX_WITH_GAMESTATE_READ */
 
 /* ---- GameState.Write (4) ---- */

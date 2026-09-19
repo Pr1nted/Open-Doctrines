@@ -1104,6 +1104,7 @@ void Game::installModBridges() {
     };
 
     net.isHost = [this]() { return m_netHost != nullptr; };
+    net.isMultiplayer = [this]() { return modNetIsMultiplayer(); };
 
     modSetNetBridge(net);
 

@@ -378,7 +378,7 @@ static JSValue gbxjs_set_province_industry_level(JSContext *ctx, JSValueConst th
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (8) ---- */
+/* ---- GameState.Read (10) ---- */
 #if GBX_WITH_GAMESTATE_READ
 
 /* gearbox:gamestate.read "turn_number" */
@@ -496,6 +496,38 @@ static JSValue gbxjs_province_owner(JSContext *ctx, JSValueConst this_val,
     uint64_t r = (uint64_t)gearbox_province_owner((uint32_t)a0);
     if ((uint32_t)r == GEARBOX_INVALID) return JS_NULL;
     return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:gamestate.read "country_exists" */
+/* Whether a country id names a country that exists. A mod holding an id */
+/* from its own storage, a save, or a previous turn has no other way to ask */
+/* before using it -- a country can be annexed between turns, and every */
+/* other accessor answers 0 or an empty string for a dead id, which is */
+/* indistinguishable from a live country with nothing in it. */
+/* `(i)i` */
+static JSValue gbxjs_country_exists(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryExists expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_exists((uint32_t)a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:gamestate.read "province_exists" */
+/* Whether a province id names a province that exists. Same reason as */
+/* country_exists: a stored id needs a validity check that is not 'iterate */
+/* every province and compare'. */
+/* `(i)i` */
+static JSValue gbxjs_province_exists(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "provinceExists expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_exists((uint32_t)a0);
+    return JS_NewBool(ctx, (int)r);
 }
 #endif /* GBX_WITH_GAMESTATE_READ */
 

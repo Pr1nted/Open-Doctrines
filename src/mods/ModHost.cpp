@@ -1382,6 +1382,13 @@ double pol_province_minority_share(ExecEnv e, uint32_t p, uint32_t i) {
 }
 
 // ---- politics: who governs (ABI 1.3) ----
+uint32_t gs_country_exists(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return g_modGame->countryExists(c) ? 1u : 0u;
+}
+uint32_t gs_province_exists(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return g_modGame->provinceExists(p) ? 1u : 0u;
+}
+
 uint32_t pol_country_party_count(ExecEnv e, uint32_t c) {
     MOD_GUARD(MODULE_POLITICS_READ, 0) return g_modGame->countryPartyCount(c);
 }
@@ -1747,6 +1754,8 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:politics.read", "country_has_policy",     "(iii)i",  (void*)pol_country_has_policy,     MODULE_POLITICS_READ},
     {"gearbox:politics.read", "province_minority_count","(i)i",    (void*)pol_province_minority_count, MODULE_POLITICS_READ},
     {"gearbox:politics.read", "province_minority_name", "(iiii)i", (void*)pol_province_minority_name, MODULE_POLITICS_READ},
+    {"gearbox:gamestate.read", "country_exists", "(i)i", (void*)gs_country_exists, MODULE_GAMESTATE_READ},
+    {"gearbox:gamestate.read", "province_exists", "(i)i", (void*)gs_province_exists, MODULE_GAMESTATE_READ},
     {"gearbox:politics.read", "country_party_count", "(i)i", (void*)pol_country_party_count, MODULE_POLITICS_READ},
     {"gearbox:politics.read", "country_party_name", "(iiii)i", (void*)pol_country_party_name, MODULE_POLITICS_READ},
     {"gearbox:politics.read", "country_party_short_name", "(iiii)i", (void*)pol_country_party_short_name, MODULE_POLITICS_READ},

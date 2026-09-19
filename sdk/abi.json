@@ -5438,6 +5438,44 @@
         "type": "i32"
       },
       "doc": "The index of the party that governs, or -1 if none does. That party pulls the government compass toward its own stance every turn it holds power, which is why the two are on the same scale."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "country_exists",
+      "capability": "GameState.Read",
+      "since": "1.3",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "country",
+          "type": "i32",
+          "role": "handle:country"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a country id names a country that exists. A mod holding an id from its own storage, a save, or a previous turn has no other way to ask before using it -- a country can be annexed between turns, and every other accessor answers 0 or an empty string for a dead id, which is indistinguishable from a live country with nothing in it."
+    },
+    {
+      "module": "gearbox:gamestate.read",
+      "name": "province_exists",
+      "capability": "GameState.Read",
+      "since": "1.3",
+      "signature": "(i)i",
+      "params": [
+        {
+          "name": "province",
+          "type": "i32",
+          "role": "handle:province"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Whether a province id names a province that exists. Same reason as country_exists: a stored id needs a validity check that is not 'iterate every province and compare'."
     }
   ],
   "exports": [

@@ -1244,4 +1244,20 @@ public final class GearboxRaw {
     @Import(module = "gearbox:politics.read", name = "country_ruling_party")
     public static native int countryRulingParty(int country);
 
+    // Whether a country id names a country that exists. A mod holding an id
+    // from its own storage, a save, or a previous turn has no other way to ask
+    // before using it -- a country can be annexed between turns, and every
+    // other accessor answers 0 or an empty string for a dead id, which is
+    // indistinguishable from a live country with nothing in it.
+    // `(i)i`
+    @Import(module = "gearbox:gamestate.read", name = "country_exists")
+    public static native int countryExists(int country);
+
+    // Whether a province id names a province that exists. Same reason as
+    // country_exists: a stored id needs a validity check that is not 'iterate
+    // every province and compare'.
+    // `(i)i`
+    @Import(module = "gearbox:gamestate.read", name = "province_exists")
+    public static native int provinceExists(int province);
+
 }

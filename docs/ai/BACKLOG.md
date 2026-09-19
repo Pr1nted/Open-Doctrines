@@ -1078,6 +1078,37 @@ opponent is not a league.
    inside N24's floor again.
    (Ran as it367-rusher8-s2, stored.)
 
+103. **The seat gains +52 while buying 3-11% of the doctrines. What does the
+   WORLD do with them?** Journal 404 settled who buys and left the bigger question
+   open: mode 3's gain to the scored seat is almost entirely indirect. Two candidates,
+   neither tested -- decisive wars free the one-war slot (memory
+   stalled-wars-lock-the-war-slot, and journals 385-392 built the instruments), or an
+   armed scripted world consolidates in a way the model exploits better than the rung.
+   Cheap first cut: with the reflex on and off, count wars STARTED and ENDED per world
+   and the mean war length, on one seat and four seeds. If war length falls, the slot
+   story is live and it connects this rule to rule C.
+
+102. ~~**[DOCREFLEX] counts by doctrine, not by country, so the reflex cannot be
+   attributed to a seat.**~~ **DONE journal 404: the seat is NOT the buyer.**
+   Per-country counter (isoA3, bench seat marked), proved inert under BOTH gates --
+   gate off reproduces the reference triple and =3 reproduces journal 403's hash to
+   the digit. Readings on six seats x two seeds: the seat is **0-11% of the world's
+   purchases** (FRA:rung 1 of 10, USA 2 of 18, CHN 1 of 31, FRA:rush 1 of 18), so
+   self-arming cannot explain journal 403's rush sign, which stays unexplained.
+   **1939:NOR NEVER buys** -- it is below the median army, so the rule structurally
+   cannot fire for that seat, which is why the hood guard read 0.41 vs 0.41 and makes
+   that guard weaker than it looks. And the buyers are **middling states** (BEL, NLD,
+   CHE, AUS, CAN, IDN), which corrects journal 401's "arm only the big": the median is
+   over every living country and is a low bar. Successor: 103.
+
+   ORIGINAL: Journal 403 found 1914:FRA:rush collapsing slightly LESS
+   under the rule and could not check the obvious explanation -- that an armed France
+   is a defended France, the seat qualifying for its own reflex -- because the counter
+   aggregates the world. A per-cid line (or a filter like OD_ACT_HIST_CID) is a few
+   lines in AISystem.cpp and would settle it. Cheap, and it is the only thing standing
+   between the favourable rush sign and a mechanism. Note the sign is NOT significant
+   (p 0.860), so this explains a direction, not a finding.
+
 101. **Small, found closing journal 372's loose end (journal 375). For whoever owns
    research, not the loop.**
    - basic_training says "Unlocks army", but no rule gates on it; the only named-node
@@ -1211,7 +1242,87 @@ opponent is not a league.
    2894ddfc's Sweden 2.98 -> 7.73 land (p 0.031, 32 seeds; annihilated 15 -> 13); its rung +31 (no clear); N24: no
    significant harm (SWE +1.83, rung +56). With the rule on in both, 2894ddfc vs N24: rung +55 (not clearing), SWE
    -4.78 (p 0.107). The gap narrows but does not close. The rule is world-wide.
-   **DECIDED by the user ~15:50: RE-CHECK 2894ddfc WITH RULE C. (2g) NEXT, unblocked:** pin388, OD_CEASEFIRE_STALL=50 on
+   **DECIDED by the user ~15:50: RE-CHECK 2894ddfc WITH RULE C. DONE journal 389: NOT RECOMMENDED, clause (a) fails.**
+   With rule C on both: rung set 1 +4, set 2 -13, set 3 +55, none clearing (rule off it was +83/+133/+80, all
+   clearing). Land still favours 2894ddfc on the great powers (USA +10.85, p 0.001, set 1). FRA:rush now points
+   against it (collapses 17 -> 20 of 32, p 0.61). **2894ddfc is no longer a ship candidate once rule C is in the game.**
+   **Open question it raises: is rule C an improvement for N24 itself?** Only thin evidence so far (set 3 +56, not
+   clearing; SWE +1.83). **DECIDED by the user ~19:05: BENCH RULE C FOR N24. DONE journal 390: NO HARM, GAIN UNPROVEN.**
+   N24 rule on vs off, pooled 24 seeds: +38.7 (floor 46.1, no clear; sets +66 / -6.5 / +56.5); land up on all three rung
+   seats (FRA +4.22 p .089); SWE +1.83 (p .55); FRA:rush identical, NOR:hood unchanged.
+   **DECIDED by the user ~21:30: RESOLVE FIRST. DONE journal 391: SHIP RULE MET.** N24, rule C off vs on, pooled 48
+   seeds per arm: +36.1 (floor 28.5, CLEARS); the 24 fresh seeds alone +33.5 (floor 34.1, positive, just misses). No
+   harm on SWE / rush / hood (journal 390). **DECIDED by the user ~22:40: MORE SEEDS FIRST. DONE journal 392: UNRESOLVED,
+   and the effect shrank.** 48 fresh seeds: +13.3 (floor 30.4, no clear); this run's 24 alone -6.8; all 72 +21.8 (floor
+   25.3, no clear). The +36 of journal 391 was regression after selection. Rule C does no measurable harm, and its N24
+   gain is small or zero. **DECIDED by the user ~23:55: KEEP RULE C GATED OFF** (already the default; no source change).
+   **(3) DONE journal 393: THE SEARCH RETURNED 0 OF 4.** Training seeds 101001 / 202002 / 303003 / 404004 scored -125 /
+   -198 / -73 / -12 against N24 on the selection set, so none reached confirmation. **With journal 381 the fixed-league
+   recipe is 1 of 8**, and that one hit failed its own later checks. **Backlog 99's training branch is exhausted** at
+   ~14 h for 0 candidates. **DECIDED by the user ~08:30 2026-09-16: RE-CHECK THE SHIPPED FORK FIX. DONE journal 394: IT HOLDS.**
+   N24 on 48 fresh seeds, current build: +44.1 (floor 30.8, CLEARS), carried by USA land +6.59 (p 0.001); no harm on
+   1914:SWE (-0.89, p 0.77). The reference hash triple is UNCHANGED from journal 382, so release 1.2.1a moved no decision
+   on the three seats, and two independently built binaries agree to the digit.
+   **DECIDED by the user ~12:50: WORK THE RULE BACKLOG. (5) FIRST CANDIDATE DONE, journal 395: item 73
+   (OD_WAR_BAR_RESEARCH) is NULL at 48 fresh seeds** -- +20.3 against a floor of 29.6, USA land +3.95 (p 0.046),
+   no SWE harm on the registered statistic. **Journal 337's pre-registered DOWN is falsified in direction.**
+   Item 32 (researchAusterity) was DEFERRED with a reason: its own comment says it is inert on N24 by design, so it
+   needs a model that idles the research slider, and none is pinned.
+   **DECIDED by the user ~15:20: RESOLVE ITEM 73. DONE journal 396: NULL AT 96 SEEDS, item 73 CLOSED.** Pooled 96 per arm:
+   +10.3 (floor 19.2); the new 48 alone +0.2. Registered SWE annihilation 8/32 -> 14/32 (p 0.188). The gate's effect is
+   bounded under ~19 rating points. 1939:USA land is up in both batches (+2.99 pooled, p 0.030, corrected cut 0.017):
+   recorded, not a finding.
+   **DECIDED by the user ~18:35: THE DOCTRINE HALF. DONE journal 397: EVERY ARMY LEVER IN FORCE IS DEFENCE-ONLY.**
+   The three seats enact NO doctrines in 400 turns. The world enacts 12 distinct ones; the only army lever among them is
+   demobilisation (-10 def). The maps' starting doctrines add only national_unity (+10 def) and decentralization (+6 def).
+   No attack-bearing doctrine is ever enacted or granted, which confirms armyAtkPct is research entirely (journal 373).
+   **No rule follows**, and journal 373's -2.20 doctrine ATTACK residual is UNEXPLAINED and filed: nothing counted can
+   produce a negative attack lever. Next check if revisited: run OD_POLICY_HIST on journal 373's own seats and build.
+   **(8) DONE journal 398: item 34's reachability check.** 8 of 12 politics actions have zero policy picks; a1 (enact
+   doctrine) is offered constantly and refused with pi(a) = 0. Head-based rules are ruled out there.
+   **DECIDED by the user ~22:45: BUILD A DOCTRINE REFLEX. DONE journal 399: HURTS by its own registered rule.**
+   OD_DOCTRINE_REFLEX (in HEAD via 9a0ff43, gated OFF) fires 13-43 times per game and gives the rung seats **+72.4**
+   (floor 25.6, CLEARS; FRA +10.41 and USA +10.99 land at p<0.001) -- the largest rule gain this loop has measured --
+   while 1914:SWE is **annihilated 16/32 against 6/32, Fisher p 0.017**. The registered harm check makes that a HURTS,
+   so it is not a ship candidate as written.
+   **DECIDED by the user ~02:25 2026-09-17: NARROW IT. DONE journal 400: the gate keeps the gain and does NOT save SWE.**
+   OD_DOCTRINE_REFLEX=2 (army >= median of living countries): rung +52.4 (floor 28.1, CLEARS) against the unnarrowed
+   +72.4; 1914:SWE annihilated **16/32 either way** (p 0.017), though under =2 Sweden never buys a doctrine at all.
+   **The harm is the neighbours, not the seat**, so no gate on the victim can fix it and the trade is intrinsic.
+   **DECIDED by the user ~04:50: TRY A WORLD-SIDE LEVER. DONE journal 401: MODE 3 WINS ON BOTH.** OD_DOCTRINE_REFLEX=3
+   (buyer above median AND an enemy above median): rung **+52.1** (floor 26.6, CLEARS; FRA +8.93 p 0.000, USA +4.75
+   p 0.045, CHN +3.47 p 0.029) and **1914:SWE back at baseline** (annihilated 9/32 vs 6/32, p 0.556; land 10.37 vs 10.67,
+   p 0.921). First rule in this sequence to keep a gain without a measured cost. Firing 10/18/31 vs mode 2's 13/20/43.
+   **NOT established: pre-registered as needing replication on fresh seeds** (twice here an effect collapsed on seeds that
+   did not raise it: +38.7 -> +13.3, +20.3 -> +0.2). **(12) DONE journal 402: IT REPLICATES.** 48 NEW rung seeds and 32 NEW SWE
+   seeds, both arms, on a binary built three commits later: rung **+51.8** (floor 26.2, CLEARS; FRA land +8.09 p 0.000,
+   CHN +4.77 p 0.004, USA +4.21 p 0.055; =3 at or above OFF on 33 of 48 seeds, sign test p 0.007) against the first run's
+   +52.1, and **1914:SWE unchanged** (annihilated 13/32 vs 11/32, Fisher p 0.797; land 6.92 vs 7.08, p 0.942). Gate off
+   reproduces the journal-382 hash triple exactly, so a744106 / b830e95 moved no decision on that seat. Graded counts
+   differ (85/144 vs 53/144) but every extra pin is at the 5x CAP and China's 3 annihilations go to 0, so the rating
+   UNDERSTATES the difference. Note the new SWE seeds are harder in both arms (OFF 11/32 here vs 6/32 on journal 384's
+   set) -- no absolute Sweden figure crosses seed sets.
+   **(13) DONE journal 403: THE RULE CLEARS THE RUSH GUARD -- which journals 399-402 had never run.** Four iterations
+   produced a ship candidate without touching the two seats LOOP.md names in its one unconditional REJECT rule. Both arms,
+   one binary, on the parties build: **1914:FRA:rush collapses 31/64 against 33/64 (Fisher p 0.860)**, land 5.14 -> 6.91
+   (p 0.135); **1939:NOR:hood 0.41 vs 0.41** (p 1.000). The reflex fires 11-20 times in those worlds, so both are nulls
+   and not blanks. **Claim limited on purpose: no LARGE harm detectable at 64 seeds** (~0.25 resolvable; item 86's 0.12 is
+   not reachable) and the two 32-seed halves disagree in direction -- do not quote "it helps the rush seat".
+   **(14) AMENDED BY JOURNAL 404 -- read this before the ship decision.** The hood guard is weaker than journal 403 made
+   it sound: 1939:NOR is below the median army, so the rule **cannot fire for that seat at all**, and 0.41 vs 0.41 measures
+   only the world around it. The rush guard is a real reading (France does qualify, and buys once per world); the hood one
+   is structurally inert. Nothing measured says the rule harms a small exposed seat -- 1914:SWE at 32 seeds twice says it
+   does not -- but "both guard seats clear" overstates what was run, and the honest count is one guard seat cleared and one
+   that the rule cannot reach.
+   **FOR THE USER, the only open question on this rule: ship it on by default?** Two rung runs on disjoint seeds and two
+   binaries (+52, floor ~26), 1914:SWE unharmed at 64 seeds across two sets, 1914:FRA:rush clear at 64, 1939:NOR:hood
+   inert by construction. The change is
+   one default in AISystem.cpp (mode 0 -> 3). The loop does not flip a default on its own.
+   **Remaining in the queue:** 86 (OD_CAMPAIGN_HOMEFIRST as a rate, ~128 seeds, ~9 h).
+   ORIGINAL (2h): pin388, N24 rule
+   off vs OD_CEASEFIRE_STALL=50 on seed sets 1 and 2 (rung) and rush/hood 32 seeds (journal 380); SWE 32 and set 3
+   already exist (journals 383/384 vs 388). Pre-register the ship criterion. This decides whether rule C ships on.
+   ORIGINAL (2g): pin388, OD_CEASEFIRE_STALL=50 on
    both models; 2894ddfc vs N24 on seed sets 1 and 2 (3 rung seats) and rush/hood at journal 380's 32 seeds. Then the
    ship question.
    ORIGINAL (2f): gated rule in the AI's
@@ -1772,7 +1883,10 @@ opponent is not a league.
    per-seat land share and a permutation test on it; quote the rating second.
    This costs nothing and is not blocked behind item 26.
 
-73. **OD_WAR_BAR_RESEARCH is still open, on the right statistic.** Journal 338
+73. ~~OD_WAR_BAR_RESEARCH is still open, on the right statistic.~~ **CLOSED journal 396: NULL at 96 seeds per arm**
+   (+10.3, floor 19.2; the 48 fresh seeds alone +0.2; SWE annihilation 8/32 -> 14/32, p 0.188). Journal 337's
+   pre-registered "the rating goes DOWN" is falsified in direction: it goes slightly UP, unresolvably.
+   ORIGINAL: Journal 338
    measured it on the wrong one and 337 measured what it does. If it is revisited:
    the question is whether +9.7 mean share on modern:CHN (p=0.07, 24 runs)
    survives more seeds, and the answer is worth having because it is the
@@ -2155,7 +2269,12 @@ opponent is not a league.
    306's ten-dead list came from picks; the pi(a) measure gives sixteen on the
    same model. Worth a note beside the ACTHIST output.
 
-34. **The politics head is collapsed and the map says the ECON head is.**
+34. **The politics head is collapsed and the map says the ECON head is.** **RE-MEASURED journal 398 on the current
+   build: 7 of 12 politics actions are never played and 8 of 12 never chosen by the policy** (journal 305 had 6 of 12),
+   on 3 seats x 2 seeds with seat-filtered histograms. **a1 "enact doctrine" is offered 201-250 times per run and picked
+   0 times, pi(a) = 0.00e+00** -- a learned refusal, not an illegal action. So no head-based rule (bias, weight, mask)
+   can move it. The two routes left: a gated doctrine REFLEX that bypasses the head, or a head reset plus retrain.
+   ORIGINAL: **The politics head is collapsed and the map says the ECON head is.**
    Journal 256's subsystem map names the econ head as the collapsed one and
    does not mention politics; journal 305 finds six of twelve politics actions
    unreachable against four of twelve econ. Any rule built on a dead politics

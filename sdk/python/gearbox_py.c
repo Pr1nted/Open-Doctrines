@@ -124,10 +124,19 @@ static PyObject *py_print(PyObject *self, PyObject *args, PyObject *kwargs) {
     Py_RETURN_NONE;
 }
 
+/* netRole is here for a reason worth stating: WITHOUT IT A SCRIPT CANNOT TELL
+ * SINGLE PLAYER FROM MULTIPLAYER AT ALL. sdk/gearbox.h derives
+ * gearbox_is_server() and gearbox_is_multiplayer() from this field and a C mod
+ * has had both since 1.0 -- the three interpreted bindings simply dropped it
+ * from env(), so a Python, Lua or JS mod could not ask which side it was on.
+ * That is the question a mod must answer before writing to the world: one that
+ * mutates wherever it runs desynchronises the game the moment two clients
+ * disagree. 0 standalone, 1 client, 2 server, 3 host-player; GEARBOX_NET_* in
+ * gearbox.h names them. */
 static PyObject *py_env(PyObject *self, PyObject *args) {
     (void)self; (void)args;
     return Py_BuildValue(
-        "{s:i,s:i,s:i,s:i,s:O,s:O,s:i,s:i}",
+        "{s:i,s:i,s:i,s:i,s:O,s:O,s:i,s:i,s:i}",
         "gearboxMajor", (int)g_env.gearbox_major,
         "gearboxMinor", (int)g_env.gearbox_minor,
         "hostVersion",  (int)g_env.host_version,
@@ -135,7 +144,8 @@ static PyObject *py_env(PyObject *self, PyObject *args) {
         "isWeb",        g_env.is_web ? Py_True : Py_False,
         "isHeadless",   g_env.is_headless ? Py_True : Py_False,
         "screenW",      (int)g_env.screen_w,
-        "screenH",      (int)g_env.screen_h);
+        "screenH",      (int)g_env.screen_h,
+        "netRole",      (int)g_env.net_role);
 }
 
 static PyObject *py_abort(PyObject *self, PyObject *args) {

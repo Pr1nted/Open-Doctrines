@@ -276,7 +276,7 @@ static int gbxlua_set_province_industry_level(lua_State *L) {
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (8) ---- */
+/* ---- GameState.Read (10) ---- */
 #if GBX_WITH_GAMESTATE_READ
 
 /* gearbox:gamestate.read "turn_number" */
@@ -364,6 +364,30 @@ static int gbxlua_province_owner(lua_State *L) {
     uint32_t h = gearbox_province_owner((uint32_t)(a1));
     if (h == GEARBOX_INVALID) lua_pushnil(L);
     else lua_pushinteger(L, (lua_Integer)h);
+    return 1;
+}
+
+/* gearbox:gamestate.read "country_exists" */
+/* Whether a country id names a country that exists. A mod holding an id */
+/* from its own storage, a save, or a previous turn has no other way to ask */
+/* before using it -- a country can be annexed between turns, and every */
+/* other accessor answers 0 or an empty string for a dead id, which is */
+/* indistinguishable from a live country with nothing in it. */
+/* `(i)i` */
+static int gbxlua_country_exists(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushboolean(L, (int)gearbox_country_exists((uint32_t)(a1)));
+    return 1;
+}
+
+/* gearbox:gamestate.read "province_exists" */
+/* Whether a province id names a province that exists. Same reason as */
+/* country_exists: a stored id needs a validity check that is not 'iterate */
+/* every province and compare'. */
+/* `(i)i` */
+static int gbxlua_province_exists(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushboolean(L, (int)gearbox_province_exists((uint32_t)(a1)));
     return 1;
 }
 #endif /* GBX_WITH_GAMESTATE_READ */

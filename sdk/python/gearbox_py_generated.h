@@ -296,7 +296,7 @@ static PyObject *gbxpy_set_province_industry_level(PyObject *self, PyObject *arg
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (8) ---- */
+/* ---- GameState.Read (10) ---- */
 #if GBX_WITH_GAMESTATE_READ
 
 /* gearbox:gamestate.read "turn_number" */
@@ -391,6 +391,32 @@ static PyObject *gbxpy_province_owner(PyObject *self, PyObject *args) {
     uint32_t h = gearbox_province_owner((uint32_t)a0);
     if (h == GEARBOX_INVALID) Py_RETURN_NONE;
     return PyLong_FromUnsignedLong(h);
+}
+
+/* gearbox:gamestate.read "country_exists" */
+/* Whether a country id names a country that exists. A mod holding an id */
+/* from its own storage, a save, or a previous turn has no other way to ask */
+/* before using it -- a country can be annexed between turns, and every */
+/* other accessor answers 0 or an empty string for a dead id, which is */
+/* indistinguishable from a live country with nothing in it. */
+/* `(i)i` */
+static PyObject *gbxpy_country_exists(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyBool_FromLong((long)gearbox_country_exists((uint32_t)a0));
+}
+
+/* gearbox:gamestate.read "province_exists" */
+/* Whether a province id names a province that exists. Same reason as */
+/* country_exists: a stored id needs a validity check that is not 'iterate */
+/* every province and compare'. */
+/* `(i)i` */
+static PyObject *gbxpy_province_exists(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyBool_FromLong((long)gearbox_province_exists((uint32_t)a0));
 }
 #endif /* GBX_WITH_GAMESTATE_READ */
 
