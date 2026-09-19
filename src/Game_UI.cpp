@@ -1531,6 +1531,24 @@ void Game::updateCeasefireScreen() {
 std::string Game::saveStateJson() {
     nlohmann::json j;
 
+    // ── what this world is being loaded with ──
+    //
+    // Written on every save and OVERWRITTEN, never appended: a world carries
+    // what is running now, not everything a player ever had installed. No
+    // timestamp, deliberately -- see WorldProvenance.h. Game facts only.
+    {
+        nlohmann::json prov;
+        prov["gameVersion"] = GAME_VERSION;
+        for (const odprov::ModRecord& m : runningMods()) {
+            nlohmann::json e;
+            e["id"] = m.id;
+            e["version"] = m.version;
+            e["persisted"] = m.persisted;
+            prov["mods"].push_back(e);
+        }
+        j["loadedWith"] = prov;
+    }
+
     // Pending orders
     for (auto& u : m_pendingUpgrades) {
         nlohmann::json entry;
@@ -2565,6 +2583,31 @@ void Game::loadStateJsonBody(const std::string& json) {
     }
 
     if (j.contains("mapDate")) m_mapDate = j["mapDate"].get<std::string>();
+
+    // What it was last loaded with, and whether that is still true. The
+    // comparison happens here rather than at the warning site so the answer
+    // exists before anything reads the world -- a screen asking "is anything
+    // missing" must not be what decides it.
+    m_provenance = odprov::Provenance{};
+    if (j.contains("loadedWith") && j["loadedWith"].is_object()) {
+        const auto& p = j["loadedWith"];
+        m_provenance.present = true;
+        m_provenance.gameVersion = p.value("gameVersion", std::string());
+        if (p.contains("mods") && p["mods"].is_array()) {
+            for (const auto& e : p["mods"]) {
+                if (!e.is_object() || !e.contains("id")) continue;
+                odprov::ModRecord m;
+                m.id = e["id"].get<std::string>();
+                m.version = e.value("version", std::string());
+                m.persisted = e.value("persisted", false);
+                m_provenance.mods.push_back(m);
+            }
+        }
+    }
+    m_provenanceMismatch =
+        odprov::compare(m_provenance, runningMods(), GAME_VERSION);
+    for (const std::string& line : odprov::describe(m_provenanceMismatch))
+        printf("[WORLD] %s\n", line.c_str());
 
     // Who governs. A save written before parties existed, or by a world with
     // the rules off, has no key -- and loadParties() has already run for the

@@ -906,6 +906,7 @@ set(GAME_SOURCES
     src/Game_Policies.cpp
     src/Game_Parties.cpp
     src/Game_Assimilation.cpp
+    src/WorldProvenance.cpp
     src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
@@ -2183,6 +2184,12 @@ target_include_directories(MinorityShareTest PRIVATE src tests)
 # arithmetic and the data is the other half of the risk.
 add_executable(PartyRulesTest EXCLUDE_FROM_ALL tests/party_rules_test.cpp
                src/Parties.cpp)
+
+# What a world remembers about what it was loaded with. Pure comparison, no
+# world: the risk is in what the warning SAYS, not in reading a save.
+add_executable(WorldProvenanceTest EXCLUDE_FROM_ALL
+               tests/world_provenance_test.cpp src/WorldProvenance.cpp)
+target_include_directories(WorldProvenanceTest PRIVATE src tests)
 target_include_directories(PartyRulesTest PRIVATE src tests
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 

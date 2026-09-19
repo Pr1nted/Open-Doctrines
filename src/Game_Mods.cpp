@@ -2214,6 +2214,35 @@ const odparty::Party* partyAt(const std::unordered_map<int, odparty::Legislature
 }
 }  // namespace
 
+// The mods running now, in the form a world records them.
+//
+// From ModManager's own attestation rather than a second list, so this cannot
+// disagree with what the multiplayer handshake reports about the same install.
+//
+// `persisted` is false for every mod today: nothing can add persisted content
+// yet, because .add.persist does not exist. It is recorded per mod rather than
+// per world because the choice is the MOD's -- one mod may persist its content
+// while another re-declares it, and the warning has to say the right thing
+// about each. Writing the field now means saves made before .add lands already
+// carry the shape it needs.
+std::vector<odprov::ModRecord> Game::runningMods() const {
+    std::vector<odprov::ModRecord> out;
+    for (const ModAttestEntry& e : ModManager::get().attestation()) {
+        odprov::ModRecord m;
+        m.id = e.id;
+        m.version = e.version;
+        m.persisted = false;
+        out.push_back(m);
+    }
+    // Sorted by id so two saves of the same world compare equal regardless of
+    // the order the mod menu happened to enumerate them in.
+    std::sort(out.begin(), out.end(),
+              [](const odprov::ModRecord& a, const odprov::ModRecord& b) {
+                  return a.id < b.id;
+              });
+    return out;
+}
+
 int Game::modCountryPartyCount(int cid) const {
     auto it = m_countryParties.find(cid);
     return it == m_countryParties.end() ? 0 : (int)it->second.parties.size();

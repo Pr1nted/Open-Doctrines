@@ -1,4 +1,5 @@
 #pragma once
+#include "WorldProvenance.h"
 #include "Parties.h"
 #include "GameStructs.h"
 #include "ReleaseRules.h"
@@ -2794,6 +2795,19 @@ public:
      * their data, and not m_mpMapId, which single-player never sets.
      */
     std::string m_scenarioKey;
+    /**
+     * What this world was last loaded with. Rewritten on every save.
+     *
+     * Read back on load and compared against what is running, so the game can
+     * say "this world was built with a mod you no longer have" -- which it
+     * previously had no way to know. See src/WorldProvenance.h.
+     */
+    odprov::Provenance m_provenance;
+    /** What the last load found missing. Empty when everything matched. */
+    odprov::Mismatch m_provenanceMismatch;
+    /** The mods running now, as the save records them. */
+    std::vector<odprov::ModRecord> runningMods() const;
+
     /** The titular culture per country, and the turn it was worked out. */
     mutable std::unordered_map<int, std::string> m_titularGroup;
     mutable int m_titularTurn = -1;
