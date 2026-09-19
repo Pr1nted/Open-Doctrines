@@ -787,6 +787,38 @@ void Game::processProduction(int countryId) {
 // for, what has arrived by then, and what is it costing me?" That is the only
 // part of the future this game is arithmetic about, and it is the part every
 // multi-turn purchase decision actually turns on.
+// ── THE INCOME LEVERS, AND THE THREE THAT WERE NEVER SPENT ──
+//
+// tools/check_effect_fields.py found these summed by getTotalEffect and read
+// by nothing: resourceModPct (2 research nodes, 14 doctrines), popModPct (7
+// and 7) and passiveIncome (5 and 14). Every one of those printed a number in
+// a tooltip and changed no figure in the game.
+//
+// What each MEANS is not a guess -- tools/gen_policies.py, which generates the
+// advertised text from the levers, states it:
+//
+//     resourceModPct   "Resource income {sign}{v}%"
+//     popModPct        "Population income {sign}{v}%"
+//     passiveIncome    "Treasury {sign}{v}/turn"
+//
+// So they scale the two income components the snapshot already separates, and
+// the third is flat. The research nodes agree: "Population Income Bonus I,
+// +10% per level", "Passive Income I, +1 to economy per research level".
+//
+// SIGN: positive is MORE, unlike the cost levers next door where a reduction
+// is stored positive. Doctrines carry both signs -- autarky is resource +15
+// and treasury -4 -- so getting this backwards would not fail loudly, it would
+// invert half the economy.
+//
+// The multiplier is floored at zero so a future stack of -60% levers cannot
+// turn income negative; a NEGATIVE passiveIncome is allowed through, because
+// "treasury -4/turn" is a cost a doctrine is entitled to impose.
+void Game::applyIncomeLevers(CountryIncomeSnapshot& cs, int countryId) const {
+    cs.resource *= std::max(0.0f, 1.0f + getTotalEffect("resourceModPct", countryId) / 100.0f);
+    cs.pop      *= std::max(0.0f, 1.0f + getTotalEffect("popModPct", countryId) / 100.0f);
+    cs.total = cs.gross + cs.resource + cs.pop + getTotalEffect("passiveIncome", countryId);
+}
+
 CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
     CountryIncomeSnapshot cs = computeCountryIncome(countryId);
     if (turns <= 0) return cs;
@@ -841,7 +873,7 @@ CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
     cs.expenses += (cs.industryUpkeep - upkeepNow);
 
     cs.expenses += (cs.navyExpenses - navyNow);
-    cs.total = cs.gross + cs.resource + cs.pop;
+    applyIncomeLevers(cs, countryId);
     cs.net   = cs.total - cs.expenses;
     return cs;
 }
@@ -938,7 +970,7 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
             }
         }
     }
-    cs.total = cs.gross + cs.resource + cs.pop;
+    applyIncomeLevers(cs, countryId);
     // Factories cost money to run, and more of them cost disproportionately
     // more. See industryUpkeep() for why this is a running cost rather than a
     // higher price.
@@ -1000,7 +1032,12 @@ void Game::refreshIncomeCache() {
         if (b.attackerCid > 0) armyUpkeep[b.attackerCid] += (b.attackers() / 10000.0f) * 0.01f;
     for (auto& ship : m_ships) {
         if (ship.countryId <= 0) continue;
-        navyUpkeep[ship.countryId] += shipUpkeep(ship.type, ship.crew);
+        // navyCostMod here too. This is the SECOND navy bill -- the first fix
+        // reached computeCountryIncome and missed this one, which is the cache
+        // every screen actually reads, so the discount would have applied to a
+        // number the player never sees and not to the one they do.
+        navyUpkeep[ship.countryId] += shipUpkeep(ship.type, ship.crew) *
+                                      navyCostMod(getTotalEffect("navyCostPct", ship.countryId));
     }
 
     const auto& allProvs = m_provinces.getAllProvinces();
@@ -1011,7 +1048,7 @@ void Game::refreshIncomeCache() {
         cs.gross = a.gross;
         cs.resource = a.res;
         cs.pop = a.pop;
-        cs.total = a.gross + a.res + a.pop;
+        applyIncomeLevers(cs, cid);
         cs.industryLevels = a.levels;
         cs.industryUpkeep = industryUpkeep(a.levels, a.gross,
                                            getTotalEffect("industryUpkeepPct", cid));

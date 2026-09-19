@@ -3226,6 +3226,16 @@ public:
     /** Whether indoctrination converts anyone at all. */
     bool assimilationOn() const;
 
+    /**
+     * Apply the income levers and set `cs.total`.
+     *
+     * ONE function because the sum it ends with is written in THREE places --
+     * projectIncome, computeCountryIncome and refreshIncomeCache -- and three
+     * copies of a modifier is a plan for two of them to drift. See the
+     * definition for what each lever means and where the meanings come from.
+     */
+    void applyIncomeLevers(CountryIncomeSnapshot& cs, int countryId) const;
+
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
     // ── WHO GOVERNS ──
     /**
