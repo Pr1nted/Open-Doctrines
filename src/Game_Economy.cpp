@@ -824,7 +824,11 @@ CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
     // nothing used to look at -- see the note in execEconomy's ship case.
     for (const PendingShipBuild& sb : m_pendingShipBuilds) {
         if (sb.turnsRemaining > turns || !ownedByUs(sb.provinceId)) continue;
-        cs.navyExpenses += (sb.type == "carrier") ? 25.0f : 10.0f;
+        // A hull under construction gets the same discount as one afloat:
+        // "ship cost -10%" that applied only after launch would be true of a
+        // number the player never sees separately.
+        cs.navyExpenses += ((sb.type == "carrier") ? 25.0f : 10.0f) *
+                           navyCostMod(getTotalEffect("navyCostPct", countryId));
     }
 
     // The factories' own running cost grows with how many levels are held, so
@@ -892,11 +896,14 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     // And the men in standing battles, who are off the map but very much still
     // being paid. See Game::countryTroops.
     cs.armyExpenses += (battleTroops(countryId) / 10000.0f) * 0.01f * upkeepMod;
+    // Through shipUpkeep() rather than a second copy of the three constants,
+    // which is what these three lines were: the same prices already live in
+    // BuildCosts.h and a fleet valued from one table and billed from another
+    // is a plan for divergence.
+    const float navyMod = navyCostMod(getTotalEffect("navyCostPct", countryId));
     for (auto& ship : m_ships) {
         if (ship.countryId != countryId) continue;
-        if (ship.type == "carrier") cs.navyExpenses += 25;
-        else if (ship.type == "destroyer") cs.navyExpenses += 10;
-        cs.navyExpenses += (ship.crew / 10000.0f) * 0.2f;
+        cs.navyExpenses += shipUpkeep(ship.type, ship.crew) * navyMod;
     }
     auto it = m_countryActivePolicyIndices.find(countryId);
     if (it != m_countryActivePolicyIndices.end()) {

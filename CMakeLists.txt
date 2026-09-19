@@ -47,6 +47,29 @@ project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 
+# ── The Windows root certificate store ──
+#
+# Windows does not keep its trusted roots in a PEM file. They live in the
+# Schannel store, reachable only through CryptoAPI, so src/net/TlsSocket.cpp
+# reads them with CertOpenSystemStoreW -- which lives in crypt32.
+#
+# Reported symptom before this: signing in to the account service worked on
+# macOS and on the web and failed on Windows. macOS finds /etc/ssl/cert.pem;
+# the web build never runs TlsSocket because the browser does its own TLS; and
+# on Windows every path in the bundle list missed, so the connection was
+# refused with "no system certificate store was found". Refusing was correct.
+# Having no way to succeed was the bug.
+#
+# GLOBAL, not per target, deliberately. TEN targets compile TlsSocket.cpp and
+# each would fail to link on Windows alone -- a break nobody here can see,
+# because there is no Windows machine on this project (it is found in CI, one
+# platform late). crypt32 is a system import library and costs a build that
+# does not call it nothing, so the version that cannot be forgotten is the
+# right one. See put-the-guard-where-forgetting-is-impossible.
+if(WIN32)
+    link_libraries(crypt32)
+endif()
+
 # Link the MSVC runtime STATICALLY, so a Windows build needs nothing installed
 # before it will start.
 #

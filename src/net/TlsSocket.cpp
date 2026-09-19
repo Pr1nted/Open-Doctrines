@@ -23,6 +23,9 @@
 #define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
+// The root certificates. Windows keeps them in the Schannel store and NOT in
+// any file on disk, which is why the PEM list below finds nothing here.
+#include <wincrypt.h>
 #else
 #include <cerrno>
 #include <fcntl.h>
@@ -44,6 +47,20 @@ std::string mbedError(int rc) {
 // Where each platform keeps its root certificates. mbedTLS, unlike NSS or
 // Schannel, ships none of its own -- it is a protocol implementation, not a
 // trust store -- so the system's has to be found.
+//
+// EVERY PATH HERE IS A UNIX PATH, AND WINDOWS HAS NONE.
+//
+// Windows does not keep its roots in a file. They live in the Schannel
+// certificate store, reachable only through CryptoAPI -- so every one of these
+// parses failed there, haveTrust stayed false, and the connection was refused
+// with "no system certificate store was found". Refusing was right; having no
+// way to succeed was not. The symptom reported was that signing in works on
+// macOS and on the web and fails on Windows, which is exactly this: macOS finds
+// /etc/ssl/cert.pem, the web build never runs this code because the browser
+// does its own TLS, and Windows found nothing.
+//
+// loadWindowsRoots below is the Windows half. This list stays Unix-only on
+// purpose: a made-up Windows path would be a guess that fails the same way.
 const char* const kTrustBundles[] = {
     "/etc/ssl/cert.pem",                        // macOS, FreeBSD
     "/etc/ssl/certs/ca-certificates.crt",       // Debian, Ubuntu, Alpine
@@ -53,6 +70,42 @@ const char* const kTrustBundles[] = {
     "/usr/local/share/certs/ca-root-nss.crt",   // FreeBSD ports
     "/etc/certs/ca-certificates.crt",           // Solaris
 };
+
+#if defined(_WIN32)
+/**
+ * The Windows root store, fed into mbedTLS one certificate at a time.
+ *
+ * CertEnumCertificatesInStore walks the "ROOT" system store, which is the set
+ * Windows itself trusts and the set a user's enterprise policy edits. Each
+ * entry is already DER, which is what mbedtls_x509_crt_parse_der wants, so
+ * nothing has to be re-encoded.
+ *
+ * PARTIAL SUCCESS IS SUCCESS. A store can contain a certificate mbedTLS will
+ * not parse -- an unsupported algorithm, a malformed legacy root -- and
+ * refusing the whole chain because one of several hundred is unreadable would
+ * put us straight back to "cannot connect". So a parse failure skips that one
+ * and the count decides: any root at all is a usable chain.
+ *
+ * Returns how many were accepted.
+ */
+int loadWindowsRoots(mbedtls_x509_crt* chain) {
+    HCERTSTORE store = ::CertOpenSystemStoreW(0, L"ROOT");
+    if (!store) return 0;
+    int added = 0;
+    PCCERT_CONTEXT ctx = nullptr;
+    while ((ctx = ::CertEnumCertificatesInStore(store, ctx)) != nullptr) {
+        if (!ctx->pbCertEncoded || ctx->cbCertEncoded == 0) continue;
+        if (mbedtls_x509_crt_parse_der(chain, ctx->pbCertEncoded,
+                                       ctx->cbCertEncoded) == 0)
+            ++added;
+    }
+    // CERT_CLOSE_STORE_FORCE_FLAG would free contexts still in use; the
+    // enumeration above has released each as it went, so the plain close is
+    // the correct one and leaks nothing.
+    ::CertCloseStore(store, 0);
+    return added;
+}
+#endif
 
 }  // namespace
 
@@ -102,6 +155,11 @@ TlsSocket::~TlsSocket() {
 }
 
 std::string TlsSocket::trustStorePath() {
+#if defined(_WIN32)
+    // There is no path to report on Windows: the roots are in the Schannel
+    // store, not a file. Naming one would be a lie to whatever prints it.
+    return {};
+#else
     for (const char* path : kTrustBundles) {
         mbedtls_x509_crt probe;
         mbedtls_x509_crt_init(&probe);
@@ -110,6 +168,7 @@ std::string TlsSocket::trustStorePath() {
         if (ok) return path;
     }
     return {};
+#endif
 }
 
 bool TlsSocket::random(uint8_t* out, size_t n) {
@@ -314,12 +373,18 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
     mbedtls_ssl_conf_rng(&m_impl->conf, mbedtls_ctr_drbg_random, &m_impl->drbg);
 
     bool haveTrust = false;
+#if defined(_WIN32)
+    // Windows first and only: its roots are not in any of the files below, and
+    // before this every Windows sign-in failed here.
+    haveTrust = loadWindowsRoots(&m_impl->cacert) > 0;
+#else
     for (const char* path : kTrustBundles) {
         if (mbedtls_x509_crt_parse_file(&m_impl->cacert, path) == 0) {
             haveTrust = true;
             break;
         }
     }
+#endif
     if (!haveTrust) {
         // Refusing is the only correct answer. Connecting anyway, with
         // verification disabled, would mean the game silently accepts any

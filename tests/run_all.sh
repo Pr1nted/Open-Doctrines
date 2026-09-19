@@ -318,6 +318,11 @@ check "third-party notices vs provenance.json" $PY "$root/tools/gen_notices.py" 
 # copy which WINS over data/ -- so the file in the repository and the file the
 # game loads are two different files, and were.
 check "doctrine data" $PY "$root/tools/check_policies.py"
+# And does anything READ the levers those doctrines advertise? Four effect
+# fields have shipped summed-but-never-spent. Not --strict: three are still
+# dead and that is a backlog, not a regression -- but the report is in the log
+# so it cannot be forgotten again.
+check "advertised effects are spent" $PY "$root/tools/check_effect_fields.py"
 
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh

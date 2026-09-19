@@ -547,6 +547,30 @@ inline float buildCostMod(float effectPct) {
 inline float conscriptionCostMod(float effectPct) { return buildCostMod(effectPct); }
 
 /**
+ * What a navy costs, from getTotalEffect("navyCostPct").
+ *
+ * THIS WAS SUMMED AND NEVER SPENT, exactly as maintenanceCostPct was below.
+ * Four research nodes grant navyCostPct and five doctrines advertise it, and
+ * nothing read the total -- so a player who researched "Advanced Shipbuilding"
+ * for its stated -10% ship cost got nothing, and reported it:
+ *
+ *   "I researched Advanced Shipbuilding, which says it reduces ship cost by
+ *    10%. Yet when I completed it, the cost to build ships like destroyers and
+ *    carriers was not reduced, nor was the Navy Cost listed in the Local
+ *    Economy part of the Economy section reduced."
+ *
+ * They were right on both counts, and the second is the one that could be
+ * fixed: DESTROYER_COST and CARRIER_COST are only ever read to value a fleet
+ * for national accounting -- a ship is never CHARGED up front. Its whole price
+ * is the berth while it is building and the upkeep once it floats, which is
+ * the "Navy Cost" line they checked. So that is what the discount applies to,
+ * and the advertised number becomes true against the figure on screen.
+ *
+ * Same sign convention as every other modifier here: a REDUCTION is positive.
+ */
+inline float navyCostMod(float effectPct) { return buildCostMod(effectPct); }
+
+/**
  * What it costs to KEEP an army, as against raising one.
  *
  * `effectPct` is getTotalEffect("maintenanceCostPct"). Same sign convention as

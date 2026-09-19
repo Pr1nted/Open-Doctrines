@@ -126,6 +126,11 @@ GROUPS = [
         # authors it, check_policies.py is the gate that keeps the two one fact
         # rather than two that agree today.
         "gen_policies.py", "check_policies.py",
+        # check_policies keeps a doctrine's advertised text and its levers one
+        # fact; this asks the next question -- whether any resolver reads the
+        # lever at all. Four have shipped unread, one of them reported by a
+        # player who researched the thing and watched nothing happen.
+        "check_effect_fields.py",
         # Whether a new doctrine or regional law changes what the AI does.
         # Two reflexes pick a doctrine by argmax over the whole table and a
         # third picks a regional law the same way, so an entry that beats the
