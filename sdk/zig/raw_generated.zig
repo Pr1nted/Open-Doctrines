@@ -1064,3 +1064,37 @@ pub extern "gearbox:gamestate.read" fn country_exists(country: u32) u32;
 /// every province and compare'.
 /// `(i)i`
 pub extern "gearbox:gamestate.read" fn province_exists(province: u32) u32;
+
+/// Resident memory the whole game is using, in bytes. 0 where the platform
+/// does not report it -- Windows and the web build both return 0 today, and
+/// 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE
+/// MACHINE, not about the game, which is why it needs its own capability.
+/// Every other reading a mod can take is deliberately opaque about the
+/// host.
+/// `()I`
+pub extern "gearbox:core.protected" fn process_bytes() u64;
+
+/// How large the game's own executable is on disk, in bytes. 0 if it cannot
+/// be determined. Useful to a mod that reports build size or checks it is
+/// running against the build it expects; useless for anything else, which
+/// is the point.
+/// `()I`
+pub extern "gearbox:core.protected" fn image_bytes() u64;
+
+/// How many mods are INSTALLED, enabled or not. A compatibility checker
+/// needs to see the mod it conflicts with even when that mod is switched
+/// off, because switching it on is what breaks things.
+/// `()i`
+pub extern "gearbox:core.protected" fn mod_count() u32;
+
+/// The installed mod's manifest id -- the stable one, safe to compare.
+/// Two-call sizing: call with cap 0 to learn the length, allocate, call
+/// again.
+/// `(iii)i`
+pub extern "gearbox:core.protected" fn mod_id(index: u32, buf: ?[*]u8, cap: u32) u32;
+
+/// Its display name, which is for showing a player and NOT for matching on:
+/// it is author-chosen, may be translated, and two mods may share one.
+/// Match on mod_id.
+/// `(iii)i`
+pub extern "gearbox:core.protected" fn mod_name(index: u32, buf: ?[*]u8, cap: u32) u32;

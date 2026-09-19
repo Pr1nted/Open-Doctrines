@@ -2,7 +2,7 @@
 # Gearbox — the OpenDoctrines mod API
 
 Gearbox v1.3. A mod is a WebAssembly module that imports
-230 host functions and exports up to 6 of its own. That is
+235 host functions and exports up to 6 of its own. That is
 the whole contract — there is no framework and no runtime to learn.
 
 Mods are sandboxed with **no ambient authority**: no filesystem, no network, no
@@ -24,7 +24,7 @@ The engine's own pages sit beside these: [AI Architecture](AI-Architecture.md).
 
 ## What a mod can do today
 
-Working: **Core, GameState.Read, UI, Assets, GameProcess, GameState.Write, Neural, Neural.Decide, Map, Diplomacy, Storage, Audio, Net, WasiStub, Military.Read, Military.Write, Research.Read, Research.Write, Politics.Read, Politics.Write, Economy.Read, Economy.Write, MapEditor**.
+Working: **Core, GameState.Read, UI, Assets, GameProcess, GameState.Write, Neural, Neural.Decide, Map, Diplomacy, Storage, Audio, Net, WasiStub, Military.Read, Military.Write, Research.Read, Research.Write, Politics.Read, Politics.Write, Economy.Read, Economy.Write, MapEditor, Core.Protected**.
 
 Every capability module is implemented. A mod can read the world, change it,
 draw panels, run code on turn boundaries, read the map, read and propose

@@ -1260,4 +1260,43 @@ public final class GearboxRaw {
     @Import(module = "gearbox:gamestate.read", name = "province_exists")
     public static native int provinceExists(int province);
 
+    // Resident memory the whole game is using, in bytes. 0 where the platform
+    // does not report it -- Windows and the web build both return 0 today, and
+    // 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE
+    // MACHINE, not about the game, which is why it needs its own capability.
+    // Every other reading a mod can take is deliberately opaque about the
+    // host.
+    // `()I`
+    @Import(module = "gearbox:core.protected", name = "process_bytes")
+    public static native long processBytes();
+
+    // How large the game's own executable is on disk, in bytes. 0 if it cannot
+    // be determined. Useful to a mod that reports build size or checks it is
+    // running against the build it expects; useless for anything else, which
+    // is the point.
+    // `()I`
+    @Import(module = "gearbox:core.protected", name = "image_bytes")
+    public static native long imageBytes();
+
+    // How many mods are INSTALLED, enabled or not. A compatibility checker
+    // needs to see the mod it conflicts with even when that mod is switched
+    // off, because switching it on is what breaks things.
+    // `()i`
+    @Import(module = "gearbox:core.protected", name = "mod_count")
+    public static native int modCount();
+
+    // The installed mod's manifest id -- the stable one, safe to compare.
+    // Two-call sizing: call with cap 0 to learn the length, allocate, call
+    // again.
+    // `(iii)i`
+    @Import(module = "gearbox:core.protected", name = "mod_id")
+    public static native int modId(int index, int buf, int cap);
+
+    // Its display name, which is for showing a player and NOT for matching on:
+    // it is author-chosen, may be translated, and two mods may share one.
+    // Match on mod_id.
+    // `(iii)i`
+    @Import(module = "gearbox:core.protected", name = "mod_name")
+    public static native int modName(int index, int buf, int cap);
+
 }

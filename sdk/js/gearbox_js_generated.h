@@ -99,6 +99,102 @@ static JSValue gbxjs_is_playing(JSContext *ctx, JSValueConst this_val,
 }
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Core.Protected (5) ---- */
+#if GBX_WITH_CORE_PROTECTED
+
+/* gearbox:core.protected "process_bytes" */
+/* Resident memory the whole game is using, in bytes. 0 where the platform */
+/* does not report it -- Windows and the web build both return 0 today, and */
+/* 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE */
+/* MACHINE, not about the game, which is why it needs its own capability. */
+/* Every other reading a mod can take is deliberately opaque about the */
+/* host. */
+/* `()I` */
+static JSValue gbxjs_process_bytes(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_process_bytes();
+    return JS_NewFloat64(ctx, (double)r);
+}
+
+/* gearbox:core.protected "image_bytes" */
+/* How large the game's own executable is on disk, in bytes. 0 if it cannot */
+/* be determined. Useful to a mod that reports build size or checks it is */
+/* running against the build it expects; useless for anything else, which */
+/* is the point. */
+/* `()I` */
+static JSValue gbxjs_image_bytes(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_image_bytes();
+    return JS_NewFloat64(ctx, (double)r);
+}
+
+/* gearbox:core.protected "mod_count" */
+/* How many mods are INSTALLED, enabled or not. A compatibility checker */
+/* needs to see the mod it conflicts with even when that mod is switched */
+/* off, because switching it on is what breaks things. */
+/* `()i` */
+static JSValue gbxjs_mod_count(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_mod_count();
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:core.protected "mod_id" */
+/* The installed mod's manifest id -- the stable one, safe to compare. */
+/* Two-call sizing: call with cap 0 to learn the length, allocate, call */
+/* again. */
+/* `(iii)i` */
+static JSValue gbxjs_mod_id(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "modId expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint32_t need = gearbox_mod_id((uint32_t)a0, 0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_mod_id((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+
+/* gearbox:core.protected "mod_name" */
+/* Its display name, which is for showing a player and NOT for matching on: */
+/* it is author-chosen, may be translated, and two mods may share one. */
+/* Match on mod_id. */
+/* `(iii)i` */
+static JSValue gbxjs_mod_name(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "modName expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint32_t need = gearbox_mod_name((uint32_t)a0, 0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_mod_name((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+#endif /* GBX_WITH_CORE_PROTECTED */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
 

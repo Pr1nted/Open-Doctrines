@@ -80,6 +80,84 @@ static PyObject *gbxpy_is_playing(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Core.Protected (5) ---- */
+#if GBX_WITH_CORE_PROTECTED
+
+/* gearbox:core.protected "process_bytes" */
+/* Resident memory the whole game is using, in bytes. 0 where the platform */
+/* does not report it -- Windows and the web build both return 0 today, and */
+/* 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE */
+/* MACHINE, not about the game, which is why it needs its own capability. */
+/* Every other reading a mod can take is deliberately opaque about the */
+/* host. */
+/* `()I` */
+static PyObject *gbxpy_process_bytes(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyLong_FromUnsignedLongLong((unsigned long long)gearbox_process_bytes());
+}
+
+/* gearbox:core.protected "image_bytes" */
+/* How large the game's own executable is on disk, in bytes. 0 if it cannot */
+/* be determined. Useful to a mod that reports build size or checks it is */
+/* running against the build it expects; useless for anything else, which */
+/* is the point. */
+/* `()I` */
+static PyObject *gbxpy_image_bytes(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyLong_FromUnsignedLongLong((unsigned long long)gearbox_image_bytes());
+}
+
+/* gearbox:core.protected "mod_count" */
+/* How many mods are INSTALLED, enabled or not. A compatibility checker */
+/* needs to see the mod it conflicts with even when that mod is switched */
+/* off, because switching it on is what breaks things. */
+/* `()i` */
+static PyObject *gbxpy_mod_count(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_mod_count());
+}
+
+/* gearbox:core.protected "mod_id" */
+/* The installed mod's manifest id -- the stable one, safe to compare. */
+/* Two-call sizing: call with cap 0 to learn the length, allocate, call */
+/* again. */
+/* `(iii)i` */
+static PyObject *gbxpy_mod_id(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    uint32_t need = gearbox_mod_id((uint32_t)a0, NULL, 0);
+    if (need == 0) return PyUnicode_FromString("");
+    char *buf = (char *)PyMem_Malloc(need);
+    if (!buf) return PyErr_NoMemory();
+    uint32_t got = gearbox_mod_id((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    PyObject *v = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)got, "replace");
+    PyMem_Free(buf);
+    return v;
+}
+
+/* gearbox:core.protected "mod_name" */
+/* Its display name, which is for showing a player and NOT for matching on: */
+/* it is author-chosen, may be translated, and two mods may share one. */
+/* Match on mod_id. */
+/* `(iii)i` */
+static PyObject *gbxpy_mod_name(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    uint32_t need = gearbox_mod_name((uint32_t)a0, NULL, 0);
+    if (need == 0) return PyUnicode_FromString("");
+    char *buf = (char *)PyMem_Malloc(need);
+    if (!buf) return PyErr_NoMemory();
+    uint32_t got = gearbox_mod_name((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    PyObject *v = PyUnicode_DecodeUTF8(buf, (Py_ssize_t)got, "replace");
+    PyMem_Free(buf);
+    return v;
+}
+#endif /* GBX_WITH_CORE_PROTECTED */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
 

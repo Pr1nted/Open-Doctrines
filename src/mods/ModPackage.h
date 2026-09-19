@@ -65,6 +65,24 @@ enum ModModuleBit : uint32_t {
     // two cannot be one capability.
     MODULE_NEURAL_DECIDE   = 1u << 22,
 
+    // ── Gearbox 1.3 ──────────────────────────────────────────────────────────
+    //
+    // WHAT THE PROCESS ITSELF LOOKS LIKE, and the only capability here that
+    // tells a mod anything about the MACHINE rather than about the game.
+    //
+    // Everything else in this list is deliberately opaque about the host: the
+    // WASI shim reports the turn number instead of the clock and a deterministic
+    // stream instead of OS entropy, precisely so a mod cannot fingerprint the
+    // player. Core.Protected reverses that for three facts -- how much memory
+    // the game is using, how large it is on disk, and which mods are installed
+    // -- because a profiler or a compatibility checker cannot be written
+    // without them.
+    //
+    // SO IT IS A SEPARATE BIT, NOT PART OF Core. Core is granted to every mod
+    // and cannot be revoked; this must be askable-for and refusable, and the
+    // player is told plainly when a mod wants it. See kProtectedWarning.
+    MODULE_CORE_PROTECTED  = 1u << 23,
+
     MODULE_MAPEDITOR       = 1u << 21,
 };
 

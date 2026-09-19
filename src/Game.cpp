@@ -1,6 +1,7 @@
 #include "GameUpdates.h"
 #include "util/LoadLog.h"
 #include "Palette.h"
+#include "mods/ModProtected.h"
 #include "Game.h"
 
 #include "util/Async.h"
@@ -3556,8 +3557,47 @@ bool Game::updateResourcePanel() {
 }
 
 Rectangle Game::resourcePanelRect() const {
-    const float w = 300.0f, h = 224.0f;
+    const float w = 300.0f;
+    // Taller when a mod has actually used Core.Protected, and only then: an
+    // empty section every session would train the eye to skip the panel.
+    const float h = 224.0f + (float)protectedRowsHeight();
     return { (float)m_screenW - w - 16.0f, 16.0f, w, h };
+}
+
+// ── WHAT MODS HAVE ASKED ABOUT THE MACHINE ──
+//
+// Core.Protected is the one capability that reports the host rather than the
+// world, so what uses it is worth being able to see. Drawn here because this
+// panel is already the "what is this program doing right now" view, and it
+// opens with F10 in game and in the trainer alike.
+//
+// A MOD CANNOT TELL THIS PANEL IS OPEN. The counters it reads are incremented
+// on every call whether or not anything is drawing them -- see
+// odprotected::record. If recording depended on the panel being open, a mod
+// could detect that it was being watched and behave differently while it was,
+// which is the whole reason to have the panel. It also cannot time the
+// difference: a mod's clock_time_get returns the turn number.
+int Game::protectedRowsHeight() const {
+    const int n = (int)odprotected::usage().size();
+    return n == 0 ? 0 : 26 + n * 16;
+}
+
+void Game::drawProtectedRows(float x, float y, float w) const {
+    const std::vector<odprotected::Usage> rows = odprotected::usage();
+    if (rows.empty()) return;
+    DrawText(T("MODS READING THE PROCESS"), (int)x, (int)y, 12,
+             Color{235, 185, 95, 255});
+    int ry = (int)y + 16;
+    for (const odprotected::Usage& u : rows) {
+        // The id, not the display name: the name is author-chosen and two mods
+        // may share one, and this is a line a player may act on.
+        DrawText(u.modId.c_str(), (int)x, ry, 11, Color{200, 205, 215, 255});
+        const std::string calls = std::to_string(u.total());
+        const int cw = MeasureText(calls.c_str(), 11);
+        DrawText(calls.c_str(), (int)(x + w) - cw, ry, 11,
+                 Color{150, 155, 170, 255});
+        ry += 16;
+    }
 }
 
 void Game::drawResourcePanel() {
@@ -3583,6 +3623,10 @@ void Game::drawResourcePanel() {
     const Rectangle bar = { p.x + 16, p.y + 58, p.width - 32, 8 };
     drawSliderWidget(bar, resourceBudgetSliderT(m_config.resourceBudget),
                      m_draggingPanelSlider, /*steps=*/0);
+
+    // Below the graph, so the panel's usual contents keep their positions and
+    // a session with no mod reading the process looks exactly as it did.
+    drawProtectedRows(p.x + 16, p.y + 224.0f - 16.0f, p.width - 32);
 
     // ── History graph ──
     const Rectangle g = { p.x + 16, p.y + 88, p.width - 32, 90 };

@@ -1250,3 +1250,42 @@ export declare function _countryExists(country: u32): u32;
 // `(i)i`
 @external("gearbox:gamestate.read", "province_exists")
 export declare function _provinceExists(province: u32): u32;
+
+// Resident memory the whole game is using, in bytes. 0 where the platform
+// does not report it -- Windows and the web build both return 0 today, and
+// 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE
+// MACHINE, not about the game, which is why it needs its own capability.
+// Every other reading a mod can take is deliberately opaque about the
+// host.
+// `()I`
+@external("gearbox:core.protected", "process_bytes")
+export declare function _processBytes(): u64;
+
+// How large the game's own executable is on disk, in bytes. 0 if it cannot
+// be determined. Useful to a mod that reports build size or checks it is
+// running against the build it expects; useless for anything else, which
+// is the point.
+// `()I`
+@external("gearbox:core.protected", "image_bytes")
+export declare function _imageBytes(): u64;
+
+// How many mods are INSTALLED, enabled or not. A compatibility checker
+// needs to see the mod it conflicts with even when that mod is switched
+// off, because switching it on is what breaks things.
+// `()i`
+@external("gearbox:core.protected", "mod_count")
+export declare function _modCount(): u32;
+
+// The installed mod's manifest id -- the stable one, safe to compare.
+// Two-call sizing: call with cap 0 to learn the length, allocate, call
+// again.
+// `(iii)i`
+@external("gearbox:core.protected", "mod_id")
+export declare function _modId(index: u32, buf: usize, cap: u32): u32;
+
+// Its display name, which is for showing a player and NOT for matching on:
+// it is author-chosen, may be translated, and two mods may share one.
+// Match on mod_id.
+// `(iii)i`
+@external("gearbox:core.protected", "mod_name")
+export declare function _modName(index: u32, buf: usize, cap: u32): u32;

@@ -14,6 +14,15 @@
     {"isPlaying", gbxpy_is_playing, METH_VARARGS, "Whether that handle is still making sound."},
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Core.Protected (5) ---- */
+#if GBX_WITH_CORE_PROTECTED
+    {"processBytes", gbxpy_process_bytes, METH_NOARGS, "Resident memory the whole game is using, in bytes. 0 where the platform does not report it -- Windows and the web build both return 0 today, and 0 means UNKNOWN rather than 'no mem"},
+    {"imageBytes", gbxpy_image_bytes, METH_NOARGS, "How large the game's own executable is on disk, in bytes. 0 if it cannot be determined. Useful to a mod that reports build size or checks it is running against the build it expects"},
+    {"modCount", gbxpy_mod_count, METH_NOARGS, "How many mods are INSTALLED, enabled or not. A compatibility checker needs to see the mod it conflicts with even when that mod is switched off, because switching it on is what brea"},
+    {"modId", gbxpy_mod_id, METH_VARARGS, "The installed mod's manifest id -- the stable one, safe to compare. Two-call sizing: call with cap 0 to learn the length, allocate, call again."},
+    {"modName", gbxpy_mod_name, METH_VARARGS, "Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id."},
+#endif /* GBX_WITH_CORE_PROTECTED */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
     {"atWar", gbxpy_at_war, METH_VARARGS, "1 if the two countries are at war. Relations are symmetric, so the argument order does not matter. 0 for unknown countries or for a country with itself."},

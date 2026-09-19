@@ -34,6 +34,7 @@ into your memory after a call returns.
 - **Economy.Write** (`gearbox:economy.write`): [set_province_industry_level](#set-province-industry-level)
 - **MapEditor** (`gearbox:mapeditor`): [editor_active](#editor-active), [editor_province_count](#editor-province-count), [editor_province_at](#editor-province-at), [editor_province_population](#editor-province-population), [editor_province_industry_level](#editor-province-industry-level), [editor_province_fortification](#editor-province-fortification), [editor_province_port_level](#editor-province-port-level), [editor_province_resource](#editor-province-resource), [editor_province_compass_econ](#editor-province-compass-econ), [editor_province_compass_social](#editor-province-compass-social), [editor_set_province_population](#editor-set-province-population), [editor_set_province_industry_level](#editor-set-province-industry-level), [editor_set_province_fortification](#editor-set-province-fortification), [editor_set_province_port_level](#editor-set-province-port-level), [editor_set_province_resource](#editor-set-province-resource), [editor_set_province_compass](#editor-set-province-compass), [editor_map_name](#editor-map-name), [editor_set_map_name](#editor-set-map-name), [editor_set_author](#editor-set-author), [editor_set_license](#editor-set-license)
 - **Neural.Decide** (`gearbox:neural.decide`): [action_valid](#action-valid)
+- **Core.Protected** (`gearbox:core.protected`): [process_bytes](#process-bytes), [image_bytes](#image-bytes), [mod_count](#mod-count), [mod_id](#mod-id), [mod_name](#mod-name)
 
 ## Core
 
@@ -3538,6 +3539,72 @@ Import module `gearbox:neural.decide`. Requires the `Neural.Decide` capability i
 **Returns:** `i32`
 
 Which actions the host will accept for this module right now, one byte per action: 1 legal, 0 not. Two-call sizing, like every other copy here. MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact about a decision in progress; outside one it returns 0 and writes nothing. Choosing an action whose byte is 0 is the same as deciding nothing -- the host keeps its own choice, because an illegal action is not a move it can make.
+
+## Core.Protected
+
+Import module `gearbox:core.protected`. Requires the `Core.Protected` capability in your manifest.
+
+### process_bytes
+
+```wat
+(import "gearbox:core.protected" "process_bytes" (func (result i64)))
+```
+
+**Returns:** `i64`
+
+Resident memory the whole game is using, in bytes. 0 where the platform does not report it -- Windows and the web build both return 0 today, and 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE MACHINE, not about the game, which is why it needs its own capability. Every other reading a mod can take is deliberately opaque about the host.
+
+### image_bytes
+
+```wat
+(import "gearbox:core.protected" "image_bytes" (func (result i64)))
+```
+
+**Returns:** `i64`
+
+How large the game's own executable is on disk, in bytes. 0 if it cannot be determined. Useful to a mod that reports build size or checks it is running against the build it expects; useless for anything else, which is the point.
+
+### mod_count
+
+```wat
+(import "gearbox:core.protected" "mod_count" (func (result i32)))
+```
+
+**Returns:** `i32`
+
+How many mods are INSTALLED, enabled or not. A compatibility checker needs to see the mod it conflicts with even when that mod is switched off, because switching it on is what breaks things.
+
+### mod_id
+
+```wat
+(import "gearbox:core.protected" "mod_id" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `index` | `i32` |  |
+| `buf` | `i32` | pointer into your memory |
+| `cap` | `i32` | byte length |
+
+**Returns:** `i32`
+
+The installed mod's manifest id -- the stable one, safe to compare. Two-call sizing: call with cap 0 to learn the length, allocate, call again.
+
+### mod_name
+
+```wat
+(import "gearbox:core.protected" "mod_name" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `index` | `i32` |  |
+| `buf` | `i32` | pointer into your memory |
+| `cap` | `i32` | byte length |
+
+**Returns:** `i32`
+
+Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id.
 
 ## Exports
 

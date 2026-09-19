@@ -14,6 +14,15 @@
     JS_CFUNC_DEF("isPlaying", 1, gbxjs_is_playing),
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Core.Protected (5) ---- */
+#if GBX_WITH_CORE_PROTECTED
+    JS_CFUNC_DEF("processBytes", 0, gbxjs_process_bytes),
+    JS_CFUNC_DEF("imageBytes", 0, gbxjs_image_bytes),
+    JS_CFUNC_DEF("modCount", 0, gbxjs_mod_count),
+    JS_CFUNC_DEF("modId", 1, gbxjs_mod_id),
+    JS_CFUNC_DEF("modName", 1, gbxjs_mod_name),
+#endif /* GBX_WITH_CORE_PROTECTED */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
     JS_CFUNC_DEF("atWar", 2, gbxjs_at_war),

@@ -64,6 +64,22 @@ struct ModNetBridge {
 };
 
 /**
+ * The installed mod list, for Core.Protected.
+ *
+ * A BRIDGE AND NOT AN INCLUDE. ModHost is the wasm boundary and ModManager
+ * owns the list; the mod tests build ModHost without ModManager at all, which
+ * is why every other crossing here is a std::function the game fills in. See
+ * ModNetBridge above for the same shape and the same reason.
+ */
+struct ModListBridge {
+    std::function<uint32_t()> count;
+    /** (index) -> the manifest id, stable and safe to compare. */
+    std::function<std::string(uint32_t)> id;
+    /** (index) -> the display name: author-chosen, not for matching on. */
+    std::function<std::string(uint32_t)> name;
+};
+
+/**
  * How the game lends its speakers to mods.
  *
  * The mod host does not link raylib -- the mod tests build it on its own, and
@@ -93,6 +109,7 @@ void modSetAudioBridge(const ModAudioBridge& bridge);
 
 /** Hand the mod host a session, or take it away with a default-constructed one. */
 void modSetNetBridge(const ModNetBridge& bridge);
+void modSetListBridge(const ModListBridge& bridge);
 void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;

@@ -1949,6 +1949,10 @@ public:
     static constexpr double PERF_SAMPLE_SECONDS = 0.25;
     static constexpr size_t PERF_HISTORY = 200;
     Rectangle resourcePanelRect() const;
+    /** Height the Core.Protected rows need, or 0 when no mod has used it. */
+    int  protectedRowsHeight() const;
+    /** What each mod has asked about the process. See the definition. */
+    void drawProtectedRows(float x, float y, float w) const;
     /** Draws the panel. Safe to call with the panel hidden (does nothing). */
     void drawResourcePanel();
     /** Handles F10 and the panel's slider. Returns true if it ate the click. */

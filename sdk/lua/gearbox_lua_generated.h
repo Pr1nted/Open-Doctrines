@@ -78,6 +78,81 @@ static int gbxlua_is_playing(lua_State *L) {
 }
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Core.Protected (5) ---- */
+#if GBX_WITH_CORE_PROTECTED
+
+/* gearbox:core.protected "process_bytes" */
+/* Resident memory the whole game is using, in bytes. 0 where the platform */
+/* does not report it -- Windows and the web build both return 0 today, and */
+/* 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE */
+/* MACHINE, not about the game, which is why it needs its own capability. */
+/* Every other reading a mod can take is deliberately opaque about the */
+/* host. */
+/* `()I` */
+static int gbxlua_process_bytes(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_process_bytes());
+    return 1;
+}
+
+/* gearbox:core.protected "image_bytes" */
+/* How large the game's own executable is on disk, in bytes. 0 if it cannot */
+/* be determined. Useful to a mod that reports build size or checks it is */
+/* running against the build it expects; useless for anything else, which */
+/* is the point. */
+/* `()I` */
+static int gbxlua_image_bytes(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_image_bytes());
+    return 1;
+}
+
+/* gearbox:core.protected "mod_count" */
+/* How many mods are INSTALLED, enabled or not. A compatibility checker */
+/* needs to see the mod it conflicts with even when that mod is switched */
+/* off, because switching it on is what breaks things. */
+/* `()i` */
+static int gbxlua_mod_count(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_mod_count());
+    return 1;
+}
+
+/* gearbox:core.protected "mod_id" */
+/* The installed mod's manifest id -- the stable one, safe to compare. */
+/* Two-call sizing: call with cap 0 to learn the length, allocate, call */
+/* again. */
+/* `(iii)i` */
+static int gbxlua_mod_id(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    uint32_t need = gearbox_mod_id((uint32_t)(a1 - 1), NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_mod_id((uint32_t)(a1 - 1), dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+
+/* gearbox:core.protected "mod_name" */
+/* Its display name, which is for showing a player and NOT for matching on: */
+/* it is author-chosen, may be translated, and two mods may share one. */
+/* Match on mod_id. */
+/* `(iii)i` */
+static int gbxlua_mod_name(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    uint32_t need = gearbox_mod_name((uint32_t)(a1 - 1), NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_mod_name((uint32_t)(a1 - 1), dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+#endif /* GBX_WITH_CORE_PROTECTED */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
 

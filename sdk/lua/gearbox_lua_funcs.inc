@@ -14,6 +14,15 @@
     {"isPlaying", gbxlua_is_playing},
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Core.Protected (5) ---- */
+#if GBX_WITH_CORE_PROTECTED
+    {"processBytes", gbxlua_process_bytes},
+    {"imageBytes", gbxlua_image_bytes},
+    {"modCount", gbxlua_mod_count},
+    {"modId", gbxlua_mod_id},
+    {"modName", gbxlua_mod_name},
+#endif /* GBX_WITH_CORE_PROTECTED */
+
 /* ---- Diplomacy (5) ---- */
 #if GBX_WITH_DIPLOMACY
     {"atWar", gbxlua_at_war},

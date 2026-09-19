@@ -21,7 +21,8 @@
     "exactly as it did. tests/mod_abi_test.cpp enforces that in both directions,",
     "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
     "1.0 baseline so a future edit cannot quietly drop one.",
-    "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 has not shipped -- sdk/compat has baselines for 1.0, 1.1 and 1.2 and none for 1.3 -- so no minor is burned and a mod declaring \"gearbox\": \"1.3\" keeps meaning one thing."
+    "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 has not shipped -- sdk/compat has baselines for 1.0, 1.1 and 1.2 and none for 1.3 -- so no minor is burned and a mod declaring \"gearbox\": \"1.3\" keeps meaning one thing.",
+    "1.3 also adds Core.Protected: resident memory, executable size and the installed mod list. It is the only capability that reports the MACHINE rather than the game, so it is a separate bit a player can refuse, the mod menu warns when a mod asks for it, and every call is logged for the debug console -- unconditionally, so a mod cannot tell whether anyone is looking."
   ],
   "gearbox": "1.3",
   "schema": 1,
@@ -199,6 +200,13 @@
       "implemented": true,
       "since": "1.1",
       "grants": "Read and write the open map editor project; inert outside the editor"
+    },
+    {
+      "name": "Core.Protected",
+      "import": "gearbox:core.protected",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Resident memory, executable size, and the installed mod list"
     }
   ],
   "imports": [
@@ -5476,6 +5484,102 @@
         "role": "bool"
       },
       "doc": "Whether a province id names a province that exists. Same reason as country_exists: a stored id needs a validity check that is not 'iterate every province and compare'."
+    },
+    {
+      "module": "gearbox:core.protected",
+      "name": "process_bytes",
+      "capability": "Core.Protected",
+      "since": "1.3",
+      "signature": "()I",
+      "params": [],
+      "result": {
+        "type": "i64",
+        "unsigned": true
+      },
+      "doc": "Resident memory the whole game is using, in bytes. 0 where the platform does not report it -- Windows and the web build both return 0 today, and 0 means UNKNOWN rather than 'no memory'.\\n\\nTHIS IS A FACT ABOUT THE MACHINE, not about the game, which is why it needs its own capability. Every other reading a mod can take is deliberately opaque about the host."
+    },
+    {
+      "module": "gearbox:core.protected",
+      "name": "image_bytes",
+      "capability": "Core.Protected",
+      "since": "1.3",
+      "signature": "()I",
+      "params": [],
+      "result": {
+        "type": "i64",
+        "unsigned": true
+      },
+      "doc": "How large the game's own executable is on disk, in bytes. 0 if it cannot be determined. Useful to a mod that reports build size or checks it is running against the build it expects; useless for anything else, which is the point."
+    },
+    {
+      "module": "gearbox:core.protected",
+      "name": "mod_count",
+      "capability": "Core.Protected",
+      "since": "1.3",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many mods are INSTALLED, enabled or not. A compatibility checker needs to see the mod it conflicts with even when that mod is switched off, because switching it on is what breaks things."
+    },
+    {
+      "module": "gearbox:core.protected",
+      "name": "mod_id",
+      "capability": "Core.Protected",
+      "since": "1.3",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The installed mod's manifest id -- the stable one, safe to compare. Two-call sizing: call with cap 0 to learn the length, allocate, call again."
+    },
+    {
+      "module": "gearbox:core.protected",
+      "name": "mod_name",
+      "capability": "Core.Protected",
+      "since": "1.3",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id."
     }
   ],
   "exports": [

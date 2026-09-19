@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "ModProtected.h"
 #include "ModHost.h"
 #include "ModPackage.h"   // kHostGearboxMajor/Minor: the one version
 #include "ModRuntime.h"
@@ -362,6 +363,7 @@ uint32_t audio_is_playing(ExecEnv e, uint32_t handle) {
 
 
 ModNetBridge g_netBridge;
+ModListBridge g_listBridge;
 
 uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
     ModInstance* mi = self(e);
@@ -1136,6 +1138,51 @@ uint32_t retStr(ModInstance* mi, const std::string& v, uint32_t buf, uint32_t ca
     return len;
 }
 
+// ---- Core.Protected ----
+//
+// EVERY ONE OF THESE RECORDS THE CALL BEFORE IT ANSWERS, unconditionally.
+// Not "if the debug console is open" -- always. A mod that could tell whether
+// it was being watched would be a mod that could behave differently while it
+// was, which is the whole reason the console exists. There is no branch here
+// to detect, and a mod has no clock to time the difference with: its
+// clock_time_get returns the turn number, not the wall clock.
+//
+// Placed after retStr because two of them use it, and reached through
+// g_listBridge rather than ModManager because this file is the wasm boundary
+// and does not link the mod manager.
+uint64_t prot_process_bytes(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CORE_PROTECTED)) return 0;
+    odprotected::record(mi->id(), odprotected::Call::ProcessBytes);
+    return odprotected::processBytes();
+}
+uint64_t prot_image_bytes(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CORE_PROTECTED)) return 0;
+    odprotected::record(mi->id(), odprotected::Call::ImageBytes);
+    return odprotected::imageBytes();
+}
+uint32_t prot_mod_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CORE_PROTECTED)) return 0;
+    odprotected::record(mi->id(), odprotected::Call::ModCount);
+    return g_listBridge.count ? g_listBridge.count() : 0;
+}
+uint32_t prot_mod_id(ExecEnv e, uint32_t index, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CORE_PROTECTED)) return 0;
+    odprotected::record(mi->id(), odprotected::Call::ModId);
+    if (!g_listBridge.id) return 0;
+    return retStr(mi, g_listBridge.id(index), buf, cap);
+}
+uint32_t prot_mod_name(ExecEnv e, uint32_t index, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CORE_PROTECTED)) return 0;
+    odprotected::record(mi->id(), odprotected::Call::ModName);
+    if (!g_listBridge.name) return 0;
+    return retStr(mi, g_listBridge.name(index), buf, cap);
+}
+
 #define MOD_GUARD(bit, fail) \
     ModInstance* mi = self(e); \
     if (!mi || !mi->has(bit) || !g_modGame) return fail; \
@@ -1682,6 +1729,11 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:net", "recv",       "(iii)i", (void*)net_recv,       MODULE_NET},
     {"gearbox:net", "peer_count", "()i",    (void*)net_peer_count, MODULE_NET},
     {"gearbox:net", "self_peer",  "()i",    (void*)net_self_peer,  MODULE_NET},
+    {"gearbox:core.protected", "process_bytes", "()I", (void*)prot_process_bytes, MODULE_CORE_PROTECTED},
+    {"gearbox:core.protected", "image_bytes", "()I", (void*)prot_image_bytes, MODULE_CORE_PROTECTED},
+    {"gearbox:core.protected", "mod_count", "()i", (void*)prot_mod_count, MODULE_CORE_PROTECTED},
+    {"gearbox:core.protected", "mod_id", "(iii)i", (void*)prot_mod_id, MODULE_CORE_PROTECTED},
+    {"gearbox:core.protected", "mod_name", "(iii)i", (void*)prot_mod_name, MODULE_CORE_PROTECTED},
     {"gearbox:net", "is_host",    "()i",    (void*)net_is_host,    MODULE_NET},
 
     {"gearbox:assets", "size", "(ii)i",   (void*)assets_size, MODULE_ASSETS},
@@ -1909,6 +1961,8 @@ void modSetAudioBridge(const ModAudioBridge& bridge) { g_audioBridge = bridge; }
 void modReleaseAudio(const std::string& modId) {
     if (g_audioBridge.stopAll) g_audioBridge.stopAll(modId);
 }
+
+void modSetListBridge(const ModListBridge& bridge) { g_listBridge = bridge; }
 
 
 const ModHostFn* modHostFunctions(size_t& count) {

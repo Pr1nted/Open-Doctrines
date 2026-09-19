@@ -50,6 +50,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `Economy.Read` | `gearbox:economy.read` | Read income, expenses, what a country is worth, its population, industry and resources | yes | implemented |
 | `Economy.Write` | `gearbox:economy.write` | Set province industry level | yes | implemented |
 | `MapEditor` | `gearbox:mapeditor` | Read and write the open map editor project; inert outside the editor | yes | implemented |
+| `Core.Protected` | `gearbox:core.protected` | Resident memory, executable size, and the installed mod list | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -3566,6 +3567,72 @@ Requires the **Neural.Decide** capability.
 **Returns** `i32`.
 
 Which actions the host will accept for this module right now, one byte per action: 1 legal, 0 not. Two-call sizing, like every other copy here. MEANINGFUL ONLY INSIDE mod_ai_choose, because a legality mask is a fact about a decision in progress; outside one it returns 0 and writes nothing. Choosing an action whose byte is 0 is the same as deciding nothing -- the host keeps its own choice, because an illegal action is not a move it can make.
+
+### `gearbox:core.protected`
+
+Requires the **Core.Protected** capability.
+
+#### `process_bytes`
+
+```wat
+(import "gearbox:core.protected" "process_bytes" (func $x (result i64)))
+```
+
+**Returns** `i64`.
+
+Resident memory the whole game is using, in bytes. 0 where the platform does not report it -- Windows and the web build both return 0 today, and 0 means UNKNOWN rather than 'no memory'.\n\nTHIS IS A FACT ABOUT THE MACHINE, not about the game, which is why it needs its own capability. Every other reading a mod can take is deliberately opaque about the host.
+
+#### `image_bytes`
+
+```wat
+(import "gearbox:core.protected" "image_bytes" (func $x (result i64)))
+```
+
+**Returns** `i64`.
+
+How large the game's own executable is on disk, in bytes. 0 if it cannot be determined. Useful to a mod that reports build size or checks it is running against the build it expects; useless for anything else, which is the point.
+
+#### `mod_count`
+
+```wat
+(import "gearbox:core.protected" "mod_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many mods are INSTALLED, enabled or not. A compatibility checker needs to see the mod it conflicts with even when that mod is switched off, because switching it on is what breaks things.
+
+#### `mod_id`
+
+```wat
+(import "gearbox:core.protected" "mod_id" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The installed mod's manifest id -- the stable one, safe to compare. Two-call sizing: call with cap 0 to learn the length, allocate, call again.
+
+#### `mod_name`
+
+```wat
+(import "gearbox:core.protected" "mod_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+Its display name, which is for showing a player and NOT for matching on: it is author-chosen, may be translated, and two mods may share one. Match on mod_id.
 
 ## Exports
 

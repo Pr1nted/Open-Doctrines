@@ -1106,6 +1106,24 @@ void Game::installModBridges() {
     net.isHost = [this]() { return m_netHost != nullptr; };
     net.isMultiplayer = [this]() { return modNetIsMultiplayer(); };
 
+    // Core.Protected's view of the installed list. Through a bridge because
+    // ModHost is the wasm boundary and does not link ModManager.
+    ModListBridge list;
+    list.count = []() { return (uint32_t)ModManager::get().mods().size(); };
+    list.id = [](uint32_t i) -> std::string {
+        const auto& all = ModManager::get().mods();
+        return i < all.size() ? all[i].id : std::string();
+    };
+    list.name = [](uint32_t i) -> std::string {
+        const auto& all = ModManager::get().mods();
+        if (i >= all.size()) return {};
+        // The display name, or the filename for a mod whose manifest would
+        // not parse -- a mod with an unreadable manifest is still installed
+        // and still worth reporting to a compatibility checker.
+        return all[i].manifestValid ? all[i].manifest.name : all[i].fileName;
+    };
+    modSetListBridge(list);
+
     modSetNetBridge(net);
 
     // ── UI ── the three things the mod host cannot do without raylib ──────────
@@ -1488,7 +1506,8 @@ void Game::drawModsMenu() {
 struct PermLayout {
     int x, y, w;
     static constexpr int kRowH = 30;
-    static constexpr int kTop = 80;
+    // 80 before Core.Protected's warning needed two lines above the rows.
+    static constexpr int kTop = 104;
     int rows() const { return ((int)modAllModuleBits().size() + 1) / 2; }
     int colW() const { return (w - 40) / 2; }
     Rectangle toggle(int i) const {
@@ -1520,6 +1539,20 @@ void Game::drawModAdvanced() {
     drawHybridText(x + 24, y + 20, 22, t.c_str(), accent);
     DrawText(T("Only what the mod requested can be granted."), x + 24, y + 50, 13,
              Color{150, 150, 160, 255});
+
+    // ── THE ONE CAPABILITY THAT IS ABOUT THE MACHINE ──
+    //
+    // Said out loud, above the list, rather than left as one more row the eye
+    // slides over. Everything else a mod can ask for is about the GAME; this
+    // one reports how much memory the program is using, how large it is on
+    // disk, and what else is installed. A player deciding whether to grant it
+    // should be told that before they look at twenty-three toggles.
+    if ((e.manifest.modules & MODULE_CORE_PROTECTED) != 0) {
+        DrawText(T("This mod asks to see the program itself — its memory use, its"),
+                 x + 24, y + 66, 13, Color{235, 185, 95, 255});
+        DrawText(T("size on disk, and which other mods you have installed."),
+                 x + 24, y + 80, 13, Color{235, 185, 95, 255});
+    }
 
     // Every capability the build knows about, so one added to kModules cannot
     // end up granted-but-unrevocable because an array here was not updated.

@@ -1053,6 +1053,7 @@ set(GAME_SOURCES
     src/net/WsUnavailable.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
     src/mods/ModManager.cpp
     src/mods/ModUpdates.cpp
     tools/map_generator/miniz.c
@@ -2213,6 +2214,13 @@ add_executable(PartyRulesTest EXCLUDE_FROM_ALL tests/party_rules_test.cpp
 add_executable(WorldProvenanceTest EXCLUDE_FROM_ALL
                tests/world_provenance_test.cpp src/WorldProvenance.cpp)
 target_include_directories(WorldProvenanceTest PRIVATE src tests)
+
+# Core.Protected's bookkeeping. The property under test is that reading the log
+# cannot change it -- that is what makes the debug console undetectable to a
+# mod -- so it needs no wasm runtime and no world.
+add_executable(ModProtectedTest EXCLUDE_FROM_ALL
+               tests/mod_protected_test.cpp src/mods/ModProtected.cpp)
+target_include_directories(ModProtectedTest PRIVATE src tests)
 target_include_directories(PartyRulesTest PRIVATE src tests
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 
@@ -2370,6 +2378,7 @@ add_executable(ModRuntimeTest EXCLUDE_FROM_ALL
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
@@ -2389,6 +2398,7 @@ add_executable(ModManagerTest EXCLUDE_FROM_ALL
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
     src/mods/ModManager.cpp
     src/mods/ModUpdates.cpp
     # ModManager::modStateName puts the four mod states through T(), so this
@@ -2813,6 +2823,7 @@ add_executable(ModAbiTest EXCLUDE_FROM_ALL
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
@@ -2833,6 +2844,7 @@ add_executable(ModExamplesTest EXCLUDE_FROM_ALL
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
     src/mods/ModManager.cpp
     src/mods/ModUpdates.cpp
     # Same reason as ModManagerTest: modStateName goes through T().
@@ -2861,6 +2873,7 @@ add_executable(OdmodCheck
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp
     src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
