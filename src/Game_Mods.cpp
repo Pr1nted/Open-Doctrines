@@ -1166,6 +1166,23 @@ void Game::installModBridges() {
     };
     modSetCountryBridge(ctry);
 
+    // Scripts: commands a mod claims in the map script language.
+    ModScriptBridge scr;
+    scr.commandAdd = [this](const std::string& mod, const std::string& n) {
+        return m_scriptCommands.add(mod, n);
+    };
+    scr.commandRemove = [this](const std::string& mod, const std::string& n) {
+        return m_scriptCommands.remove(mod, n);
+    };
+    scr.commandCount = [this](const std::string& mod) {
+        return (uint32_t)m_scriptCommands.commandsOf(mod).size();
+    };
+    scr.commandName = [this](const std::string& mod, uint32_t i) -> std::string {
+        const auto c = m_scriptCommands.commandsOf(mod);
+        return i < c.size() ? c[i] : std::string();
+    };
+    modSetScriptBridge(scr);
+
     modSetNetBridge(net);
 
     // ── UI ── the three things the mod host cannot do without raylib ──────────

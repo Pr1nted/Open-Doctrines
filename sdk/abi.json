@@ -23,7 +23,8 @@
     "1.0 baseline so a future edit cannot quietly drop one.",
     "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 has not shipped -- sdk/compat has baselines for 1.0, 1.1 and 1.2 and none for 1.3 -- so no minor is burned and a mod declaring \"gearbox\": \"1.3\" keeps meaning one thing.",
     "1.3 also adds Core.Protected: resident memory, executable size and the installed mod list. It is the only capability that reports the MACHINE rather than the game, so it is a separate bit a player can refuse, the mod menu warns when a mod asks for it, and every call is logged for the debug console -- unconditionally, so a mod cannot tell whether anyone is looking.",
-    "1.3 adds Country: a mod declares fields on countries, persisted into the save or hollow and redeclared each load. A PERSISTED field survives its mod being uninstalled -- the values are held and written back out, so removing a mod is reversible rather than destructive."
+    "1.3 adds Country: a mod declares fields on countries, persisted into the save or hollow and redeclared each load. A PERSISTED field survives its mod being uninstalled -- the values are held and written back out, so removing a mod is reversible rather than destructive.",
+    "1.3 adds Scripts: a mod claims a command name and a map script line beginning with it is handed to the mod. Names are first-come and the language's own keywords are refused, so a mod can extend the language and cannot redefine it."
   ],
   "gearbox": "1.3",
   "schema": 1,
@@ -215,6 +216,13 @@
       "revocable": true,
       "implemented": true,
       "grants": "Declaring custom fields on countries, and reading and writing them"
+    },
+    {
+      "name": "Scripts",
+      "import": "gearbox:scripts",
+      "revocable": true,
+      "implemented": true,
+      "grants": "Adding commands to the map script language"
     }
   ],
   "imports": [
@@ -5859,6 +5867,147 @@
         "role": "len"
       },
       "doc": "A country's text value, or empty. Two-call sizing."
+    },
+    {
+      "module": "gearbox:scripts",
+      "name": "command_add",
+      "capability": "Scripts",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Claim a command name in the map script language. A script line beginning with it is then handed to your mod_script_command export, whole.\n\nFIRST COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so the name is global: the first mod to claim it keeps it and the second gets false rather than a silent overwrite, which would make the meaning of a line depend on load order. Re-claiming your own succeeds, because a mod redeclares its commands on every load.\n\nThe language's own keywords are refused. A mod that could register `if` or `set` would take over every script in the game -- including maps that never asked for it, since scripts ship inside .odmap files and mods are enabled globally. Names must be an identifier: a letter, then letters, digits or underscores, up to 48 bytes."
+    },
+    {
+      "module": "gearbox:scripts",
+      "name": "command_remove",
+      "capability": "Scripts",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "name",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "in"
+        },
+        {
+          "name": "name_len",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Give up one of your own commands. False if it was not yours -- a mod cannot unregister another mod's."
+    },
+    {
+      "module": "gearbox:scripts",
+      "name": "command_count",
+      "capability": "Scripts",
+      "since": "1.3",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32"
+      },
+      "doc": "How many commands YOU have claimed."
+    },
+    {
+      "module": "gearbox:scripts",
+      "name": "command_name",
+      "capability": "Scripts",
+      "since": "1.3",
+      "signature": "(iii)i",
+      "params": [
+        {
+          "name": "index",
+          "type": "i32"
+        },
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "The name of your command at index, sorted. Two-call sizing."
+    },
+    {
+      "module": "gearbox:scripts",
+      "name": "command_text",
+      "capability": "Scripts",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Inside mod_script_command: which of your commands the script ran. Empty outside that call -- there is no command then, and reporting the last one would be a stale answer that looks like a live one. Two-call sizing."
+    },
+    {
+      "module": "gearbox:scripts",
+      "name": "command_args",
+      "capability": "Scripts",
+      "since": "1.3",
+      "signature": "(ii)i",
+      "params": [
+        {
+          "name": "buf",
+          "type": "i32",
+          "role": "ptr",
+          "dir": "out"
+        },
+        {
+          "name": "cap",
+          "type": "i32",
+          "role": "len"
+        }
+      ],
+      "result": {
+        "type": "i32",
+        "role": "len"
+      },
+      "doc": "Inside mod_script_command: the rest of the script line, verbatim -- unparsed and untrimmed, because your command knows its own grammar and the engine does not. Empty outside that call. Two-call sizing."
     }
   ],
   "exports": [
@@ -5953,6 +6102,18 @@
         "type": "i32"
       },
       "doc": "Choose this country's action for one of the AI's decision modules, in place of the built-in AI. Called once per AI country per module per turn, and only if Neural.Decide is granted. Read the position with neural.features() and the legal moves with neural.decide.action_valid(); return an action index in [0, action_count(module)). Return GEARBOX_INVALID to decide nothing this time, which is not a failure -- the built-in AI chooses instead, so a mod may answer only the turns it has an opinion about. An out-of-range or illegal answer is treated the same way. The host keeps the last word either way: whatever is returned is still put through the same legality and execution path as its own choice, so this changes WHICH legal move is made and never what a legal move is."
+    },
+    {
+      "name": "mod_script_command",
+      "required": false,
+      "since": "1.3",
+      "signature": "()i",
+      "params": [],
+      "result": {
+        "type": "i32",
+        "role": "bool"
+      },
+      "doc": "Called when a map script runs a command you claimed with command_add. Read which one with scripts.command_text and its arguments with scripts.command_args -- the rest of the line verbatim, unparsed and untrimmed, because your command knows its own grammar and the engine does not. Return 1 if you handled it; 0 reports \"Unknown command\" to the script author, which is the right answer for arguments you cannot make sense of."
     }
   ],
   "enums": {

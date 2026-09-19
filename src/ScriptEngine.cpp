@@ -1014,6 +1014,25 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             continue;
         }
 
+        // ── A command a mod claimed ──
+        //
+        // Asked LAST, after every built-in, so a mod can extend the language
+        // and never shadow it -- ScriptCommands refuses the keywords too, and
+        // this ordering means even a name that slipped through that list
+        // cannot take a line the engine would have handled itself.
+        //
+        // The rest of the line goes over verbatim: the command knows its own
+        // grammar and this engine does not, so tokenising it here would be
+        // guessing at a syntax it has never seen.
+        {
+            const std::string args = line.size() > kw.size()
+                                   ? line.substr(kw.size() + 1) : std::string();
+            if (ModManager::get().scriptCommand(kw, args)) {
+                lineIdx++;
+                continue;
+            }
+        }
+
         // Unknown keyword
         addError(scriptName, lineIdx + 1, "Unknown command: " + kw);
         lineIdx++;

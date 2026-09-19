@@ -3094,6 +3094,132 @@ static JSValue gbxjs_set_country_research_groups(JSContext *ctx, JSValueConst th
 }
 #endif /* GBX_WITH_RESEARCH_WRITE */
 
+/* ---- Scripts (6) ---- */
+#if GBX_WITH_SCRIPTS
+
+/* gearbox:scripts "command_add" */
+/* Claim a command name in the map script language. A script line beginning */
+/* with it is then handed to your mod_script_command export, whole. FIRST */
+/* COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so */
+/* the name is global: the first mod to claim it keeps it and the second */
+/* gets false rather than a silent overwrite, which would make the meaning */
+/* of a line depend on load order. Re-claiming your own succeeds, because a */
+/* mod redeclares its commands on every load. The language's own keywords */
+/* are refused. A mod that could register `if` or `set` would take over */
+/* every script in the game -- including maps that never asked for it, */
+/* since scripts ship inside .odmap files and mods are enabled globally. */
+/* Names must be an identifier: a letter, then letters, digits or */
+/* underscores, up to 48 bytes. */
+/* `(ii)i` */
+static JSValue gbxjs_command_add(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "commandAdd expects 1 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_command_add(a0, (uint32_t)a0_n);
+    JS_FreeCString(ctx, a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:scripts "command_remove" */
+/* Give up one of your own commands. False if it was not yours -- a mod */
+/* cannot unregister another mod's. */
+/* `(ii)i` */
+static JSValue gbxjs_command_remove(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "commandRemove expects 1 argument(s)");
+    size_t a0_n = 0;
+    const char *a0 = JS_ToCStringLen(ctx, &a0_n, argv[0]);
+    if (!a0) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_command_remove(a0, (uint32_t)a0_n);
+    JS_FreeCString(ctx, a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:scripts "command_count" */
+/* How many commands YOU have claimed. */
+/* `()i` */
+static JSValue gbxjs_command_count(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_command_count();
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:scripts "command_name" */
+/* The name of your command at index, sorted. Two-call sizing. */
+/* `(iii)i` */
+static JSValue gbxjs_command_name(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "commandName expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint32_t need = gearbox_command_name((uint32_t)a0, 0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_command_name((uint32_t)a0, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+
+/* gearbox:scripts "command_text" */
+/* Inside mod_script_command: which of your commands the script ran. Empty */
+/* outside that call -- there is no command then, and reporting the last */
+/* one would be a stale answer that looks like a live one. Two-call sizing. */
+/* `(ii)i` */
+static JSValue gbxjs_command_text(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    uint32_t need = gearbox_command_text(0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_command_text(buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+
+/* gearbox:scripts "command_args" */
+/* Inside mod_script_command: the rest of the script line, verbatim -- */
+/* unparsed and untrimmed, because your command knows its own grammar and */
+/* the engine does not. Empty outside that call. Two-call sizing. */
+/* `(ii)i` */
+static JSValue gbxjs_command_args(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    uint32_t need = gearbox_command_args(0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_command_args(buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+#endif /* GBX_WITH_SCRIPTS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
 

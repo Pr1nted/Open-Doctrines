@@ -1,5 +1,6 @@
 #pragma once
 #include "WorldProvenance.h"
+#include "ScriptCommands.h"
 #include "CountryFields.h"
 #include "Parties.h"
 #include "GameStructs.h"
@@ -2816,6 +2817,8 @@ public:
     /** The titular culture per country, and the turn it was worked out. */
     mutable std::unordered_map<int, std::string> m_titularGroup;
     mutable int m_titularTurn = -1;
+    /** Map-script commands mods have claimed. See src/ScriptCommands.h. */
+    odscript::Registry m_scriptCommands;
     /** Fields mods have added to countries. See src/CountryFields.h. */
     odcountry::Store m_countryFields;
     /** Who governs each country. Empty unless the party rules are on. */

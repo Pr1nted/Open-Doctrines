@@ -1245,3 +1245,47 @@ extern "C" {
     pub fn get_text(name: *const u8, name_len: u32, country: u32, buf: *mut u8, cap: u32) -> u32;
 
 }
+
+#[link(wasm_import_module = "gearbox:scripts")]
+extern "C" {
+    /// Claim a command name in the map script language. A script line beginning
+    /// with it is then handed to your mod_script_command export, whole. FIRST
+    /// COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so
+    /// the name is global: the first mod to claim it keeps it and the second
+    /// gets false rather than a silent overwrite, which would make the meaning
+    /// of a line depend on load order. Re-claiming your own succeeds, because a
+    /// mod redeclares its commands on every load. The language's own keywords
+    /// are refused. A mod that could register `if` or `set` would take over
+    /// every script in the game -- including maps that never asked for it,
+    /// since scripts ship inside .odmap files and mods are enabled globally.
+    /// Names must be an identifier: a letter, then letters, digits or
+    /// underscores, up to 48 bytes.
+    /// `(ii)i`
+    pub fn command_add(name: *const u8, name_len: u32) -> u32;
+
+    /// Give up one of your own commands. False if it was not yours -- a mod
+    /// cannot unregister another mod's.
+    /// `(ii)i`
+    pub fn command_remove(name: *const u8, name_len: u32) -> u32;
+
+    /// How many commands YOU have claimed.
+    /// `()i`
+    pub fn command_count() -> u32;
+
+    /// The name of your command at index, sorted. Two-call sizing.
+    /// `(iii)i`
+    pub fn command_name(index: u32, buf: *mut u8, cap: u32) -> u32;
+
+    /// Inside mod_script_command: which of your commands the script ran. Empty
+    /// outside that call -- there is no command then, and reporting the last
+    /// one would be a stale answer that looks like a live one. Two-call sizing.
+    /// `(ii)i`
+    pub fn command_text(buf: *mut u8, cap: u32) -> u32;
+
+    /// Inside mod_script_command: the rest of the script line, verbatim --
+    /// unparsed and untrimmed, because your command knows its own grammar and
+    /// the engine does not. Empty outside that call. Two-call sizing.
+    /// `(ii)i`
+    pub fn command_args(buf: *mut u8, cap: u32) -> u32;
+
+}

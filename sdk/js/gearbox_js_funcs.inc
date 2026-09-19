@@ -255,6 +255,16 @@
     JS_CFUNC_DEF("setCountryResearchGroups", 2, gbxjs_set_country_research_groups),
 #endif /* GBX_WITH_RESEARCH_WRITE */
 
+/* ---- Scripts (6) ---- */
+#if GBX_WITH_SCRIPTS
+    JS_CFUNC_DEF("commandAdd", 1, gbxjs_command_add),
+    JS_CFUNC_DEF("commandRemove", 1, gbxjs_command_remove),
+    JS_CFUNC_DEF("commandCount", 0, gbxjs_command_count),
+    JS_CFUNC_DEF("commandName", 1, gbxjs_command_name),
+    JS_CFUNC_DEF("commandText", 0, gbxjs_command_text),
+    JS_CFUNC_DEF("commandArgs", 0, gbxjs_command_args),
+#endif /* GBX_WITH_SCRIPTS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
     JS_CFUNC_DEF("get", 1, gbxjs_get),

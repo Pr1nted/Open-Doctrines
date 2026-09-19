@@ -1363,4 +1363,50 @@ public final class GearboxRaw {
     @Import(module = "gearbox:country", name = "get_text")
     public static native int getText(int name, int nameLen, int country, int buf, int cap);
 
+    // Claim a command name in the map script language. A script line beginning
+    // with it is then handed to your mod_script_command export, whole. FIRST
+    // COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so
+    // the name is global: the first mod to claim it keeps it and the second
+    // gets false rather than a silent overwrite, which would make the meaning
+    // of a line depend on load order. Re-claiming your own succeeds, because a
+    // mod redeclares its commands on every load. The language's own keywords
+    // are refused. A mod that could register `if` or `set` would take over
+    // every script in the game -- including maps that never asked for it,
+    // since scripts ship inside .odmap files and mods are enabled globally.
+    // Names must be an identifier: a letter, then letters, digits or
+    // underscores, up to 48 bytes.
+    // `(ii)i`
+    @Import(module = "gearbox:scripts", name = "command_add")
+    public static native int commandAdd(int name, int nameLen);
+
+    // Give up one of your own commands. False if it was not yours -- a mod
+    // cannot unregister another mod's.
+    // `(ii)i`
+    @Import(module = "gearbox:scripts", name = "command_remove")
+    public static native int commandRemove(int name, int nameLen);
+
+    // How many commands YOU have claimed.
+    // `()i`
+    @Import(module = "gearbox:scripts", name = "command_count")
+    public static native int commandCount();
+
+    // The name of your command at index, sorted. Two-call sizing.
+    // `(iii)i`
+    @Import(module = "gearbox:scripts", name = "command_name")
+    public static native int commandName(int index, int buf, int cap);
+
+    // Inside mod_script_command: which of your commands the script ran. Empty
+    // outside that call -- there is no command then, and reporting the last
+    // one would be a stale answer that looks like a live one. Two-call sizing.
+    // `(ii)i`
+    @Import(module = "gearbox:scripts", name = "command_text")
+    public static native int commandText(int buf, int cap);
+
+    // Inside mod_script_command: the rest of the script line, verbatim --
+    // unparsed and untrimmed, because your command knows its own grammar and
+    // the engine does not. Empty outside that call. Two-call sizing.
+    // `(ii)i`
+    @Import(module = "gearbox:scripts", name = "command_args")
+    public static native int commandArgs(int buf, int cap);
+
 }

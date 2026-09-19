@@ -1158,4 +1158,44 @@ declare namespace GearboxRaw {
   // `(iiiii)i`
   function getText(name: number, nameLen: number, country: number, buf: number, cap: number): number;
 
+  // Claim a command name in the map script language. A script line beginning
+  // with it is then handed to your mod_script_command export, whole. FIRST
+  // COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so
+  // the name is global: the first mod to claim it keeps it and the second
+  // gets false rather than a silent overwrite, which would make the meaning
+  // of a line depend on load order. Re-claiming your own succeeds, because a
+  // mod redeclares its commands on every load. The language's own keywords
+  // are refused. A mod that could register `if` or `set` would take over
+  // every script in the game -- including maps that never asked for it,
+  // since scripts ship inside .odmap files and mods are enabled globally.
+  // Names must be an identifier: a letter, then letters, digits or
+  // underscores, up to 48 bytes.
+  // `(ii)i`
+  function commandAdd(name: number, nameLen: number): number;
+
+  // Give up one of your own commands. False if it was not yours -- a mod
+  // cannot unregister another mod's.
+  // `(ii)i`
+  function commandRemove(name: number, nameLen: number): number;
+
+  // How many commands YOU have claimed.
+  // `()i`
+  function commandCount(): number;
+
+  // The name of your command at index, sorted. Two-call sizing.
+  // `(iii)i`
+  function commandName(index: number, buf: number, cap: number): number;
+
+  // Inside mod_script_command: which of your commands the script ran. Empty
+  // outside that call -- there is no command then, and reporting the last
+  // one would be a stale answer that looks like a live one. Two-call sizing.
+  // `(ii)i`
+  function commandText(buf: number, cap: number): number;
+
+  // Inside mod_script_command: the rest of the script line, verbatim --
+  // unparsed and untrimmed, because your command knows its own grammar and
+  // the engine does not. Empty outside that call. Two-call sizing.
+  // `(ii)i`
+  function commandArgs(buf: number, cap: number): number;
+
 }

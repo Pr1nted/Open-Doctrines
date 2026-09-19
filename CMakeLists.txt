@@ -895,6 +895,7 @@ message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
+    src/DevLink.cpp
     # One seat played from outside a turn at a time: the FIFO agent door and
     # the browser build both go through it. See its header comment.
     src/Game_Agent.cpp
@@ -931,6 +932,7 @@ set(GAME_SOURCES
     src/Game_Assimilation.cpp
     src/WorldProvenance.cpp
     src/CountryFields.cpp
+    src/ScriptCommands.cpp
     src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
@@ -2229,6 +2231,13 @@ target_include_directories(ModProtectedTest PRIVATE src tests)
 add_executable(CountryFieldsTest EXCLUDE_FROM_ALL
                tests/country_fields_test.cpp src/CountryFields.cpp)
 target_include_directories(CountryFieldsTest PRIVATE src tests)
+
+# Commands a mod adds to the map script language. The property under test is
+# that a mod can EXTEND the language and never redefine it -- a registered
+# command runs on every map's scripts, including maps that never asked.
+add_executable(ScriptCommandsTest EXCLUDE_FROM_ALL
+               tests/script_commands_test.cpp src/ScriptCommands.cpp)
+target_include_directories(ScriptCommandsTest PRIVATE src tests)
 target_include_directories(PartyRulesTest PRIVATE src tests
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 

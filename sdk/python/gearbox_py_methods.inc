@@ -255,6 +255,16 @@
     {"setCountryResearchGroups", gbxpy_set_country_research_groups, METH_VARARGS, "Force how many research programmes a country may run, 1 to 3, or 0 to hand the decision back to its economy. Outranks the economic gate in both directions and is saved with the gam"},
 #endif /* GBX_WITH_RESEARCH_WRITE */
 
+/* ---- Scripts (6) ---- */
+#if GBX_WITH_SCRIPTS
+    {"commandAdd", gbxpy_command_add, METH_VARARGS, "Claim a command name in the map script language. A script line beginning with it is then handed to your mod_script_command export, whole.  FIRST COME. A script writes `reinforce FR"},
+    {"commandRemove", gbxpy_command_remove, METH_VARARGS, "Give up one of your own commands. False if it was not yours -- a mod cannot unregister another mod's."},
+    {"commandCount", gbxpy_command_count, METH_NOARGS, "How many commands YOU have claimed."},
+    {"commandName", gbxpy_command_name, METH_VARARGS, "The name of your command at index, sorted. Two-call sizing."},
+    {"commandText", gbxpy_command_text, METH_NOARGS, "Inside mod_script_command: which of your commands the script ran. Empty outside that call -- there is no command then, and reporting the last one would be a stale answer that looks"},
+    {"commandArgs", gbxpy_command_args, METH_NOARGS, "Inside mod_script_command: the rest of the script line, verbatim -- unparsed and untrimmed, because your command knows its own grammar and the engine does not. Empty outside that c"},
+#endif /* GBX_WITH_SCRIPTS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
     {"get", gbxpy_get, METH_VARARGS, "Reads one of your own keys. Two-call sizing: returns the full value length and writes at most cap bytes. Returns GEARBOX_INVALID if the key is absent -- which is NOT the same as a "},

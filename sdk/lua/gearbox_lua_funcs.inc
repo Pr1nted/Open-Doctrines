@@ -255,6 +255,16 @@
     {"setCountryResearchGroups", gbxlua_set_country_research_groups},
 #endif /* GBX_WITH_RESEARCH_WRITE */
 
+/* ---- Scripts (6) ---- */
+#if GBX_WITH_SCRIPTS
+    {"commandAdd", gbxlua_command_add},
+    {"commandRemove", gbxlua_command_remove},
+    {"commandCount", gbxlua_command_count},
+    {"commandName", gbxlua_command_name},
+    {"commandText", gbxlua_command_text},
+    {"commandArgs", gbxlua_command_args},
+#endif /* GBX_WITH_SCRIPTS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
     {"get", gbxlua_get},

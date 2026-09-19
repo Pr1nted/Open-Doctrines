@@ -46,6 +46,7 @@ const ModuleEntry kModules[] = {
     // the only capability that reports the machine rather than the game.
     {"Core.Protected",  MODULE_CORE_PROTECTED},
     {"Country",         MODULE_COUNTRY},
+    {"Scripts",         MODULE_SCRIPTS},
 };
 
 }  // namespace

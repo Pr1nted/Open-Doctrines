@@ -52,6 +52,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `MapEditor` | `gearbox:mapeditor` | Read and write the open map editor project; inert outside the editor | yes | implemented |
 | `Core.Protected` | `gearbox:core.protected` | Resident memory, executable size, and the installed mod list | yes | implemented |
 | `Country` | `gearbox:country` | Declaring custom fields on countries, and reading and writing them | yes | implemented |
+| `Scripts` | `gearbox:scripts` | Adding commands to the map script language | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -3785,6 +3786,100 @@ Set a country's value for one of your TEXT fields.
 
 A country's text value, or empty. Two-call sizing.
 
+### `gearbox:scripts`
+
+Requires the **Scripts** capability.
+
+#### `command_add`
+
+```wat
+(import "gearbox:scripts" "command_add" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Claim a command name in the map script language. A script line beginning with it is then handed to your mod_script_command export, whole.
+
+FIRST COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so the name is global: the first mod to claim it keeps it and the second gets false rather than a silent overwrite, which would make the meaning of a line depend on load order. Re-claiming your own succeeds, because a mod redeclares its commands on every load.
+
+The language's own keywords are refused. A mod that could register `if` or `set` would take over every script in the game -- including maps that never asked for it, since scripts ship inside .odmap files and mods are enabled globally. Names must be an identifier: a letter, then letters, digits or underscores, up to 48 bytes.
+
+#### `command_remove`
+
+```wat
+(import "gearbox:scripts" "command_remove" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `name` | `i32` | pointer into your linear memory |
+| `name_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Give up one of your own commands. False if it was not yours -- a mod cannot unregister another mod's.
+
+#### `command_count`
+
+```wat
+(import "gearbox:scripts" "command_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many commands YOU have claimed.
+
+#### `command_name`
+
+```wat
+(import "gearbox:scripts" "command_name" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The name of your command at index, sorted. Two-call sizing.
+
+#### `command_text`
+
+```wat
+(import "gearbox:scripts" "command_text" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+Inside mod_script_command: which of your commands the script ran. Empty outside that call -- there is no command then, and reporting the last one would be a stale answer that looks like a live one. Two-call sizing.
+
+#### `command_args`
+
+```wat
+(import "gearbox:scripts" "command_args" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+Inside mod_script_command: the rest of the script line, verbatim -- unparsed and untrimmed, because your command knows its own grammar and the engine does not. Empty outside that call. Two-call sizing.
+
 ## Exports
 
 Only `mod_load` is mandatory. A missing optional export is simply not
@@ -3868,6 +3963,16 @@ Called once per frame per visible panel you registered. Never called when headle
 **Required:** no.  **Capability:** `Neural.Decide`
 
 Choose this country's action for one of the AI's decision modules, in place of the built-in AI. Called once per AI country per module per turn, and only if Neural.Decide is granted. Read the position with neural.features() and the legal moves with neural.decide.action_valid(); return an action index in [0, action_count(module)). Return GEARBOX_INVALID to decide nothing this time, which is not a failure -- the built-in AI chooses instead, so a mod may answer only the turns it has an opinion about. An out-of-range or illegal answer is treated the same way. The host keeps the last word either way: whatever is returned is still put through the same legality and execution path as its own choice, so this changes WHICH legal move is made and never what a legal move is.
+
+### `mod_script_command`
+
+```wat
+(func (export "mod_script_command") (result i32) ...)
+```
+
+**Required:** no.  **Capability:** none
+
+Called when a map script runs a command you claimed with command_add. Read which one with scripts.command_text and its arguments with scripts.command_args -- the rest of the line verbatim, unparsed and untrimmed, because your command knows its own grammar and the engine does not. Return 1 if you handled it; 0 reports "Unknown command" to the script author, which is the right answer for arguments you cannot make sense of.
 
 ## The `env` struct
 

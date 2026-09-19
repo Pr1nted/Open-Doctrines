@@ -606,6 +606,37 @@ void ModManager::postTurn(int turn) {
     serviceQueuedReload();
 }
 
+bool ModManager::scriptCommand(const std::string& name, const std::string& args) {
+    if (m_mods.empty()) return false;
+
+    // The strings cross as host-side buffers the mod reads back, the same way
+    // the decide mask does -- a wasm export takes integers, not std::strings.
+    g_modHost.scriptName = &name;
+    g_modHost.scriptArgs = &args;
+
+    bool handled = false;
+    for (auto& e : m_mods) {
+        if (e.state != ModState::Active || !e.instance) continue;
+        if (!(e.instance->granted() & MODULE_SCRIPTS)) continue;
+        if (!e.instance->hasExport("mod_script_command")) continue;
+
+        uint32_t ret = 0;
+        std::string err;
+        uint32_t noargs[1] = {0};
+        if (!e.instance->callExport("mod_script_command", noargs, 0, &ret, err)) {
+            fail(e, err);
+            continue;
+        }
+        if (ret == 0) continue;     // declined: not mine, or arguments I cannot read
+        handled = true;
+        break;                      // the registry already decided whose it is
+    }
+
+    g_modHost.scriptName = nullptr;
+    g_modHost.scriptArgs = nullptr;
+    return handled;
+}
+
 int ModManager::aiChoose(int country, int module, const std::vector<bool>& valid) {
     if (m_mods.empty()) return -1;
 

@@ -1589,6 +1589,58 @@ uint32_t gearbox_set_text(const char* name, uint32_t name_len, gearbox_country c
 GEARBOX_IMPORT("country", "get_text")
 uint32_t gearbox_get_text(const char* name, uint32_t name_len, gearbox_country country, char* buf, uint32_t cap);
 
+/* Claim a command name in the map script language. A script line beginning
+ * with it is then handed to your mod_script_command export, whole. FIRST
+ * COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so
+ * the name is global: the first mod to claim it keeps it and the second
+ * gets false rather than a silent overwrite, which would make the meaning
+ * of a line depend on load order. Re-claiming your own succeeds, because a
+ * mod redeclares its commands on every load. The language's own keywords
+ * are refused. A mod that could register `if` or `set` would take over
+ * every script in the game -- including maps that never asked for it,
+ * since scripts ship inside .odmap files and mods are enabled globally.
+ * Names must be an identifier: a letter, then letters, digits or
+ * underscores, up to 48 bytes.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("scripts", "command_add")
+uint32_t gearbox_command_add(const char* name, uint32_t name_len);
+
+/* Give up one of your own commands. False if it was not yours -- a mod
+ * cannot unregister another mod's.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("scripts", "command_remove")
+uint32_t gearbox_command_remove(const char* name, uint32_t name_len);
+
+/* How many commands YOU have claimed.
+ * `()i`
+ */
+GEARBOX_IMPORT("scripts", "command_count")
+uint32_t gearbox_command_count(void);
+
+/* The name of your command at index, sorted. Two-call sizing.
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("scripts", "command_name")
+uint32_t gearbox_command_name(uint32_t index, char* buf, uint32_t cap);
+
+/* Inside mod_script_command: which of your commands the script ran. Empty
+ * outside that call -- there is no command then, and reporting the last
+ * one would be a stale answer that looks like a live one. Two-call sizing.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("scripts", "command_text")
+uint32_t gearbox_command_text(char* buf, uint32_t cap);
+
+/* Inside mod_script_command: the rest of the script line, verbatim --
+ * unparsed and untrimmed, because your command knows its own grammar and
+ * the engine does not. Empty outside that call. Two-call sizing.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("scripts", "command_args")
+uint32_t gearbox_command_args(char* buf, uint32_t cap);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to
@@ -1646,5 +1698,17 @@ void mod_draw_panel(gearbox_panel panel, uint32_t width, uint32_t height);
  */
 GEARBOX_EXPORT("mod_ai_choose")
 uint32_t mod_ai_choose(uint32_t country, uint32_t module);
+
+/* Called when a map script runs a command you claimed with command_add.
+ * Read which one with scripts.command_text and its arguments with
+ * scripts.command_args -- the rest of the line verbatim, unparsed and
+ * untrimmed, because your command knows its own grammar and the engine
+ * does not. Return 1 if you handled it; 0 reports "Unknown command" to the
+ * script author, which is the right answer for arguments you cannot make
+ * sense of.
+ * `()i`
+ */
+GEARBOX_EXPORT("mod_script_command")
+uint32_t mod_script_command(void);
 
 #endif /* GEARBOX_GENERATED_H */

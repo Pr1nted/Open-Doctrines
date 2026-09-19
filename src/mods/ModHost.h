@@ -91,6 +91,14 @@ struct ModCountryBridge {
     std::function<std::string(const std::string&, const std::string&, uint32_t)> getText;
 };
 
+/** Map-script commands a mod claims. See src/ScriptCommands.h. */
+struct ModScriptBridge {
+    std::function<bool(const std::string&, const std::string&)> commandAdd;
+    std::function<bool(const std::string&, const std::string&)> commandRemove;
+    std::function<uint32_t(const std::string&)> commandCount;
+    std::function<std::string(const std::string&, uint32_t)> commandName;
+};
+
 struct ModListBridge {
     std::function<uint32_t()> count;
     /** (index) -> the manifest id, stable and safe to compare. */
@@ -131,6 +139,7 @@ void modSetAudioBridge(const ModAudioBridge& bridge);
 void modSetNetBridge(const ModNetBridge& bridge);
 void modSetListBridge(const ModListBridge& bridge);
 void modSetCountryBridge(const ModCountryBridge& bridge);
+void modSetScriptBridge(const ModScriptBridge& bridge);
 void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;
@@ -169,6 +178,14 @@ struct ModHostContext {
     const uint8_t* decideMask = nullptr;
     uint32_t       decideMaskLen = 0;
     int32_t        decideModule = -1;
+
+    // The script command on the stack, for the same reason and with the same
+    // lifetime: set only while mod_script_command is running, cleared the
+    // moment it returns. Outside that window there is no command, so
+    // scripts.command_text and scripts.command_args say nothing rather than
+    // handing back whatever ran last.
+    const std::string* scriptName = nullptr;
+    const std::string* scriptArgs = nullptr;
 };
 
 extern ModHostContext g_modHost;

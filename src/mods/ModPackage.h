@@ -89,6 +89,12 @@ enum ModModuleBit : uint32_t {
     // the reason it should be refusable. See src/CountryFields.h.
     MODULE_COUNTRY         = 1u << 24,
 
+    // Commands a mod adds to the map script language. Its own bit because a
+    // registered command runs on ANY map's scripts, including maps that never
+    // asked for the mod -- scripts ship inside .odmap files and mods are
+    // enabled globally. See src/ScriptCommands.h.
+    MODULE_SCRIPTS         = 1u << 25,
+
     MODULE_MAPEDITOR       = 1u << 21,
 };
 

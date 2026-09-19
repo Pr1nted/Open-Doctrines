@@ -2242,6 +2242,98 @@ static int gbxlua_set_country_research_groups(lua_State *L) {
 }
 #endif /* GBX_WITH_RESEARCH_WRITE */
 
+/* ---- Scripts (6) ---- */
+#if GBX_WITH_SCRIPTS
+
+/* gearbox:scripts "command_add" */
+/* Claim a command name in the map script language. A script line beginning */
+/* with it is then handed to your mod_script_command export, whole. FIRST */
+/* COME. A script writes `reinforce FRA 3`, not a mod id and a colon, so */
+/* the name is global: the first mod to claim it keeps it and the second */
+/* gets false rather than a silent overwrite, which would make the meaning */
+/* of a line depend on load order. Re-claiming your own succeeds, because a */
+/* mod redeclares its commands on every load. The language's own keywords */
+/* are refused. A mod that could register `if` or `set` would take over */
+/* every script in the game -- including maps that never asked for it, */
+/* since scripts ship inside .odmap files and mods are enabled globally. */
+/* Names must be an identifier: a letter, then letters, digits or */
+/* underscores, up to 48 bytes. */
+/* `(ii)i` */
+static int gbxlua_command_add(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_pushboolean(L, (int)gearbox_command_add(a1, (uint32_t)a1_n));
+    return 1;
+}
+
+/* gearbox:scripts "command_remove" */
+/* Give up one of your own commands. False if it was not yours -- a mod */
+/* cannot unregister another mod's. */
+/* `(ii)i` */
+static int gbxlua_command_remove(lua_State *L) {
+    size_t a1_n = 0;
+    const char *a1 = luaL_checklstring(L, 1, &a1_n);
+    lua_pushboolean(L, (int)gearbox_command_remove(a1, (uint32_t)a1_n));
+    return 1;
+}
+
+/* gearbox:scripts "command_count" */
+/* How many commands YOU have claimed. */
+/* `()i` */
+static int gbxlua_command_count(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_command_count());
+    return 1;
+}
+
+/* gearbox:scripts "command_name" */
+/* The name of your command at index, sorted. Two-call sizing. */
+/* `(iii)i` */
+static int gbxlua_command_name(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    uint32_t need = gearbox_command_name((uint32_t)(a1 - 1), NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_command_name((uint32_t)(a1 - 1), dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+
+/* gearbox:scripts "command_text" */
+/* Inside mod_script_command: which of your commands the script ran. Empty */
+/* outside that call -- there is no command then, and reporting the last */
+/* one would be a stale answer that looks like a live one. Two-call sizing. */
+/* `(ii)i` */
+static int gbxlua_command_text(lua_State *L) {
+    uint32_t need = gearbox_command_text(NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_command_text(dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+
+/* gearbox:scripts "command_args" */
+/* Inside mod_script_command: the rest of the script line, verbatim -- */
+/* unparsed and untrimmed, because your command knows its own grammar and */
+/* the engine does not. Empty outside that call. Two-call sizing. */
+/* `(ii)i` */
+static int gbxlua_command_args(lua_State *L) {
+    uint32_t need = gearbox_command_args(NULL, 0);
+    if (need == 0) { lua_pushliteral(L, ""); return 1; }
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, need);
+    uint32_t got = gearbox_command_args(dst, need);
+    if (got > need) got = need;   /* host grew it between calls */
+    luaL_pushresultsize(&b, got);
+    return 1;
+}
+#endif /* GBX_WITH_SCRIPTS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
 

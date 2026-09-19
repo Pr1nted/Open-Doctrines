@@ -365,6 +365,7 @@ uint32_t audio_is_playing(ExecEnv e, uint32_t handle) {
 ModNetBridge g_netBridge;
 ModListBridge g_listBridge;
 ModCountryBridge g_countryBridge;
+ModScriptBridge g_scriptBridge;
 
 uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
     ModInstance* mi = self(e);
@@ -1139,6 +1140,46 @@ uint32_t retStr(ModInstance* mi, const std::string& v, uint32_t buf, uint32_t ca
     return len;
 }
 
+// ---- Scripts: commands a mod adds to the map script language ----
+//
+// The calling mod's id is the host's to supply, as everywhere else here: a mod
+// cannot claim a command on another mod's behalf or give up one of theirs.
+uint32_t scr_command_text(ExecEnv e, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SCRIPTS) || !g_modHost.scriptName) return 0;
+    return retStr(mi, *g_modHost.scriptName, buf, cap);
+}
+uint32_t scr_command_args(ExecEnv e, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SCRIPTS) || !g_modHost.scriptArgs) return 0;
+    return retStr(mi, *g_modHost.scriptArgs, buf, cap);
+}
+
+uint32_t scr_command_add(ExecEnv e, uint32_t nPtr, uint32_t nLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SCRIPTS) || !g_scriptBridge.commandAdd) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return g_scriptBridge.commandAdd(mi->id(), name) ? 1u : 0u;
+}
+uint32_t scr_command_remove(ExecEnv e, uint32_t nPtr, uint32_t nLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SCRIPTS) || !g_scriptBridge.commandRemove) return 0;
+    std::string name;
+    if (!mi->readString(nPtr, nLen, name)) return 0;
+    return g_scriptBridge.commandRemove(mi->id(), name) ? 1u : 0u;
+}
+uint32_t scr_command_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SCRIPTS) || !g_scriptBridge.commandCount) return 0;
+    return g_scriptBridge.commandCount(mi->id());
+}
+uint32_t scr_command_name(ExecEnv e, uint32_t index, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SCRIPTS) || !g_scriptBridge.commandName) return 0;
+    return retStr(mi, g_scriptBridge.commandName(mi->id(), index), buf, cap);
+}
+
 // ---- Country: fields a mod adds to every country ----
 //
 // THE CALLING MOD'S ID IS SUPPLIED BY THE HOST, NEVER BY THE MOD. Every one of
@@ -1801,6 +1842,12 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:net", "recv",       "(iii)i", (void*)net_recv,       MODULE_NET},
     {"gearbox:net", "peer_count", "()i",    (void*)net_peer_count, MODULE_NET},
     {"gearbox:net", "self_peer",  "()i",    (void*)net_self_peer,  MODULE_NET},
+    {"gearbox:scripts", "command_text", "(ii)i", (void*)scr_command_text, MODULE_SCRIPTS},
+    {"gearbox:scripts", "command_args", "(ii)i", (void*)scr_command_args, MODULE_SCRIPTS},
+    {"gearbox:scripts", "command_add", "(ii)i", (void*)scr_command_add, MODULE_SCRIPTS},
+    {"gearbox:scripts", "command_remove", "(ii)i", (void*)scr_command_remove, MODULE_SCRIPTS},
+    {"gearbox:scripts", "command_count", "()i", (void*)scr_command_count, MODULE_SCRIPTS},
+    {"gearbox:scripts", "command_name", "(iii)i", (void*)scr_command_name, MODULE_SCRIPTS},
     {"gearbox:country", "field_add", "(iiii)i", (void*)ctry_field_add, MODULE_COUNTRY},
     {"gearbox:country", "field_remove", "(ii)i", (void*)ctry_field_remove, MODULE_COUNTRY},
     {"gearbox:country", "field_has", "(ii)i", (void*)ctry_field_has, MODULE_COUNTRY},
@@ -2045,6 +2092,7 @@ void modReleaseAudio(const std::string& modId) {
 
 void modSetListBridge(const ModListBridge& bridge) { g_listBridge = bridge; }
 void modSetCountryBridge(const ModCountryBridge& b) { g_countryBridge = b; }
+void modSetScriptBridge(const ModScriptBridge& b) { g_scriptBridge = b; }
 
 
 const ModHostFn* modHostFunctions(size_t& count) {

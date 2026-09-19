@@ -143,6 +143,15 @@ public:
     // stands. See docs/modding.md, Neural.Decide.
     int aiChoose(int country, int module, const std::vector<bool>& valid);
 
+    /**
+     * Run a map-script command a mod claimed. Returns whether one handled it.
+     *
+     * `args` is the rest of the line verbatim: the command knows its own
+     * grammar and the script engine does not, so parsing it here would be the
+     * engine guessing at a syntax it has never seen.
+     */
+    bool scriptCommand(const std::string& name, const std::string& args);
+
     // --- per-frame UI ---------------------------------------------------------
     // Calls mod_draw_panel on every visible panel. The caller has already put
     // each panel's rect and input state into ModUI.
