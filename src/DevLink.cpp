@@ -7,10 +7,25 @@
 #include <string>
 #include <vector>
 
+// THE DEV VIEW IS POSIX-ONLY, and the guard is here rather than around the
+// whole file because everything else in it -- the watch, the input relay, the
+// draw hooks -- is portable and is wanted on every platform.
+//
+// mmap, ftruncate and open have no MSVC equivalent that is a one-line swap;
+// Windows shared memory is CreateFileMapping/MapViewOfFile, which is a real
+// port rather than an include. Until somebody wants the dev view on Windows
+// badly enough to write it, mapBase() returns nullptr there and every caller
+// already handles that -- it is the same answer as OD_DEV_VIEW being unset.
+//
+// This broke EVERY Windows build from the day DevLink landed, and the Test
+// runs that would have said so were being cancelled by the concurrency group
+// as each push superseded the last.
+#if !defined(_WIN32)
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include "DevShared.h"
 #include "rlgl.h"
@@ -54,6 +69,13 @@ void* sharedMapping() {
     const char* path = devEnv("OD_DEV_VIEW");
     if (path == nullptr) return nullptr;
 
+#if defined(_WIN32)
+    // No view on Windows: see the note by the includes. Deliberately silent --
+    // the caller's fallback for "no view" is the same one it uses when
+    // OD_DEV_VIEW is unset, and a warning here would fire on every frame.
+    (void)path;
+    return nullptr;
+#else
     const int fd = ::open(path, O_RDWR | O_CREAT, 0644);
     if (fd < 0) return nullptr;
     // Sized exactly, every time: a file left over from a build with different
@@ -70,6 +92,7 @@ void* sharedMapping() {
     std::memcpy(head->magic, devshared::kFrameMagic, 8);
     base = p;
     return base;
+#endif
 }
 
 }  // namespace

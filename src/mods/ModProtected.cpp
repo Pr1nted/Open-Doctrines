@@ -6,6 +6,11 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
+// emscripten_get_heap_size is declared HERE, not in emscripten.h. Without
+// this the web build fails with "use of undeclared identifier" -- on a
+// target no developer machine compiles, so it was only ever going to be
+// found in CI.
+#include <emscripten/heap.h>
 #elif defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>

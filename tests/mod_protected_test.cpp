@@ -20,6 +20,8 @@
 #include "../src/mods/ModProtected.h"
 
 #include <cstdio>
+#include <filesystem>
+#include <system_error>
 #include <string>
 
 namespace {
@@ -40,7 +42,7 @@ const odprotected::Usage* find(const std::vector<odprotected::Usage>& v,
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     printf("Core.Protected\n");
 
     section("nothing is recorded until something asks");
@@ -133,8 +135,35 @@ int main() {
                (unsigned long long)rss, (unsigned long long)img);
         ok(rss == 0 || rss > (1ull << 20),
            "resident memory is 0 (unknown) or more than a megabyte");
-        ok(img == 0 || img > (1ull << 16),
-           "the executable is 0 (unknown) or larger than 64 KiB");
+
+        // MEASURED, NOT GUESSED AT A THRESHOLD. This used to be
+        // `img > 64 KiB`, which is a number fitted to whichever machine
+        // happened to run it: this binary is 72 KB here and smaller on the
+        // Linux runner, so the release failed on an assertion about the size
+        // of a test executable rather than about the code under test.
+        //
+        // The real property is that imageBytes() reports the size of THE FILE
+        // THIS PROCESS WAS LAUNCHED FROM. argv[0] is that file whenever it can
+        // be stat'd, which is an independent measurement rather than a
+        // constant, and it holds on every platform without being tuned.
+        uint64_t viaArgv = 0;
+        if (argc > 0 && argv[0]) {
+            std::error_code ec;
+            const auto sz = std::filesystem::file_size(argv[0], ec);
+            if (!ec) viaArgv = (uint64_t)sz;
+        }
+        if (viaArgv > 0) {
+            ok(img == viaArgv,
+               "the executable's size matches what argv[0] stats to (" +
+               std::to_string(img) + " vs " + std::to_string(viaArgv) + ")");
+        } else {
+            // argv[0] was not resolvable -- a PATH lookup, or a platform
+            // without one. Fall back to a bound that catches the failure the
+            // contract is about: a wrapped negative or a nonsense figure.
+            ok(img == 0 || (img >= 4096 && img < (1ull << 32)),
+               "the executable is 0 (unknown) or a plausible file size (" +
+               std::to_string(img) + ")");
+        }
         // Reading them must not itself be recorded: the counters belong to
         // MODS, and a host-side read is not a mod asking.
         odprotected::reset();
