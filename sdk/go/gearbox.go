@@ -271,6 +271,21 @@ func Button(panel Panel, x, y, w, h int32, label string) bool {
 	return rawButton(uint32(panel), x, y, w, h, strPtr(label), uint32(len(label))) != 0
 }
 
+// ---- Content ---------------------------------------------------------------
+
+// ContentAdd adds or replaces one entry in a game catalogue. kind 0 doctrine,
+// 1 research, 2 troop, 3 artillery, 4 district law; mode 0 hollow, 1 persist.
+// The definition is the same JSON the game's own data file uses.
+func ContentAdd(kind uint32, id, json string, mode uint32) bool {
+	return rawContentAdd(kind, strPtr(id), uint32(len(id)),
+		strPtr(json), uint32(len(json)), mode) != 0
+}
+
+// ContentCount reports how many entries of a kind this mod has added.
+func ContentCount(kind uint32) uint32 {
+	return rawContentCount(kind)
+}
+
 // ---- Assets ---------------------------------------------------------------
 
 // AssetSize returns the byte size of one of your own data/ files, or 0 if there

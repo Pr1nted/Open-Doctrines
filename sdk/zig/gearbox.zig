@@ -252,6 +252,19 @@ pub fn drawRect(panel: Panel, x: i32, y: i32, w: i32, h: i32, rgba: u32) void {
     raw.draw_rect(panel, x, y, w, h, rgba);
 }
 
+/// Add or replace one entry in a game catalogue. kind 0 doctrine, 1 research,
+/// 2 troop, 3 artillery, 4 district law; mode 0 hollow, 1 persist. The
+/// definition is the same JSON the game's own data file uses.
+pub fn contentAdd(kind: u32, id: []const u8, json: []const u8, mode: u32) bool {
+    return raw.content_add(kind, cptr(id), @intCast(id.len),
+                           cptr(json), @intCast(json.len), mode) != 0;
+}
+
+/// How many entries of a kind YOU have added.
+pub fn contentCount(kind: u32) u32 {
+    return raw.content_count(kind);
+}
+
 /// UTF-8 text, panel-relative. Truncated to 512 bytes per call.
 pub fn drawText(panel: Panel, x: i32, y: i32, rgba: u32, text: []const u8) void {
     raw.draw_text(panel, x, y, rgba, cptr(text), @intCast(text.len));
