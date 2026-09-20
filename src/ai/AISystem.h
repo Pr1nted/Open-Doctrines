@@ -258,6 +258,8 @@ public:
     static void dumpDoctrineReflex();
     static std::atomic<long long> s_doctrineReflexFired;
     static std::map<std::string, long long> s_doctrineReflexBy;
+    /// Who bought, by isoA3, with the scored bench seat marked. Journal 404.
+    static std::map<std::string, long long> s_doctrineReflexByCountry;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port
     std::unordered_map<int,int> m_lastIndustryBuy;///< cid -> turn of last industry level
     // Politics: 0 hold, 1 enact policy, 2 pac up, 3 pac down, 4 cancel policy,
