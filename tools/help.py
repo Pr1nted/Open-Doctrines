@@ -45,6 +45,14 @@ GROUPS = [
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
+        # Does run_all.sh build every test it runs? It names its targets twice
+        # -- a --target list and one `run` line each -- and nothing made the
+        # two agree. Six tests ended up in the second list and not the first,
+        # which is invisible on a tree that already has the binaries and fails
+        # every clean checkout: the Gearbox 1.3 release went red on it after a
+        # green local suite. A test that is run but not built reports as
+        # passing, which is worse than one that is missing.
+        "check_suite_targets.py",
         # The verdict qualify.sh's 5-turn game gets: it played, it could not be
         # tried, or it crashed. Its own file so tests/qualify_play_gate_test.sh
         # can feed it the real logs from the day a segfault was read as a skip.

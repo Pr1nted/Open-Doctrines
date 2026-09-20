@@ -31,7 +31,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest NetHostBookTest NetTunnelTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -88,6 +88,10 @@ run "touch gestures"   "$bin/TouchGestureTest"
 run "minority shares"  "$bin/MinorityShareTest"
 run "party rules"      "$bin/PartyRulesTest" "$root/data/"
 run "nationalisation rules" "$bin/NationalisationTest"
+# Every test this RUNS must be one it BUILDS -- six were not, and that is what
+# failed the SDK 1.3 release after a green local suite. See the checker.
+"$PY" "$root/tools/check_suite_targets.py" "$0" || exit 1
+
 run "world provenance" "$bin/WorldProvenanceTest"
 run "core.protected"   "$bin/ModProtectedTest"
 run "country fields"   "$bin/CountryFieldsTest"
