@@ -237,6 +237,15 @@
     {"setCountryDisclosure", gbxpy_set_country_disclosure, METH_VARARGS, "Publish or withhold one of the figures in this country's profile. Returns 1 on success."},
 #endif /* GBX_WITH_POLITICS_WRITE */
 
+/* ---- Render (5) ---- */
+#if GBX_WITH_RENDER
+    {"provinceTint", gbxpy_province_tint, METH_VARARGS, "Tint a province on the map. rgba is 0xRRGGBBAA.  AN ALPHA OF ZERO REMOVES THE TINT. One call does set and clear, so a fading effect that paints transparent every frame cannot grow "},
+    {"provinceLabel", gbxpy_province_label, METH_VARARGS, "Put a short label at a province. Empty text, or an alpha of zero, removes it.  Truncated at 48 characters and stripped of control characters rather than refused: a label one charac"},
+    {"clear", gbxpy_clear, METH_NOARGS, "Drop every tint and label YOU have drawn. A mod cannot clear another mod's -- and unloading a mod clears its own automatically, because a mark left behind by a mod that is no longe"},
+    {"tintCount", gbxpy_tint_count, METH_NOARGS, "How many tints you are currently holding."},
+    {"labelCount", gbxpy_label_count, METH_NOARGS, "How many labels you are currently holding."},
+#endif /* GBX_WITH_RENDER */
+
 /* ---- Research.Read (8) ---- */
 #if GBX_WITH_RESEARCH_READ
     {"nodeCount", gbxpy_node_count, METH_NOARGS, "How many technologies exist in the tree."},

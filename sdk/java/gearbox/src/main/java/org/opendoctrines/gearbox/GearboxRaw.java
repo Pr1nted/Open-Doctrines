@@ -1409,4 +1409,42 @@ public final class GearboxRaw {
     @Import(module = "gearbox:scripts", name = "command_args")
     public static native int commandArgs(int buf, int cap);
 
+    // Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES
+    // THE TINT. One call does set and clear, so a fading effect that paints
+    // transparent every frame cannot grow the list forever -- which is what a
+    // separate clear call invites. Returns false when you are already holding
+    // the maximum (4096 tints per mod, which is every province on the largest
+    // map twice over). A refusal rather than a slower game: a mod's mistake
+    // should not be paid for in frame time by a player who cannot see why.
+    // `(ii)i`
+    @Import(module = "gearbox:render", name = "province_tint")
+    public static native int provinceTint(int province, int rgba);
+
+    // Put a short label at a province. Empty text, or an alpha of zero,
+    // removes it. Truncated at 48 characters and stripped of control
+    // characters rather than refused: a label one character too long is a
+    // cosmetic mistake, and failing the call would have an author debugging a
+    // silent nothing instead of seeing a clipped word. 512 labels per mod.
+    // `(iiii)i`
+    @Import(module = "gearbox:render", name = "province_label")
+    public static native int provinceLabel(int province, int text, int textLen, int rgba);
+
+    // Drop every tint and label YOU have drawn. A mod cannot clear another
+    // mod's -- and unloading a mod clears its own automatically, because a
+    // mark left behind by a mod that is no longer running is indistinguishable
+    // from the game being wrong.
+    // `()i`
+    @Import(module = "gearbox:render", name = "clear")
+    public static native int clear();
+
+    // How many tints you are currently holding.
+    // `()i`
+    @Import(module = "gearbox:render", name = "tint_count")
+    public static native int tintCount();
+
+    // How many labels you are currently holding.
+    // `()i`
+    @Import(module = "gearbox:render", name = "label_count")
+    public static native int labelCount();
+
 }

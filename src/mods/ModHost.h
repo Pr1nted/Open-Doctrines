@@ -99,6 +99,15 @@ struct ModScriptBridge {
     std::function<std::string(const std::string&, uint32_t)> commandName;
 };
 
+/** The map marks a mod may make. See src/ModRenderLayer.h. */
+struct ModRenderBridge {
+    std::function<bool(const std::string&, uint32_t, uint32_t)> tint;
+    std::function<bool(const std::string&, uint32_t, const std::string&, uint32_t)> label;
+    std::function<void(const std::string&)> clear;
+    std::function<uint32_t(const std::string&)> tintCount;
+    std::function<uint32_t(const std::string&)> labelCount;
+};
+
 struct ModListBridge {
     std::function<uint32_t()> count;
     /** (index) -> the manifest id, stable and safe to compare. */
@@ -140,6 +149,7 @@ void modSetNetBridge(const ModNetBridge& bridge);
 void modSetListBridge(const ModListBridge& bridge);
 void modSetCountryBridge(const ModCountryBridge& bridge);
 void modSetScriptBridge(const ModScriptBridge& bridge);
+void modSetRenderBridge(const ModRenderBridge& bridge);
 void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;

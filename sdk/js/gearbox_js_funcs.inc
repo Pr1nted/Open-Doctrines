@@ -237,6 +237,15 @@
     JS_CFUNC_DEF("setCountryDisclosure", 3, gbxjs_set_country_disclosure),
 #endif /* GBX_WITH_POLITICS_WRITE */
 
+/* ---- Render (5) ---- */
+#if GBX_WITH_RENDER
+    JS_CFUNC_DEF("provinceTint", 2, gbxjs_province_tint),
+    JS_CFUNC_DEF("provinceLabel", 3, gbxjs_province_label),
+    JS_CFUNC_DEF("clear", 0, gbxjs_clear),
+    JS_CFUNC_DEF("tintCount", 0, gbxjs_tint_count),
+    JS_CFUNC_DEF("labelCount", 0, gbxjs_label_count),
+#endif /* GBX_WITH_RENDER */
+
 /* ---- Research.Read (8) ---- */
 #if GBX_WITH_RESEARCH_READ
     JS_CFUNC_DEF("nodeCount", 0, gbxjs_node_count),

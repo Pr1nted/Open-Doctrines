@@ -1405,3 +1405,41 @@ func rawCommandText(buf unsafe.Pointer, cap uint32) uint32
 // `(ii)i`
 //go:wasmimport gearbox:scripts command_args
 func rawCommandArgs(buf unsafe.Pointer, cap uint32) uint32
+
+// Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES
+// THE TINT. One call does set and clear, so a fading effect that paints
+// transparent every frame cannot grow the list forever -- which is what a
+// separate clear call invites. Returns false when you are already holding
+// the maximum (4096 tints per mod, which is every province on the largest
+// map twice over). A refusal rather than a slower game: a mod's mistake
+// should not be paid for in frame time by a player who cannot see why.
+// `(ii)i`
+//go:wasmimport gearbox:render province_tint
+func rawProvinceTint(province uint32, rgba uint32) uint32
+
+// Put a short label at a province. Empty text, or an alpha of zero,
+// removes it. Truncated at 48 characters and stripped of control
+// characters rather than refused: a label one character too long is a
+// cosmetic mistake, and failing the call would have an author debugging a
+// silent nothing instead of seeing a clipped word. 512 labels per mod.
+// `(iiii)i`
+//go:wasmimport gearbox:render province_label
+func rawProvinceLabel(province uint32, text unsafe.Pointer, text_len uint32, rgba uint32) uint32
+
+// Drop every tint and label YOU have drawn. A mod cannot clear another
+// mod's -- and unloading a mod clears its own automatically, because a
+// mark left behind by a mod that is no longer running is indistinguishable
+// from the game being wrong.
+// `()i`
+//go:wasmimport gearbox:render clear
+func rawClear() uint32
+
+// How many tints you are currently holding.
+// `()i`
+//go:wasmimport gearbox:render tint_count
+func rawTintCount() uint32
+
+// How many labels you are currently holding.
+// `()i`
+//go:wasmimport gearbox:render label_count
+func rawLabelCount() uint32

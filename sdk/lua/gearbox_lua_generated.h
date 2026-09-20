@@ -2107,6 +2107,72 @@ static int gbxlua_set_country_disclosure(lua_State *L) {
 }
 #endif /* GBX_WITH_POLITICS_WRITE */
 
+/* ---- Render (5) ---- */
+#if GBX_WITH_RENDER
+
+/* gearbox:render "province_tint" */
+/* Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES */
+/* THE TINT. One call does set and clear, so a fading effect that paints */
+/* transparent every frame cannot grow the list forever -- which is what a */
+/* separate clear call invites. Returns false when you are already holding */
+/* the maximum (4096 tints per mod, which is every province on the largest */
+/* map twice over). A refusal rather than a slower game: a mod's mistake */
+/* should not be paid for in frame time by a player who cannot see why. */
+/* `(ii)i` */
+static int gbxlua_province_tint(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushboolean(L, (int)gearbox_province_tint((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:render "province_label" */
+/* Put a short label at a province. Empty text, or an alpha of zero, */
+/* removes it. Truncated at 48 characters and stripped of control */
+/* characters rather than refused: a label one character too long is a */
+/* cosmetic mistake, and failing the call would have an author debugging a */
+/* silent nothing instead of seeing a clipped word. 512 labels per mod. */
+/* `(iiii)i` */
+static int gbxlua_province_label(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    size_t a2_n = 0;
+    const char *a2 = luaL_checklstring(L, 2, &a2_n);
+    lua_Integer a3 = luaL_checkinteger(L, 3);
+    lua_pushboolean(L, (int)gearbox_province_label((uint32_t)(a1), a2, (uint32_t)a2_n, (uint32_t)(a3)));
+    return 1;
+}
+
+/* gearbox:render "clear" */
+/* Drop every tint and label YOU have drawn. A mod cannot clear another */
+/* mod's -- and unloading a mod clears its own automatically, because a */
+/* mark left behind by a mod that is no longer running is indistinguishable */
+/* from the game being wrong. */
+/* `()i` */
+static int gbxlua_clear(lua_State *L) {
+    (void)L;
+    lua_pushboolean(L, (int)gearbox_clear());
+    return 1;
+}
+
+/* gearbox:render "tint_count" */
+/* How many tints you are currently holding. */
+/* `()i` */
+static int gbxlua_tint_count(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_tint_count());
+    return 1;
+}
+
+/* gearbox:render "label_count" */
+/* How many labels you are currently holding. */
+/* `()i` */
+static int gbxlua_label_count(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_label_count());
+    return 1;
+}
+#endif /* GBX_WITH_RENDER */
+
 /* ---- Research.Read (8) ---- */
 #if GBX_WITH_RESEARCH_READ
 

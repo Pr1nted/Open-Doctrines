@@ -366,6 +366,7 @@ ModNetBridge g_netBridge;
 ModListBridge g_listBridge;
 ModCountryBridge g_countryBridge;
 ModScriptBridge g_scriptBridge;
+ModRenderBridge g_renderBridge;
 
 uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
     ModInstance* mi = self(e);
@@ -1140,6 +1141,40 @@ uint32_t retStr(ModInstance* mi, const std::string& v, uint32_t buf, uint32_t ca
     return len;
 }
 
+// ---- Render: tint and label, and nothing else ----
+uint32_t rnd_province_tint(ExecEnv e, uint32_t province, uint32_t rgba) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_RENDER) || !g_renderBridge.tint) return 0;
+    return g_renderBridge.tint(mi->id(), province, rgba) ? 1u : 0u;
+}
+uint32_t rnd_province_label(ExecEnv e, uint32_t province, uint32_t tPtr,
+                            uint32_t tLen, uint32_t rgba) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_RENDER) || !g_renderBridge.label) return 0;
+    std::string text;
+    // An unreadable buffer is not an empty label: empty MEANS remove, so
+    // treating a bad pointer as empty would have a memory bug quietly delete
+    // the mod's own marks instead of failing.
+    if (!mi->readString(tPtr, tLen, text)) return 0;
+    return g_renderBridge.label(mi->id(), province, text, rgba) ? 1u : 0u;
+}
+uint32_t rnd_clear(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_RENDER) || !g_renderBridge.clear) return 0;
+    g_renderBridge.clear(mi->id());
+    return 1;
+}
+uint32_t rnd_tint_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_RENDER) || !g_renderBridge.tintCount) return 0;
+    return g_renderBridge.tintCount(mi->id());
+}
+uint32_t rnd_label_count(ExecEnv e) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_RENDER) || !g_renderBridge.labelCount) return 0;
+    return g_renderBridge.labelCount(mi->id());
+}
+
 // ---- Scripts: commands a mod adds to the map script language ----
 //
 // The calling mod's id is the host's to supply, as everywhere else here: a mod
@@ -1842,6 +1877,11 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:net", "recv",       "(iii)i", (void*)net_recv,       MODULE_NET},
     {"gearbox:net", "peer_count", "()i",    (void*)net_peer_count, MODULE_NET},
     {"gearbox:net", "self_peer",  "()i",    (void*)net_self_peer,  MODULE_NET},
+    {"gearbox:render", "province_tint", "(ii)i", (void*)rnd_province_tint, MODULE_RENDER},
+    {"gearbox:render", "province_label", "(iiii)i", (void*)rnd_province_label, MODULE_RENDER},
+    {"gearbox:render", "clear", "()i", (void*)rnd_clear, MODULE_RENDER},
+    {"gearbox:render", "tint_count", "()i", (void*)rnd_tint_count, MODULE_RENDER},
+    {"gearbox:render", "label_count", "()i", (void*)rnd_label_count, MODULE_RENDER},
     {"gearbox:scripts", "command_text", "(ii)i", (void*)scr_command_text, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_args", "(ii)i", (void*)scr_command_args, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_add", "(ii)i", (void*)scr_command_add, MODULE_SCRIPTS},
@@ -2093,6 +2133,7 @@ void modReleaseAudio(const std::string& modId) {
 void modSetListBridge(const ModListBridge& bridge) { g_listBridge = bridge; }
 void modSetCountryBridge(const ModCountryBridge& b) { g_countryBridge = b; }
 void modSetScriptBridge(const ModScriptBridge& b) { g_scriptBridge = b; }
+void modSetRenderBridge(const ModRenderBridge& b) { g_renderBridge = b; }
 
 
 const ModHostFn* modHostFunctions(size_t& count) {

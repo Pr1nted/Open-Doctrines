@@ -3263,6 +3263,14 @@ void Game::drawInner() {
             return {-100000.0f, -100000.0f};
         return {sx, sy};
     };
+
+    // ── What mods have drawn ──
+    //
+    // After the map and through the same projection, so a tint sits where the
+    // province sits on the globe as well as the flat map. Does nothing at all
+    // when no mod has drawn anything, which is every session without a Render
+    // mod: the check is one comparison, not a walk.
+    drawModRenderLayer(worldToScreen);
     // Draw industry circles (if in industry view) using world-to-screen coords
     //
     // TWO PASSES, and that is the whole reason this loop is shaped as it is.
@@ -6979,5 +6987,56 @@ void Game::drawViewingOrdersPhase() {
             m_config.save(m_configPath);
             m_turnState = TURN_NORMAL;
         }
+    }
+}
+
+// ── Tints and labels a mod put on the map ──
+//
+// The whole of what the Render capability can do. A mod colours a province and
+// puts a word next to one; it cannot touch the draw loop, and the reason is in
+// src/ModRenderLayer.h -- a mod that tints wrongly makes the map ugly and gets
+// switched off, while a mod that owns rendering can make the screen it would
+// be switched off from unreadable.
+//
+// Drawn through the caller's worldToScreen, which is the renderer's own seam,
+// so a mark sits where its province sits on the globe as well as the flat map.
+// A province on the far side projects off-screen and draws nothing, which is
+// exactly right and costs no special case here.
+void Game::drawModRenderLayer(const std::function<Vector2(Vector2)>& worldToScreen) const {
+    // One comparison in the overwhelming case: no Render mod is loaded.
+    if (m_modRenderLayer.empty()) return;
+
+    const float zoom = m_renderer ? m_renderer->getCamera().zoom : 1.0f;
+
+    for (const odrender::Tint& t : m_modRenderLayer.tints()) {
+        auto c = m_provinceCenters.find(t.provinceId);
+        if (c == m_provinceCenters.end()) continue;
+        const Vector2 p = worldToScreen(c->second);
+        if (p.x < -1000.0f) continue;                  // far side of the globe
+        const Color col{(unsigned char)((t.rgba >> 24) & 0xFF),
+                        (unsigned char)((t.rgba >> 16) & 0xFF),
+                        (unsigned char)((t.rgba >> 8) & 0xFF),
+                        (unsigned char)(t.rgba & 0xFF)};
+        // A disc at the province centre rather than a filled outline: the
+        // province shape is a texture the renderer owns, and reproducing it
+        // here would be a second copy of the map to keep in step. Scaled with
+        // zoom so it reads the same at every altitude.
+        DrawCircleV(p, std::max(3.0f, 7.0f * zoom), col);
+    }
+
+    for (const odrender::Label& l : m_modRenderLayer.labels()) {
+        auto c = m_provinceCenters.find(l.provinceId);
+        if (c == m_provinceCenters.end()) continue;
+        const Vector2 p = worldToScreen(c->second);
+        if (p.x < -1000.0f) continue;
+        const Color col{(unsigned char)((l.rgba >> 24) & 0xFF),
+                        (unsigned char)((l.rgba >> 16) & 0xFF),
+                        (unsigned char)((l.rgba >> 8) & 0xFF),
+                        (unsigned char)(l.rgba & 0xFF)};
+        // NOT through T(). A mod's label is the mod's own text in whatever
+        // language it chose; putting it through the game's string table would
+        // look up a translation that cannot exist and hand back the key.
+        const int w = MeasureText(l.text.c_str(), 12);
+        DrawText(l.text.c_str(), (int)p.x - w / 2, (int)p.y + 8, 12, col);
     }
 }

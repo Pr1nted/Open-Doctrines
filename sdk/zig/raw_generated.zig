@@ -1193,3 +1193,36 @@ pub extern "gearbox:scripts" fn command_text(buf: ?[*]u8, cap: u32) u32;
 /// the engine does not. Empty outside that call. Two-call sizing.
 /// `(ii)i`
 pub extern "gearbox:scripts" fn command_args(buf: ?[*]u8, cap: u32) u32;
+
+/// Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES
+/// THE TINT. One call does set and clear, so a fading effect that paints
+/// transparent every frame cannot grow the list forever -- which is what a
+/// separate clear call invites. Returns false when you are already holding
+/// the maximum (4096 tints per mod, which is every province on the largest
+/// map twice over). A refusal rather than a slower game: a mod's mistake
+/// should not be paid for in frame time by a player who cannot see why.
+/// `(ii)i`
+pub extern "gearbox:render" fn province_tint(province: u32, rgba: u32) u32;
+
+/// Put a short label at a province. Empty text, or an alpha of zero,
+/// removes it. Truncated at 48 characters and stripped of control
+/// characters rather than refused: a label one character too long is a
+/// cosmetic mistake, and failing the call would have an author debugging a
+/// silent nothing instead of seeing a clipped word. 512 labels per mod.
+/// `(iiii)i`
+pub extern "gearbox:render" fn province_label(province: u32, text: ?[*]const u8, text_len: u32, rgba: u32) u32;
+
+/// Drop every tint and label YOU have drawn. A mod cannot clear another
+/// mod's -- and unloading a mod clears its own automatically, because a
+/// mark left behind by a mod that is no longer running is indistinguishable
+/// from the game being wrong.
+/// `()i`
+pub extern "gearbox:render" fn clear() u32;
+
+/// How many tints you are currently holding.
+/// `()i`
+pub extern "gearbox:render" fn tint_count() u32;
+
+/// How many labels you are currently holding.
+/// `()i`
+pub extern "gearbox:render" fn label_count() u32;

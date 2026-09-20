@@ -2903,6 +2903,87 @@ static JSValue gbxjs_set_country_disclosure(JSContext *ctx, JSValueConst this_va
 }
 #endif /* GBX_WITH_POLITICS_WRITE */
 
+/* ---- Render (5) ---- */
+#if GBX_WITH_RENDER
+
+/* gearbox:render "province_tint" */
+/* Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES */
+/* THE TINT. One call does set and clear, so a fading effect that paints */
+/* transparent every frame cannot grow the list forever -- which is what a */
+/* separate clear call invites. Returns false when you are already holding */
+/* the maximum (4096 tints per mod, which is every province on the largest */
+/* map twice over). A refusal rather than a slower game: a mod's mistake */
+/* should not be paid for in frame time by a player who cannot see why. */
+/* `(ii)i` */
+static JSValue gbxjs_province_tint(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "provinceTint expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_tint((uint32_t)a0, (uint32_t)a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:render "province_label" */
+/* Put a short label at a province. Empty text, or an alpha of zero, */
+/* removes it. Truncated at 48 characters and stripped of control */
+/* characters rather than refused: a label one character too long is a */
+/* cosmetic mistake, and failing the call would have an author debugging a */
+/* silent nothing instead of seeing a clipped word. 512 labels per mod. */
+/* `(iiii)i` */
+static JSValue gbxjs_province_label(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "provinceLabel expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_label((uint32_t)a0, a1, (uint32_t)a1_n, (uint32_t)a2);
+    JS_FreeCString(ctx, a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:render "clear" */
+/* Drop every tint and label YOU have drawn. A mod cannot clear another */
+/* mod's -- and unloading a mod clears its own automatically, because a */
+/* mark left behind by a mod that is no longer running is indistinguishable */
+/* from the game being wrong. */
+/* `()i` */
+static JSValue gbxjs_clear(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_clear();
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:render "tint_count" */
+/* How many tints you are currently holding. */
+/* `()i` */
+static JSValue gbxjs_tint_count(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_tint_count();
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:render "label_count" */
+/* How many labels you are currently holding. */
+/* `()i` */
+static JSValue gbxjs_label_count(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_label_count();
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+#endif /* GBX_WITH_RENDER */
+
 /* ---- Research.Read (8) ---- */
 #if GBX_WITH_RESEARCH_READ
 

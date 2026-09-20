@@ -53,6 +53,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `Core.Protected` | `gearbox:core.protected` | Resident memory, executable size, and the installed mod list | yes | implemented |
 | `Country` | `gearbox:country` | Declaring custom fields on countries, and reading and writing them | yes | implemented |
 | `Scripts` | `gearbox:scripts` | Adding commands to the map script language | yes | implemented |
+| `Render` | `gearbox:render` | Tinting provinces and labelling them on the map | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -3879,6 +3880,78 @@ Inside mod_script_command: which of your commands the script ran. Empty outside 
 **Returns** `i32` — byte length.
 
 Inside mod_script_command: the rest of the script line, verbatim -- unparsed and untrimmed, because your command knows its own grammar and the engine does not. Empty outside that call. Two-call sizing.
+
+### `gearbox:render`
+
+Requires the **Render** capability.
+
+#### `province_tint`
+
+```wat
+(import "gearbox:render" "province_tint" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+| `rgba` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Tint a province on the map. rgba is 0xRRGGBBAA.
+
+AN ALPHA OF ZERO REMOVES THE TINT. One call does set and clear, so a fading effect that paints transparent every frame cannot grow the list forever -- which is what a separate clear call invites.
+
+Returns false when you are already holding the maximum (4096 tints per mod, which is every province on the largest map twice over). A refusal rather than a slower game: a mod's mistake should not be paid for in frame time by a player who cannot see why.
+
+#### `province_label`
+
+```wat
+(import "gearbox:render" "province_label" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+| `text` | `i32` | pointer into your linear memory |
+| `text_len` | `i32` | byte length |
+| `rgba` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Put a short label at a province. Empty text, or an alpha of zero, removes it.
+
+Truncated at 48 characters and stripped of control characters rather than refused: a label one character too long is a cosmetic mistake, and failing the call would have an author debugging a silent nothing instead of seeing a clipped word. 512 labels per mod.
+
+#### `clear`
+
+```wat
+(import "gearbox:render" "clear" (func $x (result i32)))
+```
+
+**Returns** `i32` — 0 or 1.
+
+Drop every tint and label YOU have drawn. A mod cannot clear another mod's -- and unloading a mod clears its own automatically, because a mark left behind by a mod that is no longer running is indistinguishable from the game being wrong.
+
+#### `tint_count`
+
+```wat
+(import "gearbox:render" "tint_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many tints you are currently holding.
+
+#### `label_count`
+
+```wat
+(import "gearbox:render" "label_count" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+How many labels you are currently holding.
 
 ## Exports
 

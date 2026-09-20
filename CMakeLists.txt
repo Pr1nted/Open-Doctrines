@@ -933,6 +933,7 @@ set(GAME_SOURCES
     src/WorldProvenance.cpp
     src/CountryFields.cpp
     src/ScriptCommands.cpp
+    src/ModRenderLayer.cpp
     src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
@@ -1094,7 +1095,20 @@ if(ANDROID)
     # The name the manifest's android.app.lib_name refers to.
     set_target_properties(OpenDoctrines PROPERTIES OUTPUT_NAME "opendoctrines")
     # Plain signature: the rest of this file links this target that way.
-    target_link_libraries(OpenDoctrines log android EGL GLESv2 OpenSLES)
+    # --- the live modding input shim, off by default -------------------------
+#
+# Force-included into every C++ translation unit of the game rather than
+# included by hand, because the point is that no source file has to know. CXX
+# only: the C sources in this target would not survive a header full of
+# namespaces. See src/DevInput.h for what it does and why it is macros.
+option(OD_DEV_INPUT "Let an external editor drive the game's input (development only)" OFF)
+if(OD_DEV_INPUT)
+    target_compile_options(OpenDoctrines PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/DevInput.h>)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_DEV_INPUT=1)
+endif()
+
+target_link_libraries(OpenDoctrines log android EGL GLESv2 OpenSLES)
     # NativeActivity dlsym()s ANativeActivity_onCreate to start the app, and
     # that symbol lives in the NDK's native_app_glue -- which ships as SOURCE,
     # not as a prebuilt library, so it has to be compiled in. Without it the .so
@@ -2238,6 +2252,13 @@ target_include_directories(CountryFieldsTest PRIVATE src tests)
 add_executable(ScriptCommandsTest EXCLUDE_FROM_ALL
                tests/script_commands_test.cpp src/ScriptCommands.cpp)
 target_include_directories(ScriptCommandsTest PRIVATE src tests)
+
+# What a mod may draw on the map. The property under test is that a fading
+# effect -- paint, then paint transparent, every frame -- cannot grow the list,
+# because the game walks it inside a frame.
+add_executable(ModRenderLayerTest EXCLUDE_FROM_ALL
+               tests/mod_render_layer_test.cpp src/ModRenderLayer.cpp)
+target_include_directories(ModRenderLayerTest PRIVATE src tests)
 target_include_directories(PartyRulesTest PRIVATE src tests
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 

@@ -47,6 +47,7 @@ const ModuleEntry kModules[] = {
     {"Core.Protected",  MODULE_CORE_PROTECTED},
     {"Country",         MODULE_COUNTRY},
     {"Scripts",         MODULE_SCRIPTS},
+    {"Render",          MODULE_RENDER},
 };
 
 }  // namespace

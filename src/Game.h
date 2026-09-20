@@ -1,5 +1,6 @@
 #pragma once
 #include "WorldProvenance.h"
+#include "ModRenderLayer.h"
 #include "ScriptCommands.h"
 #include "CountryFields.h"
 #include "Parties.h"
@@ -2817,6 +2818,10 @@ public:
     /** The titular culture per country, and the turn it was worked out. */
     mutable std::unordered_map<int, std::string> m_titularGroup;
     mutable int m_titularTurn = -1;
+    /** Tints and labels mods have put on the map. See src/ModRenderLayer.h. */
+    odrender::Layer m_modRenderLayer;
+    /** Draw the mods' tints and labels. Does nothing when none are set. */
+    void drawModRenderLayer(const std::function<Vector2(Vector2)>& worldToScreen) const;
     /** Map-script commands mods have claimed. See src/ScriptCommands.h. */
     odscript::Registry m_scriptCommands;
     /** Fields mods have added to countries. See src/CountryFields.h. */

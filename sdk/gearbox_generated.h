@@ -1641,6 +1641,49 @@ uint32_t gearbox_command_text(char* buf, uint32_t cap);
 GEARBOX_IMPORT("scripts", "command_args")
 uint32_t gearbox_command_args(char* buf, uint32_t cap);
 
+/* Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES
+ * THE TINT. One call does set and clear, so a fading effect that paints
+ * transparent every frame cannot grow the list forever -- which is what a
+ * separate clear call invites. Returns false when you are already holding
+ * the maximum (4096 tints per mod, which is every province on the largest
+ * map twice over). A refusal rather than a slower game: a mod's mistake
+ * should not be paid for in frame time by a player who cannot see why.
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("render", "province_tint")
+uint32_t gearbox_province_tint(gearbox_province province, uint32_t rgba);
+
+/* Put a short label at a province. Empty text, or an alpha of zero,
+ * removes it. Truncated at 48 characters and stripped of control
+ * characters rather than refused: a label one character too long is a
+ * cosmetic mistake, and failing the call would have an author debugging a
+ * silent nothing instead of seeing a clipped word. 512 labels per mod.
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("render", "province_label")
+uint32_t gearbox_province_label(gearbox_province province, const char* text, uint32_t text_len, uint32_t rgba);
+
+/* Drop every tint and label YOU have drawn. A mod cannot clear another
+ * mod's -- and unloading a mod clears its own automatically, because a
+ * mark left behind by a mod that is no longer running is indistinguishable
+ * from the game being wrong.
+ * `()i`
+ */
+GEARBOX_IMPORT("render", "clear")
+uint32_t gearbox_clear(void);
+
+/* How many tints you are currently holding.
+ * `()i`
+ */
+GEARBOX_IMPORT("render", "tint_count")
+uint32_t gearbox_tint_count(void);
+
+/* How many labels you are currently holding.
+ * `()i`
+ */
+GEARBOX_IMPORT("render", "label_count")
+uint32_t gearbox_label_count(void);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to

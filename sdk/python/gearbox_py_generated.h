@@ -2245,6 +2245,70 @@ static PyObject *gbxpy_set_country_disclosure(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_POLITICS_WRITE */
 
+/* ---- Render (5) ---- */
+#if GBX_WITH_RENDER
+
+/* gearbox:render "province_tint" */
+/* Tint a province on the map. rgba is 0xRRGGBBAA. AN ALPHA OF ZERO REMOVES */
+/* THE TINT. One call does set and clear, so a fading effect that paints */
+/* transparent every frame cannot grow the list forever -- which is what a */
+/* separate clear call invites. Returns false when you are already holding */
+/* the maximum (4096 tints per mod, which is every province on the largest */
+/* map twice over). A refusal rather than a slower game: a mod's mistake */
+/* should not be paid for in frame time by a player who cannot see why. */
+/* `(ii)i` */
+static PyObject *gbxpy_province_tint(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_province_tint((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:render "province_label" */
+/* Put a short label at a province. Empty text, or an alpha of zero, */
+/* removes it. Truncated at 48 characters and stripped of control */
+/* characters rather than refused: a label one character too long is a */
+/* cosmetic mistake, and failing the call would have an author debugging a */
+/* silent nothing instead of seeing a clipped word. 512 labels per mod. */
+/* `(iiii)i` */
+static PyObject *gbxpy_province_label(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    const char *a1 = NULL; Py_ssize_t a1_n = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "Is#I", &a0, &a1, &a1_n, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_province_label((uint32_t)a0, a1, (uint32_t)a1_n, (uint32_t)a2));
+}
+
+/* gearbox:render "clear" */
+/* Drop every tint and label YOU have drawn. A mod cannot clear another */
+/* mod's -- and unloading a mod clears its own automatically, because a */
+/* mark left behind by a mod that is no longer running is indistinguishable */
+/* from the game being wrong. */
+/* `()i` */
+static PyObject *gbxpy_clear(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyBool_FromLong((long)gearbox_clear());
+}
+
+/* gearbox:render "tint_count" */
+/* How many tints you are currently holding. */
+/* `()i` */
+static PyObject *gbxpy_tint_count(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_tint_count());
+}
+
+/* gearbox:render "label_count" */
+/* How many labels you are currently holding. */
+/* `()i` */
+static PyObject *gbxpy_label_count(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_label_count());
+}
+#endif /* GBX_WITH_RENDER */
+
 /* ---- Research.Read (8) ---- */
 #if GBX_WITH_RESEARCH_READ
 

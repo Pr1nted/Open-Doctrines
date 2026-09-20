@@ -95,6 +95,11 @@ enum ModModuleBit : uint32_t {
     // enabled globally. See src/ScriptCommands.h.
     MODULE_SCRIPTS         = 1u << 25,
 
+    // Tinting and labelling provinces on the map. Its own bit, and
+    // deliberately NOT "rendering": a mod cannot take over the draw loop. See
+    // src/ModRenderLayer.h for where that line is drawn and why.
+    MODULE_RENDER          = 1u << 26,
+
     MODULE_MAPEDITOR       = 1u << 21,
 };
 

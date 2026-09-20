@@ -237,6 +237,15 @@
     {"setCountryDisclosure", gbxlua_set_country_disclosure},
 #endif /* GBX_WITH_POLITICS_WRITE */
 
+/* ---- Render (5) ---- */
+#if GBX_WITH_RENDER
+    {"provinceTint", gbxlua_province_tint},
+    {"provinceLabel", gbxlua_province_label},
+    {"clear", gbxlua_clear},
+    {"tintCount", gbxlua_tint_count},
+    {"labelCount", gbxlua_label_count},
+#endif /* GBX_WITH_RENDER */
+
 /* ---- Research.Read (8) ---- */
 #if GBX_WITH_RESEARCH_READ
     {"nodeCount", gbxlua_node_count},

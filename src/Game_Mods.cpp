@@ -1183,6 +1183,29 @@ void Game::installModBridges() {
     };
     modSetScriptBridge(scr);
 
+    // Render: tint and label. Bounded in the store, not here -- the ceiling is
+    // a property of what the frame can afford, not of this wiring.
+    ModRenderBridge rnd;
+    rnd.tint = [this](const std::string& mod, uint32_t pid, uint32_t rgba) {
+        // The province has to exist, or a mod could grow the layer one entry
+        // per garbage id and the draw pass would walk them every frame.
+        if (!modProvinceExists((int)pid)) return false;
+        return m_modRenderLayer.setTint(mod, (int)pid, rgba);
+    };
+    rnd.label = [this](const std::string& mod, uint32_t pid,
+                       const std::string& text, uint32_t rgba) {
+        if (!modProvinceExists((int)pid)) return false;
+        return m_modRenderLayer.setLabel(mod, (int)pid, text, rgba);
+    };
+    rnd.clear = [this](const std::string& mod) { m_modRenderLayer.clearMod(mod); };
+    rnd.tintCount = [this](const std::string& mod) {
+        return (uint32_t)m_modRenderLayer.tintCount(mod);
+    };
+    rnd.labelCount = [this](const std::string& mod) {
+        return (uint32_t)m_modRenderLayer.labelCount(mod);
+    };
+    modSetRenderBridge(rnd);
+
     modSetNetBridge(net);
 
     // ── UI ── the three things the mod host cannot do without raylib ──────────
