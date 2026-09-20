@@ -369,6 +369,59 @@ struct PolicyRules {
         check(!game.canCountryEnactPolicy(cid, *find(ids[1])),
               "and the mod's conflicting doctrine is refused on the mod's word alone");
 
+        // ── DOES HOLDING IT CHANGE ANYTHING? ──
+        //
+        // Everything above is about whether the doctrine can be TAKEN. This is
+        // whether taking it does anything, measured on the country's own
+        // income rather than on getTotalEffect -- because the whole family of
+        // faults this codebase keeps hitting (maintenanceCostPct, navyCostPct,
+        // indoctrinationPct, and effects.pacification_cost, still dead today)
+        // is a number that sums correctly and is never spent. getTotalEffect
+        // agreeing proves only the sum.
+        //
+        // The Estate Compact grants passiveIncome, which computeCountryIncome
+        // adds to cs.total. If a mod's lever did not reach the economy, this is
+        // where it would show up as nothing.
+        reset();
+        const Policy* compact = find(ids[1]);
+        // NOT `if (declared)`. Guarding the measurement on the lever being
+        // present means a typo in doctrines.json removes the lever AND the
+        // check that would have caught it, and the section passes having
+        // measured nothing -- which is what it did the first time this was
+        // written, with passiveIncomee in the file.
+        check(compact->levers.count("passiveIncome") == 1,
+              "the second doctrine still declares passiveIncome, which the "
+              "measurement below needs");
+        const float passive = compact->levers.count("passiveIncome")
+                                  ? compact->levers.at("passiveIncome") : 0.0f;
+        check(passive != 0.0f, "and it is not zero");
+        if (passive != 0.0f) {
+            // computeCountryIncome is CACHED, per country and again in a
+            // single-entry cache beside it. A measurement that does not clear
+            // both reads the snapshot from before the doctrine and concludes
+            // the lever does nothing -- which is what this test said on its
+            // first run, about a lever that works.
+            auto income = [&]() {
+                game.m_countryIncomeCache.clear();
+                game.invalidateIncomeCache();
+                return game.computeCountryIncome(cid).total;
+            };
+            const float before = income();
+            game.enactPolicy(cid, ids[1], -1, "");
+            for (auto& ap : game.m_activePolicies)
+                if (ap.policyId == ids[1]) ap.turnsRemaining = 0;   // in force
+            const float after = income();
+            check(after > before,
+                  "holding it raises the country's income, measured on the economy");
+            // The size, not just the sign: passiveIncome is added whole, so the
+            // difference is the lever itself. A lever that reached a resolver
+            // which then halved or ignored it would pass the sign test.
+            const float delta = after - before;
+            check(delta > passive * 0.99f && delta < passive * 1.01f,
+                  "by exactly the lever it declares (" + std::to_string(delta) +
+                  " vs " + std::to_string(passive) + ")");
+        }
+
         reset();
     }
 

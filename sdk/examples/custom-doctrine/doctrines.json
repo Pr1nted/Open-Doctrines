@@ -26,7 +26,6 @@
     "effects": {
       "minority_growth_rate": 0.0,
       "immigration_boost": 0.0,
-      "pacification_cost": 0.0,
       "unrest_reduction": 0.015,
       "public_opinion_shift": 0.0,
       "target_minority": ""
@@ -78,7 +77,6 @@
     "effects": {
       "minority_growth_rate": 0.0,
       "immigration_boost": 0.0,
-      "pacification_cost": 0.0,
       "unrest_reduction": -0.01,
       "public_opinion_shift": 0.0,
       "target_minority": ""

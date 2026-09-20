@@ -137,7 +137,7 @@ here is summed and never spent.
 |---|---|
 | `armyAtkPct`, `armyDefPct` | land combat |
 | `navyAtkPct`, `navyDefPct`, `navySpeedPct` | naval combat and transit |
-| `conscriptionPct` | manpower available |
+| `conscriptionPct` | the per-turn recruitment cap — **player only**, see below |
 | `conscriptionCostPct` | price of recruiting |
 | `maintenanceCostPct` | price of keeping an army |
 | `industryCostPct` | price of building industry |
@@ -160,6 +160,14 @@ here is summed and never spent.
 Levers from research and from every active doctrine are summed, so yours adds to
 whatever else the country holds.
 
+> **`conscriptionPct` binds the player and not the AI.** It is read in exactly
+> one place — the recruitment panel, where it multiplies the 20%-of-population
+> cap — and the AI computes its own cap from `pop / 5` with no modifier. Fifteen
+> shipped doctrines grant it, including Mass Mobilisation at +45. A doctrine
+> built around it is a doctrine that makes the human stronger and leaves every
+> AI where it was. `tools/check_effect_fields.py` counts readers, not call
+> sites, so it reports this one as live.
+
 ### What it changes: `effects`
 
 The narrower, population-facing half:
@@ -169,9 +177,18 @@ The narrower, population-facing half:
 | `unrest_reduction` | subtracted from unrest each turn (0.015 = 1.5%) |
 | `public_opinion_shift` | nudges every owned province's compass each turn |
 | `immigration_boost` | added to the country's immigration draw |
-| `pacification_cost` | scales what pacifying a province costs |
+| `pacification_cost` | **nothing. Parsed and read by no one** — see below |
 | `minority_growth_rate` | growth of `target_minority`, and **does nothing unless `target_minority` is set** |
 | `target_minority` | the group the two minority fields apply to |
+
+> **`pacification_cost` does not work.** `parsePolicyJson` copies it into
+> `Policy::effect.pacificationCost` and nothing ever reads that field. Seven
+> shipped doctrines set it — Secret Police at 10, Officer Purge at 8, Internal
+> Passports at 6 — and none of them has ever changed a pacification bill. Do not
+> build a doctrine around it. It is the same fault `maintenanceCostPct` and
+> `navyCostPct` had; `tools/check_effect_fields.py` now reports it on every
+> run, and it stays reported until somebody spends it in a resolver or takes it
+> off the doctrines that sell it.
 
 ### `tradeoffs` is prose, not arithmetic
 
@@ -192,6 +209,35 @@ that is safe. For a **research node** it changes the shape of the model's
 feature vector, and a model whose parent no longer matches is silently
 re-initialised — so a research mod that opts in should ship with a model trained
 against it.
+
+---
+
+## Does any of it actually happen?
+
+Yes, for everything above except the two warnings — and those two are the
+reason to ask. A mod's doctrine is not a second-class one: `applyModDoctrines`
+puts it in the same `m_allPolicies` the data file fills, so from that point on
+nothing in the engine can tell them apart. Every rule below is checked against
+a mod-added doctrine in `PolicyRulesTest`, not asserted here:
+
+| What you write | Where it lands |
+|---|---|
+| `requirements` | `policyBlockReason` — the button greys out and says which edge failed |
+| `cost_per_turn` | charged every turn from `applyPolicyEffects`; gated at full price against spare income |
+| `implementation_turns` | counted down per turn, with the compass shift applied in slices |
+| `compass_shift` | `shiftCountryCompass`, while implementing and while in force |
+| `incompatible_with` | `policiesConflict`, from either side of the pair |
+| the 17 `levers` | summed by `getTotalEffect` and spent by the resolver that owns each one |
+| `unrest_reduction` | `policyUnrestPct`, in three resolver sites |
+| `public_opinion_shift` | every owned province's compass, per turn |
+| `immigration_boost` | the migration pass |
+| `minority_growth_rate` | the minority pass — **only if `target_minority` is set** |
+| `tradeoffs`, `description`, `folder`, `category` | printed, and nothing else |
+
+The one thing that is worth testing yourself is the *size* of a lever. `+10`
+resource income is not 10 money; it is 10% of the resource half of the
+country's income, which on a small country is a rounding error and on a large
+one is not.
 
 ---
 

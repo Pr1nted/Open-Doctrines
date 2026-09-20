@@ -35,6 +35,19 @@ Game::getResearchEffect. A field in that chain that no other file passes to
 getTotalEffect or getResearchEffect is summed and never spent. That is the
 whole check, and it is a text search -- it cannot tell you a resolver reads the
 number and then ignores it, only that nobody reads it at all.
+
+THE SECOND HALF: THE "effects" BLOCK
+
+`levers` is not the only thing a doctrine advertises. `effects` carries six
+more -- unrest_reduction, public_opinion_shift and the rest -- and they do not
+go through getTotalEffect at all: parsePolicyJson copies each into a field of
+Policy::effect and something is supposed to read that field.
+
+Nothing checked those, and one of them is dead. `pacification_cost` is parsed
+and read by NOTHING, while seven shipped doctrines set it -- Secret Police at
+10, Officer Purge at 8, Internal Passports at 6 -- every one of them selling a
+pacification cost that never applies. Exactly the maintenanceCostPct fault, in
+the half of the file this tool did not look at.
 """
 
 import argparse
@@ -89,6 +102,64 @@ def sellers(field):
     return nodes, doctrines
 
 
+POLICY_PARSER = os.path.join(ROOT, "src", "Game_Policies.cpp")
+
+# A Policy::effect field that is read only where it is parsed and where it is
+# printed is advertised and never applied. Display-only files do not count as
+# readers, and neither does the AI's scoring of a number it then cannot cash.
+EFFECT_NOT_A_READER = ("Game_Policies.cpp:150", "GameStructs.h")
+
+
+def effect_block_fields():
+    """(json key, Policy::effect member) for every field parsePolicyJson copies
+    out of the "effects" object."""
+    with open(POLICY_PARSER) as f:
+        src = f.read()
+    return sorted(set(re.findall(
+        r'policy\.effect\.(\w+)\s*=\s*effects\.value\("(\w+)"', src)))
+
+
+def effect_readers(member):
+    """Files that do something with Policy::effect.<member>."""
+    try:
+        out = subprocess.run(
+            ["grep", "-rn", f"effect.{member}", "--include=*.cpp", "--include=*.h",
+             os.path.join(ROOT, "src")],
+            capture_output=True, text=True).stdout
+    except OSError:
+        return []
+    keep = []
+    for line in out.splitlines():
+        if "effects.value" in line:        # the parse itself
+            continue
+        if f"float {member}" in line or f"std::string {member}" in line:
+            continue                        # the declaration
+        keep.append(line)
+    return keep
+
+
+def check_effects_block():
+    """The "effects" half. Returns the dead ones."""
+    print(f"\n{'effects field':<24} {'doctrines':>10}   readers")
+    doctrines = []
+    path = os.path.join(ROOT, "data", "policies.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            doctrines = json.load(f).get("policies", [])
+
+    dead = []
+    for member, key in effect_block_fields():
+        r = effect_readers(member)
+        sells = [p["id"] for p in doctrines
+                 if (p.get("effects") or {}).get(key) not in (None, 0, 0.0, "")]
+        mark = ""
+        if not r:
+            dead.append((key, sells))
+            mark = "   <-- NEVER APPLIED"
+        print(f"{key:<24} {len(sells):>10}   {len(r)}{mark}")
+    return dead
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true",
@@ -114,6 +185,15 @@ def main():
     print(f"\n{live} spent, {len(dead)} never spent, of "
           f"{len(fields_the_resolver_knows())} the resolver can sum")
 
+    deadEffects = check_effects_block()
+    if deadEffects:
+        print("\nPARSED AND NEVER APPLIED:")
+        for key, sells in deadEffects:
+            print(f"  effects.{key}: set by {len(sells)} doctrine(s)")
+            if sells:
+                print(f"      {', '.join(sells[:7])}"
+                      f"{' ...' if len(sells) > 7 else ''}")
+
     if dead:
         print("\nADVERTISED AND NEVER APPLIED:")
         for field, nodes, doctrines in dead:
@@ -124,7 +204,7 @@ def main():
         print("\nEach of these prints a number in a tooltip that nothing reads.")
         print("Either spend it in a resolver, or take it off the nodes that sell it.")
 
-    return 1 if (dead and args.strict) else 0
+    return 1 if ((dead or deadEffects) and args.strict) else 0
 
 
 if __name__ == "__main__":
