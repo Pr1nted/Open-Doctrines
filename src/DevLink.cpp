@@ -68,8 +68,6 @@ void* sharedMapping() {
 
     auto* head = static_cast<devshared::FrameHeader*>(p);
     std::memcpy(head->magic, devshared::kFrameMagic, 8);
-    head->width = devshared::kViewWidth;
-    head->height = devshared::kViewHeight;
     base = p;
     return base;
 }
@@ -192,16 +190,26 @@ void publishFrame() {
     Image shot = LoadImageFromScreen();
     if (shot.data == nullptr) return;
 
+    // As large as the mapping allows, and no larger than the screen: a window
+    // smaller than the ceiling publishes at 1:1 and costs less, rather than
+    // being scaled up into a bigger buffer for no detail.
+    const double fit = std::min({1.0,
+                                 static_cast<double>(devshared::kViewMaxWidth) / shot.width,
+                                 static_cast<double>(devshared::kViewMaxHeight) / shot.height});
+    const int outW = std::max(16, static_cast<int>(shot.width * fit));
+    const int outH = std::max(16, static_cast<int>(shot.height * fit));
+
     // NEAREST NEIGHBOUR, not the bicubic one. ImageResize on two million
     // pixels is tens of milliseconds of the GAME's frame, every frame it
-    // publishes -- the view was smooth and the game was not. At a sixth of
-    // the size nobody can tell which filter ran.
-    ImageResizeNN(&shot, devshared::kViewWidth, devshared::kViewHeight);
+    // publishes -- the view was smooth and the game was not.
+    if (outW != shot.width || outH != shot.height) ImageResizeNN(&shot, outW, outH);
 
     auto* head = static_cast<devshared::FrameHeader*>(base);
     auto* pixels = static_cast<unsigned char*>(base) + devshared::kPixelOffset;
     head->screenWidth = static_cast<unsigned>(GetScreenWidth());
     head->screenHeight = static_cast<unsigned>(GetScreenHeight());
+    head->width = static_cast<unsigned>(outW);
+    head->height = static_cast<unsigned>(outH);
 
     // A seqlock. Odd means "being written"; a reader that sees the same even
     // number either side of its copy read a whole frame. Cheaper than any
@@ -209,7 +217,8 @@ void publishFrame() {
     // the game.
     head->sequence += 1;  // now odd
     __sync_synchronize();
-    std::memcpy(pixels, shot.data, devshared::kPixelBytes);
+    std::memcpy(pixels, shot.data,
+                static_cast<std::size_t>(outW) * static_cast<std::size_t>(outH) * 4u);
     __sync_synchronize();
     head->sequence += 1;  // even again
 

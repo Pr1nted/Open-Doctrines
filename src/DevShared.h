@@ -18,11 +18,22 @@
 namespace devshared {
 
 /// Bumped whenever anything below changes shape.
-constexpr char kFrameMagic[8] = {'O', 'D', 'F', 'R', 'A', 'M', 'E', '3'};
+constexpr char kFrameMagic[8] = {'O', 'D', 'F', 'R', 'A', 'M', 'E', '4'};
 constexpr unsigned kInputMagic = 0x4F44494Eu;  // "ODIN"
 
-constexpr int kViewWidth = 480;
-constexpr int kViewHeight = 270;
+/**
+ * The LARGEST picture that fits in the mapping, not the one published.
+ *
+ * The published size follows the game's own screen, up to this, and the
+ * header says what it actually is -- so a game at 1280x720 publishes at 1:1
+ * and nothing is thrown away. A fixed 480x270 was a quarter of the detail and
+ * looked it the moment the editor's view was bigger than a thumbnail.
+ *
+ * The mapping is sized for the maximum once, because resizing a file two
+ * processes have mapped is a great deal harder than reserving three megabytes.
+ */
+constexpr int kViewMaxWidth = 1280;
+constexpr int kViewMaxHeight = 720;
 
 constexpr unsigned kMaxKeys = 32;
 constexpr unsigned kMaxChars = 16;
@@ -76,7 +87,7 @@ struct InputBlock {
 };
 
 constexpr std::size_t kPixelBytes =
-    static_cast<std::size_t>(kViewWidth) * static_cast<std::size_t>(kViewHeight) * 4u;
+    static_cast<std::size_t>(kViewMaxWidth) * static_cast<std::size_t>(kViewMaxHeight) * 4u;
 constexpr std::size_t kPixelOffset = sizeof(FrameHeader);
 constexpr std::size_t kInputOffset = kPixelOffset + kPixelBytes;
 constexpr std::size_t kTotalBytes = kInputOffset + sizeof(InputBlock);
