@@ -2524,6 +2524,17 @@ void Game::drawStateIndustry() {
              x, y, 11, cap > 0 ? LIGHTGRAY : Color{160, 120, 120, 255});
     y += 18;
 
+    // Counted ONCE, not once per row. This is drawn every frame, and the row
+    // loop below used to walk the country's provinces for each of the five
+    // specialities -- 255 provinces times five is 1,275 hash lookups a frame to
+    // answer a question whose answer is the same for all five.
+    std::map<std::string, int> provinceCount;
+    for (int pid : provincesOf(m_playerCountryId)) {
+        auto ind = m_provinceIndustry.find(pid);
+        if (ind != m_provinceIndustry.end() && !ind->second.specialization.empty())
+            ++provinceCount[ind->second.specialization];
+    }
+
     const Vector2 mouse = GetMousePosition();
     for (const char* res : SPEC_RESOURCES) {
         const float ramp = nationalisationRamp(m_playerCountryId, res);
@@ -2535,12 +2546,8 @@ void Game::drawStateIndustry() {
         // A row for a speciality this country has nowhere is noise. Counted
         // rather than assumed: a country may specialise into one next turn, and
         // then the row appears on its own.
-        int provinces = 0;
-        for (int pid : provincesOf(m_playerCountryId)) {
-            auto ind = m_provinceIndustry.find(pid);
-            if (ind != m_provinceIndustry.end() && ind->second.specialization == res)
-                ++provinces;
-        }
+        auto pcIt = provinceCount.find(res);
+        const int provinces = (pcIt == provinceCount.end()) ? 0 : pcIt->second;
         if (provinces == 0 && ramp <= 0.0f) continue;
 
         const Rectangle row = {(float)x, (float)y, (float)w, 20.0f};

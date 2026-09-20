@@ -1394,7 +1394,11 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
             for (int pid : d.provinces) {
                 const Province* pr = m_provinces.getProvinceById(pid);
                 if (!pr || pr->countryId != me) continue;
-                sum += getProvinceRebellionChance(pid);
+                // `me`, not the player. This runs for whichever country asked
+                // the advisor, and the one-argument overload answers for
+                // m_playerCountryId -- so every seat but one was told about
+                // its own districts measured against somebody else's compass.
+                sum += getProvinceRebellionChance(pid, me);
                 ++counted;
             }
             if (counted == 0) continue;

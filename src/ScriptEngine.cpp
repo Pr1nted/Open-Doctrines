@@ -1679,9 +1679,15 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
                     return ScriptValue::makeStr(d.name);
             return ScriptValue::makeStr("");
         }
-        // The resolver's own figure, not a re-derived one.
-        if (prop == "rebellion_chance")
-            return ScriptValue::makeFloat(m_game->getProvinceRebellionChance(pid));
+        // The resolver's own figure, not a re-derived one -- and measured
+        // against the province's OWN government. The one-argument overload
+        // answers for m_playerCountryId, so a script asking about a province
+        // anywhere else was given its distance from the player's compass.
+        if (prop == "rebellion_chance") {
+            const Province* pr = m_game->m_provinces.getProvinceById(pid);
+            return ScriptValue::makeFloat(
+                m_game->getProvinceRebellionChance(pid, pr ? pr->countryId : 0));
+        }
     }
 
     return ScriptValue::makeStr(ref); // unknown ref — return as string

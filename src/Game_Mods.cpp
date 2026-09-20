@@ -2305,7 +2305,15 @@ double Game::modCountryCompassSocial(int cid) const {
     return it == m_countryCompass.end() ? 0.0 : (double)it->second.social;
 }
 double Game::modProvinceUnrest(int pid) const {
-    return (double)const_cast<Game*>(this)->getProvinceRebellionChance(pid);
+    // AGAINST ITS OWN GOVERNMENT, not the player's. The one-argument overload
+    // answers for m_playerCountryId, which is right on a screen the player is
+    // looking at and wrong here: a mod asking about a province it does not own
+    // -- which is most of them -- was given that province's distance from a
+    // compass on the other side of the world, as a number with no sign that it
+    // was about somebody else.
+    const Province* p = m_provinces.getProvinceById(pid);
+    const int owner = p ? p->countryId : 0;
+    return (double)const_cast<Game*>(this)->getProvinceRebellionChance(pid, owner);
 }
 int Game::modPolicyCount() const { return (int)m_allPolicies.size(); }
 std::string Game::modPolicyId(int i) const {

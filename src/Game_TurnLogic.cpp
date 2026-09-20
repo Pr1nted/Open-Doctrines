@@ -3537,7 +3537,15 @@ long long Game::recruitCap(long long pool, int provinceId, int countryId) const 
 
     // Unrest reduces willingness to be conscripted. Floored at 0.1 so a
     // province in open revolt still yields something rather than nothing.
-    float unrestFactor = 1.0f - getProvinceRebellionChance(provinceId);
+    //
+    // THE TWO-ARGUMENT OVERLOAD, and the reason this function exists. The
+    // one-argument form answers for m_playerCountryId, which is exactly right
+    // in the panel this was lifted from -- and wrong the moment the same code
+    // answers for somebody else, because it then measures the province against
+    // the PLAYER's compass. An AI's ceiling would have been cut by a number
+    // about a country on the other side of the world. For the player the two
+    // forms are the same value, so the panel is unchanged either way.
+    float unrestFactor = 1.0f - getProvinceRebellionChance(provinceId, countryId);
     if (unrestFactor < 0.1f) unrestFactor = 0.1f;
     cap = (long long)(cap * unrestFactor);
 

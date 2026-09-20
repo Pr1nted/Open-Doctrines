@@ -711,6 +711,51 @@ struct PolicyRules {
             check(game.nationalisationRamp(cid2, res) == 0.0f,
                   "a country that moves right loses it");
         }
+        // ── DOES A SAVE CARRY IT? ──
+        //
+        // Written and never exercised is the state this arrived in. A save
+        // that silently drops a holding would look exactly like a mechanic
+        // that works, right up until somebody reloaded a campaign -- and
+        // nothing above this line touches saveStateJson at all.
+        if (on) {
+            // The block above left this country at the far RIGHT, to watch the
+            // cap take a holding away. Its cap is therefore 0, and without
+            // putting the compass back the takes below are all refused -- and
+            // two of the checks would then compare 0 against 0 and pass.
+            game.m_countryCompass[cid2] = makeCompass(-100.0f, 0.0f);
+            game.m_nationalised.clear();
+            check(game.nationalise(cid2, res), "a holding is taken to save");
+            for (int i = 0; i < 6; ++i) game.stepNationalisation();
+            // One held and climbing, one released and decaying: the `held`
+            // flag is the field a round trip is most likely to lose, and
+            // losing it hands a privatised country its output back.
+            const std::string other = (res == "Oil") ? "Gold" : "Oil";
+            game.nationalise(cid2, other);
+            game.stepNationalisation();
+            game.releaseNationalised(cid2, other);
+            const float rampHeld = game.nationalisationRamp(cid2, res);
+            const float rampGone = game.nationalisationRamp(cid2, other);
+            check(rampHeld > 0.0f && rampGone > 0.0f, "both have a ramp to carry");
+
+            const std::string saved = game.saveStateJson();
+            game.m_nationalised.clear();
+            game.loadStateJsonBody(saved);
+
+            check(game.nationalisationRamp(cid2, res) == rampHeld,
+                  "the held one comes back at the same ramp");
+            check(game.nationalisationRamp(cid2, other) == rampGone,
+                  "and so does the one that was decaying");
+
+            // Which of the two is still HELD has to survive as well, and the
+            // only way to see it from outside is to step and watch which way
+            // each ramp moves.
+            game.stepNationalisation();
+            check(game.nationalisationRamp(cid2, res) > rampHeld,
+                  "the held one keeps climbing after the load");
+            check(game.nationalisationRamp(cid2, other) < rampGone,
+                  "and the released one keeps falling");
+        }
+
         reset();
         game.m_nationalised.clear();
     }
