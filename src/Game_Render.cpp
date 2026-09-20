@@ -1131,6 +1131,19 @@ void Game::drawCountryPanel() {
                                             bonus),
                                  rX, rY + 102, 14, GREEN);
                 }
+                // What the state has taken here, if anything. On the province
+                // panel as well as the politics screen because this is where a
+                // player looks when the income does not match the bonus above:
+                // the answer is the ramp, and it belongs beside the number it
+                // is moving.
+                const float ramp = provinceNationalisationRamp(selPid);
+                if (ramp > 0.0f) {
+                    DrawText(TextFormat(T("State-owned: %d%% (output +%.0f%%, upkeep +%.0f%%)"),
+                                        (int)(ramp * 100.0f + 0.5f),
+                                        (odnat::outputMul(ramp) - 1.0f) * 100.0f,
+                                        (odnat::upkeepMul(ramp) - 1.0f) * 100.0f),
+                             rX, rY + 122, 13, Color{150, 200, 170, 255});
+                }
             }
         }
     }

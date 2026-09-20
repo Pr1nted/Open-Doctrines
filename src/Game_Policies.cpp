@@ -2485,6 +2485,113 @@ void Game::drawAnalysisTab() {
                 m_pacificationAllocation = std::clamp(t, 0.0f, maxAllocFrac);
         }
     }
+
+    drawStateIndustry();
+}
+
+// ─── State industry ──────────────────────────────────────────────────────────
+//
+// On the POLITICS screen and not the economy one, because what a country may
+// take is decided by its compass and nothing else: the row that greys out says
+// "your economy is too liberal", which is a political sentence. It sits under
+// the pacification budget, the other thing on this screen that is a dial rather
+// than a doctrine.
+//
+// Every row shows the RAMP, because the ramp is the mechanic. A player who sees
+// only "nationalised" learns nothing about why the output has not moved yet,
+// and the first thing they would do is take it, look at the income, and
+// conclude it is broken. See src/Nationalisation.h.
+void Game::drawStateIndustry() {
+    if (!nationalisationOn()) return;
+
+    const int x = m_screenW - 270;
+    int y = 440;
+    // NARROWER than the pacification bar above it, which is 200. That bar is a
+    // drag target that starts at the left, so the sidebar icons overlapping its
+    // right end cost nothing. These rows are CLICK targets along their whole
+    // width, and a row that runs under the Economy button is a row where half
+    // the clicks nationalise something and half open another screen.
+    const int w = 160;
+
+    const int cap = nationalisationCap(m_playerCountryId);
+    int held = 0;
+    auto natIt = m_nationalised.find(m_playerCountryId);
+    if (natIt != m_nationalised.end())
+        for (const odnat::Holding& h : natIt->second) if (h.held) ++held;
+
+    DrawText(T("State Industry:"), x, y - 20, 13, WHITE);
+    DrawText(TextFormat(T("%d of %d allowed by your economy"), held, cap),
+             x, y, 11, cap > 0 ? LIGHTGRAY : Color{160, 120, 120, 255});
+    y += 18;
+
+    const Vector2 mouse = GetMousePosition();
+    for (const char* res : SPEC_RESOURCES) {
+        const float ramp = nationalisationRamp(m_playerCountryId, res);
+        bool isHeld = false;
+        if (natIt != m_nationalised.end())
+            for (const odnat::Holding& h : natIt->second)
+                if (h.resource == res && h.held) isHeld = true;
+
+        // A row for a speciality this country has nowhere is noise. Counted
+        // rather than assumed: a country may specialise into one next turn, and
+        // then the row appears on its own.
+        int provinces = 0;
+        for (int pid : provincesOf(m_playerCountryId)) {
+            auto ind = m_provinceIndustry.find(pid);
+            if (ind != m_provinceIndustry.end() && ind->second.specialization == res)
+                ++provinces;
+        }
+        if (provinces == 0 && ramp <= 0.0f) continue;
+
+        const Rectangle row = {(float)x, (float)y, (float)w, 20.0f};
+        const bool hov = CheckCollisionPointRec(mouse, row);
+
+        // The ramp as a filled bar behind the name: the number is also printed,
+        // but a bar is what makes "this is still climbing" legible at a glance.
+        DrawRectangleRec(row, Color{28, 28, 36, 200});
+        if (ramp > 0.0f)
+            DrawRectangle((int)row.x, (int)row.y, (int)(w * ramp), 20,
+                          isHeld ? Color{60, 110, 80, 180} : Color{110, 70, 60, 180});
+        DrawRectangleLinesEx(row, 1, hov ? Color{140, 140, 170, 220}
+                                         : Color{70, 70, 90, 160});
+
+        DrawText(od::i18n::tr(res), (int)row.x + 6, (int)row.y + 4, 12, WHITE);
+        DrawText(TextFormat("%d%%", (int)(ramp * 100.0f + 0.5f)),
+                 (int)row.x + w - 34, (int)row.y + 4, 12,
+                 ramp > 0.0f ? WHITE : Color{110, 110, 130, 255});
+
+        // What the ramp is actually worth right now, so the trade is on screen
+        // rather than in a wiki. Only when there is something to say.
+        if (ramp > 0.0f) {
+            DrawText(TextFormat(T("out +%.0f%%  build +%.0f%%  upkeep +%.0f%%"),
+                                (odnat::outputMul(ramp) - 1.0f) * 100.0f,
+                                (odnat::buildCostMul(ramp) - 1.0f) * 100.0f,
+                                (odnat::upkeepMul(ramp) - 1.0f) * 100.0f),
+                     (int)row.x, (int)row.y + 21, 10, Color{150, 150, 170, 255});
+            y += 12;
+        }
+
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            // One click toggles. Releasing does not refund the ramp -- it
+            // starts it decaying -- and the tooltip below says so before the
+            // click rather than after it.
+            if (isHeld) releaseNationalised(m_playerCountryId, res);
+            else nationalise(m_playerCountryId, res);
+        }
+        if (hov) {
+            const char* tip = isHeld
+                ? T("Release. The output falls away over twenty turns, not at once.")
+                // ONE LINE, not a wrapped literal. tools/i18n_extract.py reads a
+                // T() a line at a time, so a string split across two lines is
+                // extracted as two half-sentences and neither is the label the
+                // screen draws -- which is how a label reaches a translator in
+                // pieces that cannot be reassembled.
+                : (held >= cap ? T("Your economy is too liberal to take another.")
+                               : T("Take into state hands: dearer to build and run, more out of the ground, twenty turns to either."));
+            DrawText(tip, x - 320, (int)row.y, 11, Color{200, 200, 220, 230});
+        }
+        y += 24;
+    }
 }
 
 void Game::drawEthnicTab() {

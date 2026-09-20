@@ -1,5 +1,7 @@
 #pragma once
 #include <map>
+#include <set>
+#include <utility>
 #include "NeuralNet.h"
 #include "../BuildCosts.h"   // TroopType, for chooseTroopType
 
@@ -251,6 +253,13 @@ public:
     /** Journal 399: enact an attack doctrine the politics head never takes.
      *  OD_DOCTRINE_REFLEX, off by default; counters printed at exit. */
     void doctrineReflex(int cid);
+    /** Take one resource speciality into state hands, when there is room under
+     *  the compass cap. Behind OD_NATIONALISATION, like the mechanic itself:
+     *  without it the AI never touches nationalisation and a bench of the
+     *  mechanic measures a mechanic nobody uses. Counter printed at exit. */
+    void nationalisationReflex(int cid);
+    static std::atomic<long long> s_nationalisedFired;
+    static void dumpNationalised();
     /** Median army among living non-rebel countries, cached per turn (journal 400). */
     long long medianLivingArmy() const;
     mutable int m_medArmyTurn = -1;
@@ -260,6 +269,14 @@ public:
     static std::map<std::string, long long> s_doctrineReflexBy;
     /// Who bought, by isoA3, with the scored bench seat marked. Journal 404.
     static std::map<std::string, long long> s_doctrineReflexByCountry;
+    // ── WAR LIFECYCLE CENSUS (OD_WARLIFE, off by default). Journal 405. ──
+    // Backlog 103: the doctrine reflex gives the scored seat +52 while buying
+    // 3-11% of the world's doctrines, so the gain is what the WORLD does with
+    // them. This counts the turnover the slot story predicts.
+    void warLifeCensus();
+    static void dumpWarLife();
+    static std::map<std::pair<int,int>, int> s_warOpen;   ///< pair -> turn it opened
+    static long long s_warsStarted, s_warsEnded, s_warLenSum, s_warOpenSum, s_warTurns;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port
     std::unordered_map<int,int> m_lastIndustryBuy;///< cid -> turn of last industry level
     // Politics: 0 hold, 1 enact policy, 2 pac up, 3 pac down, 4 cancel policy,

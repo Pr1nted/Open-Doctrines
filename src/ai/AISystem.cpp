@@ -1662,6 +1662,7 @@ void AISystem::beginTurn() {
     // Reads m_world.largestCid and every country's army, so it goes after both.
     updateCoalition();
     updateTrends();
+    warLifeCensus();   // reads m_warWith; writes nothing the game can see
 
     // This map's frozen opponent, drawn once the world exists.
     //
@@ -4019,6 +4020,7 @@ void AISystem::takeTurn(int cid) {
         siegeReflex(cid);
     researchAusterityReflex(cid);
     doctrineReflex(cid);
+    nationalisationReflex(cid);
     industryReflex(cid);
     navalReflex(cid);
     if (!reflexAblated("campaign") && !m_g->llmSuppressesReflex(cid, "campaign"))
@@ -13766,8 +13768,13 @@ double AISystem::s_warBarAtk = 0.0;
 double AISystem::s_warBarDef = 0.0;
 double AISystem::s_warBarAtkRes = 0.0;
 std::atomic<long long> AISystem::s_doctrineReflexFired{0};
+std::atomic<long long> AISystem::s_nationalisedFired{0};
 std::map<std::string, long long> AISystem::s_doctrineReflexBy;
 std::map<std::string, long long> AISystem::s_doctrineReflexByCountry;
+std::map<std::pair<int,int>, int> AISystem::s_warOpen;
+long long AISystem::s_warsStarted = 0, AISystem::s_warsEnded = 0,
+          AISystem::s_warLenSum = 0, AISystem::s_warOpenSum = 0,
+          AISystem::s_warTurns = 0;
 double AISystem::s_warBarDefRes = 0.0;
 long long AISystem::s_gateWhy[4][6] = {};
 int AISystem::s_netPicked[4][12] = {};
@@ -14260,6 +14267,78 @@ long long AISystem::medianLivingArmy() const {
     return m_medArmy;
 }
 
+// ─── nationalisationReflex ───────────────────────────────────────────────────
+//
+// WHY A REFLEX AND NOT AN ACTION. Nationalisation is a new decision, and a new
+// decision in the policy head is a new output in the action space -- which
+// changes the shape of the model's input, makes every existing model's parent
+// stop matching, and silently re-initialises it. A reflex is a hand-written
+// rule that costs the action space nothing, and in this codebase every measured
+// gain has been one.
+//
+// WHY IT EXISTS AT ALL. Until it did, OD_NATIONALISATION=1 left the decision
+// hash byte-identical to the flag being off, because nothing in the AI ever
+// called nationalise(). Benching the mechanic in that state measures a mechanic
+// no agent uses, and the answer would have been a guaranteed null with hours
+// spent getting it.
+//
+// ONE CONDITION: room under the compass cap. Not a conjunction -- a rule with
+// four preconditions fires rarely enough that a bench cannot see it, and the
+// cap is already the ideological gate the mechanic is built around. What to
+// take is not a condition but a choice: the speciality with the most resource
+// income behind it, because that is where the +45% lands.
+void AISystem::nationalisationReflex(int cid) {
+    if (!Game::nationalisationOn()) return;
+    Game& g = *m_g;
+
+    int held = 0;
+    auto it = g.m_nationalised.find(cid);
+    if (it != g.m_nationalised.end())
+        for (const odnat::Holding& h : it->second) if (h.held) ++held;
+    if (held >= g.nationalisationCap(cid)) return;
+
+    // What each unheld speciality is worth to this country, by the income
+    // actually under it. provinceResourceIncome already carries the
+    // specialisation boost, so this is the number the multiplier will scale.
+    std::map<std::string, float> worth;
+    for (int pid : g.provincesOf(cid)) {
+        auto ind = g.m_provinceIndustry.find(pid);
+        if (ind == g.m_provinceIndustry.end()) continue;
+        const std::string& spec = ind->second.specialization;
+        if (spec.empty()) continue;
+        if (g.nationalisationRamp(cid, spec) > 0.0f) continue;   // already ours
+        worth[spec] += g.provinceResourceIncome(pid);
+    }
+    if (worth.empty()) return;
+
+    // Highest income, ties by name: two specialities worth the same amount must
+    // not be separated by map iteration order, or the same seed diverges
+    // between runs.
+    const std::string* best = nullptr;
+    for (const auto& [spec, w] : worth)
+        if (!best || w > worth.at(*best)) best = &spec;
+    if (!best) return;
+
+    if (g.nationalise(cid, *best)) ++s_nationalisedFired;
+
+    // ITS OWN atexit, registered HERE. The first attempt printed this from
+    // dumpDoctrineReflex, whose hook is registered inside the doctrine reflex
+    // and so never runs without OD_DOCTRINE_REFLEX -- the counter produced
+    // total silence, and silence reads as "the reflex never fired", which is
+    // the opposite finding from "it fired and did not matter". Exactly the
+    // fault OD_DECISION_HASH had (journal 300).
+    static const bool reg = (atexit(&AISystem::dumpNationalised), true);
+    (void)reg;
+}
+
+void AISystem::dumpNationalised() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[NATIONALISE] specialities taken by the reflex: %lld\n",
+            s_nationalisedFired.load());
+}
+
 void AISystem::doctrineReflex(int cid) {
     // 0/unset off; 1 = as journal 399 measured it; 2 = narrowed, see below.
     static const int mode = std::getenv("OD_DOCTRINE_REFLEX")
@@ -14358,10 +14437,63 @@ void AISystem::dumpDoctrineReflex() {
     done = true;
     fprintf(stderr, "[DOCREFLEX] doctrines enacted by the reflex: %lld\n",
             s_doctrineReflexFired.load());
+
     for (const auto& [id, n] : s_doctrineReflexBy)
         fprintf(stderr, "[DOCREFLEX]   %-26s %lld\n", id.c_str(), n);
     for (const auto& [iso, n] : s_doctrineReflexByCountry)
         fprintf(stderr, "[DOCREFLEX] by %-24s %lld\n", iso.c_str(), n);
+}
+
+// ── WAR LIFECYCLE CENSUS (OD_WARLIFE) ──
+//
+// Backlog 103. Journal 404 showed the doctrine reflex's gain cannot be the seat
+// arming itself (3-11% of purchases), so it is what the world does with the
+// other 89-97%. The candidate mechanism is turnover: an attack modifier makes
+// wars decisive, decisive wars end, and AI_MAX_CONCURRENT_WARS is 1, so every
+// war that ends frees a slot (memory stalled-wars-lock-the-war-slot).
+//
+// It reads m_warWith, which updateWorld() has just rebuilt from the relation
+// graph, and writes only statics: no RNG draw, no game state, nothing a
+// decision can see. Rebels are skipped, as they are in every other reflex here
+// -- a rebellion is not a war anybody declared.
+void AISystem::warLifeCensus() {
+    static const bool on = std::getenv("OD_WARLIFE") &&
+                           atoi(std::getenv("OD_WARLIFE")) != 0;
+    if (!on) return;
+    std::set<std::pair<int,int>> now;
+    for (const auto& [cid, enemies] : m_warWith) {
+        if (cid <= 0 || cid >= Game::REBEL_CID_MIN) continue;
+        for (int e : enemies) {
+            if (e <= 0 || e >= Game::REBEL_CID_MIN) continue;
+            now.insert({std::min(cid, e), std::max(cid, e)});
+        }
+    }
+    for (const auto& p : now)
+        if (!s_warOpen.count(p)) { s_warOpen[p] = m_turn; ++s_warsStarted; }
+    for (auto it = s_warOpen.begin(); it != s_warOpen.end(); ) {
+        if (now.count(it->first)) { ++it; continue; }
+        s_warLenSum += (long long)(m_turn - it->second);
+        ++s_warsEnded;
+        it = s_warOpen.erase(it);
+    }
+    s_warOpenSum += (long long)now.size();
+    ++s_warTurns;
+    static const bool reg = (atexit(&AISystem::dumpWarLife), true);
+    (void)reg;
+}
+
+void AISystem::dumpWarLife() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    // Counts alongside every rate, because a rate that hides its count has
+    // cost this project an iteration before (memory rates-need-counts).
+    fprintf(stderr, "[WARLIFE] started %lld  ended %lld  still open %zu  "
+            "mean length %.1f turns  mean concurrent %.2f  over %lld turns\n",
+            s_warsStarted, s_warsEnded, s_warOpen.size(),
+            s_warsEnded ? (double)s_warLenSum / (double)s_warsEnded : 0.0,
+            s_warTurns ? (double)s_warOpenSum / (double)s_warTurns : 0.0,
+            s_warTurns);
 }
 
 void AISystem::researchAusterityReflex(int cid) {

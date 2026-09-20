@@ -186,6 +186,11 @@ const Shot SHOTS[] = {
     {"orders-phase",  30, true},
     {"orders-zoom",   20, true},
     {"policies",      20, true},
+    // The same screen with industry in state hands. A separate shot because
+    // the panel only exists when OD_NATIONALISATION is on, and because what it
+    // has to show is a RAMP part-way up -- a row at 0% and a row at 100% are
+    // the two states that photograph as if there were no ramp at all.
+    {"state-industry", 20, true},
     {"economy",       20, true},
     {"economy-local", 20, true},
     {"research",      20, true},
@@ -458,6 +463,14 @@ bool Game::tickScreenshotTour() {
             m_currentScreen = SCREEN_PLAYING;
             m_paused = false;
             m_inSettings = false;
+            // ...and NO COUNTRY PROFILE over it. The same fault as the screen
+            // and the globe, in its third form: the profile shots set
+            // m_profileCountryId and nothing put it back, so every world shot
+            // after them photographed a profile page. `policies` has been a
+            // picture of the United States' published figures rather than of
+            // the doctrine screen, which is the shot the store page uses.
+            // A shot that wants a profile sets it in its own branch below.
+            m_profileCountryId = 0;
             // And the FLAT map, every time, unless this shot asked for the
             // globe. Exactly the fault described above, in its second form: the
             // globe shots left the view turned and every world shot after them
@@ -1157,6 +1170,20 @@ bool Game::tickScreenshotTour() {
             m_openFolders.insert("Left");
             m_openFolders.insert("Right");
             m_policyScroll = 0;
+        } else if (name == "state-industry") {
+            m_activeSidebarTab = 1;
+            m_inPolitics = true;
+            m_policyTab = 3;            // Analysis, where the country dials are
+            m_policyScroll = 0;
+            // Two holdings, deliberately at different points on the ramp: one
+            // most of the way up and one just taken. A shot of two identical
+            // rows would not show that the bar means anything.
+            if (nationalisationOn()) {
+                m_nationalised[m_playerCountryId] = {
+                    {"Oil",   0.8f, true},
+                    {"Metal", 0.15f, true},
+                };
+            }
         } else if (name == "economy") {
             m_activeSidebarTab = 2;
             m_inEconomy = true;

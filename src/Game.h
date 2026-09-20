@@ -2839,6 +2839,8 @@ public:
     float provinceNationalisationRamp(int provinceId) const;
     /** The level-weighted share of this country's industry in state hands. */
     float nationalisedIndustryShare(int countryId) const;
+    /** The state-industry panel on the politics screen. */
+    void drawStateIndustry();
 
     /** Catalogue entries mods have added. See src/ModContent.h. */
     odcontent::Registry m_modContent;
