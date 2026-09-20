@@ -2,6 +2,8 @@
 #include "util/LoadLog.h"
 #include "Palette.h"
 #include "mods/ModProtected.h"
+#include "mods/ModManager.h"
+#include "DevLink.h"
 #include "Game.h"
 
 #include "util/Async.h"
@@ -2360,6 +2362,10 @@ void Game::run() {
     }
 #endif
     while (m_running && !WindowShouldClose()) {
+        // The editor's pointer and keys, read once at the top of the frame so
+        // that every question asked below this line gets a consistent answer.
+        // A no-op unless OD_DEV_VIEW is set and something is sending.
+        devinput::poll();
         float dt = GetFrameTime();
 
         // ── ABOVE EVERY EARLY-OUT IN THIS LOOP, WHICH IS THE WHOLE POINT ──
@@ -3249,6 +3255,27 @@ void Game::endFrame() {
     drawRatingPrompt();
     drawMpInvite();       // self-gates on the main menu
     drawPadCursor();
+
+    // --- the live modding loop, off unless OD_DEV_WATCH / OD_DEV_VIEW ---
+    //
+    // Here rather than in the mods menu because a modder watching their change
+    // take effect is looking at the GAME, not at a list of mods. The frame is
+    // published before EndDrawing, which is the last moment the back buffer
+    // still holds it.
+    if (devlink::modsChanged(ModManager::get().modsDir())) {
+        syncModNetContext();   // setNetContext must precede reloadAll
+        ModManager::get().reloadAll();
+        clearModThumbnails();
+        m_modFeedback = "Reloaded: a mod file changed";
+        m_modFeedbackTimer = 2.0f;
+        // Said out loud as well as on screen: the feedback toast only shows in
+        // the mod menu, and the person waiting for this is usually looking at
+        // their editor rather than at the game.
+        std::fprintf(stderr, "[devlink] a mod file changed -- modloader reloaded\n");
+        std::fflush(stderr);
+    }
+    if (devlink::focusRequested()) SetWindowFocused();
+    devlink::publishFrame();
 
     EndDrawing();
 
