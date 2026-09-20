@@ -50,6 +50,11 @@ sdk/**/package-lock.json
 # the same way the script SDKs generate their script.h.
 sdk/examples/custom-doctrine/doctrines.h
 
+# Radium's per-platform build trees (check-macos, check-web, check-windows).
+# Build output, 3 GB of it, and it blocked a release: release.py refuses an
+# unclean tree, and an untracked directory counts.
+.radium/
+
 # SDK toolchains installed by tools/sdk_toolchains.sh
 .toolchains/
 
