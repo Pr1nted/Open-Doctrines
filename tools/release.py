@@ -356,11 +356,35 @@ def set_sdk_version(major, minor, dry_run):
     return changed
 
 
+def sdk_tag_exists(major, minor):
+    """Whether gearbox-vMAJOR.MINOR has already been tagged."""
+    out = run(["git", "tag", "--list", f"gearbox-v{major}.{minor}"], capture=True)
+    return bool(out.strip())
+
+
 def cmd_sdk(args):
     step("sdk release")
     major, minor = sdk_version()
+
+    # ── RELEASE THE VERSION IN THE TREE IF IT WAS NEVER RELEASED ──
+    #
+    # This used to bump unconditionally, on the assumption that the version in
+    # abi.json is the one already published. That assumption breaks the moment
+    # a bump lands without a tag -- which is where this repository sat: the
+    # tree said Gearbox 1.3, 41 imports had been added since 1.2, every example
+    # manifest and the whole of docs/gearbox-custom-policy.md said 1.3, and the
+    # last tag was gearbox-v1.2. Bumping would have published that exact ABI as
+    # 1.4, left no gearbox-v1.3 in existence, and made every "gearbox": "1.3"
+    # in the tree one behind the host for no reason a modder could see.
+    #
+    # So: bump only if the current version is already out. --major still bumps,
+    # because that is an explicit request to break compatibility.
     if args.major:
         nmajor, nminor = major + 1, 0
+    elif not sdk_tag_exists(major, minor):
+        nmajor, nminor = major, minor
+        say(f"Gearbox {major}.{minor} is in the tree and has no tag: "
+            f"releasing it as it stands rather than bumping past it")
     else:
         nmajor, nminor = major, minor + 1
     say(f"Gearbox {major}.{minor} -> {nmajor}.{nminor}")
