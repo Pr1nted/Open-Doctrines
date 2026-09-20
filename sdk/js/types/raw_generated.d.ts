@@ -9,6 +9,7 @@ declare namespace GearboxRaw {
   // Write a line to the game log and the mod menu's log view. Messages
   // longer than 2048 bytes are truncated. An out-of-bounds (ptr,len) is
   // refused and logged as an error against your mod rather than read.
+  // gearbox:core "log"
   // `(iii)`
   function log(level: number, msg: number, msgLen: number): void;
 
@@ -16,12 +17,14 @@ declare namespace GearboxRaw {
   // host writes at most that many bytes, so an older mod stays safe against
   // a newer host. If size is 0 or larger than the host's struct, the host
   // uses its own size.
+  // gearbox:core "env"
   // `(i)`
   function env(out: number): void;
 
   // Unrecoverable error. Traps out of the current call, disables the mod,
   // and shows the message to the user. Prefer returning an error from a hook
   // where you can.
+  // gearbox:core "abort"
   // `(ii)`
   function abort(msg: number, msgLen: number): void;
 
@@ -29,21 +32,25 @@ declare namespace GearboxRaw {
   // unmetered. This is the LIMIT, not a live countdown: it does not decrease
   // as you run. Use it to size your work up front and count your own
   // iterations.
+  // gearbox:core "fuel_budget"
   // `()I`
   function fuelBudget(): number;
 
   // The current turn. 0 when no world is loaded.
+  // gearbox:gamestate.read "turn_number"
   // `()i`
   function turnNumber(): number;
 
   // How many countries exist. 0 when no world is loaded. Rebel factions are
   // not included.
+  // gearbox:gamestate.read "country_count"
   // `()i`
   function countryCount(): number;
 
   // The country at index in [0, country_count). Returns GEARBOX_INVALID
   // (0xFFFFFFFF) if out of range. Ordering is stable within a turn but not
   // across turns.
+  // gearbox:gamestate.read "country_at"
   // `(i)i`
   function countryAt(index: number): number;
 
@@ -51,22 +58,27 @@ declare namespace GearboxRaw {
   // length. Call with cap 0 to size, then again to fill. A return greater
   // than cap means truncation, not failure. Returns 0 for an unknown
   // country.
+  // gearbox:gamestate.read "country_name"
   // `(iii)i`
   function countryName(country: number, buf: number, cap: number): number;
 
   // Treasury balance. 0 for an unknown country.
+  // gearbox:gamestate.read "country_treasury"
   // `(i)F`
   function countryTreasury(country: number): number;
 
   // How many provinces the country owns. 0 for an unknown country.
+  // gearbox:gamestate.read "country_province_count"
   // `(i)i`
   function countryProvinceCount(country: number): number;
 
   // Population of a province. 0 for an unknown province.
+  // gearbox:gamestate.read "province_population"
   // `(i)I`
   function provincePopulation(province: number): number;
 
   // Owning country, or GEARBOX_INVALID if unowned or unknown.
+  // gearbox:gamestate.read "province_owner"
   // `(i)i`
   function provinceOwner(province: number): number;
 
@@ -74,35 +86,41 @@ declare namespace GearboxRaw {
   // headless, when UI was revoked, or when you already hold 8 panels. Titles
   // are truncated to 64 bytes. Call this from mod_load, not from your draw
   // hook.
+  // gearbox:ui "panel_register"
   // `(iiii)i`
   function panelRegister(title: number, titleLen: number, minW: number, minH: number): number;
 
   // Filled rectangle in panel-relative coordinates. Colour is 0xRRGGBBAA.
   // Coordinates outside the panel are clipped by the host; they cannot
   // escape it.
+  // gearbox:ui "draw_rect"
   // `(iiiiii)`
   function drawRect(panel: number, x: number, y: number, w: number, h: number, rgba: number): void;
 
   // UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per
   // call.
+  // gearbox:ui "draw_text"
   // `(iiiiii)`
   function drawText(panel: number, x: number, y: number, rgba: number, text: number, textLen: number): void;
 
   // Immediate-mode button: draws it and returns 1 on the frame it is
   // clicked. One click activates one button -- the host consumes it, so
   // overlapping rects do not all fire. Label truncated to 64 bytes.
+  // gearbox:ui "button"
   // `(iiiiiii)i`
   function button(panel: number, x: number, y: number, w: number, h: number, label: number, labelLen: number): number;
 
   // Byte size of one of your own data/ files, or 0 if there is no such
   // asset. Names are relative to data/ and use '/' separators:
   // data/flags/fr.png is "flags/fr.png".
+  // gearbox:assets "size"
   // `(ii)i`
   function assetSize(name: number, nameLen: number): number;
 
   // Two-call sizing, like country_name. Writes at most cap bytes and returns
   // the asset's full size. The name is looked up in your package's entry
   // list, never resolved as a filesystem path.
+  // gearbox:assets "read"
   // `(iiii)i`
   function assetRead(name: number, nameLen: number, buf: number, cap: number): number;
 
@@ -111,20 +129,24 @@ declare namespace GearboxRaw {
   // and is multiplied by the player's own effects setting, so a mod cannot
   // be louder than they allowed. Returns a handle, or 0 if it could not be
   // played.
+  // gearbox:audio "play"
   // `(iif)i`
   function play(path: number, pathLen: number, volume: number): number;
 
   // Stop a sound this mod started. A handle belonging to another mod, or one
   // that already finished, does nothing.
+  // gearbox:audio "stop"
   // `(i)`
   function stop(handle: number): void;
 
   // Change the volume of a playing sound, 0..1, again scaled by the player's
   // setting.
+  // gearbox:audio "set_volume"
   // `(if)`
   function setVolume(handle: number, volume: number): void;
 
   // Whether that handle is still making sound.
+  // gearbox:audio "is_playing"
   // `(i)i`
   function isPlaying(handle: number): number;
 
@@ -136,6 +158,7 @@ declare namespace GearboxRaw {
   // another mod, and it never carries game traffic: orders, deltas and chat
   // do not travel here. Messages larger than 8192 bytes are refused. Returns
   // 0 if this is not a network game, or the message was too large.
+  // gearbox:net "send"
   // `(iii)i`
   function send(peer: number, data: number, dataLen: number): number;
 
@@ -144,12 +167,14 @@ declare namespace GearboxRaw {
   // written, or 0 when the queue is empty. A message longer than `out_len`
   // is truncated rather than dropped, so a small buffer loses data instead
   // of stalling the queue.
+  // gearbox:net "recv"
   // `(iii)i`
   function recv(out: number, outLen: number, fromPeer: number): number;
 
   // How many players this session has, a playing host included. 0 when this
   // is not a network game, which is how a mod tells the difference.
   // Spectators are not counted.
+  // gearbox:net "peer_count"
   // `()i`
   function peerCount(): number;
 
@@ -157,12 +182,14 @@ declare namespace GearboxRaw {
   // is a dedicated host holding no seat -- a host that plays has an ordinary
   // peer id like anyone else, so do not use this to tell host from client.
   // `is_host` is that question.
+  // gearbox:net "self_peer"
   // `()i`
   function selfPeer(): number;
 
   // Whether this copy is the authoritative one. A mod that computes anything
   // the game depends on must do it here and send the result, not compute it
   // separately on each machine.
+  // gearbox:net "is_host"
   // `()i`
   function isHost(): number;
 
@@ -171,6 +198,7 @@ declare namespace GearboxRaw {
   // is absent -- which is NOT the same as a zero-length value, so you can
   // tell 'never stored' from 'stored empty'. Values are arbitrary bytes, not
   // text.
+  // gearbox:storage "get"
   // `(iiii)i`
   function get(key: number, keyLen: number, buf: number, cap: number): number;
 
@@ -179,22 +207,27 @@ declare namespace GearboxRaw {
   // total per mod) -- the reason is written to your log. Not written to disk
   // immediately: the store is flushed at turn boundaries and on unload,
   // because a mod may call this from a draw hook.
+  // gearbox:storage "set"
   // `(iiii)i`
   function set(key: number, keyLen: number, value: number, valueLen: number): number;
 
   // Deletes one of your own keys. Returns 1 if it existed, 0 if it did not.
+  // gearbox:storage "remove"
   // `(ii)i`
   function remove(key: number, keyLen: number): number;
 
   // Width of the province map in pixels. 0 when no world is loaded.
+  // gearbox:map "width"
   // `()i`
   function width(): number;
 
   // Height of the province map in pixels. 0 when no world is loaded.
+  // gearbox:map "height"
   // `()i`
   function height(): number;
 
   // How many provinces the loaded map has. 0 when no world is loaded.
+  // gearbox:map "province_count"
   // `()i`
   function provinceCount(): number;
 
@@ -202,52 +235,63 @@ declare namespace GearboxRaw {
   // GEARBOX_INVALID if out of range. The order is stable across runs, unlike
   // the game's internal storage, so an index is safe to remember within a
   // session.
+  // gearbox:map "province_at"
   // `(i)i`
   function provinceAt(index: number): number;
 
   // The province's name. Two-call sizing: returns the full length and writes
   // at most cap bytes. Empty for an unknown province.
+  // gearbox:map "province_name"
   // `(iii)i`
   function provinceName(province: number, buf: number, cap: number): number;
 
   // X pixel coordinate of the province's centre. 0 for an unknown province.
+  // gearbox:map "province_center_x"
   // `(i)F`
   function provinceCenterX(province: number): number;
 
   // Y pixel coordinate of the province's centre. 0 for an unknown province.
+  // gearbox:map "province_center_y"
   // `(i)F`
   function provinceCenterY(province: number): number;
 
   // 1 if the province is land, 0 if it is sea or unknown. Sampled at the
   // province centre.
+  // gearbox:map "province_is_land"
   // `(i)i`
   function provinceIsLand(province: number): number;
 
   // How many provinces border this one. 0 for an unknown province.
+  // gearbox:map "province_neighbor_count"
   // `(i)i`
   function provinceNeighborCount(province: number): number;
 
   // The bordering province at an index in [0, province_neighbor_count).
   // GEARBOX_INVALID if out of range. Adjacency is computed once when the map
   // loads, so walking it is cheap.
+  // gearbox:map "province_neighbor_at"
   // `(ii)i`
   function provinceNeighborAt(province: number, index: number): number;
 
   // 1 if the two countries are at war. Relations are symmetric, so the
   // argument order does not matter. 0 for unknown countries or for a country
   // with itself.
+  // gearbox:diplomacy "at_war"
   // `(ii)i`
   function atWar(a: number, b: number): number;
 
   // 1 if the two countries are allied.
+  // gearbox:diplomacy "allied"
   // `(ii)i`
   function allied(a: number, b: number): number;
 
   // 1 if the two countries have a non-aggression pact.
+  // gearbox:diplomacy "non_aggression"
   // `(ii)i`
   function nonAggression(a: number, b: number): number;
 
   // 1 if the first country guarantees the second.
+  // gearbox:diplomacy "guaranteed"
   // `(ii)i`
   function guaranteed(a: number, b: number): number;
 
@@ -258,6 +302,7 @@ declare namespace GearboxRaw {
   // Refused (0) if either country is unknown, they are the same country, or
   // they are already at war. Either outcome is written to your mod log, so a
   // player can see after the fact that a mod started a war.
+  // gearbox:diplomacy "propose_war"
   // `(ii)i`
   function proposeWar(attacker: number, defender: number): number;
 
@@ -265,12 +310,14 @@ declare namespace GearboxRaw {
   // country is unknown or the value is not finite and within +/-1e12 -- NaN
   // or infinity would silently poison every later calculation, so they are
   // refused rather than stored.
+  // gearbox:gamestate.write "set_country_treasury"
   // `(iF)i`
   function setCountryTreasury(country: number, value: number): number;
 
   // Adds to a country's treasury. Usually what you want instead of set: it
   // composes with whatever the economy did this turn. Refused (0) if the
   // result would leave the sane range.
+  // gearbox:gamestate.write "add_country_treasury"
   // `(iF)i`
   function addCountryTreasury(country: number, delta: number): number;
 
@@ -282,11 +329,13 @@ declare namespace GearboxRaw {
   // handle is unknown or the country already owns it. Always written to your
   // mod log: territory changing hands is the most consequential thing a mod
   // can do.
+  // gearbox:gamestate.write "set_province_owner"
   // `(ii)i`
   function setProvinceOwner(province: number, country: number): number;
 
   // How many floats are in the AI's feature vector. 0 when there is no AI or
   // no world.
+  // gearbox:neural "feature_count"
   // `()i`
   function featureCount(): number;
 
@@ -294,10 +343,12 @@ declare namespace GearboxRaw {
   // floats. Two-call sizing, but note cap counts FLOATS and the buffer must
   // therefore be cap*4 bytes. This is a snapshot: writing to your copy does
   // not affect the AI.
+  // gearbox:neural "features"
   // `(iii)i`
   function features(country: number, buf: number, cap: number): number;
 
   // How many reward channels the AI tracks (economy, politics, war, navy).
+  // gearbox:neural "reward_count"
   // `()i`
   function rewardCount(): number;
 
@@ -306,6 +357,7 @@ declare namespace GearboxRaw {
   // to the model, the optimiser state or the reward history, which is
   // deliberate -- a trained model is hours of work and a mod that could
   // quietly retrain it is not something a user can meaningfully consent to.
+  // gearbox:neural "reward_mean"
   // `(i)F`
   function rewardMean(index: number): number;
 
@@ -314,16 +366,19 @@ declare namespace GearboxRaw {
   // in two places -- a map and a dense array used by the population texture
   // -- and this updates both, which is why it exists as an import rather
   // than being something a mod could do by other means.
+  // gearbox:gamestate.write "set_province_population"
   // `(iI)i`
   function setProvincePopulation(province: number, value: number): number;
 
   // Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
   // is clamped to 0.25..64. Clipped to your panel like every other command.
+  // gearbox:ui "draw_line"
   // `(iiiiiFi)`
   function drawLine(panel: number, x1: number, y1: number, x2: number, y2: number, thickness: number, rgba: number): void;
 
   // Queue a filled circle centred at (cx,cy), panel-relative. Radius is
   // clamped to 0..4096.
+  // gearbox:ui "draw_circle"
   // `(iiiFi)`
   function drawCircle(panel: number, cx: number, cy: number, radius: number, rgba: number): void;
 
@@ -334,50 +389,60 @@ declare namespace GearboxRaw {
   // unmodified. Decoded once and cached; a name that fails to decode draws
   // nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
   // extension. This is the call that makes a real reskin possible.
+  // gearbox:ui "draw_image"
   // `(iiiiiiii)`
   function drawImage(panel: number, x: number, y: number, w: number, h: number, name: number, nameLen: number, tint: number): void;
 
   // Like draw_text but with a type size, clamped to 6..96. draw_text remains
   // 14pt, unchanged, so v1.0 mods look exactly as they did.
+  // gearbox:ui "draw_text_sized"
   // `(iiiiiii)`
   function drawTextSized(panel: number, x: number, y: number, size: number, rgba: number, text: number, textLen: number): void;
 
   // Width in pixels of `text` at `size`, measured with the font the game
   // will actually draw. Centring, right-alignment and wrapping all need this
   // before the text is queued.
+  // gearbox:ui "measure_text"
   // `(iii)i`
   function measureText(text: number, textLen: number, size: number): number;
 
   // The width the host assigned your panel this frame, in pixels. Lay out
   // against this rather than against min_w -- the host may have given you
   // more.
+  // gearbox:ui "panel_width"
   // `(i)i`
   function panelWidth(panel: number): number;
 
   // The height the host assigned your panel this frame, in pixels.
+  // gearbox:ui "panel_height"
   // `(i)i`
   function panelHeight(panel: number): number;
 
   // Show or hide one of your panels. A hidden panel is not drawn and
   // receives no input, but keeps its handle and its registration.
+  // gearbox:ui "panel_set_visible"
   // `(ii)`
   function panelSetVisible(panel: number, visible: number): void;
 
   // Cursor X, panel-relative, or 0 when the cursor is not over your panel.
   // You cannot observe the pointer outside your own box.
+  // gearbox:ui "mouse_x"
   // `(i)F`
   function mouseX(panel: number): number;
 
   // Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+  // gearbox:ui "mouse_y"
   // `(i)F`
   function mouseY(panel: number): number;
 
   // Whether the cursor is over your panel this frame.
+  // gearbox:ui "mouse_inside"
   // `(i)i`
   function mouseInside(panel: number): number;
 
   // The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
   // Build your palette around this and you harmonise with what they chose.
+  // gearbox:ui "theme_accent"
   // `()i`
   function themeAccent(): number;
 
@@ -386,25 +451,30 @@ declare namespace GearboxRaw {
   // cheapest full reskin there is. It is NOT persisted: the game's settings
   // file keeps the player's own colour, and the override is dropped the
   // moment no mod is running, so it cannot outlive uninstalling you.
+  // gearbox:ui "set_theme_accent"
   // `(i)i`
   function setThemeAccent(rgb: number): number;
 
   // How many ships exist in the world, across all owners.
+  // gearbox:military.read "ship_count"
   // `()i`
   function shipCount(): number;
 
   // The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
   // Ids are stable within a turn and not across turns -- do not store one.
+  // gearbox:military.read "ship_at"
   // `(i)i`
   function shipAt(index: number): number;
 
   // Whether a ship id is still live. Check this before acting on an id you
   // read earlier in the same turn; ships sink.
+  // gearbox:military.read "ship_exists"
   // `(i)i`
   function shipExists(ship: number): number;
 
   // The country that owns a ship, or 0xFFFFFFFF for an id that does not
   // exist.
+  // gearbox:military.read "ship_owner"
   // `(i)i`
   function shipOwner(ship: number): number;
 
@@ -412,58 +482,70 @@ declare namespace GearboxRaw {
   // "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
   // to learn the length, allocate, call again. Returns the full length
   // either way; the copy is truncated to cap.
+  // gearbox:military.read "ship_type"
   // `(iii)i`
   function shipType(ship: number, buf: number, cap: number): number;
 
   // Longitude in degrees, -180..180. Ships live in world coordinates, not
   // provinces.
+  // gearbox:military.read "ship_lon"
   // `(i)F`
   function shipLon(ship: number): number;
 
   // Latitude in degrees, -90..90.
+  // gearbox:military.read "ship_lat"
   // `(i)F`
   function shipLat(ship: number): number;
 
   // Hull integrity, 0..100. A ship at 0 has already sunk and will not
   // appear.
+  // gearbox:military.read "ship_health"
   // `(i)i`
   function shipHealth(ship: number): number;
 
   // Crew aboard. For a transport this includes the embarked army, which is
   // why a sunk transport costs so much more than its hull.
+  // gearbox:military.read "ship_crew"
   // `(i)i`
   function shipCrew(ship: number): number;
 
   // How far this hull may move in one turn, in degrees. The resolver clamps
   // any order beyond it, so read this before ordering a move rather than
   // discovering the clamp afterwards.
+  // gearbox:military.read "ship_range"
   // `(i)F`
   function shipRange(ship: number): number;
 
   // How many distinct owners have troops in a province. Usually 1; more than
   // one means a contested or garrisoned province.
+  // gearbox:military.read "army_stack_count"
   // `(i)i`
   function armyStackCount(province: number): number;
 
   // The country owning stack `index` in a province, or 0xFFFFFFFF past the
   // end.
+  // gearbox:military.read "army_stack_owner"
   // `(ii)i`
   function armyStackOwner(province: number, index: number): number;
 
   // How many troops are in that stack.
+  // gearbox:military.read "army_stack_size"
   // `(ii)I`
   function armyStackSize(province: number, index: number): number;
 
   // A country's total troops everywhere, which is the number its own army
   // screen shows.
+  // gearbox:military.read "country_army"
   // `(i)I`
   function countryArmy(country: number): number;
 
   // Fortification level, 0..5. Multiplies the defender's strength.
+  // gearbox:military.read "province_fortification"
   // `(i)i`
   function provinceFortification(province: number): number;
 
   // Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+  // gearbox:military.read "province_port_level"
   // `(i)i`
   function provincePortLevel(province: number): number;
 
@@ -474,6 +556,7 @@ declare namespace GearboxRaw {
   // player's own click writes to and is validated by the same resolver at
   // end of turn, so a mod cannot teleport, cheat range, or attack across an
   // ocean. Returns 0 if the order is rejected outright.
+  // gearbox:military.write "order_army_move"
   // `(iii)i`
   function orderArmyMove(from: number, to: number, percent: number): number;
 
@@ -484,6 +567,7 @@ declare namespace GearboxRaw {
   // writes to and is validated by the same resolver at end of turn, so a mod
   // cannot teleport, cheat range, or attack across an ocean. Returns 0 if
   // the order is rejected outright.
+  // gearbox:military.write "order_ship_move"
   // `(iFF)i`
   function orderShipMove(ship: number, lon: number, lat: number): number;
 
@@ -493,6 +577,7 @@ declare namespace GearboxRaw {
   // player's own click writes to and is validated by the same resolver at
   // end of turn, so a mod cannot teleport, cheat range, or attack across an
   // ocean. Returns 0 if the order is rejected outright.
+  // gearbox:military.write "order_ship_engage"
   // `(ii)i`
   function orderShipEngage(ship: number, target: number): number;
 
@@ -502,10 +587,12 @@ declare namespace GearboxRaw {
   // validated by the same resolver at end of turn, so a mod cannot teleport,
   // cheat range, or attack across an ocean. Returns 0 if the order is
   // rejected outright.
+  // gearbox:military.write "order_ship_bombard"
   // `(iiii)i`
   function orderShipBombard(ship: number, province: number, ammo: number, ammoLen: number): number;
 
   // How many technologies exist in the tree.
+  // gearbox:research.read "node_count"
   // `()i`
   function nodeCount(): number;
 
@@ -513,6 +600,7 @@ declare namespace GearboxRaw {
   // country_has_researched takes. Two-call sizing: call with cap 0 to learn
   // the length, allocate, call again. Returns the full length either way;
   // the copy is truncated to cap.
+  // gearbox:research.read "node_id"
   // `(iii)i`
   function nodeId(index: number, buf: number, cap: number): number;
 
@@ -520,77 +608,93 @@ declare namespace GearboxRaw {
   // never match on it. Two-call sizing: call with cap 0 to learn the length,
   // allocate, call again. Returns the full length either way; the copy is
   // truncated to cap.
+  // gearbox:research.read "node_name"
   // `(iii)i`
   function nodeName(index: number, buf: number, cap: number): number;
 
   // Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
   // learn the length, allocate, call again. Returns the full length either
   // way; the copy is truncated to cap.
+  // gearbox:research.read "node_category"
   // `(iii)i`
   function nodeCategory(index: number, buf: number, cap: number): number;
 
   // Research points required.
+  // gearbox:research.read "node_cost"
   // `(i)i`
   function nodeCost(index: number): number;
 
   // Whether a country has completed a technology. Takes the id from node_id,
   // not the display name.
+  // gearbox:research.read "country_has_researched"
   // `(iii)i`
   function countryHasResearched(country: number, nodeId: number, nodeIdLen: number): number;
 
   // Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
   // is how the game stores it and how its own economy screen presents it.
+  // gearbox:research.read "country_funding"
   // `(i)F`
   function countryFunding(country: number): number;
 
   // Set research funding as a share of income. Clamped to 0..1; a value in
   // 'points per turn' is not a quantity this game has.
+  // gearbox:research.write "set_country_funding"
   // `(iF)i`
   function setCountryFunding(country: number, share: number): number;
 
   // Economic axis of the political compass, -100 (planned) to 100 (market).
+  // gearbox:politics.read "country_compass_econ"
   // `(i)F`
   function countryCompassEcon(country: number): number;
 
   // Social axis, -100 (authoritarian) to 100 (libertarian).
+  // gearbox:politics.read "country_compass_social"
   // `(i)F`
   function countryCompassSocial(country: number): number;
 
   // This province's chance of rebelling, as the game itself computes it.
+  // gearbox:politics.read "province_unrest"
   // `(i)F`
   function provinceUnrest(province: number): number;
 
   // How many policies exist.
+  // gearbox:politics.read "policy_count"
   // `()i`
   function policyCount(): number;
 
   // The stable string id of policy `index`. Two-call sizing: call with cap 0
   // to learn the length, allocate, call again. Returns the full length
   // either way; the copy is truncated to cap.
+  // gearbox:politics.read "policy_id"
   // `(iii)i`
   function policyId(index: number, buf: number, cap: number): number;
 
   // The policy's display name; localised, not stable, do not match on it.
   // Two-call sizing: call with cap 0 to learn the length, allocate, call
   // again. Returns the full length either way; the copy is truncated to cap.
+  // gearbox:politics.read "policy_name"
   // `(iii)i`
   function policyName(index: number, buf: number, cap: number): number;
 
   // Whether a country currently has a policy active or implementing.
+  // gearbox:politics.read "country_has_policy"
   // `(iii)i`
   function countryHasPolicy(country: number, policyId: number, policyIdLen: number): number;
 
   // How many named minority groups live in a province.
+  // gearbox:politics.read "province_minority_count"
   // `(i)i`
   function provinceMinorityCount(province: number): number;
 
   // The minority's name. Two-call sizing: call with cap 0 to learn the
   // length, allocate, call again. Returns the full length either way; the
   // copy is truncated to cap.
+  // gearbox:politics.read "province_minority_name"
   // `(iiii)i`
   function provinceMinorityName(province: number, index: number, buf: number, cap: number): number;
 
   // That minority's share of the province's population, 0..1.
+  // gearbox:politics.read "province_minority_share"
   // `(ii)F`
   function provinceMinorityShare(province: number, index: number): number;
 
@@ -598,32 +702,39 @@ declare namespace GearboxRaw {
   // the cost, the prerequisites and the per-turn enactment cap all still
   // apply -- a country cannot end up running policies it could never have
   // afforded. Returns 1 if the policy is already in the requested state.
+  // gearbox:politics.write "set_country_policy"
   // `(iiii)i`
   function setCountryPolicy(country: number, policyId: number, policyIdLen: number, enabled: number): number;
 
   // Income per turn before upkeep.
+  // gearbox:economy.read "country_income_gross"
   // `(i)F`
   function countryIncomeGross(country: number): number;
 
   // Income per turn after army and navy upkeep. Negative means the treasury
   // is draining.
+  // gearbox:economy.read "country_income_net"
   // `(i)F`
   function countryIncomeNet(country: number): number;
 
   // What the standing army costs per turn.
+  // gearbox:economy.read "country_army_upkeep"
   // `(i)F`
   function countryArmyUpkeep(country: number): number;
 
   // What the fleet costs per turn. Ships a country is not using still cost
   // this, which is what makes scrapping a real decision.
+  // gearbox:economy.read "country_navy_upkeep"
   // `(i)F`
   function countryNavyUpkeep(country: number): number;
 
   // Whether a country is currently bankrupt.
+  // gearbox:economy.read "country_is_bankrupt"
   // `(i)i`
   function countryIsBankrupt(country: number): number;
 
   // Industry level, 0..10.
+  // gearbox:economy.read "province_industry_level"
   // `(i)i`
   function provinceIndustryLevel(province: number): number;
 
@@ -631,33 +742,39 @@ declare namespace GearboxRaw {
   // none. Two-call sizing: call with cap 0 to learn the length, allocate,
   // call again. Returns the full length either way; the copy is truncated to
   // cap.
+  // gearbox:economy.read "province_industry_specialization"
   // `(iii)i`
   function provinceIndustrySpecialization(province: number, buf: number, cap: number): number;
 
   // How much of a resource a province holds, 0..100. `which` is one of
   // "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+  // gearbox:economy.read "province_resource"
   // `(iii)F`
   function provinceResource(province: number, which: number, whichLen: number): number;
 
   // Set a province's industry level, clamped to 0..10. This writes the built
   // level directly and does not charge for it -- it is a scenario-authoring
   // tool, not a build order.
+  // gearbox:economy.write "set_province_industry_level"
   // `(ii)i`
   function setProvinceIndustryLevel(province: number, level: number): number;
 
   // Whether a province touches water. Ports, embarking and naval bombardment
   // all require it.
+  // gearbox:map "province_is_coastal"
   // `(i)i`
   function provinceIsCoastal(province: number): number;
 
   // Whether a fleet could get from one point to another by sea, using the
   // game's own navigation grid. You cannot compute this from province
   // neighbours: those describe LAND adjacency.
+  // gearbox:map "sea_route_exists"
   // `(FFFF)i`
   function seaRouteExists(fromLon: number, fromLat: number, toLon: number, toLat: number): number;
 
   // Whether a world coordinate is land. Ordering a ship onto land is not an
   // error -- the resolver clamps it -- but knowing first is cheaper.
+  // gearbox:map "point_is_land"
   // `(FF)i`
   function pointIsLand(lon: number, lat: number): number;
 
@@ -665,53 +782,63 @@ declare namespace GearboxRaw {
   // IN THIS MODULE returns 0 or an empty string when this is 0, including
   // from inside a running game: the data behind them is an editor project,
   // and a game does not have one. Check this first.
+  // gearbox:mapeditor "editor_active"
   // `()i`
   function editorActive(): number;
 
   // How many provinces the open project has. Returns a neutral value unless
   // the map editor is open with a project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_count"
   // `()i`
   function editorProvinceCount(): number;
 
   // The province id at `index`, in ascending id order, or 0xFFFFFFFF past
   // the end. Returns a neutral value unless the map editor is open with a
   // project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_at"
   // `(i)i`
   function editorProvinceAt(index: number): number;
 
   // Population. Returns a neutral value unless the map editor is open with a
   // project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_population"
   // `(i)I`
   function editorProvincePopulation(province: number): number;
 
   // Industry level, 0..10. Returns a neutral value unless the map editor is
   // open with a project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_industry_level"
   // `(i)i`
   function editorProvinceIndustryLevel(province: number): number;
 
   // Fortification, 0..5. Returns a neutral value unless the map editor is
   // open with a project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_fortification"
   // `(i)i`
   function editorProvinceFortification(province: number): number;
 
   // Port level, 0..3. Returns a neutral value unless the map editor is open
   // with a project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_port_level"
   // `(i)i`
   function editorProvincePortLevel(province: number): number;
 
   // Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
   // or "metal". Returns a neutral value unless the map editor is open with a
   // project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_resource"
   // `(iii)F`
   function editorProvinceResource(province: number, which: number, whichLen: number): number;
 
   // Province economic compass, -100..100. Returns a neutral value unless the
   // map editor is open with a project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_compass_econ"
   // `(i)F`
   function editorProvinceCompassEcon(province: number): number;
 
   // Province social compass, -100..100. Returns a neutral value unless the
   // map editor is open with a project loaded -- see mapeditor/active.
+  // gearbox:mapeditor "editor_province_compass_social"
   // `(i)F`
   function editorProvinceCompassSocial(province: number): number;
 
@@ -720,6 +847,7 @@ declare namespace GearboxRaw {
   // unsaved-changes prompt like any other edit. A province the project does
   // not have is refused rather than created: data without a shape on the
   // province bitmap exports a map the game cannot load.
+  // gearbox:mapeditor "editor_set_province_population"
   // `(iI)i`
   function editorSetProvincePopulation(province: number, value: number): number;
 
@@ -728,6 +856,7 @@ declare namespace GearboxRaw {
   // unsaved-changes prompt like any other edit. A province the project does
   // not have is refused rather than created: data without a shape on the
   // province bitmap exports a map the game cannot load.
+  // gearbox:mapeditor "editor_set_province_industry_level"
   // `(ii)i`
   function editorSetProvinceIndustryLevel(province: number, level: number): number;
 
@@ -736,6 +865,7 @@ declare namespace GearboxRaw {
   // unsaved-changes prompt like any other edit. A province the project does
   // not have is refused rather than created: data without a shape on the
   // province bitmap exports a map the game cannot load.
+  // gearbox:mapeditor "editor_set_province_fortification"
   // `(ii)i`
   function editorSetProvinceFortification(province: number, level: number): number;
 
@@ -744,6 +874,7 @@ declare namespace GearboxRaw {
   // unsaved-changes prompt like any other edit. A province the project does
   // not have is refused rather than created: data without a shape on the
   // province bitmap exports a map the game cannot load.
+  // gearbox:mapeditor "editor_set_province_port_level"
   // `(ii)i`
   function editorSetProvincePortLevel(province: number, level: number): number;
 
@@ -753,6 +884,7 @@ declare namespace GearboxRaw {
   // shows up in the unsaved-changes prompt like any other edit. A province
   // the project does not have is refused rather than created: data without a
   // shape on the province bitmap exports a map the game cannot load.
+  // gearbox:mapeditor "editor_set_province_resource"
   // `(iiiF)i`
   function editorSetProvinceResource(province: number, which: number, whichLen: number, amount: number): number;
 
@@ -761,29 +893,35 @@ declare namespace GearboxRaw {
   // shows up in the unsaved-changes prompt like any other edit. A province
   // the project does not have is refused rather than created: data without a
   // shape on the province bitmap exports a map the game cannot load.
+  // gearbox:mapeditor "editor_set_province_compass"
   // `(iFF)i`
   function editorSetProvinceCompass(province: number, econ: number, social: number): number;
 
   // The project's map name. Two-call sizing: call with cap 0 to learn the
   // length, allocate, call again. Returns the full length either way; the
   // copy is truncated to cap.
+  // gearbox:mapeditor "editor_map_name"
   // `(ii)i`
   function editorMapName(buf: number, cap: number): number;
 
   // Rename the map. Refused if empty or over 96 bytes.
+  // gearbox:mapeditor "editor_set_map_name"
   // `(ii)i`
   function editorSetMapName(name: number, nameLen: number): number;
 
   // Set the author recorded in the exported .odmap. Up to 96 bytes.
+  // gearbox:mapeditor "editor_set_author"
   // `(ii)i`
   function editorSetAuthor(author: number, authorLen: number): number;
 
   // Set the licence recorded in the exported .odmap. Up to 96 bytes.
+  // gearbox:mapeditor "editor_set_license"
   // `(ii)i`
   function editorSetLicense(license: number, licenseLen: number): number;
 
   // The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
   // This is the id net/send takes.
+  // gearbox:net "peer_at"
   // `(i)i`
   function peerAt(index: number): number;
 
@@ -791,26 +929,31 @@ declare namespace GearboxRaw {
   // A mod has no business correlating players across sessions. Two-call
   // sizing: call with cap 0 to learn the length, allocate, call again.
   // Returns the full length either way; the copy is truncated to cap.
+  // gearbox:net "peer_name"
   // `(iii)i`
   function peerName(index: number, buf: number, cap: number): number;
 
   // The largest payload net/send will accept. Chunk against this rather than
   // discovering the limit by having a message dropped.
+  // gearbox:net "max_message_bytes"
   // `()i`
   function maxMessageBytes(): number;
 
   // How many decision modules the AI has. Each acts independently every
   // turn.
+  // gearbox:neural "module_count"
   // `()i`
   function moduleCount(): number;
 
   // The module's name: "economy", "politics", "war", "navy". Two-call
   // sizing: call with cap 0 to learn the length, allocate, call again.
   // Returns the full length either way; the copy is truncated to cap.
+  // gearbox:neural "module_name"
   // `(iii)i`
   function moduleName(module: number, buf: number, cap: number): number;
 
   // How many actions that module can choose between.
+  // gearbox:neural "action_count"
   // `(i)i`
   function actionCount(module: number): number;
 
@@ -821,72 +964,86 @@ declare namespace GearboxRaw {
   // stable enough to build an advisor or a decision log against. Two-call
   // sizing: call with cap 0 to learn the length, allocate, call again.
   // Returns the full length either way; the copy is truncated to cap.
+  // gearbox:neural "action_name"
   // `(iiii)i`
   function actionName(module: number, action: number, buf: number, cap: number): number;
 
   // Whether a country is played by the AI rather than by the local player.
+  // gearbox:neural "country_is_ai"
   // `(i)i`
   function countryIsAi(country: number): number;
 
   // Gradient updates the loaded model has been through -- roughly, how much
   // training it has seen.
+  // gearbox:neural "update_count"
   // `()I`
   function updateCount(): number;
 
   // Whether an AI model is loaded at all. False in a game with no AI
   // players.
+  // gearbox:neural "model_loaded"
   // `()i`
   function modelLoaded(): number;
 
   // How many districts this country is divided into. Districts are built on
   // demand, so asking is what creates the default one for a country that has
   // never been divided.
+  // gearbox:politics.read "country_district_count"
   // `(i)i`
   function countryDistrictCount(country: number): number;
 
   // The district's name. Two-call sizing: call with cap 0 to learn the
   // length, allocate, call again. Returns the full length either way; the
   // copy is truncated to cap.
+  // gearbox:politics.read "country_district_name"
   // `(iiii)i`
   function countryDistrictName(country: number, index: number, buf: number, cap: number): number;
 
   // This district's claim on the country's pacification budget, in percent.
   // The shares of a country's districts sum to 100.
+  // gearbox:politics.read "country_district_share"
   // `(ii)i`
   function countryDistrictShare(country: number, index: number): number;
 
   // How many provinces this district holds.
+  // gearbox:politics.read "country_district_province_count"
   // `(ii)i`
   function countryDistrictProvinceCount(country: number, index: number): number;
 
   // Province `n` of this district, or GEARBOX_INVALID if there is no such
   // one.
+  // gearbox:politics.read "country_district_province"
   // `(iii)i`
   function countryDistrictProvince(country: number, index: number, n: number): number;
 
   // How many regional laws this district runs.
+  // gearbox:politics.read "country_district_law_count"
   // `(ii)i`
   function countryDistrictLawCount(country: number, index: number): number;
 
   // The stable id of regional law `n` in this district. Two-call sizing:
   // call with cap 0 to learn the length, allocate, call again. Returns the
   // full length either way; the copy is truncated to cap.
+  // gearbox:politics.read "country_district_law"
   // `(iiiii)i`
   function countryDistrictLaw(country: number, index: number, n: number, buf: number, cap: number): number;
 
   // How many regional laws exist to choose from.
+  // gearbox:politics.read "district_law_count"
   // `()i`
   function districtLawCount(): number;
 
   // The stable id of regional law `index`. Two-call sizing: call with cap 0
   // to learn the length, allocate, call again. Returns the full length
   // either way; the copy is truncated to cap.
+  // gearbox:politics.read "district_law_id"
   // `(iii)i`
   function districtLawId(index: number, buf: number, cap: number): number;
 
   // The display name of regional law `index`, untranslated. Two-call sizing:
   // call with cap 0 to learn the length, allocate, call again. Returns the
   // full length either way; the copy is truncated to cap.
+  // gearbox:politics.read "district_law_name"
   // `(iii)i`
   function districtLawName(index: number, buf: number, cap: number): number;
 
@@ -894,26 +1051,31 @@ declare namespace GearboxRaw {
   // 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
   // a decision with a consequence -- migrants read it -- rather than a
   // display setting.
+  // gearbox:politics.read "country_discloses"
   // `(ii)i`
   function countryDiscloses(country: number, field: number): number;
 
   // Set this district's claim on the pacification budget. The other
   // districts are rebalanced so the shares still sum to 100, exactly as
   // dragging the slider does. Returns 1 on success.
+  // gearbox:politics.write "set_country_district_share"
   // `(iii)i`
   function setCountryDistrictShare(country: number, index: number, percent: number): number;
 
   // Pass or repeal a regional law in this district. Returns 1 on success, 0
   // for an unknown law or district.
+  // gearbox:politics.write "set_country_district_law"
   // `(iiiii)i`
   function setCountryDistrictLaw(country: number, index: number, law: number, lawLen: number, on: number): number;
 
   // Publish or withhold one of the figures in this country's profile.
   // Returns 1 on success.
+  // gearbox:politics.write "set_country_disclosure"
   // `(iii)i`
   function setCountryDisclosure(country: number, field: number, on: number): number;
 
   // How many kinds of soldier exist.
+  // gearbox:military.read "troop_type_count"
   // `()i`
   function troopTypeCount(): number;
 
@@ -921,43 +1083,51 @@ declare namespace GearboxRaw {
   // Never translated. Two-call sizing: call with cap 0 to learn the length,
   // allocate, call again. Returns the full length either way; the copy is
   // truncated to cap.
+  // gearbox:military.read "troop_type_id"
   // `(iii)i`
   function troopTypeId(index: number, buf: number, cap: number): number;
 
   // How many soldiers of that kind this country has, everywhere. 0 for a
   // troop type that does not exist.
+  // gearbox:military.read "country_army_of_type"
   // `(iii)I`
   function countryArmyOfType(country: number, troopType: number, troopTypeLen: number): number;
 
   // How many soldiers of that kind this country has standing in that
   // province.
+  // gearbox:military.read "province_troops_of_type"
   // `(iiii)I`
   function provinceTroopsOfType(province: number, country: number, troopType: number, troopTypeLen: number): number;
 
   // How many research programmes this country may run at once, 1 to 3. This
   // is the effective number, including any override a script or a mod has
   // set.
+  // gearbox:research.read "country_research_groups"
   // `(i)i`
   function countryResearchGroups(country: number): number;
 
   // Force how many research programmes a country may run, 1 to 3, or 0 to
   // hand the decision back to its economy. Outranks the economic gate in
   // both directions and is saved with the game. Returns 1 on success.
+  // gearbox:research.write "set_country_research_groups"
   // `(ii)i`
   function setCountryResearchGroups(country: number, groups: number): number;
 
   // What this country spent last turn, in total. The same figure its profile
   // publishes and the economy screen draws.
+  // gearbox:economy.read "country_expenses"
   // `(i)F`
   function countryExpenses(country: number): number;
 
   // What the whole country is worth: every industry level, fort, port and
   // division at what it cost to raise. A stock, where the income figures are
   // flows.
+  // gearbox:economy.read "country_national_value"
   // `(i)F`
   function countryNationalValue(country: number): number;
 
   // How many people live in this country.
+  // gearbox:economy.read "country_population"
   // `(i)I`
   function countryPopulation(country: number): number;
 
@@ -969,12 +1139,14 @@ declare namespace GearboxRaw {
   // should record RULES. Two-call sizing: call with cap 0 to learn the
   // length, allocate, call again. Returns the full length either way; the
   // copy is truncated to cap.
+  // gearbox:neural "ai_version"
   // `(ii)i`
   function aiVersion(buf: number, cap: number): number;
 
   // The AI's ARCH number on its own, which is also the model file's format
   // byte. The feature count and the action sets are only stable within one
   // ARCH; a bump means old weights are refused on purpose.
+  // gearbox:neural "ai_arch"
   // `()i`
   function aiArch(): number;
 
@@ -983,6 +1155,7 @@ declare namespace GearboxRaw {
   // (a country the AI does not play, or one that has not been given a stance
   // yet). Held for several turns at a time rather than chosen fresh each
   // turn.
+  // gearbox:neural "country_stance"
   // `(i)i`
   function countryStance(country: number): number;
 
@@ -990,10 +1163,12 @@ declare namespace GearboxRaw {
   // translated, and stable within an ARCH. Two-call sizing: call with cap 0
   // to learn the length, allocate, call again. Returns the full length
   // either way; the copy is truncated to cap.
+  // gearbox:neural "stance_name"
   // `(iii)i`
   function stanceName(index: number, buf: number, cap: number): number;
 
   // How many stances there are to choose between.
+  // gearbox:neural "stance_count"
   // `()i`
   function stanceCount(): number;
 
@@ -1004,40 +1179,47 @@ declare namespace GearboxRaw {
   // nothing. Choosing an action whose byte is 0 is the same as deciding
   // nothing -- the host keeps its own choice, because an illegal action is
   // not a move it can make.
+  // gearbox:neural.decide "action_valid"
   // `(iii)i`
   function actionValid(module: number, buf: number, cap: number): number;
 
   // How many parties sit in a country's legislature. 0 when the party rules
   // are off, which is the default -- so a mod must treat 0 as 'this world
   // has no party politics' rather than as an error.
+  // gearbox:politics.read "country_party_count"
   // `(i)i`
   function countryPartyCount(country: number): number;
 
   // The party's name. Two-call sizing: call with cap 0 to learn the length,
   // allocate, call again. Returns the full length either way; the copy is
   // truncated to cap.
+  // gearbox:politics.read "country_party_name"
   // `(iiii)i`
   function countryPartyName(country: number, index: number, buf: number, cap: number): number;
 
   // The party's abbreviation, for a list that has to fit -- "SPD", "INC".
   // Same two-call sizing as country_party_name. May be empty.
+  // gearbox:politics.read "country_party_short_name"
   // `(iiii)i`
   function countryPartyShortName(country: number, index: number, buf: number, cap: number): number;
 
   // That party's share of the country, 0..1. The shares of one country's
   // parties are a partition and sum to 1, so they may be compared directly
   // but must never be added across countries.
+  // gearbox:politics.read "country_party_support"
   // `(ii)F`
   function countryPartySupport(country: number, index: number): number;
 
   // Where the party stands on the economic axis, -100 (planned) to 100
   // (market) -- the same axis and scale as country_compass_econ, so the
   // distance between a party and its government is meaningful.
+  // gearbox:politics.read "country_party_compass_econ"
   // `(ii)F`
   function countryPartyCompassEcon(country: number, index: number): number;
 
   // Where the party stands on the social axis, -100 (authoritarian) to 100
   // (libertarian). Same scale as country_compass_social.
+  // gearbox:politics.read "country_party_compass_social"
   // `(ii)F`
   function countryPartyCompassSocial(country: number, index: number): number;
 
@@ -1046,12 +1228,14 @@ declare namespace GearboxRaw {
   // stance. A mod that displays party names should say which it is showing:
   // "Workers' Party" is a description, "SPD" is a claim. See
   // data/parties.json.
+  // gearbox:politics.read "country_party_is_historical"
   // `(ii)i`
   function countryPartyIsHistorical(country: number, index: number): number;
 
   // The index of the party that governs, or -1 if none does. That party
   // pulls the government compass toward its own stance every turn it holds
   // power, which is why the two are on the same scale.
+  // gearbox:politics.read "country_ruling_party"
   // `(i)i`
   function countryRulingParty(country: number): number;
 
@@ -1060,12 +1244,14 @@ declare namespace GearboxRaw {
   // before using it -- a country can be annexed between turns, and every
   // other accessor answers 0 or an empty string for a dead id, which is
   // indistinguishable from a live country with nothing in it.
+  // gearbox:gamestate.read "country_exists"
   // `(i)i`
   function countryExists(country: number): number;
 
   // Whether a province id names a province that exists. Same reason as
   // country_exists: a stored id needs a validity check that is not 'iterate
   // every province and compare'.
+  // gearbox:gamestate.read "province_exists"
   // `(i)i`
   function provinceExists(province: number): number;
 
@@ -1075,6 +1261,7 @@ declare namespace GearboxRaw {
   // MACHINE, not about the game, which is why it needs its own capability.
   // Every other reading a mod can take is deliberately opaque about the
   // host.
+  // gearbox:core.protected "process_bytes"
   // `()I`
   function processBytes(): number;
 
@@ -1082,24 +1269,28 @@ declare namespace GearboxRaw {
   // be determined. Useful to a mod that reports build size or checks it is
   // running against the build it expects; useless for anything else, which
   // is the point.
+  // gearbox:core.protected "image_bytes"
   // `()I`
   function imageBytes(): number;
 
   // How many mods are INSTALLED, enabled or not. A compatibility checker
   // needs to see the mod it conflicts with even when that mod is switched
   // off, because switching it on is what breaks things.
+  // gearbox:core.protected "mod_count"
   // `()i`
   function modCount(): number;
 
   // The installed mod's manifest id -- the stable one, safe to compare.
   // Two-call sizing: call with cap 0 to learn the length, allocate, call
   // again.
+  // gearbox:core.protected "mod_id"
   // `(iii)i`
   function modId(index: number, buf: number, cap: number): number;
 
   // Its display name, which is for showing a player and NOT for matching on:
   // it is author-chosen, may be translated, and two mods may share one.
   // Match on mod_id.
+  // gearbox:core.protected "mod_name"
   // `(iii)i`
   function modName(index: number, buf: number, cap: number): number;
 
@@ -1112,6 +1303,7 @@ declare namespace GearboxRaw {
   // it with a different type fails, because the values already stored are of
   // the old one. Refused for an empty name, a name over 64 bytes, or one
   // containing anything but printable ASCII.
+  // gearbox:country "field_add"
   // `(iiii)i`
   function fieldAdd(name: number, nameLen: number, mode: number, type: number): number;
 
@@ -1119,42 +1311,50 @@ declare namespace GearboxRaw {
   // whether it existed. A mod cannot remove another mod's field: fields are
   // keyed by (mod, name), so two mods may both add a field called morale and
   // neither can see the other's.
+  // gearbox:country "field_remove"
   // `(ii)i`
   function fieldRemove(name: number, nameLen: number): number;
 
   // Whether you have declared this field AND own it right now. False for a
   // field read back from a save whose mod is not loaded -- such a field is
   // inert, though its values are kept.
+  // gearbox:country "field_has"
   // `(ii)i`
   function fieldHas(name: number, nameLen: number): number;
 
   // How many fields YOU have declared. Not how many exist: another mod's
   // fields are not yours to enumerate.
+  // gearbox:country "field_count"
   // `()i`
   function fieldCount(): number;
 
   // The name of your field at index, sorted by name so the order does not
   // shift between runs. Two-call sizing.
+  // gearbox:country "field_name"
   // `(iii)i`
   function fieldName(index: number, buf: number, cap: number): number;
 
   // Set a country's value for one of your NUMBER fields. Refused if the
   // field is text, was never declared, or belongs to a mod that is not
   // loaded.
+  // gearbox:country "set_number"
   // `(iiid)i`
   function setNumber(name: number, nameLen: number, country: number, value: number): number;
 
   // A country's value, or 0 when the field or the country has none. 0 is a
   // real value too, so a mod that needs to tell unset from zero should keep
   // its own sentinel.
+  // gearbox:country "get_number"
   // `(iii)F`
   function getNumber(name: number, nameLen: number, country: number): number;
 
   // Set a country's value for one of your TEXT fields.
+  // gearbox:country "set_text"
   // `(iiiii)i`
   function setText(name: number, nameLen: number, country: number, value: number, valueLen: number): number;
 
   // A country's text value, or empty. Two-call sizing.
+  // gearbox:country "get_text"
   // `(iiiii)i`
   function getText(name: number, nameLen: number, country: number, buf: number, cap: number): number;
 
@@ -1170,31 +1370,37 @@ declare namespace GearboxRaw {
   // since scripts ship inside .odmap files and mods are enabled globally.
   // Names must be an identifier: a letter, then letters, digits or
   // underscores, up to 48 bytes.
+  // gearbox:scripts "command_add"
   // `(ii)i`
   function commandAdd(name: number, nameLen: number): number;
 
   // Give up one of your own commands. False if it was not yours -- a mod
   // cannot unregister another mod's.
+  // gearbox:scripts "command_remove"
   // `(ii)i`
   function commandRemove(name: number, nameLen: number): number;
 
   // How many commands YOU have claimed.
+  // gearbox:scripts "command_count"
   // `()i`
   function commandCount(): number;
 
   // The name of your command at index, sorted. Two-call sizing.
+  // gearbox:scripts "command_name"
   // `(iii)i`
   function commandName(index: number, buf: number, cap: number): number;
 
   // Inside mod_script_command: which of your commands the script ran. Empty
   // outside that call -- there is no command then, and reporting the last
   // one would be a stale answer that looks like a live one. Two-call sizing.
+  // gearbox:scripts "command_text"
   // `(ii)i`
   function commandText(buf: number, cap: number): number;
 
   // Inside mod_script_command: the rest of the script line, verbatim --
   // unparsed and untrimmed, because your command knows its own grammar and
   // the engine does not. Empty outside that call. Two-call sizing.
+  // gearbox:scripts "command_args"
   // `(ii)i`
   function commandArgs(buf: number, cap: number): number;
 
@@ -1205,6 +1411,7 @@ declare namespace GearboxRaw {
   // the maximum (4096 tints per mod, which is every province on the largest
   // map twice over). A refusal rather than a slower game: a mod's mistake
   // should not be paid for in frame time by a player who cannot see why.
+  // gearbox:render "province_tint"
   // `(ii)i`
   function provinceTint(province: number, rgba: number): number;
 
@@ -1213,6 +1420,7 @@ declare namespace GearboxRaw {
   // characters rather than refused: a label one character too long is a
   // cosmetic mistake, and failing the call would have an author debugging a
   // silent nothing instead of seeing a clipped word. 512 labels per mod.
+  // gearbox:render "province_label"
   // `(iiii)i`
   function provinceLabel(province: number, text: number, textLen: number, rgba: number): number;
 
@@ -1220,15 +1428,63 @@ declare namespace GearboxRaw {
   // mod's -- and unloading a mod clears its own automatically, because a
   // mark left behind by a mod that is no longer running is indistinguishable
   // from the game being wrong.
+  // gearbox:render "clear"
   // `()i`
-  function clear(): number;
+  function renderClear(): number;
 
   // How many tints you are currently holding.
+  // gearbox:render "tint_count"
   // `()i`
   function tintCount(): number;
 
   // How many labels you are currently holding.
+  // gearbox:render "label_count"
   // `()i`
   function labelCount(): number;
+
+  // Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2
+  // troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST. The
+  // definition is the SAME JSON the game's own data file uses, and goes
+  // through the same parser -- not a second reading of the same fields,
+  // which is how 'it works from the file but not from the mod' is made. AI
+  // VISIBILITY IS A FIELD IN THE JSON: "aiVisible": true. It defaults to
+  // FALSE, because content the AI was never trained against should not start
+  // appearing in its options. For RESEARCH it matters more than it looks --
+  // the tree feeds the neural feature vector, so a visible node changes the
+  // shape of the model's input and a model whose parent no longer matches is
+  // silently re-initialised. PERSIST writes the definition into the save, so
+  // a world played with your doctrine keeps knowing what that doctrine was
+  // after your mod is uninstalled -- otherwise the country still holds the
+  // id and nothing can say what it did. HOLLOW is redeclared every load. Ids
+  // are GLOBAL within a catalogue, unlike country fields: a country holds a
+  // doctrine by id and a save records it that way, so two meanings for one
+  // id would make a save ambiguous. Another mod's id is refused. Lower-case
+  // letters, digits, underscore and at most one colon, 64 bytes.
+  // gearbox:content "add"
+  // `(iiiiii)i`
+  function contentAdd(kind: number, id: number, idLen: number, json: number, jsonLen: number, mode: number): number;
+
+  // How many entries of this kind YOU have added.
+  // gearbox:content "count"
+  // `(i)i`
+  function contentCount(kind: number): number;
+
+  // The id of your entry at index within a kind, sorted. Two-call sizing.
+  // gearbox:content "id_at"
+  // `(iiii)i`
+  function contentIdAt(kind: number, index: number, buf: number, cap: number): number;
+
+  // Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod
+  // check whether the content it is about to add already exists -- including
+  // content another mod added, which is the collision it cannot otherwise
+  // see coming.
+  // gearbox:content "owner_of"
+  // `(iiiii)i`
+  function contentOwnerOf(kind: number, id: number, idLen: number, buf: number, cap: number): number;
+
+  // Remove one of your own entries. False if it was not yours.
+  // gearbox:content "remove"
+  // `(iii)i`
+  function contentRemove(kind: number, id: number, idLen: number): number;
 
 }

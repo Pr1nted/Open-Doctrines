@@ -40,6 +40,7 @@ it asked for**.
 | `Country` | Declaring custom fields on countries, and reading and writing them | `field_add`, `field_remove`, `field_has`, `field_count`, `field_name`, `set_number`, `get_number`, `set_text`, `get_text` | yes | implemented |
 | `Scripts` | Adding commands to the map script language | `command_add`, `command_remove`, `command_count`, `command_name`, `command_text`, `command_args` | yes | implemented |
 | `Render` | Tinting provinces and labelling them on the map | `province_tint`, `province_label`, `clear`, `tint_count`, `label_count` | yes | implemented |
+| `Content` | Adding doctrines, research nodes, troop and artillery types and district laws | `add`, `count`, `id_at`, `owner_of`, `remove` | yes | implemented |
 
 `GameProcess` grants no imports — it gates whether the host *calls* your
 `mod_pre_turn` / `mod_post_turn` exports.

@@ -1,5 +1,6 @@
 #pragma once
 #include "WorldProvenance.h"
+#include "ModContent.h"
 #include "ModRenderLayer.h"
 #include "ScriptCommands.h"
 #include "CountryFields.h"
@@ -2818,6 +2819,10 @@ public:
     /** The titular culture per country, and the turn it was worked out. */
     mutable std::unordered_map<int, std::string> m_titularGroup;
     mutable int m_titularTurn = -1;
+    /** Catalogue entries mods have added. See src/ModContent.h. */
+    odcontent::Registry m_modContent;
+    /** Append mod-added doctrines to m_allPolicies. Called after initPolicies. */
+    void applyModDoctrines();
     /** Tints and labels mods have put on the map. See src/ModRenderLayer.h. */
     odrender::Layer m_modRenderLayer;
     /** Draw the mods' tints and labels. Does nothing when none are set. */
@@ -3155,11 +3160,24 @@ public:
     int m_flyToLockTimer = 0; // prevents hover selection override during fly-to
     int m_blockLeftPanTimer = 0; // prevents MapRenderer click handler after Go-to
 
+    /** One doctrine, from one JSON object. Shared by the data file and mods. */
+    void parsePolicyJson(const nlohmann::json& p, Policy& policy);
     void initPolicies();
     void initCountryCompass();
     void applyStartingPolicies();
     void updatePolicies();  // called each turn
     bool canCountryEnactPolicy(int countryId, const Policy& p) const;
+    /**
+     * canCountryEnactPolicy, plus "the AI is allowed to know this exists".
+     *
+     * A separate function rather than a check inside canCountryEnactPolicy,
+     * because that one also answers for the PLAYER and a mod's doctrine being
+     * invisible to the AI must not make it unavailable to a human. Every AI
+     * site goes through this, so a fourth one cannot forget the rule.
+     */
+    bool aiMayEnactPolicy(int countryId, const Policy& p) const {
+        return p.aiVisible && canCountryEnactPolicy(countryId, p);
+    }
     /**
      * Why this country cannot enact this doctrine, or "" if it can.
      *

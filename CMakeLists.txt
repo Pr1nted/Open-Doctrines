@@ -934,6 +934,7 @@ set(GAME_SOURCES
     src/CountryFields.cpp
     src/ScriptCommands.cpp
     src/ModRenderLayer.cpp
+    src/ModContent.cpp
     src/Parties.cpp
     src/Feedback.cpp
     src/Game_Feedback.cpp
@@ -2259,6 +2260,13 @@ target_include_directories(ScriptCommandsTest PRIVATE src tests)
 add_executable(ModRenderLayerTest EXCLUDE_FROM_ALL
                tests/mod_render_layer_test.cpp src/ModRenderLayer.cpp)
 target_include_directories(ModRenderLayerTest PRIVATE src tests)
+
+# Content a mod adds to the catalogues. The properties under test are that ids
+# are global within a catalogue (a save records a doctrine BY ID), that AI
+# visibility is opt-in, and that a persisted definition outlives its mod.
+add_executable(ModContentTest EXCLUDE_FROM_ALL
+               tests/mod_content_test.cpp src/ModContent.cpp)
+target_include_directories(ModContentTest PRIVATE src tests)
 target_include_directories(PartyRulesTest PRIVATE src tests
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 

@@ -793,6 +793,15 @@ struct MinorityGroup {
 
 // ─── Policy System ──────────────────────────────────────────
 struct Policy {
+    /**
+     * Whether the AI may consider this doctrine at all.
+     *
+     * True for everything in data/policies.json -- the model was trained
+     * against those. A doctrine a MOD added defaults to false, because the AI
+     * was never trained against it and an option it cannot evaluate is worse
+     * than one it never sees. A mod opts in with "aiVisible": true.
+     */
+    bool aiVisible = true;
     std::string id;
     std::string name;
     std::string category;  // left, right, authoritarian, libertarian, miscellaneous

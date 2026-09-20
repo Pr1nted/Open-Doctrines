@@ -819,7 +819,7 @@ const Policy* AISystem::enactablePolicy(int cid) const {
     // difference between a budget and a slow bleed. The executor's own rule.
     const Policy* best = nullptr; float bestScore = -1e9f;
     for (const auto& p : g.m_allPolicies) {
-        if (!g.canCountryEnactPolicy(cid, p)) continue;
+        if (!g.aiMayEnactPolicy(cid, p)) continue;
         if (committed + (float)p.costPerTurn > budget) continue;
         const float d = std::fabs(c->compassEconomic / 25.0f - p.econShift) +
                         std::fabs(c->compassSocial / 25.0f - p.socShift);
@@ -5948,7 +5948,7 @@ std::string AISystem::execPolitics(int cid, int action) {
             const float calmHeadroom = !calmGate ? 1e9f : losingGround(cid) ? 0.0f
                                      : std::max(0.0f, inc.total - inc.expenses);
             for (auto& p : g.m_allPolicies) {
-                if (!g.canCountryEnactPolicy(cid, p)) continue;
+                if (!g.aiMayEnactPolicy(cid, p)) continue;
                 // publicOpinionShift moves provinces toward the government,
                 // which is exactly what the political half of unrest measures.
                 float score = 2.0f * p.effect.unrestReduction
@@ -13763,6 +13763,7 @@ double AISystem::s_warBarDef = 0.0;
 double AISystem::s_warBarAtkRes = 0.0;
 std::atomic<long long> AISystem::s_doctrineReflexFired{0};
 std::map<std::string, long long> AISystem::s_doctrineReflexBy;
+std::map<std::string, long long> AISystem::s_doctrineReflexByCountry;
 double AISystem::s_warBarDefRes = 0.0;
 long long AISystem::s_gateWhy[4][6] = {};
 int AISystem::s_netPicked[4][12] = {};
@@ -14328,13 +14329,20 @@ void AISystem::doctrineReflex(int cid) {
     for (const auto& p : g.m_allPolicies) {
         const float a = atkOf(p);
         if (a <= 0.0f) continue;
-        if (!g.canCountryEnactPolicy(cid, p)) continue;
+        if (!g.aiMayEnactPolicy(cid, p)) continue;
         if (committed + (float)p.costPerTurn > budget) continue;
         if (a > bestAtk) { bestAtk = a; best = &p; }
     }
     if (!best) return;
     ++s_doctrineReflexFired;
     s_doctrineReflexBy[best->id]++;
+    // Journal 404 (backlog 102). The counter above says WHAT was bought and not
+    // BY WHOM, so journal 403 could not check whether the scored seat arms
+    // itself -- the obvious reading of 1914:FRA:rush collapsing slightly less
+    // under the rule. isoA3 rather than cid, because cids are per-map, and
+    // resolved here rather than at exit, where the Game is already gone.
+    s_doctrineReflexByCountry[c->isoA3 + (c->isoA3 == g.m_benchSeatIso
+                                          ? " *SEAT*" : "")]++;
     static const bool reg = (atexit(&AISystem::dumpDoctrineReflex), true);
     (void)reg;
     g.enactPolicy(cid, best->id);
@@ -14348,6 +14356,8 @@ void AISystem::dumpDoctrineReflex() {
             s_doctrineReflexFired.load());
     for (const auto& [id, n] : s_doctrineReflexBy)
         fprintf(stderr, "[DOCREFLEX]   %-26s %lld\n", id.c_str(), n);
+    for (const auto& [iso, n] : s_doctrineReflexByCountry)
+        fprintf(stderr, "[DOCREFLEX] by %-24s %lld\n", iso.c_str(), n);
 }
 
 void AISystem::researchAusterityReflex(int cid) {

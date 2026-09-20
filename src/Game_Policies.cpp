@@ -122,6 +122,62 @@ std::string tradeoffLine(const std::string& raw) {
 
 }  // namespace
 
+// One doctrine, from one JSON object.
+//
+// EXTRACTED so a mod-added doctrine goes through the SAME parser as
+// data/policies.json rather than a second reading of the same fields --
+// which is how "it works from the file but not from the mod" is made.
+// Reads only; the caller decides what to do with the result.
+void Game::parsePolicyJson(const nlohmann::json& p, Policy& policy) {
+        policy.id = p.value("id", "");
+        policy.name = p.value("name", "");
+        policy.category = p.value("category", "");
+        policy.folder = p.value("folder", "");
+        policy.description = p.value("description", "");
+        policy.costPerTurn = p.value("cost_per_turn", 0);
+        policy.implementationTurns = p.value("implementation_turns", 3);
+        policy.propagandaDuration = p.value("propaganda_duration", 0);
+        policy.econShift = p.value("compass_shift", nlohmann::json::object()).value("economic", 0.0f);
+        policy.socShift = p.value("compass_shift", nlohmann::json::object()).value("social", 0.0f);
+        policy.minEcon = p.value("requirements", nlohmann::json::object()).value("min_economic", -100);
+        policy.maxEcon = p.value("requirements", nlohmann::json::object()).value("max_economic", 100);
+        policy.minSoc = p.value("requirements", nlohmann::json::object()).value("min_social", -100);
+        policy.maxSoc = p.value("requirements", nlohmann::json::object()).value("max_social", 100);
+        
+        auto effects = p.value("effects", nlohmann::json::object());
+        policy.effect.minorityGrowthRate = effects.value("minority_growth_rate", 0.0f);
+        policy.effect.immigrationBoost = effects.value("immigration_boost", 0.0f);
+        policy.effect.pacificationCost = effects.value("pacification_cost", 0.0f);
+        policy.effect.unrestReduction = effects.value("unrest_reduction", 0.0f);
+        policy.effect.publicOpinionShift = effects.value("public_opinion_shift", 0.0f);
+        policy.effect.targetMinority = effects.value("target_minority", "");
+        
+        // The continuous effects. See Policy::levers.
+        if (p.contains("levers") && p["levers"].is_object())
+            for (auto& [k, v] : p["levers"].items())
+                if (v.is_number()) policy.levers[k] = v.get<float>();
+
+        if (p.contains("incompatible_with")) {
+            for (auto& inc : p["incompatible_with"]) {
+                policy.incompatibleWith.push_back(inc.get<std::string>());
+            }
+        }
+        
+        if (p.contains("tradeoffs")) {
+            auto tradeoffs = p["tradeoffs"];
+            if (tradeoffs.contains("gains")) {
+                for (auto& g : tradeoffs["gains"]) {
+                    policy.tradeoffs.gains.push_back(g.get<std::string>());
+                }
+            }
+            if (tradeoffs.contains("costs")) {
+                for (auto& c : tradeoffs["costs"]) {
+                    policy.tradeoffs.costs.push_back(c.get<std::string>());
+                }
+            }
+        }
+        
+}
 void Game::initPolicies() {
     m_allPolicies.clear();
     
@@ -171,54 +227,7 @@ void Game::initPolicies() {
         auto j = nlohmann::json::parse(json);
         for (auto& p : j["policies"]) {
             Policy policy;
-            policy.id = p.value("id", "");
-            policy.name = p.value("name", "");
-            policy.category = p.value("category", "");
-            policy.folder = p.value("folder", "");
-            policy.description = p.value("description", "");
-            policy.costPerTurn = p.value("cost_per_turn", 0);
-            policy.implementationTurns = p.value("implementation_turns", 3);
-            policy.propagandaDuration = p.value("propaganda_duration", 0);
-            policy.econShift = p.value("compass_shift", nlohmann::json::object()).value("economic", 0.0f);
-            policy.socShift = p.value("compass_shift", nlohmann::json::object()).value("social", 0.0f);
-            policy.minEcon = p.value("requirements", nlohmann::json::object()).value("min_economic", -100);
-            policy.maxEcon = p.value("requirements", nlohmann::json::object()).value("max_economic", 100);
-            policy.minSoc = p.value("requirements", nlohmann::json::object()).value("min_social", -100);
-            policy.maxSoc = p.value("requirements", nlohmann::json::object()).value("max_social", 100);
-            
-            auto effects = p.value("effects", nlohmann::json::object());
-            policy.effect.minorityGrowthRate = effects.value("minority_growth_rate", 0.0f);
-            policy.effect.immigrationBoost = effects.value("immigration_boost", 0.0f);
-            policy.effect.pacificationCost = effects.value("pacification_cost", 0.0f);
-            policy.effect.unrestReduction = effects.value("unrest_reduction", 0.0f);
-            policy.effect.publicOpinionShift = effects.value("public_opinion_shift", 0.0f);
-            policy.effect.targetMinority = effects.value("target_minority", "");
-            
-            // The continuous effects. See Policy::levers.
-            if (p.contains("levers") && p["levers"].is_object())
-                for (auto& [k, v] : p["levers"].items())
-                    if (v.is_number()) policy.levers[k] = v.get<float>();
-
-            if (p.contains("incompatible_with")) {
-                for (auto& inc : p["incompatible_with"]) {
-                    policy.incompatibleWith.push_back(inc.get<std::string>());
-                }
-            }
-            
-            if (p.contains("tradeoffs")) {
-                auto tradeoffs = p["tradeoffs"];
-                if (tradeoffs.contains("gains")) {
-                    for (auto& g : tradeoffs["gains"]) {
-                        policy.tradeoffs.gains.push_back(g.get<std::string>());
-                    }
-                }
-                if (tradeoffs.contains("costs")) {
-                    for (auto& c : tradeoffs["costs"]) {
-                        policy.tradeoffs.costs.push_back(c.get<std::string>());
-                    }
-                }
-            }
-            
+            parsePolicyJson(p, policy);
             m_allPolicies.push_back(policy);
         }
         LoadLog() << "  Loaded " << m_allPolicies.size() << " policies from JSON" << std::endl;
@@ -4998,4 +5007,51 @@ float Game::bankruptcyUnrestFor(int countryId) const {
     const int steps = BANKRUPT_UNREST_FULL_STREAK;   // 3: a third, two thirds, all
     const int n = std::max(1, std::min(streak, steps));
     return BANKRUPTCY_UNREST_PCT * (float)n / (float)steps;
+}
+
+// ── Doctrines a mod added ──
+//
+// Appended AFTER the catalogue is loaded, so a mod's doctrine is a doctrine
+// like any other from that point on: enactable, conflict-checked, costed and
+// saved by id exactly as a shipped one is.
+//
+// Through parsePolicyJson, which is the same function data/policies.json goes
+// through. A second reading of the same fields is how "it works from the file
+// but not from the mod" gets made, and it is also how the two drift when a
+// field is added to one and not the other.
+//
+// AI VISIBILITY IS OPT-IN and defaults to false, which is the opposite of a
+// shipped doctrine. The model was trained against the shipped catalogue; a
+// doctrine it has never seen is an option it cannot evaluate, and an option it
+// cannot evaluate is worse for it than one it is never offered. A mod that
+// wants the AI to play with its content says "aiVisible": true and takes
+// responsibility for the AI's behaviour around it.
+void Game::applyModDoctrines() {
+    for (const odcontent::Entry& e : m_modContent.ofKind(odcontent::Kind::Doctrine)) {
+        // An entry whose mod is not loaded keeps its definition -- so a save
+        // can still say what a country's doctrine WAS -- but must not be
+        // offered to anybody. Inert, not deleted.
+        if (!e.ownerPresent) continue;
+        try {
+            const nlohmann::json j = nlohmann::json::parse(e.json);
+            Policy p;
+            parsePolicyJson(j, p);
+            // The registry's id wins over anything in the JSON. The registry
+            // is what refused a collision and what the save records; letting
+            // the definition rename itself afterwards would put an id in
+            // m_allPolicies that nothing checked.
+            p.id = e.id;
+            p.aiVisible = e.aiVisible;
+            if (p.name.empty()) p.name = p.id;
+            // Replace rather than duplicate: a mod re-adding on load must not
+            // grow the catalogue every session.
+            bool replaced = false;
+            for (Policy& existing : m_allPolicies)
+                if (existing.id == p.id) { existing = p; replaced = true; break; }
+            if (!replaced) m_allPolicies.push_back(p);
+        } catch (const std::exception& ex) {
+            printf("[CONTENT] %s: doctrine '%s' could not be read (%s)\n",
+                   e.modId.c_str(), e.id.c_str(), ex.what());
+        }
+    }
 }

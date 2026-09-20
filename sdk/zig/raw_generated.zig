@@ -5,6 +5,7 @@
 /// Write a line to the game log and the mod menu's log view. Messages
 /// longer than 2048 bytes are truncated. An out-of-bounds (ptr,len) is
 /// refused and logged as an error against your mod rather than read.
+/// gearbox:core "log"
 /// `(iii)`
 pub extern "gearbox:core" fn log(level: u32, msg: ?[*]const u8, msg_len: u32) void;
 
@@ -12,12 +13,14 @@ pub extern "gearbox:core" fn log(level: u32, msg: ?[*]const u8, msg_len: u32) vo
 /// host writes at most that many bytes, so an older mod stays safe against
 /// a newer host. If size is 0 or larger than the host's struct, the host
 /// uses its own size.
+/// gearbox:core "env"
 /// `(i)`
 pub extern "gearbox:core" fn env(out: ?[*]u8) void;
 
 /// Unrecoverable error. Traps out of the current call, disables the mod,
 /// and shows the message to the user. Prefer returning an error from a hook
 /// where you can.
+/// gearbox:core "abort"
 /// `(ii)`
 pub extern "gearbox:core" fn abort(msg: ?[*]const u8, msg_len: u32) noreturn;
 
@@ -25,21 +28,25 @@ pub extern "gearbox:core" fn abort(msg: ?[*]const u8, msg_len: u32) noreturn;
 /// unmetered. This is the LIMIT, not a live countdown: it does not decrease
 /// as you run. Use it to size your work up front and count your own
 /// iterations.
+/// gearbox:core "fuel_budget"
 /// `()I`
 pub extern "gearbox:core" fn fuel_budget() u64;
 
 /// The current turn. 0 when no world is loaded.
+/// gearbox:gamestate.read "turn_number"
 /// `()i`
 pub extern "gearbox:gamestate.read" fn turn_number() u32;
 
 /// How many countries exist. 0 when no world is loaded. Rebel factions are
 /// not included.
+/// gearbox:gamestate.read "country_count"
 /// `()i`
 pub extern "gearbox:gamestate.read" fn country_count() u32;
 
 /// The country at index in [0, country_count). Returns GEARBOX_INVALID
 /// (0xFFFFFFFF) if out of range. Ordering is stable within a turn but not
 /// across turns.
+/// gearbox:gamestate.read "country_at"
 /// `(i)i`
 pub extern "gearbox:gamestate.read" fn country_at(index: u32) u32;
 
@@ -47,22 +54,27 @@ pub extern "gearbox:gamestate.read" fn country_at(index: u32) u32;
 /// length. Call with cap 0 to size, then again to fill. A return greater
 /// than cap means truncation, not failure. Returns 0 for an unknown
 /// country.
+/// gearbox:gamestate.read "country_name"
 /// `(iii)i`
 pub extern "gearbox:gamestate.read" fn country_name(country: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Treasury balance. 0 for an unknown country.
+/// gearbox:gamestate.read "country_treasury"
 /// `(i)F`
 pub extern "gearbox:gamestate.read" fn country_treasury(country: u32) f64;
 
 /// How many provinces the country owns. 0 for an unknown country.
+/// gearbox:gamestate.read "country_province_count"
 /// `(i)i`
 pub extern "gearbox:gamestate.read" fn country_province_count(country: u32) u32;
 
 /// Population of a province. 0 for an unknown province.
+/// gearbox:gamestate.read "province_population"
 /// `(i)I`
 pub extern "gearbox:gamestate.read" fn province_population(province: u32) i64;
 
 /// Owning country, or GEARBOX_INVALID if unowned or unknown.
+/// gearbox:gamestate.read "province_owner"
 /// `(i)i`
 pub extern "gearbox:gamestate.read" fn province_owner(province: u32) u32;
 
@@ -70,35 +82,41 @@ pub extern "gearbox:gamestate.read" fn province_owner(province: u32) u32;
 /// headless, when UI was revoked, or when you already hold 8 panels. Titles
 /// are truncated to 64 bytes. Call this from mod_load, not from your draw
 /// hook.
+/// gearbox:ui "panel_register"
 /// `(iiii)i`
 pub extern "gearbox:ui" fn panel_register(title: ?[*]const u8, title_len: u32, min_w: u32, min_h: u32) u32;
 
 /// Filled rectangle in panel-relative coordinates. Colour is 0xRRGGBBAA.
 /// Coordinates outside the panel are clipped by the host; they cannot
 /// escape it.
+/// gearbox:ui "draw_rect"
 /// `(iiiiii)`
 pub extern "gearbox:ui" fn draw_rect(panel: u32, x: i32, y: i32, w: i32, h: i32, rgba: u32) void;
 
 /// UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per
 /// call.
+/// gearbox:ui "draw_text"
 /// `(iiiiii)`
 pub extern "gearbox:ui" fn draw_text(panel: u32, x: i32, y: i32, rgba: u32, text: ?[*]const u8, text_len: u32) void;
 
 /// Immediate-mode button: draws it and returns 1 on the frame it is
 /// clicked. One click activates one button -- the host consumes it, so
 /// overlapping rects do not all fire. Label truncated to 64 bytes.
+/// gearbox:ui "button"
 /// `(iiiiiii)i`
 pub extern "gearbox:ui" fn button(panel: u32, x: i32, y: i32, w: i32, h: i32, label: ?[*]const u8, label_len: u32) u32;
 
 /// Byte size of one of your own data/ files, or 0 if there is no such
 /// asset. Names are relative to data/ and use '/' separators:
 /// data/flags/fr.png is "flags/fr.png".
+/// gearbox:assets "size"
 /// `(ii)i`
 pub extern "gearbox:assets" fn asset_size(name: ?[*]const u8, name_len: u32) u32;
 
 /// Two-call sizing, like country_name. Writes at most cap bytes and returns
 /// the asset's full size. The name is looked up in your package's entry
 /// list, never resolved as a filesystem path.
+/// gearbox:assets "read"
 /// `(iiii)i`
 pub extern "gearbox:assets" fn asset_read(name: ?[*]const u8, name_len: u32, buf: ?[*]u8, cap: u32) u32;
 
@@ -107,20 +125,24 @@ pub extern "gearbox:assets" fn asset_read(name: ?[*]const u8, name_len: u32, buf
 /// and is multiplied by the player's own effects setting, so a mod cannot
 /// be louder than they allowed. Returns a handle, or 0 if it could not be
 /// played.
+/// gearbox:audio "play"
 /// `(iif)i`
 pub extern "gearbox:audio" fn play(path: ?[*]const u8, path_len: u32, volume: f32) u32;
 
 /// Stop a sound this mod started. A handle belonging to another mod, or one
 /// that already finished, does nothing.
+/// gearbox:audio "stop"
 /// `(i)`
 pub extern "gearbox:audio" fn stop(handle: u32) void;
 
 /// Change the volume of a playing sound, 0..1, again scaled by the player's
 /// setting.
+/// gearbox:audio "set_volume"
 /// `(if)`
 pub extern "gearbox:audio" fn set_volume(handle: u32, volume: f32) void;
 
 /// Whether that handle is still making sound.
+/// gearbox:audio "is_playing"
 /// `(i)i`
 pub extern "gearbox:audio" fn is_playing(handle: u32) u32;
 
@@ -132,6 +154,7 @@ pub extern "gearbox:audio" fn is_playing(handle: u32) u32;
 /// another mod, and it never carries game traffic: orders, deltas and chat
 /// do not travel here. Messages larger than 8192 bytes are refused. Returns
 /// 0 if this is not a network game, or the message was too large.
+/// gearbox:net "send"
 /// `(iii)i`
 pub extern "gearbox:net" fn send(peer: u32, data: ?[*]const u8, data_len: u32) u32;
 
@@ -140,12 +163,14 @@ pub extern "gearbox:net" fn send(peer: u32, data: ?[*]const u8, data_len: u32) u
 /// written, or 0 when the queue is empty. A message longer than `out_len`
 /// is truncated rather than dropped, so a small buffer loses data instead
 /// of stalling the queue.
+/// gearbox:net "recv"
 /// `(iii)i`
 pub extern "gearbox:net" fn recv(out: ?[*]u8, out_len: u32, from_peer: ?[*]u8) u32;
 
 /// How many players this session has, a playing host included. 0 when this
 /// is not a network game, which is how a mod tells the difference.
 /// Spectators are not counted.
+/// gearbox:net "peer_count"
 /// `()i`
 pub extern "gearbox:net" fn peer_count() u32;
 
@@ -153,12 +178,14 @@ pub extern "gearbox:net" fn peer_count() u32;
 /// is a dedicated host holding no seat -- a host that plays has an ordinary
 /// peer id like anyone else, so do not use this to tell host from client.
 /// `is_host` is that question.
+/// gearbox:net "self_peer"
 /// `()i`
 pub extern "gearbox:net" fn self_peer() u32;
 
 /// Whether this copy is the authoritative one. A mod that computes anything
 /// the game depends on must do it here and send the result, not compute it
 /// separately on each machine.
+/// gearbox:net "is_host"
 /// `()i`
 pub extern "gearbox:net" fn is_host() u32;
 
@@ -167,6 +194,7 @@ pub extern "gearbox:net" fn is_host() u32;
 /// is absent -- which is NOT the same as a zero-length value, so you can
 /// tell 'never stored' from 'stored empty'. Values are arbitrary bytes, not
 /// text.
+/// gearbox:storage "get"
 /// `(iiii)i`
 pub extern "gearbox:storage" fn get(key: ?[*]const u8, key_len: u32, buf: ?[*]u8, cap: u32) u32;
 
@@ -175,22 +203,27 @@ pub extern "gearbox:storage" fn get(key: ?[*]const u8, key_len: u32, buf: ?[*]u8
 /// total per mod) -- the reason is written to your log. Not written to disk
 /// immediately: the store is flushed at turn boundaries and on unload,
 /// because a mod may call this from a draw hook.
+/// gearbox:storage "set"
 /// `(iiii)i`
 pub extern "gearbox:storage" fn set(key: ?[*]const u8, key_len: u32, value: ?[*]const u8, value_len: u32) u32;
 
 /// Deletes one of your own keys. Returns 1 if it existed, 0 if it did not.
+/// gearbox:storage "remove"
 /// `(ii)i`
 pub extern "gearbox:storage" fn remove(key: ?[*]const u8, key_len: u32) u32;
 
 /// Width of the province map in pixels. 0 when no world is loaded.
+/// gearbox:map "width"
 /// `()i`
 pub extern "gearbox:map" fn width() u32;
 
 /// Height of the province map in pixels. 0 when no world is loaded.
+/// gearbox:map "height"
 /// `()i`
 pub extern "gearbox:map" fn height() u32;
 
 /// How many provinces the loaded map has. 0 when no world is loaded.
+/// gearbox:map "province_count"
 /// `()i`
 pub extern "gearbox:map" fn province_count() u32;
 
@@ -198,52 +231,63 @@ pub extern "gearbox:map" fn province_count() u32;
 /// GEARBOX_INVALID if out of range. The order is stable across runs, unlike
 /// the game's internal storage, so an index is safe to remember within a
 /// session.
+/// gearbox:map "province_at"
 /// `(i)i`
 pub extern "gearbox:map" fn province_at(index: u32) u32;
 
 /// The province's name. Two-call sizing: returns the full length and writes
 /// at most cap bytes. Empty for an unknown province.
+/// gearbox:map "province_name"
 /// `(iii)i`
 pub extern "gearbox:map" fn province_name(province: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// X pixel coordinate of the province's centre. 0 for an unknown province.
+/// gearbox:map "province_center_x"
 /// `(i)F`
 pub extern "gearbox:map" fn province_center_x(province: u32) f64;
 
 /// Y pixel coordinate of the province's centre. 0 for an unknown province.
+/// gearbox:map "province_center_y"
 /// `(i)F`
 pub extern "gearbox:map" fn province_center_y(province: u32) f64;
 
 /// 1 if the province is land, 0 if it is sea or unknown. Sampled at the
 /// province centre.
+/// gearbox:map "province_is_land"
 /// `(i)i`
 pub extern "gearbox:map" fn province_is_land(province: u32) u32;
 
 /// How many provinces border this one. 0 for an unknown province.
+/// gearbox:map "province_neighbor_count"
 /// `(i)i`
 pub extern "gearbox:map" fn province_neighbor_count(province: u32) u32;
 
 /// The bordering province at an index in [0, province_neighbor_count).
 /// GEARBOX_INVALID if out of range. Adjacency is computed once when the map
 /// loads, so walking it is cheap.
+/// gearbox:map "province_neighbor_at"
 /// `(ii)i`
 pub extern "gearbox:map" fn province_neighbor_at(province: u32, index: u32) u32;
 
 /// 1 if the two countries are at war. Relations are symmetric, so the
 /// argument order does not matter. 0 for unknown countries or for a country
 /// with itself.
+/// gearbox:diplomacy "at_war"
 /// `(ii)i`
 pub extern "gearbox:diplomacy" fn at_war(a: u32, b: u32) u32;
 
 /// 1 if the two countries are allied.
+/// gearbox:diplomacy "allied"
 /// `(ii)i`
 pub extern "gearbox:diplomacy" fn allied(a: u32, b: u32) u32;
 
 /// 1 if the two countries have a non-aggression pact.
+/// gearbox:diplomacy "non_aggression"
 /// `(ii)i`
 pub extern "gearbox:diplomacy" fn non_aggression(a: u32, b: u32) u32;
 
 /// 1 if the first country guarantees the second.
+/// gearbox:diplomacy "guaranteed"
 /// `(ii)i`
 pub extern "gearbox:diplomacy" fn guaranteed(a: u32, b: u32) u32;
 
@@ -254,6 +298,7 @@ pub extern "gearbox:diplomacy" fn guaranteed(a: u32, b: u32) u32;
 /// Refused (0) if either country is unknown, they are the same country, or
 /// they are already at war. Either outcome is written to your mod log, so a
 /// player can see after the fact that a mod started a war.
+/// gearbox:diplomacy "propose_war"
 /// `(ii)i`
 pub extern "gearbox:diplomacy" fn propose_war(attacker: u32, defender: u32) u32;
 
@@ -261,12 +306,14 @@ pub extern "gearbox:diplomacy" fn propose_war(attacker: u32, defender: u32) u32;
 /// country is unknown or the value is not finite and within +/-1e12 -- NaN
 /// or infinity would silently poison every later calculation, so they are
 /// refused rather than stored.
+/// gearbox:gamestate.write "set_country_treasury"
 /// `(iF)i`
 pub extern "gearbox:gamestate.write" fn set_country_treasury(country: u32, value: f64) u32;
 
 /// Adds to a country's treasury. Usually what you want instead of set: it
 /// composes with whatever the economy did this turn. Refused (0) if the
 /// result would leave the sane range.
+/// gearbox:gamestate.write "add_country_treasury"
 /// `(iF)i`
 pub extern "gearbox:gamestate.write" fn add_country_treasury(country: u32, delta: f64) u32;
 
@@ -278,11 +325,13 @@ pub extern "gearbox:gamestate.write" fn add_country_treasury(country: u32, delta
 /// handle is unknown or the country already owns it. Always written to your
 /// mod log: territory changing hands is the most consequential thing a mod
 /// can do.
+/// gearbox:gamestate.write "set_province_owner"
 /// `(ii)i`
 pub extern "gearbox:gamestate.write" fn set_province_owner(province: u32, country: u32) u32;
 
 /// How many floats are in the AI's feature vector. 0 when there is no AI or
 /// no world.
+/// gearbox:neural "feature_count"
 /// `()i`
 pub extern "gearbox:neural" fn feature_count() u32;
 
@@ -290,10 +339,12 @@ pub extern "gearbox:neural" fn feature_count() u32;
 /// floats. Two-call sizing, but note cap counts FLOATS and the buffer must
 /// therefore be cap*4 bytes. This is a snapshot: writing to your copy does
 /// not affect the AI.
+/// gearbox:neural "features"
 /// `(iii)i`
 pub extern "gearbox:neural" fn features(country: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How many reward channels the AI tracks (economy, politics, war, navy).
+/// gearbox:neural "reward_count"
 /// `()i`
 pub extern "gearbox:neural" fn reward_count() u32;
 
@@ -302,6 +353,7 @@ pub extern "gearbox:neural" fn reward_count() u32;
 /// to the model, the optimiser state or the reward history, which is
 /// deliberate -- a trained model is hours of work and a mod that could
 /// quietly retrain it is not something a user can meaningfully consent to.
+/// gearbox:neural "reward_mean"
 /// `(i)F`
 pub extern "gearbox:neural" fn reward_mean(index: u32) f64;
 
@@ -310,16 +362,19 @@ pub extern "gearbox:neural" fn reward_mean(index: u32) f64;
 /// in two places -- a map and a dense array used by the population texture
 /// -- and this updates both, which is why it exists as an import rather
 /// than being something a mod could do by other means.
+/// gearbox:gamestate.write "set_province_population"
 /// `(iI)i`
 pub extern "gearbox:gamestate.write" fn set_province_population(province: u32, value: i64) u32;
 
 /// Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
 /// is clamped to 0.25..64. Clipped to your panel like every other command.
+/// gearbox:ui "draw_line"
 /// `(iiiiiFi)`
 pub extern "gearbox:ui" fn draw_line(panel: u32, x1: u32, y1: u32, x2: u32, y2: u32, thickness: f64, rgba: u32) void;
 
 /// Queue a filled circle centred at (cx,cy), panel-relative. Radius is
 /// clamped to 0..4096.
+/// gearbox:ui "draw_circle"
 /// `(iiiFi)`
 pub extern "gearbox:ui" fn draw_circle(panel: u32, cx: u32, cy: u32, radius: f64, rgba: u32) void;
 
@@ -330,50 +385,60 @@ pub extern "gearbox:ui" fn draw_circle(panel: u32, cx: u32, cy: u32, radius: f64
 /// unmodified. Decoded once and cached; a name that fails to decode draws
 /// nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
 /// extension. This is the call that makes a real reskin possible.
+/// gearbox:ui "draw_image"
 /// `(iiiiiiii)`
 pub extern "gearbox:ui" fn draw_image(panel: u32, x: u32, y: u32, w: u32, h: u32, name: ?[*]const u8, name_len: u32, tint: u32) void;
 
 /// Like draw_text but with a type size, clamped to 6..96. draw_text remains
 /// 14pt, unchanged, so v1.0 mods look exactly as they did.
+/// gearbox:ui "draw_text_sized"
 /// `(iiiiiii)`
 pub extern "gearbox:ui" fn draw_text_sized(panel: u32, x: u32, y: u32, size: u32, rgba: u32, text: ?[*]const u8, text_len: u32) void;
 
 /// Width in pixels of `text` at `size`, measured with the font the game
 /// will actually draw. Centring, right-alignment and wrapping all need this
 /// before the text is queued.
+/// gearbox:ui "measure_text"
 /// `(iii)i`
 pub extern "gearbox:ui" fn measure_text(text: ?[*]const u8, text_len: u32, size: u32) u32;
 
 /// The width the host assigned your panel this frame, in pixels. Lay out
 /// against this rather than against min_w -- the host may have given you
 /// more.
+/// gearbox:ui "panel_width"
 /// `(i)i`
 pub extern "gearbox:ui" fn panel_width(panel: u32) u32;
 
 /// The height the host assigned your panel this frame, in pixels.
+/// gearbox:ui "panel_height"
 /// `(i)i`
 pub extern "gearbox:ui" fn panel_height(panel: u32) u32;
 
 /// Show or hide one of your panels. A hidden panel is not drawn and
 /// receives no input, but keeps its handle and its registration.
+/// gearbox:ui "panel_set_visible"
 /// `(ii)`
 pub extern "gearbox:ui" fn panel_set_visible(panel: u32, visible: u32) void;
 
 /// Cursor X, panel-relative, or 0 when the cursor is not over your panel.
 /// You cannot observe the pointer outside your own box.
+/// gearbox:ui "mouse_x"
 /// `(i)F`
 pub extern "gearbox:ui" fn mouse_x(panel: u32) f64;
 
 /// Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+/// gearbox:ui "mouse_y"
 /// `(i)F`
 pub extern "gearbox:ui" fn mouse_y(panel: u32) f64;
 
 /// Whether the cursor is over your panel this frame.
+/// gearbox:ui "mouse_inside"
 /// `(i)i`
 pub extern "gearbox:ui" fn mouse_inside(panel: u32) u32;
 
 /// The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
 /// Build your palette around this and you harmonise with what they chose.
+/// gearbox:ui "theme_accent"
 /// `()i`
 pub extern "gearbox:ui" fn theme_accent() u32;
 
@@ -382,25 +447,30 @@ pub extern "gearbox:ui" fn theme_accent() u32;
 /// cheapest full reskin there is. It is NOT persisted: the game's settings
 /// file keeps the player's own colour, and the override is dropped the
 /// moment no mod is running, so it cannot outlive uninstalling you.
+/// gearbox:ui "set_theme_accent"
 /// `(i)i`
 pub extern "gearbox:ui" fn set_theme_accent(rgb: u32) u32;
 
 /// How many ships exist in the world, across all owners.
+/// gearbox:military.read "ship_count"
 /// `()i`
 pub extern "gearbox:military.read" fn ship_count() u32;
 
 /// The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
 /// Ids are stable within a turn and not across turns -- do not store one.
+/// gearbox:military.read "ship_at"
 /// `(i)i`
 pub extern "gearbox:military.read" fn ship_at(index: u32) u32;
 
 /// Whether a ship id is still live. Check this before acting on an id you
 /// read earlier in the same turn; ships sink.
+/// gearbox:military.read "ship_exists"
 /// `(i)i`
 pub extern "gearbox:military.read" fn ship_exists(ship: u32) u32;
 
 /// The country that owns a ship, or 0xFFFFFFFF for an id that does not
 /// exist.
+/// gearbox:military.read "ship_owner"
 /// `(i)i`
 pub extern "gearbox:military.read" fn ship_owner(ship: u32) u32;
 
@@ -408,58 +478,70 @@ pub extern "gearbox:military.read" fn ship_owner(ship: u32) u32;
 /// "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
 /// to learn the length, allocate, call again. Returns the full length
 /// either way; the copy is truncated to cap.
+/// gearbox:military.read "ship_type"
 /// `(iii)i`
 pub extern "gearbox:military.read" fn ship_type(ship: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Longitude in degrees, -180..180. Ships live in world coordinates, not
 /// provinces.
+/// gearbox:military.read "ship_lon"
 /// `(i)F`
 pub extern "gearbox:military.read" fn ship_lon(ship: u32) f64;
 
 /// Latitude in degrees, -90..90.
+/// gearbox:military.read "ship_lat"
 /// `(i)F`
 pub extern "gearbox:military.read" fn ship_lat(ship: u32) f64;
 
 /// Hull integrity, 0..100. A ship at 0 has already sunk and will not
 /// appear.
+/// gearbox:military.read "ship_health"
 /// `(i)i`
 pub extern "gearbox:military.read" fn ship_health(ship: u32) u32;
 
 /// Crew aboard. For a transport this includes the embarked army, which is
 /// why a sunk transport costs so much more than its hull.
+/// gearbox:military.read "ship_crew"
 /// `(i)i`
 pub extern "gearbox:military.read" fn ship_crew(ship: u32) u32;
 
 /// How far this hull may move in one turn, in degrees. The resolver clamps
 /// any order beyond it, so read this before ordering a move rather than
 /// discovering the clamp afterwards.
+/// gearbox:military.read "ship_range"
 /// `(i)F`
 pub extern "gearbox:military.read" fn ship_range(ship: u32) f64;
 
 /// How many distinct owners have troops in a province. Usually 1; more than
 /// one means a contested or garrisoned province.
+/// gearbox:military.read "army_stack_count"
 /// `(i)i`
 pub extern "gearbox:military.read" fn army_stack_count(province: u32) u32;
 
 /// The country owning stack `index` in a province, or 0xFFFFFFFF past the
 /// end.
+/// gearbox:military.read "army_stack_owner"
 /// `(ii)i`
 pub extern "gearbox:military.read" fn army_stack_owner(province: u32, index: u32) u32;
 
 /// How many troops are in that stack.
+/// gearbox:military.read "army_stack_size"
 /// `(ii)I`
 pub extern "gearbox:military.read" fn army_stack_size(province: u32, index: u32) i64;
 
 /// A country's total troops everywhere, which is the number its own army
 /// screen shows.
+/// gearbox:military.read "country_army"
 /// `(i)I`
 pub extern "gearbox:military.read" fn country_army(country: u32) i64;
 
 /// Fortification level, 0..5. Multiplies the defender's strength.
+/// gearbox:military.read "province_fortification"
 /// `(i)i`
 pub extern "gearbox:military.read" fn province_fortification(province: u32) u32;
 
 /// Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+/// gearbox:military.read "province_port_level"
 /// `(i)i`
 pub extern "gearbox:military.read" fn province_port_level(province: u32) u32;
 
@@ -470,6 +552,7 @@ pub extern "gearbox:military.read" fn province_port_level(province: u32) u32;
 /// player's own click writes to and is validated by the same resolver at
 /// end of turn, so a mod cannot teleport, cheat range, or attack across an
 /// ocean. Returns 0 if the order is rejected outright.
+/// gearbox:military.write "order_army_move"
 /// `(iii)i`
 pub extern "gearbox:military.write" fn order_army_move(from: u32, to: u32, percent: u32) u32;
 
@@ -480,6 +563,7 @@ pub extern "gearbox:military.write" fn order_army_move(from: u32, to: u32, perce
 /// writes to and is validated by the same resolver at end of turn, so a mod
 /// cannot teleport, cheat range, or attack across an ocean. Returns 0 if
 /// the order is rejected outright.
+/// gearbox:military.write "order_ship_move"
 /// `(iFF)i`
 pub extern "gearbox:military.write" fn order_ship_move(ship: u32, lon: f64, lat: f64) u32;
 
@@ -489,6 +573,7 @@ pub extern "gearbox:military.write" fn order_ship_move(ship: u32, lon: f64, lat:
 /// player's own click writes to and is validated by the same resolver at
 /// end of turn, so a mod cannot teleport, cheat range, or attack across an
 /// ocean. Returns 0 if the order is rejected outright.
+/// gearbox:military.write "order_ship_engage"
 /// `(ii)i`
 pub extern "gearbox:military.write" fn order_ship_engage(ship: u32, target: u32) u32;
 
@@ -498,10 +583,12 @@ pub extern "gearbox:military.write" fn order_ship_engage(ship: u32, target: u32)
 /// validated by the same resolver at end of turn, so a mod cannot teleport,
 /// cheat range, or attack across an ocean. Returns 0 if the order is
 /// rejected outright.
+/// gearbox:military.write "order_ship_bombard"
 /// `(iiii)i`
 pub extern "gearbox:military.write" fn order_ship_bombard(ship: u32, province: u32, ammo: ?[*]const u8, ammo_len: u32) u32;
 
 /// How many technologies exist in the tree.
+/// gearbox:research.read "node_count"
 /// `()i`
 pub extern "gearbox:research.read" fn node_count() u32;
 
@@ -509,6 +596,7 @@ pub extern "gearbox:research.read" fn node_count() u32;
 /// country_has_researched takes. Two-call sizing: call with cap 0 to learn
 /// the length, allocate, call again. Returns the full length either way;
 /// the copy is truncated to cap.
+/// gearbox:research.read "node_id"
 /// `(iii)i`
 pub extern "gearbox:research.read" fn node_id(index: u32, buf: ?[*]u8, cap: u32) u32;
 
@@ -516,77 +604,93 @@ pub extern "gearbox:research.read" fn node_id(index: u32, buf: ?[*]u8, cap: u32)
 /// never match on it. Two-call sizing: call with cap 0 to learn the length,
 /// allocate, call again. Returns the full length either way; the copy is
 /// truncated to cap.
+/// gearbox:research.read "node_name"
 /// `(iii)i`
 pub extern "gearbox:research.read" fn node_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
 /// learn the length, allocate, call again. Returns the full length either
 /// way; the copy is truncated to cap.
+/// gearbox:research.read "node_category"
 /// `(iii)i`
 pub extern "gearbox:research.read" fn node_category(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Research points required.
+/// gearbox:research.read "node_cost"
 /// `(i)i`
 pub extern "gearbox:research.read" fn node_cost(index: u32) u32;
 
 /// Whether a country has completed a technology. Takes the id from node_id,
 /// not the display name.
+/// gearbox:research.read "country_has_researched"
 /// `(iii)i`
 pub extern "gearbox:research.read" fn country_has_researched(country: u32, node_id: ?[*]const u8, node_id_len: u32) u32;
 
 /// Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
 /// is how the game stores it and how its own economy screen presents it.
+/// gearbox:research.read "country_funding"
 /// `(i)F`
 pub extern "gearbox:research.read" fn country_funding(country: u32) f64;
 
 /// Set research funding as a share of income. Clamped to 0..1; a value in
 /// 'points per turn' is not a quantity this game has.
+/// gearbox:research.write "set_country_funding"
 /// `(iF)i`
 pub extern "gearbox:research.write" fn set_country_funding(country: u32, share: f64) u32;
 
 /// Economic axis of the political compass, -100 (planned) to 100 (market).
+/// gearbox:politics.read "country_compass_econ"
 /// `(i)F`
 pub extern "gearbox:politics.read" fn country_compass_econ(country: u32) f64;
 
 /// Social axis, -100 (authoritarian) to 100 (libertarian).
+/// gearbox:politics.read "country_compass_social"
 /// `(i)F`
 pub extern "gearbox:politics.read" fn country_compass_social(country: u32) f64;
 
 /// This province's chance of rebelling, as the game itself computes it.
+/// gearbox:politics.read "province_unrest"
 /// `(i)F`
 pub extern "gearbox:politics.read" fn province_unrest(province: u32) f64;
 
 /// How many policies exist.
+/// gearbox:politics.read "policy_count"
 /// `()i`
 pub extern "gearbox:politics.read" fn policy_count() u32;
 
 /// The stable string id of policy `index`. Two-call sizing: call with cap 0
 /// to learn the length, allocate, call again. Returns the full length
 /// either way; the copy is truncated to cap.
+/// gearbox:politics.read "policy_id"
 /// `(iii)i`
 pub extern "gearbox:politics.read" fn policy_id(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// The policy's display name; localised, not stable, do not match on it.
 /// Two-call sizing: call with cap 0 to learn the length, allocate, call
 /// again. Returns the full length either way; the copy is truncated to cap.
+/// gearbox:politics.read "policy_name"
 /// `(iii)i`
 pub extern "gearbox:politics.read" fn policy_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Whether a country currently has a policy active or implementing.
+/// gearbox:politics.read "country_has_policy"
 /// `(iii)i`
 pub extern "gearbox:politics.read" fn country_has_policy(country: u32, policy_id: ?[*]const u8, policy_id_len: u32) u32;
 
 /// How many named minority groups live in a province.
+/// gearbox:politics.read "province_minority_count"
 /// `(i)i`
 pub extern "gearbox:politics.read" fn province_minority_count(province: u32) u32;
 
 /// The minority's name. Two-call sizing: call with cap 0 to learn the
 /// length, allocate, call again. Returns the full length either way; the
 /// copy is truncated to cap.
+/// gearbox:politics.read "province_minority_name"
 /// `(iiii)i`
 pub extern "gearbox:politics.read" fn province_minority_name(province: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// That minority's share of the province's population, 0..1.
+/// gearbox:politics.read "province_minority_share"
 /// `(ii)F`
 pub extern "gearbox:politics.read" fn province_minority_share(province: u32, index: u32) f64;
 
@@ -594,32 +698,39 @@ pub extern "gearbox:politics.read" fn province_minority_share(province: u32, ind
 /// the cost, the prerequisites and the per-turn enactment cap all still
 /// apply -- a country cannot end up running policies it could never have
 /// afforded. Returns 1 if the policy is already in the requested state.
+/// gearbox:politics.write "set_country_policy"
 /// `(iiii)i`
 pub extern "gearbox:politics.write" fn set_country_policy(country: u32, policy_id: ?[*]const u8, policy_id_len: u32, enabled: u32) u32;
 
 /// Income per turn before upkeep.
+/// gearbox:economy.read "country_income_gross"
 /// `(i)F`
 pub extern "gearbox:economy.read" fn country_income_gross(country: u32) f64;
 
 /// Income per turn after army and navy upkeep. Negative means the treasury
 /// is draining.
+/// gearbox:economy.read "country_income_net"
 /// `(i)F`
 pub extern "gearbox:economy.read" fn country_income_net(country: u32) f64;
 
 /// What the standing army costs per turn.
+/// gearbox:economy.read "country_army_upkeep"
 /// `(i)F`
 pub extern "gearbox:economy.read" fn country_army_upkeep(country: u32) f64;
 
 /// What the fleet costs per turn. Ships a country is not using still cost
 /// this, which is what makes scrapping a real decision.
+/// gearbox:economy.read "country_navy_upkeep"
 /// `(i)F`
 pub extern "gearbox:economy.read" fn country_navy_upkeep(country: u32) f64;
 
 /// Whether a country is currently bankrupt.
+/// gearbox:economy.read "country_is_bankrupt"
 /// `(i)i`
 pub extern "gearbox:economy.read" fn country_is_bankrupt(country: u32) u32;
 
 /// Industry level, 0..10.
+/// gearbox:economy.read "province_industry_level"
 /// `(i)i`
 pub extern "gearbox:economy.read" fn province_industry_level(province: u32) u32;
 
@@ -627,33 +738,39 @@ pub extern "gearbox:economy.read" fn province_industry_level(province: u32) u32;
 /// none. Two-call sizing: call with cap 0 to learn the length, allocate,
 /// call again. Returns the full length either way; the copy is truncated to
 /// cap.
+/// gearbox:economy.read "province_industry_specialization"
 /// `(iii)i`
 pub extern "gearbox:economy.read" fn province_industry_specialization(province: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How much of a resource a province holds, 0..100. `which` is one of
 /// "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+/// gearbox:economy.read "province_resource"
 /// `(iii)F`
 pub extern "gearbox:economy.read" fn province_resource(province: u32, which: ?[*]const u8, which_len: u32) f64;
 
 /// Set a province's industry level, clamped to 0..10. This writes the built
 /// level directly and does not charge for it -- it is a scenario-authoring
 /// tool, not a build order.
+/// gearbox:economy.write "set_province_industry_level"
 /// `(ii)i`
 pub extern "gearbox:economy.write" fn set_province_industry_level(province: u32, level: u32) u32;
 
 /// Whether a province touches water. Ports, embarking and naval bombardment
 /// all require it.
+/// gearbox:map "province_is_coastal"
 /// `(i)i`
 pub extern "gearbox:map" fn province_is_coastal(province: u32) u32;
 
 /// Whether a fleet could get from one point to another by sea, using the
 /// game's own navigation grid. You cannot compute this from province
 /// neighbours: those describe LAND adjacency.
+/// gearbox:map "sea_route_exists"
 /// `(FFFF)i`
 pub extern "gearbox:map" fn sea_route_exists(from_lon: f64, from_lat: f64, to_lon: f64, to_lat: f64) u32;
 
 /// Whether a world coordinate is land. Ordering a ship onto land is not an
 /// error -- the resolver clamps it -- but knowing first is cheaper.
+/// gearbox:map "point_is_land"
 /// `(FF)i`
 pub extern "gearbox:map" fn point_is_land(lon: f64, lat: f64) u32;
 
@@ -661,53 +778,63 @@ pub extern "gearbox:map" fn point_is_land(lon: f64, lat: f64) u32;
 /// IN THIS MODULE returns 0 or an empty string when this is 0, including
 /// from inside a running game: the data behind them is an editor project,
 /// and a game does not have one. Check this first.
+/// gearbox:mapeditor "editor_active"
 /// `()i`
 pub extern "gearbox:mapeditor" fn editor_active() u32;
 
 /// How many provinces the open project has. Returns a neutral value unless
 /// the map editor is open with a project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_count"
 /// `()i`
 pub extern "gearbox:mapeditor" fn editor_province_count() u32;
 
 /// The province id at `index`, in ascending id order, or 0xFFFFFFFF past
 /// the end. Returns a neutral value unless the map editor is open with a
 /// project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_at"
 /// `(i)i`
 pub extern "gearbox:mapeditor" fn editor_province_at(index: u32) u32;
 
 /// Population. Returns a neutral value unless the map editor is open with a
 /// project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_population"
 /// `(i)I`
 pub extern "gearbox:mapeditor" fn editor_province_population(province: u32) i64;
 
 /// Industry level, 0..10. Returns a neutral value unless the map editor is
 /// open with a project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_industry_level"
 /// `(i)i`
 pub extern "gearbox:mapeditor" fn editor_province_industry_level(province: u32) u32;
 
 /// Fortification, 0..5. Returns a neutral value unless the map editor is
 /// open with a project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_fortification"
 /// `(i)i`
 pub extern "gearbox:mapeditor" fn editor_province_fortification(province: u32) u32;
 
 /// Port level, 0..3. Returns a neutral value unless the map editor is open
 /// with a project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_port_level"
 /// `(i)i`
 pub extern "gearbox:mapeditor" fn editor_province_port_level(province: u32) u32;
 
 /// Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
 /// or "metal". Returns a neutral value unless the map editor is open with a
 /// project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_resource"
 /// `(iii)F`
 pub extern "gearbox:mapeditor" fn editor_province_resource(province: u32, which: ?[*]const u8, which_len: u32) f64;
 
 /// Province economic compass, -100..100. Returns a neutral value unless the
 /// map editor is open with a project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_compass_econ"
 /// `(i)F`
 pub extern "gearbox:mapeditor" fn editor_province_compass_econ(province: u32) f64;
 
 /// Province social compass, -100..100. Returns a neutral value unless the
 /// map editor is open with a project loaded -- see mapeditor/active.
+/// gearbox:mapeditor "editor_province_compass_social"
 /// `(i)F`
 pub extern "gearbox:mapeditor" fn editor_province_compass_social(province: u32) f64;
 
@@ -716,6 +843,7 @@ pub extern "gearbox:mapeditor" fn editor_province_compass_social(province: u32) 
 /// unsaved-changes prompt like any other edit. A province the project does
 /// not have is refused rather than created: data without a shape on the
 /// province bitmap exports a map the game cannot load.
+/// gearbox:mapeditor "editor_set_province_population"
 /// `(iI)i`
 pub extern "gearbox:mapeditor" fn editor_set_province_population(province: u32, value: i64) u32;
 
@@ -724,6 +852,7 @@ pub extern "gearbox:mapeditor" fn editor_set_province_population(province: u32, 
 /// unsaved-changes prompt like any other edit. A province the project does
 /// not have is refused rather than created: data without a shape on the
 /// province bitmap exports a map the game cannot load.
+/// gearbox:mapeditor "editor_set_province_industry_level"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_set_province_industry_level(province: u32, level: u32) u32;
 
@@ -732,6 +861,7 @@ pub extern "gearbox:mapeditor" fn editor_set_province_industry_level(province: u
 /// unsaved-changes prompt like any other edit. A province the project does
 /// not have is refused rather than created: data without a shape on the
 /// province bitmap exports a map the game cannot load.
+/// gearbox:mapeditor "editor_set_province_fortification"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_set_province_fortification(province: u32, level: u32) u32;
 
@@ -740,6 +870,7 @@ pub extern "gearbox:mapeditor" fn editor_set_province_fortification(province: u3
 /// unsaved-changes prompt like any other edit. A province the project does
 /// not have is refused rather than created: data without a shape on the
 /// province bitmap exports a map the game cannot load.
+/// gearbox:mapeditor "editor_set_province_port_level"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_set_province_port_level(province: u32, level: u32) u32;
 
@@ -749,6 +880,7 @@ pub extern "gearbox:mapeditor" fn editor_set_province_port_level(province: u32, 
 /// shows up in the unsaved-changes prompt like any other edit. A province
 /// the project does not have is refused rather than created: data without a
 /// shape on the province bitmap exports a map the game cannot load.
+/// gearbox:mapeditor "editor_set_province_resource"
 /// `(iiiF)i`
 pub extern "gearbox:mapeditor" fn editor_set_province_resource(province: u32, which: ?[*]const u8, which_len: u32, amount: f64) u32;
 
@@ -757,29 +889,35 @@ pub extern "gearbox:mapeditor" fn editor_set_province_resource(province: u32, wh
 /// shows up in the unsaved-changes prompt like any other edit. A province
 /// the project does not have is refused rather than created: data without a
 /// shape on the province bitmap exports a map the game cannot load.
+/// gearbox:mapeditor "editor_set_province_compass"
 /// `(iFF)i`
 pub extern "gearbox:mapeditor" fn editor_set_province_compass(province: u32, econ: f64, social: f64) u32;
 
 /// The project's map name. Two-call sizing: call with cap 0 to learn the
 /// length, allocate, call again. Returns the full length either way; the
 /// copy is truncated to cap.
+/// gearbox:mapeditor "editor_map_name"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_map_name(buf: ?[*]u8, cap: u32) u32;
 
 /// Rename the map. Refused if empty or over 96 bytes.
+/// gearbox:mapeditor "editor_set_map_name"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_set_map_name(name: ?[*]const u8, name_len: u32) u32;
 
 /// Set the author recorded in the exported .odmap. Up to 96 bytes.
+/// gearbox:mapeditor "editor_set_author"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_set_author(author: ?[*]const u8, author_len: u32) u32;
 
 /// Set the licence recorded in the exported .odmap. Up to 96 bytes.
+/// gearbox:mapeditor "editor_set_license"
 /// `(ii)i`
 pub extern "gearbox:mapeditor" fn editor_set_license(license: ?[*]const u8, license_len: u32) u32;
 
 /// The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
 /// This is the id net/send takes.
+/// gearbox:net "peer_at"
 /// `(i)i`
 pub extern "gearbox:net" fn peer_at(index: u32) u32;
 
@@ -787,26 +925,31 @@ pub extern "gearbox:net" fn peer_at(index: u32) u32;
 /// A mod has no business correlating players across sessions. Two-call
 /// sizing: call with cap 0 to learn the length, allocate, call again.
 /// Returns the full length either way; the copy is truncated to cap.
+/// gearbox:net "peer_name"
 /// `(iii)i`
 pub extern "gearbox:net" fn peer_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// The largest payload net/send will accept. Chunk against this rather than
 /// discovering the limit by having a message dropped.
+/// gearbox:net "max_message_bytes"
 /// `()i`
 pub extern "gearbox:net" fn max_message_bytes() u32;
 
 /// How many decision modules the AI has. Each acts independently every
 /// turn.
+/// gearbox:neural "module_count"
 /// `()i`
 pub extern "gearbox:neural" fn module_count() u32;
 
 /// The module's name: "economy", "politics", "war", "navy". Two-call
 /// sizing: call with cap 0 to learn the length, allocate, call again.
 /// Returns the full length either way; the copy is truncated to cap.
+/// gearbox:neural "module_name"
 /// `(iii)i`
 pub extern "gearbox:neural" fn module_name(module: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How many actions that module can choose between.
+/// gearbox:neural "action_count"
 /// `(i)i`
 pub extern "gearbox:neural" fn action_count(module: u32) u32;
 
@@ -817,72 +960,86 @@ pub extern "gearbox:neural" fn action_count(module: u32) u32;
 /// stable enough to build an advisor or a decision log against. Two-call
 /// sizing: call with cap 0 to learn the length, allocate, call again.
 /// Returns the full length either way; the copy is truncated to cap.
+/// gearbox:neural "action_name"
 /// `(iiii)i`
 pub extern "gearbox:neural" fn action_name(module: u32, action: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Whether a country is played by the AI rather than by the local player.
+/// gearbox:neural "country_is_ai"
 /// `(i)i`
 pub extern "gearbox:neural" fn country_is_ai(country: u32) u32;
 
 /// Gradient updates the loaded model has been through -- roughly, how much
 /// training it has seen.
+/// gearbox:neural "update_count"
 /// `()I`
 pub extern "gearbox:neural" fn update_count() i64;
 
 /// Whether an AI model is loaded at all. False in a game with no AI
 /// players.
+/// gearbox:neural "model_loaded"
 /// `()i`
 pub extern "gearbox:neural" fn model_loaded() u32;
 
 /// How many districts this country is divided into. Districts are built on
 /// demand, so asking is what creates the default one for a country that has
 /// never been divided.
+/// gearbox:politics.read "country_district_count"
 /// `(i)i`
 pub extern "gearbox:politics.read" fn country_district_count(country: u32) u32;
 
 /// The district's name. Two-call sizing: call with cap 0 to learn the
 /// length, allocate, call again. Returns the full length either way; the
 /// copy is truncated to cap.
+/// gearbox:politics.read "country_district_name"
 /// `(iiii)i`
 pub extern "gearbox:politics.read" fn country_district_name(country: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// This district's claim on the country's pacification budget, in percent.
 /// The shares of a country's districts sum to 100.
+/// gearbox:politics.read "country_district_share"
 /// `(ii)i`
 pub extern "gearbox:politics.read" fn country_district_share(country: u32, index: u32) u32;
 
 /// How many provinces this district holds.
+/// gearbox:politics.read "country_district_province_count"
 /// `(ii)i`
 pub extern "gearbox:politics.read" fn country_district_province_count(country: u32, index: u32) u32;
 
 /// Province `n` of this district, or GEARBOX_INVALID if there is no such
 /// one.
+/// gearbox:politics.read "country_district_province"
 /// `(iii)i`
 pub extern "gearbox:politics.read" fn country_district_province(country: u32, index: u32, n: u32) u32;
 
 /// How many regional laws this district runs.
+/// gearbox:politics.read "country_district_law_count"
 /// `(ii)i`
 pub extern "gearbox:politics.read" fn country_district_law_count(country: u32, index: u32) u32;
 
 /// The stable id of regional law `n` in this district. Two-call sizing:
 /// call with cap 0 to learn the length, allocate, call again. Returns the
 /// full length either way; the copy is truncated to cap.
+/// gearbox:politics.read "country_district_law"
 /// `(iiiii)i`
 pub extern "gearbox:politics.read" fn country_district_law(country: u32, index: u32, n: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How many regional laws exist to choose from.
+/// gearbox:politics.read "district_law_count"
 /// `()i`
 pub extern "gearbox:politics.read" fn district_law_count() u32;
 
 /// The stable id of regional law `index`. Two-call sizing: call with cap 0
 /// to learn the length, allocate, call again. Returns the full length
 /// either way; the copy is truncated to cap.
+/// gearbox:politics.read "district_law_id"
 /// `(iii)i`
 pub extern "gearbox:politics.read" fn district_law_id(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// The display name of regional law `index`, untranslated. Two-call sizing:
 /// call with cap 0 to learn the length, allocate, call again. Returns the
 /// full length either way; the copy is truncated to cap.
+/// gearbox:politics.read "district_law_name"
 /// `(iii)i`
 pub extern "gearbox:politics.read" fn district_law_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
@@ -890,26 +1047,31 @@ pub extern "gearbox:politics.read" fn district_law_name(index: u32, buf: ?[*]u8,
 /// 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
 /// a decision with a consequence -- migrants read it -- rather than a
 /// display setting.
+/// gearbox:politics.read "country_discloses"
 /// `(ii)i`
 pub extern "gearbox:politics.read" fn country_discloses(country: u32, field: u32) u32;
 
 /// Set this district's claim on the pacification budget. The other
 /// districts are rebalanced so the shares still sum to 100, exactly as
 /// dragging the slider does. Returns 1 on success.
+/// gearbox:politics.write "set_country_district_share"
 /// `(iii)i`
 pub extern "gearbox:politics.write" fn set_country_district_share(country: u32, index: u32, percent: u32) u32;
 
 /// Pass or repeal a regional law in this district. Returns 1 on success, 0
 /// for an unknown law or district.
+/// gearbox:politics.write "set_country_district_law"
 /// `(iiiii)i`
 pub extern "gearbox:politics.write" fn set_country_district_law(country: u32, index: u32, law: ?[*]const u8, law_len: u32, on: u32) u32;
 
 /// Publish or withhold one of the figures in this country's profile.
 /// Returns 1 on success.
+/// gearbox:politics.write "set_country_disclosure"
 /// `(iii)i`
 pub extern "gearbox:politics.write" fn set_country_disclosure(country: u32, field: u32, on: u32) u32;
 
 /// How many kinds of soldier exist.
+/// gearbox:military.read "troop_type_count"
 /// `()i`
 pub extern "gearbox:military.read" fn troop_type_count() u32;
 
@@ -917,43 +1079,51 @@ pub extern "gearbox:military.read" fn troop_type_count() u32;
 /// Never translated. Two-call sizing: call with cap 0 to learn the length,
 /// allocate, call again. Returns the full length either way; the copy is
 /// truncated to cap.
+/// gearbox:military.read "troop_type_id"
 /// `(iii)i`
 pub extern "gearbox:military.read" fn troop_type_id(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How many soldiers of that kind this country has, everywhere. 0 for a
 /// troop type that does not exist.
+/// gearbox:military.read "country_army_of_type"
 /// `(iii)I`
 pub extern "gearbox:military.read" fn country_army_of_type(country: u32, troop_type: ?[*]const u8, troop_type_len: u32) i64;
 
 /// How many soldiers of that kind this country has standing in that
 /// province.
+/// gearbox:military.read "province_troops_of_type"
 /// `(iiii)I`
 pub extern "gearbox:military.read" fn province_troops_of_type(province: u32, country: u32, troop_type: ?[*]const u8, troop_type_len: u32) i64;
 
 /// How many research programmes this country may run at once, 1 to 3. This
 /// is the effective number, including any override a script or a mod has
 /// set.
+/// gearbox:research.read "country_research_groups"
 /// `(i)i`
 pub extern "gearbox:research.read" fn country_research_groups(country: u32) u32;
 
 /// Force how many research programmes a country may run, 1 to 3, or 0 to
 /// hand the decision back to its economy. Outranks the economic gate in
 /// both directions and is saved with the game. Returns 1 on success.
+/// gearbox:research.write "set_country_research_groups"
 /// `(ii)i`
 pub extern "gearbox:research.write" fn set_country_research_groups(country: u32, groups: u32) u32;
 
 /// What this country spent last turn, in total. The same figure its profile
 /// publishes and the economy screen draws.
+/// gearbox:economy.read "country_expenses"
 /// `(i)F`
 pub extern "gearbox:economy.read" fn country_expenses(country: u32) f64;
 
 /// What the whole country is worth: every industry level, fort, port and
 /// division at what it cost to raise. A stock, where the income figures are
 /// flows.
+/// gearbox:economy.read "country_national_value"
 /// `(i)F`
 pub extern "gearbox:economy.read" fn country_national_value(country: u32) f64;
 
 /// How many people live in this country.
+/// gearbox:economy.read "country_population"
 /// `(i)I`
 pub extern "gearbox:economy.read" fn country_population(country: u32) i64;
 
@@ -965,12 +1135,14 @@ pub extern "gearbox:economy.read" fn country_population(country: u32) i64;
 /// should record RULES. Two-call sizing: call with cap 0 to learn the
 /// length, allocate, call again. Returns the full length either way; the
 /// copy is truncated to cap.
+/// gearbox:neural "ai_version"
 /// `(ii)i`
 pub extern "gearbox:neural" fn ai_version(buf: ?[*]u8, cap: u32) u32;
 
 /// The AI's ARCH number on its own, which is also the model file's format
 /// byte. The feature count and the action sets are only stable within one
 /// ARCH; a bump means old weights are refused on purpose.
+/// gearbox:neural "ai_arch"
 /// `()i`
 pub extern "gearbox:neural" fn ai_arch() u32;
 
@@ -979,6 +1151,7 @@ pub extern "gearbox:neural" fn ai_arch() u32;
 /// (a country the AI does not play, or one that has not been given a stance
 /// yet). Held for several turns at a time rather than chosen fresh each
 /// turn.
+/// gearbox:neural "country_stance"
 /// `(i)i`
 pub extern "gearbox:neural" fn country_stance(country: u32) u32;
 
@@ -986,10 +1159,12 @@ pub extern "gearbox:neural" fn country_stance(country: u32) u32;
 /// translated, and stable within an ARCH. Two-call sizing: call with cap 0
 /// to learn the length, allocate, call again. Returns the full length
 /// either way; the copy is truncated to cap.
+/// gearbox:neural "stance_name"
 /// `(iii)i`
 pub extern "gearbox:neural" fn stance_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How many stances there are to choose between.
+/// gearbox:neural "stance_count"
 /// `()i`
 pub extern "gearbox:neural" fn stance_count() u32;
 
@@ -1000,40 +1175,47 @@ pub extern "gearbox:neural" fn stance_count() u32;
 /// nothing. Choosing an action whose byte is 0 is the same as deciding
 /// nothing -- the host keeps its own choice, because an illegal action is
 /// not a move it can make.
+/// gearbox:neural.decide "action_valid"
 /// `(iii)i`
 pub extern "gearbox:neural.decide" fn action_valid(module: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// How many parties sit in a country's legislature. 0 when the party rules
 /// are off, which is the default -- so a mod must treat 0 as 'this world
 /// has no party politics' rather than as an error.
+/// gearbox:politics.read "country_party_count"
 /// `(i)i`
 pub extern "gearbox:politics.read" fn country_party_count(country: u32) u32;
 
 /// The party's name. Two-call sizing: call with cap 0 to learn the length,
 /// allocate, call again. Returns the full length either way; the copy is
 /// truncated to cap.
+/// gearbox:politics.read "country_party_name"
 /// `(iiii)i`
 pub extern "gearbox:politics.read" fn country_party_name(country: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// The party's abbreviation, for a list that has to fit -- "SPD", "INC".
 /// Same two-call sizing as country_party_name. May be empty.
+/// gearbox:politics.read "country_party_short_name"
 /// `(iiii)i`
 pub extern "gearbox:politics.read" fn country_party_short_name(country: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// That party's share of the country, 0..1. The shares of one country's
 /// parties are a partition and sum to 1, so they may be compared directly
 /// but must never be added across countries.
+/// gearbox:politics.read "country_party_support"
 /// `(ii)F`
 pub extern "gearbox:politics.read" fn country_party_support(country: u32, index: u32) f64;
 
 /// Where the party stands on the economic axis, -100 (planned) to 100
 /// (market) -- the same axis and scale as country_compass_econ, so the
 /// distance between a party and its government is meaningful.
+/// gearbox:politics.read "country_party_compass_econ"
 /// `(ii)F`
 pub extern "gearbox:politics.read" fn country_party_compass_econ(country: u32, index: u32) f64;
 
 /// Where the party stands on the social axis, -100 (authoritarian) to 100
 /// (libertarian). Same scale as country_compass_social.
+/// gearbox:politics.read "country_party_compass_social"
 /// `(ii)F`
 pub extern "gearbox:politics.read" fn country_party_compass_social(country: u32, index: u32) f64;
 
@@ -1042,12 +1224,14 @@ pub extern "gearbox:politics.read" fn country_party_compass_social(country: u32,
 /// stance. A mod that displays party names should say which it is showing:
 /// "Workers' Party" is a description, "SPD" is a claim. See
 /// data/parties.json.
+/// gearbox:politics.read "country_party_is_historical"
 /// `(ii)i`
 pub extern "gearbox:politics.read" fn country_party_is_historical(country: u32, index: u32) u32;
 
 /// The index of the party that governs, or -1 if none does. That party
 /// pulls the government compass toward its own stance every turn it holds
 /// power, which is why the two are on the same scale.
+/// gearbox:politics.read "country_ruling_party"
 /// `(i)i`
 pub extern "gearbox:politics.read" fn country_ruling_party(country: u32) u32;
 
@@ -1056,12 +1240,14 @@ pub extern "gearbox:politics.read" fn country_ruling_party(country: u32) u32;
 /// before using it -- a country can be annexed between turns, and every
 /// other accessor answers 0 or an empty string for a dead id, which is
 /// indistinguishable from a live country with nothing in it.
+/// gearbox:gamestate.read "country_exists"
 /// `(i)i`
 pub extern "gearbox:gamestate.read" fn country_exists(country: u32) u32;
 
 /// Whether a province id names a province that exists. Same reason as
 /// country_exists: a stored id needs a validity check that is not 'iterate
 /// every province and compare'.
+/// gearbox:gamestate.read "province_exists"
 /// `(i)i`
 pub extern "gearbox:gamestate.read" fn province_exists(province: u32) u32;
 
@@ -1071,6 +1257,7 @@ pub extern "gearbox:gamestate.read" fn province_exists(province: u32) u32;
 /// MACHINE, not about the game, which is why it needs its own capability.
 /// Every other reading a mod can take is deliberately opaque about the
 /// host.
+/// gearbox:core.protected "process_bytes"
 /// `()I`
 pub extern "gearbox:core.protected" fn process_bytes() u64;
 
@@ -1078,24 +1265,28 @@ pub extern "gearbox:core.protected" fn process_bytes() u64;
 /// be determined. Useful to a mod that reports build size or checks it is
 /// running against the build it expects; useless for anything else, which
 /// is the point.
+/// gearbox:core.protected "image_bytes"
 /// `()I`
 pub extern "gearbox:core.protected" fn image_bytes() u64;
 
 /// How many mods are INSTALLED, enabled or not. A compatibility checker
 /// needs to see the mod it conflicts with even when that mod is switched
 /// off, because switching it on is what breaks things.
+/// gearbox:core.protected "mod_count"
 /// `()i`
 pub extern "gearbox:core.protected" fn mod_count() u32;
 
 /// The installed mod's manifest id -- the stable one, safe to compare.
 /// Two-call sizing: call with cap 0 to learn the length, allocate, call
 /// again.
+/// gearbox:core.protected "mod_id"
 /// `(iii)i`
 pub extern "gearbox:core.protected" fn mod_id(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Its display name, which is for showing a player and NOT for matching on:
 /// it is author-chosen, may be translated, and two mods may share one.
 /// Match on mod_id.
+/// gearbox:core.protected "mod_name"
 /// `(iii)i`
 pub extern "gearbox:core.protected" fn mod_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
@@ -1108,6 +1299,7 @@ pub extern "gearbox:core.protected" fn mod_name(index: u32, buf: ?[*]u8, cap: u3
 /// it with a different type fails, because the values already stored are of
 /// the old one. Refused for an empty name, a name over 64 bytes, or one
 /// containing anything but printable ASCII.
+/// gearbox:country "field_add"
 /// `(iiii)i`
 pub extern "gearbox:country" fn field_add(name: ?[*]const u8, name_len: u32, mode: u32, type: u32) u32;
 
@@ -1115,42 +1307,50 @@ pub extern "gearbox:country" fn field_add(name: ?[*]const u8, name_len: u32, mod
 /// whether it existed. A mod cannot remove another mod's field: fields are
 /// keyed by (mod, name), so two mods may both add a field called morale and
 /// neither can see the other's.
+/// gearbox:country "field_remove"
 /// `(ii)i`
 pub extern "gearbox:country" fn field_remove(name: ?[*]const u8, name_len: u32) u32;
 
 /// Whether you have declared this field AND own it right now. False for a
 /// field read back from a save whose mod is not loaded -- such a field is
 /// inert, though its values are kept.
+/// gearbox:country "field_has"
 /// `(ii)i`
 pub extern "gearbox:country" fn field_has(name: ?[*]const u8, name_len: u32) u32;
 
 /// How many fields YOU have declared. Not how many exist: another mod's
 /// fields are not yours to enumerate.
+/// gearbox:country "field_count"
 /// `()i`
 pub extern "gearbox:country" fn field_count() u32;
 
 /// The name of your field at index, sorted by name so the order does not
 /// shift between runs. Two-call sizing.
+/// gearbox:country "field_name"
 /// `(iii)i`
 pub extern "gearbox:country" fn field_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Set a country's value for one of your NUMBER fields. Refused if the
 /// field is text, was never declared, or belongs to a mod that is not
 /// loaded.
+/// gearbox:country "set_number"
 /// `(iiid)i`
 pub extern "gearbox:country" fn set_number(name: ?[*]const u8, name_len: u32, country: u32, value: f64) u32;
 
 /// A country's value, or 0 when the field or the country has none. 0 is a
 /// real value too, so a mod that needs to tell unset from zero should keep
 /// its own sentinel.
+/// gearbox:country "get_number"
 /// `(iii)F`
 pub extern "gearbox:country" fn get_number(name: ?[*]const u8, name_len: u32, country: u32) f64;
 
 /// Set a country's value for one of your TEXT fields.
+/// gearbox:country "set_text"
 /// `(iiiii)i`
 pub extern "gearbox:country" fn set_text(name: ?[*]const u8, name_len: u32, country: u32, value: ?[*]const u8, value_len: u32) u32;
 
 /// A country's text value, or empty. Two-call sizing.
+/// gearbox:country "get_text"
 /// `(iiiii)i`
 pub extern "gearbox:country" fn get_text(name: ?[*]const u8, name_len: u32, country: u32, buf: ?[*]u8, cap: u32) u32;
 
@@ -1166,31 +1366,37 @@ pub extern "gearbox:country" fn get_text(name: ?[*]const u8, name_len: u32, coun
 /// since scripts ship inside .odmap files and mods are enabled globally.
 /// Names must be an identifier: a letter, then letters, digits or
 /// underscores, up to 48 bytes.
+/// gearbox:scripts "command_add"
 /// `(ii)i`
 pub extern "gearbox:scripts" fn command_add(name: ?[*]const u8, name_len: u32) u32;
 
 /// Give up one of your own commands. False if it was not yours -- a mod
 /// cannot unregister another mod's.
+/// gearbox:scripts "command_remove"
 /// `(ii)i`
 pub extern "gearbox:scripts" fn command_remove(name: ?[*]const u8, name_len: u32) u32;
 
 /// How many commands YOU have claimed.
+/// gearbox:scripts "command_count"
 /// `()i`
 pub extern "gearbox:scripts" fn command_count() u32;
 
 /// The name of your command at index, sorted. Two-call sizing.
+/// gearbox:scripts "command_name"
 /// `(iii)i`
 pub extern "gearbox:scripts" fn command_name(index: u32, buf: ?[*]u8, cap: u32) u32;
 
 /// Inside mod_script_command: which of your commands the script ran. Empty
 /// outside that call -- there is no command then, and reporting the last
 /// one would be a stale answer that looks like a live one. Two-call sizing.
+/// gearbox:scripts "command_text"
 /// `(ii)i`
 pub extern "gearbox:scripts" fn command_text(buf: ?[*]u8, cap: u32) u32;
 
 /// Inside mod_script_command: the rest of the script line, verbatim --
 /// unparsed and untrimmed, because your command knows its own grammar and
 /// the engine does not. Empty outside that call. Two-call sizing.
+/// gearbox:scripts "command_args"
 /// `(ii)i`
 pub extern "gearbox:scripts" fn command_args(buf: ?[*]u8, cap: u32) u32;
 
@@ -1201,6 +1407,7 @@ pub extern "gearbox:scripts" fn command_args(buf: ?[*]u8, cap: u32) u32;
 /// the maximum (4096 tints per mod, which is every province on the largest
 /// map twice over). A refusal rather than a slower game: a mod's mistake
 /// should not be paid for in frame time by a player who cannot see why.
+/// gearbox:render "province_tint"
 /// `(ii)i`
 pub extern "gearbox:render" fn province_tint(province: u32, rgba: u32) u32;
 
@@ -1209,6 +1416,7 @@ pub extern "gearbox:render" fn province_tint(province: u32, rgba: u32) u32;
 /// characters rather than refused: a label one character too long is a
 /// cosmetic mistake, and failing the call would have an author debugging a
 /// silent nothing instead of seeing a clipped word. 512 labels per mod.
+/// gearbox:render "province_label"
 /// `(iiii)i`
 pub extern "gearbox:render" fn province_label(province: u32, text: ?[*]const u8, text_len: u32, rgba: u32) u32;
 
@@ -1216,13 +1424,61 @@ pub extern "gearbox:render" fn province_label(province: u32, text: ?[*]const u8,
 /// mod's -- and unloading a mod clears its own automatically, because a
 /// mark left behind by a mod that is no longer running is indistinguishable
 /// from the game being wrong.
+/// gearbox:render "clear"
 /// `()i`
-pub extern "gearbox:render" fn clear() u32;
+pub extern "gearbox:render" fn render_clear() u32;
 
 /// How many tints you are currently holding.
+/// gearbox:render "tint_count"
 /// `()i`
 pub extern "gearbox:render" fn tint_count() u32;
 
 /// How many labels you are currently holding.
+/// gearbox:render "label_count"
 /// `()i`
 pub extern "gearbox:render" fn label_count() u32;
+
+/// Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2
+/// troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST. The
+/// definition is the SAME JSON the game's own data file uses, and goes
+/// through the same parser -- not a second reading of the same fields,
+/// which is how 'it works from the file but not from the mod' is made. AI
+/// VISIBILITY IS A FIELD IN THE JSON: "aiVisible": true. It defaults to
+/// FALSE, because content the AI was never trained against should not start
+/// appearing in its options. For RESEARCH it matters more than it looks --
+/// the tree feeds the neural feature vector, so a visible node changes the
+/// shape of the model's input and a model whose parent no longer matches is
+/// silently re-initialised. PERSIST writes the definition into the save, so
+/// a world played with your doctrine keeps knowing what that doctrine was
+/// after your mod is uninstalled -- otherwise the country still holds the
+/// id and nothing can say what it did. HOLLOW is redeclared every load. Ids
+/// are GLOBAL within a catalogue, unlike country fields: a country holds a
+/// doctrine by id and a save records it that way, so two meanings for one
+/// id would make a save ambiguous. Another mod's id is refused. Lower-case
+/// letters, digits, underscore and at most one colon, 64 bytes.
+/// gearbox:content "add"
+/// `(iiiiii)i`
+pub extern "gearbox:content" fn content_add(kind: u32, id: ?[*]const u8, id_len: u32, json: ?[*]const u8, json_len: u32, mode: u32) u32;
+
+/// How many entries of this kind YOU have added.
+/// gearbox:content "count"
+/// `(i)i`
+pub extern "gearbox:content" fn content_count(kind: u32) u32;
+
+/// The id of your entry at index within a kind, sorted. Two-call sizing.
+/// gearbox:content "id_at"
+/// `(iiii)i`
+pub extern "gearbox:content" fn content_id_at(kind: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
+
+/// Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod
+/// check whether the content it is about to add already exists -- including
+/// content another mod added, which is the collision it cannot otherwise
+/// see coming.
+/// gearbox:content "owner_of"
+/// `(iiiii)i`
+pub extern "gearbox:content" fn content_owner_of(kind: u32, id: ?[*]const u8, id_len: u32, buf: ?[*]u8, cap: u32) u32;
+
+/// Remove one of your own entries. False if it was not yours.
+/// gearbox:content "remove"
+/// `(iii)i`
+pub extern "gearbox:content" fn content_remove(kind: u32, id: ?[*]const u8, id_len: u32) u32;

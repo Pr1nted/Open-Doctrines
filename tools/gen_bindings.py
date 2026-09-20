@@ -117,6 +117,23 @@ def doc_lines(imp):
             line = f"{line} {w}".strip()
     if line:
         out.append(line)
+    # The wire module and name, quoted, on every generated binding in every
+    # language. Two reasons, and the second is not cosmetic:
+    #
+    #   a reader can see which import a renamed binding actually binds --
+    #   gearbox_content_id_at is gearbox:content "id_at", and nothing else
+    #   in the file says so;
+    #
+    #   check_bindings.py searches for the bare wire name with word
+    #   boundaries, and "id_at" has none inside "content_id_at". Without this
+    #   every binding_name-renamed import reads as MISSING from the Rust and
+    #   Zig bindings -- and worse, some passed only because their bare name
+    #   happened to appear in nearby prose, which is a lint agreeing by
+    #   accident.
+    # Exports have no module -- they are called INTO the mod, not imported
+    # from the host -- so only imports carry this line.
+    if imp.get("module"):
+        out.append(f"{imp['module']} \"{imp['name']}\"")
     out.append(f"`{imp['signature']}`")
     return out
 

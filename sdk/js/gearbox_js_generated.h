@@ -17,6 +17,7 @@
 /* Byte size of one of your own data/ files, or 0 if there is no such */
 /* asset. Names are relative to data/ and use '/' separators: */
 /* data/flags/fr.png is "flags/fr.png". */
+/* gearbox:assets "size" */
 /* `(ii)i` */
 static JSValue gbxjs_asset_size(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -40,6 +41,7 @@ static JSValue gbxjs_asset_size(JSContext *ctx, JSValueConst this_val,
 /* and is multiplied by the player's own effects setting, so a mod cannot */
 /* be louder than they allowed. Returns a handle, or 0 if it could not be */
 /* played. */
+/* gearbox:audio "play" */
 /* `(iif)i` */
 static JSValue gbxjs_play(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -58,6 +60,7 @@ static JSValue gbxjs_play(JSContext *ctx, JSValueConst this_val,
 /* gearbox:audio "stop" */
 /* Stop a sound this mod started. A handle belonging to another mod, or one */
 /* that already finished, does nothing. */
+/* gearbox:audio "stop" */
 /* `(i)` */
 static JSValue gbxjs_stop(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -72,6 +75,7 @@ static JSValue gbxjs_stop(JSContext *ctx, JSValueConst this_val,
 /* gearbox:audio "set_volume" */
 /* Change the volume of a playing sound, 0..1, again scaled by the player's */
 /* setting. */
+/* gearbox:audio "set_volume" */
 /* `(if)` */
 static JSValue gbxjs_set_volume(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -87,6 +91,7 @@ static JSValue gbxjs_set_volume(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:audio "is_playing" */
 /* Whether that handle is still making sound. */
+/* gearbox:audio "is_playing" */
 /* `(i)i` */
 static JSValue gbxjs_is_playing(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -99,6 +104,142 @@ static JSValue gbxjs_is_playing(JSContext *ctx, JSValueConst this_val,
 }
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Content (5) ---- */
+#if GBX_WITH_CONTENT
+
+/* gearbox:content "add" */
+/* Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2 */
+/* troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST. The */
+/* definition is the SAME JSON the game's own data file uses, and goes */
+/* through the same parser -- not a second reading of the same fields, */
+/* which is how 'it works from the file but not from the mod' is made. AI */
+/* VISIBILITY IS A FIELD IN THE JSON: "aiVisible": true. It defaults to */
+/* FALSE, because content the AI was never trained against should not start */
+/* appearing in its options. For RESEARCH it matters more than it looks -- */
+/* the tree feeds the neural feature vector, so a visible node changes the */
+/* shape of the model's input and a model whose parent no longer matches is */
+/* silently re-initialised. PERSIST writes the definition into the save, so */
+/* a world played with your doctrine keeps knowing what that doctrine was */
+/* after your mod is uninstalled -- otherwise the country still holds the */
+/* id and nothing can say what it did. HOLLOW is redeclared every load. Ids */
+/* are GLOBAL within a catalogue, unlike country fields: a country holds a */
+/* doctrine by id and a save records it that way, so two meanings for one */
+/* id would make a save ambiguous. Another mod's id is refused. Lower-case */
+/* letters, digits, underscore and at most one colon, 64 bytes. */
+/* gearbox:content "add" */
+/* `(iiiiii)i` */
+static JSValue gbxjs_content_add(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 4) return JS_ThrowTypeError(ctx, "contentAdd expects 4 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    size_t a2_n = 0;
+    const char *a2 = JS_ToCStringLen(ctx, &a2_n, argv[2]);
+    if (!a2) return JS_EXCEPTION;
+    int32_t a3 = 0;
+    if (!arg_i32(ctx, argv[3], &a3)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_content_add((uint32_t)a0, a1, (uint32_t)a1_n, a2, (uint32_t)a2_n, (uint32_t)a3);
+    JS_FreeCString(ctx, a1);
+    JS_FreeCString(ctx, a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:content "count" */
+/* How many entries of this kind YOU have added. */
+/* gearbox:content "count" */
+/* `(i)i` */
+static JSValue gbxjs_content_count(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "contentCount expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_content_count((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:content "id_at" */
+/* The id of your entry at index within a kind, sorted. Two-call sizing. */
+/* gearbox:content "id_at" */
+/* `(iiii)i` */
+static JSValue gbxjs_content_id_at(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "contentIdAt expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    uint32_t need = gearbox_content_id_at((uint32_t)a0, (uint32_t)a1, 0, 0);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_content_id_at((uint32_t)a0, (uint32_t)a1, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+
+/* gearbox:content "owner_of" */
+/* Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod */
+/* check whether the content it is about to add already exists -- including */
+/* content another mod added, which is the collision it cannot otherwise */
+/* see coming. */
+/* gearbox:content "owner_of" */
+/* `(iiiii)i` */
+static JSValue gbxjs_content_owner_of(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "contentOwnerOf expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    uint32_t need = gearbox_content_owner_of((uint32_t)a0, a1, (uint32_t)a1_n, 0, 0);
+    JS_FreeCString(ctx, a1);
+    if (need == 0) return JS_NewStringLen(ctx, "", 0);
+    char stackbuf[128];
+    char *buf = stackbuf;
+    if (need > sizeof stackbuf) {
+        buf = js_malloc(ctx, need);
+        if (!buf) return JS_EXCEPTION;
+    }
+    uint32_t got = gearbox_content_owner_of((uint32_t)a0, a1, (uint32_t)a1_n, buf, need);
+    if (got > need) got = need;
+    JSValue v = JS_NewStringLen(ctx, buf, got);
+    if (buf != stackbuf) js_free(ctx, buf);
+    return v;
+}
+
+/* gearbox:content "remove" */
+/* Remove one of your own entries. False if it was not yours. */
+/* gearbox:content "remove" */
+/* `(iii)i` */
+static JSValue gbxjs_content_remove(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "contentRemove expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_content_remove((uint32_t)a0, a1, (uint32_t)a1_n);
+    JS_FreeCString(ctx, a1);
+    return JS_NewBool(ctx, (int)r);
+}
+#endif /* GBX_WITH_CONTENT */
+
 /* ---- Core.Protected (5) ---- */
 #if GBX_WITH_CORE_PROTECTED
 
@@ -109,6 +250,7 @@ static JSValue gbxjs_is_playing(JSContext *ctx, JSValueConst this_val,
 /* MACHINE, not about the game, which is why it needs its own capability. */
 /* Every other reading a mod can take is deliberately opaque about the */
 /* host. */
+/* gearbox:core.protected "process_bytes" */
 /* `()I` */
 static JSValue gbxjs_process_bytes(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -122,6 +264,7 @@ static JSValue gbxjs_process_bytes(JSContext *ctx, JSValueConst this_val,
 /* be determined. Useful to a mod that reports build size or checks it is */
 /* running against the build it expects; useless for anything else, which */
 /* is the point. */
+/* gearbox:core.protected "image_bytes" */
 /* `()I` */
 static JSValue gbxjs_image_bytes(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -134,6 +277,7 @@ static JSValue gbxjs_image_bytes(JSContext *ctx, JSValueConst this_val,
 /* How many mods are INSTALLED, enabled or not. A compatibility checker */
 /* needs to see the mod it conflicts with even when that mod is switched */
 /* off, because switching it on is what breaks things. */
+/* gearbox:core.protected "mod_count" */
 /* `()i` */
 static JSValue gbxjs_mod_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -146,6 +290,7 @@ static JSValue gbxjs_mod_count(JSContext *ctx, JSValueConst this_val,
 /* The installed mod's manifest id -- the stable one, safe to compare. */
 /* Two-call sizing: call with cap 0 to learn the length, allocate, call */
 /* again. */
+/* gearbox:core.protected "mod_id" */
 /* `(iii)i` */
 static JSValue gbxjs_mod_id(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -172,6 +317,7 @@ static JSValue gbxjs_mod_id(JSContext *ctx, JSValueConst this_val,
 /* Its display name, which is for showing a player and NOT for matching on: */
 /* it is author-chosen, may be translated, and two mods may share one. */
 /* Match on mod_id. */
+/* gearbox:core.protected "mod_name" */
 /* `(iii)i` */
 static JSValue gbxjs_mod_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -208,6 +354,7 @@ static JSValue gbxjs_mod_name(JSContext *ctx, JSValueConst this_val,
 /* it with a different type fails, because the values already stored are of */
 /* the old one. Refused for an empty name, a name over 64 bytes, or one */
 /* containing anything but printable ASCII. */
+/* gearbox:country "field_add" */
 /* `(iiii)i` */
 static JSValue gbxjs_field_add(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -230,6 +377,7 @@ static JSValue gbxjs_field_add(JSContext *ctx, JSValueConst this_val,
 /* whether it existed. A mod cannot remove another mod's field: fields are */
 /* keyed by (mod, name), so two mods may both add a field called morale and */
 /* neither can see the other's. */
+/* gearbox:country "field_remove" */
 /* `(ii)i` */
 static JSValue gbxjs_field_remove(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -247,6 +395,7 @@ static JSValue gbxjs_field_remove(JSContext *ctx, JSValueConst this_val,
 /* Whether you have declared this field AND own it right now. False for a */
 /* field read back from a save whose mod is not loaded -- such a field is */
 /* inert, though its values are kept. */
+/* gearbox:country "field_has" */
 /* `(ii)i` */
 static JSValue gbxjs_field_has(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -263,6 +412,7 @@ static JSValue gbxjs_field_has(JSContext *ctx, JSValueConst this_val,
 /* gearbox:country "field_count" */
 /* How many fields YOU have declared. Not how many exist: another mod's */
 /* fields are not yours to enumerate. */
+/* gearbox:country "field_count" */
 /* `()i` */
 static JSValue gbxjs_field_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -274,6 +424,7 @@ static JSValue gbxjs_field_count(JSContext *ctx, JSValueConst this_val,
 /* gearbox:country "field_name" */
 /* The name of your field at index, sorted by name so the order does not */
 /* shift between runs. Two-call sizing. */
+/* gearbox:country "field_name" */
 /* `(iii)i` */
 static JSValue gbxjs_field_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -300,6 +451,7 @@ static JSValue gbxjs_field_name(JSContext *ctx, JSValueConst this_val,
 /* Set a country's value for one of your NUMBER fields. Refused if the */
 /* field is text, was never declared, or belongs to a mod that is not */
 /* loaded. */
+/* gearbox:country "set_number" */
 /* `(iiid)i` */
 static JSValue gbxjs_set_number(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -321,6 +473,7 @@ static JSValue gbxjs_set_number(JSContext *ctx, JSValueConst this_val,
 /* A country's value, or 0 when the field or the country has none. 0 is a */
 /* real value too, so a mod that needs to tell unset from zero should keep */
 /* its own sentinel. */
+/* gearbox:country "get_number" */
 /* `(iii)F` */
 static JSValue gbxjs_get_number(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -338,6 +491,7 @@ static JSValue gbxjs_get_number(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:country "set_text" */
 /* Set a country's value for one of your TEXT fields. */
+/* gearbox:country "set_text" */
 /* `(iiiii)i` */
 static JSValue gbxjs_set_text(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -359,6 +513,7 @@ static JSValue gbxjs_set_text(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:country "get_text" */
 /* A country's text value, or empty. Two-call sizing. */
+/* gearbox:country "get_text" */
 /* `(iiiii)i` */
 static JSValue gbxjs_get_text(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -393,6 +548,7 @@ static JSValue gbxjs_get_text(JSContext *ctx, JSValueConst this_val,
 /* 1 if the two countries are at war. Relations are symmetric, so the */
 /* argument order does not matter. 0 for unknown countries or for a country */
 /* with itself. */
+/* gearbox:diplomacy "at_war" */
 /* `(ii)i` */
 static JSValue gbxjs_at_war(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -408,6 +564,7 @@ static JSValue gbxjs_at_war(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:diplomacy "allied" */
 /* 1 if the two countries are allied. */
+/* gearbox:diplomacy "allied" */
 /* `(ii)i` */
 static JSValue gbxjs_allied(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -423,6 +580,7 @@ static JSValue gbxjs_allied(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:diplomacy "non_aggression" */
 /* 1 if the two countries have a non-aggression pact. */
+/* gearbox:diplomacy "non_aggression" */
 /* `(ii)i` */
 static JSValue gbxjs_non_aggression(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -438,6 +596,7 @@ static JSValue gbxjs_non_aggression(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:diplomacy "guaranteed" */
 /* 1 if the first country guarantees the second. */
+/* gearbox:diplomacy "guaranteed" */
 /* `(ii)i` */
 static JSValue gbxjs_guaranteed(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -459,6 +618,7 @@ static JSValue gbxjs_guaranteed(JSContext *ctx, JSValueConst this_val,
 /* Refused (0) if either country is unknown, they are the same country, or */
 /* they are already at war. Either outcome is written to your mod log, so a */
 /* player can see after the fact that a mod started a war. */
+/* gearbox:diplomacy "propose_war" */
 /* `(ii)i` */
 static JSValue gbxjs_propose_war(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -478,6 +638,7 @@ static JSValue gbxjs_propose_war(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:economy.read "country_income_gross" */
 /* Income per turn before upkeep. */
+/* gearbox:economy.read "country_income_gross" */
 /* `(i)F` */
 static JSValue gbxjs_country_income_gross(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -492,6 +653,7 @@ static JSValue gbxjs_country_income_gross(JSContext *ctx, JSValueConst this_val,
 /* gearbox:economy.read "country_income_net" */
 /* Income per turn after army and navy upkeep. Negative means the treasury */
 /* is draining. */
+/* gearbox:economy.read "country_income_net" */
 /* `(i)F` */
 static JSValue gbxjs_country_income_net(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -505,6 +667,7 @@ static JSValue gbxjs_country_income_net(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:economy.read "country_army_upkeep" */
 /* What the standing army costs per turn. */
+/* gearbox:economy.read "country_army_upkeep" */
 /* `(i)F` */
 static JSValue gbxjs_country_army_upkeep(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -519,6 +682,7 @@ static JSValue gbxjs_country_army_upkeep(JSContext *ctx, JSValueConst this_val,
 /* gearbox:economy.read "country_navy_upkeep" */
 /* What the fleet costs per turn. Ships a country is not using still cost */
 /* this, which is what makes scrapping a real decision. */
+/* gearbox:economy.read "country_navy_upkeep" */
 /* `(i)F` */
 static JSValue gbxjs_country_navy_upkeep(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -532,6 +696,7 @@ static JSValue gbxjs_country_navy_upkeep(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:economy.read "country_is_bankrupt" */
 /* Whether a country is currently bankrupt. */
+/* gearbox:economy.read "country_is_bankrupt" */
 /* `(i)i` */
 static JSValue gbxjs_country_is_bankrupt(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -545,6 +710,7 @@ static JSValue gbxjs_country_is_bankrupt(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:economy.read "province_industry_level" */
 /* Industry level, 0..10. */
+/* gearbox:economy.read "province_industry_level" */
 /* `(i)i` */
 static JSValue gbxjs_province_industry_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -561,6 +727,7 @@ static JSValue gbxjs_province_industry_level(JSContext *ctx, JSValueConst this_v
 /* none. Two-call sizing: call with cap 0 to learn the length, allocate, */
 /* call again. Returns the full length either way; the copy is truncated to */
 /* cap. */
+/* gearbox:economy.read "province_industry_specialization" */
 /* `(iii)i` */
 static JSValue gbxjs_province_industry_specialization(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -586,6 +753,7 @@ static JSValue gbxjs_province_industry_specialization(JSContext *ctx, JSValueCon
 /* gearbox:economy.read "province_resource" */
 /* How much of a resource a province holds, 0..100. `which` is one of */
 /* "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0. */
+/* gearbox:economy.read "province_resource" */
 /* `(iii)F` */
 static JSValue gbxjs_province_resource(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -604,6 +772,7 @@ static JSValue gbxjs_province_resource(JSContext *ctx, JSValueConst this_val,
 /* gearbox:economy.read "country_expenses" */
 /* What this country spent last turn, in total. The same figure its profile */
 /* publishes and the economy screen draws. */
+/* gearbox:economy.read "country_expenses" */
 /* `(i)F` */
 static JSValue gbxjs_country_expenses(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -619,6 +788,7 @@ static JSValue gbxjs_country_expenses(JSContext *ctx, JSValueConst this_val,
 /* What the whole country is worth: every industry level, fort, port and */
 /* division at what it cost to raise. A stock, where the income figures are */
 /* flows. */
+/* gearbox:economy.read "country_national_value" */
 /* `(i)F` */
 static JSValue gbxjs_country_national_value(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -632,6 +802,7 @@ static JSValue gbxjs_country_national_value(JSContext *ctx, JSValueConst this_va
 
 /* gearbox:economy.read "country_population" */
 /* How many people live in this country. */
+/* gearbox:economy.read "country_population" */
 /* `(i)I` */
 static JSValue gbxjs_country_population(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -651,6 +822,7 @@ static JSValue gbxjs_country_population(JSContext *ctx, JSValueConst this_val,
 /* Set a province's industry level, clamped to 0..10. This writes the built */
 /* level directly and does not charge for it -- it is a scenario-authoring */
 /* tool, not a build order. */
+/* gearbox:economy.write "set_province_industry_level" */
 /* `(ii)i` */
 static JSValue gbxjs_set_province_industry_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -670,6 +842,7 @@ static JSValue gbxjs_set_province_industry_level(JSContext *ctx, JSValueConst th
 
 /* gearbox:gamestate.read "turn_number" */
 /* The current turn. 0 when no world is loaded. */
+/* gearbox:gamestate.read "turn_number" */
 /* `()i` */
 static JSValue gbxjs_turn_number(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -681,6 +854,7 @@ static JSValue gbxjs_turn_number(JSContext *ctx, JSValueConst this_val,
 /* gearbox:gamestate.read "country_count" */
 /* How many countries exist. 0 when no world is loaded. Rebel factions are */
 /* not included. */
+/* gearbox:gamestate.read "country_count" */
 /* `()i` */
 static JSValue gbxjs_country_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -693,6 +867,7 @@ static JSValue gbxjs_country_count(JSContext *ctx, JSValueConst this_val,
 /* The country at index in [0, country_count). Returns GEARBOX_INVALID */
 /* (0xFFFFFFFF) if out of range. Ordering is stable within a turn but not */
 /* across turns. */
+/* gearbox:gamestate.read "country_at" */
 /* `(i)i` */
 static JSValue gbxjs_country_at(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -710,6 +885,7 @@ static JSValue gbxjs_country_at(JSContext *ctx, JSValueConst this_val,
 /* length. Call with cap 0 to size, then again to fill. A return greater */
 /* than cap means truncation, not failure. Returns 0 for an unknown */
 /* country. */
+/* gearbox:gamestate.read "country_name" */
 /* `(iii)i` */
 static JSValue gbxjs_country_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -734,6 +910,7 @@ static JSValue gbxjs_country_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:gamestate.read "country_treasury" */
 /* Treasury balance. 0 for an unknown country. */
+/* gearbox:gamestate.read "country_treasury" */
 /* `(i)F` */
 static JSValue gbxjs_country_treasury(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -747,6 +924,7 @@ static JSValue gbxjs_country_treasury(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:gamestate.read "country_province_count" */
 /* How many provinces the country owns. 0 for an unknown country. */
+/* gearbox:gamestate.read "country_province_count" */
 /* `(i)i` */
 static JSValue gbxjs_country_province_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -760,6 +938,7 @@ static JSValue gbxjs_country_province_count(JSContext *ctx, JSValueConst this_va
 
 /* gearbox:gamestate.read "province_population" */
 /* Population of a province. 0 for an unknown province. */
+/* gearbox:gamestate.read "province_population" */
 /* `(i)I` */
 static JSValue gbxjs_province_population(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -773,6 +952,7 @@ static JSValue gbxjs_province_population(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:gamestate.read "province_owner" */
 /* Owning country, or GEARBOX_INVALID if unowned or unknown. */
+/* gearbox:gamestate.read "province_owner" */
 /* `(i)i` */
 static JSValue gbxjs_province_owner(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -791,6 +971,7 @@ static JSValue gbxjs_province_owner(JSContext *ctx, JSValueConst this_val,
 /* before using it -- a country can be annexed between turns, and every */
 /* other accessor answers 0 or an empty string for a dead id, which is */
 /* indistinguishable from a live country with nothing in it. */
+/* gearbox:gamestate.read "country_exists" */
 /* `(i)i` */
 static JSValue gbxjs_country_exists(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -806,6 +987,7 @@ static JSValue gbxjs_country_exists(JSContext *ctx, JSValueConst this_val,
 /* Whether a province id names a province that exists. Same reason as */
 /* country_exists: a stored id needs a validity check that is not 'iterate */
 /* every province and compare'. */
+/* gearbox:gamestate.read "province_exists" */
 /* `(i)i` */
 static JSValue gbxjs_province_exists(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -826,6 +1008,7 @@ static JSValue gbxjs_province_exists(JSContext *ctx, JSValueConst this_val,
 /* country is unknown or the value is not finite and within +/-1e12 -- NaN */
 /* or infinity would silently poison every later calculation, so they are */
 /* refused rather than stored. */
+/* gearbox:gamestate.write "set_country_treasury" */
 /* `(iF)i` */
 static JSValue gbxjs_set_country_treasury(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -843,6 +1026,7 @@ static JSValue gbxjs_set_country_treasury(JSContext *ctx, JSValueConst this_val,
 /* Adds to a country's treasury. Usually what you want instead of set: it */
 /* composes with whatever the economy did this turn. Refused (0) if the */
 /* result would leave the sane range. */
+/* gearbox:gamestate.write "add_country_treasury" */
 /* `(iF)i` */
 static JSValue gbxjs_add_country_treasury(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -865,6 +1049,7 @@ static JSValue gbxjs_add_country_treasury(JSContext *ctx, JSValueConst this_val,
 /* handle is unknown or the country already owns it. Always written to your */
 /* mod log: territory changing hands is the most consequential thing a mod */
 /* can do. */
+/* gearbox:gamestate.write "set_province_owner" */
 /* `(ii)i` */
 static JSValue gbxjs_set_province_owner(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -884,6 +1069,7 @@ static JSValue gbxjs_set_province_owner(JSContext *ctx, JSValueConst this_val,
 /* in two places -- a map and a dense array used by the population texture */
 /* -- and this updates both, which is why it exists as an import rather */
 /* than being something a mod could do by other means. */
+/* gearbox:gamestate.write "set_province_population" */
 /* `(iI)i` */
 static JSValue gbxjs_set_province_population(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -903,6 +1089,7 @@ static JSValue gbxjs_set_province_population(JSContext *ctx, JSValueConst this_v
 
 /* gearbox:map "width" */
 /* Width of the province map in pixels. 0 when no world is loaded. */
+/* gearbox:map "width" */
 /* `()i` */
 static JSValue gbxjs_width(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -913,6 +1100,7 @@ static JSValue gbxjs_width(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:map "height" */
 /* Height of the province map in pixels. 0 when no world is loaded. */
+/* gearbox:map "height" */
 /* `()i` */
 static JSValue gbxjs_height(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -923,6 +1111,7 @@ static JSValue gbxjs_height(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:map "province_count" */
 /* How many provinces the loaded map has. 0 when no world is loaded. */
+/* gearbox:map "province_count" */
 /* `()i` */
 static JSValue gbxjs_province_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -936,6 +1125,7 @@ static JSValue gbxjs_province_count(JSContext *ctx, JSValueConst this_val,
 /* GEARBOX_INVALID if out of range. The order is stable across runs, unlike */
 /* the game's internal storage, so an index is safe to remember within a */
 /* session. */
+/* gearbox:map "province_at" */
 /* `(i)i` */
 static JSValue gbxjs_province_at(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -951,6 +1141,7 @@ static JSValue gbxjs_province_at(JSContext *ctx, JSValueConst this_val,
 /* gearbox:map "province_name" */
 /* The province's name. Two-call sizing: returns the full length and writes */
 /* at most cap bytes. Empty for an unknown province. */
+/* gearbox:map "province_name" */
 /* `(iii)i` */
 static JSValue gbxjs_province_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -975,6 +1166,7 @@ static JSValue gbxjs_province_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:map "province_center_x" */
 /* X pixel coordinate of the province's centre. 0 for an unknown province. */
+/* gearbox:map "province_center_x" */
 /* `(i)F` */
 static JSValue gbxjs_province_center_x(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -988,6 +1180,7 @@ static JSValue gbxjs_province_center_x(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:map "province_center_y" */
 /* Y pixel coordinate of the province's centre. 0 for an unknown province. */
+/* gearbox:map "province_center_y" */
 /* `(i)F` */
 static JSValue gbxjs_province_center_y(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1002,6 +1195,7 @@ static JSValue gbxjs_province_center_y(JSContext *ctx, JSValueConst this_val,
 /* gearbox:map "province_is_land" */
 /* 1 if the province is land, 0 if it is sea or unknown. Sampled at the */
 /* province centre. */
+/* gearbox:map "province_is_land" */
 /* `(i)i` */
 static JSValue gbxjs_province_is_land(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1015,6 +1209,7 @@ static JSValue gbxjs_province_is_land(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:map "province_neighbor_count" */
 /* How many provinces border this one. 0 for an unknown province. */
+/* gearbox:map "province_neighbor_count" */
 /* `(i)i` */
 static JSValue gbxjs_province_neighbor_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1030,6 +1225,7 @@ static JSValue gbxjs_province_neighbor_count(JSContext *ctx, JSValueConst this_v
 /* The bordering province at an index in [0, province_neighbor_count). */
 /* GEARBOX_INVALID if out of range. Adjacency is computed once when the map */
 /* loads, so walking it is cheap. */
+/* gearbox:map "province_neighbor_at" */
 /* `(ii)i` */
 static JSValue gbxjs_province_neighbor_at(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1047,6 +1243,7 @@ static JSValue gbxjs_province_neighbor_at(JSContext *ctx, JSValueConst this_val,
 /* gearbox:map "province_is_coastal" */
 /* Whether a province touches water. Ports, embarking and naval bombardment */
 /* all require it. */
+/* gearbox:map "province_is_coastal" */
 /* `(i)i` */
 static JSValue gbxjs_province_is_coastal(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1062,6 +1259,7 @@ static JSValue gbxjs_province_is_coastal(JSContext *ctx, JSValueConst this_val,
 /* Whether a fleet could get from one point to another by sea, using the */
 /* game's own navigation grid. You cannot compute this from province */
 /* neighbours: those describe LAND adjacency. */
+/* gearbox:map "sea_route_exists" */
 /* `(FFFF)i` */
 static JSValue gbxjs_sea_route_exists(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1082,6 +1280,7 @@ static JSValue gbxjs_sea_route_exists(JSContext *ctx, JSValueConst this_val,
 /* gearbox:map "point_is_land" */
 /* Whether a world coordinate is land. Ordering a ship onto land is not an */
 /* error -- the resolver clamps it -- but knowing first is cheaper. */
+/* gearbox:map "point_is_land" */
 /* `(FF)i` */
 static JSValue gbxjs_point_is_land(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1104,6 +1303,7 @@ static JSValue gbxjs_point_is_land(JSContext *ctx, JSValueConst this_val,
 /* IN THIS MODULE returns 0 or an empty string when this is 0, including */
 /* from inside a running game: the data behind them is an editor project, */
 /* and a game does not have one. Check this first. */
+/* gearbox:mapeditor "editor_active" */
 /* `()i` */
 static JSValue gbxjs_editor_active(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1115,6 +1315,7 @@ static JSValue gbxjs_editor_active(JSContext *ctx, JSValueConst this_val,
 /* gearbox:mapeditor "editor_province_count" */
 /* How many provinces the open project has. Returns a neutral value unless */
 /* the map editor is open with a project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_count" */
 /* `()i` */
 static JSValue gbxjs_editor_province_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1127,6 +1328,7 @@ static JSValue gbxjs_editor_province_count(JSContext *ctx, JSValueConst this_val
 /* The province id at `index`, in ascending id order, or 0xFFFFFFFF past */
 /* the end. Returns a neutral value unless the map editor is open with a */
 /* project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_at" */
 /* `(i)i` */
 static JSValue gbxjs_editor_province_at(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1141,6 +1343,7 @@ static JSValue gbxjs_editor_province_at(JSContext *ctx, JSValueConst this_val,
 /* gearbox:mapeditor "editor_province_population" */
 /* Population. Returns a neutral value unless the map editor is open with a */
 /* project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_population" */
 /* `(i)I` */
 static JSValue gbxjs_editor_province_population(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1155,6 +1358,7 @@ static JSValue gbxjs_editor_province_population(JSContext *ctx, JSValueConst thi
 /* gearbox:mapeditor "editor_province_industry_level" */
 /* Industry level, 0..10. Returns a neutral value unless the map editor is */
 /* open with a project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_industry_level" */
 /* `(i)i` */
 static JSValue gbxjs_editor_province_industry_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1169,6 +1373,7 @@ static JSValue gbxjs_editor_province_industry_level(JSContext *ctx, JSValueConst
 /* gearbox:mapeditor "editor_province_fortification" */
 /* Fortification, 0..5. Returns a neutral value unless the map editor is */
 /* open with a project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_fortification" */
 /* `(i)i` */
 static JSValue gbxjs_editor_province_fortification(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1183,6 +1388,7 @@ static JSValue gbxjs_editor_province_fortification(JSContext *ctx, JSValueConst 
 /* gearbox:mapeditor "editor_province_port_level" */
 /* Port level, 0..3. Returns a neutral value unless the map editor is open */
 /* with a project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_port_level" */
 /* `(i)i` */
 static JSValue gbxjs_editor_province_port_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1198,6 +1404,7 @@ static JSValue gbxjs_editor_province_port_level(JSContext *ctx, JSValueConst thi
 /* Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones" */
 /* or "metal". Returns a neutral value unless the map editor is open with a */
 /* project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_resource" */
 /* `(iii)F` */
 static JSValue gbxjs_editor_province_resource(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1216,6 +1423,7 @@ static JSValue gbxjs_editor_province_resource(JSContext *ctx, JSValueConst this_
 /* gearbox:mapeditor "editor_province_compass_econ" */
 /* Province economic compass, -100..100. Returns a neutral value unless the */
 /* map editor is open with a project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_compass_econ" */
 /* `(i)F` */
 static JSValue gbxjs_editor_province_compass_econ(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1230,6 +1438,7 @@ static JSValue gbxjs_editor_province_compass_econ(JSContext *ctx, JSValueConst t
 /* gearbox:mapeditor "editor_province_compass_social" */
 /* Province social compass, -100..100. Returns a neutral value unless the */
 /* map editor is open with a project loaded -- see mapeditor/active. */
+/* gearbox:mapeditor "editor_province_compass_social" */
 /* `(i)F` */
 static JSValue gbxjs_editor_province_compass_social(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1247,6 +1456,7 @@ static JSValue gbxjs_editor_province_compass_social(JSContext *ctx, JSValueConst
 /* unsaved-changes prompt like any other edit. A province the project does */
 /* not have is refused rather than created: data without a shape on the */
 /* province bitmap exports a map the game cannot load. */
+/* gearbox:mapeditor "editor_set_province_population" */
 /* `(iI)i` */
 static JSValue gbxjs_editor_set_province_population(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1266,6 +1476,7 @@ static JSValue gbxjs_editor_set_province_population(JSContext *ctx, JSValueConst
 /* unsaved-changes prompt like any other edit. A province the project does */
 /* not have is refused rather than created: data without a shape on the */
 /* province bitmap exports a map the game cannot load. */
+/* gearbox:mapeditor "editor_set_province_industry_level" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_set_province_industry_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1285,6 +1496,7 @@ static JSValue gbxjs_editor_set_province_industry_level(JSContext *ctx, JSValueC
 /* unsaved-changes prompt like any other edit. A province the project does */
 /* not have is refused rather than created: data without a shape on the */
 /* province bitmap exports a map the game cannot load. */
+/* gearbox:mapeditor "editor_set_province_fortification" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_set_province_fortification(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1304,6 +1516,7 @@ static JSValue gbxjs_editor_set_province_fortification(JSContext *ctx, JSValueCo
 /* unsaved-changes prompt like any other edit. A province the project does */
 /* not have is refused rather than created: data without a shape on the */
 /* province bitmap exports a map the game cannot load. */
+/* gearbox:mapeditor "editor_set_province_port_level" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_set_province_port_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1324,6 +1537,7 @@ static JSValue gbxjs_editor_set_province_port_level(JSContext *ctx, JSValueConst
 /* shows up in the unsaved-changes prompt like any other edit. A province */
 /* the project does not have is refused rather than created: data without a */
 /* shape on the province bitmap exports a map the game cannot load. */
+/* gearbox:mapeditor "editor_set_province_resource" */
 /* `(iiiF)i` */
 static JSValue gbxjs_editor_set_province_resource(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1347,6 +1561,7 @@ static JSValue gbxjs_editor_set_province_resource(JSContext *ctx, JSValueConst t
 /* shows up in the unsaved-changes prompt like any other edit. A province */
 /* the project does not have is refused rather than created: data without a */
 /* shape on the province bitmap exports a map the game cannot load. */
+/* gearbox:mapeditor "editor_set_province_compass" */
 /* `(iFF)i` */
 static JSValue gbxjs_editor_set_province_compass(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1366,6 +1581,7 @@ static JSValue gbxjs_editor_set_province_compass(JSContext *ctx, JSValueConst th
 /* The project's map name. Two-call sizing: call with cap 0 to learn the */
 /* length, allocate, call again. Returns the full length either way; the */
 /* copy is truncated to cap. */
+/* gearbox:mapeditor "editor_map_name" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_map_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1387,6 +1603,7 @@ static JSValue gbxjs_editor_map_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:mapeditor "editor_set_map_name" */
 /* Rename the map. Refused if empty or over 96 bytes. */
+/* gearbox:mapeditor "editor_set_map_name" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_set_map_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1402,6 +1619,7 @@ static JSValue gbxjs_editor_set_map_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:mapeditor "editor_set_author" */
 /* Set the author recorded in the exported .odmap. Up to 96 bytes. */
+/* gearbox:mapeditor "editor_set_author" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_set_author(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1417,6 +1635,7 @@ static JSValue gbxjs_editor_set_author(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:mapeditor "editor_set_license" */
 /* Set the licence recorded in the exported .odmap. Up to 96 bytes. */
+/* gearbox:mapeditor "editor_set_license" */
 /* `(ii)i` */
 static JSValue gbxjs_editor_set_license(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1436,6 +1655,7 @@ static JSValue gbxjs_editor_set_license(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:military.read "ship_count" */
 /* How many ships exist in the world, across all owners. */
+/* gearbox:military.read "ship_count" */
 /* `()i` */
 static JSValue gbxjs_ship_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1447,6 +1667,7 @@ static JSValue gbxjs_ship_count(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "ship_at" */
 /* The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end. */
 /* Ids are stable within a turn and not across turns -- do not store one. */
+/* gearbox:military.read "ship_at" */
 /* `(i)i` */
 static JSValue gbxjs_ship_at(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1461,6 +1682,7 @@ static JSValue gbxjs_ship_at(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "ship_exists" */
 /* Whether a ship id is still live. Check this before acting on an id you */
 /* read earlier in the same turn; ships sink. */
+/* gearbox:military.read "ship_exists" */
 /* `(i)i` */
 static JSValue gbxjs_ship_exists(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1475,6 +1697,7 @@ static JSValue gbxjs_ship_exists(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "ship_owner" */
 /* The country that owns a ship, or 0xFFFFFFFF for an id that does not */
 /* exist. */
+/* gearbox:military.read "ship_owner" */
 /* `(i)i` */
 static JSValue gbxjs_ship_owner(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1491,6 +1714,7 @@ static JSValue gbxjs_ship_owner(JSContext *ctx, JSValueConst this_val,
 /* "battleship", "carrier", "submarine". Two-call sizing: call with cap 0 */
 /* to learn the length, allocate, call again. Returns the full length */
 /* either way; the copy is truncated to cap. */
+/* gearbox:military.read "ship_type" */
 /* `(iii)i` */
 static JSValue gbxjs_ship_type(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1516,6 +1740,7 @@ static JSValue gbxjs_ship_type(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "ship_lon" */
 /* Longitude in degrees, -180..180. Ships live in world coordinates, not */
 /* provinces. */
+/* gearbox:military.read "ship_lon" */
 /* `(i)F` */
 static JSValue gbxjs_ship_lon(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1529,6 +1754,7 @@ static JSValue gbxjs_ship_lon(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:military.read "ship_lat" */
 /* Latitude in degrees, -90..90. */
+/* gearbox:military.read "ship_lat" */
 /* `(i)F` */
 static JSValue gbxjs_ship_lat(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1543,6 +1769,7 @@ static JSValue gbxjs_ship_lat(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "ship_health" */
 /* Hull integrity, 0..100. A ship at 0 has already sunk and will not */
 /* appear. */
+/* gearbox:military.read "ship_health" */
 /* `(i)i` */
 static JSValue gbxjs_ship_health(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1557,6 +1784,7 @@ static JSValue gbxjs_ship_health(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "ship_crew" */
 /* Crew aboard. For a transport this includes the embarked army, which is */
 /* why a sunk transport costs so much more than its hull. */
+/* gearbox:military.read "ship_crew" */
 /* `(i)i` */
 static JSValue gbxjs_ship_crew(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1572,6 +1800,7 @@ static JSValue gbxjs_ship_crew(JSContext *ctx, JSValueConst this_val,
 /* How far this hull may move in one turn, in degrees. The resolver clamps */
 /* any order beyond it, so read this before ordering a move rather than */
 /* discovering the clamp afterwards. */
+/* gearbox:military.read "ship_range" */
 /* `(i)F` */
 static JSValue gbxjs_ship_range(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1586,6 +1815,7 @@ static JSValue gbxjs_ship_range(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "army_stack_count" */
 /* How many distinct owners have troops in a province. Usually 1; more than */
 /* one means a contested or garrisoned province. */
+/* gearbox:military.read "army_stack_count" */
 /* `(i)i` */
 static JSValue gbxjs_army_stack_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1600,6 +1830,7 @@ static JSValue gbxjs_army_stack_count(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "army_stack_owner" */
 /* The country owning stack `index` in a province, or 0xFFFFFFFF past the */
 /* end. */
+/* gearbox:military.read "army_stack_owner" */
 /* `(ii)i` */
 static JSValue gbxjs_army_stack_owner(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1615,6 +1846,7 @@ static JSValue gbxjs_army_stack_owner(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:military.read "army_stack_size" */
 /* How many troops are in that stack. */
+/* gearbox:military.read "army_stack_size" */
 /* `(ii)I` */
 static JSValue gbxjs_army_stack_size(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1631,6 +1863,7 @@ static JSValue gbxjs_army_stack_size(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "country_army" */
 /* A country's total troops everywhere, which is the number its own army */
 /* screen shows. */
+/* gearbox:military.read "country_army" */
 /* `(i)I` */
 static JSValue gbxjs_country_army(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1644,6 +1877,7 @@ static JSValue gbxjs_country_army(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:military.read "province_fortification" */
 /* Fortification level, 0..5. Multiplies the defender's strength. */
+/* gearbox:military.read "province_fortification" */
 /* `(i)i` */
 static JSValue gbxjs_province_fortification(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1657,6 +1891,7 @@ static JSValue gbxjs_province_fortification(JSContext *ctx, JSValueConst this_va
 
 /* gearbox:military.read "province_port_level" */
 /* Port level, 0..3. 0 means no port, so no embarking and no ship repair. */
+/* gearbox:military.read "province_port_level" */
 /* `(i)i` */
 static JSValue gbxjs_province_port_level(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1670,6 +1905,7 @@ static JSValue gbxjs_province_port_level(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:military.read "troop_type_count" */
 /* How many kinds of soldier exist. */
+/* gearbox:military.read "troop_type_count" */
 /* `()i` */
 static JSValue gbxjs_troop_type_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1683,6 +1919,7 @@ static JSValue gbxjs_troop_type_count(JSContext *ctx, JSValueConst this_val,
 /* Never translated. Two-call sizing: call with cap 0 to learn the length, */
 /* allocate, call again. Returns the full length either way; the copy is */
 /* truncated to cap. */
+/* gearbox:military.read "troop_type_id" */
 /* `(iii)i` */
 static JSValue gbxjs_troop_type_id(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1708,6 +1945,7 @@ static JSValue gbxjs_troop_type_id(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "country_army_of_type" */
 /* How many soldiers of that kind this country has, everywhere. 0 for a */
 /* troop type that does not exist. */
+/* gearbox:military.read "country_army_of_type" */
 /* `(iii)I` */
 static JSValue gbxjs_country_army_of_type(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1726,6 +1964,7 @@ static JSValue gbxjs_country_army_of_type(JSContext *ctx, JSValueConst this_val,
 /* gearbox:military.read "province_troops_of_type" */
 /* How many soldiers of that kind this country has standing in that */
 /* province. */
+/* gearbox:military.read "province_troops_of_type" */
 /* `(iiii)I` */
 static JSValue gbxjs_province_troops_of_type(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1755,6 +1994,7 @@ static JSValue gbxjs_province_troops_of_type(JSContext *ctx, JSValueConst this_v
 /* player's own click writes to and is validated by the same resolver at */
 /* end of turn, so a mod cannot teleport, cheat range, or attack across an */
 /* ocean. Returns 0 if the order is rejected outright. */
+/* gearbox:military.write "order_army_move" */
 /* `(iii)i` */
 static JSValue gbxjs_order_army_move(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1778,6 +2018,7 @@ static JSValue gbxjs_order_army_move(JSContext *ctx, JSValueConst this_val,
 /* writes to and is validated by the same resolver at end of turn, so a mod */
 /* cannot teleport, cheat range, or attack across an ocean. Returns 0 if */
 /* the order is rejected outright. */
+/* gearbox:military.write "order_ship_move" */
 /* `(iFF)i` */
 static JSValue gbxjs_order_ship_move(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1800,6 +2041,7 @@ static JSValue gbxjs_order_ship_move(JSContext *ctx, JSValueConst this_val,
 /* player's own click writes to and is validated by the same resolver at */
 /* end of turn, so a mod cannot teleport, cheat range, or attack across an */
 /* ocean. Returns 0 if the order is rejected outright. */
+/* gearbox:military.write "order_ship_engage" */
 /* `(ii)i` */
 static JSValue gbxjs_order_ship_engage(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1820,6 +2062,7 @@ static JSValue gbxjs_order_ship_engage(JSContext *ctx, JSValueConst this_val,
 /* validated by the same resolver at end of turn, so a mod cannot teleport, */
 /* cheat range, or attack across an ocean. Returns 0 if the order is */
 /* rejected outright. */
+/* gearbox:military.write "order_ship_bombard" */
 /* `(iiii)i` */
 static JSValue gbxjs_order_ship_bombard(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1850,6 +2093,7 @@ static JSValue gbxjs_order_ship_bombard(JSContext *ctx, JSValueConst this_val,
 /* another mod, and it never carries game traffic: orders, deltas and chat */
 /* do not travel here. Messages larger than 8192 bytes are refused. Returns */
 /* 0 if this is not a network game, or the message was too large. */
+/* gearbox:net "send" */
 /* `(iii)i` */
 static JSValue gbxjs_send(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1869,6 +2113,7 @@ static JSValue gbxjs_send(JSContext *ctx, JSValueConst this_val,
 /* How many players this session has, a playing host included. 0 when this */
 /* is not a network game, which is how a mod tells the difference. */
 /* Spectators are not counted. */
+/* gearbox:net "peer_count" */
 /* `()i` */
 static JSValue gbxjs_peer_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1882,6 +2127,7 @@ static JSValue gbxjs_peer_count(JSContext *ctx, JSValueConst this_val,
 /* is a dedicated host holding no seat -- a host that plays has an ordinary */
 /* peer id like anyone else, so do not use this to tell host from client. */
 /* `is_host` is that question. */
+/* gearbox:net "self_peer" */
 /* `()i` */
 static JSValue gbxjs_self_peer(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1894,6 +2140,7 @@ static JSValue gbxjs_self_peer(JSContext *ctx, JSValueConst this_val,
 /* Whether this copy is the authoritative one. A mod that computes anything */
 /* the game depends on must do it here and send the result, not compute it */
 /* separately on each machine. */
+/* gearbox:net "is_host" */
 /* `()i` */
 static JSValue gbxjs_is_host(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1905,6 +2152,7 @@ static JSValue gbxjs_is_host(JSContext *ctx, JSValueConst this_val,
 /* gearbox:net "peer_at" */
 /* The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end. */
 /* This is the id net/send takes. */
+/* gearbox:net "peer_at" */
 /* `(i)i` */
 static JSValue gbxjs_peer_at(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1921,6 +2169,7 @@ static JSValue gbxjs_peer_at(JSContext *ctx, JSValueConst this_val,
 /* A mod has no business correlating players across sessions. Two-call */
 /* sizing: call with cap 0 to learn the length, allocate, call again. */
 /* Returns the full length either way; the copy is truncated to cap. */
+/* gearbox:net "peer_name" */
 /* `(iii)i` */
 static JSValue gbxjs_peer_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1946,6 +2195,7 @@ static JSValue gbxjs_peer_name(JSContext *ctx, JSValueConst this_val,
 /* gearbox:net "max_message_bytes" */
 /* The largest payload net/send will accept. Chunk against this rather than */
 /* discovering the limit by having a message dropped. */
+/* gearbox:net "max_message_bytes" */
 /* `()i` */
 static JSValue gbxjs_max_message_bytes(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1961,6 +2211,7 @@ static JSValue gbxjs_max_message_bytes(JSContext *ctx, JSValueConst this_val,
 /* gearbox:neural "feature_count" */
 /* How many floats are in the AI's feature vector. 0 when there is no AI or */
 /* no world. */
+/* gearbox:neural "feature_count" */
 /* `()i` */
 static JSValue gbxjs_feature_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1974,6 +2225,7 @@ static JSValue gbxjs_feature_count(JSContext *ctx, JSValueConst this_val,
 /* floats. Two-call sizing, but note cap counts FLOATS and the buffer must */
 /* therefore be cap*4 bytes. This is a snapshot: writing to your copy does */
 /* not affect the AI. */
+/* gearbox:neural "features" */
 /* `(iii)i` */
 static JSValue gbxjs_features(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -1998,6 +2250,7 @@ static JSValue gbxjs_features(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:neural "reward_count" */
 /* How many reward channels the AI tracks (economy, politics, war, navy). */
+/* gearbox:neural "reward_count" */
 /* `()i` */
 static JSValue gbxjs_reward_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2012,6 +2265,7 @@ static JSValue gbxjs_reward_count(JSContext *ctx, JSValueConst this_val,
 /* to the model, the optimiser state or the reward history, which is */
 /* deliberate -- a trained model is hours of work and a mod that could */
 /* quietly retrain it is not something a user can meaningfully consent to. */
+/* gearbox:neural "reward_mean" */
 /* `(i)F` */
 static JSValue gbxjs_reward_mean(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2026,6 +2280,7 @@ static JSValue gbxjs_reward_mean(JSContext *ctx, JSValueConst this_val,
 /* gearbox:neural "module_count" */
 /* How many decision modules the AI has. Each acts independently every */
 /* turn. */
+/* gearbox:neural "module_count" */
 /* `()i` */
 static JSValue gbxjs_module_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2038,6 +2293,7 @@ static JSValue gbxjs_module_count(JSContext *ctx, JSValueConst this_val,
 /* The module's name: "economy", "politics", "war", "navy". Two-call */
 /* sizing: call with cap 0 to learn the length, allocate, call again. */
 /* Returns the full length either way; the copy is truncated to cap. */
+/* gearbox:neural "module_name" */
 /* `(iii)i` */
 static JSValue gbxjs_module_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2062,6 +2318,7 @@ static JSValue gbxjs_module_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:neural "action_count" */
 /* How many actions that module can choose between. */
+/* gearbox:neural "action_count" */
 /* `(i)i` */
 static JSValue gbxjs_action_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2081,6 +2338,7 @@ static JSValue gbxjs_action_count(JSContext *ctx, JSValueConst this_val,
 /* stable enough to build an advisor or a decision log against. Two-call */
 /* sizing: call with cap 0 to learn the length, allocate, call again. */
 /* Returns the full length either way; the copy is truncated to cap. */
+/* gearbox:neural "action_name" */
 /* `(iiii)i` */
 static JSValue gbxjs_action_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2107,6 +2365,7 @@ static JSValue gbxjs_action_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:neural "country_is_ai" */
 /* Whether a country is played by the AI rather than by the local player. */
+/* gearbox:neural "country_is_ai" */
 /* `(i)i` */
 static JSValue gbxjs_country_is_ai(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2121,6 +2380,7 @@ static JSValue gbxjs_country_is_ai(JSContext *ctx, JSValueConst this_val,
 /* gearbox:neural "update_count" */
 /* Gradient updates the loaded model has been through -- roughly, how much */
 /* training it has seen. */
+/* gearbox:neural "update_count" */
 /* `()I` */
 static JSValue gbxjs_update_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2132,6 +2392,7 @@ static JSValue gbxjs_update_count(JSContext *ctx, JSValueConst this_val,
 /* gearbox:neural "model_loaded" */
 /* Whether an AI model is loaded at all. False in a game with no AI */
 /* players. */
+/* gearbox:neural "model_loaded" */
 /* `()i` */
 static JSValue gbxjs_model_loaded(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2149,6 +2410,7 @@ static JSValue gbxjs_model_loaded(JSContext *ctx, JSValueConst this_val,
 /* should record RULES. Two-call sizing: call with cap 0 to learn the */
 /* length, allocate, call again. Returns the full length either way; the */
 /* copy is truncated to cap. */
+/* gearbox:neural "ai_version" */
 /* `(ii)i` */
 static JSValue gbxjs_ai_version(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2172,6 +2434,7 @@ static JSValue gbxjs_ai_version(JSContext *ctx, JSValueConst this_val,
 /* The AI's ARCH number on its own, which is also the model file's format */
 /* byte. The feature count and the action sets are only stable within one */
 /* ARCH; a bump means old weights are refused on purpose. */
+/* gearbox:neural "ai_arch" */
 /* `()i` */
 static JSValue gbxjs_ai_arch(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2186,6 +2449,7 @@ static JSValue gbxjs_ai_arch(JSContext *ctx, JSValueConst this_val,
 /* (a country the AI does not play, or one that has not been given a stance */
 /* yet). Held for several turns at a time rather than chosen fresh each */
 /* turn. */
+/* gearbox:neural "country_stance" */
 /* `(i)i` */
 static JSValue gbxjs_country_stance(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2202,6 +2466,7 @@ static JSValue gbxjs_country_stance(JSContext *ctx, JSValueConst this_val,
 /* translated, and stable within an ARCH. Two-call sizing: call with cap 0 */
 /* to learn the length, allocate, call again. Returns the full length */
 /* either way; the copy is truncated to cap. */
+/* gearbox:neural "stance_name" */
 /* `(iii)i` */
 static JSValue gbxjs_stance_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2226,6 +2491,7 @@ static JSValue gbxjs_stance_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:neural "stance_count" */
 /* How many stances there are to choose between. */
+/* gearbox:neural "stance_count" */
 /* `()i` */
 static JSValue gbxjs_stance_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2246,6 +2512,7 @@ static JSValue gbxjs_stance_count(JSContext *ctx, JSValueConst this_val,
 /* nothing. Choosing an action whose byte is 0 is the same as deciding */
 /* nothing -- the host keeps its own choice, because an illegal action is */
 /* not a move it can make. */
+/* gearbox:neural.decide "action_valid" */
 /* `(iii)i` */
 static JSValue gbxjs_action_valid(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2274,6 +2541,7 @@ static JSValue gbxjs_action_valid(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:politics.read "country_compass_econ" */
 /* Economic axis of the political compass, -100 (planned) to 100 (market). */
+/* gearbox:politics.read "country_compass_econ" */
 /* `(i)F` */
 static JSValue gbxjs_country_compass_econ(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2287,6 +2555,7 @@ static JSValue gbxjs_country_compass_econ(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:politics.read "country_compass_social" */
 /* Social axis, -100 (authoritarian) to 100 (libertarian). */
+/* gearbox:politics.read "country_compass_social" */
 /* `(i)F` */
 static JSValue gbxjs_country_compass_social(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2300,6 +2569,7 @@ static JSValue gbxjs_country_compass_social(JSContext *ctx, JSValueConst this_va
 
 /* gearbox:politics.read "province_unrest" */
 /* This province's chance of rebelling, as the game itself computes it. */
+/* gearbox:politics.read "province_unrest" */
 /* `(i)F` */
 static JSValue gbxjs_province_unrest(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2313,6 +2583,7 @@ static JSValue gbxjs_province_unrest(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:politics.read "policy_count" */
 /* How many policies exist. */
+/* gearbox:politics.read "policy_count" */
 /* `()i` */
 static JSValue gbxjs_policy_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2325,6 +2596,7 @@ static JSValue gbxjs_policy_count(JSContext *ctx, JSValueConst this_val,
 /* The stable string id of policy `index`. Two-call sizing: call with cap 0 */
 /* to learn the length, allocate, call again. Returns the full length */
 /* either way; the copy is truncated to cap. */
+/* gearbox:politics.read "policy_id" */
 /* `(iii)i` */
 static JSValue gbxjs_policy_id(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2351,6 +2623,7 @@ static JSValue gbxjs_policy_id(JSContext *ctx, JSValueConst this_val,
 /* The policy's display name; localised, not stable, do not match on it. */
 /* Two-call sizing: call with cap 0 to learn the length, allocate, call */
 /* again. Returns the full length either way; the copy is truncated to cap. */
+/* gearbox:politics.read "policy_name" */
 /* `(iii)i` */
 static JSValue gbxjs_policy_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2375,6 +2648,7 @@ static JSValue gbxjs_policy_name(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:politics.read "country_has_policy" */
 /* Whether a country currently has a policy active or implementing. */
+/* gearbox:politics.read "country_has_policy" */
 /* `(iii)i` */
 static JSValue gbxjs_country_has_policy(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2392,6 +2666,7 @@ static JSValue gbxjs_country_has_policy(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:politics.read "province_minority_count" */
 /* How many named minority groups live in a province. */
+/* gearbox:politics.read "province_minority_count" */
 /* `(i)i` */
 static JSValue gbxjs_province_minority_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2407,6 +2682,7 @@ static JSValue gbxjs_province_minority_count(JSContext *ctx, JSValueConst this_v
 /* The minority's name. Two-call sizing: call with cap 0 to learn the */
 /* length, allocate, call again. Returns the full length either way; the */
 /* copy is truncated to cap. */
+/* gearbox:politics.read "province_minority_name" */
 /* `(iiii)i` */
 static JSValue gbxjs_province_minority_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2433,6 +2709,7 @@ static JSValue gbxjs_province_minority_name(JSContext *ctx, JSValueConst this_va
 
 /* gearbox:politics.read "province_minority_share" */
 /* That minority's share of the province's population, 0..1. */
+/* gearbox:politics.read "province_minority_share" */
 /* `(ii)F` */
 static JSValue gbxjs_province_minority_share(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2450,6 +2727,7 @@ static JSValue gbxjs_province_minority_share(JSContext *ctx, JSValueConst this_v
 /* How many districts this country is divided into. Districts are built on */
 /* demand, so asking is what creates the default one for a country that has */
 /* never been divided. */
+/* gearbox:politics.read "country_district_count" */
 /* `(i)i` */
 static JSValue gbxjs_country_district_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2465,6 +2743,7 @@ static JSValue gbxjs_country_district_count(JSContext *ctx, JSValueConst this_va
 /* The district's name. Two-call sizing: call with cap 0 to learn the */
 /* length, allocate, call again. Returns the full length either way; the */
 /* copy is truncated to cap. */
+/* gearbox:politics.read "country_district_name" */
 /* `(iiii)i` */
 static JSValue gbxjs_country_district_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2492,6 +2771,7 @@ static JSValue gbxjs_country_district_name(JSContext *ctx, JSValueConst this_val
 /* gearbox:politics.read "country_district_share" */
 /* This district's claim on the country's pacification budget, in percent. */
 /* The shares of a country's districts sum to 100. */
+/* gearbox:politics.read "country_district_share" */
 /* `(ii)i` */
 static JSValue gbxjs_country_district_share(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2507,6 +2787,7 @@ static JSValue gbxjs_country_district_share(JSContext *ctx, JSValueConst this_va
 
 /* gearbox:politics.read "country_district_province_count" */
 /* How many provinces this district holds. */
+/* gearbox:politics.read "country_district_province_count" */
 /* `(ii)i` */
 static JSValue gbxjs_country_district_province_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2523,6 +2804,7 @@ static JSValue gbxjs_country_district_province_count(JSContext *ctx, JSValueCons
 /* gearbox:politics.read "country_district_province" */
 /* Province `n` of this district, or GEARBOX_INVALID if there is no such */
 /* one. */
+/* gearbox:politics.read "country_district_province" */
 /* `(iii)i` */
 static JSValue gbxjs_country_district_province(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2540,6 +2822,7 @@ static JSValue gbxjs_country_district_province(JSContext *ctx, JSValueConst this
 
 /* gearbox:politics.read "country_district_law_count" */
 /* How many regional laws this district runs. */
+/* gearbox:politics.read "country_district_law_count" */
 /* `(ii)i` */
 static JSValue gbxjs_country_district_law_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2557,6 +2840,7 @@ static JSValue gbxjs_country_district_law_count(JSContext *ctx, JSValueConst thi
 /* The stable id of regional law `n` in this district. Two-call sizing: */
 /* call with cap 0 to learn the length, allocate, call again. Returns the */
 /* full length either way; the copy is truncated to cap. */
+/* gearbox:politics.read "country_district_law" */
 /* `(iiiii)i` */
 static JSValue gbxjs_country_district_law(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2585,6 +2869,7 @@ static JSValue gbxjs_country_district_law(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:politics.read "district_law_count" */
 /* How many regional laws exist to choose from. */
+/* gearbox:politics.read "district_law_count" */
 /* `()i` */
 static JSValue gbxjs_district_law_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2597,6 +2882,7 @@ static JSValue gbxjs_district_law_count(JSContext *ctx, JSValueConst this_val,
 /* The stable id of regional law `index`. Two-call sizing: call with cap 0 */
 /* to learn the length, allocate, call again. Returns the full length */
 /* either way; the copy is truncated to cap. */
+/* gearbox:politics.read "district_law_id" */
 /* `(iii)i` */
 static JSValue gbxjs_district_law_id(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2623,6 +2909,7 @@ static JSValue gbxjs_district_law_id(JSContext *ctx, JSValueConst this_val,
 /* The display name of regional law `index`, untranslated. Two-call sizing: */
 /* call with cap 0 to learn the length, allocate, call again. Returns the */
 /* full length either way; the copy is truncated to cap. */
+/* gearbox:politics.read "district_law_name" */
 /* `(iii)i` */
 static JSValue gbxjs_district_law_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2650,6 +2937,7 @@ static JSValue gbxjs_district_law_name(JSContext *ctx, JSValueConst this_val,
 /* 0 if it keeps it to itself. See the disclosure_field enum. Publishing is */
 /* a decision with a consequence -- migrants read it -- rather than a */
 /* display setting. */
+/* gearbox:politics.read "country_discloses" */
 /* `(ii)i` */
 static JSValue gbxjs_country_discloses(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2667,6 +2955,7 @@ static JSValue gbxjs_country_discloses(JSContext *ctx, JSValueConst this_val,
 /* How many parties sit in a country's legislature. 0 when the party rules */
 /* are off, which is the default -- so a mod must treat 0 as 'this world */
 /* has no party politics' rather than as an error. */
+/* gearbox:politics.read "country_party_count" */
 /* `(i)i` */
 static JSValue gbxjs_country_party_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2682,6 +2971,7 @@ static JSValue gbxjs_country_party_count(JSContext *ctx, JSValueConst this_val,
 /* The party's name. Two-call sizing: call with cap 0 to learn the length, */
 /* allocate, call again. Returns the full length either way; the copy is */
 /* truncated to cap. */
+/* gearbox:politics.read "country_party_name" */
 /* `(iiii)i` */
 static JSValue gbxjs_country_party_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2709,6 +2999,7 @@ static JSValue gbxjs_country_party_name(JSContext *ctx, JSValueConst this_val,
 /* gearbox:politics.read "country_party_short_name" */
 /* The party's abbreviation, for a list that has to fit -- "SPD", "INC". */
 /* Same two-call sizing as country_party_name. May be empty. */
+/* gearbox:politics.read "country_party_short_name" */
 /* `(iiii)i` */
 static JSValue gbxjs_country_party_short_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2737,6 +3028,7 @@ static JSValue gbxjs_country_party_short_name(JSContext *ctx, JSValueConst this_
 /* That party's share of the country, 0..1. The shares of one country's */
 /* parties are a partition and sum to 1, so they may be compared directly */
 /* but must never be added across countries. */
+/* gearbox:politics.read "country_party_support" */
 /* `(ii)F` */
 static JSValue gbxjs_country_party_support(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2754,6 +3046,7 @@ static JSValue gbxjs_country_party_support(JSContext *ctx, JSValueConst this_val
 /* Where the party stands on the economic axis, -100 (planned) to 100 */
 /* (market) -- the same axis and scale as country_compass_econ, so the */
 /* distance between a party and its government is meaningful. */
+/* gearbox:politics.read "country_party_compass_econ" */
 /* `(ii)F` */
 static JSValue gbxjs_country_party_compass_econ(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2770,6 +3063,7 @@ static JSValue gbxjs_country_party_compass_econ(JSContext *ctx, JSValueConst thi
 /* gearbox:politics.read "country_party_compass_social" */
 /* Where the party stands on the social axis, -100 (authoritarian) to 100 */
 /* (libertarian). Same scale as country_compass_social. */
+/* gearbox:politics.read "country_party_compass_social" */
 /* `(ii)F` */
 static JSValue gbxjs_country_party_compass_social(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2789,6 +3083,7 @@ static JSValue gbxjs_country_party_compass_social(JSContext *ctx, JSValueConst t
 /* stance. A mod that displays party names should say which it is showing: */
 /* "Workers' Party" is a description, "SPD" is a claim. See */
 /* data/parties.json. */
+/* gearbox:politics.read "country_party_is_historical" */
 /* `(ii)i` */
 static JSValue gbxjs_country_party_is_historical(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2806,6 +3101,7 @@ static JSValue gbxjs_country_party_is_historical(JSContext *ctx, JSValueConst th
 /* The index of the party that governs, or -1 if none does. That party */
 /* pulls the government compass toward its own stance every turn it holds */
 /* power, which is why the two are on the same scale. */
+/* gearbox:politics.read "country_ruling_party" */
 /* `(i)i` */
 static JSValue gbxjs_country_ruling_party(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2826,6 +3122,7 @@ static JSValue gbxjs_country_ruling_party(JSContext *ctx, JSValueConst this_val,
 /* the cost, the prerequisites and the per-turn enactment cap all still */
 /* apply -- a country cannot end up running policies it could never have */
 /* afforded. Returns 1 if the policy is already in the requested state. */
+/* gearbox:politics.write "set_country_policy" */
 /* `(iiii)i` */
 static JSValue gbxjs_set_country_policy(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2847,6 +3144,7 @@ static JSValue gbxjs_set_country_policy(JSContext *ctx, JSValueConst this_val,
 /* Set this district's claim on the pacification budget. The other */
 /* districts are rebalanced so the shares still sum to 100, exactly as */
 /* dragging the slider does. Returns 1 on success. */
+/* gearbox:politics.write "set_country_district_share" */
 /* `(iii)i` */
 static JSValue gbxjs_set_country_district_share(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2865,6 +3163,7 @@ static JSValue gbxjs_set_country_district_share(JSContext *ctx, JSValueConst thi
 /* gearbox:politics.write "set_country_district_law" */
 /* Pass or repeal a regional law in this district. Returns 1 on success, 0 */
 /* for an unknown law or district. */
+/* gearbox:politics.write "set_country_district_law" */
 /* `(iiiii)i` */
 static JSValue gbxjs_set_country_district_law(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2887,6 +3186,7 @@ static JSValue gbxjs_set_country_district_law(JSContext *ctx, JSValueConst this_
 /* gearbox:politics.write "set_country_disclosure" */
 /* Publish or withhold one of the figures in this country's profile. */
 /* Returns 1 on success. */
+/* gearbox:politics.write "set_country_disclosure" */
 /* `(iii)i` */
 static JSValue gbxjs_set_country_disclosure(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2914,6 +3214,7 @@ static JSValue gbxjs_set_country_disclosure(JSContext *ctx, JSValueConst this_va
 /* the maximum (4096 tints per mod, which is every province on the largest */
 /* map twice over). A refusal rather than a slower game: a mod's mistake */
 /* should not be paid for in frame time by a player who cannot see why. */
+/* gearbox:render "province_tint" */
 /* `(ii)i` */
 static JSValue gbxjs_province_tint(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2933,6 +3234,7 @@ static JSValue gbxjs_province_tint(JSContext *ctx, JSValueConst this_val,
 /* characters rather than refused: a label one character too long is a */
 /* cosmetic mistake, and failing the call would have an author debugging a */
 /* silent nothing instead of seeing a clipped word. 512 labels per mod. */
+/* gearbox:render "province_label" */
 /* `(iiii)i` */
 static JSValue gbxjs_province_label(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2955,16 +3257,18 @@ static JSValue gbxjs_province_label(JSContext *ctx, JSValueConst this_val,
 /* mod's -- and unloading a mod clears its own automatically, because a */
 /* mark left behind by a mod that is no longer running is indistinguishable */
 /* from the game being wrong. */
+/* gearbox:render "clear" */
 /* `()i` */
-static JSValue gbxjs_clear(JSContext *ctx, JSValueConst this_val,
+static JSValue gbxjs_render_clear(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
     (void)this_val;  (void)argc; (void)argv;
-    uint64_t r = (uint64_t)gearbox_clear();
+    uint64_t r = (uint64_t)gearbox_render_clear();
     return JS_NewBool(ctx, (int)r);
 }
 
 /* gearbox:render "tint_count" */
 /* How many tints you are currently holding. */
+/* gearbox:render "tint_count" */
 /* `()i` */
 static JSValue gbxjs_tint_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2975,6 +3279,7 @@ static JSValue gbxjs_tint_count(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:render "label_count" */
 /* How many labels you are currently holding. */
+/* gearbox:render "label_count" */
 /* `()i` */
 static JSValue gbxjs_label_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -2989,6 +3294,7 @@ static JSValue gbxjs_label_count(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:research.read "node_count" */
 /* How many technologies exist in the tree. */
+/* gearbox:research.read "node_count" */
 /* `()i` */
 static JSValue gbxjs_node_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3002,6 +3308,7 @@ static JSValue gbxjs_node_count(JSContext *ctx, JSValueConst this_val,
 /* country_has_researched takes. Two-call sizing: call with cap 0 to learn */
 /* the length, allocate, call again. Returns the full length either way; */
 /* the copy is truncated to cap. */
+/* gearbox:research.read "node_id" */
 /* `(iii)i` */
 static JSValue gbxjs_node_id(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3029,6 +3336,7 @@ static JSValue gbxjs_node_id(JSContext *ctx, JSValueConst this_val,
 /* never match on it. Two-call sizing: call with cap 0 to learn the length, */
 /* allocate, call again. Returns the full length either way; the copy is */
 /* truncated to cap. */
+/* gearbox:research.read "node_name" */
 /* `(iii)i` */
 static JSValue gbxjs_node_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3055,6 +3363,7 @@ static JSValue gbxjs_node_name(JSContext *ctx, JSValueConst this_val,
 /* Which branch of the tree it sits in. Two-call sizing: call with cap 0 to */
 /* learn the length, allocate, call again. Returns the full length either */
 /* way; the copy is truncated to cap. */
+/* gearbox:research.read "node_category" */
 /* `(iii)i` */
 static JSValue gbxjs_node_category(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3079,6 +3388,7 @@ static JSValue gbxjs_node_category(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:research.read "node_cost" */
 /* Research points required. */
+/* gearbox:research.read "node_cost" */
 /* `(i)i` */
 static JSValue gbxjs_node_cost(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3093,6 +3403,7 @@ static JSValue gbxjs_node_cost(JSContext *ctx, JSValueConst this_val,
 /* gearbox:research.read "country_has_researched" */
 /* Whether a country has completed a technology. Takes the id from node_id, */
 /* not the display name. */
+/* gearbox:research.read "country_has_researched" */
 /* `(iii)i` */
 static JSValue gbxjs_country_has_researched(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3111,6 +3422,7 @@ static JSValue gbxjs_country_has_researched(JSContext *ctx, JSValueConst this_va
 /* gearbox:research.read "country_funding" */
 /* Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That */
 /* is how the game stores it and how its own economy screen presents it. */
+/* gearbox:research.read "country_funding" */
 /* `(i)F` */
 static JSValue gbxjs_country_funding(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3126,6 +3438,7 @@ static JSValue gbxjs_country_funding(JSContext *ctx, JSValueConst this_val,
 /* How many research programmes this country may run at once, 1 to 3. This */
 /* is the effective number, including any override a script or a mod has */
 /* set. */
+/* gearbox:research.read "country_research_groups" */
 /* `(i)i` */
 static JSValue gbxjs_country_research_groups(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3144,6 +3457,7 @@ static JSValue gbxjs_country_research_groups(JSContext *ctx, JSValueConst this_v
 /* gearbox:research.write "set_country_funding" */
 /* Set research funding as a share of income. Clamped to 0..1; a value in */
 /* 'points per turn' is not a quantity this game has. */
+/* gearbox:research.write "set_country_funding" */
 /* `(iF)i` */
 static JSValue gbxjs_set_country_funding(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3161,6 +3475,7 @@ static JSValue gbxjs_set_country_funding(JSContext *ctx, JSValueConst this_val,
 /* Force how many research programmes a country may run, 1 to 3, or 0 to */
 /* hand the decision back to its economy. Outranks the economic gate in */
 /* both directions and is saved with the game. Returns 1 on success. */
+/* gearbox:research.write "set_country_research_groups" */
 /* `(ii)i` */
 static JSValue gbxjs_set_country_research_groups(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3191,6 +3506,7 @@ static JSValue gbxjs_set_country_research_groups(JSContext *ctx, JSValueConst th
 /* since scripts ship inside .odmap files and mods are enabled globally. */
 /* Names must be an identifier: a letter, then letters, digits or */
 /* underscores, up to 48 bytes. */
+/* gearbox:scripts "command_add" */
 /* `(ii)i` */
 static JSValue gbxjs_command_add(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3207,6 +3523,7 @@ static JSValue gbxjs_command_add(JSContext *ctx, JSValueConst this_val,
 /* gearbox:scripts "command_remove" */
 /* Give up one of your own commands. False if it was not yours -- a mod */
 /* cannot unregister another mod's. */
+/* gearbox:scripts "command_remove" */
 /* `(ii)i` */
 static JSValue gbxjs_command_remove(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3222,6 +3539,7 @@ static JSValue gbxjs_command_remove(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:scripts "command_count" */
 /* How many commands YOU have claimed. */
+/* gearbox:scripts "command_count" */
 /* `()i` */
 static JSValue gbxjs_command_count(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3232,6 +3550,7 @@ static JSValue gbxjs_command_count(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:scripts "command_name" */
 /* The name of your command at index, sorted. Two-call sizing. */
+/* gearbox:scripts "command_name" */
 /* `(iii)i` */
 static JSValue gbxjs_command_name(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3258,6 +3577,7 @@ static JSValue gbxjs_command_name(JSContext *ctx, JSValueConst this_val,
 /* Inside mod_script_command: which of your commands the script ran. Empty */
 /* outside that call -- there is no command then, and reporting the last */
 /* one would be a stale answer that looks like a live one. Two-call sizing. */
+/* gearbox:scripts "command_text" */
 /* `(ii)i` */
 static JSValue gbxjs_command_text(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3281,6 +3601,7 @@ static JSValue gbxjs_command_text(JSContext *ctx, JSValueConst this_val,
 /* Inside mod_script_command: the rest of the script line, verbatim -- */
 /* unparsed and untrimmed, because your command knows its own grammar and */
 /* the engine does not. Empty outside that call. Two-call sizing. */
+/* gearbox:scripts "command_args" */
 /* `(ii)i` */
 static JSValue gbxjs_command_args(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3310,6 +3631,7 @@ static JSValue gbxjs_command_args(JSContext *ctx, JSValueConst this_val,
 /* is absent -- which is NOT the same as a zero-length value, so you can */
 /* tell 'never stored' from 'stored empty'. Values are arbitrary bytes, not */
 /* text. */
+/* gearbox:storage "get" */
 /* `(iiii)i` */
 static JSValue gbxjs_get(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3340,6 +3662,7 @@ static JSValue gbxjs_get(JSContext *ctx, JSValueConst this_val,
 /* total per mod) -- the reason is written to your log. Not written to disk */
 /* immediately: the store is flushed at turn boundaries and on unload, */
 /* because a mod may call this from a draw hook. */
+/* gearbox:storage "set" */
 /* `(iiii)i` */
 static JSValue gbxjs_set(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3359,6 +3682,7 @@ static JSValue gbxjs_set(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:storage "remove" */
 /* Deletes one of your own keys. Returns 1 if it existed, 0 if it did not. */
+/* gearbox:storage "remove" */
 /* `(ii)i` */
 static JSValue gbxjs_remove(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3381,6 +3705,7 @@ static JSValue gbxjs_remove(JSContext *ctx, JSValueConst this_val,
 /* headless, when UI was revoked, or when you already hold 8 panels. Titles */
 /* are truncated to 64 bytes. Call this from mod_load, not from your draw */
 /* hook. */
+/* gearbox:ui "panel_register" */
 /* `(iiii)i` */
 static JSValue gbxjs_panel_register(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3403,6 +3728,7 @@ static JSValue gbxjs_panel_register(JSContext *ctx, JSValueConst this_val,
 /* Filled rectangle in panel-relative coordinates. Colour is 0xRRGGBBAA. */
 /* Coordinates outside the panel are clipped by the host; they cannot */
 /* escape it. */
+/* gearbox:ui "draw_rect" */
 /* `(iiiiii)` */
 static JSValue gbxjs_draw_rect(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3427,6 +3753,7 @@ static JSValue gbxjs_draw_rect(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "draw_text" */
 /* UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per */
 /* call. */
+/* gearbox:ui "draw_text" */
 /* `(iiiiii)` */
 static JSValue gbxjs_draw_text(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3452,6 +3779,7 @@ static JSValue gbxjs_draw_text(JSContext *ctx, JSValueConst this_val,
 /* Immediate-mode button: draws it and returns 1 on the frame it is */
 /* clicked. One click activates one button -- the host consumes it, so */
 /* overlapping rects do not all fire. Label truncated to 64 bytes. */
+/* gearbox:ui "button" */
 /* `(iiiiiii)i` */
 static JSValue gbxjs_button(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3478,6 +3806,7 @@ static JSValue gbxjs_button(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "draw_line" */
 /* Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness */
 /* is clamped to 0.25..64. Clipped to your panel like every other command. */
+/* gearbox:ui "draw_line" */
 /* `(iiiiiFi)` */
 static JSValue gbxjs_draw_line(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3504,6 +3833,7 @@ static JSValue gbxjs_draw_line(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "draw_circle" */
 /* Queue a filled circle centred at (cx,cy), panel-relative. Radius is */
 /* clamped to 0..4096. */
+/* gearbox:ui "draw_circle" */
 /* `(iiiFi)` */
 static JSValue gbxjs_draw_circle(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3531,6 +3861,7 @@ static JSValue gbxjs_draw_circle(JSContext *ctx, JSValueConst this_val,
 /* unmodified. Decoded once and cached; a name that fails to decode draws */
 /* nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by */
 /* extension. This is the call that makes a real reskin possible. */
+/* gearbox:ui "draw_image" */
 /* `(iiiiiiii)` */
 static JSValue gbxjs_draw_image(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3559,6 +3890,7 @@ static JSValue gbxjs_draw_image(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "draw_text_sized" */
 /* Like draw_text but with a type size, clamped to 6..96. draw_text remains */
 /* 14pt, unchanged, so v1.0 mods look exactly as they did. */
+/* gearbox:ui "draw_text_sized" */
 /* `(iiiiiii)` */
 static JSValue gbxjs_draw_text_sized(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3586,6 +3918,7 @@ static JSValue gbxjs_draw_text_sized(JSContext *ctx, JSValueConst this_val,
 /* Width in pixels of `text` at `size`, measured with the font the game */
 /* will actually draw. Centring, right-alignment and wrapping all need this */
 /* before the text is queued. */
+/* gearbox:ui "measure_text" */
 /* `(iii)i` */
 static JSValue gbxjs_measure_text(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3605,6 +3938,7 @@ static JSValue gbxjs_measure_text(JSContext *ctx, JSValueConst this_val,
 /* The width the host assigned your panel this frame, in pixels. Lay out */
 /* against this rather than against min_w -- the host may have given you */
 /* more. */
+/* gearbox:ui "panel_width" */
 /* `(i)i` */
 static JSValue gbxjs_panel_width(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3618,6 +3952,7 @@ static JSValue gbxjs_panel_width(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:ui "panel_height" */
 /* The height the host assigned your panel this frame, in pixels. */
+/* gearbox:ui "panel_height" */
 /* `(i)i` */
 static JSValue gbxjs_panel_height(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3632,6 +3967,7 @@ static JSValue gbxjs_panel_height(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "panel_set_visible" */
 /* Show or hide one of your panels. A hidden panel is not drawn and */
 /* receives no input, but keeps its handle and its registration. */
+/* gearbox:ui "panel_set_visible" */
 /* `(ii)` */
 static JSValue gbxjs_panel_set_visible(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3648,6 +3984,7 @@ static JSValue gbxjs_panel_set_visible(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "mouse_x" */
 /* Cursor X, panel-relative, or 0 when the cursor is not over your panel. */
 /* You cannot observe the pointer outside your own box. */
+/* gearbox:ui "mouse_x" */
 /* `(i)F` */
 static JSValue gbxjs_mouse_x(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3661,6 +3998,7 @@ static JSValue gbxjs_mouse_x(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:ui "mouse_y" */
 /* Cursor Y, panel-relative, or 0 when the cursor is not over your panel. */
+/* gearbox:ui "mouse_y" */
 /* `(i)F` */
 static JSValue gbxjs_mouse_y(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3674,6 +4012,7 @@ static JSValue gbxjs_mouse_y(JSContext *ctx, JSValueConst this_val,
 
 /* gearbox:ui "mouse_inside" */
 /* Whether the cursor is over your panel this frame. */
+/* gearbox:ui "mouse_inside" */
 /* `(i)i` */
 static JSValue gbxjs_mouse_inside(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3688,6 +4027,7 @@ static JSValue gbxjs_mouse_inside(JSContext *ctx, JSValueConst this_val,
 /* gearbox:ui "theme_accent" */
 /* The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override. */
 /* Build your palette around this and you harmonise with what they chose. */
+/* gearbox:ui "theme_accent" */
 /* `()i` */
 static JSValue gbxjs_theme_accent(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
@@ -3702,6 +4042,7 @@ static JSValue gbxjs_theme_accent(JSContext *ctx, JSValueConst this_val,
 /* cheapest full reskin there is. It is NOT persisted: the game's settings */
 /* file keeps the player's own colour, and the override is dropped the */
 /* moment no mod is running, so it cannot outlive uninstalling you. */
+/* gearbox:ui "set_theme_accent" */
 /* `(i)i` */
 static JSValue gbxjs_set_theme_accent(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {

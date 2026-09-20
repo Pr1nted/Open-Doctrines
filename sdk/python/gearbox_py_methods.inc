@@ -14,6 +14,15 @@
     {"isPlaying", gbxpy_is_playing, METH_VARARGS, "Whether that handle is still making sound."},
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Content (5) ---- */
+#if GBX_WITH_CONTENT
+    {"contentAdd", gbxpy_content_add, METH_VARARGS, "Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2 troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST.  The definition is the SAME JSON the game"},
+    {"contentCount", gbxpy_content_count, METH_VARARGS, "How many entries of this kind YOU have added."},
+    {"contentIdAt", gbxpy_content_id_at, METH_VARARGS, "The id of your entry at index within a kind, sorted. Two-call sizing."},
+    {"contentOwnerOf", gbxpy_content_owner_of, METH_VARARGS, "Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod check whether the content it is about to add already exists -- including content another mod added, which i"},
+    {"contentRemove", gbxpy_content_remove, METH_VARARGS, "Remove one of your own entries. False if it was not yours."},
+#endif /* GBX_WITH_CONTENT */
+
 /* ---- Core.Protected (5) ---- */
 #if GBX_WITH_CORE_PROTECTED
     {"processBytes", gbxpy_process_bytes, METH_NOARGS, "Resident memory the whole game is using, in bytes. 0 where the platform does not report it -- Windows and the web build both return 0 today, and 0 means UNKNOWN rather than 'no mem"},
@@ -241,7 +250,7 @@
 #if GBX_WITH_RENDER
     {"provinceTint", gbxpy_province_tint, METH_VARARGS, "Tint a province on the map. rgba is 0xRRGGBBAA.  AN ALPHA OF ZERO REMOVES THE TINT. One call does set and clear, so a fading effect that paints transparent every frame cannot grow "},
     {"provinceLabel", gbxpy_province_label, METH_VARARGS, "Put a short label at a province. Empty text, or an alpha of zero, removes it.  Truncated at 48 characters and stripped of control characters rather than refused: a label one charac"},
-    {"clear", gbxpy_clear, METH_NOARGS, "Drop every tint and label YOU have drawn. A mod cannot clear another mod's -- and unloading a mod clears its own automatically, because a mark left behind by a mod that is no longe"},
+    {"renderClear", gbxpy_render_clear, METH_NOARGS, "Drop every tint and label YOU have drawn. A mod cannot clear another mod's -- and unloading a mod clears its own automatically, because a mark left behind by a mod that is no longe"},
     {"tintCount", gbxpy_tint_count, METH_NOARGS, "How many tints you are currently holding."},
     {"labelCount", gbxpy_label_count, METH_NOARGS, "How many labels you are currently holding."},
 #endif /* GBX_WITH_RENDER */

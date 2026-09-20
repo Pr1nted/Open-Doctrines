@@ -54,6 +54,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `Country` | `gearbox:country` | Declaring custom fields on countries, and reading and writing them | yes | implemented |
 | `Scripts` | `gearbox:scripts` | Adding commands to the map script language | yes | implemented |
 | `Render` | `gearbox:render` | Tinting provinces and labelling them on the map | yes | implemented |
+| `Content` | `gearbox:content` | Adding doctrines, research nodes, troop and artillery types and district laws | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -3953,6 +3954,102 @@ How many tints you are currently holding.
 
 How many labels you are currently holding.
 
+### `gearbox:content`
+
+Requires the **Content** capability.
+
+#### `add`
+
+```wat
+(import "gearbox:content" "add" (func $x (param i32 i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `kind` | `i32` | see [content_kind](#enums) |
+| `id` | `i32` | pointer into your linear memory |
+| `id_len` | `i32` | byte length |
+| `json` | `i32` | pointer into your linear memory |
+| `json_len` | `i32` | byte length |
+| `mode` | `i32` | see [content_mode](#enums) |
+
+**Returns** `i32` — 0 or 1.
+
+Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2 troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST.
+
+The definition is the SAME JSON the game's own data file uses, and goes through the same parser -- not a second reading of the same fields, which is how 'it works from the file but not from the mod' is made.
+
+AI VISIBILITY IS A FIELD IN THE JSON: "aiVisible": true. It defaults to FALSE, because content the AI was never trained against should not start appearing in its options. For RESEARCH it matters more than it looks -- the tree feeds the neural feature vector, so a visible node changes the shape of the model's input and a model whose parent no longer matches is silently re-initialised.
+
+PERSIST writes the definition into the save, so a world played with your doctrine keeps knowing what that doctrine was after your mod is uninstalled -- otherwise the country still holds the id and nothing can say what it did. HOLLOW is redeclared every load.
+
+Ids are GLOBAL within a catalogue, unlike country fields: a country holds a doctrine by id and a save records it that way, so two meanings for one id would make a save ambiguous. Another mod's id is refused. Lower-case letters, digits, underscore and at most one colon, 64 bytes.
+
+#### `count`
+
+```wat
+(import "gearbox:content" "count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `kind` | `i32` | see [content_kind](#enums) |
+
+**Returns** `i32`.
+
+How many entries of this kind YOU have added.
+
+#### `id_at`
+
+```wat
+(import "gearbox:content" "id_at" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `kind` | `i32` | see [content_kind](#enums) |
+| `index` | `i32` | — |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+The id of your entry at index within a kind, sorted. Two-call sizing.
+
+#### `owner_of`
+
+```wat
+(import "gearbox:content" "owner_of" (func $x (param i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `kind` | `i32` | see [content_kind](#enums) |
+| `id` | `i32` | pointer into your linear memory |
+| `id_len` | `i32` | byte length |
+| `buf` | `i32` | pointer into your linear memory |
+| `cap` | `i32` | byte length |
+
+**Returns** `i32` — byte length.
+
+Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod check whether the content it is about to add already exists -- including content another mod added, which is the collision it cannot otherwise see coming.
+
+#### `remove`
+
+```wat
+(import "gearbox:content" "remove" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `kind` | `i32` | see [content_kind](#enums) |
+| `id` | `i32` | pointer into your linear memory |
+| `id_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Remove one of your own entries. False if it was not yours.
+
 ## Exports
 
 Only `mod_load` is mandatory. A missing optional export is simply not
@@ -4084,6 +4181,10 @@ struct is safe against a newer host that has appended fields.
 **`field_mode`** — `hollow` = 0, `persist` = 1
 
 **`field_type`** — `number` = 0, `text` = 1
+
+**`content_kind`** — `doctrine` = 0, `research` = 1, `troop` = 2, `artillery` = 3, `district_law` = 4
+
+**`content_mode`** — `hollow` = 0, `persist` = 1
 
 ## Constants
 

@@ -14,6 +14,15 @@
     JS_CFUNC_DEF("isPlaying", 1, gbxjs_is_playing),
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Content (5) ---- */
+#if GBX_WITH_CONTENT
+    JS_CFUNC_DEF("contentAdd", 4, gbxjs_content_add),
+    JS_CFUNC_DEF("contentCount", 1, gbxjs_content_count),
+    JS_CFUNC_DEF("contentIdAt", 2, gbxjs_content_id_at),
+    JS_CFUNC_DEF("contentOwnerOf", 2, gbxjs_content_owner_of),
+    JS_CFUNC_DEF("contentRemove", 2, gbxjs_content_remove),
+#endif /* GBX_WITH_CONTENT */
+
 /* ---- Core.Protected (5) ---- */
 #if GBX_WITH_CORE_PROTECTED
     JS_CFUNC_DEF("processBytes", 0, gbxjs_process_bytes),
@@ -241,7 +250,7 @@
 #if GBX_WITH_RENDER
     JS_CFUNC_DEF("provinceTint", 2, gbxjs_province_tint),
     JS_CFUNC_DEF("provinceLabel", 3, gbxjs_province_label),
-    JS_CFUNC_DEF("clear", 0, gbxjs_clear),
+    JS_CFUNC_DEF("renderClear", 0, gbxjs_render_clear),
     JS_CFUNC_DEF("tintCount", 0, gbxjs_tint_count),
     JS_CFUNC_DEF("labelCount", 0, gbxjs_label_count),
 #endif /* GBX_WITH_RENDER */

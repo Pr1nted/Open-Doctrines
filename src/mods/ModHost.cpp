@@ -367,6 +367,7 @@ ModListBridge g_listBridge;
 ModCountryBridge g_countryBridge;
 ModScriptBridge g_scriptBridge;
 ModRenderBridge g_renderBridge;
+ModContentBridge g_contentBridge;
 
 uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
     ModInstance* mi = self(e);
@@ -1141,6 +1142,44 @@ uint32_t retStr(ModInstance* mi, const std::string& v, uint32_t buf, uint32_t ca
     return len;
 }
 
+// ---- Content: entries a mod adds to the game's catalogues ----
+uint32_t con_add(ExecEnv e, uint32_t kind, uint32_t idPtr, uint32_t idLen,
+                 uint32_t jPtr, uint32_t jLen, uint32_t mode) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CONTENT) || !g_contentBridge.add) return 0;
+    std::string id, json;
+    if (!mi->readString(idPtr, idLen, id)) return 0;
+    if (!mi->readString(jPtr, jLen, json)) return 0;
+    return g_contentBridge.add(kind, mi->id(), id, json, mode) ? 1u : 0u;
+}
+uint32_t con_remove(ExecEnv e, uint32_t kind, uint32_t idPtr, uint32_t idLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CONTENT) || !g_contentBridge.remove) return 0;
+    std::string id;
+    if (!mi->readString(idPtr, idLen, id)) return 0;
+    return g_contentBridge.remove(kind, mi->id(), id) ? 1u : 0u;
+}
+uint32_t con_count(ExecEnv e, uint32_t kind) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CONTENT) || !g_contentBridge.count) return 0;
+    return g_contentBridge.count(kind, mi->id());
+}
+uint32_t con_id_at(ExecEnv e, uint32_t kind, uint32_t index, uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CONTENT) || !g_contentBridge.idAt) return 0;
+    return retStr(mi, g_contentBridge.idAt(kind, mi->id(), index), buf, cap);
+}
+uint32_t con_owner_of(ExecEnv e, uint32_t kind, uint32_t idPtr, uint32_t idLen,
+                      uint32_t buf, uint32_t cap) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_CONTENT) || !g_contentBridge.ownerOf) return 0;
+    std::string id;
+    if (!mi->readString(idPtr, idLen, id)) return 0;
+    // Deliberately answers about ANOTHER mod's content too: a collision a mod
+    // cannot see coming is one it cannot avoid.
+    return retStr(mi, g_contentBridge.ownerOf(kind, id), buf, cap);
+}
+
 // ---- Render: tint and label, and nothing else ----
 uint32_t rnd_province_tint(ExecEnv e, uint32_t province, uint32_t rgba) {
     ModInstance* mi = self(e);
@@ -1877,6 +1916,11 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:net", "recv",       "(iii)i", (void*)net_recv,       MODULE_NET},
     {"gearbox:net", "peer_count", "()i",    (void*)net_peer_count, MODULE_NET},
     {"gearbox:net", "self_peer",  "()i",    (void*)net_self_peer,  MODULE_NET},
+    {"gearbox:content", "add", "(iiiiii)i", (void*)con_add, MODULE_CONTENT},
+    {"gearbox:content", "remove", "(iii)i", (void*)con_remove, MODULE_CONTENT},
+    {"gearbox:content", "count", "(i)i", (void*)con_count, MODULE_CONTENT},
+    {"gearbox:content", "id_at", "(iiii)i", (void*)con_id_at, MODULE_CONTENT},
+    {"gearbox:content", "owner_of", "(iiiii)i", (void*)con_owner_of, MODULE_CONTENT},
     {"gearbox:render", "province_tint", "(ii)i", (void*)rnd_province_tint, MODULE_RENDER},
     {"gearbox:render", "province_label", "(iiii)i", (void*)rnd_province_label, MODULE_RENDER},
     {"gearbox:render", "clear", "()i", (void*)rnd_clear, MODULE_RENDER},
@@ -2134,6 +2178,7 @@ void modSetListBridge(const ModListBridge& bridge) { g_listBridge = bridge; }
 void modSetCountryBridge(const ModCountryBridge& b) { g_countryBridge = b; }
 void modSetScriptBridge(const ModScriptBridge& b) { g_scriptBridge = b; }
 void modSetRenderBridge(const ModRenderBridge& b) { g_renderBridge = b; }
+void modSetContentBridge(const ModContentBridge& b) { g_contentBridge = b; }
 
 
 const ModHostFn* modHostFunctions(size_t& count) {

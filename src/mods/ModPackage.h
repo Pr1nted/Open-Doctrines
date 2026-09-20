@@ -100,6 +100,13 @@ enum ModModuleBit : uint32_t {
     // src/ModRenderLayer.h for where that line is drawn and why.
     MODULE_RENDER          = 1u << 26,
 
+    // Adding entries to the game's catalogues -- doctrines, research nodes,
+    // troop and artillery types, district laws. Its own bit because a
+    // PERSISTED entry writes a mod's definition into the player's save, and
+    // an AI-VISIBLE one changes what the trained model is offered. See
+    // src/ModContent.h.
+    MODULE_CONTENT         = 1u << 27,
+
     MODULE_MAPEDITOR       = 1u << 21,
 };
 

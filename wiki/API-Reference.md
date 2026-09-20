@@ -38,6 +38,7 @@ into your memory after a call returns.
 - **Country** (`gearbox:country`): [field_add](#field-add), [field_remove](#field-remove), [field_has](#field-has), [field_count](#field-count), [field_name](#field-name), [set_number](#set-number), [get_number](#get-number), [set_text](#set-text), [get_text](#get-text)
 - **Scripts** (`gearbox:scripts`): [command_add](#command-add), [command_remove](#command-remove), [command_count](#command-count), [command_name](#command-name), [command_text](#command-text), [command_args](#command-args)
 - **Render** (`gearbox:render`): [province_tint](#province-tint), [province_label](#province-label), [clear](#clear), [tint_count](#tint-count), [label_count](#label-count)
+- **Content** (`gearbox:content`): [add](#add), [count](#count), [id_at](#id-at), [owner_of](#owner-of), [remove](#remove)
 
 ## Core
 
@@ -3925,6 +3926,102 @@ How many tints you are currently holding.
 
 How many labels you are currently holding.
 
+## Content
+
+Import module `gearbox:content`. Requires the `Content` capability in your manifest.
+
+### add
+
+```wat
+(import "gearbox:content" "add" (func (param i32 i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `kind` | `i32` |  |
+| `id` | `i32` | pointer into your memory |
+| `id_len` | `i32` | byte length |
+| `json` | `i32` | pointer into your memory |
+| `json_len` | `i32` | byte length |
+| `mode` | `i32` |  |
+
+**Returns:** `i32`
+
+Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2 troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST.
+
+The definition is the SAME JSON the game's own data file uses, and goes through the same parser -- not a second reading of the same fields, which is how 'it works from the file but not from the mod' is made.
+
+AI VISIBILITY IS A FIELD IN THE JSON: "aiVisible": true. It defaults to FALSE, because content the AI was never trained against should not start appearing in its options. For RESEARCH it matters more than it looks -- the tree feeds the neural feature vector, so a visible node changes the shape of the model's input and a model whose parent no longer matches is silently re-initialised.
+
+PERSIST writes the definition into the save, so a world played with your doctrine keeps knowing what that doctrine was after your mod is uninstalled -- otherwise the country still holds the id and nothing can say what it did. HOLLOW is redeclared every load.
+
+Ids are GLOBAL within a catalogue, unlike country fields: a country holds a doctrine by id and a save records it that way, so two meanings for one id would make a save ambiguous. Another mod's id is refused. Lower-case letters, digits, underscore and at most one colon, 64 bytes.
+
+### count
+
+```wat
+(import "gearbox:content" "count" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `kind` | `i32` |  |
+
+**Returns:** `i32`
+
+How many entries of this kind YOU have added.
+
+### id_at
+
+```wat
+(import "gearbox:content" "id_at" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `kind` | `i32` |  |
+| `index` | `i32` |  |
+| `buf` | `i32` | pointer into your memory |
+| `cap` | `i32` | byte length |
+
+**Returns:** `i32`
+
+The id of your entry at index within a kind, sorted. Two-call sizing.
+
+### owner_of
+
+```wat
+(import "gearbox:content" "owner_of" (func (param i32 i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `kind` | `i32` |  |
+| `id` | `i32` | pointer into your memory |
+| `id_len` | `i32` | byte length |
+| `buf` | `i32` | pointer into your memory |
+| `cap` | `i32` | byte length |
+
+**Returns:** `i32`
+
+Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod check whether the content it is about to add already exists -- including content another mod added, which is the collision it cannot otherwise see coming.
+
+### remove
+
+```wat
+(import "gearbox:content" "remove" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `kind` | `i32` |  |
+| `id` | `i32` | pointer into your memory |
+| `id_len` | `i32` | byte length |
+
+**Returns:** `i32`
+
+Remove one of your own entries. False if it was not yours.
+
 ## Exports
 
 Functions **you** provide. Only `mod_load` is required; a missing
@@ -4033,3 +4130,7 @@ that many bytes, so an older mod is safe against a newer host.
 **`field_mode`** — `hollow`=0, `persist`=1
 
 **`field_type`** — `number`=0, `text`=1
+
+**`content_kind`** — `doctrine`=0, `research`=1, `troop`=2, `artillery`=3, `district_law`=4
+
+**`content_mode`** — `hollow`=0, `persist`=1

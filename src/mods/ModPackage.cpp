@@ -48,6 +48,7 @@ const ModuleEntry kModules[] = {
     {"Country",         MODULE_COUNTRY},
     {"Scripts",         MODULE_SCRIPTS},
     {"Render",          MODULE_RENDER},
+    {"Content",         MODULE_CONTENT},
 };
 
 }  // namespace

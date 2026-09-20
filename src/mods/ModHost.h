@@ -108,6 +108,16 @@ struct ModRenderBridge {
     std::function<uint32_t(const std::string&)> labelCount;
 };
 
+/** Catalogue content a mod adds. See src/ModContent.h. */
+struct ModContentBridge {
+    std::function<bool(uint32_t, const std::string&, const std::string&,
+                       const std::string&, uint32_t)> add;
+    std::function<bool(uint32_t, const std::string&, const std::string&)> remove;
+    std::function<uint32_t(uint32_t, const std::string&)> count;
+    std::function<std::string(uint32_t, const std::string&, uint32_t)> idAt;
+    std::function<std::string(uint32_t, const std::string&)> ownerOf;
+};
+
 struct ModListBridge {
     std::function<uint32_t()> count;
     /** (index) -> the manifest id, stable and safe to compare. */
@@ -150,6 +160,7 @@ void modSetListBridge(const ModListBridge& bridge);
 void modSetCountryBridge(const ModCountryBridge& bridge);
 void modSetScriptBridge(const ModScriptBridge& bridge);
 void modSetRenderBridge(const ModRenderBridge& bridge);
+void modSetContentBridge(const ModContentBridge& bridge);
 void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;

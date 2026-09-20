@@ -11,6 +11,7 @@ var _ = unsafe.Pointer(nil) // keep the import when no ptr is used
 // Write a line to the game log and the mod menu's log view. Messages
 // longer than 2048 bytes are truncated. An out-of-bounds (ptr,len) is
 // refused and logged as an error against your mod rather than read.
+// gearbox:core "log"
 // `(iii)`
 //go:wasmimport gearbox:core log
 func rawLog(level uint32, msg unsafe.Pointer, msg_len uint32)
@@ -19,6 +20,7 @@ func rawLog(level uint32, msg unsafe.Pointer, msg_len uint32)
 // host writes at most that many bytes, so an older mod stays safe against
 // a newer host. If size is 0 or larger than the host's struct, the host
 // uses its own size.
+// gearbox:core "env"
 // `(i)`
 //go:wasmimport gearbox:core env
 func rawEnv(out unsafe.Pointer)
@@ -26,6 +28,7 @@ func rawEnv(out unsafe.Pointer)
 // Unrecoverable error. Traps out of the current call, disables the mod,
 // and shows the message to the user. Prefer returning an error from a hook
 // where you can.
+// gearbox:core "abort"
 // `(ii)`
 //go:wasmimport gearbox:core abort
 func rawAbort(msg unsafe.Pointer, msg_len uint32)
@@ -34,17 +37,20 @@ func rawAbort(msg unsafe.Pointer, msg_len uint32)
 // unmetered. This is the LIMIT, not a live countdown: it does not decrease
 // as you run. Use it to size your work up front and count your own
 // iterations.
+// gearbox:core "fuel_budget"
 // `()I`
 //go:wasmimport gearbox:core fuel_budget
 func rawFuelBudget() uint64
 
 // The current turn. 0 when no world is loaded.
+// gearbox:gamestate.read "turn_number"
 // `()i`
 //go:wasmimport gearbox:gamestate.read turn_number
 func rawTurnNumber() uint32
 
 // How many countries exist. 0 when no world is loaded. Rebel factions are
 // not included.
+// gearbox:gamestate.read "country_count"
 // `()i`
 //go:wasmimport gearbox:gamestate.read country_count
 func rawCountryCount() uint32
@@ -52,6 +58,7 @@ func rawCountryCount() uint32
 // The country at index in [0, country_count). Returns GEARBOX_INVALID
 // (0xFFFFFFFF) if out of range. Ordering is stable within a turn but not
 // across turns.
+// gearbox:gamestate.read "country_at"
 // `(i)i`
 //go:wasmimport gearbox:gamestate.read country_at
 func rawCountryAt(index uint32) uint32
@@ -60,26 +67,31 @@ func rawCountryAt(index uint32) uint32
 // length. Call with cap 0 to size, then again to fill. A return greater
 // than cap means truncation, not failure. Returns 0 for an unknown
 // country.
+// gearbox:gamestate.read "country_name"
 // `(iii)i`
 //go:wasmimport gearbox:gamestate.read country_name
 func rawCountryName(country uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // Treasury balance. 0 for an unknown country.
+// gearbox:gamestate.read "country_treasury"
 // `(i)F`
 //go:wasmimport gearbox:gamestate.read country_treasury
 func rawCountryTreasury(country uint32) float64
 
 // How many provinces the country owns. 0 for an unknown country.
+// gearbox:gamestate.read "country_province_count"
 // `(i)i`
 //go:wasmimport gearbox:gamestate.read country_province_count
 func rawCountryProvinceCount(country uint32) uint32
 
 // Population of a province. 0 for an unknown province.
+// gearbox:gamestate.read "province_population"
 // `(i)I`
 //go:wasmimport gearbox:gamestate.read province_population
 func rawProvincePopulation(province uint32) int64
 
 // Owning country, or GEARBOX_INVALID if unowned or unknown.
+// gearbox:gamestate.read "province_owner"
 // `(i)i`
 //go:wasmimport gearbox:gamestate.read province_owner
 func rawProvinceOwner(province uint32) uint32
@@ -88,6 +100,7 @@ func rawProvinceOwner(province uint32) uint32
 // headless, when UI was revoked, or when you already hold 8 panels. Titles
 // are truncated to 64 bytes. Call this from mod_load, not from your draw
 // hook.
+// gearbox:ui "panel_register"
 // `(iiii)i`
 //go:wasmimport gearbox:ui panel_register
 func rawPanelRegister(title unsafe.Pointer, title_len uint32, min_w uint32, min_h uint32) uint32
@@ -95,12 +108,14 @@ func rawPanelRegister(title unsafe.Pointer, title_len uint32, min_w uint32, min_
 // Filled rectangle in panel-relative coordinates. Colour is 0xRRGGBBAA.
 // Coordinates outside the panel are clipped by the host; they cannot
 // escape it.
+// gearbox:ui "draw_rect"
 // `(iiiiii)`
 //go:wasmimport gearbox:ui draw_rect
 func rawDrawRect(panel uint32, x int32, y int32, w int32, h int32, rgba uint32)
 
 // UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per
 // call.
+// gearbox:ui "draw_text"
 // `(iiiiii)`
 //go:wasmimport gearbox:ui draw_text
 func rawDrawText(panel uint32, x int32, y int32, rgba uint32, text unsafe.Pointer, text_len uint32)
@@ -108,6 +123,7 @@ func rawDrawText(panel uint32, x int32, y int32, rgba uint32, text unsafe.Pointe
 // Immediate-mode button: draws it and returns 1 on the frame it is
 // clicked. One click activates one button -- the host consumes it, so
 // overlapping rects do not all fire. Label truncated to 64 bytes.
+// gearbox:ui "button"
 // `(iiiiiii)i`
 //go:wasmimport gearbox:ui button
 func rawButton(panel uint32, x int32, y int32, w int32, h int32, label unsafe.Pointer, label_len uint32) uint32
@@ -115,6 +131,7 @@ func rawButton(panel uint32, x int32, y int32, w int32, h int32, label unsafe.Po
 // Byte size of one of your own data/ files, or 0 if there is no such
 // asset. Names are relative to data/ and use '/' separators:
 // data/flags/fr.png is "flags/fr.png".
+// gearbox:assets "size"
 // `(ii)i`
 //go:wasmimport gearbox:assets size
 func rawAssetSize(name unsafe.Pointer, name_len uint32) uint32
@@ -122,6 +139,7 @@ func rawAssetSize(name unsafe.Pointer, name_len uint32) uint32
 // Two-call sizing, like country_name. Writes at most cap bytes and returns
 // the asset's full size. The name is looked up in your package's entry
 // list, never resolved as a filesystem path.
+// gearbox:assets "read"
 // `(iiii)i`
 //go:wasmimport gearbox:assets read
 func rawAssetRead(name unsafe.Pointer, name_len uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -131,23 +149,27 @@ func rawAssetRead(name unsafe.Pointer, name_len uint32, buf unsafe.Pointer, cap 
 // and is multiplied by the player's own effects setting, so a mod cannot
 // be louder than they allowed. Returns a handle, or 0 if it could not be
 // played.
+// gearbox:audio "play"
 // `(iif)i`
 //go:wasmimport gearbox:audio play
 func rawPlay(path unsafe.Pointer, path_len uint32, volume float32) uint32
 
 // Stop a sound this mod started. A handle belonging to another mod, or one
 // that already finished, does nothing.
+// gearbox:audio "stop"
 // `(i)`
 //go:wasmimport gearbox:audio stop
 func rawStop(handle uint32)
 
 // Change the volume of a playing sound, 0..1, again scaled by the player's
 // setting.
+// gearbox:audio "set_volume"
 // `(if)`
 //go:wasmimport gearbox:audio set_volume
 func rawSetVolume(handle uint32, volume float32)
 
 // Whether that handle is still making sound.
+// gearbox:audio "is_playing"
 // `(i)i`
 //go:wasmimport gearbox:audio is_playing
 func rawIsPlaying(handle uint32) uint32
@@ -160,6 +182,7 @@ func rawIsPlaying(handle uint32) uint32
 // another mod, and it never carries game traffic: orders, deltas and chat
 // do not travel here. Messages larger than 8192 bytes are refused. Returns
 // 0 if this is not a network game, or the message was too large.
+// gearbox:net "send"
 // `(iii)i`
 //go:wasmimport gearbox:net send
 func rawSend(peer uint32, data unsafe.Pointer, data_len uint32) uint32
@@ -169,6 +192,7 @@ func rawSend(peer uint32, data unsafe.Pointer, data_len uint32) uint32
 // written, or 0 when the queue is empty. A message longer than `out_len`
 // is truncated rather than dropped, so a small buffer loses data instead
 // of stalling the queue.
+// gearbox:net "recv"
 // `(iii)i`
 //go:wasmimport gearbox:net recv
 func rawRecv(out unsafe.Pointer, out_len uint32, from_peer unsafe.Pointer) uint32
@@ -176,6 +200,7 @@ func rawRecv(out unsafe.Pointer, out_len uint32, from_peer unsafe.Pointer) uint3
 // How many players this session has, a playing host included. 0 when this
 // is not a network game, which is how a mod tells the difference.
 // Spectators are not counted.
+// gearbox:net "peer_count"
 // `()i`
 //go:wasmimport gearbox:net peer_count
 func rawPeerCount() uint32
@@ -184,6 +209,7 @@ func rawPeerCount() uint32
 // is a dedicated host holding no seat -- a host that plays has an ordinary
 // peer id like anyone else, so do not use this to tell host from client.
 // `is_host` is that question.
+// gearbox:net "self_peer"
 // `()i`
 //go:wasmimport gearbox:net self_peer
 func rawSelfPeer() uint32
@@ -191,6 +217,7 @@ func rawSelfPeer() uint32
 // Whether this copy is the authoritative one. A mod that computes anything
 // the game depends on must do it here and send the result, not compute it
 // separately on each machine.
+// gearbox:net "is_host"
 // `()i`
 //go:wasmimport gearbox:net is_host
 func rawIsHost() uint32
@@ -200,6 +227,7 @@ func rawIsHost() uint32
 // is absent -- which is NOT the same as a zero-length value, so you can
 // tell 'never stored' from 'stored empty'. Values are arbitrary bytes, not
 // text.
+// gearbox:storage "get"
 // `(iiii)i`
 //go:wasmimport gearbox:storage get
 func rawGet(key unsafe.Pointer, key_len uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -209,26 +237,31 @@ func rawGet(key unsafe.Pointer, key_len uint32, buf unsafe.Pointer, cap uint32) 
 // total per mod) -- the reason is written to your log. Not written to disk
 // immediately: the store is flushed at turn boundaries and on unload,
 // because a mod may call this from a draw hook.
+// gearbox:storage "set"
 // `(iiii)i`
 //go:wasmimport gearbox:storage set
 func rawSet(key unsafe.Pointer, key_len uint32, value unsafe.Pointer, value_len uint32) uint32
 
 // Deletes one of your own keys. Returns 1 if it existed, 0 if it did not.
+// gearbox:storage "remove"
 // `(ii)i`
 //go:wasmimport gearbox:storage remove
 func rawRemove(key unsafe.Pointer, key_len uint32) uint32
 
 // Width of the province map in pixels. 0 when no world is loaded.
+// gearbox:map "width"
 // `()i`
 //go:wasmimport gearbox:map width
 func rawWidth() uint32
 
 // Height of the province map in pixels. 0 when no world is loaded.
+// gearbox:map "height"
 // `()i`
 //go:wasmimport gearbox:map height
 func rawHeight() uint32
 
 // How many provinces the loaded map has. 0 when no world is loaded.
+// gearbox:map "province_count"
 // `()i`
 //go:wasmimport gearbox:map province_count
 func rawProvinceCount() uint32
@@ -237,33 +270,39 @@ func rawProvinceCount() uint32
 // GEARBOX_INVALID if out of range. The order is stable across runs, unlike
 // the game's internal storage, so an index is safe to remember within a
 // session.
+// gearbox:map "province_at"
 // `(i)i`
 //go:wasmimport gearbox:map province_at
 func rawProvinceAt(index uint32) uint32
 
 // The province's name. Two-call sizing: returns the full length and writes
 // at most cap bytes. Empty for an unknown province.
+// gearbox:map "province_name"
 // `(iii)i`
 //go:wasmimport gearbox:map province_name
 func rawProvinceName(province uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // X pixel coordinate of the province's centre. 0 for an unknown province.
+// gearbox:map "province_center_x"
 // `(i)F`
 //go:wasmimport gearbox:map province_center_x
 func rawProvinceCenterX(province uint32) float64
 
 // Y pixel coordinate of the province's centre. 0 for an unknown province.
+// gearbox:map "province_center_y"
 // `(i)F`
 //go:wasmimport gearbox:map province_center_y
 func rawProvinceCenterY(province uint32) float64
 
 // 1 if the province is land, 0 if it is sea or unknown. Sampled at the
 // province centre.
+// gearbox:map "province_is_land"
 // `(i)i`
 //go:wasmimport gearbox:map province_is_land
 func rawProvinceIsLand(province uint32) uint32
 
 // How many provinces border this one. 0 for an unknown province.
+// gearbox:map "province_neighbor_count"
 // `(i)i`
 //go:wasmimport gearbox:map province_neighbor_count
 func rawProvinceNeighborCount(province uint32) uint32
@@ -271,6 +310,7 @@ func rawProvinceNeighborCount(province uint32) uint32
 // The bordering province at an index in [0, province_neighbor_count).
 // GEARBOX_INVALID if out of range. Adjacency is computed once when the map
 // loads, so walking it is cheap.
+// gearbox:map "province_neighbor_at"
 // `(ii)i`
 //go:wasmimport gearbox:map province_neighbor_at
 func rawProvinceNeighborAt(province uint32, index uint32) uint32
@@ -278,21 +318,25 @@ func rawProvinceNeighborAt(province uint32, index uint32) uint32
 // 1 if the two countries are at war. Relations are symmetric, so the
 // argument order does not matter. 0 for unknown countries or for a country
 // with itself.
+// gearbox:diplomacy "at_war"
 // `(ii)i`
 //go:wasmimport gearbox:diplomacy at_war
 func rawAtWar(a uint32, b uint32) uint32
 
 // 1 if the two countries are allied.
+// gearbox:diplomacy "allied"
 // `(ii)i`
 //go:wasmimport gearbox:diplomacy allied
 func rawAllied(a uint32, b uint32) uint32
 
 // 1 if the two countries have a non-aggression pact.
+// gearbox:diplomacy "non_aggression"
 // `(ii)i`
 //go:wasmimport gearbox:diplomacy non_aggression
 func rawNonAggression(a uint32, b uint32) uint32
 
 // 1 if the first country guarantees the second.
+// gearbox:diplomacy "guaranteed"
 // `(ii)i`
 //go:wasmimport gearbox:diplomacy guaranteed
 func rawGuaranteed(a uint32, b uint32) uint32
@@ -304,6 +348,7 @@ func rawGuaranteed(a uint32, b uint32) uint32
 // Refused (0) if either country is unknown, they are the same country, or
 // they are already at war. Either outcome is written to your mod log, so a
 // player can see after the fact that a mod started a war.
+// gearbox:diplomacy "propose_war"
 // `(ii)i`
 //go:wasmimport gearbox:diplomacy propose_war
 func rawProposeWar(attacker uint32, defender uint32) uint32
@@ -312,6 +357,7 @@ func rawProposeWar(attacker uint32, defender uint32) uint32
 // country is unknown or the value is not finite and within +/-1e12 -- NaN
 // or infinity would silently poison every later calculation, so they are
 // refused rather than stored.
+// gearbox:gamestate.write "set_country_treasury"
 // `(iF)i`
 //go:wasmimport gearbox:gamestate.write set_country_treasury
 func rawSetCountryTreasury(country uint32, value float64) uint32
@@ -319,6 +365,7 @@ func rawSetCountryTreasury(country uint32, value float64) uint32
 // Adds to a country's treasury. Usually what you want instead of set: it
 // composes with whatever the economy did this turn. Refused (0) if the
 // result would leave the sane range.
+// gearbox:gamestate.write "add_country_treasury"
 // `(iF)i`
 //go:wasmimport gearbox:gamestate.write add_country_treasury
 func rawAddCountryTreasury(country uint32, delta float64) uint32
@@ -331,12 +378,14 @@ func rawAddCountryTreasury(country uint32, delta float64) uint32
 // handle is unknown or the country already owns it. Always written to your
 // mod log: territory changing hands is the most consequential thing a mod
 // can do.
+// gearbox:gamestate.write "set_province_owner"
 // `(ii)i`
 //go:wasmimport gearbox:gamestate.write set_province_owner
 func rawSetProvinceOwner(province uint32, country uint32) uint32
 
 // How many floats are in the AI's feature vector. 0 when there is no AI or
 // no world.
+// gearbox:neural "feature_count"
 // `()i`
 //go:wasmimport gearbox:neural feature_count
 func rawFeatureCount() uint32
@@ -345,11 +394,13 @@ func rawFeatureCount() uint32
 // floats. Two-call sizing, but note cap counts FLOATS and the buffer must
 // therefore be cap*4 bytes. This is a snapshot: writing to your copy does
 // not affect the AI.
+// gearbox:neural "features"
 // `(iii)i`
 //go:wasmimport gearbox:neural features
 func rawFeatures(country uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // How many reward channels the AI tracks (economy, politics, war, navy).
+// gearbox:neural "reward_count"
 // `()i`
 //go:wasmimport gearbox:neural reward_count
 func rawRewardCount() uint32
@@ -359,6 +410,7 @@ func rawRewardCount() uint32
 // to the model, the optimiser state or the reward history, which is
 // deliberate -- a trained model is hours of work and a mod that could
 // quietly retrain it is not something a user can meaningfully consent to.
+// gearbox:neural "reward_mean"
 // `(i)F`
 //go:wasmimport gearbox:neural reward_mean
 func rawRewardMean(index uint32) float64
@@ -368,18 +420,21 @@ func rawRewardMean(index uint32) float64
 // in two places -- a map and a dense array used by the population texture
 // -- and this updates both, which is why it exists as an import rather
 // than being something a mod could do by other means.
+// gearbox:gamestate.write "set_province_population"
 // `(iI)i`
 //go:wasmimport gearbox:gamestate.write set_province_population
 func rawSetProvincePopulation(province uint32, value int64) uint32
 
 // Queue a line from (x1,y1) to (x2,y2) in panel-relative pixels. Thickness
 // is clamped to 0.25..64. Clipped to your panel like every other command.
+// gearbox:ui "draw_line"
 // `(iiiiiFi)`
 //go:wasmimport gearbox:ui draw_line
 func rawDrawLine(panel uint32, x1 uint32, y1 uint32, x2 uint32, y2 uint32, thickness float64, rgba uint32)
 
 // Queue a filled circle centred at (cx,cy), panel-relative. Radius is
 // clamped to 0..4096.
+// gearbox:ui "draw_circle"
 // `(iiiFi)`
 //go:wasmimport gearbox:ui draw_circle
 func rawDrawCircle(panel uint32, cx uint32, cy uint32, radius float64, rgba uint32)
@@ -391,12 +446,14 @@ func rawDrawCircle(panel uint32, cx uint32, cy uint32, radius float64, rgba uint
 // unmodified. Decoded once and cached; a name that fails to decode draws
 // nothing and does not retry. PNG, JPG, BMP, TGA and GIF are recognised by
 // extension. This is the call that makes a real reskin possible.
+// gearbox:ui "draw_image"
 // `(iiiiiiii)`
 //go:wasmimport gearbox:ui draw_image
 func rawDrawImage(panel uint32, x uint32, y uint32, w uint32, h uint32, name unsafe.Pointer, name_len uint32, tint uint32)
 
 // Like draw_text but with a type size, clamped to 6..96. draw_text remains
 // 14pt, unchanged, so v1.0 mods look exactly as they did.
+// gearbox:ui "draw_text_sized"
 // `(iiiiiii)`
 //go:wasmimport gearbox:ui draw_text_sized
 func rawDrawTextSized(panel uint32, x uint32, y uint32, size uint32, rgba uint32, text unsafe.Pointer, text_len uint32)
@@ -404,6 +461,7 @@ func rawDrawTextSized(panel uint32, x uint32, y uint32, size uint32, rgba uint32
 // Width in pixels of `text` at `size`, measured with the font the game
 // will actually draw. Centring, right-alignment and wrapping all need this
 // before the text is queued.
+// gearbox:ui "measure_text"
 // `(iii)i`
 //go:wasmimport gearbox:ui measure_text
 func rawMeasureText(text unsafe.Pointer, text_len uint32, size uint32) uint32
@@ -411,39 +469,46 @@ func rawMeasureText(text unsafe.Pointer, text_len uint32, size uint32) uint32
 // The width the host assigned your panel this frame, in pixels. Lay out
 // against this rather than against min_w -- the host may have given you
 // more.
+// gearbox:ui "panel_width"
 // `(i)i`
 //go:wasmimport gearbox:ui panel_width
 func rawPanelWidth(panel uint32) uint32
 
 // The height the host assigned your panel this frame, in pixels.
+// gearbox:ui "panel_height"
 // `(i)i`
 //go:wasmimport gearbox:ui panel_height
 func rawPanelHeight(panel uint32) uint32
 
 // Show or hide one of your panels. A hidden panel is not drawn and
 // receives no input, but keeps its handle and its registration.
+// gearbox:ui "panel_set_visible"
 // `(ii)`
 //go:wasmimport gearbox:ui panel_set_visible
 func rawPanelSetVisible(panel uint32, visible uint32)
 
 // Cursor X, panel-relative, or 0 when the cursor is not over your panel.
 // You cannot observe the pointer outside your own box.
+// gearbox:ui "mouse_x"
 // `(i)F`
 //go:wasmimport gearbox:ui mouse_x
 func rawMouseX(panel uint32) float64
 
 // Cursor Y, panel-relative, or 0 when the cursor is not over your panel.
+// gearbox:ui "mouse_y"
 // `(i)F`
 //go:wasmimport gearbox:ui mouse_y
 func rawMouseY(panel uint32) float64
 
 // Whether the cursor is over your panel this frame.
+// gearbox:ui "mouse_inside"
 // `(i)i`
 //go:wasmimport gearbox:ui mouse_inside
 func rawMouseInside(panel uint32) uint32
 
 // The PLAYER's accent colour as 0x00RRGGBB -- not another mod's override.
 // Build your palette around this and you harmonise with what they chose.
+// gearbox:ui "theme_accent"
 // `()i`
 //go:wasmimport gearbox:ui theme_accent
 func rawThemeAccent() uint32
@@ -453,29 +518,34 @@ func rawThemeAccent() uint32
 // cheapest full reskin there is. It is NOT persisted: the game's settings
 // file keeps the player's own colour, and the override is dropped the
 // moment no mod is running, so it cannot outlive uninstalling you.
+// gearbox:ui "set_theme_accent"
 // `(i)i`
 //go:wasmimport gearbox:ui set_theme_accent
 func rawSetThemeAccent(rgb uint32) uint32
 
 // How many ships exist in the world, across all owners.
+// gearbox:military.read "ship_count"
 // `()i`
 //go:wasmimport gearbox:military.read ship_count
 func rawShipCount() uint32
 
 // The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end.
 // Ids are stable within a turn and not across turns -- do not store one.
+// gearbox:military.read "ship_at"
 // `(i)i`
 //go:wasmimport gearbox:military.read ship_at
 func rawShipAt(index uint32) uint32
 
 // Whether a ship id is still live. Check this before acting on an id you
 // read earlier in the same turn; ships sink.
+// gearbox:military.read "ship_exists"
 // `(i)i`
 //go:wasmimport gearbox:military.read ship_exists
 func rawShipExists(ship uint32) uint32
 
 // The country that owns a ship, or 0xFFFFFFFF for an id that does not
 // exist.
+// gearbox:military.read "ship_owner"
 // `(i)i`
 //go:wasmimport gearbox:military.read ship_owner
 func rawShipOwner(ship uint32) uint32
@@ -484,29 +554,34 @@ func rawShipOwner(ship uint32) uint32
 // "battleship", "carrier", "submarine". Two-call sizing: call with cap 0
 // to learn the length, allocate, call again. Returns the full length
 // either way; the copy is truncated to cap.
+// gearbox:military.read "ship_type"
 // `(iii)i`
 //go:wasmimport gearbox:military.read ship_type
 func rawShipType(ship uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // Longitude in degrees, -180..180. Ships live in world coordinates, not
 // provinces.
+// gearbox:military.read "ship_lon"
 // `(i)F`
 //go:wasmimport gearbox:military.read ship_lon
 func rawShipLon(ship uint32) float64
 
 // Latitude in degrees, -90..90.
+// gearbox:military.read "ship_lat"
 // `(i)F`
 //go:wasmimport gearbox:military.read ship_lat
 func rawShipLat(ship uint32) float64
 
 // Hull integrity, 0..100. A ship at 0 has already sunk and will not
 // appear.
+// gearbox:military.read "ship_health"
 // `(i)i`
 //go:wasmimport gearbox:military.read ship_health
 func rawShipHealth(ship uint32) uint32
 
 // Crew aboard. For a transport this includes the embarked army, which is
 // why a sunk transport costs so much more than its hull.
+// gearbox:military.read "ship_crew"
 // `(i)i`
 //go:wasmimport gearbox:military.read ship_crew
 func rawShipCrew(ship uint32) uint32
@@ -514,39 +589,46 @@ func rawShipCrew(ship uint32) uint32
 // How far this hull may move in one turn, in degrees. The resolver clamps
 // any order beyond it, so read this before ordering a move rather than
 // discovering the clamp afterwards.
+// gearbox:military.read "ship_range"
 // `(i)F`
 //go:wasmimport gearbox:military.read ship_range
 func rawShipRange(ship uint32) float64
 
 // How many distinct owners have troops in a province. Usually 1; more than
 // one means a contested or garrisoned province.
+// gearbox:military.read "army_stack_count"
 // `(i)i`
 //go:wasmimport gearbox:military.read army_stack_count
 func rawArmyStackCount(province uint32) uint32
 
 // The country owning stack `index` in a province, or 0xFFFFFFFF past the
 // end.
+// gearbox:military.read "army_stack_owner"
 // `(ii)i`
 //go:wasmimport gearbox:military.read army_stack_owner
 func rawArmyStackOwner(province uint32, index uint32) uint32
 
 // How many troops are in that stack.
+// gearbox:military.read "army_stack_size"
 // `(ii)I`
 //go:wasmimport gearbox:military.read army_stack_size
 func rawArmyStackSize(province uint32, index uint32) int64
 
 // A country's total troops everywhere, which is the number its own army
 // screen shows.
+// gearbox:military.read "country_army"
 // `(i)I`
 //go:wasmimport gearbox:military.read country_army
 func rawCountryArmy(country uint32) int64
 
 // Fortification level, 0..5. Multiplies the defender's strength.
+// gearbox:military.read "province_fortification"
 // `(i)i`
 //go:wasmimport gearbox:military.read province_fortification
 func rawProvinceFortification(province uint32) uint32
 
 // Port level, 0..3. 0 means no port, so no embarking and no ship repair.
+// gearbox:military.read "province_port_level"
 // `(i)i`
 //go:wasmimport gearbox:military.read province_port_level
 func rawProvincePortLevel(province uint32) uint32
@@ -558,6 +640,7 @@ func rawProvincePortLevel(province uint32) uint32
 // player's own click writes to and is validated by the same resolver at
 // end of turn, so a mod cannot teleport, cheat range, or attack across an
 // ocean. Returns 0 if the order is rejected outright.
+// gearbox:military.write "order_army_move"
 // `(iii)i`
 //go:wasmimport gearbox:military.write order_army_move
 func rawOrderArmyMove(from uint32, to uint32, percent uint32) uint32
@@ -569,6 +652,7 @@ func rawOrderArmyMove(from uint32, to uint32, percent uint32) uint32
 // writes to and is validated by the same resolver at end of turn, so a mod
 // cannot teleport, cheat range, or attack across an ocean. Returns 0 if
 // the order is rejected outright.
+// gearbox:military.write "order_ship_move"
 // `(iFF)i`
 //go:wasmimport gearbox:military.write order_ship_move
 func rawOrderShipMove(ship uint32, lon float64, lat float64) uint32
@@ -579,6 +663,7 @@ func rawOrderShipMove(ship uint32, lon float64, lat float64) uint32
 // player's own click writes to and is validated by the same resolver at
 // end of turn, so a mod cannot teleport, cheat range, or attack across an
 // ocean. Returns 0 if the order is rejected outright.
+// gearbox:military.write "order_ship_engage"
 // `(ii)i`
 //go:wasmimport gearbox:military.write order_ship_engage
 func rawOrderShipEngage(ship uint32, target uint32) uint32
@@ -589,11 +674,13 @@ func rawOrderShipEngage(ship uint32, target uint32) uint32
 // validated by the same resolver at end of turn, so a mod cannot teleport,
 // cheat range, or attack across an ocean. Returns 0 if the order is
 // rejected outright.
+// gearbox:military.write "order_ship_bombard"
 // `(iiii)i`
 //go:wasmimport gearbox:military.write order_ship_bombard
 func rawOrderShipBombard(ship uint32, province uint32, ammo unsafe.Pointer, ammo_len uint32) uint32
 
 // How many technologies exist in the tree.
+// gearbox:research.read "node_count"
 // `()i`
 //go:wasmimport gearbox:research.read node_count
 func rawNodeCount() uint32
@@ -602,6 +689,7 @@ func rawNodeCount() uint32
 // country_has_researched takes. Two-call sizing: call with cap 0 to learn
 // the length, allocate, call again. Returns the full length either way;
 // the copy is truncated to cap.
+// gearbox:research.read "node_id"
 // `(iii)i`
 //go:wasmimport gearbox:research.read node_id
 func rawNodeId(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -610,6 +698,7 @@ func rawNodeId(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // never match on it. Two-call sizing: call with cap 0 to learn the length,
 // allocate, call again. Returns the full length either way; the copy is
 // truncated to cap.
+// gearbox:research.read "node_name"
 // `(iii)i`
 //go:wasmimport gearbox:research.read node_name
 func rawNodeName(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -617,49 +706,58 @@ func rawNodeName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // Which branch of the tree it sits in. Two-call sizing: call with cap 0 to
 // learn the length, allocate, call again. Returns the full length either
 // way; the copy is truncated to cap.
+// gearbox:research.read "node_category"
 // `(iii)i`
 //go:wasmimport gearbox:research.read node_category
 func rawNodeCategory(index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // Research points required.
+// gearbox:research.read "node_cost"
 // `(i)i`
 //go:wasmimport gearbox:research.read node_cost
 func rawNodeCost(index uint32) uint32
 
 // Whether a country has completed a technology. Takes the id from node_id,
 // not the display name.
+// gearbox:research.read "country_has_researched"
 // `(iii)i`
 //go:wasmimport gearbox:research.read country_has_researched
 func rawCountryHasResearched(country uint32, node_id unsafe.Pointer, node_id_len uint32) uint32
 
 // Research funding as A SHARE OF INCOME, 0..1 -- not an absolute sum. That
 // is how the game stores it and how its own economy screen presents it.
+// gearbox:research.read "country_funding"
 // `(i)F`
 //go:wasmimport gearbox:research.read country_funding
 func rawCountryFunding(country uint32) float64
 
 // Set research funding as a share of income. Clamped to 0..1; a value in
 // 'points per turn' is not a quantity this game has.
+// gearbox:research.write "set_country_funding"
 // `(iF)i`
 //go:wasmimport gearbox:research.write set_country_funding
 func rawSetCountryFunding(country uint32, share float64) uint32
 
 // Economic axis of the political compass, -100 (planned) to 100 (market).
+// gearbox:politics.read "country_compass_econ"
 // `(i)F`
 //go:wasmimport gearbox:politics.read country_compass_econ
 func rawCountryCompassEcon(country uint32) float64
 
 // Social axis, -100 (authoritarian) to 100 (libertarian).
+// gearbox:politics.read "country_compass_social"
 // `(i)F`
 //go:wasmimport gearbox:politics.read country_compass_social
 func rawCountryCompassSocial(country uint32) float64
 
 // This province's chance of rebelling, as the game itself computes it.
+// gearbox:politics.read "province_unrest"
 // `(i)F`
 //go:wasmimport gearbox:politics.read province_unrest
 func rawProvinceUnrest(province uint32) float64
 
 // How many policies exist.
+// gearbox:politics.read "policy_count"
 // `()i`
 //go:wasmimport gearbox:politics.read policy_count
 func rawPolicyCount() uint32
@@ -667,6 +765,7 @@ func rawPolicyCount() uint32
 // The stable string id of policy `index`. Two-call sizing: call with cap 0
 // to learn the length, allocate, call again. Returns the full length
 // either way; the copy is truncated to cap.
+// gearbox:politics.read "policy_id"
 // `(iii)i`
 //go:wasmimport gearbox:politics.read policy_id
 func rawPolicyId(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -674,16 +773,19 @@ func rawPolicyId(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // The policy's display name; localised, not stable, do not match on it.
 // Two-call sizing: call with cap 0 to learn the length, allocate, call
 // again. Returns the full length either way; the copy is truncated to cap.
+// gearbox:politics.read "policy_name"
 // `(iii)i`
 //go:wasmimport gearbox:politics.read policy_name
 func rawPolicyName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // Whether a country currently has a policy active or implementing.
+// gearbox:politics.read "country_has_policy"
 // `(iii)i`
 //go:wasmimport gearbox:politics.read country_has_policy
 func rawCountryHasPolicy(country uint32, policy_id unsafe.Pointer, policy_id_len uint32) uint32
 
 // How many named minority groups live in a province.
+// gearbox:politics.read "province_minority_count"
 // `(i)i`
 //go:wasmimport gearbox:politics.read province_minority_count
 func rawProvinceMinorityCount(province uint32) uint32
@@ -691,11 +793,13 @@ func rawProvinceMinorityCount(province uint32) uint32
 // The minority's name. Two-call sizing: call with cap 0 to learn the
 // length, allocate, call again. Returns the full length either way; the
 // copy is truncated to cap.
+// gearbox:politics.read "province_minority_name"
 // `(iiii)i`
 //go:wasmimport gearbox:politics.read province_minority_name
 func rawProvinceMinorityName(province uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // That minority's share of the province's population, 0..1.
+// gearbox:politics.read "province_minority_share"
 // `(ii)F`
 //go:wasmimport gearbox:politics.read province_minority_share
 func rawProvinceMinorityShare(province uint32, index uint32) float64
@@ -704,38 +808,45 @@ func rawProvinceMinorityShare(province uint32, index uint32) float64
 // the cost, the prerequisites and the per-turn enactment cap all still
 // apply -- a country cannot end up running policies it could never have
 // afforded. Returns 1 if the policy is already in the requested state.
+// gearbox:politics.write "set_country_policy"
 // `(iiii)i`
 //go:wasmimport gearbox:politics.write set_country_policy
 func rawSetCountryPolicy(country uint32, policy_id unsafe.Pointer, policy_id_len uint32, enabled uint32) uint32
 
 // Income per turn before upkeep.
+// gearbox:economy.read "country_income_gross"
 // `(i)F`
 //go:wasmimport gearbox:economy.read country_income_gross
 func rawCountryIncomeGross(country uint32) float64
 
 // Income per turn after army and navy upkeep. Negative means the treasury
 // is draining.
+// gearbox:economy.read "country_income_net"
 // `(i)F`
 //go:wasmimport gearbox:economy.read country_income_net
 func rawCountryIncomeNet(country uint32) float64
 
 // What the standing army costs per turn.
+// gearbox:economy.read "country_army_upkeep"
 // `(i)F`
 //go:wasmimport gearbox:economy.read country_army_upkeep
 func rawCountryArmyUpkeep(country uint32) float64
 
 // What the fleet costs per turn. Ships a country is not using still cost
 // this, which is what makes scrapping a real decision.
+// gearbox:economy.read "country_navy_upkeep"
 // `(i)F`
 //go:wasmimport gearbox:economy.read country_navy_upkeep
 func rawCountryNavyUpkeep(country uint32) float64
 
 // Whether a country is currently bankrupt.
+// gearbox:economy.read "country_is_bankrupt"
 // `(i)i`
 //go:wasmimport gearbox:economy.read country_is_bankrupt
 func rawCountryIsBankrupt(country uint32) uint32
 
 // Industry level, 0..10.
+// gearbox:economy.read "province_industry_level"
 // `(i)i`
 //go:wasmimport gearbox:economy.read province_industry_level
 func rawProvinceIndustryLevel(province uint32) uint32
@@ -744,12 +855,14 @@ func rawProvinceIndustryLevel(province uint32) uint32
 // none. Two-call sizing: call with cap 0 to learn the length, allocate,
 // call again. Returns the full length either way; the copy is truncated to
 // cap.
+// gearbox:economy.read "province_industry_specialization"
 // `(iii)i`
 //go:wasmimport gearbox:economy.read province_industry_specialization
 func rawProvinceIndustrySpecialization(province uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // How much of a resource a province holds, 0..100. `which` is one of
 // "oil", "gold", "rubber", "gemstones", "metal"; anything else reads 0.
+// gearbox:economy.read "province_resource"
 // `(iii)F`
 //go:wasmimport gearbox:economy.read province_resource
 func rawProvinceResource(province uint32, which unsafe.Pointer, which_len uint32) float64
@@ -757,12 +870,14 @@ func rawProvinceResource(province uint32, which unsafe.Pointer, which_len uint32
 // Set a province's industry level, clamped to 0..10. This writes the built
 // level directly and does not charge for it -- it is a scenario-authoring
 // tool, not a build order.
+// gearbox:economy.write "set_province_industry_level"
 // `(ii)i`
 //go:wasmimport gearbox:economy.write set_province_industry_level
 func rawSetProvinceIndustryLevel(province uint32, level uint32) uint32
 
 // Whether a province touches water. Ports, embarking and naval bombardment
 // all require it.
+// gearbox:map "province_is_coastal"
 // `(i)i`
 //go:wasmimport gearbox:map province_is_coastal
 func rawProvinceIsCoastal(province uint32) uint32
@@ -770,12 +885,14 @@ func rawProvinceIsCoastal(province uint32) uint32
 // Whether a fleet could get from one point to another by sea, using the
 // game's own navigation grid. You cannot compute this from province
 // neighbours: those describe LAND adjacency.
+// gearbox:map "sea_route_exists"
 // `(FFFF)i`
 //go:wasmimport gearbox:map sea_route_exists
 func rawSeaRouteExists(from_lon float64, from_lat float64, to_lon float64, to_lat float64) uint32
 
 // Whether a world coordinate is land. Ordering a ship onto land is not an
 // error -- the resolver clamps it -- but knowing first is cheaper.
+// gearbox:map "point_is_land"
 // `(FF)i`
 //go:wasmimport gearbox:map point_is_land
 func rawPointIsLand(lon float64, lat float64) uint32
@@ -784,12 +901,14 @@ func rawPointIsLand(lon float64, lat float64) uint32
 // IN THIS MODULE returns 0 or an empty string when this is 0, including
 // from inside a running game: the data behind them is an editor project,
 // and a game does not have one. Check this first.
+// gearbox:mapeditor "editor_active"
 // `()i`
 //go:wasmimport gearbox:mapeditor editor_active
 func rawEditorActive() uint32
 
 // How many provinces the open project has. Returns a neutral value unless
 // the map editor is open with a project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_count"
 // `()i`
 //go:wasmimport gearbox:mapeditor editor_province_count
 func rawEditorProvinceCount() uint32
@@ -797,30 +916,35 @@ func rawEditorProvinceCount() uint32
 // The province id at `index`, in ascending id order, or 0xFFFFFFFF past
 // the end. Returns a neutral value unless the map editor is open with a
 // project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_at"
 // `(i)i`
 //go:wasmimport gearbox:mapeditor editor_province_at
 func rawEditorProvinceAt(index uint32) uint32
 
 // Population. Returns a neutral value unless the map editor is open with a
 // project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_population"
 // `(i)I`
 //go:wasmimport gearbox:mapeditor editor_province_population
 func rawEditorProvincePopulation(province uint32) int64
 
 // Industry level, 0..10. Returns a neutral value unless the map editor is
 // open with a project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_industry_level"
 // `(i)i`
 //go:wasmimport gearbox:mapeditor editor_province_industry_level
 func rawEditorProvinceIndustryLevel(province uint32) uint32
 
 // Fortification, 0..5. Returns a neutral value unless the map editor is
 // open with a project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_fortification"
 // `(i)i`
 //go:wasmimport gearbox:mapeditor editor_province_fortification
 func rawEditorProvinceFortification(province uint32) uint32
 
 // Port level, 0..3. Returns a neutral value unless the map editor is open
 // with a project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_port_level"
 // `(i)i`
 //go:wasmimport gearbox:mapeditor editor_province_port_level
 func rawEditorProvincePortLevel(province uint32) uint32
@@ -828,18 +952,21 @@ func rawEditorProvincePortLevel(province uint32) uint32
 // Resource amount, 0..100. `which` is "oil", "gold", "rubber", "gemstones"
 // or "metal". Returns a neutral value unless the map editor is open with a
 // project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_resource"
 // `(iii)F`
 //go:wasmimport gearbox:mapeditor editor_province_resource
 func rawEditorProvinceResource(province uint32, which unsafe.Pointer, which_len uint32) float64
 
 // Province economic compass, -100..100. Returns a neutral value unless the
 // map editor is open with a project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_compass_econ"
 // `(i)F`
 //go:wasmimport gearbox:mapeditor editor_province_compass_econ
 func rawEditorProvinceCompassEcon(province uint32) float64
 
 // Province social compass, -100..100. Returns a neutral value unless the
 // map editor is open with a project loaded -- see mapeditor/active.
+// gearbox:mapeditor "editor_province_compass_social"
 // `(i)F`
 //go:wasmimport gearbox:mapeditor editor_province_compass_social
 func rawEditorProvinceCompassSocial(province uint32) float64
@@ -849,6 +976,7 @@ func rawEditorProvinceCompassSocial(province uint32) float64
 // unsaved-changes prompt like any other edit. A province the project does
 // not have is refused rather than created: data without a shape on the
 // province bitmap exports a map the game cannot load.
+// gearbox:mapeditor "editor_set_province_population"
 // `(iI)i`
 //go:wasmimport gearbox:mapeditor editor_set_province_population
 func rawEditorSetProvincePopulation(province uint32, value int64) uint32
@@ -858,6 +986,7 @@ func rawEditorSetProvincePopulation(province uint32, value int64) uint32
 // unsaved-changes prompt like any other edit. A province the project does
 // not have is refused rather than created: data without a shape on the
 // province bitmap exports a map the game cannot load.
+// gearbox:mapeditor "editor_set_province_industry_level"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_set_province_industry_level
 func rawEditorSetProvinceIndustryLevel(province uint32, level uint32) uint32
@@ -867,6 +996,7 @@ func rawEditorSetProvinceIndustryLevel(province uint32, level uint32) uint32
 // unsaved-changes prompt like any other edit. A province the project does
 // not have is refused rather than created: data without a shape on the
 // province bitmap exports a map the game cannot load.
+// gearbox:mapeditor "editor_set_province_fortification"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_set_province_fortification
 func rawEditorSetProvinceFortification(province uint32, level uint32) uint32
@@ -876,6 +1006,7 @@ func rawEditorSetProvinceFortification(province uint32, level uint32) uint32
 // unsaved-changes prompt like any other edit. A province the project does
 // not have is refused rather than created: data without a shape on the
 // province bitmap exports a map the game cannot load.
+// gearbox:mapeditor "editor_set_province_port_level"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_set_province_port_level
 func rawEditorSetProvincePortLevel(province uint32, level uint32) uint32
@@ -886,6 +1017,7 @@ func rawEditorSetProvincePortLevel(province uint32, level uint32) uint32
 // shows up in the unsaved-changes prompt like any other edit. A province
 // the project does not have is refused rather than created: data without a
 // shape on the province bitmap exports a map the game cannot load.
+// gearbox:mapeditor "editor_set_province_resource"
 // `(iiiF)i`
 //go:wasmimport gearbox:mapeditor editor_set_province_resource
 func rawEditorSetProvinceResource(province uint32, which unsafe.Pointer, which_len uint32, amount float64) uint32
@@ -895,6 +1027,7 @@ func rawEditorSetProvinceResource(province uint32, which unsafe.Pointer, which_l
 // shows up in the unsaved-changes prompt like any other edit. A province
 // the project does not have is refused rather than created: data without a
 // shape on the province bitmap exports a map the game cannot load.
+// gearbox:mapeditor "editor_set_province_compass"
 // `(iFF)i`
 //go:wasmimport gearbox:mapeditor editor_set_province_compass
 func rawEditorSetProvinceCompass(province uint32, econ float64, social float64) uint32
@@ -902,27 +1035,32 @@ func rawEditorSetProvinceCompass(province uint32, econ float64, social float64) 
 // The project's map name. Two-call sizing: call with cap 0 to learn the
 // length, allocate, call again. Returns the full length either way; the
 // copy is truncated to cap.
+// gearbox:mapeditor "editor_map_name"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_map_name
 func rawEditorMapName(buf unsafe.Pointer, cap uint32) uint32
 
 // Rename the map. Refused if empty or over 96 bytes.
+// gearbox:mapeditor "editor_set_map_name"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_set_map_name
 func rawEditorSetMapName(name unsafe.Pointer, name_len uint32) uint32
 
 // Set the author recorded in the exported .odmap. Up to 96 bytes.
+// gearbox:mapeditor "editor_set_author"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_set_author
 func rawEditorSetAuthor(author unsafe.Pointer, author_len uint32) uint32
 
 // Set the licence recorded in the exported .odmap. Up to 96 bytes.
+// gearbox:mapeditor "editor_set_license"
 // `(ii)i`
 //go:wasmimport gearbox:mapeditor editor_set_license
 func rawEditorSetLicense(license unsafe.Pointer, license_len uint32) uint32
 
 // The peer id at `index` in 0..peer_count-1, or 0xFFFFFFFF past the end.
 // This is the id net/send takes.
+// gearbox:net "peer_at"
 // `(i)i`
 //go:wasmimport gearbox:net peer_at
 func rawPeerAt(index uint32) uint32
@@ -931,18 +1069,21 @@ func rawPeerAt(index uint32) uint32
 // A mod has no business correlating players across sessions. Two-call
 // sizing: call with cap 0 to learn the length, allocate, call again.
 // Returns the full length either way; the copy is truncated to cap.
+// gearbox:net "peer_name"
 // `(iii)i`
 //go:wasmimport gearbox:net peer_name
 func rawPeerName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // The largest payload net/send will accept. Chunk against this rather than
 // discovering the limit by having a message dropped.
+// gearbox:net "max_message_bytes"
 // `()i`
 //go:wasmimport gearbox:net max_message_bytes
 func rawMaxMessageBytes() uint32
 
 // How many decision modules the AI has. Each acts independently every
 // turn.
+// gearbox:neural "module_count"
 // `()i`
 //go:wasmimport gearbox:neural module_count
 func rawModuleCount() uint32
@@ -950,11 +1091,13 @@ func rawModuleCount() uint32
 // The module's name: "economy", "politics", "war", "navy". Two-call
 // sizing: call with cap 0 to learn the length, allocate, call again.
 // Returns the full length either way; the copy is truncated to cap.
+// gearbox:neural "module_name"
 // `(iii)i`
 //go:wasmimport gearbox:neural module_name
 func rawModuleName(module uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // How many actions that module can choose between.
+// gearbox:neural "action_count"
 // `(i)i`
 //go:wasmimport gearbox:neural action_count
 func rawActionCount(module uint32) uint32
@@ -966,23 +1109,27 @@ func rawActionCount(module uint32) uint32
 // stable enough to build an advisor or a decision log against. Two-call
 // sizing: call with cap 0 to learn the length, allocate, call again.
 // Returns the full length either way; the copy is truncated to cap.
+// gearbox:neural "action_name"
 // `(iiii)i`
 //go:wasmimport gearbox:neural action_name
 func rawActionName(module uint32, action uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // Whether a country is played by the AI rather than by the local player.
+// gearbox:neural "country_is_ai"
 // `(i)i`
 //go:wasmimport gearbox:neural country_is_ai
 func rawCountryIsAi(country uint32) uint32
 
 // Gradient updates the loaded model has been through -- roughly, how much
 // training it has seen.
+// gearbox:neural "update_count"
 // `()I`
 //go:wasmimport gearbox:neural update_count
 func rawUpdateCount() int64
 
 // Whether an AI model is loaded at all. False in a game with no AI
 // players.
+// gearbox:neural "model_loaded"
 // `()i`
 //go:wasmimport gearbox:neural model_loaded
 func rawModelLoaded() uint32
@@ -990,6 +1137,7 @@ func rawModelLoaded() uint32
 // How many districts this country is divided into. Districts are built on
 // demand, so asking is what creates the default one for a country that has
 // never been divided.
+// gearbox:politics.read "country_district_count"
 // `(i)i`
 //go:wasmimport gearbox:politics.read country_district_count
 func rawCountryDistrictCount(country uint32) uint32
@@ -997,28 +1145,33 @@ func rawCountryDistrictCount(country uint32) uint32
 // The district's name. Two-call sizing: call with cap 0 to learn the
 // length, allocate, call again. Returns the full length either way; the
 // copy is truncated to cap.
+// gearbox:politics.read "country_district_name"
 // `(iiii)i`
 //go:wasmimport gearbox:politics.read country_district_name
 func rawCountryDistrictName(country uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // This district's claim on the country's pacification budget, in percent.
 // The shares of a country's districts sum to 100.
+// gearbox:politics.read "country_district_share"
 // `(ii)i`
 //go:wasmimport gearbox:politics.read country_district_share
 func rawCountryDistrictShare(country uint32, index uint32) uint32
 
 // How many provinces this district holds.
+// gearbox:politics.read "country_district_province_count"
 // `(ii)i`
 //go:wasmimport gearbox:politics.read country_district_province_count
 func rawCountryDistrictProvinceCount(country uint32, index uint32) uint32
 
 // Province `n` of this district, or GEARBOX_INVALID if there is no such
 // one.
+// gearbox:politics.read "country_district_province"
 // `(iii)i`
 //go:wasmimport gearbox:politics.read country_district_province
 func rawCountryDistrictProvince(country uint32, index uint32, n uint32) uint32
 
 // How many regional laws this district runs.
+// gearbox:politics.read "country_district_law_count"
 // `(ii)i`
 //go:wasmimport gearbox:politics.read country_district_law_count
 func rawCountryDistrictLawCount(country uint32, index uint32) uint32
@@ -1026,11 +1179,13 @@ func rawCountryDistrictLawCount(country uint32, index uint32) uint32
 // The stable id of regional law `n` in this district. Two-call sizing:
 // call with cap 0 to learn the length, allocate, call again. Returns the
 // full length either way; the copy is truncated to cap.
+// gearbox:politics.read "country_district_law"
 // `(iiiii)i`
 //go:wasmimport gearbox:politics.read country_district_law
 func rawCountryDistrictLaw(country uint32, index uint32, n uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // How many regional laws exist to choose from.
+// gearbox:politics.read "district_law_count"
 // `()i`
 //go:wasmimport gearbox:politics.read district_law_count
 func rawDistrictLawCount() uint32
@@ -1038,6 +1193,7 @@ func rawDistrictLawCount() uint32
 // The stable id of regional law `index`. Two-call sizing: call with cap 0
 // to learn the length, allocate, call again. Returns the full length
 // either way; the copy is truncated to cap.
+// gearbox:politics.read "district_law_id"
 // `(iii)i`
 //go:wasmimport gearbox:politics.read district_law_id
 func rawDistrictLawId(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1045,6 +1201,7 @@ func rawDistrictLawId(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // The display name of regional law `index`, untranslated. Two-call sizing:
 // call with cap 0 to learn the length, allocate, call again. Returns the
 // full length either way; the copy is truncated to cap.
+// gearbox:politics.read "district_law_name"
 // `(iii)i`
 //go:wasmimport gearbox:politics.read district_law_name
 func rawDistrictLawName(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1053,6 +1210,7 @@ func rawDistrictLawName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // 0 if it keeps it to itself. See the disclosure_field enum. Publishing is
 // a decision with a consequence -- migrants read it -- rather than a
 // display setting.
+// gearbox:politics.read "country_discloses"
 // `(ii)i`
 //go:wasmimport gearbox:politics.read country_discloses
 func rawCountryDiscloses(country uint32, field uint32) uint32
@@ -1060,23 +1218,27 @@ func rawCountryDiscloses(country uint32, field uint32) uint32
 // Set this district's claim on the pacification budget. The other
 // districts are rebalanced so the shares still sum to 100, exactly as
 // dragging the slider does. Returns 1 on success.
+// gearbox:politics.write "set_country_district_share"
 // `(iii)i`
 //go:wasmimport gearbox:politics.write set_country_district_share
 func rawSetCountryDistrictShare(country uint32, index uint32, percent uint32) uint32
 
 // Pass or repeal a regional law in this district. Returns 1 on success, 0
 // for an unknown law or district.
+// gearbox:politics.write "set_country_district_law"
 // `(iiiii)i`
 //go:wasmimport gearbox:politics.write set_country_district_law
 func rawSetCountryDistrictLaw(country uint32, index uint32, law unsafe.Pointer, law_len uint32, on uint32) uint32
 
 // Publish or withhold one of the figures in this country's profile.
 // Returns 1 on success.
+// gearbox:politics.write "set_country_disclosure"
 // `(iii)i`
 //go:wasmimport gearbox:politics.write set_country_disclosure
 func rawSetCountryDisclosure(country uint32, field uint32, on uint32) uint32
 
 // How many kinds of soldier exist.
+// gearbox:military.read "troop_type_count"
 // `()i`
 //go:wasmimport gearbox:military.read troop_type_count
 func rawTroopTypeCount() uint32
@@ -1085,18 +1247,21 @@ func rawTroopTypeCount() uint32
 // Never translated. Two-call sizing: call with cap 0 to learn the length,
 // allocate, call again. Returns the full length either way; the copy is
 // truncated to cap.
+// gearbox:military.read "troop_type_id"
 // `(iii)i`
 //go:wasmimport gearbox:military.read troop_type_id
 func rawTroopTypeId(index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // How many soldiers of that kind this country has, everywhere. 0 for a
 // troop type that does not exist.
+// gearbox:military.read "country_army_of_type"
 // `(iii)I`
 //go:wasmimport gearbox:military.read country_army_of_type
 func rawCountryArmyOfType(country uint32, troop_type unsafe.Pointer, troop_type_len uint32) int64
 
 // How many soldiers of that kind this country has standing in that
 // province.
+// gearbox:military.read "province_troops_of_type"
 // `(iiii)I`
 //go:wasmimport gearbox:military.read province_troops_of_type
 func rawProvinceTroopsOfType(province uint32, country uint32, troop_type unsafe.Pointer, troop_type_len uint32) int64
@@ -1104,6 +1269,7 @@ func rawProvinceTroopsOfType(province uint32, country uint32, troop_type unsafe.
 // How many research programmes this country may run at once, 1 to 3. This
 // is the effective number, including any override a script or a mod has
 // set.
+// gearbox:research.read "country_research_groups"
 // `(i)i`
 //go:wasmimport gearbox:research.read country_research_groups
 func rawCountryResearchGroups(country uint32) uint32
@@ -1111,12 +1277,14 @@ func rawCountryResearchGroups(country uint32) uint32
 // Force how many research programmes a country may run, 1 to 3, or 0 to
 // hand the decision back to its economy. Outranks the economic gate in
 // both directions and is saved with the game. Returns 1 on success.
+// gearbox:research.write "set_country_research_groups"
 // `(ii)i`
 //go:wasmimport gearbox:research.write set_country_research_groups
 func rawSetCountryResearchGroups(country uint32, groups uint32) uint32
 
 // What this country spent last turn, in total. The same figure its profile
 // publishes and the economy screen draws.
+// gearbox:economy.read "country_expenses"
 // `(i)F`
 //go:wasmimport gearbox:economy.read country_expenses
 func rawCountryExpenses(country uint32) float64
@@ -1124,11 +1292,13 @@ func rawCountryExpenses(country uint32) float64
 // What the whole country is worth: every industry level, fort, port and
 // division at what it cost to raise. A stock, where the income figures are
 // flows.
+// gearbox:economy.read "country_national_value"
 // `(i)F`
 //go:wasmimport gearbox:economy.read country_national_value
 func rawCountryNationalValue(country uint32) float64
 
 // How many people live in this country.
+// gearbox:economy.read "country_population"
 // `(i)I`
 //go:wasmimport gearbox:economy.read country_population
 func rawCountryPopulation(country uint32) int64
@@ -1141,6 +1311,7 @@ func rawCountryPopulation(country uint32) int64
 // should record RULES. Two-call sizing: call with cap 0 to learn the
 // length, allocate, call again. Returns the full length either way; the
 // copy is truncated to cap.
+// gearbox:neural "ai_version"
 // `(ii)i`
 //go:wasmimport gearbox:neural ai_version
 func rawAiVersion(buf unsafe.Pointer, cap uint32) uint32
@@ -1148,6 +1319,7 @@ func rawAiVersion(buf unsafe.Pointer, cap uint32) uint32
 // The AI's ARCH number on its own, which is also the model file's format
 // byte. The feature count and the action sets are only stable within one
 // ARCH; a bump means old weights are refused on purpose.
+// gearbox:neural "ai_arch"
 // `()i`
 //go:wasmimport gearbox:neural ai_arch
 func rawAiArch() uint32
@@ -1157,6 +1329,7 @@ func rawAiArch() uint32
 // (a country the AI does not play, or one that has not been given a stance
 // yet). Held for several turns at a time rather than chosen fresh each
 // turn.
+// gearbox:neural "country_stance"
 // `(i)i`
 //go:wasmimport gearbox:neural country_stance
 func rawCountryStance(country uint32) uint32
@@ -1165,11 +1338,13 @@ func rawCountryStance(country uint32) uint32
 // translated, and stable within an ARCH. Two-call sizing: call with cap 0
 // to learn the length, allocate, call again. Returns the full length
 // either way; the copy is truncated to cap.
+// gearbox:neural "stance_name"
 // `(iii)i`
 //go:wasmimport gearbox:neural stance_name
 func rawStanceName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // How many stances there are to choose between.
+// gearbox:neural "stance_count"
 // `()i`
 //go:wasmimport gearbox:neural stance_count
 func rawStanceCount() uint32
@@ -1181,6 +1356,7 @@ func rawStanceCount() uint32
 // nothing. Choosing an action whose byte is 0 is the same as deciding
 // nothing -- the host keeps its own choice, because an illegal action is
 // not a move it can make.
+// gearbox:neural.decide "action_valid"
 // `(iii)i`
 //go:wasmimport gearbox:neural.decide action_valid
 func rawActionValid(module uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1188,6 +1364,7 @@ func rawActionValid(module uint32, buf unsafe.Pointer, cap uint32) uint32
 // How many parties sit in a country's legislature. 0 when the party rules
 // are off, which is the default -- so a mod must treat 0 as 'this world
 // has no party politics' rather than as an error.
+// gearbox:politics.read "country_party_count"
 // `(i)i`
 //go:wasmimport gearbox:politics.read country_party_count
 func rawCountryPartyCount(country uint32) uint32
@@ -1195,12 +1372,14 @@ func rawCountryPartyCount(country uint32) uint32
 // The party's name. Two-call sizing: call with cap 0 to learn the length,
 // allocate, call again. Returns the full length either way; the copy is
 // truncated to cap.
+// gearbox:politics.read "country_party_name"
 // `(iiii)i`
 //go:wasmimport gearbox:politics.read country_party_name
 func rawCountryPartyName(country uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
 
 // The party's abbreviation, for a list that has to fit -- "SPD", "INC".
 // Same two-call sizing as country_party_name. May be empty.
+// gearbox:politics.read "country_party_short_name"
 // `(iiii)i`
 //go:wasmimport gearbox:politics.read country_party_short_name
 func rawCountryPartyShortName(country uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1208,6 +1387,7 @@ func rawCountryPartyShortName(country uint32, index uint32, buf unsafe.Pointer, 
 // That party's share of the country, 0..1. The shares of one country's
 // parties are a partition and sum to 1, so they may be compared directly
 // but must never be added across countries.
+// gearbox:politics.read "country_party_support"
 // `(ii)F`
 //go:wasmimport gearbox:politics.read country_party_support
 func rawCountryPartySupport(country uint32, index uint32) float64
@@ -1215,12 +1395,14 @@ func rawCountryPartySupport(country uint32, index uint32) float64
 // Where the party stands on the economic axis, -100 (planned) to 100
 // (market) -- the same axis and scale as country_compass_econ, so the
 // distance between a party and its government is meaningful.
+// gearbox:politics.read "country_party_compass_econ"
 // `(ii)F`
 //go:wasmimport gearbox:politics.read country_party_compass_econ
 func rawCountryPartyCompassEcon(country uint32, index uint32) float64
 
 // Where the party stands on the social axis, -100 (authoritarian) to 100
 // (libertarian). Same scale as country_compass_social.
+// gearbox:politics.read "country_party_compass_social"
 // `(ii)F`
 //go:wasmimport gearbox:politics.read country_party_compass_social
 func rawCountryPartyCompassSocial(country uint32, index uint32) float64
@@ -1230,6 +1412,7 @@ func rawCountryPartyCompassSocial(country uint32, index uint32) float64
 // stance. A mod that displays party names should say which it is showing:
 // "Workers' Party" is a description, "SPD" is a claim. See
 // data/parties.json.
+// gearbox:politics.read "country_party_is_historical"
 // `(ii)i`
 //go:wasmimport gearbox:politics.read country_party_is_historical
 func rawCountryPartyIsHistorical(country uint32, index uint32) uint32
@@ -1237,6 +1420,7 @@ func rawCountryPartyIsHistorical(country uint32, index uint32) uint32
 // The index of the party that governs, or -1 if none does. That party
 // pulls the government compass toward its own stance every turn it holds
 // power, which is why the two are on the same scale.
+// gearbox:politics.read "country_ruling_party"
 // `(i)i`
 //go:wasmimport gearbox:politics.read country_ruling_party
 func rawCountryRulingParty(country uint32) uint32
@@ -1246,6 +1430,7 @@ func rawCountryRulingParty(country uint32) uint32
 // before using it -- a country can be annexed between turns, and every
 // other accessor answers 0 or an empty string for a dead id, which is
 // indistinguishable from a live country with nothing in it.
+// gearbox:gamestate.read "country_exists"
 // `(i)i`
 //go:wasmimport gearbox:gamestate.read country_exists
 func rawCountryExists(country uint32) uint32
@@ -1253,6 +1438,7 @@ func rawCountryExists(country uint32) uint32
 // Whether a province id names a province that exists. Same reason as
 // country_exists: a stored id needs a validity check that is not 'iterate
 // every province and compare'.
+// gearbox:gamestate.read "province_exists"
 // `(i)i`
 //go:wasmimport gearbox:gamestate.read province_exists
 func rawProvinceExists(province uint32) uint32
@@ -1263,6 +1449,7 @@ func rawProvinceExists(province uint32) uint32
 // MACHINE, not about the game, which is why it needs its own capability.
 // Every other reading a mod can take is deliberately opaque about the
 // host.
+// gearbox:core.protected "process_bytes"
 // `()I`
 //go:wasmimport gearbox:core.protected process_bytes
 func rawProcessBytes() uint64
@@ -1271,6 +1458,7 @@ func rawProcessBytes() uint64
 // be determined. Useful to a mod that reports build size or checks it is
 // running against the build it expects; useless for anything else, which
 // is the point.
+// gearbox:core.protected "image_bytes"
 // `()I`
 //go:wasmimport gearbox:core.protected image_bytes
 func rawImageBytes() uint64
@@ -1278,6 +1466,7 @@ func rawImageBytes() uint64
 // How many mods are INSTALLED, enabled or not. A compatibility checker
 // needs to see the mod it conflicts with even when that mod is switched
 // off, because switching it on is what breaks things.
+// gearbox:core.protected "mod_count"
 // `()i`
 //go:wasmimport gearbox:core.protected mod_count
 func rawModCount() uint32
@@ -1285,6 +1474,7 @@ func rawModCount() uint32
 // The installed mod's manifest id -- the stable one, safe to compare.
 // Two-call sizing: call with cap 0 to learn the length, allocate, call
 // again.
+// gearbox:core.protected "mod_id"
 // `(iii)i`
 //go:wasmimport gearbox:core.protected mod_id
 func rawModId(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1292,6 +1482,7 @@ func rawModId(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // Its display name, which is for showing a player and NOT for matching on:
 // it is author-chosen, may be translated, and two mods may share one.
 // Match on mod_id.
+// gearbox:core.protected "mod_name"
 // `(iii)i`
 //go:wasmimport gearbox:core.protected mod_name
 func rawModName(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1305,6 +1496,7 @@ func rawModName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // it with a different type fails, because the values already stored are of
 // the old one. Refused for an empty name, a name over 64 bytes, or one
 // containing anything but printable ASCII.
+// gearbox:country "field_add"
 // `(iiii)i`
 //go:wasmimport gearbox:country field_add
 func rawFieldAdd(name unsafe.Pointer, name_len uint32, mode uint32, type uint32) uint32
@@ -1313,6 +1505,7 @@ func rawFieldAdd(name unsafe.Pointer, name_len uint32, mode uint32, type uint32)
 // whether it existed. A mod cannot remove another mod's field: fields are
 // keyed by (mod, name), so two mods may both add a field called morale and
 // neither can see the other's.
+// gearbox:country "field_remove"
 // `(ii)i`
 //go:wasmimport gearbox:country field_remove
 func rawFieldRemove(name unsafe.Pointer, name_len uint32) uint32
@@ -1320,18 +1513,21 @@ func rawFieldRemove(name unsafe.Pointer, name_len uint32) uint32
 // Whether you have declared this field AND own it right now. False for a
 // field read back from a save whose mod is not loaded -- such a field is
 // inert, though its values are kept.
+// gearbox:country "field_has"
 // `(ii)i`
 //go:wasmimport gearbox:country field_has
 func rawFieldHas(name unsafe.Pointer, name_len uint32) uint32
 
 // How many fields YOU have declared. Not how many exist: another mod's
 // fields are not yours to enumerate.
+// gearbox:country "field_count"
 // `()i`
 //go:wasmimport gearbox:country field_count
 func rawFieldCount() uint32
 
 // The name of your field at index, sorted by name so the order does not
 // shift between runs. Two-call sizing.
+// gearbox:country "field_name"
 // `(iii)i`
 //go:wasmimport gearbox:country field_name
 func rawFieldName(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1339,6 +1535,7 @@ func rawFieldName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // Set a country's value for one of your NUMBER fields. Refused if the
 // field is text, was never declared, or belongs to a mod that is not
 // loaded.
+// gearbox:country "set_number"
 // `(iiid)i`
 //go:wasmimport gearbox:country set_number
 func rawSetNumber(name unsafe.Pointer, name_len uint32, country uint32, value float64) uint32
@@ -1346,16 +1543,19 @@ func rawSetNumber(name unsafe.Pointer, name_len uint32, country uint32, value fl
 // A country's value, or 0 when the field or the country has none. 0 is a
 // real value too, so a mod that needs to tell unset from zero should keep
 // its own sentinel.
+// gearbox:country "get_number"
 // `(iii)F`
 //go:wasmimport gearbox:country get_number
 func rawGetNumber(name unsafe.Pointer, name_len uint32, country uint32) float64
 
 // Set a country's value for one of your TEXT fields.
+// gearbox:country "set_text"
 // `(iiiii)i`
 //go:wasmimport gearbox:country set_text
 func rawSetText(name unsafe.Pointer, name_len uint32, country uint32, value unsafe.Pointer, value_len uint32) uint32
 
 // A country's text value, or empty. Two-call sizing.
+// gearbox:country "get_text"
 // `(iiiii)i`
 //go:wasmimport gearbox:country get_text
 func rawGetText(name unsafe.Pointer, name_len uint32, country uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1372,22 +1572,26 @@ func rawGetText(name unsafe.Pointer, name_len uint32, country uint32, buf unsafe
 // since scripts ship inside .odmap files and mods are enabled globally.
 // Names must be an identifier: a letter, then letters, digits or
 // underscores, up to 48 bytes.
+// gearbox:scripts "command_add"
 // `(ii)i`
 //go:wasmimport gearbox:scripts command_add
 func rawCommandAdd(name unsafe.Pointer, name_len uint32) uint32
 
 // Give up one of your own commands. False if it was not yours -- a mod
 // cannot unregister another mod's.
+// gearbox:scripts "command_remove"
 // `(ii)i`
 //go:wasmimport gearbox:scripts command_remove
 func rawCommandRemove(name unsafe.Pointer, name_len uint32) uint32
 
 // How many commands YOU have claimed.
+// gearbox:scripts "command_count"
 // `()i`
 //go:wasmimport gearbox:scripts command_count
 func rawCommandCount() uint32
 
 // The name of your command at index, sorted. Two-call sizing.
+// gearbox:scripts "command_name"
 // `(iii)i`
 //go:wasmimport gearbox:scripts command_name
 func rawCommandName(index uint32, buf unsafe.Pointer, cap uint32) uint32
@@ -1395,6 +1599,7 @@ func rawCommandName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // Inside mod_script_command: which of your commands the script ran. Empty
 // outside that call -- there is no command then, and reporting the last
 // one would be a stale answer that looks like a live one. Two-call sizing.
+// gearbox:scripts "command_text"
 // `(ii)i`
 //go:wasmimport gearbox:scripts command_text
 func rawCommandText(buf unsafe.Pointer, cap uint32) uint32
@@ -1402,6 +1607,7 @@ func rawCommandText(buf unsafe.Pointer, cap uint32) uint32
 // Inside mod_script_command: the rest of the script line, verbatim --
 // unparsed and untrimmed, because your command knows its own grammar and
 // the engine does not. Empty outside that call. Two-call sizing.
+// gearbox:scripts "command_args"
 // `(ii)i`
 //go:wasmimport gearbox:scripts command_args
 func rawCommandArgs(buf unsafe.Pointer, cap uint32) uint32
@@ -1413,6 +1619,7 @@ func rawCommandArgs(buf unsafe.Pointer, cap uint32) uint32
 // the maximum (4096 tints per mod, which is every province on the largest
 // map twice over). A refusal rather than a slower game: a mod's mistake
 // should not be paid for in frame time by a player who cannot see why.
+// gearbox:render "province_tint"
 // `(ii)i`
 //go:wasmimport gearbox:render province_tint
 func rawProvinceTint(province uint32, rgba uint32) uint32
@@ -1422,6 +1629,7 @@ func rawProvinceTint(province uint32, rgba uint32) uint32
 // characters rather than refused: a label one character too long is a
 // cosmetic mistake, and failing the call would have an author debugging a
 // silent nothing instead of seeing a clipped word. 512 labels per mod.
+// gearbox:render "province_label"
 // `(iiii)i`
 //go:wasmimport gearbox:render province_label
 func rawProvinceLabel(province uint32, text unsafe.Pointer, text_len uint32, rgba uint32) uint32
@@ -1430,16 +1638,69 @@ func rawProvinceLabel(province uint32, text unsafe.Pointer, text_len uint32, rgb
 // mod's -- and unloading a mod clears its own automatically, because a
 // mark left behind by a mod that is no longer running is indistinguishable
 // from the game being wrong.
+// gearbox:render "clear"
 // `()i`
 //go:wasmimport gearbox:render clear
-func rawClear() uint32
+func rawRenderClear() uint32
 
 // How many tints you are currently holding.
+// gearbox:render "tint_count"
 // `()i`
 //go:wasmimport gearbox:render tint_count
 func rawTintCount() uint32
 
 // How many labels you are currently holding.
+// gearbox:render "label_count"
 // `()i`
 //go:wasmimport gearbox:render label_count
 func rawLabelCount() uint32
+
+// Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2
+// troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST. The
+// definition is the SAME JSON the game's own data file uses, and goes
+// through the same parser -- not a second reading of the same fields,
+// which is how 'it works from the file but not from the mod' is made. AI
+// VISIBILITY IS A FIELD IN THE JSON: "aiVisible": true. It defaults to
+// FALSE, because content the AI was never trained against should not start
+// appearing in its options. For RESEARCH it matters more than it looks --
+// the tree feeds the neural feature vector, so a visible node changes the
+// shape of the model's input and a model whose parent no longer matches is
+// silently re-initialised. PERSIST writes the definition into the save, so
+// a world played with your doctrine keeps knowing what that doctrine was
+// after your mod is uninstalled -- otherwise the country still holds the
+// id and nothing can say what it did. HOLLOW is redeclared every load. Ids
+// are GLOBAL within a catalogue, unlike country fields: a country holds a
+// doctrine by id and a save records it that way, so two meanings for one
+// id would make a save ambiguous. Another mod's id is refused. Lower-case
+// letters, digits, underscore and at most one colon, 64 bytes.
+// gearbox:content "add"
+// `(iiiiii)i`
+//go:wasmimport gearbox:content add
+func rawContentAdd(kind uint32, id unsafe.Pointer, id_len uint32, json unsafe.Pointer, json_len uint32, mode uint32) uint32
+
+// How many entries of this kind YOU have added.
+// gearbox:content "count"
+// `(i)i`
+//go:wasmimport gearbox:content count
+func rawContentCount(kind uint32) uint32
+
+// The id of your entry at index within a kind, sorted. Two-call sizing.
+// gearbox:content "id_at"
+// `(iiii)i`
+//go:wasmimport gearbox:content id_at
+func rawContentIdAt(kind uint32, index uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod
+// check whether the content it is about to add already exists -- including
+// content another mod added, which is the collision it cannot otherwise
+// see coming.
+// gearbox:content "owner_of"
+// `(iiiii)i`
+//go:wasmimport gearbox:content owner_of
+func rawContentOwnerOf(kind uint32, id unsafe.Pointer, id_len uint32, buf unsafe.Pointer, cap uint32) uint32
+
+// Remove one of your own entries. False if it was not yours.
+// gearbox:content "remove"
+// `(iii)i`
+//go:wasmimport gearbox:content remove
+func rawContentRemove(kind uint32, id unsafe.Pointer, id_len uint32) uint32

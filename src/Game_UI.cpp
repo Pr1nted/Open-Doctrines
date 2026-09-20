@@ -1660,6 +1660,22 @@ std::string Game::saveStateJson() {
         j["activePolicies"].push_back(entry);
     }
 
+    // ── Catalogue entries mods added ──
+    //
+    // PERSIST entries only, and written even when the owning mod is gone: a
+    // save that records a country holding a mod's doctrine must keep being
+    // able to say what that doctrine WAS, or uninstalling the mod turns a
+    // campaign into a file full of ids nothing can read.
+    for (const odcontent::Entry& e : m_modContent.toSave()) {
+        nlohmann::json c;
+        c["kind"] = (int)e.kind;
+        c["mod"] = e.modId;
+        c["id"] = e.id;
+        c["json"] = e.json;
+        c["aiVisible"] = e.aiVisible;
+        j["modContent"].push_back(c);
+    }
+
     // ── Fields mods added to countries ──
     //
     // PERSIST fields only; a hollow one is the mod's to recompute. Written
@@ -2628,6 +2644,34 @@ void Game::loadStateJsonBody(const std::string& json) {
         odprov::compare(m_provenance, runningMods(), GAME_VERSION);
     for (const std::string& line : odprov::describe(m_provenanceMismatch))
         printf("[WORLD] %s\n", line.c_str());
+
+    // Catalogue entries mods added. Read back whether or not the owning mod is
+    // installed, for the reason above.
+    {
+        std::vector<odcontent::Entry> in;
+        if (j.contains("modContent") && j["modContent"].is_array()) {
+            for (const auto& c : j["modContent"]) {
+                if (!c.is_object() || !c.contains("id") || !c.contains("mod")) continue;
+                odcontent::Entry e;
+                const int k = c.value("kind", 0);
+                if (k < 0 || k >= (int)odcontent::Kind::Count_) continue;
+                e.kind = (odcontent::Kind)k;
+                e.modId = c["mod"].get<std::string>();
+                e.id = c["id"].get<std::string>();
+                e.json = c.value("json", std::string());
+                e.aiVisible = c.value("aiVisible", false);
+                e.mode = odcontent::Mode::Persist;
+                in.push_back(std::move(e));
+            }
+        }
+        m_modContent.fromSave(in);
+        std::vector<std::string> live;
+        for (const odprov::ModRecord& m : runningMods()) live.push_back(m.id);
+        m_modContent.setLoadedMods(live);
+        // The catalogue is rebuilt from the data file on load, so mod
+        // doctrines have to be put back on top of it.
+        applyModDoctrines();
+    }
 
     // Fields mods added to countries. Read back whether or not the mod that
     // owns them is installed: the values are held and written out again, so

@@ -1206,6 +1206,63 @@ void Game::installModBridges() {
     };
     modSetRenderBridge(rnd);
 
+    // Content: entries a mod adds to the catalogues.
+    ModContentBridge con;
+    con.add = [this](uint32_t kind, const std::string& mod, const std::string& id,
+                     const std::string& json, uint32_t mode) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return false;
+        // aiVisible is read HERE, from the definition, rather than being a
+        // separate argument: it belongs with the content it describes, so a
+        // mod cannot ship a definition whose visibility depends on which call
+        // added it.
+        bool aiVisible = false;
+        try {
+            const nlohmann::json j = nlohmann::json::parse(json);
+            aiVisible = j.value("aiVisible", false);
+        } catch (const std::exception&) {
+            // Unparseable JSON is refused here rather than stored and failed
+            // later: a definition that cannot be read is not content.
+            return false;
+        }
+        const bool ok = m_modContent.add((odcontent::Kind)kind, mod, id, json,
+                                         mode == 1 ? odcontent::Mode::Persist
+                                                   : odcontent::Mode::Hollow,
+                                         aiVisible);
+        // Doctrines take effect immediately; a mod adding one mid-game should
+        // not have to wait for a reload to see it.
+        if (ok && (odcontent::Kind)kind == odcontent::Kind::Doctrine)
+            applyModDoctrines();
+        return ok;
+    };
+    con.remove = [this](uint32_t kind, const std::string& mod, const std::string& id) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return false;
+        const bool ok = m_modContent.remove((odcontent::Kind)kind, mod, id);
+        if (ok && (odcontent::Kind)kind == odcontent::Kind::Doctrine) {
+            m_allPolicies.erase(
+                std::remove_if(m_allPolicies.begin(), m_allPolicies.end(),
+                               [&](const Policy& p) { return p.id == id; }),
+                m_allPolicies.end());
+        }
+        return ok;
+    };
+    con.count = [this](uint32_t kind, const std::string& mod) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return (uint32_t)0;
+        return (uint32_t)m_modContent.countOf((odcontent::Kind)kind, mod);
+    };
+    con.idAt = [this](uint32_t kind, const std::string& mod, uint32_t i) -> std::string {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return {};
+        const auto all = m_modContent.ofMod(mod);
+        std::vector<std::string> ids;
+        for (const auto& e : all)
+            if (e.kind == (odcontent::Kind)kind) ids.push_back(e.id);
+        return i < ids.size() ? ids[i] : std::string();
+    };
+    con.ownerOf = [this](uint32_t kind, const std::string& id) -> std::string {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return {};
+        return m_modContent.ownerOf((odcontent::Kind)kind, id);
+    };
+    modSetContentBridge(con);
+
     modSetNetBridge(net);
 
     // ── UI ── the three things the mod host cannot do without raylib ──────────
@@ -2351,7 +2408,8 @@ std::vector<odprov::ModRecord> Game::runningMods() const {
         // hard-coded false until Country existed and there was nothing a mod
         // could persist; now it is the real answer, and it decides whether
         // losing the mod is reported as costly or as merely a shame.
-        m.persisted = m_countryFields.persistsAnything(e.id);
+        m.persisted = m_countryFields.persistsAnything(e.id) ||
+                      m_modContent.persistsAnything(e.id);
         out.push_back(m);
     }
     // Sorted by id so two saves of the same world compare equal regardless of

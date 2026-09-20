@@ -14,6 +14,15 @@
     {"isPlaying", gbxlua_is_playing},
 #endif /* GBX_WITH_AUDIO */
 
+/* ---- Content (5) ---- */
+#if GBX_WITH_CONTENT
+    {"contentAdd", gbxlua_content_add},
+    {"contentCount", gbxlua_content_count},
+    {"contentIdAt", gbxlua_content_id_at},
+    {"contentOwnerOf", gbxlua_content_owner_of},
+    {"contentRemove", gbxlua_content_remove},
+#endif /* GBX_WITH_CONTENT */
+
 /* ---- Core.Protected (5) ---- */
 #if GBX_WITH_CORE_PROTECTED
     {"processBytes", gbxlua_process_bytes},
@@ -241,7 +250,7 @@
 #if GBX_WITH_RENDER
     {"provinceTint", gbxlua_province_tint},
     {"provinceLabel", gbxlua_province_label},
-    {"clear", gbxlua_clear},
+    {"renderClear", gbxlua_render_clear},
     {"tintCount", gbxlua_tint_count},
     {"labelCount", gbxlua_label_count},
 #endif /* GBX_WITH_RENDER */
