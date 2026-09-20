@@ -1,6 +1,7 @@
 #include "DevLink.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -238,11 +239,16 @@ void publishFrame() {
     // number either side of its copy read a whole frame. Cheaper than any
     // lock and, more to the point, a reader that dies mid-read cannot wedge
     // the game.
+    // std::atomic_thread_fence, not __sync_synchronize. The builtin is GCC and
+    // Clang only; MSVC stops with C3861 on it, and did, once the sys/mman.h
+    // error ahead of it on line 11 stopped hiding it. seq_cst is a full
+    // barrier -- the same instruction the builtin emits on x86 and ARM -- so
+    // the seqlock's ordering is exactly what it was, now in standard C++.
     head->sequence += 1;  // now odd
-    __sync_synchronize();
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     std::memcpy(pixels, shot.data,
                 static_cast<std::size_t>(outW) * static_cast<std::size_t>(outH) * 4u);
-    __sync_synchronize();
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     head->sequence += 1;  // even again
 
     UnloadImage(shot);
