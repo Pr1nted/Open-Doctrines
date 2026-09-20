@@ -112,6 +112,23 @@ std::string tunnelParseAddress(TunnelProvider provider, const std::string& outpu
     return "wss://" + host;
 }
 
+// WHETHER a host wants a tunnel is not a platform question. Only STARTING one
+// is: the process management below is POSIX and compiles out on Windows and on
+// the web, and this function used to sit inside that block with it.
+//
+// It is four boolean reads. Leaving it there made every non-POSIX build fail to
+// link -- Game_Multiplayer.cpp calls it on every platform -- and the web build
+// said so with `undefined symbol: tunnelWantedByHost`. The Windows build has
+// the same hole and never reached the linker to report it, because it failed
+// earlier on DevLink's sys/mman.h.
+bool tunnelWantedByHost(const TunnelWanted& h) {
+    if (!h.wanted)   return false;   // the host said no
+    if (h.headless)  return false;   // no host screen: not this code's call
+    if (h.bindAll)   return false;   // already reachable; a tunnel adds exposure
+    if (h.viaRelay)  return false;   // no bound port for a tunnel to reach
+    return true;
+}
+
 // ============================================================ the process ====
 
 #ifdef OD_TUNNEL_POSIX
@@ -166,13 +183,6 @@ std::string g_toolsDir;
 
 void tunnelSetToolsDir(const std::string& dir) { g_toolsDir = dir; }
 
-bool tunnelWantedByHost(const TunnelWanted& h) {
-    if (!h.wanted)   return false;   // the host said no
-    if (h.headless)  return false;   // no host screen: not this code's call
-    if (h.bindAll)   return false;   // already reachable; a tunnel adds exposure
-    if (h.viaRelay)  return false;   // no bound port for a tunnel to reach
-    return true;
-}
 
 /** Where cloudflared is, preferring the game's own copy. Empty if absent. */
 std::string tunnelResolveProgram(const char* name) {
