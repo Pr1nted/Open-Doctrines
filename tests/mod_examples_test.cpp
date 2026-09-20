@@ -138,6 +138,8 @@ public:
 
 struct Capture {
     std::string label;
+    /// A mod that never declared UI. Not a panel example, so not compared.
+    bool notAPanelMod = false;
     std::vector<std::string> texts;      // Text and Button commands, in order
     std::vector<std::string> afterClick; // same, after one click on the button
     size_t rects = 0;
@@ -239,6 +241,21 @@ Capture drive(const std::string& path, const std::string& sdk) {
 
     if (pkg.open(path) != ModLoadResult::Ok) {
         cap.note = pkg.diagnostic();
+        return cap;
+    }
+
+    // NOT EVERY EXAMPLE DRAWS. sdk/examples/custom-doctrine adds two doctrines
+    // and registers nothing, on purpose -- a content mod has no reason to own a
+    // panel. This test compares draw output, so a mod that never asked for UI
+    // is not one of its subjects, and reporting it as "registered no panel"
+    // would be this test failing a mod for being what it is.
+    //
+    // Keyed on the capability rather than on the mod's name: any future example
+    // that does not draw drops out of the comparison the moment it says so in
+    // its manifest, and one that DOES declare UI and then draws nothing still
+    // fails, which is the case worth catching.
+    if (!(pkg.manifest().modules & MODULE_UI)) {
+        cap.notAPanelMod = true;
         return cap;
     }
 
@@ -359,6 +376,10 @@ int main(int argc, char** argv) {
     printf("\n");
     for (const auto& c : caps) {
         printf("  %-24s ", c.label.c_str());
+        if (c.notAPanelMod) {
+            printf("no UI declared; not a panel example\n");
+            continue;
+        }
         if (c.skipped) {
             printf("SKIP  needs -DOD_MODS_FAST_INTERP=OFF\n");
             continue;
@@ -371,6 +392,7 @@ int main(int argc, char** argv) {
     printf("\n");
 
     for (const auto& c : caps) {
+        if (c.notAPanelMod) continue;
         if (c.skipped) {
             printf("  skip  %s (not runnable on this interpreter)\n", c.label.c_str());
             continue;

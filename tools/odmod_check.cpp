@@ -18,6 +18,18 @@
 // revocation can only ever report a failure for behaving correctly, which is
 // what sdk/rust/build.sh did from the day it was written.
 //
+// A CONTENT MOD NEEDS A CATALOGUE TO WRITE INTO. The host functions behind
+// gearbox:content answer 0 when no bridge is installed, and a mod that adds a
+// doctrine in mod_load then reports its own add as refused -- which is what the
+// example in sdk/examples/custom-doctrine did on its first run, with nothing
+// wrong with it. So this installs a real odcontent::Registry and prints what
+// the mod put in it.
+//
+// Only content. The other bridges the game installs -- country fields, script
+// commands, map marks, the mod list -- are still absent here, and a mod using
+// them sees the same zeroes; the summary below says so rather than letting a
+// silent 0 read as a working call.
+//
 // --decide drives mod_ai_choose against a stub world for N turns. It exists
 // because mod_load proves only that a mod STARTS: for a Neural.Decide mod the
 // whole point is the deciding, and until this flag there was no way to run that
@@ -27,6 +39,7 @@
 #include "mods/ModPackage.h"
 #include "mods/ModRuntime.h"
 #include "mods/ModHost.h"
+#include "ModContent.h"
 #include "mod_world_stub.h"
 
 #include <cstdio>
@@ -107,6 +120,58 @@ void decide(ModInstance* inst, int turns) {
     g_modGame = nullptr;
 }
 
+/// The catalogue a Content mod writes into, so its adds can succeed and be
+/// shown. Cleared per process; there is only ever one mod here.
+odcontent::Registry g_content;
+
+void installContentBridge() {
+    ModContentBridge con;
+    con.add = [](uint32_t kind, const std::string& mod, const std::string& id,
+                 const std::string& json, uint32_t mode) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return false;
+        // The game reads "aiVisible" out of the definition with a JSON parser.
+        // This tool does not link one, and the substring is enough for a
+        // report -- it is printed as what the definition SAYS, not as a
+        // parsed field, and the game re-reads it properly at load.
+        const bool visible = json.find("\"aiVisible\"") != std::string::npos &&
+                             json.find("true") != std::string::npos;
+        return g_content.add((odcontent::Kind)kind, mod, id, json,
+                             mode == 1 ? odcontent::Mode::Persist
+                                       : odcontent::Mode::Hollow, visible);
+    };
+    con.remove = [](uint32_t kind, const std::string& mod, const std::string& id) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return false;
+        return g_content.remove((odcontent::Kind)kind, mod, id);
+    };
+    con.count = [](uint32_t kind, const std::string& mod) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return (uint32_t)0;
+        return (uint32_t)g_content.countOf((odcontent::Kind)kind, mod);
+    };
+    con.idAt = [](uint32_t kind, const std::string& mod, uint32_t i) -> std::string {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return {};
+        std::vector<std::string> ids;
+        for (const auto& e : g_content.ofMod(mod))
+            if (e.kind == (odcontent::Kind)kind) ids.push_back(e.id);
+        return i < ids.size() ? ids[i] : std::string();
+    };
+    con.ownerOf = [](uint32_t kind, const std::string& id) -> std::string {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return {};
+        return g_content.ownerOf((odcontent::Kind)kind, id);
+    };
+    modSetContentBridge(con);
+}
+
+/// What the mod added, or nothing at all.
+void reportContent(const std::string& modId) {
+    const auto all = g_content.ofMod(modId);
+    if (all.empty()) return;
+    printf("\ncontent added (%zu)\n", all.size());
+    for (const auto& e : all)
+        printf("  %-13s %-40s %s%s\n", odcontent::kindName(e.kind), e.id.c_str(),
+               e.mode == odcontent::Mode::Persist ? "persist" : "hollow",
+               e.aiVisible ? ", AI can see it" : "");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -165,6 +230,7 @@ int main(int argc, char** argv) {
     }
     std::string err;
     if (!rt.init(err)) { printf("\nruntime failed: %s\n", err.c_str()); return 1; }
+    installContentBridge();
 
     uint32_t grants = m.modules;
     for (const auto& name : revoked) {
@@ -202,6 +268,8 @@ int main(int argc, char** argv) {
     for (const char* h : {"mod_unload", "mod_pre_turn", "mod_post_turn", "mod_draw_panel",
                           "mod_ai_choose"})
         printf("  %-16s %s\n", h, inst->hasExport(h) ? "yes" : "-");
+
+    reportContent(m.id);
 
     if (decideTurns > 0) decide(inst.get(), decideTurns);
 

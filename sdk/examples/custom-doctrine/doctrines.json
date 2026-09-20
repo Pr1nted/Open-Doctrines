@@ -1,0 +1,106 @@
+[
+  {
+    "id": "com_example:land_and_liberty",
+    "name": "Land and Liberty",
+    "description": "Break up the estates and arm the villages that take them. The harvest grows and so does the list of people who will never forgive you.",
+    "category": "left",
+    "folder": "Example Mod",
+
+    "cost_per_turn": 12,
+    "implementation_turns": 4,
+    "propaganda_duration": 0,
+
+    "compass_shift": { "economic": -18, "social": -6 },
+    "requirements": {
+      "min_economic": -100, "max_economic": 25,
+      "min_social": -100, "max_social": 100
+    },
+
+    "levers": {
+      "popGrowthPct": 0.8,
+      "resourceModPct": 10,
+      "conscriptionPct": 8,
+      "industryCostPct": -12
+    },
+
+    "effects": {
+      "minority_growth_rate": 0.0,
+      "immigration_boost": 0.0,
+      "pacification_cost": 0.0,
+      "unrest_reduction": 0.015,
+      "public_opinion_shift": 0.0,
+      "target_minority": ""
+    },
+
+    "incompatible_with": ["privatization", "flat_tax", "com_example:estate_compact"],
+
+    "tradeoffs": {
+      "gains": [
+        "Population growth +0.8%/turn",
+        "Resource income +10%",
+        "Manpower +8%",
+        "Unrest -1.5%"
+      ],
+      "costs": [
+        "-12/turn income",
+        "Industry cost +12%",
+        "Economic -18",
+        "Social -6"
+      ]
+    },
+
+    "aiVisible": false
+  },
+  {
+    "id": "com_example:estate_compact",
+    "name": "The Estate Compact",
+    "description": "The landowners keep their fields and pay for the roads across them. Cheap to build on, slow to grow.",
+    "category": "right",
+    "folder": "Example Mod",
+
+    "cost_per_turn": 4,
+    "implementation_turns": 2,
+    "propaganda_duration": 0,
+
+    "compass_shift": { "economic": 14, "social": -4 },
+    "requirements": {
+      "min_economic": -20, "max_economic": 100,
+      "min_social": -100, "max_social": 100
+    },
+
+    "levers": {
+      "industryCostPct": 10,
+      "passiveIncome": 6,
+      "popGrowthPct": -0.3,
+      "migrationRate": -5
+    },
+
+    "effects": {
+      "minority_growth_rate": 0.0,
+      "immigration_boost": 0.0,
+      "pacification_cost": 0.0,
+      "unrest_reduction": -0.01,
+      "public_opinion_shift": 0.0,
+      "target_minority": ""
+    },
+
+    "incompatible_with": ["land_reform", "com_example:land_and_liberty"],
+
+    "tradeoffs": {
+      "gains": [
+        "Industry cost -10%",
+        "+6/turn income"
+      ],
+      "costs": [
+        "-4/turn income",
+        "Population growth -0.3%/turn",
+        "Migration -5%",
+        "Unrest +1.0%",
+        "Economic +14",
+        "Social -4"
+      ]
+    },
+
+    "aiVisible": false
+  }
+]

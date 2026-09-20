@@ -261,6 +261,115 @@ struct PolicyRules {
                   "and a negative cost lever makes it dearer, as the document says");
             reset();
         }
+
+        // Hand the id back. The document's example IS the first doctrine in
+        // sdk/examples/custom-doctrine, and the next section adds it under the
+        // mod's own name -- catalogue ids are global, so leaving this one
+        // claimed would refuse that add and read as a broken example.
+        check(modContentBridge().remove((uint32_t)odcontent::Kind::Doctrine,
+                                        modId, id),
+              "and the id is released again");
+        check(find(id) == nullptr, "leaving the catalogue as it was");
+    }
+
+
+    /// The shipped example mod's doctrines, run through the game.
+    ///
+    /// sdk/examples/custom-doctrine adds two doctrines and nothing else, and
+    /// its build produces a .odmod nothing in this suite loads. So the data it
+    /// ships is checked here instead, against the same parser and the same
+    /// conflict rule the game uses.
+    ///
+    /// The case worth having is the ONE-SIDED conflict. The example declares
+    /// itself incompatible with land_reform, a doctrine it does not own and
+    /// cannot edit -- which is every mod's position with respect to the shipped
+    /// catalogue. If the rule only read the pair off the shipped side, the
+    /// example's conflict would be decoration, and a country could hold both.
+    void exampleMod(const std::string& dataDir) {
+        printf("\nsdk/examples/custom-doctrine\n");
+
+        const std::string path =
+            dataDir + "../sdk/examples/custom-doctrine/doctrines.json";
+        std::ifstream f(path);
+        if (!f) {
+            check(false, "the example mod's doctrines.json is where it was (" + path + ")");
+            return;
+        }
+        std::stringstream buf; buf << f.rdbuf();
+
+        nlohmann::json arr;
+        try {
+            arr = nlohmann::json::parse(buf.str());
+        } catch (const std::exception& e) {
+            check(false, std::string("doctrines.json parses: ") + e.what());
+            return;
+        }
+        check(arr.is_array() && !arr.empty(), "it is a non-empty array");
+        if (!arr.is_array() || arr.empty()) return;
+
+        game.installModBridges();
+        const std::string modId = "com.example.custom-doctrine";
+        bool allAdded = true;
+        std::vector<std::string> ids;
+        for (const auto& e : arr) {
+            const std::string id = e.value("id", "");
+            ids.push_back(id);
+            if (!modContentBridge().add((uint32_t)odcontent::Kind::Doctrine,
+                                        modId, id, e.dump(), 1))
+                allAdded = false;
+        }
+        check(allAdded, "every doctrine in it is accepted");
+        check(ids.size() == 2, "there are two of them");
+        if (ids.size() != 2) return;
+
+        for (const auto& id : ids)
+            check(find(id) != nullptr, "'" + id + "' is in the catalogue");
+        if (!find(ids[0]) || !find(ids[1])) return;
+
+        // Each one holdable on its own merits, so a refusal below can only be
+        // the conflict. Same reason makeAlwaysAffordable exists.
+        for (const auto& id : ids) {
+            Policy* p = find(id);
+            p->costPerTurn = 0;
+            p->minEcon = -1000; p->maxEcon = 1000;
+            p->minSoc  = -1000; p->maxSoc  = 1000;
+        }
+        makeAlwaysAffordable("land_reform");
+
+        // --- the mod's own pair, stated on both sides ---
+        reset();
+        game.enactPolicy(cid, ids[0], -1, "");
+        check(holds(ids[0]), "the first can be enacted");
+        check(!game.canCountryEnactPolicy(cid, *find(ids[1])),
+              "and the second is then refused");
+
+        reset();
+        game.enactPolicy(cid, ids[1], -1, "");
+        check(holds(ids[1]), "and the other way round");
+        check(!game.canCountryEnactPolicy(cid, *find(ids[0])),
+              "the first is refused in turn");
+
+        // --- THE ONE-SIDED CONFLICT WITH SHIPPED CONTENT ---
+        const Policy* shipped = find("land_reform");
+        check(shipped != nullptr, "land_reform is in the shipped catalogue");
+        if (!shipped) { reset(); return; }
+
+        // The shipped doctrine says nothing about the mod, and cannot: a mod
+        // does not edit data/policies.json. This is the asymmetry the rule has
+        // to survive.
+        const bool shippedNamesIt =
+            std::find(shipped->incompatibleWith.begin(),
+                      shipped->incompatibleWith.end(),
+                      ids[1]) != shipped->incompatibleWith.end();
+        check(!shippedNamesIt, "and says nothing about the mod's doctrine");
+
+        reset();
+        game.enactPolicy(cid, "land_reform", -1, "");
+        check(holds("land_reform"), "land_reform can be enacted");
+        check(!game.canCountryEnactPolicy(cid, *find(ids[1])),
+              "and the mod's conflicting doctrine is refused on the mod's word alone");
+
+        reset();
     }
 
     void run() {
@@ -859,6 +968,7 @@ int main(int argc, char** argv) {
     t.assimilation();
     t.survivesASave();
     t.docExample(dataDir);
+    t.exampleMod(dataDir);
 
     printf("%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;

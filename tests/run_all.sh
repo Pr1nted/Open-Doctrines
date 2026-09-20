@@ -420,11 +420,20 @@ while IFS= read -r m; do
                 echo "FAIL  $rel (does not load)"; fail=1; continue ;;
         esac
     }
-    if grep -q '"UI"' "$(dirname "$m")/MANIFEST.json" 2>/dev/null; then
-        if "$bin/odmod-check" "$m" --revoke UI >/dev/null 2>&1; then
-            echo "FAIL  $rel (loaded with UI revoked -- capability not enforced)"; fail=1; continue
+    # Revoking a declared capability must refuse the mod: every wasm import
+    # resolves at instantiation, so a module that imports one it was not
+    # granted cannot be linked. Checked for Content as well as UI, because a
+    # mod that declares a capability and imports nothing from it would pass
+    # this silently -- which is what a wrongly named import looks like.
+    revoked_ok=1
+    for capname in UI Content; do
+        grep -q "\"$capname\"" "$(dirname "$m")/MANIFEST.json" 2>/dev/null || continue
+        if "$bin/odmod-check" "$m" --revoke "$capname" >/dev/null 2>&1; then
+            echo "FAIL  $rel (loaded with $capname revoked -- capability not enforced)"
+            fail=1; revoked_ok=0; break
         fi
-    fi
+    done
+    [ $revoked_ok -eq 1 ] || continue
     echo "ok    $rel"
 done < <(find "$root/sdk" -name "*.odmod" -not -path "*/node_modules/*" | sort)
 [ $found -eq 1 ] || echo "skip  no example mods built yet"

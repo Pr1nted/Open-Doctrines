@@ -2918,6 +2918,9 @@ endif()
 # the point.
 add_executable(OdmodCheck
     tools/odmod_check.cpp
+    # The catalogue behind gearbox:content, so a content mod's adds succeed in
+    # the dry run instead of every one reading as refused.
+    src/ModContent.cpp
     src/mods/ModPackage.cpp
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp

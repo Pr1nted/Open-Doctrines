@@ -28,6 +28,9 @@ try() {   # try <label> <script...>
 }
 
 try C              "$root/sdk/examples/hello-panel/build.sh"
+# A content mod, not a panel one: no UI, no hooks, two doctrines. Built
+# here so a change to the Content bindings has to keep it compiling.
+try "C (content)"  "$root/sdk/examples/custom-doctrine/build.sh"
 try C++            "$root/sdk/cpp/build.sh"
 try AssemblyScript "$root/sdk/assemblyscript/build.sh"
 try Rust           "$root/sdk/rust/build.sh"

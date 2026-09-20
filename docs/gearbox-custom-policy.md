@@ -11,6 +11,13 @@ through, not a second reading of the same fields.
 That is the whole mechanism. There is no separate mod format to learn, and no
 field that works from the file but not from a mod.
 
+**A working one ships with the SDK:** `sdk/examples/custom-doctrine` adds two
+doctrines and nothing else — no panel, no turn hook, 3.4 KB of wasm. Its
+content lives in `doctrines.json`, in the format below, and `build.sh` turns
+that file into the table the C reads, so the doctrines stay data you can edit
+and diff. `PolicyRulesTest` loads that same file and checks the doctrines
+behave in a real game.
+
 ---
 
 ## The complete definition
@@ -113,9 +120,12 @@ doctrine that shifts the compass out of its own requirement box stays in force;
 requirements are checked when you enact, not every turn.
 
 `incompatible_with` names doctrines that cannot be held alongside this one.
-**State it on both sides.** The rule is symmetric in the engine, but a pair that
-names each other only once is how the shipped data used to let a country hold
-both halves of a contradiction depending on the order it picked them in.
+**One side is enough.** The engine reads the pair from either member, which is
+the only thing that could work for a mod: you cannot edit `data/policies.json`
+to make `land_reform` name you back. Declaring a conflict with shipped content
+binds it all the same, and `sdk/examples/custom-doctrine` is tested for exactly
+that. Within your own set, naming both sides is still worth doing — it is what
+a reader of your data expects, and it survives one of the two being removed.
 
 ### What it changes: levers
 
@@ -287,9 +297,18 @@ politics screen that turn; nobody has to reload.
 build/odmod-check mymod.odmod
 ```
 
-loads the mod the way the game does and reports what it exported and what it
-asked for. A doctrine whose JSON does not parse is refused by `contentAdd` and
-logged as `[CONTENT] <your mod>: doctrine '<id>' could not be read`.
+loads the mod the way the game does, reports what it exported and what it asked
+for, and prints **what it actually put in the catalogue**:
+
+```
+content added (2)
+  doctrine      com_example:estate_compact               persist
+  doctrine      com_example:land_and_liberty             persist
+```
+
+Nothing under that heading means nothing was added, whatever the mod's own log
+says. A doctrine whose JSON does not parse is refused by `contentAdd` and logged
+by the game as `[CONTENT] <your mod>: doctrine '<id>' could not be read`.
 
 Then play it: the doctrine appears under its `folder` on the politics screen,
 with its own `tradeoffs` printed underneath and, if the country's compass is
