@@ -1026,10 +1026,21 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         pAlloc = (pacIt != m_countryPacification.end()) ? pacIt->second : 0.0f;
     }
     cs.researchCost = cs.total * rAlloc;
-    // The doctrines pay part of this. Floored at zero: a rebate larger than
-    // the bill buys nothing back, it does not become income.
-    cs.pacificationCost = std::max(0.0f,
-                                   cs.total * pAlloc - pacificationRebate(countryId));
+    // The doctrines pay part of this.
+    //
+    // THE CLAMP IS INSIDE THE `if`, and that is the whole point. Written as an
+    // unconditional std::max(0, bill - rebate) this was NOT inert with the flag
+    // off: a country whose total income is negative -- which is most of them at
+    // some point, and the AI runs its treasury at zero -- used to get a
+    // NEGATIVE pacification cost, and clamping that to zero raised its
+    // expenses. It moved the reference decision count on 1914:FRA seed 13579 by
+    // 12.2%, inside a commit whose message said nothing moved.
+    //
+    // A flagged mechanic has to be bit-identical when it is off. If clamping a
+    // negative bill is a fix, it is a separate one, with its own measurement.
+    cs.pacificationCost = cs.total * pAlloc;
+    if (const float rebate = pacificationRebate(countryId); rebate > 0.0f)
+        cs.pacificationCost = std::max(0.0f, cs.pacificationCost - rebate);
     float totalAlloc = cs.researchCost + cs.pacificationCost;
     if (totalAlloc > affordable && totalAlloc > 0) {
         float scale = affordable / totalAlloc;
@@ -1169,8 +1180,11 @@ void Game::refreshIncomeCache() {
             pAlloc = (pacIt != m_countryPacification.end()) ? pacIt->second : 0.0f;
         }
         cs.researchCost = cs.total * rAlloc;
-        cs.pacificationCost = std::max(0.0f,
-                                       cs.total * pAlloc - pacificationRebate(cid));
+        // Same shape as the player path above, and for the same reason: the
+        // clamp only exists when there is a rebate to clamp against.
+        cs.pacificationCost = cs.total * pAlloc;
+        if (const float rebate = pacificationRebate(cid); rebate > 0.0f)
+            cs.pacificationCost = std::max(0.0f, cs.pacificationCost - rebate);
         float totalAlloc = cs.researchCost + cs.pacificationCost;
         if (totalAlloc > affordable && totalAlloc > 0) {
             float scale = affordable / totalAlloc;
