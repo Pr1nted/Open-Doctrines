@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.example.first-doctrine",
+  "name": "My First Doctrine",
+  "version": "1.0.0",
+  "description": "Adds one doctrine to the politics screen. The smallest mod there is.",
+  "authors": ["your name here"],
+  "gearbox": "1.3",
+  "modules": ["Core", "Content", "WasiStub"],
+  "limits": { "memoryPages": 128, "fuelPerTurn": 1000000 }
+}

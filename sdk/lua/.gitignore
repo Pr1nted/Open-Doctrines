@@ -4,4 +4,4 @@
 /.lua-src/
 
 # Generated from main.lua on every build; never edit by hand.
-/examples/hello-panel/script.h
+/examples/*/script.h

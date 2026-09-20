@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.example.custom-doctrine-lua",
+  "name": "Custom Doctrine (Lua)",
+  "version": "1.0.0",
+  "description": "Example mod: adds two doctrines to the politics screen and nothing else. Written in Lua.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.3",
+  "modules": ["Core", "Content", "WasiStub"],
+  "limits": { "memoryPages": 128, "fuelPerTurn": 1000000 }
+}
