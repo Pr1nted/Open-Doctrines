@@ -30254,3 +30254,120 @@ PENDING COMMIT (src/ai/AISystem.cpp, src/ai/AISystem.h, plus the docs):
     is 0-11% of the world's purchases, 1939:NOR cannot qualify at all,
     and the buyers are middling states rather than great powers. Keyed
     by isoA3 with the bench seat marked; inert under both gates.
+
+## 405 — iteration: what does the world DO with the doctrines (backlog item 103)
+
+PRE-REGISTERED, written before any run.
+
+THE QUESTION, which journal 404 handed over. Mode 3 gives the scored seat +52 rating while the seat buys 3-11% of the
+world's doctrines. So the gain is what the OTHER 89-97% does. The candidate mechanism has been sitting in this loop's
+memory since journal 385: AI_MAX_CONCURRENT_WARS is 1, a country in a stalled war holds its slot forever, and an attack
+modifier should make wars DECISIVE. Decisive wars end; ended wars free slots; a world with free slots starts new wars.
+
+THE INSTRUMENT (OD_WARLIFE, off by default, ~50 lines). Once a turn, after updateWorld() has rebuilt m_warWith from the
+relation graph, take the set of foreign war-pairs (rebels excluded, as everywhere else here). A pair not seen last turn is
+a war STARTED; a pair that has gone is a war ENDED and contributes its length. At exit: started, ended, still open, mean
+length, mean concurrent wars, turns observed -- every rate with its count (memory rates-need-counts). It reads one map and
+writes only statics: no RNG draw, no game state.
+
+INERTNESS, three gates, and each must match to the digit or the patch is reverted (paths: src/ai/AISystem.cpp,
+src/ai/AISystem.h; pre-edit copies scratchpad/pre405-AISystem.{cpp,h}):
+  1. reflex off, census off      -> 2684914276584272262/81340   (the reference, six commits old)
+  2. reflex =3, census off       -> 5437539366637326401/99152   (journal 403/404)
+  3. **reflex =3, census ON      -> 5437539366637326401/99152**  -- the one that proves the census itself is inert.
+
+RUNS. 1914:FRA:rung and modern:CHN:rung -- the seats with the largest land gain (+8.09) and the most firings (31) -- four
+seeds each (13579, 1149194796, 1383750554, 58722078), both arms, census on. 16 runs, ~15 minutes. No bench rows: the
+rating this explains is already measured four times.
+
+STATISTIC AND VERDICT RULE, fixed now. Per world: wars started, wars ended, mean war length. **The SLOT STORY IS
+SUPPORTED if mean war length falls under =3 on at least 3 of 4 seeds on BOTH seats** (null is 2 of 4 per seat; 3-of-4 on
+two seats independently is p = 0.31^2 under a fair coin, so this is a screen and not a proof, and it is registered as
+one). **It is REFUTED if length does not fall on either seat.** Anything else is mixed and will be written as mixed.
+
+PREDICTION, committed. **Mean war length falls and wars started rises, on both seats.** Rough size: length down 10-25%,
+starts up by a similar fraction, because the reflex fires 10-31 times in these worlds against a few dozen wars.
+**The alternative I will not be able to separate here** is consolidation -- wars ending because the loser is annexed
+rather than because the winner wins faster. Both produce shorter wars. Separating them needs conquest counts per war,
+which this instrument does not have, and that is the next item if the screen passes.
+
+RESULT (journal 405). The pre-registration above was written before any run.
+
+**FIRST: HEAD DOES NOT COMPILE, AND IT IS THIS LOOP'S PATCH THAT IS HALF-COMMITTED.** The attribution build below failed
+with `no member named 's_doctrineReflexByCountry' in 'AISystem'` at AISystem.cpp:13770. Commit **d435926** ("Content: one
+.add for every catalogue, and the AI has to be invited") took journal 404's AISystem.**cpp** hunk and left the
+AISystem.**h** declaration behind. Local builds still work because that declaration is sitting uncommitted in the working
+tree; a clean checkout or CI cannot build the server target. **Third time in this sequence** (9a0ff43, a744106, d435926),
+and the first one that breaks the build. The repair is two lines, already in the working tree, listed under PENDING
+COMMIT. For the user: this is not something the loop can fix, because fixing it means committing.
+
+**INERTNESS: the registered gates FAILED AS WRITTEN and the instrument is nonetheless inert.** All three hashes moved
+together against references that had held for six commits:
+
+    gate 1  reflex off, census off   2904055102330604147/91296   (was 2684914276584272262/81340)
+    gate 2  reflex =3,  census off    742276098712025459/130092  (was 5437539366637326401/99152)
+    gate 3  reflex =3,  census ON     742276098712025459/130092  -- IDENTICAL to gate 2
+
+Gate 2 = gate 3 already says the census moves nothing, but that is an argument and the registered rule wanted a number, so
+the build was repeated WITHOUT the census (HEAD's own .cpp, plus only the declaration its commit dropped): **pure HEAD
+gives 2904055102330604147/91296 and 742276098712025459/130092 -- the same two values, to the digit.** The patch is inert;
+**the BUILD moved the references**, and the decision count rose 81,340 -> 91,296, **+12.2%**. The commits in between are
+764f5e5 (the pacification rebate and the AI manpower ceiling) and 976d457 (an unaudited effects block). Those are the new
+reference triples for 1914:FRA seed 13579 and every later journal should quote them.
+
+**AND THAT PUTS A DATE ON THE +52.** Journals 399-403 measured the doctrine reflex on builds whose France decisions were
+9,956 fewer per game. Nothing here says the gain is gone -- but it was measured on a world that has since changed by more
+than a tenth of its decisions, and the ship question should not be answered from those numbers alone. Filed as item 104.
+
+THE CENSUS, 16 runs, two seats x four seeds x both arms, on the attributed build:
+
+    1914:FRA:rung   started      ended       mean length    mean concurrent   seat score
+      OFF -> =3     119.5 -> 122.3   109.0 -> 109.5   **31.4 -> 25.2**   15.70 -> 16.81   17.5 -> 19.8
+      shorter on **4 of 4** seeds (null 2 of 4)
+    modern:CHN:rung
+      OFF -> =3     **634.8 -> 741.0**  592.0 -> 699.3   24.7 -> 22.4   66.23 -> 65.94   14.6 -> 8.1
+      shorter on **2 of 4** seeds
+
+VERDICT, by the rule fixed before the run: **MIXED, and it is written as mixed.** The screen asked for 3 of 4 on BOTH
+seats; France gives 4 of 4, China gives 2 of 4. Pooled over the eight paired worlds, wars are shorter in 6 of 8 (sign test
+p 0.145) and the mean war is **4.2 turns shorter**. So the direction is consistent and the registered screen is not met.
+
+**WHAT CHINA SHOWS INSTEAD IS THE SAME STORY IN THE OTHER VARIABLE.** On the modern map the world runs ~66 concurrent
+wars; under the rule it starts **106 more wars and ends 107 more** at UNCHANGED concurrency. That is throughput rising
+while the number of slots stays fixed -- which is what "wars end sooner and free the slot" means, expressed as turnover
+rather than as length. Memory stalled-wars-lock-the-war-slot predicted exactly this, and this is the first direct
+measurement of it. It does not upgrade the verdict, because the statistic was not the registered one.
+
+**DO NOT READ CHINA'S SEAT SCORE HERE.** 14.6 -> 8.1 on four seeds, on the seat this loop has repeatedly recorded as
+scoring 500 or 0 (memory capped-small-par-seats-are-coins). The 48-seed bench says CHN land +4.77 at p 0.004 and that is
+the number of record; four seeds is not a re-measurement of it and is quoted only to show the runs happened.
+
+MY PREDICTION: **half right.** I predicted shorter wars AND more starts on both seats. Wars are shorter in the means on
+both and by the registered count on one; starts rise on China by 17% and are flat on France (+2.3%). I also registered in
+advance that this instrument cannot separate "the winner wins faster" from "the loser is annexed", and it cannot -- that
+needs conquest counts per war, which is item 105.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (pre-edit copies scratchpad/pre405-AISystem.{cpp,h}),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop405/ (ignored). No bench rows written. model.bin 4a137043.
+
+VERDICT ON THE INSTRUMENT: **KEEP.** Off by default, inert under three gates (two of them proved against a census-free
+build of the same source), and it produced the loop's first measurement of war turnover.
+
+**THE BUILD REPAIR IS COMMITTED, at the user's instruction, as eafc3ab** "Declare the counter its own commit left out".
+Two lines, `src/ai/AISystem.h` only -- the header was reduced to HEAD's own content plus journal 404's declaration before
+staging, so the census declarations below are NOT in it, and the other editor's concurrent work on Game.h,
+Game_Policies.cpp, Game_Render.cpp, Game_Screenshots.cpp and data/lang/en.json was not touched (`--only` on one path;
+`git status` confirmed a clean index afterwards). **Verified rather than assumed: a fresh export of the new HEAD builds
+the server target** (ad25b549). The working tree was restored to its full journal-405 state immediately after.
+
+PENDING COMMIT — the census, still uncommitted:
+
+    THE CENSUS (src/ai/AISystem.cpp, src/ai/AISystem.h, plus the docs):
+
+    Count the wars a world starts, ends and holds open
+
+    OD_WARLIFE, off by default: one pass a turn over the war graph, with
+    started / ended / still-open / mean length / mean concurrency at exit.
+    Built for backlog 103 and it answers half of it -- under the doctrine
+    reflex wars are 4.2 turns shorter across eight worlds, and the modern
+    map starts and ends 106 more of them at unchanged concurrency.

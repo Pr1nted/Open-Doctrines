@@ -1078,8 +1078,34 @@ opponent is not a league.
    inside N24's floor again.
    (Ran as it367-rusher8-s2, stored.)
 
-103. **The seat gains +52 while buying 3-11% of the doctrines. What does the
-   WORLD do with them?** Journal 404 settled who buys and left the bigger question
+105. **Separate "the winner wins faster" from "the loser is annexed."** Journal
+   405 measured wars getting shorter under the doctrine reflex and registered in
+   advance that its instrument cannot tell those apart -- both shorten a war. Needs
+   conquest counts per war (provinces changing hands, and whether a side ceased to
+   exist) alongside the existing OD_WARLIFE pairs. Only worth doing if the mechanism
+   matters for a decision; the ship question does not depend on it.
+
+104. **FOR THE USER, and it dates the +52. The reference decision count moved
+   +12.2% on 2026-09-20.** 1914:FRA seed 13579 ran 81,340 decisions from journal 382
+   through journal 404 and runs **91,296** on build 764f5e5; the new reference triples
+   are **2904055102330604147/91296** (reflex off) and **742276098712025459/130092**
+   (=3). The commits in between are 764f5e5 (pacification rebate, AI manpower ceiling)
+   and 976d457 (an unaudited effects block). Journals 399-403's +52 was measured on
+   the old world. Nothing says it is gone -- the two arms would both move -- but
+   **before shipping mode 3 it is worth one re-measurement on the current build**:
+   48 rung seeds, both arms, ~2.5 h, the same statistic as journal 402.
+
+103. ~~**The seat gains +52 while buying 3-11% of the doctrines. What does the
+   WORLD do with them?**~~ **HALF ANSWERED journal 405: turnover, and the screen is
+   MIXED.** New instrument OD_WARLIFE (off by default, inert under three gates). Eight
+   paired worlds: wars are shorter in 6 of 8 (sign test p 0.145), mean 4.2 turns
+   shorter. 1914:FRA 31.4 -> 25.2 turns, shorter on 4 of 4 seeds; modern:CHN 24.7 ->
+   22.4, shorter on only 2 of 4, but it **starts 106 more wars and ends 107 more at
+   unchanged concurrency** -- the same slot story told as throughput instead of
+   length. The registered screen wanted 3 of 4 on both seats and got 4 of 4 and 2 of
+   4, so this is recorded as partial support, not as settled. Successor: 105.
+
+   ORIGINAL: Journal 404 settled who buys and left the bigger question
    open: mode 3's gain to the scored seat is almost entirely indirect. Two candidates,
    neither tested -- decisive wars free the one-war slot (memory
    stalled-wars-lock-the-war-slot, and journals 385-392 built the instruments), or an
@@ -1314,9 +1340,12 @@ opponent is not a league.
    is structurally inert. Nothing measured says the rule harms a small exposed seat -- 1914:SWE at 32 seeds twice says it
    does not -- but "both guard seats clear" overstates what was run, and the honest count is one guard seat cleared and one
    that the rule cannot reach.
+   **(15) AND THE WORLD MOVED UNDER IT, journal 405: the reference decision count is up 12.2% on build 764f5e5.** All of
+   (12)-(14) was measured before that. See item 104 -- one 48-seed re-measurement on the current build is the honest
+   precondition for shipping.
    **FOR THE USER, the only open question on this rule: ship it on by default?** Two rung runs on disjoint seeds and two
    binaries (+52, floor ~26), 1914:SWE unharmed at 64 seeds across two sets, 1914:FRA:rush clear at 64, 1939:NOR:hood
-   inert by construction. The change is
+   inert by construction -- all on builds older than 2026-09-20. The change is
    one default in AISystem.cpp (mode 0 -> 3). The loop does not flip a default on its own.
    **Remaining in the queue:** 86 (OD_CAMPAIGN_HOMEFIRST as a rate, ~128 seeds, ~9 h).
    ORIGINAL (2h): pin388, N24 rule
