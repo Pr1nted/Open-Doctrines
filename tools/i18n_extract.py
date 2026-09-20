@@ -96,6 +96,11 @@ _ID_PATTERNS = (
     re.compile(r"^[a-z]+[A-Z][A-Za-z]*$"),                # waitUntil, camelCase
     # THE SHAPES THE `const char*` RULE BELOW WOULD OTHERWISE SWEEP IN.
     re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$"),            # opendoctrines-turn-seal
+    # SCREAMING_SNAKE, which is an environment variable or a macro and never a
+    # label. The note above already says env-var names are meant to be turned
+    # away here; the shape was simply missing, so the first one written -- a
+    # development switch -- was offered for translation.
+    re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$"),       # OD_DEV_VIEW, GEARBOX_MODS_DIR
     re.compile(r"^[^\s]*/[^\s]*$"),                       # STDmaps/1939.odmap
     re.compile(r"^[.;a-z0-9]*;[.;a-z0-9]*$"),             # .ogg;.mp3;.qoa;.wav
     # JSON, not a sentence -- and matched TIGHTLY. `^[{[]` alone also caught
