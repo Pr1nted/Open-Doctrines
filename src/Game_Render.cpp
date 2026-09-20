@@ -2082,15 +2082,11 @@ void Game::drawCountryPanel() {
         for (auto& pr : m_pendingRecruitments)
             if (pr.provinceId == selPid && pr.type == m_recruitType) hasPendingRecruit = true;
 
-        long long maxRecruit = provPop / 5;  // 20% of population per turn max
-        // Apply research modifiers (increases conscription cap)
-        float conscriptionMod = 1.0f + getTotalEffect("conscriptionPct") / 100.0f;
-        maxRecruit = (long long)(maxRecruit * conscriptionMod);
-        // Unrest reduces willingness to be conscripted
-        float unrestFactor = 1.0f - getProvinceRebellionChance(selPid);
-        if (unrestFactor < 0.1f) unrestFactor = 0.1f;
-        maxRecruit = (long long)(maxRecruit * unrestFactor);
-        if (maxRecruit < 0) maxRecruit = 0;
+        // The cap itself lives in Game::recruitCap, beside the resolver that
+        // spends the men. It used to be computed here and differently in the
+        // AI, which is how the conscription lever came to bind the player
+        // alone. See that function.
+        long long maxRecruit = recruitCap(provPop, selPid, m_playerCountryId);
 
         // ─── WHICH KIND THIS LEVY IS ───────────────────────────────────────
         //

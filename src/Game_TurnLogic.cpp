@@ -3497,6 +3497,49 @@ void Game::processShipDisembarks(int countryId) {
     }
 }
 
+// === recruitCap ===
+//
+// ONE CAP, ASKED IN ONE PLACE. It was written twice and the two copies did not
+// agree: the recruitment panel multiplied pop/5 by the conscription lever and
+// by an unrest factor, and the AI used a bare pop/5. So Mass Mobilisation's
+// +45% manpower, Conscription's +30%, and thirteen more doctrines plus eight
+// research nodes raised the human's ceiling and no AI's, for as long as they
+// have existed. Neither copy was wrong on its own, which is why nothing caught
+// it -- a rule that lives in Game_Render binds the local player and nobody
+// else, and the resolver is where it stops being a rule about one seat.
+//
+// The cap is not re-applied in processRecruitments, which clamps only to the
+// population actually there. It binds where an order is CREATED, so both
+// callers have to ask.
+long long Game::recruitCap(long long pool, int provinceId, int countryId) const {
+    // Whether the AI is bound by the same ceiling as the player. OFF: the AI
+    // keeps its bare pool/5 and the player keeps the panel's formula, so the
+    // decision hash does not move. ON, the two callers are one rule.
+    static const bool shared = std::getenv("OD_AI_RECRUIT_CAP") &&
+                               atoi(std::getenv("OD_AI_RECRUIT_CAP")) != 0;
+
+    long long cap = pool / 5;                    // 20% of the pool per turn
+    if (cap <= 0) return 0;
+
+    const bool isPlayer = (countryId == m_playerCountryId);
+    if (!isPlayer && !shared) return cap;        // exactly what the AI had
+
+    // FLOAT, not double, in both multiplications. The panel did it in float --
+    // `long long * float` is a float multiply in C++ -- and this has to be the
+    // same number for the player it was before, down to the last bit, or the
+    // "nothing moved" claim below is only approximately true.
+    const float mod = 1.0f + getTotalEffect("conscriptionPct", countryId) / 100.0f;
+    cap = (long long)(cap * mod);
+
+    // Unrest reduces willingness to be conscripted. Floored at 0.1 so a
+    // province in open revolt still yields something rather than nothing.
+    float unrestFactor = 1.0f - getProvinceRebellionChance(provinceId);
+    if (unrestFactor < 0.1f) unrestFactor = 0.1f;
+    cap = (long long)(cap * unrestFactor);
+
+    return std::max(0LL, cap);
+}
+
 // === processRecruitments ===
 void Game::processRecruitments(int countryId) {
     for (size_t i = 0; i < m_pendingRecruitments.size(); ) {

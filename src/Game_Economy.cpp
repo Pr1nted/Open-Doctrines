@@ -813,6 +813,32 @@ void Game::processProduction(int countryId) {
 // The multiplier is floored at zero so a future stack of -60% levers cannot
 // turn income negative; a NEGATIVE passiveIncome is allowed through, because
 // "treasury -4/turn" is a cost a doctrine is entitled to impose.
+float Game::pacificationRebate(int countryId) const {
+    // OFF BY DEFAULT. It moves a country's expenses, which moves net income,
+    // which the AI's every money decision reads -- so it changes play and every
+    // bench baseline, and the flag is how that gets measured before it ships.
+    static const bool on = std::getenv("OD_PACIFICATION_REBATE") &&
+                           atoi(std::getenv("OD_PACIFICATION_REBATE")) != 0;
+    if (!on) return 0.0f;
+
+    const int cid = (countryId >= 0) ? countryId : m_playerCountryId;
+    float total = 0.0f;
+    for (const auto& ap : m_activePolicies) {
+        // In force only, the same test getTotalEffect applies to levers: a
+        // doctrine still being implemented has not started paying for itself.
+        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        for (const auto& p : m_allPolicies)
+            if (p.id == ap.policyId) {
+                // Scaled by tenure, as every other doctrine effect is, so the
+                // two halves of a doctrine cannot grow apart. policyTenure is
+                // 1.0 with its own flag off.
+                total += p.effect.pacificationCost * policyTenure(ap);
+                break;
+            }
+    }
+    return total;
+}
+
 void Game::applyIncomeLevers(CountryIncomeSnapshot& cs, int countryId) const {
     cs.resource *= std::max(0.0f, 1.0f + getTotalEffect("resourceModPct", countryId) / 100.0f);
     cs.pop      *= std::max(0.0f, 1.0f + getTotalEffect("popModPct", countryId) / 100.0f);
@@ -992,7 +1018,10 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
         pAlloc = (pacIt != m_countryPacification.end()) ? pacIt->second : 0.0f;
     }
     cs.researchCost = cs.total * rAlloc;
-    cs.pacificationCost = cs.total * pAlloc;
+    // The doctrines pay part of this. Floored at zero: a rebate larger than
+    // the bill buys nothing back, it does not become income.
+    cs.pacificationCost = std::max(0.0f,
+                                   cs.total * pAlloc - pacificationRebate(countryId));
     float totalAlloc = cs.researchCost + cs.pacificationCost;
     if (totalAlloc > affordable && totalAlloc > 0) {
         float scale = affordable / totalAlloc;
@@ -1131,7 +1160,8 @@ void Game::refreshIncomeCache() {
             pAlloc = (pacIt != m_countryPacification.end()) ? pacIt->second : 0.0f;
         }
         cs.researchCost = cs.total * rAlloc;
-        cs.pacificationCost = cs.total * pAlloc;
+        cs.pacificationCost = std::max(0.0f,
+                                       cs.total * pAlloc - pacificationRebate(cid));
         float totalAlloc = cs.researchCost + cs.pacificationCost;
         if (totalAlloc > affordable && totalAlloc > 0) {
             float scale = affordable / totalAlloc;

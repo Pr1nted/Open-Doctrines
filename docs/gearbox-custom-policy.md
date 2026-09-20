@@ -137,7 +137,7 @@ here is summed and never spent.
 |---|---|
 | `armyAtkPct`, `armyDefPct` | land combat |
 | `navyAtkPct`, `navyDefPct`, `navySpeedPct` | naval combat and transit |
-| `conscriptionPct` | the per-turn recruitment cap — **player only**, see below |
+| `conscriptionPct` | the per-turn recruitment cap — the AI only with `OD_AI_RECRUIT_CAP=1`, see below |
 | `conscriptionCostPct` | price of recruiting |
 | `maintenanceCostPct` | price of keeping an army |
 | `industryCostPct` | price of building industry |
@@ -160,13 +160,20 @@ here is summed and never spent.
 Levers from research and from every active doctrine are summed, so yours adds to
 whatever else the country holds.
 
-> **`conscriptionPct` binds the player and not the AI.** It is read in exactly
-> one place — the recruitment panel, where it multiplies the 20%-of-population
-> cap — and the AI computes its own cap from `pop / 5` with no modifier. Fifteen
-> shipped doctrines grant it, including Mass Mobilisation at +45. A doctrine
-> built around it is a doctrine that makes the human stronger and leaves every
-> AI where it was. `tools/check_effect_fields.py` counts readers, not call
-> sites, so it reports this one as live.
+> **`conscriptionPct` reaches the AI only behind a flag, and changes nothing
+> when it does.** The cap was written twice — the recruitment panel multiplied
+> `pop/5` by this lever and by an unrest factor, the AI used a bare `pop/5` —
+> so fifteen doctrines and eight research nodes sold manpower to the human
+> alone. Both callers now go through `Game::recruitCap`, and
+> `OD_AI_RECRUIT_CAP=1` makes the AI's ceiling the same rule as the player's:
+> an AI holding Mass Mobilisation goes from 20,000 to 29,000 men in a province.
+>
+> It does not show up in play, because **the AI's recruitment is money-bound,
+> not manpower-bound**. Over 120 turns, `recruit: too poor/small` is 58.5% of
+> all the AI's no-ops (14,431 of them) — the order is already clamped to 20% of
+> treasury long before the manpower cap bites. The decision hash is byte-identical
+> with the flag on and off. Raising a ceiling nobody reaches changes nothing;
+> what binds is the money.
 
 ### What it changes: `effects`
 
@@ -177,18 +184,25 @@ The narrower, population-facing half:
 | `unrest_reduction` | subtracted from unrest each turn (0.015 = 1.5%) |
 | `public_opinion_shift` | nudges every owned province's compass each turn |
 | `immigration_boost` | added to the country's immigration draw |
-| `pacification_cost` | **nothing. Parsed and read by no one** — see below |
+| `pacification_cost` | a rebate on the pacification bill — **only with `OD_PACIFICATION_REBATE=1`**, see below |
 | `minority_growth_rate` | growth of `target_minority`, and **does nothing unless `target_minority` is set** |
 | `target_minority` | the group the two minority fields apply to |
 
-> **`pacification_cost` does not work.** `parsePolicyJson` copies it into
-> `Policy::effect.pacificationCost` and nothing ever reads that field. Seven
-> shipped doctrines set it — Secret Police at 10, Officer Purge at 8, Internal
-> Passports at 6 — and none of them has ever changed a pacification bill. Do not
-> build a doctrine around it. It is the same fault `maintenanceCostPct` and
-> `navyCostPct` had; `tools/check_effect_fields.py` now reports it on every
-> run, and it stays reported until somebody spends it in a resolver or takes it
-> off the doctrines that sell it.
+> **`pacification_cost` works behind a flag.** For most of this game's life
+> `parsePolicyJson` copied it into `Policy::effect.pacificationCost` and nothing
+> read that field — seven shipped doctrines set it (Secret Police 10, Officer
+> Purge 8, Internal Passports 6) and none had ever changed a pacification bill.
+>
+> `OD_PACIFICATION_REBATE=1` makes it what its own label says: a **rebate on the
+> pacification bill**, not extra suppression. Secret Police takes a country's
+> bill from 281.04 to 271.04 — exactly the 10 it advertises — and the rebellion
+> resolver, which is tuned and whose terms are not savings, is untouched. The
+> bill floors at zero; a rebate larger than the bill does not become income.
+>
+> Off by default: it moves expenses, which moves net income, which every AI
+> money decision reads. On the 1914 seat the decision hash does not move with
+> it on, because no AI holds one of those seven — a bench on a seat where one
+> does is the remaining step.
 
 ### `tradeoffs` is prose, not arithmetic
 

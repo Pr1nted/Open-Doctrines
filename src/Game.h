@@ -3269,6 +3269,46 @@ public:
      */
     void applyIncomeLevers(CountryIncomeSnapshot& cs, int countryId) const;
 
+    /**
+     * What this country's doctrines contribute toward its pacification bill.
+     *
+     * `effects.pacification_cost` is advertised by seven shipped doctrines as
+     * a GAIN -- Secret Police says "Pacification budget +10/turn" in its own
+     * tradeoffs -- and was parsed into Policy::effect.pacificationCost and read
+     * by NOTHING. Every one of those doctrines charged its cost_per_turn and
+     * delivered nothing for it. The same fault as maintenanceCostPct and
+     * navyCostPct, in the half of a doctrine's definition no tool audited.
+     *
+     * A rebate, not extra suppression. The field is named for the cost and the
+     * label says "budget", so it buys the same suppression for less money and
+     * leaves the rebellion resolver -- which is tuned, and whose terms are not
+     * savings -- untouched.
+     *
+     * Behind OD_PACIFICATION_REBATE; returns 0 with the flag off, so the bill
+     * is bit-identical to what it was.
+     */
+    float pacificationRebate(int countryId) const;
+
+    /**
+     * How many men one province may raise in a turn.
+     *
+     * `pool` is what the caller counts as available there, which is not the
+     * same on both sides: the panel reads the province population, the AI reads
+     * availableManpower, which nets off orders already placed this turn. That
+     * difference is deliberate and is not this function's to reconcile.
+     *
+     * IT EXISTS BECAUSE THE CAP WAS WRITTEN TWICE. The panel multiplied
+     * pop/5 by conscriptionPct and by an unrest factor; the AI used a bare
+     * pop/5. So fifteen doctrines and eight research nodes sold manpower --
+     * Mass Mobilisation at +45% -- to the player alone, and no AI has ever
+     * raised a man more for any of them. A rule that lives in Game_Render
+     * binds the local player and nobody else.
+     *
+     * Behind OD_AI_RECRUIT_CAP. With the flag off the AI gets pool/5 exactly
+     * as before and the player gets the panel's own formula, so nothing moves.
+     */
+    long long recruitCap(long long pool, int provinceId, int countryId) const;
+
     void shiftCountryCompass(int countryId, float econDelta, float socDelta);
     // ── WHO GOVERNS ──
     /**

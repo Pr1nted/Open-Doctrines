@@ -6452,7 +6452,11 @@ std::string AISystem::execWar(int cid, int action) {
             // Game::availableManpower. Orders already placed this turn have
             // spent part of the pool even though the men have not arrived yet.
             const long long pop = g.availableManpower(pid);
-            long long maxRecruit = pop / 5;
+            // The same ceiling the player's panel applies, from the same
+            // function. With OD_AI_RECRUIT_CAP off this is pop / 5, exactly as
+            // it was; with it on, the conscription lever and the province's
+            // unrest bind the AI too. See Game::recruitCap.
+            long long maxRecruit = g.recruitCap(pop, pid, cid);
             // Spend at most 20% of treasury on this order. Clamp BEFORE the
             // cast: a runaway treasury times 10000 overflows long long (UB).
             long long budgetCount = (long long)std::min((double)INT32_MAX,

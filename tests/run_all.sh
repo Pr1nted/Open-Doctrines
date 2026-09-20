@@ -154,6 +154,10 @@ OD_POLITICAL_CAPITAL=1 run "political capital"  "$bin/PolicyRulesTest" "$root/da
 OD_MINORITY_WORST=1 run "minority grievance"  "$bin/PolicyRulesTest" "$root/data/"
 OD_WELLFED_ROOM=1 run "living standards"  "$bin/PolicyRulesTest" "$root/data/"
 OD_INDOCTRINATION=1 run "assimilation"  "$bin/PolicyRulesTest" "$root/data/"
+# Both arms of the two effects that were advertised and never applied. The
+# off arm above already proved they are inert; this proves they arrive.
+OD_PACIFICATION_REBATE=1 OD_AI_RECRUIT_CAP=1 \
+  run "dead effects, flags on"  "$bin/PolicyRulesTest" "$root/data/"
 # Where a factory may stand: the capacity rule's shape, its pinned constants,
 # and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
 run "industry capacity" "$bin/IndustryCapacityTest"

@@ -65,6 +65,14 @@ RESOLVER = os.path.join(ROOT, "src", "Game_Research.cpp")
 # a reason, it is the fault this tool looks for.
 ALLOWED_DEAD = {}
 
+# The same, for the "effects" block. Empty, and pacification_cost is NOT in it:
+# Game::pacificationRebate reads the field in plain code, so the search finds it.
+# A reader that only runs behind an env flag is still a reader as far as this
+# tool can tell -- it counts call sites, not whether the flag is on, which is
+# why conscriptionPct reads as live in the table above while binding the player
+# alone. An entry here must name the flag and say why the search cannot see it.
+ALLOWED_DEAD_EFFECTS = {}
+
 
 def fields_the_resolver_knows():
     with open(RESOLVER) as f:
@@ -154,8 +162,11 @@ def check_effects_block():
                  if (p.get("effects") or {}).get(key) not in (None, 0, 0.0, "")]
         mark = ""
         if not r:
-            dead.append((key, sells))
-            mark = "   <-- NEVER APPLIED"
+            if key in ALLOWED_DEAD_EFFECTS:
+                mark = f"  (allowed: {ALLOWED_DEAD_EFFECTS[key]})"
+            else:
+                dead.append((key, sells))
+                mark = "   <-- NEVER APPLIED"
         print(f"{key:<24} {len(sells):>10}   {len(r)}{mark}")
     return dead
 

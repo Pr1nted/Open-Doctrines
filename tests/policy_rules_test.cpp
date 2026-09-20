@@ -425,6 +425,147 @@ struct PolicyRules {
         reset();
     }
 
+
+    /// The two effects that were advertised and never applied.
+    ///
+    /// Both are behind a flag and both must be INERT with it off, so each case
+    /// is run twice against the same state: the off arm proves nothing moved,
+    /// the on arm proves the number arrives. Asserting only the second would
+    /// pass for a change that fires unconditionally.
+    void deadEffectsNowLive() {
+        const bool rebateOn = getenv("OD_PACIFICATION_REBATE") &&
+                              atoi(getenv("OD_PACIFICATION_REBATE")) != 0;
+        const bool capOn = getenv("OD_AI_RECRUIT_CAP") &&
+                           atoi(getenv("OD_AI_RECRUIT_CAP")) != 0;
+        printf("\ndead effects (rebate %s, AI cap %s)\n",
+               rebateOn ? "ON" : "off", capOn ? "ON" : "off");
+
+        // A country with GROUND. `cid` is whatever came first out of the map,
+        // and on 1914 that is a country holding no provinces and earning
+        // nothing -- against which a pacification bill is 0 before and after,
+        // and the measurement below would have agreed with itself while
+        // measuring nothing at all.
+        // The ownership index is built by the turn loop, and this fixture loads
+        // a map without running one -- so provincesOf answered "none" for every
+        // country on the map, and the search below found nobody. Building it is
+        // what the game does at the top of a turn.
+        game.rebuildCountryProvinceIndex();
+
+        int rich = 0;
+        size_t most = 0;
+        for (const auto& [id, c] : game.m_countries.getAll()) {
+            if (id <= 0 || id >= 65530) continue;
+            const size_t n = game.provincesOf(id).size();
+            if (n > most) { most = n; rich = id; }
+        }
+        check(rich != 0 && most > 0, "a country that holds provinces was found");
+        if (rich == 0) return;
+
+        // ── effects.pacification_cost ──
+        //
+        // secret_police advertises "Pacification budget +10/turn" as a GAIN and
+        // nothing read the field. Measured on the country's expenses, which is
+        // where the money actually is, not on the parsed field.
+        reset();
+        const Policy* sp = find("secret_police");
+        check(sp != nullptr, "secret_police is in the catalogue");
+        if (sp) {
+            const float advertised = sp->effect.pacificationCost;
+            check(advertised > 0.0f,
+                  "and still advertises a pacification budget (" +
+                  std::to_string(advertised) + ")");
+
+            // Pacification has to be funded, or there is no bill to rebate.
+            m_pacBefore = game.m_pacificationAllocation;
+            m_playerBefore = game.m_playerCountryId;
+            game.m_pacificationAllocation = 0.5f;
+            game.m_playerCountryId = rich;
+
+            auto bill = [&]() {
+                game.m_countryIncomeCache.clear();
+                game.invalidateIncomeCache();
+                return game.computeCountryIncome(rich).pacificationCost;
+            };
+            const float before = bill();
+            check(before > 0.0f,
+                  "and is actually funding pacification (" +
+                  std::to_string(before) + "), or there is no bill to rebate");
+
+            makeAlwaysAffordable("secret_police");
+            game.enactPolicy(rich, "secret_police", -1, "");
+            for (auto& ap : game.m_activePolicies)
+                if (ap.policyId == "secret_police") ap.turnsRemaining = 0;
+            const float after = bill();
+
+            if (rebateOn) {
+                check(after < before,
+                      "holding it lowers the pacification bill");
+                const float saved = before - after;
+                check(saved > advertised * 0.99f && saved < advertised * 1.01f,
+                      "by the amount it advertises (" + std::to_string(saved) +
+                      " vs " + std::to_string(advertised) + ")");
+            } else {
+                check(after == before,
+                      "the bill does not move with the flag off (" +
+                      std::to_string(before) + " -> " + std::to_string(after) + ")");
+            }
+            game.m_pacificationAllocation = m_pacBefore;
+            game.m_playerCountryId = m_playerBefore;
+            reset();
+        }
+
+        // ── conscriptionPct, for somebody who is not the player ──
+        //
+        // The cap is asked for a country that is NOT m_playerCountryId, which
+        // is the case the panel's copy could never answer.
+        int other = 0;
+        size_t otherMost = 0;
+        for (const auto& [id, c] : game.m_countries.getAll()) {
+            if (id <= 0 || id >= 65530 || id == game.m_playerCountryId) continue;
+            const size_t n = game.provincesOf(id).size();
+            if (n > otherMost) { otherMost = n; other = id; }
+        }
+        check(other != 0, "there is a second country to ask about");
+        if (other == 0) return;
+
+        int pid = 0;
+        for (int p : game.provincesOf(other)) { pid = p; break; }
+        check(pid != 0, "and it holds a province");
+        if (pid == 0) return;
+
+        const long long pool = 100000;
+        const long long plain = game.recruitCap(pool, pid, other);
+
+        // Give that country a doctrine that grants manpower, in force.
+        const Policy* mob = find("mass_mobilisation");
+        check(mob != nullptr && mob->levers.count("conscriptionPct") == 1,
+              "mass_mobilisation still grants conscriptionPct");
+        if (!mob || !mob->levers.count("conscriptionPct")) return;
+
+        ActivePolicy ap;
+        ap.policyId = "mass_mobilisation";
+        ap.countryId = other;
+        ap.turnsRemaining = 0;              // in force
+        game.m_activePolicies.push_back(ap);
+        game.m_countryActivePolicyIndices[other].push_back(
+            (int)game.m_activePolicies.size() - 1);
+
+        const long long withDoctrine = game.recruitCap(pool, pid, other);
+        if (capOn) {
+            check(withDoctrine > plain,
+                  "an AI holding Mass Mobilisation may raise more men (" +
+                  std::to_string(plain) + " -> " + std::to_string(withDoctrine) + ")");
+        } else {
+            check(withDoctrine == plain,
+                  "the AI's ceiling does not move with the flag off (" +
+                  std::to_string(plain) + " -> " + std::to_string(withDoctrine) + ")");
+        }
+        reset();
+    }
+
+    float m_pacBefore = 0.0f;
+    int m_playerBefore = 0;
+
     void run() {
         // ── 1. the shipped data states every pair on both sides ──
         {
@@ -1022,6 +1163,7 @@ int main(int argc, char** argv) {
     t.survivesASave();
     t.docExample(dataDir);
     t.exampleMod(dataDir);
+    t.deadEffectsNowLive();
 
     printf("%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;
