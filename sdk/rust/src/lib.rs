@@ -41,9 +41,14 @@
 //! * **Strings are borrowed `(ptr, len)`, never null-terminated.** `&str` maps
 //!   onto that exactly, which is the one place this ABI is nicer in Rust than
 //!   in C. The host does not keep your pointer past the call.
-//! * **You will be granted less than you asked for.** A revoked capability does
-//!   not unlink the import; it makes it return a neutral value — 0, `None`,
-//!   nothing drawn. Handle that instead of assuming success.
+//! * **A revoked capability does not load at all.** Every import must resolve
+//!   when the module is instantiated, so a mod that imports `gearbox:ui` after
+//!   the user revoked UI is REFUSED, with a message naming the module — it does
+//!   not run with UI returning neutral values. Ask only for what you use, and
+//!   split anything optional into a separate mod. What a call can still return
+//!   neutrally is a capability you hold that has nothing to give: no panel
+//!   while headless, an asset that is not there, a country that does not
+//!   exist.
 //! * **`is_headless` is not hypothetical.** Self-play training runs thousands
 //!   of turns with no renderer. Every UI import no-ops there but your logic
 //!   still runs and still burns fuel.
@@ -648,10 +653,12 @@ impl Panel {
 
 /// Register a panel. Call this from `mod_load`, not from your draw hook.
 ///
-/// `None` means no panel, which happens when the game is headless, when the
-/// user revoked UI in Advanced, or when you already hold 8 panels. **None of
-/// those is an error.** Degrade — log it and run quiet — rather than refusing
-/// the load or aborting.
+/// `None` means no panel, which happens when the game is headless or when you
+/// already hold 8 panels. **Neither is an error.** Degrade — log it and run
+/// quiet — rather than refusing the load or aborting.
+///
+/// Revoking UI does not reach here: the mod is refused at instantiation and
+/// `mod_load` never runs.
 ///
 /// The title is truncated to 64 bytes.
 pub fn panel_register(title: &str, min_w: u32, min_h: u32) -> Option<Panel> {
@@ -698,6 +705,96 @@ pub fn asset_read(name: &str, buf: &mut [u8]) -> Fill {
         written: if full < cap { full } else { cap },
         full,
     }
+}
+
+// ==================================================================== Content
+
+/// Which catalogue an entry belongs to. The values are ABI and only appended.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum Kind {
+    Doctrine = 0,
+    Research = 1,
+    TroopType = 2,
+    Artillery = 3,
+    DistrictLaw = 4,
+}
+
+/// Whether the definition is written into the save.
+///
+/// `Persist` keeps it there after your mod is gone, so a country that adopted
+/// your doctrine can still say what it adopted. `Hollow` is redeclared on every
+/// load, which is right for content you generate from something else.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum Mode {
+    Hollow = 0,
+    Persist = 1,
+}
+
+/// Add or replace one entry in a catalogue.
+///
+/// `definition` is the SAME JSON the game's own data file uses — a doctrine
+/// goes through the parser `data/policies.json` goes through, not a second
+/// reading of the same fields. `"aiVisible": true` inside it opts the entry
+/// into the AI's options; leaving it out keeps the entry player-only, which is
+/// the honest default for something the model was never trained against.
+///
+/// Returns false for a malformed id, an unreadable definition, or an id
+/// ANOTHER mod already owns — catalogue ids are global, because a country
+/// records the doctrine it holds by id and two meanings for one id would make
+/// a save ambiguous. Re-adding your own updates it.
+pub fn content_add(kind: Kind, id: &str, definition: &str, mode: Mode) -> bool {
+    unsafe {
+        ffi::content_add(
+            kind as u32,
+            id.as_ptr(),
+            id.len() as u32,
+            definition.as_ptr(),
+            definition.len() as u32,
+            mode as u32,
+        ) != 0
+    }
+}
+
+/// Remove one of your own entries. False if it was not yours.
+pub fn content_remove(kind: Kind, id: &str) -> bool {
+    unsafe { ffi::content_remove(kind as u32, id.as_ptr(), id.len() as u32) != 0 }
+}
+
+/// How many entries of this kind YOU have added.
+pub fn content_count(kind: Kind) -> u32 {
+    unsafe { ffi::content_count(kind as u32) }
+}
+
+/// The id of your entry at `index` within a kind, sorted. Two-call sizing,
+/// same contract as [`country_name_into`].
+pub fn content_id_at<'a>(kind: Kind, index: u32, buf: &'a mut [u8]) -> &'a str {
+    let cap = buf.len();
+    let full = unsafe {
+        ffi::content_id_at(kind as u32, index, buf.as_mut_ptr(), cap as u32)
+    } as usize;
+    let n = if full < cap { full } else { cap };
+    core::str::from_utf8(&buf[..n]).unwrap_or("")
+}
+
+/// Which mod owns an id in a catalogue, or empty if nobody does.
+///
+/// Answers about ANOTHER mod's content too, on purpose: a collision you cannot
+/// see coming is one you cannot avoid.
+pub fn content_owner_of<'a>(kind: Kind, id: &str, buf: &'a mut [u8]) -> &'a str {
+    let cap = buf.len();
+    let full = unsafe {
+        ffi::content_owner_of(
+            kind as u32,
+            id.as_ptr(),
+            id.len() as u32,
+            buf.as_mut_ptr(),
+            cap as u32,
+        )
+    } as usize;
+    let n = if full < cap { full } else { cap };
+    core::str::from_utf8(&buf[..n]).unwrap_or("")
 }
 
 // ==================================================================== Exports

@@ -30,6 +30,10 @@ import {
   _button,
   _assetSize,
   _assetRead,
+  _contentAdd,
+  _contentRemove,
+  _contentCount,
+  _contentIdAt,
 } from "./raw_generated";
 // ----------------------------------------------------------- raw imports --
 
@@ -147,4 +151,54 @@ export function assetRead(name: string): ArrayBuffer {
   const out = new ArrayBuffer(<i32>need);
   _assetRead(changetype<usize>(nb), nb.byteLength, changetype<usize>(out), need);
   return out;
+}
+
+// --------------------------------------------------------------- Content --
+
+/** Catalogue ids, as the ABI numbers them. Only ever appended to. */
+export const DOCTRINE: u32 = 0;
+export const RESEARCH: u32 = 1;
+export const TROOP_TYPE: u32 = 2;
+export const ARTILLERY: u32 = 3;
+export const DISTRICT_LAW: u32 = 4;
+
+/** Redeclared on every load. */
+export const HOLLOW: u32 = 0;
+/** Written into the save, so it outlives the mod that added it. */
+export const PERSIST: u32 = 1;
+
+/**
+ * Add or replace one entry in a catalogue. The definition is the SAME JSON the
+ * game's own data file uses; `"aiVisible": true` inside it opts the entry into
+ * the AI's options.
+ *
+ * False for a malformed id, an unreadable definition, or an id another mod
+ * already owns — catalogue ids are global, because a country records the
+ * doctrine it holds by id. Re-adding your own updates it.
+ */
+export function contentAdd(kind: u32, id: string, definition: string, mode: u32): bool {
+  const i = String.UTF8.encode(id);
+  const d = String.UTF8.encode(definition);
+  return _contentAdd(kind, changetype<usize>(i), i.byteLength,
+                     changetype<usize>(d), d.byteLength, mode) != 0;
+}
+
+/** Remove one of your own entries. False if it was not yours. */
+export function contentRemove(kind: u32, id: string): bool {
+  const i = String.UTF8.encode(id);
+  return _contentRemove(kind, changetype<usize>(i), i.byteLength) != 0;
+}
+
+/** How many entries of this kind you have added. */
+export function contentCount(kind: u32): u32 {
+  return _contentCount(kind);
+}
+
+/** The id of your entry at an index within a kind, sorted. */
+export function contentIdAt(kind: u32, index: u32): string {
+  const need = _contentIdAt(kind, index, 0, 0);
+  if (need == 0) return "";
+  const buf = new ArrayBuffer(<i32>need);
+  const got = _contentIdAt(kind, index, changetype<usize>(buf), need);
+  return String.UTF8.decode(buf.slice(0, <i32>(got < need ? got : need)));
 }

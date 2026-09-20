@@ -237,9 +237,12 @@ pub fn provinceOwner(p: Province) Country {
 
 // ---- UI ------------------------------------------------------------------
 
-/// Register a panel and return its handle. Returns 0 when headless, when UI was
-/// revoked, or when you already hold 8 panels — none of which is fatal, so
-/// degrade rather than trap. Titles are truncated to 64 bytes.
+/// Register a panel and return its handle. Returns 0 when headless or when you
+/// already hold 8 panels — neither is fatal, so degrade rather than trap.
+/// Titles are truncated to 64 bytes.
+///
+/// Revoking UI does not reach here: a module importing gearbox:ui is refused at
+/// instantiation, so mod_load never runs.
 ///
 /// Call this from `mod_load`, not from your draw hook.
 pub fn panelRegister(title: []const u8, min_w: u32, min_h: u32) Panel {

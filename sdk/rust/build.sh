@@ -51,8 +51,13 @@ echo "mod.wasm: $(wc -c < "$ex/mod.wasm" | tr -d ' ') bytes"
 # the tool has been built.
 if [ -x "$root/build/odmod-check" ]; then
     "$root/build/odmod-check" "$ex/hello-panel-rust.odmod"
-    # Rehearse the user revoking UI in Advanced, which a mod must survive.
-    "$root/build/odmod-check" "$ex/hello-panel-rust.odmod" --revoke UI
+    # Rehearse the user revoking UI in Advanced. The mod is REFUSED -- every
+    # import must resolve when the module is instantiated, so a module that
+    # imports gearbox:ui cannot load without the UI grant. That refusal is the
+    # pass here; --expect-refusal says so. Before that flag existed this line
+    # made the Rust build exit non-zero every single time, for doing the right
+    # thing, and the build script has never once succeeded to the end.
+    "$root/build/odmod-check" "$ex/hello-panel-rust.odmod" --revoke UI --expect-refusal
 else
     echo "note: build/odmod-check not built; skipping validation"
 fi

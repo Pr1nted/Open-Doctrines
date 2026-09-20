@@ -12,6 +12,7 @@
     "Core",
     "UI",
     "GameState.Read",
+    "Content",
     "WasiStub"
   ],
   "limits": {

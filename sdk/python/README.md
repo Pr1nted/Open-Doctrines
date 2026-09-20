@@ -148,8 +148,15 @@ import must resolve whether or not the script calls it:
 | Flag | Default | Manifest capability |
 |---|---|---|
 | `GBX_WITH_UI` | on | `UI` |
-| `GBX_WITH_GAMESTATE` | on | `GameState.Read` |
+| `GBX_WITH_GAMESTATE_READ` | on | `GameState.Read` |
 | `GBX_WITH_ASSETS` | **off** | `Assets` |
+| `GBX_WITH_CONTENT` | **off** | `Content` |
+
+Every other capability in `sdk/abi.json` has a flag of the same shape --
+`GBX_WITH_POLITICS_READ`, `GBX_WITH_MILITARY_WRITE`, `GBX_WITH_RESEARCH_READ`
+and so on, the capability's name upper-cased with `.` as `_`. They are all off
+by default, for the reason above: a group compiled in is an import the manifest
+must also declare, and asking for more than you use is what gets a mod refused.
 
 After building, `tools/wasm_imports.py mod.wasm` prints what you actually
 imported; keep `MANIFEST.json` in step with that.

@@ -4,6 +4,12 @@
 #
 #   sdk/js/build_mod.sh <mod-dir> <script.js> <output-name.odmod>
 #
+# GBX_DEFS in the environment adds capability groups, e.g.
+#   GBX_DEFS="-DGBX_WITH_CONTENT=1" sdk/js/build_mod.sh ...
+# Every wasm import must resolve at instantiation, so a group compiled in is a
+# module the MANIFEST must also declare; the two move together or the mod is
+# refused at load.
+#
 # <mod-dir> must contain MANIFEST.json. The script must already be JavaScript --
 # TypeScript is compiled by the caller (see examples/hello-panel-ts/build.sh),
 # because QuickJS only speaks JS and doing the tsc step here would hide that.
@@ -93,6 +99,7 @@ emcc -O2 -sSTANDALONE_WASM --no-entry \
      -DNDEBUG -D_GNU_SOURCE \
      -DCONFIG_VERSION="\"$QJS_VER\"" \
      -DEMSCRIPTEN=1 \
+     ${GBX_DEFS:-} \
      -ffunction-sections -fdata-sections -Wl,--gc-sections \
      -I "$sdk" -I "$jsdir" -I "$src" -I "$moddir" \
      -o "$moddir/mod.wasm" \

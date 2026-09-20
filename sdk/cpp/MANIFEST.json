@@ -6,6 +6,6 @@
   "description": "The hello-panel example, written in C++.",
   "authors": ["OpenDoctrines"],
   "gearbox": "1.0",
-  "modules": ["Core", "UI", "GameState.Read"],
+  "modules": ["Core", "UI", "GameState.Read", "Content"],
   "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
 }

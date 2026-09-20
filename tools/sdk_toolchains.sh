@@ -36,7 +36,13 @@ case "$(uname -m)" in
 esac
 
 print_env() {
-    echo "export PATH=\"$TC/zig:$TC/wabt/bin:$TC/tinygo/bin:$TC/cargo/bin:$TC/maven/bin:$TC/typescript/node_modules/.bin:\$PATH\""
+    # $TC/go/bin comes FIRST so the pinned Go wins over whatever is installed
+    # system-wide. TinyGo refuses a Go newer than it knows -- 0.41.1 accepts
+    # 1.19 through 1.26 -- so a machine with a current Go cannot build the Go
+    # SDK at all unless this shadows it. That is not hypothetical: it is why
+    # the Go example could not be rebuilt on the machine this was written on.
+    echo "export PATH=\"$TC/go/bin:$TC/zig:$TC/wabt/bin:$TC/tinygo/bin:$TC/cargo/bin:$TC/maven/bin:$TC/typescript/node_modules/.bin:\$PATH\""
+    echo "export GOROOT=\"$TC/go\""
     echo "export RUSTUP_HOME=\"$TC/rustup\" CARGO_HOME=\"$TC/cargo\""
     # TinyGo refuses to build without wasm-opt. AssemblyScript's install brings
     # Binaryen with it, so reuse that rather than installing it twice.
@@ -129,9 +135,35 @@ else:
     fi
 fi
 
+# ---- Go (pinned, for TinyGo) -----------------------------------------------
+#
+# PINNED ON PURPOSE, and not "whatever go is on the machine".
+#
+# TinyGo refuses a Go newer than the one it was built against: 0.41.1 accepts
+# 1.19 through 1.26 and stops with "requires go version 1.19 through 1.26, got
+# go1.27" on anything later. A developer whose system Go has moved on therefore
+# cannot build the Go SDK example at all -- which is exactly what happened on
+# the machine this block was written on, where Go 1.27.1 made one of the eleven
+# comparable languages unbuildable and so unverifiable.
+#
+# The ceiling is TinyGo's, so the pin tracks TinyGo rather than Go: when TinyGo
+# supports a newer Go, raise this and say so in the same commit.
+GO_PIN="go1.26.8"
+step "Go $GO_PIN (pinned; TinyGo 0.41.1 accepts 1.19-1.26)"
+if [ -x "$TC/go/bin/go" ]; then
+    have=$("$TC/go/bin/go" version 2>/dev/null | awk '{print $3}')
+    if [ "$have" = "$GO_PIN" ]; then echo "  already installed"; ok=$((ok+1));
+    else echo "  $have installed, want $GO_PIN -- remove $TC/go to change it"; ok=$((ok+1)); fi
+else
+    GOOS_N=$(echo "$OS" | sed 's/macos/darwin/')
+    GURL="https://go.dev/dl/${GO_PIN}.${GOOS_N}-${GOARCH}.tar.gz"
+    curl -sSL "$GURL" -o go.tgz && tar xf go.tgz && rm go.tgz && good \
+      || fail "download/extract $GURL"
+fi
+
 # ---- TinyGo ----------------------------------------------------------------
 step "TinyGo"
-if ! command -v go >/dev/null 2>&1; then
+if ! [ -x "$TC/go/bin/go" ] && ! command -v go >/dev/null 2>&1; then
     fail "Go is required by TinyGo and is not installed"
 elif [ -x "$TC/tinygo/bin/tinygo" ]; then echo "  already installed"; ok=$((ok+1)); else
     TURL=$(curl -sSL https://api.github.com/repos/tinygo-org/tinygo/releases/latest \

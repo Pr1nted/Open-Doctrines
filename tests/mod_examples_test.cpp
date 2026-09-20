@@ -13,6 +13,16 @@
 // thing, so the command lists must agree. Where a language disagrees, its
 // binding is wrong -- and the diff says how.
 //
+// One thing here is not about drawing. Every example also adds a doctrine
+// through gearbox:content in mod_load and draws the count back, and this file
+// installs a real odcontent::Registry behind that import. content.add crosses
+// as SIX arguments -- kind, id, id_len, json, json_len, mode -- and a binding
+// that ordered them wrongly would compile, link and run: the add would fail
+// quietly and the count would come back 0. Nothing else in the suite would
+// notice. The registry is inspected directly afterwards, so the test does not
+// merely see agreement between languages but checks the exact id, the exact
+// definition and the persistence mode that arrived.
+//
 // Build target: ModExamplesTest. Takes the sdk directory as argv[1].
 
 #include "mods/ModManager.h"
@@ -20,6 +30,7 @@
 #include "mods/ModHost.h"
 #include "mods/ModPackage.h"
 #include "mods/ModRuntime.h"
+#include "ModContent.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -131,6 +142,9 @@ struct Capture {
     std::vector<std::string> afterClick; // same, after one click on the button
     size_t rects = 0;
     bool   loaded = false;
+    // What this mod put in the catalogue, if anything.
+    std::string doctrineId, doctrineJson;
+    bool   doctrinePersists = false;
     // Not a failure: this mod cannot run on THIS build, and says so precisely.
     // CPython trips WAMR's fast-interpreter INT16_MAX operand-stack limit, so
     // the Python example only loads under -DOD_MODS_FAST_INTERP=OFF. Reporting
@@ -170,9 +184,54 @@ std::string shortLabel(const std::string& path, const std::string& sdk) {
     return r;
 }
 
+// The catalogue every example writes its doctrine into. One registry, cleared
+// before each mod runs, so a mod can only ever see its own entry and the ids
+// do not have to differ per language.
+odcontent::Registry g_content;
+
+void installContentBridge() {
+    ModContentBridge con;
+    con.add = [](uint32_t kind, const std::string& mod, const std::string& id,
+                 const std::string& json, uint32_t mode) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return false;
+        // The game reads "aiVisible" out of the definition here. This test does
+        // not link a JSON parser, and does not need one: what it is checking is
+        // that the six arguments arrived in the right order and intact, and it
+        // verifies the definition byte for byte below.
+        return g_content.add((odcontent::Kind)kind, mod, id, json,
+                             mode == 1 ? odcontent::Mode::Persist
+                                       : odcontent::Mode::Hollow,
+                             false);
+    };
+    con.remove = [](uint32_t kind, const std::string& mod, const std::string& id) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return false;
+        return g_content.remove((odcontent::Kind)kind, mod, id);
+    };
+    con.count = [](uint32_t kind, const std::string& mod) {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return (uint32_t)0;
+        return (uint32_t)g_content.countOf((odcontent::Kind)kind, mod);
+    };
+    con.idAt = [](uint32_t kind, const std::string& mod, uint32_t i) -> std::string {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return {};
+        std::vector<std::string> ids;
+        for (const auto& e : g_content.ofMod(mod))
+            if (e.kind == (odcontent::Kind)kind) ids.push_back(e.id);
+        return i < ids.size() ? ids[i] : std::string();
+    };
+    con.ownerOf = [](uint32_t kind, const std::string& id) -> std::string {
+        if (kind >= (uint32_t)odcontent::Kind::Count_) return {};
+        return g_content.ownerOf((odcontent::Kind)kind, id);
+    };
+    modSetContentBridge(con);
+}
+
 Capture drive(const std::string& path, const std::string& sdk) {
     Capture cap;
     cap.label = shortLabel(path, sdk);
+    // Fresh catalogue per mod: ids are global within one, so without this the
+    // second language to run would be refused the id the first claimed -- and
+    // would look like a broken binding rather than a test that shares state.
+    g_content.clear();
 
     static std::vector<std::unique_ptr<ModPackage>> keep;   // instances point in
     keep.push_back(std::make_unique<ModPackage>());
@@ -222,6 +281,17 @@ Capture drive(const std::string& path, const std::string& sdk) {
         else cap.texts.push_back(c.text);
     }
 
+    // What actually reached the catalogue, read straight out of the registry
+    // rather than off the panel. The drawn line says only "one entry"; this
+    // says which entry, with which definition, in which mode.
+    for (const auto& e : g_content.ofMod(pkg.manifest().id)) {
+        if (e.kind != odcontent::Kind::Doctrine) continue;
+        cap.doctrineId = e.id;
+        cap.doctrineJson = e.json;
+        cap.doctrinePersists = e.mode == odcontent::Mode::Persist;
+        break;
+    }
+
     // Second pass with a click inside the button. This is the only thing that
     // exercises gearbox_button's *return value* -- everything above would pass
     // even if a binding always returned 0 from it.
@@ -263,6 +333,7 @@ int main(int argc, char** argv) {
 
     FakeWorld world;
     g_modGame = &world;
+    installContentBridge();
     g_modHost.headless = false;
     g_modHost.screenW = 1600;
     g_modHost.screenH = 900;
@@ -358,6 +429,20 @@ int main(int argc, char** argv) {
         check("country count (3) was read", sawCount);
         check("country name survived two-call sizing", sawName);
         check("treasury (1234.75) was read", sawTreasury);
+
+        // The .add verb, per language. A wrong argument order does not crash
+        // and does not warn: it fails the add, and only this notices.
+        printf("\ncontent.add reached the catalogue\n");
+        for (const auto* c : full) {
+            check(c->label + " added hello:demo",
+                  c->doctrineId == "hello:demo",
+                  c->doctrineId.empty() ? "added nothing" : "added " + c->doctrineId);
+            check(c->label + " sent the definition intact",
+                  c->doctrineJson == "{\"name\":\"Hello Doctrine\"}",
+                  c->doctrineJson);
+            check(c->label + " sent mode PERSIST", c->doctrinePersists,
+                  "arrived as HOLLOW, so the sixth argument did not cross");
+        }
 
         // A click must move every mod to the second country. If a binding gets
         // gearbox_button's return value wrong, its state never advances.

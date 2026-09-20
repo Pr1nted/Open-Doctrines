@@ -70,12 +70,20 @@ int32_t mod_load(void) {
     g_env.size = sizeof g_env;
     gearbox_env(&g_env);
 
+    // Content before the headless check: a catalogue entry has nothing to do
+    // with the renderer. kind 0 is doctrine, mode 1 is PERSIST.
+    if (gearbox_content_add(0, "hello:demo", 10,
+                            "{\"name\":\"Hello Doctrine\"}", 25, 1) == 0)
+        log(GEARBOX_LOG_WARN, "hello-panel-cpp: doctrine refused");
+
     if (g_env.is_headless) {
         log(GEARBOX_LOG_INFO, "hello-panel-cpp: headless, no UI");
         return 0;
     }
     g_panel = gearbox_panel_register("Hello Panel (C++)", 17, 280, 150);
     if (g_panel == 0)
+        // Headless, or the panel limit -- not revocation, which refuses the
+        // mod outright at instantiation.
         log(GEARBOX_LOG_WARN, "hello-panel-cpp: no panel, running quiet");
     return 0;
 }
@@ -118,6 +126,10 @@ void mod_draw_panel(gearbox_panel panel, uint32_t w, uint32_t h) {
         l << Str("Treasury: ") << int64_t(gearbox_country_treasury(c));
         text(panel, 8, 92, 0xB4B4C8FFu, l.str());
     }
+
+    l.clear();
+    l << Str("Doctrines: ") << uint64_t(gearbox_content_count(0));
+    text(panel, 8, 104, 0xB4B4C8FFu, l.str());
 
     if (button(panel, 8, 116, 120, 24, "Next country")) g_cursor++;
 }

@@ -43,8 +43,20 @@
 #ifndef GBX_WITH_UI
 #define GBX_WITH_UI 1
 #endif
-#ifndef GBX_WITH_GAMESTATE
-#define GBX_WITH_GAMESTATE 1
+/* GAMESTATE_READ, not GAMESTATE. The generated bindings gate every group on the
+ * ABI's own capability name, and GameState is two of them; a macro called
+ * GBX_WITH_GAMESTATE switched NOTHING on. turnNumber and every other reader
+ * compiled out, and a script mod died on "attempt to call a nil value (field
+ * 'turnNumber')" at its first draw -- unseen for as long as the .odmod files on
+ * disk predated the split and nothing rebuilt them.
+ *
+ * Read is on, write is not: importing a write you did not declare in
+ * MANIFEST.json is a mod the host refuses at instantiation. Ask for it with
+ * -DGBX_WITH_GAMESTATE_WRITE=1 and declare GameState.Write alongside.
+ * tools/check_script_bindings.sh refuses any GBX_WITH_* here that no generated
+ * group reads, which is what makes this spelling stay correct. */
+#ifndef GBX_WITH_GAMESTATE_READ
+#define GBX_WITH_GAMESTATE_READ 1
 #endif
 #ifndef GBX_WITH_ASSETS
 #define GBX_WITH_ASSETS 0
@@ -254,6 +266,17 @@ static void gbx_open_libs(lua_State *L) {
     lua_pushinteger(L, GEARBOX_LOG_INFO);  lua_setfield(L, -2, "INFO");
     lua_pushinteger(L, GEARBOX_LOG_WARN);  lua_setfield(L, -2, "WARN");
     lua_pushinteger(L, GEARBOX_LOG_ERROR); lua_setfield(L, -2, "ERROR");
+
+#if GBX_WITH_CONTENT
+    /* Catalogue kinds and persistence modes, so a script says CONTENT_DOCTRINE rather than 0. The numbers are ABI; see src/ModContent.h. */
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "CONTENT_DOCTRINE");
+    lua_pushinteger(L, 1); lua_setfield(L, -2, "CONTENT_RESEARCH");
+    lua_pushinteger(L, 2); lua_setfield(L, -2, "CONTENT_TROOP_TYPE");
+    lua_pushinteger(L, 3); lua_setfield(L, -2, "CONTENT_ARTILLERY");
+    lua_pushinteger(L, 4); lua_setfield(L, -2, "CONTENT_DISTRICT_LAW");
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "CONTENT_HOLLOW");
+    lua_pushinteger(L, 1); lua_setfield(L, -2, "CONTENT_PERSIST");
+#endif
 
     lua_setglobal(L, "gearbox");
 }

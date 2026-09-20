@@ -90,6 +90,7 @@ emcc -O2 -sSTANDALONE_WASM --no-entry \
      -sSTACK_SIZE=256KB \
      -sASSERTIONS=0 \
      -DNDEBUG \
+     -DGBX_WITH_CONTENT=1 \
      -ffunction-sections -fdata-sections -Wl,--gc-sections \
      -I "$sdk" -I "$luadir" -I "$src" -I "$here" \
      -include "$luadir/gbx_throw.h" \

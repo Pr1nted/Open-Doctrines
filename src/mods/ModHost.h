@@ -161,6 +161,15 @@ void modSetCountryBridge(const ModCountryBridge& bridge);
 void modSetScriptBridge(const ModScriptBridge& bridge);
 void modSetRenderBridge(const ModRenderBridge& bridge);
 void modSetContentBridge(const ModContentBridge& bridge);
+/**
+ * The installed content bridge.
+ *
+ * For a test that needs the GAME's reading of a definition rather than a second
+ * copy of it: the bridge is where "aiVisible" is taken out of the JSON and
+ * where a new doctrine is pushed into the catalogue, and a test that
+ * reimplemented either would be checking itself.
+ */
+const ModContentBridge& modContentBridge();
 void modSetUiBridge(const ModUiBridge& bridge);
 
 class Game;

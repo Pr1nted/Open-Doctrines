@@ -11,6 +11,13 @@ let panel: GearboxPanel = 0;
 let cursor = 0; // 0-based, as the ABI is
 
 function mod_load(): number {
+  // Content before the headless check: a catalogue entry has nothing to do
+  // with the renderer. PERSIST keeps the definition in the save.
+  if (!gearbox.contentAdd(gearbox.CONTENT_DOCTRINE, "hello:demo",
+                          '{"name":"Hello Doctrine"}', gearbox.CONTENT_PERSIST)) {
+    gearbox.log(gearbox.WARN, "hello-panel: doctrine refused");
+  }
+
   if (gearbox.env().isHeadless) {
     // A training run has no renderer, so registering a panel would be a no-op.
     gearbox.log(gearbox.INFO, "hello-panel: headless, no UI");
@@ -19,8 +26,9 @@ function mod_load(): number {
 
   panel = gearbox.panelRegister("Hello Panel", 280, 150);
   if (panel === 0) {
-    // UI was declared but revoked, or we hit the panel limit. Degrade rather
-    // than throw.
+    // Headless, or we hit the panel limit. Degrade rather than throw. (Not
+    // revocation: a mod whose UI was revoked is refused at instantiation and
+    // never reaches mod_load.)
     gearbox.log(gearbox.WARN, "hello-panel: no panel, running quiet");
   }
   return 0;
@@ -55,6 +63,10 @@ function mod_draw_panel(p: GearboxPanel, w: number, h: number): void {
     gearbox.drawText(p, 8, 92, 0xb4b4c8ff,
                      "Treasury: " + Math.trunc(gearbox.countryTreasury(c)));
   }
+
+  // The doctrine added in mod_load, counted back out of the catalogue.
+  gearbox.drawText(p, 8, 104, 0xb4b4c8ff,
+                   "Doctrines: " + gearbox.contentCount(gearbox.CONTENT_DOCTRINE));
 
   if (gearbox.button(p, 8, 116, 120, 24, "Next country")) {
     cursor++;

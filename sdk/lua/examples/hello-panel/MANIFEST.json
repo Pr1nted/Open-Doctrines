@@ -6,6 +6,6 @@
   "description": "Example mod: shows turn, country count and treasury in a panel. Written in Lua.",
   "authors": ["OpenDoctrines"],
   "gearbox": "1.0",
-  "modules": ["Core", "UI", "GameState.Read", "WasiStub"],
+  "modules": ["Core", "UI", "GameState.Read", "Content", "WasiStub"],
   "limits": { "memoryPages": 128, "fuelPerTurn": 1000000 }
 }

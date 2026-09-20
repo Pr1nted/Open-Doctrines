@@ -105,6 +105,73 @@ def num_kind(spec):
     return "i32" if spec.get("signed") else "u32"
 
 
+# ---------------------------------------------------------- identifiers ----
+#
+# A PARAMETER NAME IS ABI PROSE, NOT AN IDENTIFIER IN ELEVEN LANGUAGES.
+#
+# abi.json names a parameter for what it IS -- country field_add takes a
+# "type", military.write order_army_move moves an army "from" somewhere. Those
+# read correctly in the docs and in C, and they do not compile in Go, Rust or
+# Zig, where `type` is a keyword.
+#
+# This was invisible for as long as it existed: the Go example could not be
+# built at all on a machine whose Go was newer than TinyGo accepts, so nothing
+# ever compiled the emitted `func rawFieldAdd(..., type uint32)`. Pinning the
+# Go toolchain is what made it a syntax error instead of a file nobody read.
+#
+# So the ESCAPE lives here rather than in abi.json: the wire name stays what it
+# says it is, and each language gets a name it can actually parse. Keep these
+# lists to words that can appear as a parameter -- a type name that is merely
+# shadowed (Go's `cap`, `len`) is legal and is deliberately left alone, because
+# renaming it would churn every generated signature to fix nothing.
+RESERVED = {
+    "go":   {"type", "func", "range", "map", "chan", "go", "defer", "select",
+             "package", "import", "interface", "struct", "switch", "case",
+             "default", "fallthrough", "goto", "const", "var", "return",
+             "if", "else", "for", "break", "continue"},
+    "rust": {"type", "in", "fn", "let", "mut", "ref", "move", "impl", "trait",
+             "match", "loop", "where", "crate", "mod", "pub", "use", "self",
+             "super", "box", "dyn", "as", "const", "static", "struct", "enum",
+             "unsafe", "extern", "return", "if", "else", "for", "while"},
+    "zig":  {"type", "fn", "var", "const", "comptime", "align", "defer",
+             "errdefer", "orelse", "catch", "try", "test", "struct", "enum",
+             "union", "error", "anytype", "inline", "export", "extern",
+             "pub", "return", "if", "else", "for", "while", "switch", "and",
+             "or", "usingnamespace", "noalias", "volatile", "linksection"},
+    "as":   {"type", "function", "class", "new", "delete", "in", "of", "this",
+             "super", "null", "true", "false", "const", "let", "var", "return",
+             "if", "else", "for", "while", "switch", "case", "default",
+             "export", "import", "extends", "implements", "instanceof",
+             "typeof", "void", "with", "yield", "namespace"},
+    "c":    {"auto", "break", "case", "char", "const", "continue", "default",
+             "do", "double", "else", "enum", "extern", "float", "for", "goto",
+             "if", "inline", "int", "long", "register", "restrict", "return",
+             "short", "signed", "sizeof", "static", "struct", "switch",
+             "typedef", "union", "unsigned", "void", "volatile", "while"},
+    "java": {"abstract", "assert", "boolean", "break", "byte", "case", "catch",
+             "char", "class", "const", "continue", "default", "do", "double",
+             "else", "enum", "extends", "final", "finally", "float", "for",
+             "goto", "if", "implements", "import", "instanceof", "int",
+             "interface", "long", "native", "new", "package", "private",
+             "protected", "public", "return", "short", "static", "strictfp",
+             "super", "switch", "synchronized", "this", "throw", "throws",
+             "transient", "try", "void", "volatile", "while"},
+    "ts":   {"function", "class", "new", "delete", "in", "of", "this", "super",
+             "null", "true", "false", "const", "let", "var", "return", "if",
+             "else", "for", "while", "switch", "case", "default", "export",
+             "import", "extends", "implements", "instanceof", "typeof", "void",
+             "with", "yield", "enum"},
+}
+
+
+def ident(name, lang):
+    """The parameter name as this language can spell it.
+
+    A trailing underscore, which every one of these languages allows and none
+    gives a meaning to, so the escaped name still reads as the ABI's name."""
+    return name + "_" if name in RESERVED.get(lang, ()) else name
+
+
 def doc_lines(imp):
     """The doc comment, wrapped, with the wire signature appended so a reader
     can always see what actually crosses the boundary."""
@@ -162,9 +229,16 @@ def emit_rust(abi, imports):
                 ty = T[num_kind(p)]
                 if p.get("role") == "ptr":
                     ty = "*mut u8" if is_out_buffer(p) else "*const u8"
-                args.append(f'{p["name"]}: {ty}')
+                args.append(f'{ident(p["name"], "rust")}: {ty}')
             res = imp.get("result")
             ret = f' -> {T[num_kind(res)]}' if res else ""
+            # Same trap as Zig's, with a proper fix available: without
+            # link_name the symbol IS the import name, so a renamed binding
+            # imported "content_add" rather than gearbox:content "add" and the
+            # host refused the module. Assets and Content were unusable from
+            # Rust until this line existed.
+            if binding_name(imp) != imp["name"]:
+                out.append(f'    #[link_name = "{imp["name"]}"]')
             out.append(f'    pub fn {binding_name(imp)}({", ".join(args)}){ret};')
             out.append("")
         out.append("}")
@@ -185,13 +259,35 @@ def emit_zig(abi, imports):
             ty = T[num_kind(p)]
             if p.get("role") == "ptr":
                 ty = "?[*]u8" if is_out_buffer(p) else "?[*]const u8"
-            args.append(f'{p["name"]}: {ty}')
+            args.append(f'{ident(p["name"], "zig")}: {ty}')
         res = imp.get("result")
         # noreturn is load-bearing in Zig, not decoration: it lets the compiler
         # see that control does not come back from abort.
         ret = T[num_kind(res)] if res else ("noreturn" if imp.get("noreturn") else "void")
-        out.append(f'pub extern "{imp["module"]}" fn {binding_name(imp)}'
-                   f'({", ".join(args)}) {ret};')
+        # THE IDENTIFIER IS THE IMPORT NAME. Zig has no link_name, so an
+        # extern fn imports whatever it is called -- and eight imports are
+        # renamed for the binding (gearbox:assets "size" is asset_size,
+        # gearbox:content "add" is content_add), because their bare names
+        # collide with other modules' at file scope.
+        #
+        # Emitting the renamed identifier imported "asset_size" and
+        # "content_add", names no host provides, so a module using either was
+        # REFUSED at instantiation -- which made Assets and Content unusable
+        # from Zig, unnoticed because no example imported either until now.
+        #
+        # So a renamed import is declared inside a namespace, where it keeps
+        # its wire name, and the flat alias is what everything calls.
+        name = binding_name(imp)
+        if name == imp["name"]:
+            out.append(f'pub extern "{imp["module"]}" fn {name}'
+                       f'({", ".join(args)}) {ret};')
+        else:
+            ns = f"_{name}_ns"
+            out.append(f"const {ns} = struct {{")
+            out.append(f'    pub extern "{imp["module"]}" fn {imp["name"]}'
+                       f'({", ".join(args)}) {ret};')
+            out.append("};")
+            out.append(f'pub const {name} = {ns}.{imp["name"]};')
         out.append("")
     return "raw_generated.zig", "\n".join(out)
 
@@ -210,7 +306,7 @@ def emit_go(abi, imports):
         args = []
         for p in imp["params"]:
             ty = "unsafe.Pointer" if p.get("role") == "ptr" else T[num_kind(p)]
-            args.append(f'{p["name"]} {ty}')
+            args.append(f'{ident(p["name"], "go")} {ty}')
         res = imp.get("result")
         ret = f' {T[num_kind(res)]}' if res else ""
         out.append(f'//go:wasmimport {imp["module"]} {imp["name"]}')
@@ -231,7 +327,7 @@ def emit_assemblyscript(abi, imports):
         args = []
         for p in imp["params"]:
             ty = "usize" if p.get("role") == "ptr" else T[num_kind(p)]
-            args.append(f'{p["name"]}: {ty}')
+            args.append(f'{ident(p["name"], "as")}: {ty}')
         res = imp.get("result")
         ret = T[num_kind(res)] if res else "void"
         out.append(f'@external("{imp["module"]}", "{imp["name"]}")')
@@ -258,7 +354,7 @@ def emit_java(abi, imports):
         for p in imp["params"]:
             # Pointers are int offsets into linear memory; see Address.ofData.
             ty = "int" if p.get("role") == "ptr" else T.get(p["type"], p["type"])
-            args.append(f'{ty} {camel(p["name"])}')
+            args.append(f'{ty} {ident(camel(p["name"]), "java")}')
         res = imp.get("result")
         ret = T.get(res["type"], res["type"]) if res else "void"
         out.append(f'    @Import(module = "{imp["module"]}", name = "{imp["name"]}")')
@@ -282,7 +378,7 @@ def emit_typescript(abi, imports):
     for imp in imports:
         for d in doc_lines(imp):
             out.append(f"  // {d}")
-        args = ", ".join(f'{camel(p["name"])}: {T.get(p["type"], "number")}'
+        args = ", ".join(f'{ident(camel(p["name"]), "ts")}: {T.get(p["type"], "number")}'
                          for p in imp["params"])
         res = imp.get("result")
         ret = T.get(res["type"], "number") if res else "void"
@@ -367,7 +463,7 @@ def emit_c(abi, imports):
             out.append(f"/* {d}" if i == 0 else f" * {d}")
         out.append(" */")
         mod = imp["module"].split(":", 1)[1]
-        args = [f'{c_type(p, True, imp)} {p["name"]}' for p in imp["params"]]
+        args = [f'{c_type(p, True, imp)} {ident(p["name"], "c")}' for p in imp["params"]]
         res = imp.get("result")
         ret = c_type(res, False, imp) if res else "void"
         attr = ' __attribute__((noreturn))' if imp.get("noreturn") else ""
@@ -380,7 +476,7 @@ def emit_c(abi, imports):
         for i, d in enumerate(doc_lines(exp)):
             out.append(f"/* {d}" if i == 0 else f" * {d}")
         out.append(" */")
-        args = ", ".join(f'{c_type(p, True, exp)} {p["name"]}'
+        args = ", ".join(f'{c_type(p, True, exp)} {ident(p["name"], "c")}'
                          for p in exp.get("params", [])) or "void"
         res = exp.get("result")
         ret = c_type(res, False, exp) if res else "void"

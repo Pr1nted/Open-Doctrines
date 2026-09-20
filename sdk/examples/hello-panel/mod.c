@@ -1,8 +1,16 @@
 /* Hello Panel — a complete, working OpenDoctrines mod.
  *
  * Shows a panel with the turn number, how many countries are alive, and the
- * treasury of whichever country you step to with the button. Uses three
- * capabilities: Core (log, env), UI (panel), GameState.Read (the world).
+ * treasury of whichever country you step to with the button. Uses four
+ * capabilities: Core (log, env), UI (panel), GameState.Read (the world) and
+ * Content (one doctrine, added in mod_load).
+ *
+ * The doctrine is here for a reason beyond demonstration. Every hello-panel
+ * example adds THE SAME one and draws the count back, and ModExamplesTest
+ * compares what each language drew. content.add takes six arguments -- kind,
+ * id, id_len, json, json_len, mode -- and a binding that ordered them wrongly
+ * would still compile, still link and still run; the add would simply fail and
+ * the count would come back 0. That is the whole reason the line is drawn.
  *
  * Freestanding: no libc, no allocator, no startup code. Everything it needs is
  * in this file, which is the point -- a Tier 1 mod is a couple of kilobytes.
@@ -41,6 +49,14 @@ int32_t mod_load(void) {
     g_env.size = sizeof g_env;
     gearbox_env(&g_env);
 
+    /* Content first: it has nothing to do with the renderer, so it must
+       happen on the headless path too. kind 0 is doctrine, mode 1 is PERSIST
+       -- the save keeps the definition, so a country that adopted it can
+       still say what it adopted after this mod is uninstalled. */
+    if (!gearbox_content_add(0, S("hello:demo"),
+                             S("{\"name\":\"Hello Doctrine\"}"), 1))
+        gearbox_log(GEARBOX_LOG_WARN, S("hello-panel: doctrine refused"));
+
     if (g_env.is_headless) {
         /* A training run has no renderer. Registering a panel would be a
          * no-op anyway, but skipping it makes the intent explicit. */
@@ -50,8 +66,9 @@ int32_t mod_load(void) {
 
     g_panel = gearbox_panel_register(S("Hello Panel"), 280, 150);
     if (g_panel == 0) {
-        /* UI was declared but revoked, or we hit the panel limit. Not fatal:
-         * degrade rather than trap. */
+        /* Headless, or we hit the panel limit. Not fatal: degrade rather
+         * than trap. (Not revocation: a mod whose UI was revoked is refused
+         * at instantiation and never reaches mod_load.) */
         gearbox_log(GEARBOX_LOG_WARN, S("hello-panel: no panel, running quiet"));
     }
     return 0;   /* non-zero would refuse the load */
@@ -113,6 +130,11 @@ void mod_draw_panel(gearbox_panel panel, uint32_t w, uint32_t h) {
         n += u64_to_str((uint64_t)t, line + n);
         gearbox_draw_text(panel, 8, 92, 0xB4B4C8FFu, line, n);
     }
+
+    /* The doctrine added in mod_load, counted back out of the catalogue. */
+    n = append(line, 0, S("Doctrines: "));
+    n += u64_to_str(gearbox_content_count(0), line + n);
+    gearbox_draw_text(panel, 8, 104, 0xB4B4C8FFu, line, n);
 
     if (gearbox_button(panel, 8, 116, 120, 24, S("Next country")))
         g_cursor++;

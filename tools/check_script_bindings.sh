@@ -131,4 +131,49 @@ else
     fi
 fi
 
+# ---- the hosts' OWN defaults ------------------------------------------------
+#
+# Everything above compiles with EVERY capability defined, which is a superset
+# no real mod uses -- and that is why it could not see the break it was written
+# to catch. The generated bindings gate each group on the ABI's capability name
+# (GBX_WITH_GAMESTATE_READ), while the three hosts defaulted a group called
+# GBX_WITH_GAMESTATE, which nothing reads. Every script mod rebuilt after that
+# split lost turnNumber and every other GameState.Read function, and died on
+# "attempt to call a nil value" at its first draw. The superset build stayed
+# green throughout.
+#
+# So: each GBX_WITH_* a host names must be one the generated code actually
+# gates on. A macro nothing reads is a capability the host thinks it enabled.
+python3 - "$root" <<'DEFEOF' || rc=1
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+hosts = {
+    "lua":    ("sdk/lua/gearbox_lua.c",  ["sdk/lua/gearbox_lua_generated.h",
+                                          "sdk/lua/gearbox_lua_funcs.inc"]),
+    "python": ("sdk/python/gearbox_py.c", ["sdk/python/gearbox_py_generated.h",
+                                           "sdk/python/gearbox_py_methods.inc"]),
+    "js":     ("sdk/js/gearbox_qjs.c",   ["sdk/js/gearbox_js_generated.h",
+                                          "sdk/js/gearbox_js_funcs.inc"]),
+}
+bad = 0
+for lang, (host, generated) in hosts.items():
+    used = set()
+    for g in generated:
+        used |= set(re.findall(r"GBX_WITH_[A-Z_]+", (root / g).read_text()))
+    # Comments stripped first: these files EXPLAIN the macro that went wrong,
+    # and a check that reads prose as code fails on its own documentation.
+    src = re.sub(r"/\*.*?\*/", " ", (root / host).read_text(), flags=re.S)
+    src = re.sub(r"//[^\n]*", " ", src)
+    named = set(re.findall(r"GBX_WITH_[A-Z_]+", src))
+    orphans = sorted(named - used)
+    if orphans:
+        print("  FAILED   %s names %s, which the generated bindings never read"
+              % (host, ", ".join(orphans)))
+        print("           (the group it meant to switch on stays off)")
+        bad = 1
+    else:
+        print("  ok       %-6s capability macros all reach a generated group" % lang)
+sys.exit(bad)
+DEFEOF
+
 exit $rc

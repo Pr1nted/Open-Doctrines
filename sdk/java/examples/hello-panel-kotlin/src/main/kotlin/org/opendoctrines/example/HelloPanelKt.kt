@@ -24,6 +24,14 @@ object HelloPanelKt {
     @JvmStatic
     @Export(name = "mod_load")
     fun modLoad(): Int {
+        // Content before the headless check: a catalogue entry has nothing
+        // to do with the renderer.
+        if (!Gearbox.contentAdd(Gearbox.DOCTRINE, "hello:demo",
+                                "{\"name\":\"Hello Doctrine\"}",
+                                Gearbox.PERSIST)) {
+            Gearbox.log(Gearbox.LOG_WARN, "hello-panel: doctrine refused")
+        }
+
         if (Gearbox.env().isHeadless) {
             Gearbox.log(Gearbox.LOG_INFO, "hello-panel: headless, no UI")
             return 0
@@ -72,6 +80,11 @@ object HelloPanelKt {
                 StringBuilder().append("Treasury: ")
                     .append(Gearbox.countryTreasury(c).toLong()).toString())
         }
+
+        // The doctrine added in mod_load, counted back out of the catalogue.
+        Gearbox.drawText(p, 8, 104, 0xB4B4C8FF.toInt(),
+            StringBuilder().append("Doctrines: ")
+                .append(Gearbox.contentCount(Gearbox.DOCTRINE)).toString())
 
         if (Gearbox.button(p, 8, 116, 120, 24, "Next country")) {
             cursor++

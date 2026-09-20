@@ -2179,6 +2179,7 @@ void modSetCountryBridge(const ModCountryBridge& b) { g_countryBridge = b; }
 void modSetScriptBridge(const ModScriptBridge& b) { g_scriptBridge = b; }
 void modSetRenderBridge(const ModRenderBridge& b) { g_renderBridge = b; }
 void modSetContentBridge(const ModContentBridge& b) { g_contentBridge = b; }
+const ModContentBridge& modContentBridge() { return g_contentBridge; }
 
 
 const ModHostFn* modHostFunctions(size_t& count) {

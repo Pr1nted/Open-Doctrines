@@ -2886,6 +2886,9 @@ endif()
 # binding with its arguments in the wrong order -- every other test would pass.
 add_executable(ModExamplesTest EXCLUDE_FROM_ALL
     tests/mod_examples_test.cpp
+    # The catalogue behind gearbox:content, so the examples' content.add has a
+    # real registry to land in rather than a bridge that answers 0.
+    src/ModContent.cpp
     src/mods/ModPackage.cpp
     src/net/ModAttest.cpp
     src/mods/ModRuntime.cpp

@@ -6,6 +6,6 @@
   "description": "Example mod: shows turn, country count and treasury in a panel.",
   "authors": ["OpenDoctrines"],
   "gearbox": "1.0",
-  "modules": ["Core", "UI", "GameState.Read"],
+  "modules": ["Core", "UI", "GameState.Read", "Content"],
   "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
 }

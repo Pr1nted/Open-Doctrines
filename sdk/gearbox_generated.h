@@ -138,9 +138,11 @@ GEARBOX_IMPORT("gamestate.read", "province_owner")
 gearbox_country gearbox_province_owner(gearbox_province province);
 
 /* Register a panel and return its handle. Returns 0 (invalid) when
- * headless, when UI was revoked, or when you already hold 8 panels. Titles
- * are truncated to 64 bytes. Call this from mod_load, not from your draw
- * hook.
+ * headless or when you already hold 8 panels. NOT when UI is revoked: a
+ * module that imports gearbox:ui is refused at instantiation, so a mod
+ * whose UI the user revoked does not load at all and this never runs.
+ * Titles are truncated to 64 bytes. Call this from mod_load, not from your
+ * draw hook.
  * gearbox:ui "panel_register"
  * `(iiii)i`
  */

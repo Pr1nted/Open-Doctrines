@@ -292,7 +292,7 @@
 
 /* ---- UI (17) ---- */
 #if GBX_WITH_UI
-    {"panelRegister", gbxpy_panel_register, METH_VARARGS, "Register a panel and return its handle. Returns 0 (invalid) when headless, when UI was revoked, or when you already hold 8 panels. Titles are truncated to 64 bytes. Call this from "},
+    {"panelRegister", gbxpy_panel_register, METH_VARARGS, "Register a panel and return its handle. Returns 0 (invalid) when headless or when you already hold 8 panels. NOT when UI is revoked: a module that imports gearbox:ui is refused at "},
     {"drawRect", gbxpy_draw_rect, METH_VARARGS, "Filled rectangle in panel-relative coordinates. Colour is 0xRRGGBBAA. Coordinates outside the panel are clipped by the host; they cannot escape it."},
     {"drawText", gbxpy_draw_text, METH_VARARGS, "UTF-8 text in panel-relative coordinates. Truncated to 512 bytes per call."},
     {"button", gbxpy_button, METH_VARARGS, "Immediate-mode button: draws it and returns 1 on the frame it is clicked. One click activates one button -- the host consumes it, so overlapping rects do not all fire. Label trunca"},

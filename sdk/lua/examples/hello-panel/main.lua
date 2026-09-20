@@ -12,6 +12,14 @@ local panel  = 0
 local cursor = 1        -- gearbox.countryAt is 1-based; see sdk/lua/README.md
 
 function mod_load()
+    -- Content before the headless check: a catalogue entry has nothing to do
+    -- with the renderer. PERSIST keeps the definition in the save.
+    if not gearbox.contentAdd(gearbox.CONTENT_DOCTRINE, "hello:demo",
+                              '{"name":"Hello Doctrine"}',
+                              gearbox.CONTENT_PERSIST) then
+        gearbox.log(gearbox.WARN, "hello-panel: doctrine refused")
+    end
+
     if gearbox.env().isHeadless then
         -- A training run has no renderer, so registering a panel would be a
         -- no-op. Skipping it makes the intent explicit.
@@ -21,8 +29,9 @@ function mod_load()
 
     panel = gearbox.panelRegister("Hello Panel", 280, 150)
     if panel == 0 then
-        -- UI was declared but revoked, or we hit the panel limit. Degrade
-        -- rather than trap.
+        -- Headless, or we hit the panel limit. Degrade rather than trap.
+        -- (Not revocation: a mod whose UI was revoked is refused at
+        -- instantiation and never reaches mod_load.)
         gearbox.log(gearbox.WARN, "hello-panel: no panel, running quiet")
     end
     return 0
@@ -64,6 +73,11 @@ function mod_draw_panel(p, w, h)
                          string.format("Treasury: %d",
                                        trunc(gearbox.countryTreasury(c))))
     end
+
+    -- The doctrine added in mod_load, counted back out of the catalogue.
+    gearbox.drawText(p, 8, 104, 0xB4B4C8FF,
+                     string.format("Doctrines: %d",
+                                   gearbox.contentCount(gearbox.CONTENT_DOCTRINE)))
 
     if gearbox.button(p, 8, 116, 120, 24, "Next country") then
         cursor = cursor + 1

@@ -229,6 +229,75 @@ public final class Gearbox {
         return GearboxRaw.button(panel, x, y, w, h, ptr(b), b.length) != 0;
     }
 
+    /* ------------------------------------------------------------- content -- */
+
+    /** Catalogue ids, as the ABI numbers them. Only ever appended to. */
+    public static final int DOCTRINE = 0;
+    public static final int RESEARCH = 1;
+    public static final int TROOP_TYPE = 2;
+    public static final int ARTILLERY = 3;
+    public static final int DISTRICT_LAW = 4;
+
+    /** Redeclared on every load. */
+    public static final int HOLLOW = 0;
+    /** Written into the save, so it outlives the mod that added it. */
+    public static final int PERSIST = 1;
+
+    /**
+     * Add or replace one entry in a catalogue.
+     *
+     * <p>The definition is the SAME JSON the game's own data file uses, so a
+     * doctrine goes through the parser data/policies.json goes through.
+     * {@code "aiVisible": true} inside it opts the entry into the AI's options;
+     * leaving it out keeps it player-only.
+     *
+     * <p>False for a malformed id, an unreadable definition, or an id another
+     * mod already owns — catalogue ids are global, because a country records
+     * the doctrine it holds by id. Re-adding your own updates it.
+     */
+    public static boolean contentAdd(int kind, String id, String definition, int mode) {
+        byte[] i = toUtf8(id);
+        byte[] d = toUtf8(definition);
+        return GearboxRaw.contentAdd(kind, ptr(i), i.length,
+                                     ptr(d), d.length, mode) != 0;
+    }
+
+    /** Remove one of your own entries. False if it was not yours. */
+    public static boolean contentRemove(int kind, String id) {
+        byte[] i = toUtf8(id);
+        return GearboxRaw.contentRemove(kind, ptr(i), i.length) != 0;
+    }
+
+    /** How many entries of this kind you have added. */
+    public static int contentCount(int kind) {
+        return GearboxRaw.contentCount(kind);
+    }
+
+    /** The id of your entry at an index within a kind, sorted. */
+    public static String contentIdAt(int kind, int index) {
+        int need = GearboxRaw.contentIdAt(kind, index, 0, 0);
+        if (need <= 0) return "";
+        byte[] buf = new byte[need];
+        int got = GearboxRaw.contentIdAt(kind, index, ptr(buf), need);
+        if (got > need) got = need;
+        return fromUtf8(buf, got);
+    }
+
+    /**
+     * Which mod owns an id in a catalogue, or "" if nobody does. Answers about
+     * another mod's content too: a collision you cannot see coming is one you
+     * cannot avoid.
+     */
+    public static String contentOwnerOf(int kind, String id) {
+        byte[] i = toUtf8(id);
+        int need = GearboxRaw.contentOwnerOf(kind, ptr(i), i.length, 0, 0);
+        if (need <= 0) return "";
+        byte[] buf = new byte[need];
+        int got = GearboxRaw.contentOwnerOf(kind, ptr(i), i.length, ptr(buf), need);
+        if (got > need) got = need;
+        return fromUtf8(buf, got);
+    }
+
     /* -------------------------------------------------------------- assets -- */
 
     public static int assetSize(String name) {

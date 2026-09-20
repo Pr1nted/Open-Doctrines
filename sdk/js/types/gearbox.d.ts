@@ -69,6 +69,39 @@ declare interface Gearbox {
   // ---- Assets (only when built with -DGBX_WITH_ASSETS=1) ----
   assetSize(name: string): number;
   assetRead(name: string): Uint8Array | null;
+
+  // ---- Content (only when built with -DGBX_WITH_CONTENT=1) ----
+  /**
+   * Add or replace one entry in a catalogue. `kind` is one of the CONTENT_*
+   * constants, `mode` is CONTENT_HOLLOW or CONTENT_PERSIST, and `definition`
+   * is the SAME JSON the game's own data file uses — a doctrine goes through
+   * the parser data/policies.json goes through. `"aiVisible": true` inside it
+   * opts the entry into the AI's options.
+   *
+   * False for a malformed id, an unreadable definition, or an id another mod
+   * already owns: catalogue ids are global, because a country records the
+   * doctrine it holds by id. Re-adding your own updates it.
+   */
+  contentAdd(kind: number, id: string, definition: string, mode: number): boolean;
+  /** Remove one of your own entries. False if it was not yours. */
+  contentRemove(kind: number, id: string): boolean;
+  /** How many entries of this kind you have added. */
+  contentCount(kind: number): number;
+  /** The id of your entry at an index within a kind, sorted. */
+  contentIdAt(kind: number, index: number): string;
+  /** Which mod owns an id, or "" — including another mod's content. */
+  contentOwnerOf(kind: number, id: string): string;
+
+  /** Catalogue ids, as the ABI numbers them. Only ever appended to. */
+  readonly CONTENT_DOCTRINE: 0;
+  readonly CONTENT_RESEARCH: 1;
+  readonly CONTENT_TROOP_TYPE: 2;
+  readonly CONTENT_ARTILLERY: 3;
+  readonly CONTENT_DISTRICT_LAW: 4;
+  /** Redeclared on every load. */
+  readonly CONTENT_HOLLOW: 0;
+  /** Written into the save, so it outlives the mod that added it. */
+  readonly CONTENT_PERSIST: 1;
 }
 
 declare const gearbox: Gearbox;

@@ -64,6 +64,7 @@ PY
 # -mexec-model=reactor: the host calls mod_load, not _start. Without it the
 # module exports _start and CPython never initialises.
 "$CC" -O2 -mexec-model=reactor \
+      -DGBX_WITH_CONTENT=1 \
       -I "$sdk" -I "$here" \
       -I "$PYROOT/include/python3.12" \
       -o "$here/mod.wasm" \

@@ -22,6 +22,14 @@ public final class HelloPanel {
 
     @Export(name = "mod_load")
     public static int modLoad() {
+        // Content before the headless check: a catalogue entry has nothing
+        // to do with the renderer. PERSIST keeps the definition in the save.
+        if (!Gearbox.contentAdd(Gearbox.DOCTRINE, "hello:demo",
+                                "{\"name\":\"Hello Doctrine\"}",
+                                Gearbox.PERSIST)) {
+            Gearbox.log(Gearbox.LOG_WARN, "hello-panel: doctrine refused");
+        }
+
         if (Gearbox.env().isHeadless) {
             // A training run has no renderer, so registering a panel would be
             // a no-op. Skipping it makes the intent explicit.
@@ -31,8 +39,9 @@ public final class HelloPanel {
 
         panel = Gearbox.panelRegister("Hello Panel", 280, 150);
         if (panel == 0) {
-            // UI was declared but revoked, or we hit the panel limit. Degrade
-            // rather than trap.
+            // Headless, or we hit the panel limit. Degrade rather than
+            // trap. (Not revocation: a mod whose UI was revoked is refused at
+            // instantiation and never reaches mod_load.)
             Gearbox.log(Gearbox.LOG_WARN, "hello-panel: no panel, running quiet");
         }
         return 0;               // non-zero would refuse the load
@@ -75,6 +84,11 @@ public final class HelloPanel {
                     new StringBuilder().append("Treasury: ")
                             .append((long) Gearbox.countryTreasury(c)).toString());
         }
+
+        // The doctrine added in mod_load, counted back out of the catalogue.
+        Gearbox.drawText(p, 8, 104, 0xB4B4C8FF,
+                new StringBuilder().append("Doctrines: ")
+                        .append(Gearbox.contentCount(Gearbox.DOCTRINE)).toString());
 
         if (Gearbox.button(p, 8, 116, 120, 24, "Next country")) {
             cursor++;

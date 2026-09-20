@@ -71,6 +71,12 @@ func appendUint(dst []byte, at int, v uint64) int {
 func modLoad() int32 {
 	gEnv = gearbox.Environment()
 
+	// Content before the headless check: a catalogue entry has nothing to do
+	// with the renderer. kind 0 is doctrine, mode 1 is PERSIST.
+	if !gearbox.ContentAdd(0, "hello:demo", `{"name":"Hello Doctrine"}`, 1) {
+		gearbox.Log(gearbox.LogWarn, "hello-panel-go: doctrine refused")
+	}
+
 	if gEnv.IsHeadless != 0 {
 		// A training run has no renderer. Registering a panel would be a no-op
 		// anyway, but skipping it makes the intent explicit.
@@ -80,8 +86,9 @@ func modLoad() int32 {
 
 	gPanel = gearbox.PanelRegister("Hello Panel (Go)", 280, 150)
 	if gPanel == 0 {
-		// UI was declared but revoked, or we hit the panel limit. Not fatal:
-		// degrade rather than trap.
+		// Headless, or we hit the panel limit. Not fatal: degrade rather than
+		// trap. (Not revocation -- a mod whose UI was revoked is refused at
+		// instantiation and never reaches mod_load.)
 		gearbox.Log(gearbox.LogWarn, "hello-panel-go: no panel, running quiet")
 	}
 	return 0 // non-zero would refuse the load
@@ -156,6 +163,11 @@ func modDrawPanel(panel, width, height uint32) {
 		n = appendUint(line, n, uint64(t))
 		gearbox.DrawTextBytes(p, 8, 92, 0xB4B4C8FF, line[:n])
 	}
+
+	// The doctrine added in mod_load, counted back out of the catalogue.
+	n = appendStr(line, 0, "Doctrines: ")
+	n = appendUint(line, n, uint64(gearbox.ContentCount(0)))
+	gearbox.DrawTextBytes(p, 8, 104, 0xB4B4C8FF, line[:n])
 
 	if gearbox.Button(p, 8, 116, 120, 24, "Next country") {
 		gCursor++

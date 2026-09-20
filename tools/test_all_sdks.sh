@@ -34,6 +34,20 @@ try Rust           "$root/sdk/rust/build.sh"
 try Zig            "$root/sdk/zig/examples/hello-panel/build.sh"
 try Go             "$root/sdk/go/examples/hello-panel/build.sh"
 try WAT            "$root/sdk/wat/build.sh"
+# The six below were missing for as long as this script existed, and their
+# absence is not visible in its output: ModExamplesTest drives whatever .odmod
+# files are ON DISK, so a stale Java or Python module built months ago compares
+# green against freshly built ones and nothing says it was never rebuilt. A
+# change to a shared example -- as the Content call was -- would then be
+# "verified across every language" while six of the twelve still ran the old
+# code. Building all thirteen here is what makes the comparison mean what it
+# says.
+try Java           "$root/sdk/java/examples/hello-panel/build.sh"
+try Kotlin         "$root/sdk/java/examples/hello-panel-kotlin/build.sh"
+try TypeScript     "$root/sdk/js/examples/hello-panel-ts/build.sh"
+try JavaScript     "$root/sdk/js/examples/hello-panel/build.sh"
+try Lua            "$root/sdk/lua/examples/hello-panel/build.sh"
+try Python         "$root/sdk/python/examples/hello-panel/build.sh"
 
 printf '\nbuilt:  %s\nfailed/skipped: %s\n' "${built:-none}" "${skipped:-none}"
 

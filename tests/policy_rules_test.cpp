@@ -31,6 +31,11 @@
 #include <cmath>
 #include <cstdlib>
 #include "../src/Game.h"
+#include "../src/mods/ModHost.h"
+#include "../src/BuildCosts.h"
+
+#include <fstream>
+#include <sstream>
 
 #include <algorithm>
 #include <cstdio>
@@ -90,6 +95,172 @@ struct PolicyRules {
         p->costPerTurn = 0;
         p->minEcon = -1000; p->maxEcon = 1000;
         p->minSoc  = -1000; p->maxSoc  = 1000;
+    }
+
+
+    /// The doctrine in docs/gearbox-custom-policy.md, run through the game.
+    ///
+    /// WHY THIS IS HERE
+    ///
+    /// That document tells a modder what every field in a doctrine definition
+    /// does, and a document is the one kind of instrument that cannot fail
+    /// loudly. Half of it is field names that a typo turns into silence --
+    /// parsePolicyJson ignores a key it does not know -- and one paragraph is a
+    /// sign convention that is INVERTED for six levers and not for the other
+    /// eleven. Prose about either rots the first time somebody renames a field.
+    ///
+    /// So the example is not quoted here: it is READ OUT OF THE DOCUMENT, added
+    /// through the game's own content bridge, and every claim the document
+    /// makes about it is checked against the Policy the game ended up with. If
+    /// the document and the parser disagree, this fails and names the field.
+    void docExample(const std::string& dataDir) {
+        printf("\ndocs/gearbox-custom-policy.md\n");
+
+        // Not optional, and not skipped when missing: a document nobody can
+        // read is the failure this exists to catch.
+        const std::string docPath = dataDir + "../docs/gearbox-custom-policy.md";
+        std::ifstream f(docPath);
+        if (!f) {
+            check(false, "the document is where the test expects it (" + docPath + ")");
+            return;
+        }
+        std::stringstream buf; buf << f.rdbuf();
+        const std::string doc = buf.str();
+
+        // The first fenced json block is the complete annotated definition.
+        const size_t open = doc.find("```json");
+        const size_t body = open == std::string::npos ? open : doc.find('\n', open) + 1;
+        const size_t close = body == std::string::npos ? body : doc.find("```", body);
+        if (close == std::string::npos) {
+            check(false, "the document still contains a ```json example");
+            return;
+        }
+        const std::string text = doc.substr(body, close - body);
+
+        nlohmann::json j;
+        try {
+            j = nlohmann::json::parse(text);
+        } catch (const std::exception& e) {
+            check(false, std::string("the document's example parses: ") + e.what());
+            return;
+        }
+        check(true, "the document's example is valid JSON");
+
+        // Through the game's own bridge, which is where "aiVisible" is read out
+        // of the definition and where the catalogue is updated. Doing either of
+        // those here instead would be a test checking its own arithmetic.
+        game.installModBridges();
+        const std::string modId = "com.example.doc";
+        const std::string id = j.value("id", "");
+        check(!id.empty(), "the example names an id");
+        check(modContentBridge().add((uint32_t)odcontent::Kind::Doctrine, modId,
+                                     id, text, 1 /* PERSIST */),
+              "the game accepts it as a doctrine");
+
+        const Policy* p = find(id);
+        check(p != nullptr, "and it is in the catalogue, by the id the mod gave");
+        if (!p) return;
+
+        // --- the identity table ---
+        check(p->name == j.value("name", ""), "name arrives");
+        check(p->description == j.value("description", ""), "description arrives");
+        check(p->category == j.value("category", ""), "category arrives");
+        check(p->folder == j.value("folder", ""), "folder arrives");
+
+        // --- what it costs ---
+        check(p->costPerTurn == j.value("cost_per_turn", -1), "cost_per_turn arrives");
+        check(p->implementationTurns == j.value("implementation_turns", -1),
+              "implementation_turns arrives");
+        check(p->propagandaDuration == j.value("propaganda_duration", -1),
+              "propaganda_duration arrives");
+
+        // --- the compass ---
+        const auto shift = j.value("compass_shift", nlohmann::json::object());
+        const auto req = j.value("requirements", nlohmann::json::object());
+        check(p->econShift == shift.value("economic", 999.0f), "compass_shift.economic arrives");
+        check(p->socShift == shift.value("social", 999.0f), "compass_shift.social arrives");
+        check(p->maxEcon == req.value("max_economic", -999), "requirements.max_economic arrives");
+        check(p->minSoc == req.value("min_social", 999), "requirements.min_social arrives");
+
+        // --- the levers, every one of them, by the name the document prints ---
+        const auto levers = j.value("levers", nlohmann::json::object());
+        bool allLevers = !levers.empty();
+        std::string missing;
+        for (auto& [k, v] : levers.items()) {
+            auto at = p->levers.find(k);
+            if (at == p->levers.end() || at->second != v.get<float>()) {
+                allLevers = false;
+                missing = k;
+                break;
+            }
+        }
+        check(allLevers, "every lever in the example arrives with its value" +
+              (missing.empty() ? std::string() : " (" + missing + " did not)"));
+
+        // Every lever name the document uses must be one the game SPENDS.
+        // tools/check_effect_fields.py owns that list; this checks the ones the
+        // example actually names, because a document that teaches a field
+        // nothing reads teaches a silent no-op.
+        static const char* kSpent[] = {
+            "armyAtkPct", "armyDefPct", "navyAtkPct", "navyDefPct", "navySpeedPct",
+            "conscriptionPct", "conscriptionCostPct", "maintenanceCostPct",
+            "industryCostPct", "industryUpkeepPct", "navyCostPct", "passiveIncome",
+            "resourceModPct", "popModPct", "popGrowthPct", "migrationRate",
+            "indoctrinationPct",
+        };
+        std::string unknown;
+        for (auto& [k, v] : levers.items()) {
+            bool known = false;
+            for (const char* s : kSpent) if (k == s) { known = true; break; }
+            if (!known) { unknown = k; break; }
+        }
+        check(unknown.empty(), "every lever it teaches is one the game reads" +
+              (unknown.empty() ? std::string() : " (" + unknown + " is not)"));
+
+        // --- effects, tradeoffs, conflicts ---
+        const auto eff = j.value("effects", nlohmann::json::object());
+        check(p->effect.unrestReduction == eff.value("unrest_reduction", 999.0f),
+              "effects.unrest_reduction arrives");
+        check(p->effect.minorityGrowthRate == eff.value("minority_growth_rate", 999.0f),
+              "effects.minority_growth_rate arrives");
+        check(p->incompatibleWith.size() == j.value("incompatible_with",
+                                                    nlohmann::json::array()).size(),
+              "incompatible_with arrives whole");
+        const auto tr = j.value("tradeoffs", nlohmann::json::object());
+        check(p->tradeoffs.gains.size() ==
+                  tr.value("gains", nlohmann::json::array()).size() &&
+              p->tradeoffs.costs.size() ==
+                  tr.value("costs", nlohmann::json::array()).size(),
+              "both tradeoff lists arrive whole");
+
+        // --- aiVisible, which the document says lives IN the definition ---
+        check(p->aiVisible == j.value("aiVisible", false),
+              "aiVisible is read out of the definition, not defaulted");
+
+        // --- THE SIGN CONVENTION ---
+        //
+        // The document's loudest warning: a positive COST lever means cheaper,
+        // and the example writes industryCostPct as a negative number to make
+        // industry dearer. Nothing else in this suite pins the direction from a
+        // doctrine's own definition through to the multiplier the builder pays.
+        const float indPct = levers.value("industryCostPct", 0.0f);
+        if (indPct != 0.0f) {
+            reset();
+            Policy* mine = find(id);
+            mine->minEcon = -1000; mine->maxEcon = 1000;
+            mine->minSoc  = -1000; mine->maxSoc  = 1000;
+            mine->costPerTurn = 0;
+            game.enactPolicy(cid, id, -1, "");
+            for (auto& ap : game.m_activePolicies)
+                if (ap.policyId == id) ap.turnsRemaining = 0;   // in force
+            const float total = game.getTotalEffect("industryCostPct", cid);
+            check(total == indPct, "a held doctrine's lever reaches getTotalEffect");
+            // 1 - pct/100: the example's -12 must make building DEARER.
+            const float mod = buildCostMod(total);
+            check((indPct < 0.0f) == (mod > 1.0f),
+                  "and a negative cost lever makes it dearer, as the document says");
+            reset();
+        }
     }
 
     void run() {
@@ -687,6 +858,7 @@ int main(int argc, char** argv) {
     t.wellFed();
     t.assimilation();
     t.survivesASave();
+    t.docExample(dataDir);
 
     printf("%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;

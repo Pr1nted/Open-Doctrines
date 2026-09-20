@@ -50,6 +50,12 @@ sdk/**/package-lock.json
 # SDK toolchains installed by tools/sdk_toolchains.sh
 .toolchains/
 
+# Zig's build cache and output, which tools/sdk_toolchains.sh clean deletes.
+# Three of these files were committed by accident and rewrote themselves on
+# every Zig build, so each SDK rebuild showed up as a source change.
+.zig-cache/
+zig-out/
+
 # Second build tree, used to test the classic-interpreter build
 # (-DOD_MODS_FAST_INTERP=OFF) that the Python SDK requires.
 build-classic/

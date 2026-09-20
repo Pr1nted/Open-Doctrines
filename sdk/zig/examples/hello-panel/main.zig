@@ -51,6 +51,13 @@ fn append(dst: []u8, at: usize, src: []const u8) usize {
 export fn mod_load() i32 {
     g_env = gb.env();
 
+    // Content before the headless check: a catalogue entry has nothing to do
+    // with the renderer. kind 0 is doctrine, mode 1 is PERSIST -- the save
+    // keeps the definition, so a country that adopted it can still say what it
+    // adopted after this mod is gone.
+    if (!gb.contentAdd(0, "hello:demo", "{\"name\":\"Hello Doctrine\"}", 1))
+        gb.log(.warn, "hello-panel-zig: doctrine refused");
+
     if (g_env.is_headless != 0) {
         // A training run has no renderer. Registering a panel would be a no-op
         // anyway, but skipping it makes the intent explicit.
@@ -60,8 +67,9 @@ export fn mod_load() i32 {
 
     g_panel = gb.panelRegister("Hello Panel (Zig)", 280, 150);
     if (g_panel == 0) {
-        // UI was declared but revoked, or we hit the panel limit. Not fatal:
-        // degrade rather than trap.
+        // Headless, or we hit the panel limit. Not fatal: degrade rather
+        // than trap. (Not revocation -- a mod whose UI was revoked is refused
+        // at instantiation and never reaches mod_load.)
         gb.log(.warn, "hello-panel-zig: no panel, running quiet");
     }
     return 0; // non-zero would refuse the load
@@ -123,6 +131,11 @@ export fn mod_draw_panel(panel: gb.Panel, w: u32, h: u32) void {
         n += u64ToStr(@intFromFloat(t), line[n..]);
         gb.drawText(panel, 8, 92, 0xB4B4C8FF, line[0..n]);
     }
+
+    // The doctrine added in mod_load, counted back out of the catalogue.
+    n = append(&line, 0, "Doctrines: ");
+    n += u64ToStr(gb.contentCount(0), line[n..]);
+    gb.drawText(panel, 8, 104, 0xB4B4C8FF, line[0..n]);
 
     if (gb.button(panel, 8, 116, 120, 24, "Next country")) g_cursor += 1;
 }

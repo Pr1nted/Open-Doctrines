@@ -105,9 +105,11 @@ extern "C" {
 #[link(wasm_import_module = "gearbox:ui")]
 extern "C" {
     /// Register a panel and return its handle. Returns 0 (invalid) when
-    /// headless, when UI was revoked, or when you already hold 8 panels. Titles
-    /// are truncated to 64 bytes. Call this from mod_load, not from your draw
-    /// hook.
+    /// headless or when you already hold 8 panels. NOT when UI is revoked: a
+    /// module that imports gearbox:ui is refused at instantiation, so a mod
+    /// whose UI the user revoked does not load at all and this never runs.
+    /// Titles are truncated to 64 bytes. Call this from mod_load, not from your
+    /// draw hook.
     /// gearbox:ui "panel_register"
     /// `(iiii)i`
     pub fn panel_register(title: *const u8, title_len: u32, min_w: u32, min_h: u32) -> u32;
@@ -226,6 +228,7 @@ extern "C" {
     /// data/flags/fr.png is "flags/fr.png".
     /// gearbox:assets "size"
     /// `(ii)i`
+    #[link_name = "size"]
     pub fn asset_size(name: *const u8, name_len: u32) -> u32;
 
     /// Two-call sizing, like country_name. Writes at most cap bytes and returns
@@ -233,6 +236,7 @@ extern "C" {
     /// list, never resolved as a filesystem path.
     /// gearbox:assets "read"
     /// `(iiii)i`
+    #[link_name = "read"]
     pub fn asset_read(name: *const u8, name_len: u32, buf: *mut u8, cap: u32) -> u32;
 
 }
@@ -1391,7 +1395,7 @@ extern "C" {
     /// containing anything but printable ASCII.
     /// gearbox:country "field_add"
     /// `(iiii)i`
-    pub fn field_add(name: *const u8, name_len: u32, mode: u32, type: u32) -> u32;
+    pub fn field_add(name: *const u8, name_len: u32, mode: u32, type_: u32) -> u32;
 
     /// Forget one of YOUR fields and every country's value for it. Returns
     /// whether it existed. A mod cannot remove another mod's field: fields are
@@ -1524,6 +1528,7 @@ extern "C" {
     /// from the game being wrong.
     /// gearbox:render "clear"
     /// `()i`
+    #[link_name = "clear"]
     pub fn render_clear() -> u32;
 
     /// How many tints you are currently holding.
@@ -1560,16 +1565,19 @@ extern "C" {
     /// letters, digits, underscore and at most one colon, 64 bytes.
     /// gearbox:content "add"
     /// `(iiiiii)i`
+    #[link_name = "add"]
     pub fn content_add(kind: u32, id: *const u8, id_len: u32, json: *const u8, json_len: u32, mode: u32) -> u32;
 
     /// How many entries of this kind YOU have added.
     /// gearbox:content "count"
     /// `(i)i`
+    #[link_name = "count"]
     pub fn content_count(kind: u32) -> u32;
 
     /// The id of your entry at index within a kind, sorted. Two-call sizing.
     /// gearbox:content "id_at"
     /// `(iiii)i`
+    #[link_name = "id_at"]
     pub fn content_id_at(kind: u32, index: u32, buf: *mut u8, cap: u32) -> u32;
 
     /// Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod
@@ -1578,11 +1586,13 @@ extern "C" {
     /// see coming.
     /// gearbox:content "owner_of"
     /// `(iiiii)i`
+    #[link_name = "owner_of"]
     pub fn content_owner_of(kind: u32, id: *const u8, id_len: u32, buf: *mut u8, cap: u32) -> u32;
 
     /// Remove one of your own entries. False if it was not yours.
     /// gearbox:content "remove"
     /// `(iii)i`
+    #[link_name = "remove"]
     pub fn content_remove(kind: u32, id: *const u8, id_len: u32) -> u32;
 
 }

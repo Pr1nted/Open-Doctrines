@@ -28,4 +28,7 @@ fi
 # rather than producing a mod that draws nonsense.
 "$TSC" -p "$here/tsconfig.json"
 
+# Content is compiled in, not merely declared: every wasm import must
+# resolve at instantiation, so this and MANIFEST.json move together.
+export GBX_DEFS="-DGBX_WITH_CONTENT=1"
 exec "$here/../../build_mod.sh" "$here" "$here/build/main.js" hello-panel-ts.odmod

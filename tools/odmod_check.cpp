@@ -8,7 +8,15 @@
 // the mod menu, so adding a "load this file" flag there would poke a hole in
 // the one rule the whole security model rests on.
 //
-//   odmod-check mymod.odmod [--revoke UI] [--no-run] [--decide N]
+//   odmod-check mymod.odmod [--revoke UI] [--expect-refusal] [--no-run] [--decide N]
+//
+// --expect-refusal inverts the verdict: the run PASSES when the mod is
+// refused and fails when it loads. It exists for --revoke, where being
+// refused is the correct outcome -- every import must resolve when a module
+// is instantiated, so a mod that imports gearbox:ui and is not granted UI
+// does not load at all. Without this flag a build script that rehearses a
+// revocation can only ever report a failure for behaving correctly, which is
+// what sdk/rust/build.sh did from the day it was written.
 //
 // --decide drives mod_ai_choose against a stub world for N turns. It exists
 // because mod_load proves only that a mod STARTS: for a Neural.Decide mod the
@@ -103,15 +111,18 @@ void decide(ModInstance* inst, int turns) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        printf("usage: odmod-check <file.odmod> [--revoke <Module>]... [--no-run]\n");
+        printf("usage: odmod-check <file.odmod> [--revoke <Module>]... "
+               "[--expect-refusal] [--no-run]\n");
         return 2;
     }
     std::string path = argv[1];
     std::vector<std::string> revoked;
     bool run = true;
+    bool expectRefusal = false;
     int decideTurns = 0;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--no-run") == 0) run = false;
+        else if (strcmp(argv[i], "--expect-refusal") == 0) expectRefusal = true;
         else if (strcmp(argv[i], "--revoke") == 0 && i + 1 < argc) revoked.push_back(argv[++i]);
         else if (strcmp(argv[i], "--decide") == 0)
             decideTurns = (i + 1 < argc && argv[i + 1][0] != '-') ? atoi(argv[++i]) : 8;
@@ -166,7 +177,19 @@ int main(int argc, char** argv) {
 
     printf("\ninstantiating with %s\n", modModuleMaskToString(grants).c_str());
     auto inst = rt.instantiate(pkg, grants, err);
-    if (!inst) { printf("FAILED: %s\n", err.c_str()); return 1; }
+    if (!inst) {
+        if (expectRefusal) {
+            printf("REFUSED as expected: %s\n\nOK\n", err.c_str());
+            return 0;
+        }
+        printf("FAILED: %s\n", err.c_str());
+        return 1;
+    }
+    if (expectRefusal) {
+        printf("LOADED, but a refusal was expected -- the capability check did "
+               "not bite\n");
+        return 1;
+    }
 
     uint32_t ret = 0;
     if (!inst->callExport("mod_load", nullptr, 0, &ret, err)) {

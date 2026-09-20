@@ -91,9 +91,11 @@ export declare function _provincePopulation(province: u32): i64;
 export declare function _provinceOwner(province: u32): u32;
 
 // Register a panel and return its handle. Returns 0 (invalid) when
-// headless, when UI was revoked, or when you already hold 8 panels. Titles
-// are truncated to 64 bytes. Call this from mod_load, not from your draw
-// hook.
+// headless or when you already hold 8 panels. NOT when UI is revoked: a
+// module that imports gearbox:ui is refused at instantiation, so a mod
+// whose UI the user revoked does not load at all and this never runs.
+// Titles are truncated to 64 bytes. Call this from mod_load, not from your
+// draw hook.
 // gearbox:ui "panel_register"
 // `(iiii)i`
 @external("gearbox:ui", "panel_register")
@@ -1493,7 +1495,7 @@ export declare function _modName(index: u32, buf: usize, cap: u32): u32;
 // gearbox:country "field_add"
 // `(iiii)i`
 @external("gearbox:country", "field_add")
-export declare function _fieldAdd(name: usize, name_len: u32, mode: u32, type: u32): u32;
+export declare function _fieldAdd(name: usize, name_len: u32, mode: u32, type_: u32): u32;
 
 // Forget one of YOUR fields and every country's value for it. Returns
 // whether it existed. A mod cannot remove another mod's field: fields are

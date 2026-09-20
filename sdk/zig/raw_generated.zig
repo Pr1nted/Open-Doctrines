@@ -79,9 +79,11 @@ pub extern "gearbox:gamestate.read" fn province_population(province: u32) i64;
 pub extern "gearbox:gamestate.read" fn province_owner(province: u32) u32;
 
 /// Register a panel and return its handle. Returns 0 (invalid) when
-/// headless, when UI was revoked, or when you already hold 8 panels. Titles
-/// are truncated to 64 bytes. Call this from mod_load, not from your draw
-/// hook.
+/// headless or when you already hold 8 panels. NOT when UI is revoked: a
+/// module that imports gearbox:ui is refused at instantiation, so a mod
+/// whose UI the user revoked does not load at all and this never runs.
+/// Titles are truncated to 64 bytes. Call this from mod_load, not from your
+/// draw hook.
 /// gearbox:ui "panel_register"
 /// `(iiii)i`
 pub extern "gearbox:ui" fn panel_register(title: ?[*]const u8, title_len: u32, min_w: u32, min_h: u32) u32;
@@ -111,14 +113,20 @@ pub extern "gearbox:ui" fn button(panel: u32, x: i32, y: i32, w: i32, h: i32, la
 /// data/flags/fr.png is "flags/fr.png".
 /// gearbox:assets "size"
 /// `(ii)i`
-pub extern "gearbox:assets" fn asset_size(name: ?[*]const u8, name_len: u32) u32;
+const _asset_size_ns = struct {
+    pub extern "gearbox:assets" fn size(name: ?[*]const u8, name_len: u32) u32;
+};
+pub const asset_size = _asset_size_ns.size;
 
 /// Two-call sizing, like country_name. Writes at most cap bytes and returns
 /// the asset's full size. The name is looked up in your package's entry
 /// list, never resolved as a filesystem path.
 /// gearbox:assets "read"
 /// `(iiii)i`
-pub extern "gearbox:assets" fn asset_read(name: ?[*]const u8, name_len: u32, buf: ?[*]u8, cap: u32) u32;
+const _asset_read_ns = struct {
+    pub extern "gearbox:assets" fn read(name: ?[*]const u8, name_len: u32, buf: ?[*]u8, cap: u32) u32;
+};
+pub const asset_read = _asset_read_ns.read;
 
 /// Play a sound from your own mod's assets. `path` is relative to your mod
 /// root; a path outside it is refused rather than resolved. Volume is 0..1
@@ -1301,7 +1309,7 @@ pub extern "gearbox:core.protected" fn mod_name(index: u32, buf: ?[*]u8, cap: u3
 /// containing anything but printable ASCII.
 /// gearbox:country "field_add"
 /// `(iiii)i`
-pub extern "gearbox:country" fn field_add(name: ?[*]const u8, name_len: u32, mode: u32, type: u32) u32;
+pub extern "gearbox:country" fn field_add(name: ?[*]const u8, name_len: u32, mode: u32, type_: u32) u32;
 
 /// Forget one of YOUR fields and every country's value for it. Returns
 /// whether it existed. A mod cannot remove another mod's field: fields are
@@ -1426,7 +1434,10 @@ pub extern "gearbox:render" fn province_label(province: u32, text: ?[*]const u8,
 /// from the game being wrong.
 /// gearbox:render "clear"
 /// `()i`
-pub extern "gearbox:render" fn render_clear() u32;
+const _render_clear_ns = struct {
+    pub extern "gearbox:render" fn clear() u32;
+};
+pub const render_clear = _render_clear_ns.clear;
 
 /// How many tints you are currently holding.
 /// gearbox:render "tint_count"
@@ -1458,17 +1469,26 @@ pub extern "gearbox:render" fn label_count() u32;
 /// letters, digits, underscore and at most one colon, 64 bytes.
 /// gearbox:content "add"
 /// `(iiiiii)i`
-pub extern "gearbox:content" fn content_add(kind: u32, id: ?[*]const u8, id_len: u32, json: ?[*]const u8, json_len: u32, mode: u32) u32;
+const _content_add_ns = struct {
+    pub extern "gearbox:content" fn add(kind: u32, id: ?[*]const u8, id_len: u32, json: ?[*]const u8, json_len: u32, mode: u32) u32;
+};
+pub const content_add = _content_add_ns.add;
 
 /// How many entries of this kind YOU have added.
 /// gearbox:content "count"
 /// `(i)i`
-pub extern "gearbox:content" fn content_count(kind: u32) u32;
+const _content_count_ns = struct {
+    pub extern "gearbox:content" fn count(kind: u32) u32;
+};
+pub const content_count = _content_count_ns.count;
 
 /// The id of your entry at index within a kind, sorted. Two-call sizing.
 /// gearbox:content "id_at"
 /// `(iiii)i`
-pub extern "gearbox:content" fn content_id_at(kind: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
+const _content_id_at_ns = struct {
+    pub extern "gearbox:content" fn id_at(kind: u32, index: u32, buf: ?[*]u8, cap: u32) u32;
+};
+pub const content_id_at = _content_id_at_ns.id_at;
 
 /// Which mod owns an id in a catalogue, or empty if nobody does. Lets a mod
 /// check whether the content it is about to add already exists -- including
@@ -1476,9 +1496,15 @@ pub extern "gearbox:content" fn content_id_at(kind: u32, index: u32, buf: ?[*]u8
 /// see coming.
 /// gearbox:content "owner_of"
 /// `(iiiii)i`
-pub extern "gearbox:content" fn content_owner_of(kind: u32, id: ?[*]const u8, id_len: u32, buf: ?[*]u8, cap: u32) u32;
+const _content_owner_of_ns = struct {
+    pub extern "gearbox:content" fn owner_of(kind: u32, id: ?[*]const u8, id_len: u32, buf: ?[*]u8, cap: u32) u32;
+};
+pub const content_owner_of = _content_owner_of_ns.owner_of;
 
 /// Remove one of your own entries. False if it was not yours.
 /// gearbox:content "remove"
 /// `(iii)i`
-pub extern "gearbox:content" fn content_remove(kind: u32, id: ?[*]const u8, id_len: u32) u32;
+const _content_remove_ns = struct {
+    pub extern "gearbox:content" fn remove(kind: u32, id: ?[*]const u8, id_len: u32) u32;
+};
+pub const content_remove = _content_remove_ns.remove;

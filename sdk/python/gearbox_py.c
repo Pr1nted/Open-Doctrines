@@ -41,8 +41,20 @@ static PyObject *g_main;      /* __main__ module dict owner; borrowed */
 #ifndef GBX_WITH_UI
 #define GBX_WITH_UI 1
 #endif
-#ifndef GBX_WITH_GAMESTATE
-#define GBX_WITH_GAMESTATE 1
+/* GAMESTATE_READ, not GAMESTATE. The generated bindings gate every group on the
+ * ABI's own capability name, and GameState is two of them; a macro called
+ * GBX_WITH_GAMESTATE switched NOTHING on. turnNumber and every other reader
+ * compiled out, and a script mod died on "attempt to call a nil value (field
+ * 'turnNumber')" at its first draw -- unseen for as long as the .odmod files on
+ * disk predated the split and nothing rebuilt them.
+ *
+ * Read is on, write is not: importing a write you did not declare in
+ * MANIFEST.json is a mod the host refuses at instantiation. Ask for it with
+ * -DGBX_WITH_GAMESTATE_WRITE=1 and declare GameState.Write alongside.
+ * tools/check_script_bindings.sh refuses any GBX_WITH_* here that no generated
+ * group reads, which is what makes this spelling stay correct. */
+#ifndef GBX_WITH_GAMESTATE_READ
+#define GBX_WITH_GAMESTATE_READ 1
 #endif
 #ifndef GBX_WITH_ASSETS
 #define GBX_WITH_ASSETS 0
@@ -278,6 +290,16 @@ static PyObject *gbx_module_init(void) {
     PyModule_AddIntConstant(m, "INFO",  GEARBOX_LOG_INFO);
     PyModule_AddIntConstant(m, "WARN",  GEARBOX_LOG_WARN);
     PyModule_AddIntConstant(m, "ERROR", GEARBOX_LOG_ERROR);
+#if GBX_WITH_CONTENT
+    /* Catalogue kinds and persistence modes, so a script says CONTENT_DOCTRINE rather than 0. The numbers are ABI; see src/ModContent.h. */
+    PyModule_AddIntConstant(m, "CONTENT_DOCTRINE",     0);
+    PyModule_AddIntConstant(m, "CONTENT_RESEARCH",     1);
+    PyModule_AddIntConstant(m, "CONTENT_TROOP_TYPE",   2);
+    PyModule_AddIntConstant(m, "CONTENT_ARTILLERY",    3);
+    PyModule_AddIntConstant(m, "CONTENT_DISTRICT_LAW", 4);
+    PyModule_AddIntConstant(m, "CONTENT_HOLLOW",       0);
+    PyModule_AddIntConstant(m, "CONTENT_PERSIST",      1);
+#endif
     return m;
 }
 

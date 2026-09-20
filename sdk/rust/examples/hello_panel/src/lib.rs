@@ -47,6 +47,19 @@ const FAINT: Color = Color(0x9696_A0FF);
 pub extern "C" fn mod_load() -> i32 {
     let env = Env::get();
 
+    // Content before the headless check: a catalogue entry has nothing to do
+    // with the renderer. PERSIST keeps the definition in the save, so a
+    // country that adopted this doctrine can still say what it adopted after
+    // the mod is uninstalled.
+    if !gearbox::content_add(
+        gearbox::Kind::Doctrine,
+        "hello:demo",
+        r#"{"name":"Hello Doctrine"}"#,
+        gearbox::Mode::Persist,
+    ) {
+        gearbox::warn("hello-panel: doctrine refused");
+    }
+
     if env.is_headless() {
         // A training run has no renderer. Registering a panel would be a no-op
         // anyway, but skipping it makes the intent explicit.
@@ -56,8 +69,9 @@ pub extern "C" fn mod_load() -> i32 {
 
     match gearbox::panel_register("Hello Panel (Rust)", 280, 150) {
         Some(p) => PANEL.set(Some(p)),
-        // UI was declared but revoked, or we hit the eight-panel limit. Not
-        // fatal: degrade rather than trap.
+        // Headless, or we hit the eight-panel limit. Not fatal: degrade
+        // rather than trap. (Not revocation -- a mod whose UI was revoked is
+        // refused at instantiation and never reaches mod_load.)
         None => gearbox::warn("hello-panel: no panel, running quiet"),
     }
 
@@ -127,6 +141,12 @@ pub extern "C" fn mod_draw_panel(panel: u32, width: u32, height: u32) {
 
     // Immediate mode: the button is drawn and polled by the same call, and
     // returns true only on the frame it is clicked.
+    // The doctrine added in mod_load, counted back out of the catalogue.
+    line.clear()
+        .push_str("Doctrines: ")
+        .push_u64(gearbox::content_count(gearbox::Kind::Doctrine) as u64);
+    panel.text(8, 104, DIM, line.as_str());
+
     if panel.button(8, 116, 120, 24, "Next country") {
         CURSOR.set(cursor + 1);
     }
