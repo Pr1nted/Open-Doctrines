@@ -468,6 +468,10 @@ void Game::processTurn() {
     // splices slightly behind on the rare path that writes ownership without
     // reindexing. One O(provinces) scan a turn buys that back.
     rebuildCountryProvinceIndex();
+    // BEFORE the income pass, not after: a ramp that moved this turn has to be
+    // in the numbers this turn's decisions are made against, or every country
+    // spends a turn acting on last turn's economy. See stepNationalisation.
+    stepNationalisation();
     // Pre-compute all country incomes in a single province pass (avoids 356 redundant scans)
     refreshIncomeCache();
     m_rebellionsThisTurnByCid.clear();

@@ -5557,7 +5557,11 @@ bool Game::upgradeQuote(int provinceId, const char* type,
         // the next factory and leaves the existing ones standing. See
         // industryCapacity() in BuildCosts.h.
         if (next > provinceIndustryCapacity(provinceId)) return false; // capacity cap
-        cost = (float)IND_COST[next] * costMod;
+        // State hands build dearer, in proportion to how long they have held
+        // this province's speciality. Only industry: a fort or a port is not
+        // the thing that was nationalised.
+        cost = (float)IND_COST[next] * costMod
+             * odnat::buildCostMul(provinceNationalisationRamp(provinceId));
         // The money HALF of the price. A planned economy pays for a factory in
         // machinery instead; see industryMachineryCost and queueUpgrade. Only
         // in a goods world -- with the production economy off there is no

@@ -1,4 +1,5 @@
 #pragma once
+#include "Nationalisation.h"
 #include "WorldProvenance.h"
 #include "ModContent.h"
 #include "ModRenderLayer.h"
@@ -2819,6 +2820,26 @@ public:
     /** The titular culture per country, and the turn it was worked out. */
     mutable std::unordered_map<int, std::string> m_titularGroup;
     mutable int m_titularTurn = -1;
+    // ─── Industry in state hands. See src/Nationalisation.h ───────────────
+    /** Per country, the specialities it holds or is letting go of. */
+    std::map<int, std::vector<odnat::Holding>> m_nationalised;
+    /** Whether the mechanic is switched on at all. */
+    static bool nationalisationOn();
+    /** How many specialities this country may hold, from its compass. */
+    int nationalisationCap(int countryId) const;
+    /** The ramp for one speciality, 0 when it is not held at all. */
+    float nationalisationRamp(int countryId, const std::string& resource) const;
+    /** Take one into state hands. False if the cap is full or it is already held. */
+    bool nationalise(int countryId, const std::string& resource);
+    /** Let one go. It decays rather than stopping. False if it was not held. */
+    bool releaseNationalised(int countryId, const std::string& resource);
+    /** One turn of ramp movement for every country, and the cap enforced. */
+    void stepNationalisation();
+    /** The ramp that applies to THIS province, by its specialisation. 0 if none. */
+    float provinceNationalisationRamp(int provinceId) const;
+    /** The level-weighted share of this country's industry in state hands. */
+    float nationalisedIndustryShare(int countryId) const;
+
     /** Catalogue entries mods have added. See src/ModContent.h. */
     odcontent::Registry m_modContent;
     /** Append mod-added doctrines to m_allPolicies. Called after initPolicies. */

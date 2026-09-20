@@ -566,6 +566,155 @@ struct PolicyRules {
     float m_pacBefore = 0.0f;
     int m_playerBefore = 0;
 
+
+    /// Industry in state hands, wired into a real world.
+    ///
+    /// NationalisationTest owns the rule; this owns the WIRING, which is the
+    /// half that cannot be tested without a map: that the ramp reaches the
+    /// province's income, the country's upkeep and the province's unrest, that
+    /// the compass decides how much may be held, and that a save carries it.
+    ///
+    /// Run twice, like every other flagged mechanic here: with the flag off
+    /// nothing may move at all.
+    void nationalisation(const std::string& dataDir) {
+        (void)dataDir;
+        const bool on = Game::nationalisationOn();
+        printf("\nnationalisation (%s)\n", on ? "ON" : "off");
+
+        game.rebuildCountryProvinceIndex();
+        reset();
+
+        // A country with industry that is actually specialised in something.
+        int cid2 = 0, pid = 0;
+        std::string res;
+        for (const auto& [id, c] : game.m_countries.getAll()) {
+            if (id <= 0 || id >= 65530) continue;
+            for (int p : game.provincesOf(id)) {
+                auto it = game.m_provinceIndustry.find(p);
+                if (it == game.m_provinceIndustry.end()) continue;
+                if (it->second.specialization.empty() || it->second.level <= 0) continue;
+                if (it->second.resourceIncome <= 0.0f) continue;
+                cid2 = id; pid = p; res = it->second.specialization;
+                break;
+            }
+            if (cid2) break;
+        }
+        // NOT a skip. If the shipped map has no specialised industry at all,
+        // this mechanic has nothing to attach to and that is the finding.
+        check(cid2 != 0, "a province with specialised industry exists to test on");
+        if (cid2 == 0) return;
+
+        // ── the compass decides how many ──
+        game.m_countryCompass[cid2] = makeCompass(-100.0f, 0.0f);
+        const int capLeft = game.nationalisationCap(cid2);
+        game.m_countryCompass[cid2] = makeCompass(100.0f, 0.0f);
+        const int capRight = game.nationalisationCap(cid2);
+        if (on) {
+            check(capLeft == 5, "a command economy may hold five");
+            check(capRight == 0, "a free market may hold none");
+        } else {
+            check(capLeft == 0 && capRight == 0,
+                  "the cap is zero either way with the flag off");
+        }
+
+        game.m_countryCompass[cid2] = makeCompass(-100.0f, 0.0f);
+
+        // ── output, upkeep and unrest all move, and only together ──
+        auto income = [&]() {
+            game.m_countryIncomeCache.clear();
+            game.invalidateIncomeCache();
+            return game.provinceResourceIncome(pid);
+        };
+        auto upkeep = [&]() {
+            game.m_countryIncomeCache.clear();
+            game.invalidateIncomeCache();
+            return game.computeCountryIncome(cid2).industryUpkeep;
+        };
+        // THE TWO-ARGUMENT OVERLOAD. The one-argument form answers for
+        // m_playerCountryId, not for the province's owner -- so asking it about
+        // a country that is not the player compares this province against
+        // somebody else's compass, and the first version of this test read 0
+        // for a province whose unrest was fine.
+        //
+        // And the province is put at odds with its government first: the total
+        // is clamped at zero on the way out, so on a contented province every
+        // term in the sum is invisible, including this one.
+        game.m_provinceCompass[pid] = {100.0f, 100.0f};
+        const float incomeBefore = income();
+        const float upkeepBefore = upkeep();
+        const float unrestBefore = game.getProvinceRebellionChance(pid, cid2);
+        check(unrestBefore > 0.0f,
+              "the province is unsettled enough for the clamp not to hide the term");
+        check(incomeBefore > 0.0f, "the province earns something to begin with");
+
+        const bool took = game.nationalise(cid2, res);
+        check(took == on, on ? "the speciality is taken into state hands"
+                             : "and nothing can be nationalised with the flag off");
+
+        // Fresh, it does nothing. That is the ramp.
+        check(income() == incomeBefore, "the turn it is taken, output is unchanged");
+
+        // Twenty turns of ramp, stepped directly rather than by running turns:
+        // a whole turn moves armies, prices and populations, and none of that
+        // is what this is measuring.
+        for (int i = 0; i < odnat::kRampTurns; ++i) game.stepNationalisation();
+
+        const float incomeAfter = income();
+        const float upkeepAfter = upkeep();
+        const float unrestAfter = game.getProvinceRebellionChance(pid, cid2);
+
+        if (on) {
+            check(incomeAfter > incomeBefore,
+                  "held for the full term it produces more (" +
+                  std::to_string(incomeBefore) + " -> " + std::to_string(incomeAfter) + ")");
+            const float ratio = incomeAfter / incomeBefore;
+            check(ratio > 1.0f + odnat::kOutputMax * 0.99f &&
+                  ratio < 1.0f + odnat::kOutputMax * 1.01f,
+                  "by the ceiling exactly (x" + std::to_string(ratio) + ")");
+            check(upkeepAfter > upkeepBefore,
+                  "and costs more to run (" + std::to_string(upkeepBefore) +
+                  " -> " + std::to_string(upkeepAfter) + ")");
+            check(unrestAfter > unrestBefore,
+                  "and the province minds (" + std::to_string(unrestBefore) +
+                  " -> " + std::to_string(unrestAfter) + ")");
+        } else {
+            check(incomeAfter == incomeBefore, "output does not move with the flag off");
+            check(upkeepAfter == upkeepBefore, "nor upkeep");
+            check(unrestAfter == unrestBefore, "nor unrest");
+        }
+
+        // ── LETTING GO DOES NOT SNAP BACK ──
+        //
+        // The whole design refuses the flip: privatise, keep the output, dodge
+        // the bill. One turn after releasing, the output must still be most of
+        // the way up.
+        if (on) {
+            check(game.releaseNationalised(cid2, res), "it can be released");
+            game.stepNationalisation();
+            const float justAfter = income();
+            check(justAfter > incomeBefore * 1.3f,
+                  "one turn later the output is still there (" +
+                  std::to_string(justAfter) + ")");
+            for (int i = 0; i < odnat::kRampTurns; ++i) game.stepNationalisation();
+            const float decayed = income();
+            check(decayed == incomeBefore,
+                  "and only a full term later is it back to where it started");
+            check(game.nationalisationRamp(cid2, res) == 0.0f,
+                  "with nothing left holding a slot");
+        }
+
+        // ── the compass taking the room away releases it ──
+        if (on) {
+            check(game.nationalise(cid2, res), "it is taken again");
+            game.m_countryCompass[cid2] = makeCompass(100.0f, 0.0f);   // hard right
+            game.stepNationalisation();
+            check(game.nationalisationRamp(cid2, res) == 0.0f,
+                  "a country that moves right loses it");
+        }
+        reset();
+        game.m_nationalised.clear();
+    }
+
     void run() {
         // ── 1. the shipped data states every pair on both sides ──
         {
@@ -1164,6 +1313,7 @@ int main(int argc, char** argv) {
     t.docExample(dataDir);
     t.exampleMod(dataDir);
     t.deadEffectsNowLive();
+    t.nationalisation(dataDir);
 
     printf("%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;

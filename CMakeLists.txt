@@ -930,6 +930,8 @@ set(GAME_SOURCES
     src/Game_Policies.cpp
     src/Game_Parties.cpp
     src/Game_Assimilation.cpp
+    src/Game_Nationalisation.cpp
+    src/Nationalisation.cpp
     src/WorldProvenance.cpp
     src/CountryFields.cpp
     src/ScriptCommands.cpp
@@ -2220,6 +2222,13 @@ target_include_directories(TouchGestureTest PRIVATE
 # and no Game behind it.
 add_executable(MinorityShareTest EXCLUDE_FROM_ALL tests/minority_share_test.cpp)
 target_include_directories(MinorityShareTest PRIVATE src tests)
+
+# Industry in state hands. Pure rules -- a ramp and the multipliers hanging off
+# it -- so no world, and the property under test is that the three cannot come
+# apart at any point on the ramp.
+add_executable(NationalisationTest EXCLUDE_FROM_ALL tests/nationalisation_test.cpp
+               src/Nationalisation.cpp)
+target_include_directories(NationalisationTest PRIVATE src tests)
 
 # Who governs, and what a legislature may do to a government compass. Pure
 # rules plus the shipped party table -- no world, because the pull is

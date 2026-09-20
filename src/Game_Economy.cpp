@@ -36,7 +36,13 @@ float Game::specializationBoostPct(int pid) const {
 float Game::provinceResourceIncome(int pid) const {
     auto indIt = m_provinceIndustry.find(pid);
     if (indIt == m_provinceIndustry.end()) return 0.0f;
-    return indIt->second.resourceIncome * (1.0f + specializationBoostPct(pid) / 100.0f);
+    // State hands produce more, in proportion to how long they have held it.
+    // Multiplied here for the same reason the specialisation boost is: the
+    // stored resourceIncome stays the province's own base, so a nationalisation
+    // that comes and goes cannot compound into the saved number.
+    return indIt->second.resourceIncome
+         * (1.0f + specializationBoostPct(pid) / 100.0f)
+         * odnat::outputMul(provinceNationalisationRamp(pid));
 }
 
 const char* Game::bestSpecializationFor(int pid) const {
@@ -895,7 +901,8 @@ CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
     // through the same function the live snapshot uses.
     const float upkeepNow = cs.industryUpkeep;
     cs.industryUpkeep = industryUpkeep(cs.industryLevels, cs.gross,
-                                       getTotalEffect("industryUpkeepPct", countryId));
+                                       getTotalEffect("industryUpkeepPct", countryId))
+                      * odnat::upkeepMul(nationalisedIndustryShare(countryId));
     cs.expenses += (cs.industryUpkeep - upkeepNow);
 
     cs.expenses += (cs.navyExpenses - navyNow);
@@ -1001,7 +1008,8 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     // more. See industryUpkeep() for why this is a running cost rather than a
     // higher price.
     cs.industryUpkeep = industryUpkeep(cs.industryLevels, cs.gross,
-                                       getTotalEffect("industryUpkeepPct", countryId));
+                                       getTotalEffect("industryUpkeepPct", countryId))
+                      * odnat::upkeepMul(nationalisedIndustryShare(countryId));
     float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
                          cs.minorityCosts + cs.industryUpkeep;
     float affordable = std::max(0.0f, cs.total - baseExpenses);
@@ -1080,7 +1088,8 @@ void Game::refreshIncomeCache() {
         applyIncomeLevers(cs, cid);
         cs.industryLevels = a.levels;
         cs.industryUpkeep = industryUpkeep(a.levels, a.gross,
-                                           getTotalEffect("industryUpkeepPct", cid));
+                                           getTotalEffect("industryUpkeepPct", cid))
+                          * odnat::upkeepMul(nationalisedIndustryShare(cid));
         // THE MODIFIER BELONGS HERE TOO, AND THIS IS THE COPY THAT COUNTS.
         //
         // The per-man rate above is a SECOND copy of the one in

@@ -1284,6 +1284,15 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
         }
     }
 
+    // ── AND WHAT THE STATE TOOK ──
+    //
+    // Taking an industry into state hands is not free of resentment, and the
+    // resentment grows with the take: the same ramp that raises the output
+    // raises this. It is the taxation half of the mechanic -- a state that
+    // draws more out of a province is a state more of that province objects
+    // to. Zero, exactly, when nothing here is nationalised.
+    total += odnat::unrestPct(provinceNationalisationRamp(provinceId));
+
     // ── AND THE REGIONAL LAW IN FORCE HERE ──
     //
     // Added rather than subtracted, because these go both ways: a curfew calms

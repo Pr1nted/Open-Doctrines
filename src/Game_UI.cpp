@@ -1660,6 +1660,25 @@ std::string Game::saveStateJson() {
         j["activePolicies"].push_back(entry);
     }
 
+    // ── Industry in state hands ──
+    //
+    // Written whether or not the mechanic is switched on, so a campaign played
+    // with OD_NATIONALISATION and loaded without it does not silently lose
+    // what it held -- the holdings sit inert and come back when the flag does.
+    // `held` distinguishes one still being taken from one decaying after it
+    // was let go, and dropping that would hand a privatised country its full
+    // output back on the next load.
+    for (const auto& [cid, list] : m_nationalised) {
+        for (const odnat::Holding& h : list) {
+            nlohmann::json n;
+            n["countryId"] = cid;
+            n["resource"] = h.resource;
+            n["ramp"] = h.ramp;
+            n["held"] = h.held;
+            j["nationalised"].push_back(n);
+        }
+    }
+
     // ── Catalogue entries mods added ──
     //
     // PERSIST entries only, and written even when the owning mod is gone: a
@@ -2644,6 +2663,26 @@ void Game::loadStateJsonBody(const std::string& json) {
         odprov::compare(m_provenance, runningMods(), GAME_VERSION);
     for (const std::string& line : odprov::describe(m_provenanceMismatch))
         printf("[WORLD] %s\n", line.c_str());
+
+    // Industry in state hands. Read back whether or not the mechanic is
+    // switched on: a campaign saved with it and loaded without keeps what it
+    // held, inert, rather than quietly privatising everything.
+    m_nationalised.clear();
+    if (j.contains("nationalised") && j["nationalised"].is_array()) {
+        for (const auto& n : j["nationalised"]) {
+            if (!n.is_object() || !n.contains("countryId") || !n.contains("resource"))
+                continue;
+            odnat::Holding h;
+            h.resource = n["resource"].get<std::string>();
+            // Clamped on the way in. A ramp out of range would otherwise put
+            // every multiplier past its ceiling for the rest of the campaign,
+            // from one edited save.
+            h.ramp = std::clamp(n.value("ramp", 0.0f), 0.0f, 1.0f);
+            h.held = n.value("held", true);
+            if (h.resource.empty()) continue;
+            m_nationalised[n["countryId"].get<int>()].push_back(h);
+        }
+    }
 
     // Catalogue entries mods added. Read back whether or not the owning mod is
     // installed, for the reason above.
