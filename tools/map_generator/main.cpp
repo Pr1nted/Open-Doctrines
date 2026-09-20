@@ -25,17 +25,26 @@ int main(int argc, char* argv[]) {
             cfg.useAdminUnits = false;
         } else if (arg == "--scale" && i + 1 < argc) {
             std::string scale = argv[++i];
+            // DISPUTED AREAS ARE 10m ONLY. Natural Earth publishes
+            // admin_0_disputed_areas at 10m and nowhere else -- the 110m and
+            // 50m paths return 403 -- so those scales keep the 10m file that
+            // Config already defaults to rather than naming one that is not
+            // there. Overlaying 10m disputed polygons on a coarser base is
+            // harmless: every shape is rasterised into the same lat/lon grid,
+            // so the extra vertices land in the same pixels.
+            //
+            // Setting them cost the whole run: the overlay is decorative, but
+            // rasterizeUrl returning false fails generateProvinces, which
+            // fails run(), so `--scale 110m` could never finish.
             if (scale == "110m") {
                 cfg.landUrl = "https://naciscdn.org/naturalearth/110m/physical/ne_110m_land.zip";
                 cfg.lakesUrl = "https://naciscdn.org/naturalearth/110m/physical/ne_110m_lakes.zip";
                 cfg.deFactoUrl = "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_countries.zip";
-                cfg.disputedUrl = "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_admin_0_disputed_areas.zip";
                 cfg.populatedPlacesUrl = "https://naciscdn.org/naturalearth/110m/cultural/ne_110m_populated_places.zip";
             } else if (scale == "50m") {
                 cfg.landUrl = "https://naciscdn.org/naturalearth/50m/physical/ne_50m_land.zip";
                 cfg.lakesUrl = "https://naciscdn.org/naturalearth/50m/physical/ne_50m_lakes.zip";
                 cfg.deFactoUrl = "https://naciscdn.org/naturalearth/50m/cultural/ne_50m_admin_0_countries.zip";
-                cfg.disputedUrl = "https://naciscdn.org/naturalearth/50m/cultural/ne_50m_admin_0_disputed_areas.zip";
                 cfg.populatedPlacesUrl = "https://naciscdn.org/naturalearth/50m/cultural/ne_50m_populated_places.zip";
             } else if (scale == "10m") {
                 cfg.landUrl = "https://naciscdn.org/naturalearth/10m/physical/ne_10m_land.zip";
