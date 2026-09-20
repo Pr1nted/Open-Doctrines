@@ -5555,6 +5555,18 @@ void MapEditor::drawProvincePanel() {
     // Immediate-mode widgets, laid out with a running cursor
     int cy = contentTop - m_provPanelScroll;
     BeginScissorMode(px - 4, contentTop, listW + 8, viewH);
+    // THE SAME FAULT AS THE DOCTRINE LIST, NOT FIXED HERE.
+    //
+    // This scissor clips drawing and not clicks, so a widget scrolled out of
+    // the province panel keeps a live, invisible hit box -- the bug that, in
+    // the doctrine list, enacted doctrines a player never chose.
+    //
+    // It is left alone deliberately. There are eight interaction sites inside
+    // this region, several of them drags rather than clicks, and the editor is
+    // not a screen that can be driven from a test here: a guard applied to
+    // seven of the eight would read as handled and would not be. It is a
+    // creator tool rather than something a campaign runs into, which is why it
+    // is a note and not a patch. Fix it with the editor open in front of you.
 
     auto slider = [&](const char* label, float& v) {
         DrawText(label, px, cy, 11, DARKGRAY);

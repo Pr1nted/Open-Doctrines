@@ -1756,6 +1756,25 @@ int xw = MeasureText("X", 20);
             DrawText(TextFormat(T("No doctrine matches \"%s\""), m_policySearch.c_str()),
                      30, startY + 20, 16, Color{150, 150, 170, 220});
         }
+        // ── A ROW THAT CANNOT BE SEEN CANNOT BE CLICKED ──
+        //
+        // BeginScissorMode clips DRAWING. It does not clip hit-testing, and
+        // every row below tests the mouse against its own Enact button --
+        // which sits at a fixed x on the right of the screen and at whatever y
+        // the scroll put it, including y far above the list or far below it.
+        //
+        // So a doctrine scrolled out of view kept a live, invisible Enact
+        // button somewhere else on the screen, and any click that happened to
+        // land on it enacted that doctrine. Reported as "sometimes policies
+        // start being implemented when i dont even implement them": you enact
+        // one, click something else -- Close, a legend button, the next tab --
+        // and a second doctrine you never chose is suddenly being implemented.
+        //
+        // `visible` is the same rectangle the scissor uses, so the two cannot
+        // drift: if you can see the row, you can press it, and not otherwise.
+        auto onScreen = [&](float top, float height) {
+            return top + height > (float)startY && top < (float)(startY + listH);
+        };
         BeginScissorMode(20, startY, m_screenW - 40, listH);
         int y = startY - m_policyScroll;
         for (auto& fname : folderOrder) {
@@ -1771,7 +1790,9 @@ int xw = MeasureText("X", 20);
             DrawText(TextFormat("%s %s", isOpen ? "▼" : "▶",
                                 od::i18n::tr(fname)), 30, y + 4, 18,
                      hexToColor(m_config.accent()));
-            if (CheckCollisionPointRec(mouse, fhRect) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (onScreen((float)y, (float)folderHeaderH) &&
+                CheckCollisionPointRec(mouse, fhRect) &&
+                IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 if (isOpen) { m_openFolders.erase(fname);  Audio::get().playSfx("panel_close"); }
                 else       { m_openFolders.insert(fname); Audio::get().playSfx("panel_open");  }
             }
@@ -1782,6 +1803,7 @@ int xw = MeasureText("X", 20);
             for (int pi : fit->second) {
                 const auto& p = m_allPolicies[pi];
                 if (!c) continue;
+                const bool rowVisible = onScreen((float)y, 172.0f);
                 bool canEnact = canCountryEnactPolicy(m_playerCountryId, p);
                 Color nameCol = canEnact ? WHITE : Color{100, 100, 120, 200};
                 Color bgCol = (m_selectedPolicyIdx == pi) ? Color{80, 80, 100, 180} : Color{40, 40, 50, 180};
@@ -1892,7 +1914,7 @@ int xw = MeasureText("X", 20);
                 bool enactLimitReached = (m_policiesEnactedThisTurn >= 3);
                 Rectangle enactBtn = {(float)(m_screenW - 160), (float)(y + 12), 130, 44};
                 if (canEnact && !enactLimitReached) {
-                    bool hover = CheckCollisionPointRec(mouse, enactBtn);
+                    bool hover = rowVisible && CheckCollisionPointRec(mouse, enactBtn);
                     DrawRectangleRounded(enactBtn, 0.2f, 6, hover ? Color{100, 180, 100, 255} : Color{80, 150, 80, 255});
                     DrawText(T("Enact"), (int)(enactBtn.x + enactBtn.width/2 - MeasureText(T("Enact"), 18)/2), y + 22, 18, WHITE);
                     if (hover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
@@ -1904,7 +1926,7 @@ int xw = MeasureText("X", 20);
                     DrawRectangleRounded(enactBtn, 0.2f, 6, Color{80, 80, 90, 180});
                     const char* label = enactLimitReached ? "No actions" : "Locked";
                     DrawText(label, (int)(enactBtn.x + enactBtn.width/2 - MeasureText(label, 18)/2), y + 22, 18, Color{120, 120, 140, 200});
-                    if (CheckCollisionPointRec(mouse, enactBtn) &&
+                    if (rowVisible && CheckCollisionPointRec(mouse, enactBtn) &&
                         IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
                         Audio::get().playSfx("deny");
                 }

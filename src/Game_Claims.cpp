@@ -494,7 +494,15 @@ void Game::drawClaimsTab() {
     DrawRectangle(listX, listY, listW, listH, {15, 15, 25, 220});
     DrawRectangleLines(listX, listY, listW, listH, {60, 60, 90, 200});
 
+    // The scissor clips DRAWING, never clicks -- so a row scrolled out of this
+    // list keeps a live, invisible hit box wherever the scroll put it. Same
+    // fault as the doctrine list, where it enacted doctrines the player never
+    // chose; here it would drop or add a claim. `rowOnScreen` is the same
+    // rectangle as the scissor, so if you can see the row you can press it.
     BeginScissorMode(listX + 4, listY + 4, listW - 8, listH - 8);
+    auto rowOnScreen = [&](int top, int height) {
+        return top + height > listY + 4 && top < listY + listH - 4;
+    };
 
     int drawY = listY + 8 - m_claimsScroll;
 
@@ -546,7 +554,9 @@ void Game::drawClaimsTab() {
                     if (inPendingAdd || inAdd) DrawText("[+]", listX + listW - 50, drawY, 13, odPalette::of(odPalette::Role::Good));
                     else if (inPendingDrop || inDrop) DrawText("[-]", listX + listW - 50, drawY, 13, odPalette::of(odPalette::Role::Bad));
 
-                    if (m_claimsEditMode && CheckCollisionPointRec(mouse, {(float)(listX + 4), (float)drawY, (float)(listW - 8), 22}) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                    if (m_claimsEditMode && rowOnScreen(drawY, 22) &&
+                        CheckCollisionPointRec(mouse, {(float)(listX + 4), (float)drawY, (float)(listW - 8), 22}) &&
+                        IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                         bool isCur = std::find(currentClaims.begin(), currentClaims.end(), pid) != currentClaims.end();
                         bool isOwnedByPlayer = ppIt->second.countryId == m_playerCountryId;
                         if (isCur && !inDrop) { m_claimsEditToDrop.push_back(pid); Audio::get().playSfx("toggle_off"); }
