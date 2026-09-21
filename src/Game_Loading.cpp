@@ -3294,8 +3294,9 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     // territory resolves to nothing (no owner, not even UNC/BLC).
     restoreRebels(savePath);
 
+    SaveReader reader(savePath);   // opened once for the whole replay
     for (int t = 1; t <= turnCount; t++) {
-        TurnDelta delta = SaveManager::readTurn(savePath, t);
+        TurnDelta delta = reader.readTurn(t);
         if (delta.turnNumber != t) {
             LoadLog() << "  Turn mismatch at " << t << std::endl;
             continue;

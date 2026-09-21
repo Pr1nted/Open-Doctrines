@@ -905,6 +905,7 @@ void MapEditor::initBlankMap() {
     m_editLandSea.setFromPixels(m_pixels.data(), MAP_W, MAP_H);
     if (!m_renderer) {
         m_renderer = new MapRenderer(m_canvasW, m_canvasH, MAP_W, MAP_H);
+        m_renderer->setKeepBorderPixels(true);   // live border painting reads it
         m_renderer->setMaxZoom(20.0f);
     }
     m_renderer->resize(m_canvasW, m_canvasH);

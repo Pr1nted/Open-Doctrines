@@ -94,10 +94,11 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
     out.push_back(base);
 
     // Apply each turn's delta on top of the previous snapshot.
+    SaveReader reader(savePath);   // opened once, not once per turn
     for (int t = 1; t <= meta.turnCount; ++t) {
         TurnSnapshot cur = out.back();
         cur.turn = t;
-        TurnDelta d = SaveManager::readTurn(savePath, t);
+        TurnDelta d = reader.readTurn(t);
         for (auto& p : d.provinces) {
             if (p.ownerChanged) cur.owner[p.provinceId] = p.newOwner;
             if (p.populationChanged) cur.population[p.provinceId] = p.newPopulation;
@@ -115,8 +116,8 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
             cur.troops[a.provinceId] = tot;
         }
         // A per-turn state snapshot means this turn can be fully restored.
-        cur.hasState = !SaveManager::readEntry(
-            savePath, "turns/s_" + turnTag(t) + ".json").empty();
+        // Present is enough; this used to inflate the whole snapshot to ask.
+        cur.hasState = reader.hasEntry("turns/s_" + turnTag(t) + ".json");
         out.push_back(cur);
     }
     return true;

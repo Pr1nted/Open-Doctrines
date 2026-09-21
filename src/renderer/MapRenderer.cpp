@@ -206,6 +206,41 @@ static inline uint8_t borderAlphaAt(const uint32_t* pixels, int mapW, int mapH,
     return 0;
 }
 
+// The border layer's coverage, one row at a time, from the province image --
+// exactly what computeBorderTexture writes into the layer (marked on an edge
+// pixel and on the pixels 4-adjacent to one, x wrapping, nothing beyond the
+// top and bottom rows), with the same rolling three rows of edge flags. The
+// glow builders read coverage this way so a game does not have to keep the
+// layer's 64 MB CPU copy to answer them. Rows must be asked for in order from 0.
+namespace {
+class BorderCoverageRows {
+public:
+    BorderCoverageRows(const uint32_t* pixels, int w, int h)
+        : m_px(pixels), m_w(w), m_h(h), m_flags((size_t)w * 3, 0), m_out((size_t)w, 0) {}
+    const uint8_t* row(int y) {
+        uint8_t* prev = &m_flags[(size_t)((y + 2) % 3) * m_w];   // y - 1
+        uint8_t* cur  = &m_flags[(size_t)(y % 3) * m_w];
+        uint8_t* next = &m_flags[(size_t)((y + 1) % 3) * m_w];
+        if (y == 0) { fill(prev, -1); fill(cur, 0); }
+        fill(next, y + 1);
+        for (int x = 0; x < m_w; ++x) {
+            const int l = (x == 0) ? m_w - 1 : x - 1;
+            const int r = (x == m_w - 1) ? 0 : x + 1;
+            m_out[(size_t)x] = (cur[x] || cur[l] || cur[r] || prev[x] || next[x]) ? kBorderMarked : 0;
+        }
+        return m_out.data();
+    }
+private:
+    void fill(uint8_t* out, int y) {
+        if (y < 0 || y >= m_h) { std::fill(out, out + m_w, (uint8_t)0); return; }
+        for (int x = 0; x < m_w; ++x) out[x] = provEdgeAt(m_px, m_w, m_h, x, y) ? 1 : 0;
+    }
+    const uint32_t* m_px;
+    int m_w, m_h;
+    std::vector<uint8_t> m_flags, m_out;
+};
+}  // namespace
+
 void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH,
                                      int rx, int ry, int rw, int rh) {
     m_surfaceDirty = true;   // the globe samples a composite of these
@@ -692,6 +727,10 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     img.mipmaps = 1;
     img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
     m_borderTex = LoadTextureFromImage(img);
+    m_bordersComputed = true;
+    // Uploaded; a game has no further use for the CPU copy. See
+    // setKeepBorderPixels() and BorderCoverageRows.
+    if (!m_keepBorderPixels) std::vector<uint8_t>().swap(m_borderPixels);
 }
 
 void MapRenderer::resize(int screenW, int screenH) {
@@ -902,7 +941,7 @@ void MapRenderer::buildProvinceData(
     // CENTRES DO NOT NEED THE BORDER RASTER, only the glow does. This used to
     // return here without one, and the turn logic reads the centres -- so a
     // load that skips the raster (Game::m_agentLoad) still gets them.
-    const bool glow = !m_borderPixels.empty();
+    const bool glow = m_bordersComputed;
 
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
     if (!provPixels) return;
@@ -910,6 +949,7 @@ void MapRenderer::buildProvinceData(
     auto& all = provinces.getAllProvinces();
 
     int stride = m_mapW * 4;
+    BorderCoverageRows coverage(reinterpret_cast<const uint32_t*>(provPixels), m_mapW, m_mapH);
 
     // ── ACCUMULATORS INDEXED BY PROVINCE ID, NOT HASHED BY IT ──
     //
@@ -943,6 +983,7 @@ void MapRenderer::buildProvinceData(
     for (int y = 0; y < m_mapH; ++y) {
         Audio::get().pump();          // as in computeBorderTexture above
         int rowOff = y * stride;
+        const uint8_t* cov = glow ? coverage.row(y) : nullptr;
         for (int x = 0; x < m_mapW; ++x) {
             int pi = rowOff + x * 4;
             int r = provPixels[pi], g = provPixels[pi + 1], b = provPixels[pi + 2];
@@ -967,7 +1008,7 @@ void MapRenderer::buildProvinceData(
             // have the same pixel: `pi` is a byte offset into a 4-byte RGBA
             // image, and reading the coverage byte at pi+3 was only ever right
             // while the border layer was also four bytes wide.
-            uint8_t ba = glow ? m_borderPixels[((size_t)y * m_mapW + x) * kBorderBpp + 1] : 0;
+            uint8_t ba = glow ? cov[x] : 0;
             if (ba > 0) {
                 int foundPid = 0;
                 for (int pass = 0; pass < 5 && foundPid == 0; ++pass) {
@@ -1005,10 +1046,11 @@ void MapRenderer::buildProvinceData(
 
 void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
     m_provinceGlow.clear();
-    if (m_borderPixels.empty()) return;
+    if (!m_bordersComputed) return;
 
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
     if (!provPixels) return;
+    BorderCoverageRows coverage(reinterpret_cast<const uint32_t*>(provPixels), m_mapW, m_mapH);
 
     // TWO BUFFERS, TWO STRIDES, AND THEY ARE NOT THE SAME ANY MORE.
     //
@@ -1027,9 +1069,9 @@ void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
 
     for (int y = 0; y < m_mapH; ++y) {
         Audio::get().pump();          // as in computeBorderTexture above
+        const uint8_t* cov = coverage.row(y);
         for (int x = 0; x < m_mapW; ++x) {
-            // dst[1] is the coverage byte; see writeBorderTexel.
-            uint8_t ba = m_borderPixels[((size_t)y * m_mapW + x) * kBorderBpp + 1];
+            const uint8_t ba = cov[x];   // what the border layer holds here
             if (ba == 0) continue;
 
             int foundPid = 0;

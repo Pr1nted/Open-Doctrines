@@ -201,6 +201,10 @@ public:
     void addZoom(float amount);
     void resize(int screenW, int screenH);
     void setMaxZoom(float zoom) { m_maxZoom = zoom; }
+    /// The map editor repaints borders live (updateBorderRegion), which needs
+    /// the CPU copy of the border layer. A game never does, and frees it --
+    /// 64 MB at 8192x4096, 94 MB as allocated -- once it is uploaded.
+    void setKeepBorderPixels(bool keep) { m_keepBorderPixels = keep; }
     void setDpiScale(float scale) { m_dpiScale = scale; }
     // Single-scan build: computes glow map AND province centers/radii
     void buildProvinceData(const ProvinceMap& provinces,
@@ -368,7 +372,9 @@ private:
     int m_hoveredProvinceId = 0;
     Texture2D m_selectionTex{};
     Texture2D m_bulkTex{};
-    std::vector<uint8_t> m_borderPixels;
+    std::vector<uint8_t> m_borderPixels;   ///< kept only with keepBorderPixels (the editor)
+    bool m_keepBorderPixels = false;
+    bool m_bordersComputed = false;         ///< computeBorderTexture ran: the glow can be built
 
     // Precomputed glow pixels per province (built once at init)
     std::unordered_map<int, std::vector<std::pair<int, uint8_t>>> m_provinceGlow;

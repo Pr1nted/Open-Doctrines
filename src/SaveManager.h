@@ -209,3 +209,21 @@ private:
     static void writeU64(std::vector<uint8_t>& buf, uint64_t v);
     static void writeFloat(std::vector<uint8_t>& buf, float v);
 };
+
+// One save held open for a run of reads: the load replay reads every turn in
+// order, and opening the archive per turn meant parsing its whole directory
+// (two entries a turn, thousands in a long campaign) once per turn. Before
+// that it meant reading the whole file per turn -- a 107 MB save, 820 times.
+class SaveReader {
+public:
+    explicit SaveReader(const std::string& odsvPath);
+    ~SaveReader();
+    SaveReader(const SaveReader&) = delete;
+    SaveReader& operator=(const SaveReader&) = delete;
+    bool ok() const { return m_ok; }
+    TurnDelta readTurn(int turn);
+    bool hasEntry(const std::string& name);
+private:
+    void* m_zip = nullptr;   // mz_zip_archive, kept out of this header
+    bool m_ok = false;
+};

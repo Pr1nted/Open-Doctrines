@@ -374,6 +374,35 @@ static std::vector<uint8_t> readFile(const std::string& path) {
     return data;
 }
 
+// ─── Open a save without reading it all ─────────────────
+//
+// A save grows by a state snapshot every turn -- 100 MB is an ordinary size
+// after a long campaign -- and every reader used to pull the whole file into
+// memory to find one entry in it. appendTurn did that twice a turn (once
+// itself, once through readMetadata): 213 MB allocated and freed per turn,
+// which macOS then kept charged to the game as freed-but-held memory, 1.7 GB
+// of it by turn ten on a 100 MB save.
+//
+// miniz can read the archive from the file instead: the central directory,
+// then only the entries asked for, in chunks. Still stdio underneath (see
+// readFile for why that matters on the web).
+static bool openSaveFile(mz_zip_archive& zip, const std::string& path) {
+    zip = mz_zip_archive{};
+    return mz_zip_reader_init_file(&zip, path.c_str(), 0);
+}
+
+// One entry of an open archive, or empty when it is absent or unreadable.
+static std::string extractEntry(mz_zip_archive& zip, const char* name) {
+    const int idx = mz_zip_reader_locate_file(&zip, name, nullptr, 0);
+    if (idx < 0) return {};
+    size_t sz = 0;
+    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
+    if (!d) return {};
+    std::string out((const char*)d, sz);
+    free(d);
+    return out;
+}
+
 // ─── Create initial .odsv ────────────────────────────────
 
 bool SaveManager::createSave(const std::string& odsvPath,
@@ -469,8 +498,6 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // A save was written. On the web that write went to a filesystem that
     // dies with the tab, so note it for util/WebPersist. No-op elsewhere.
     odPersistMark();
-    std::vector<uint8_t> zipData = readFile(odsvPath);
-    if (zipData.empty()) return false;
 
     // THE SAVE IS REWRITTEN WHOLE EVERY TURN, so what it costs to carry the
     // old contents across IS what Process Turn costs.
@@ -492,8 +519,11 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // The bytes were already compressed. mz_zip_writer_add_from_zip_reader
     // copies them across as they stand, so the per-turn cost is now the I/O
     // and nothing else, and it no longer grows with the length of the game.
+    //
+    // And it is read from the file, not from a copy of it in memory: see
+    // openSaveFile().
     mz_zip_archive srcZip{};
-    if (!mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0))
+    if (!openSaveFile(srcZip, odsvPath))
         return false;
     // A save without a map is not a save; refuse it rather than write a
     // half-formed archive over it. (Located, not extracted: the point of this
@@ -766,25 +796,9 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
 
 // ─── Parse SaveMetadata from an in-memory ZIP buffer ─────
 
-static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
+static SaveMetadata parseMetadataJson(const std::string& js) {
     SaveMetadata meta;
-    if (zipData.empty()) return meta;
-
-    mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
-        return meta;
-
-    int idx = mz_zip_reader_locate_file(&zip, "metadata.json", nullptr, 0);
-    if (idx < 0) { mz_zip_reader_end(&zip); return meta; }
-
-    size_t sz = 0;
-    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
-    if (!d) { mz_zip_reader_end(&zip); return meta; }
-
-    std::string js((char*)d, sz);
-    free(d);
-    mz_zip_reader_end(&zip);
-
+    if (js.empty()) return meta;
     try {
         auto j = nlohmann::json::parse(js);
 
@@ -828,20 +842,29 @@ static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
     return meta;
 }
 
+static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
+    if (zipData.empty()) return {};
+    mz_zip_archive zip{};
+    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return {};
+    const std::string js = extractEntry(zip, "metadata.json");
+    mz_zip_reader_end(&zip);
+    return parseMetadataJson(js);
+}
+
 SaveMetadata SaveManager::readMetadata(const std::string& odsvPath) {
-    auto zipData = readFile(odsvPath);
-    return parseMetadataFromZip(zipData);
+    mz_zip_archive zip{};
+    if (!openSaveFile(zip, odsvPath)) return {};
+    const std::string js = extractEntry(zip, "metadata.json");
+    mz_zip_reader_end(&zip);
+    return parseMetadataJson(js);
 }
 
 // ─── Read a specific turn ────────────────────────────────
 
 TurnDelta SaveManager::readTurn(const std::string& odsvPath, int turn) {
     TurnDelta delta;
-    auto zipData = readFile(odsvPath);
-    if (zipData.empty()) return delta;
-
     mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
+    if (!openSaveFile(zip, odsvPath))
         return delta;
 
     char turnPath[32];
@@ -859,14 +882,42 @@ TurnDelta SaveManager::readTurn(const std::string& odsvPath, int turn) {
     return delta;
 }
 
+// ─── SaveReader ──────────────────────────────────────────
+
+SaveReader::SaveReader(const std::string& odsvPath) {
+    auto* zip = new mz_zip_archive{};
+    m_ok = openSaveFile(*zip, odsvPath);
+    if (!m_ok) { delete zip; zip = nullptr; }
+    m_zip = zip;
+}
+
+SaveReader::~SaveReader() {
+    if (!m_zip) return;
+    auto* zip = static_cast<mz_zip_archive*>(m_zip);
+    mz_zip_reader_end(zip);
+    delete zip;
+}
+
+TurnDelta SaveReader::readTurn(int turn) {
+    TurnDelta delta;
+    if (!m_ok) return delta;
+    char turnPath[32];
+    snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", turn);
+    const std::string packed = extractEntry(*static_cast<mz_zip_archive*>(m_zip), turnPath);
+    if (!packed.empty())
+        SaveManager::unpackTurn((const uint8_t*)packed.data(), packed.size(), delta);
+    return delta;
+}
+
+bool SaveReader::hasEntry(const std::string& name) {
+    return m_ok && mz_zip_reader_locate_file(static_cast<mz_zip_archive*>(m_zip), name.c_str(), nullptr, 0) >= 0;
+}
+
 // ─── Extract .odmap from .odsv ───────────────────────────
 
 std::vector<uint8_t> SaveManager::extractODM(const std::string& odsvPath) {
-    auto zipData = readFile(odsvPath);
-    if (zipData.empty()) return {};
-
     mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
+    if (!openSaveFile(zip, odsvPath))
         return {};
 
     int idx = mz_zip_reader_locate_file(&zip, "map.odmap", nullptr, 0);
@@ -1205,43 +1256,13 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
 // ─── Read state.json from .odsv ──────────────────────────
 
 std::string SaveManager::readEntry(const std::string& odsvPath, const std::string& entryName) {
-    auto zipData = readFile(odsvPath);
-    if (zipData.empty()) return {};
-
     mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
-        return {};
-
-    int idx = mz_zip_reader_locate_file(&zip, entryName.c_str(), nullptr, 0);
-    if (idx < 0) { mz_zip_reader_end(&zip); return {}; }
-
-    size_t sz = 0;
-    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
+    if (!openSaveFile(zip, odsvPath)) return {};
+    std::string result = extractEntry(zip, entryName.c_str());
     mz_zip_reader_end(&zip);
-
-    if (!d) return {};
-    std::string result((char*)d, sz);
-    free(d);
     return result;
 }
 
 std::string SaveManager::readState(const std::string& odsvPath) {
-    auto zipData = readFile(odsvPath);
-    if (zipData.empty()) return {};
-
-    mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0))
-        return {};
-
-    int idx = mz_zip_reader_locate_file(&zip, "state.json", nullptr, 0);
-    if (idx < 0) { mz_zip_reader_end(&zip); return {}; }
-
-    size_t sz = 0;
-    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
-    mz_zip_reader_end(&zip);
-
-    if (!d) return {};
-    std::string result((char*)d, sz);
-    free(d);
-    return result;
+    return readEntry(odsvPath, "state.json");
 }
