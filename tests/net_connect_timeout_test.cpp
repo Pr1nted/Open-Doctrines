@@ -1,5 +1,6 @@
 // Does HttpRequest::timeoutMs now bound the CONNECT as well as the read?
 #include "net/HttpClient.h"
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <string>
@@ -14,8 +15,10 @@
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
@@ -48,6 +51,79 @@ static void closeSock(int fd) { closesocket((SOCKET)fd); }
 #else
 static void closeSock(int fd) { ::close(fd); }
 #endif
+
+// ── A blackhole on this machine ──
+//
+// The check below used 10.255.255.1 and trusted the network to drop the
+// packets. It does not everywhere: on a network that is itself in 10/8 the
+// address is routed, and something upstream answered with an error after 0 to
+// 4 s -- so "is not failing instantly" failed one run in three, measuring the
+// router rather than HttpClient.
+//
+// A listener with a full backlog that never accepts is the same shape with no
+// network in it: macOS and Linux drop a SYN they have no room for, silently,
+// so the connect waits exactly as it would on a dead host. Windows answers a
+// full backlog with a reset instead, which blackhole() detects (the probe
+// connection does not stay pending) and reports as unavailable.
+static bool setNonBlocking(int fd) {
+#if defined(_WIN32)
+    u_long on = 1;
+    return ioctlsocket((SOCKET)fd, FIONBIO, &on) == 0;
+#else
+    const int f = fcntl(fd, F_GETFL, 0);
+    return f >= 0 && fcntl(fd, F_SETFL, f | O_NONBLOCK) == 0;
+#endif
+}
+
+// Starts a non-blocking connect; true when it is still pending after waitMs.
+static bool connectStaysPending(int fd, const sockaddr_in& to, int waitMs) {
+    setNonBlocking(fd);
+    if (connect(fd, (const sockaddr*)&to, sizeof(to)) == 0) return false;
+#if defined(_WIN32)
+    if (WSAGetLastError() != WSAEWOULDBLOCK) return false;
+    WSAPOLLFD p{(SOCKET)fd, POLLOUT, 0};
+    return WSAPoll(&p, 1, waitMs) == 0;
+#else
+    if (errno != EINPROGRESS) return false;
+    pollfd p{fd, POLLOUT, 0};
+    return poll(&p, 1, waitMs) == 0;
+#endif
+}
+
+struct Blackhole {
+    int listener = -1;
+    std::vector<int> fillers;
+    uint16_t port = 0;
+    ~Blackhole() {
+        for (int f : fillers) closeSock(f);
+        if (listener >= 0) closeSock(listener);
+    }
+};
+
+// Fills a loopback listener's backlog until a further connection is left
+// waiting. False, with the reason, when this platform does not do that.
+static bool blackhole(Blackhole& bh, std::string& why) {
+    bh.listener = (int)socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    socklen_t alen = sizeof(addr);
+    if (bh.listener < 0 || bind(bh.listener, (sockaddr*)&addr, sizeof(addr)) != 0 ||
+        listen(bh.listener, 1) != 0 || getsockname(bh.listener, (sockaddr*)&addr, &alen) != 0) {
+        why = "could not open a loopback listener";
+        return false;
+    }
+    bh.port = ntohs(addr.sin_port);
+    for (int i = 0; i < 64; ++i) {
+        const int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) { why = "socket() failed while filling the backlog"; return false; }
+        bh.fillers.push_back(fd);
+        if (connectStaysPending(fd, addr, 300)) return true;   // the queue is full
+    }
+    why = "the listener never stopped completing connections (a full backlog is refused here, not dropped)";
+    return false;
+}
 
 static addrinfo* makeAddrPort(const char* ip, uint16_t port, addrinfo* next) {
     auto* sa = new sockaddr_in{};
@@ -92,12 +168,37 @@ int main() {
         return 1;
     }
 #endif
-    // 10.255.255.1 is RFC1918 space with nothing on it: packets are dropped
-    // rather than refused, which is exactly the shape that used to hang.
-    const long long blackholed = msFor("https://10.255.255.1/x", 5000);
-    printf("  blackholed host, timeoutMs=5000 -> %lld ms\n", blackholed);
-    ok(blackholed < 20000, "a host that drops packets no longer waits out the OS (~75s)");
-    ok(blackholed >= 2500,  "and it is not failing instantly for some other reason");
+    // A host that takes the SYN and never answers -- the shape that used to
+    // hang for the OS's ~75 s. Local where the platform allows it (see
+    // blackhole()); otherwise 10.255.255.1, which only a network that drops
+    // it can test, so an address that answers fast is a SKIP, not a result.
+    {
+        Blackhole bh;
+        std::string why;
+        if (blackhole(bh, why)) {
+            // Bounded by the budget, not by 20 s. The OS does not wait ~75 s
+            // on a full local backlog the way it does on a dead remote host:
+            // macOS gave up after 7.8 s with the timeout deliberately ignored,
+            // which a 20 s ceiling passed. 3000 ms is HttpClient's connect
+            // floor (it clamps the connect to 3..15 s), so the connect should
+            // take 3 s; the 5 s ceiling still fails when it is not honoured.
+            const std::string url = "https://127.0.0.1:" + std::to_string(bh.port) + "/x";
+            const long long blackholed = msFor(url.c_str(), 3000);
+            printf("  blackholed host (full local backlog), timeoutMs=3000 -> %lld ms\n", blackholed);
+            ok(blackholed < 5000, "a host that drops packets waits out timeoutMs, not the OS");
+            ok(blackholed >= 2000, "and it is not failing instantly for some other reason");
+        } else {
+            printf("  no local blackhole: %s\n", why.c_str());
+            const long long blackholed = msFor("https://10.255.255.1/x", 5000);
+            printf("  blackholed host (10.255.255.1), timeoutMs=5000 -> %lld ms\n", blackholed);
+            ok(blackholed < 20000, "a host that drops packets no longer waits out the OS (~75s)");
+            if (blackholed >= 2500)
+                ok(true, "and it is not failing instantly for some other reason");
+            else
+                printf("  SKIP  the network answered 10.255.255.1 in %lld ms instead of dropping it,\n"
+                       "        so this machine cannot show the timeout being waited out\n", blackholed);
+        }
+    }
 
     const long long refused = msFor("http://127.0.0.1:9/x", 5000);
     printf("  refused port, timeoutMs=5000     -> %lld ms\n", refused);
