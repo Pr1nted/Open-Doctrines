@@ -133,8 +133,24 @@ int main(int argc, char** argv) {
         const uint64_t img = odprotected::imageBytes();
         printf("      process %llu bytes, image %llu bytes\n",
                (unsigned long long)rss, (unsigned long long)img);
-        ok(rss == 0 || rss > (1ull << 20),
-           "resident memory is 0 (unknown) or more than a megabyte");
+        // NOT "more than a megabyte". That was fitted to this machine too:
+        // Apple Silicon uses 16 KiB pages and Intel macOS uses 4 KiB, so the
+        // same process reports roughly four times the resident memory on one
+        // than the other -- 1,376,256 bytes here, which is exactly 84 pages of
+        // 16 KiB, against something under a megabyte on the Intel runner. The
+        // release failed on the page size of the machine it ran on.
+        //
+        // The floor that MEANS something is one page. It is what the contract
+        // in the comment above is really about: ru_maxrss is BYTES on macOS
+        // and KILOBYTES on Linux, and a build that got those the wrong way
+        // round would report a 1.3 MB process as 1,344 -- which is less than
+        // any page any of our platforms uses. 4096 is the smallest of them, so
+        // it is the bound that catches the units bug on all of them without
+        // being tuned to any.
+        constexpr uint64_t kSmallestPage = 4096;
+        ok(rss == 0 || (rss >= kSmallestPage && rss < (1ull << 40)),
+           "resident memory is 0 (unknown) or at least a page and not absurd (" +
+           std::to_string(rss) + ")");
 
         // MEASURED, NOT GUESSED AT A THRESHOLD. This used to be
         // `img > 64 KiB`, which is a number fitted to whichever machine

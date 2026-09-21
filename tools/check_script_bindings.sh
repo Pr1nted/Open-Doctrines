@@ -17,8 +17,19 @@ set -u
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 inc="$(python3-config --includes 2>/dev/null || true)"
+# AND THEN ACTUALLY SKIP IT. This printed SKIPPED and compiled anyway, so on a
+# machine without CPython's headers -- every Windows runner, since
+# python3-config is a Unix tool -- it announced a skip and then reported
+# "the generated Python bindings do not compile" with a missing Python.h. The
+# Windows platform went NOT QUALIFIED over a header that was never there, in a
+# check whose own docstring says an absent toolchain must skip and say so.
+#
+# The Lua and QuickJS blocks below get this right, which is what made the
+# Python one look deliberate.
+have_python_headers=1
 if [ -z "$inc" ]; then
     echo "  SKIPPED  no python3-config; the generated Python bindings were NOT compiled"
+    have_python_headers=0
 fi
 
 rc=0
@@ -66,7 +77,9 @@ PYEOF
 } > "$work/check.c"
 
 # shellcheck disable=SC2086
-if cc -fsyntax-only -Wno-unknown-attributes \
+if [ "$have_python_headers" -eq 0 ]; then
+    :   # already reported above; nothing to compile against
+elif cc -fsyntax-only -Wno-unknown-attributes \
       -I "$root/sdk" -I "$root/sdk/python" $inc "$work/check.c" 2>"$work/err"; then
     n=$(grep -c '^static PyObject \*gbxpy_' "$root/sdk/python/gearbox_py_generated.h")
     echo "  ok       $n generated Python bindings compile"
