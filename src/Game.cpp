@@ -1826,7 +1826,7 @@ void Game::shutdown() {
 
     // Save the AI model on quit (unloadGameData also does this on world exit)
     if (m_ai) { delete m_ai; m_ai = nullptr; }
-    UnloadTexture(m_politicalTex);
+    // m_politicalTex is the renderer's painted layer, freed with the renderer.
     for (auto& [cid, tex] : m_countryFlags) {
         if (tex.id > 0) UnloadTexture(tex);
     }
@@ -1842,8 +1842,6 @@ void Game::shutdown() {
     if (m_menuBgTex.id > 0) UnloadTexture(m_menuBgTex);
     if (m_menuBgSource.data) { UnloadImage(m_menuBgSource); m_menuBgSource = Image{}; }
     m_menuBgTex = {};
-    if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
-    m_resourceTex = {};
 }
 
 void Game::loadSaveAndStart(const std::string& savePath) {

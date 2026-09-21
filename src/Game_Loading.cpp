@@ -54,6 +54,10 @@ static Texture2D makeIcon(int w, int h, F drawFn) {
     return tex;
 }
 
+// One entry per 16-bit province id: the size of every per-province table the
+// renderer draws from (the overlays, the political owners).
+static constexpr int kTableSize = MapRenderer::kOverlayEntries;
+
 static Color blendColor(Color base, float t) {
     uint8_t r = (uint8_t)std::min(255, std::max(0, (int)(base.r * (1.0f - t * 0.4f) + 40.0f * t * 0.3f)));
     uint8_t g = (uint8_t)std::min(255, std::max(0, (int)(base.g * (1.0f - t * 0.4f) + 40.0f * t * 0.3f)));
@@ -386,7 +390,6 @@ void Game::updateLoading() {
                 // Only the drawn borders and the selection glow read this raster;
                 // province centres no longer depend on it (buildProvinceData).
                 if (!m_agentLoad) m_renderer->computeBorderTexture(m_provinces.getImage());
-                m_renderer->setPoliticalTexture(m_politicalTex);
                 // The sky this map carries, if it carries one. A map with no
                 // sky.json keeps the Earth-like defaults, which is every map
                 // written before the globe existed -- so this must never be a
@@ -422,8 +425,8 @@ void Game::updateLoading() {
             //
             // A player who never opens the Resources or Claims view never
             // needs any of it, and one who does can wait the fraction of a
-            // second it takes to build then. See ensureResourceTexture() and
-            // ensureClaimsTexture().
+            // second it takes to build then. They are colour tables now; see
+            // generateResourceTexture() and generateClaimsTexture().
             m_loadingPhase = LOAD_GEN_ICONS;
             break;
         }
@@ -986,14 +989,10 @@ void Game::buildPopulationLookups() {
     logHeapAt("  pop: before arrays");
     m_pixelCountryArray.assign(totalPixels, 0);
     logHeapAt("  pop: +pixelCountryArray");
-    // The political texture's two buffers are all this function builds that
-    // only the screen reads. An agent load leaves them empty, and every later
-    // writer checks (generatePoliticalTexture, rebuildOwnershipPixels,
-    // rebuildGradientField).
+    // The distance field is all this function builds that only the screen
+    // reads. An agent load leaves it empty, and every later writer checks
+    // (generatePoliticalTexture, rebuildGradientField).
     const bool paint = !m_agentLoad;
-    if (paint) m_politicalPixelBuffer.resize(totalPixels);
-    else std::vector<Color>().swap(m_politicalPixelBuffer);
-    logHeapAt("  pop: +politicalPixelBuffer");
     if (paint) m_gradientDist.assign(totalPixels, 255);
     else std::vector<uint8_t>().swap(m_gradientDist);
     logHeapAt("  pop: +gradientDist");
@@ -1053,13 +1052,6 @@ void Game::buildPopulationLookups() {
         if (pid > 0 && (size_t)pid < m_provinceAreaArray.size())
             m_provinceAreaArray[pid] += areaRowW;
 
-        if (!paint) {
-        } else if (pid == 0 || cid == 0) {
-            m_politicalPixelBuffer[i] = Color{10, 15, 40, 255};
-        } else {
-            const Country* c = m_countries.getCountry(cid);
-            m_politicalPixelBuffer[i] = c ? c->color : Color{80, 80, 80, 255};
-        }
 
         if (cid > 0 && cid <= maxCid)
             m_countryPixels[cid].push_back(i);
@@ -1083,17 +1075,9 @@ void Game::buildPopulationLookups() {
     {
         Audio::BlockingCall quiet;
 
-        // The political texture is created by generatePoliticalTexture(), from
-        // the finished buffer. Creating it here from the flat colours and then
-        // overwriting the whole thing was one full-map upload too many, and
-        // the driver keeps a 128 MB staging copy of each for the texture's
-        // lifetime.
-        m_politicalUploadedRev = kPoliticalUnsynced;
-
         // The population overlay is built the first time it is asked for --
-        // see ensurePopulationTexture(). It is one map-sized buffer plus one
-        // map-sized texture, and a player who never opens the Population view
-        // never needs either.
+        // see resetPopulationTable(). It is a colour table over the province
+        // id texture, and a player who never opens the view never builds either.
 
         // Apply gradient to political texture immediately (not just after turn processing)
         generatePoliticalTexture();
@@ -1112,124 +1096,82 @@ void Game::rebuildGradientField() {
     const Image& provImg = m_provinces.getImage();
     const int w2 = provImg.width, h2 = provImg.height;
     if ((int)m_pixelCountryArray.size() != w2 * h2) return;
-    // The field only shades the political texture; with no texture buffer
-    // (an agent load) there is nothing to shade, and it was a full-raster BFS.
-    if (m_politicalPixelBuffer.empty()) { m_gradientDirty = false; return; }
+    // The field only shades the political layer; an agent load has no field
+    // and nothing to shade, and it was a full-raster BFS.
+    if (m_gradientDist.empty()) { m_gradientDirty = false; return; }
     // The same field, by the same routine as the load builds it. It was a
     // second copy of the BFS, and this one ran once per TURN -- so the 256 MB
     // queue described above was not a load-time cost, it was a per-turn one.
     odBuildGradientField(m_pixelCountryArray.data(), w2, h2, m_gradientDist);
     m_gradientDirty = false;
+    m_borderDistanceSent = false;
 }
 
 void Game::generatePoliticalTexture() {
-    int w = m_provinces.getWidth();
-    int h = m_provinces.getHeight();
-    int total = w * h;
+    if (!m_renderer) return;
+    const int w = m_provinces.getWidth();
+    const int h = m_provinces.getHeight();
     // Borders moved since the field was built, so rebuild it before shading.
     if (m_gradientDirty) rebuildGradientField();
-    if ((int)m_politicalPixelBuffer.size() != total || (int)m_gradientDist.size() != total) {
-        return;
-    }
-    // ONLY WHAT CHANGED GOES TO THE GPU. This runs at every turn end, and it
-    // used to send all 128 MB of the texture each time. The driver keeps a
-    // staging copy per upload in flight, and that held 384 MB of the game's
-    // footprint on its own. A turn moves a few provinces, so what changes is
-    // a few rectangles.
+    if ((int)m_gradientDist.size() != w * h) return;   // an agent load draws nothing
+
+    // THE RENDERER PAINTS IT. What goes across is who owns each province,
+    // one row of colours per country, and -- when a border moved -- the
+    // distance field; MapRenderer::preparePolitical() turns those into the
+    // layer on the GPU. This was a 33.5M-pixel pass on the CPU every turn into
+    // a 128 MB buffer, uploaded to a texture the Mac's OpenGL kept three
+    // copies of.
     //
-    // The comparison is against the buffer, which is only safe while the
-    // buffer is exactly what the texture holds. Anything else that writes
-    // either one breaks that: another upload shows up as a new renderer
-    // revision, and a write to the buffer alone resets
-    // m_politicalUploadedRev. Either way this call uploads the whole texture.
-    const bool synced = m_politicalUploadedRev == m_renderer->politicalRevision();
-
-    // Dirty columns are tracked per band of rows: one bounding box for the
-    // whole map would grow to the full width the moment two wars are on
-    // opposite sides of it.
-    constexpr int kBand = 256;
-    const int bands = (h + kBand - 1) / kBand;
-    std::vector<int> bandX0((size_t)bands, w), bandX1((size_t)bands, -1);
-
-    // One pass. The shading and the 1px dark border used to be two passes
-    // over the map, the second rewriting pixels the first had just written.
-    // The colour each pixel ends up with is the same: base shaded by the
-    // distance field, then divided by three if any 4-neighbour belongs to
-    // another country.
-    int lastCid = -1;
-    Color lastBase{80, 80, 80, 255};
-    for (int y = 0; y < h; ++y) {
-        int& x0 = bandX0[(size_t)(y / kBand)];
-        int& x1 = bandX1[(size_t)(y / kBand)];
-        const size_t rowStart = (size_t)y * w;
-        const uint16_t* row = &m_pixelCountryArray[rowStart];
-        const uint16_t* up = y > 0 ? row - w : nullptr;
-        const uint16_t* down = y + 1 < h ? row + w : nullptr;
-        for (int x = 0; x < w; ++x) {
-            const size_t i = rowStart + x;
-            const int cid = row[x];
-            const float t = std::min(1.0f, m_gradientDist[i] / 60.0f);
-            Color c;
-            if (cid <= 0) {
-                c = {(uint8_t)(8 + (uint8_t)((1.0f - t) * 16)),
-                     (uint8_t)(10 + (uint8_t)((1.0f - t) * 22)),
-                     (uint8_t)(15 + (uint8_t)((1.0f - t) * 38)), 255};
-            } else {
-                if (cid != lastCid) {
-                    const Country* ctry = m_countries.getCountry(cid);
-                    lastBase = ctry ? ctry->color : Color{80, 80, 80, 255};
-                    lastCid = cid;
-                }
-                c = blendColor(lastBase, t);
-                const bool edge = (x > 0 && row[x - 1] != cid) || (x + 1 < w && row[x + 1] != cid) ||
-                                  (up && up[x] != cid) || (down && down[x] != cid);
-                if (edge) c = {(uint8_t)(c.r / 3), (uint8_t)(c.g / 3), (uint8_t)(c.b / 3), 255};
-            }
-            Color& dst = m_politicalPixelBuffer[i];
-            if (dst.r != c.r || dst.g != c.g || dst.b != c.b || dst.a != c.a) {
-                dst = c;
-                if (x < x0) x0 = x;
-                if (x > x1) x1 = x;
-            }
+    // The colours are exactly what that pass computed, by the same code:
+    // column d is blendColor(base, t) for a pixel d from a border (or the sea
+    // shading for d, on row 0), and column 64 + d the same divided by three --
+    // the 1px dark line where a 4-neighbour belongs to another country.
+    ensureProvinceIndex();
+    // One colour row per distinct owner, row 0 for none. Owner ids are what
+    // the old pass kept per pixel (uint16) and are compared as such for the
+    // border line; a special id stored as 65534 is why the rows are not
+    // simply indexed by it.
+    std::vector<uint16_t> owners((size_t)kTableSize, 0), rowOf((size_t)kTableSize, 0);
+    std::vector<uint16_t> rowOwner{0};                 // row -> owner id
+    std::unordered_map<uint16_t, uint16_t> rowByOwner{{0, 0}};
+    for (int pid = 1; pid < std::min<int>(kTableSize, (int)m_provinceCountryLookup.size()); ++pid) {
+        const uint16_t o = (uint16_t)m_provinceCountryLookup[pid];
+        owners[(size_t)pid] = o;
+        auto it = rowByOwner.find(o);
+        if (it == rowByOwner.end()) {
+            it = rowByOwner.emplace(o, (uint16_t)rowOwner.size()).first;
+            rowOwner.push_back(o);
+        }
+        rowOf[(size_t)pid] = it->second;
+    }
+    const int rows = (int)rowOwner.size();
+    constexpr int C = MapRenderer::kPoliticalColumns;
+    std::vector<Color> colours((size_t)rows * C);
+    for (int d = 0; d < 64; ++d) {
+        const float t = std::min(1.0f, d / 60.0f);
+        const Color sea{(uint8_t)(8 + (uint8_t)((1.0f - t) * 16)), (uint8_t)(10 + (uint8_t)((1.0f - t) * 22)),
+                        (uint8_t)(15 + (uint8_t)((1.0f - t) * 38)), 255};
+        colours[(size_t)d] = colours[(size_t)(64 + d)] = sea;   // no dark line on unowned ground
+    }
+    for (int r = 1; r < rows; ++r) {
+        const Country* ctry = m_countries.getCountry(rowOwner[(size_t)r]);
+        const Color base = ctry ? ctry->color : Color{80, 80, 80, 255};
+        Color* row = &colours[(size_t)r * C];
+        for (int d = 0; d < 64; ++d) {
+            const Color c = blendColor(base, std::min(1.0f, d / 60.0f));
+            row[d] = c;
+            row[64 + d] = {(uint8_t)(c.r / 3), (uint8_t)(c.g / 3), (uint8_t)(c.b / 3), 255};
         }
     }
-
-    size_t dirty = 0;
-    for (int b = 0; b < bands; ++b)
-        if (bandX1[(size_t)b] >= bandX0[(size_t)b])
-            dirty += (size_t)(bandX1[(size_t)b] - bandX0[(size_t)b] + 1) *
-                     (size_t)(std::min(h, (b + 1) * kBand) - b * kBand);
-
-    if (!synced || dirty * 2 > (size_t)total) {
-        // A NEW TEXTURE, NOT A WHOLE-TEXTURE UPDATE. On macOS the driver keeps
-        // a staging copy of every full-map UpdateTexture for as long as the
-        // texture lives: two of them were 256 MB of footprint for the whole
-        // game. Replacing the texture frees the old one with its staging.
-        Image img{};
-        img.data = m_politicalPixelBuffer.data();
-        img.width = w;
-        img.height = h;
-        img.mipmaps = 1;
-        img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        Texture2D tex = LoadTextureFromImage(img);
-        SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-        m_renderer->setPoliticalTexture(tex);   // unloads the one it replaces
-        m_politicalTex = tex;
-    } else if (dirty > 0) {
-        std::vector<Color> rect;
-        for (int b = 0; b < bands; ++b) {
-            const int rx0 = bandX0[(size_t)b], rx1 = bandX1[(size_t)b];
-            if (rx1 < rx0) continue;
-            const int ry0 = b * kBand, ry1 = std::min(h, ry0 + kBand);
-            const int rw = rx1 - rx0 + 1, rh = ry1 - ry0;
-            rect.resize((size_t)rw * rh);
-            for (int y = ry0; y < ry1; ++y)
-                std::copy_n(&m_politicalPixelBuffer[(size_t)y * w + rx0], rw,
-                            &rect[(size_t)(y - ry0) * rw]);
-            m_renderer->updatePoliticalTextureRec(rect.data(), rx0, ry0, rw, rh);
-        }
+    m_renderer->setPoliticalOwners(owners, rowOf);
+    m_renderer->setPoliticalColours(colours, rows);
+    if (!m_borderDistanceSent) {
+        std::vector<uint8_t> dist(m_gradientDist.size());
+        for (size_t i = 0; i < dist.size(); ++i) dist[i] = std::min<uint8_t>(m_gradientDist[i], 63);
+        m_renderer->setBorderDistance(dist, w, h);
+        m_borderDistanceSent = true;
     }
-    m_politicalUploadedRev = m_renderer->politicalRevision();
+    m_politicalTex = m_renderer->gamePoliticalTexture();
 }
 
 void Game::ensureProvincePixels() {
@@ -1252,91 +1194,89 @@ void Game::ensureProvincePixels() {
     }
 }
 
-void Game::ensurePopulationTexture() {
-    if (!m_populationPixelBuffer.empty()) return;
-    const Image& provImg = m_provinces.getImage();
-    const int w = provImg.width, h = provImg.height;
-    if (w <= 0 || h <= 0 || !provImg.data) return;
-    const int total = w * h;
+// ─── Province overlays: colour tables, not images ─────────────────────────
+//
+// Population, relations, resources and claims each colour whole provinces, so
+// each is a table of one colour per province id, drawn by MapRenderer over a
+// texture of the ids. They were four full-map RGBA buffers with a texture each
+// (128 MB + 128 MB apiece at 8192x4096), rewritten a pixel at a time and
+// re-uploaded whole on every change -- in the population view, whenever the
+// mouse crossed into another country.
 
-    // The base colouring the load pass used to produce inline. Doing it here
-    // costs one full-map walk the first time the view is opened, and nothing
-    // at all for a player who never opens it.
-    m_populationPixelBuffer.resize(total);
-    const auto* src = (const Color*)provImg.data;
-    for (int i = 0; i < total; ++i) {
-        if ((i & 8191) == 0) Audio::get().pump();
-        const int pid = Province::colorToId(src[i].r, src[i].g, src[i].b);
-        const int cid = (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
-                            ? m_provinceCountryLookup[pid] : 0;
-        m_populationPixelBuffer[i] = (pid == 0 || cid == 0) ? Color{10, 15, 40, 255}
-                                                            : Color{60, 60, 60, 255};
-    }
+static const Color kOverlaySea{10, 15, 40, 255};
 
-    Image img{};
-    img.data = m_populationPixelBuffer.data();
-    img.width = w;
-    img.height = h;
-    img.mipmaps = 1;
-    img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-    Texture2D tex = LoadTextureFromImage(img);
-    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-    if (m_renderer) m_renderer->setPopulationTexture(tex);
+void Game::ensureProvinceIndex() {
+    if (!m_renderer || m_renderer->hasProvinceIndex()) return;
+    m_renderer->setProvinceIndex(m_provinces.getImage());
+}
+
+int Game::provinceOwnerForTable(int pid) const {
+    return (pid > 0 && (size_t)pid < m_provinceCountryLookup.size()) ? m_provinceCountryLookup[pid] : 0;
+}
+
+void Game::pushPopulationTable() {
+    if (!m_renderer) return;
+    // Every turn end refreshes this table for the player's country, view or no
+    // view; that used to build and upload a 128 MB image for a view nobody had
+    // opened. The table is kept current either way, but the id texture it is
+    // drawn over is only built once the population or relations view is up.
+    const bool onScreen = m_activeViewTab == 1 || m_activeViewTab == 4;
+    if (!onScreen && !m_renderer->hasProvinceIndex()) return;
+    ensureProvinceIndex();
+    m_renderer->setOverlayColours(MapRenderer::Overlay::Population, m_popTable);
+}
+
+// Entering the population or relations view: sea, and every province the
+// view's neutral land colour until something is selected.
+void Game::resetPopulationTable(Color landColor) {
+    m_popTable.assign(kTableSize, landColor);
+    m_popTable[0] = kOverlaySea;
+    pushPopulationTable();
 }
 
 void Game::generatePopulationTexture(int countryId, int prevCountryId) {
-    // Indexes m_populationPixelBuffer; built on demand. See
-    // ensurePopulationTexture().
-    ensurePopulationTexture();
-    if (m_populationPixelBuffer.empty()) return;
-    int w = m_provinces.getWidth();
-    int h = m_provinces.getHeight();
-
-    // Reset previous country's pixels to grey
-    if (prevCountryId > 0 && (size_t)prevCountryId < m_countryPixels.size()) {
-        for (int idx : m_countryPixels[prevCountryId]) {
-            m_populationPixelBuffer[idx] = Color{60, 60, 60, 255};
-        }
+    // First use outside the view's own reset (a turn ending in the view):
+    // unowned land reads as sea, as the image this replaced was built.
+    if (m_popTable.empty()) {
+        m_popTable.assign(kTableSize, Color{60, 60, 60, 255});
+        for (int pid = 0; pid < kTableSize; ++pid)
+            if (pid == 0 || provinceOwnerForTable(pid) == 0) m_popTable[(size_t)pid] = kOverlaySea;
     }
+    const int n = std::min<int>(kTableSize, (int)m_provinceCountryLookup.size());
 
-    // Color new country's pixels with red-green gradient
-    if (countryId > 0 && (size_t)countryId < m_countryPixels.size()) {
+    // Reset previous country's provinces to grey
+    if (prevCountryId > 0)
+        for (int pid = 1; pid < n; ++pid)
+            if (m_provinceCountryLookup[pid] == prevCountryId) m_popTable[(size_t)pid] = Color{60, 60, 60, 255};
+
+    // Color new country's provinces with red-green gradient
+    if (countryId > 0) {
         long long maxPop = 1;
         for (size_t pid = 0; pid < m_provinceCountryLookup.size(); ++pid) {
             if (m_provinceCountryLookup[pid] == countryId && m_provincePopArray[pid] > maxPop)
                 maxPop = m_provincePopArray[pid];
         }
-
-        if (!m_countryPixels[countryId].empty()) {
-            const auto* srcPixels = (const Color*)m_provinces.getImage().data;
-            for (int idx : m_countryPixels[countryId]) {
-                int pid = Province::colorToId(srcPixels[idx].r, srcPixels[idx].g, srcPixels[idx].b);
-                long long pop = (size_t)pid < m_provincePopArray.size() ? m_provincePopArray[pid] : 0;
-                float t = (float)pop / maxPop;
-                m_populationPixelBuffer[idx] = Color{
-                    (uint8_t)(255.0f * (1.0f - t)),
-                    (uint8_t)(255.0f * t),
-                    0, 255
-                };
-            }
+        for (int pid = 1; pid < n; ++pid) {
+            if (m_provinceCountryLookup[pid] != countryId) continue;
+            long long pop = (size_t)pid < m_provincePopArray.size() ? m_provincePopArray[pid] : 0;
+            float t = (float)pop / maxPop;
+            m_popTable[(size_t)pid] = Color{(uint8_t)(255.0f * (1.0f - t)), (uint8_t)(255.0f * t), 0, 255};
         }
     }
-
-    m_renderer->updatePopulationTexture(m_populationPixelBuffer.data());
+    pushPopulationTable();
 }
 
 void Game::generateRelationsTexture(int countryId, int prevCountryId) {
-    // Indexes m_populationPixelBuffer; built on demand. See
-    // ensurePopulationTexture().
-    ensurePopulationTexture();
-    if (m_populationPixelBuffer.empty()) return;
+    (void)prevCountryId;
+    if (m_popTable.empty()) resetPopulationTable(Color{80, 80, 80, 255});
     int maxCid = (int)m_countryRelationColors.size() - 1;
 
     const Country* hc = (countryId > 0) ? m_countries.getCountry(countryId) : nullptr;
     if (hc)
         LoadLog() << "Relations: selected " << hc->name << " (ISO=" << hc->isoA3 << ")" << std::endl;
 
-    // Precompute relation colors for all countries relative to the new selected country
+    // Relation colour for all countries relative to the new selected country
+    std::vector<char> recolour((size_t)std::max(0, maxCid + 1), 0);
     for (auto& [cid, c] : m_countries.getAll()) {
         if (cid < 0 || cid > maxCid) continue;
 
@@ -1344,80 +1284,62 @@ void Game::generateRelationsTexture(int countryId, int prevCountryId) {
 
         if (cid == countryId) {
             col = odPalette::relation(odPalette::Rel::Self);
-        } else if (countryId > 0) {
-            const Country* hc = m_countries.getCountry(countryId);
-            if (hc) {
-                // Check selected → target
-                auto rt = m_relations.find(hc->isoA3);
-                bool found = false;
-                if (rt != m_relations.end()) {
-                    auto st = rt->second.find(c.isoA3);
-                    if (st != rt->second.end()) {
-                        found = true;
-                        auto& rel = st->second;
+        } else if (hc) {
+            // Check selected → target
+            auto rt = m_relations.find(hc->isoA3);
+            bool found = false;
+            if (rt != m_relations.end()) {
+                auto st = rt->second.find(c.isoA3);
+                if (st != rt->second.end()) {
+                    found = true;
+                    auto& rel = st->second;
+                    if (rel.war)               col = odPalette::relation(odPalette::Rel::War);
+                    else if (rel.alliance)      col = odPalette::relation(odPalette::Rel::Alliance);
+                    else if (rel.guarantee)     col = odPalette::relation(odPalette::Rel::Guarantee);
+                    else if (rel.nonAggression) col = odPalette::relation(odPalette::Rel::NonAggression);
+                }
+            }
+            // Fallback: check target → selected (symmetric display)
+            if (!found) {
+                auto rt2 = m_relations.find(c.isoA3);
+                if (rt2 != m_relations.end()) {
+                    auto st2 = rt2->second.find(hc->isoA3);
+                    if (st2 != rt2->second.end()) {
+                        auto& rel = st2->second;
                         if (rel.war)               col = odPalette::relation(odPalette::Rel::War);
                         else if (rel.alliance)      col = odPalette::relation(odPalette::Rel::Alliance);
                         else if (rel.guarantee)     col = odPalette::relation(odPalette::Rel::Guarantee);
                         else if (rel.nonAggression) col = odPalette::relation(odPalette::Rel::NonAggression);
                     }
                 }
-                // Fallback: check target → selected (symmetric display)
-                if (!found) {
-                    auto rt2 = m_relations.find(c.isoA3);
-                    if (rt2 != m_relations.end()) {
-                        auto st2 = rt2->second.find(hc->isoA3);
-                        if (st2 != rt2->second.end()) {
-                            auto& rel = st2->second;
-                            if (rel.war)               col = odPalette::relation(odPalette::Rel::War);
-                            else if (rel.alliance)      col = odPalette::relation(odPalette::Rel::Alliance);
-                            else if (rel.guarantee)     col = odPalette::relation(odPalette::Rel::Guarantee);
-                            else if (rel.nonAggression) col = odPalette::relation(odPalette::Rel::NonAggression);
-                        }
-                    }
-                }
             }
         }
-
-        // Only write pixels if the color changed for this country
-        Color& prevCol = m_countryRelationColors[cid];
-        if (col.r != prevCol.r || col.g != prevCol.g || col.b != prevCol.b || col.a != prevCol.a) {
-            auto& pixels = m_countryPixels[cid];
-            if (!pixels.empty()) {
-                for (int idx : pixels)
-                    m_populationPixelBuffer[idx] = col;
-            }
-            m_countryRelationColors[cid] = col;
-        }
+        m_countryRelationColors[cid] = col;
+        recolour[(size_t)cid] = 1;
     }
+    const int n = std::min<int>(kTableSize, (int)m_provinceCountryLookup.size());
+    for (int pid = 1; pid < n; ++pid) {
+        const int cid = m_provinceCountryLookup[pid];
+        if (cid > 0 && cid <= maxCid && recolour[(size_t)cid]) m_popTable[(size_t)pid] = m_countryRelationColors[cid];
+    }
+    pushPopulationTable();
+}
 
-    m_renderer->updatePopulationTexture(m_populationPixelBuffer.data());
+// Nothing drawn over the political map: what an all-transparent claims image
+// used to show, without building the id texture for a view never opened.
+void Game::clearClaimsOverlay() {
+    if (m_renderer) m_renderer->clearOverlay(MapRenderer::Overlay::Claims);
 }
 
 void Game::generateClaimsTexture() {
-    // Both of these are built on demand now, and this function indexes one
-    // and looks up the other. See ensureClaimsTexture() / ensureProvincePixels().
-    ensureClaimsTexture();
-    ensureProvincePixels();
-    if (m_claimsPixelBuffer.empty()) return;
-    int w = m_provinces.getWidth();
-    std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-
+    if (!m_renderer) return;
     int countryId = m_lastClaimsCountryId;
-    if (countryId <= 0 || (size_t)countryId >= m_countryPixels.size()) {
-        m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
-        return;
-    }
-
-    const Country* claimer = m_countries.getCountry(countryId);
-    if (!claimer) {
-        m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
-        return;
-    }
+    const Country* claimer = countryId > 0 ? m_countries.getCountry(countryId) : nullptr;
+    if (!claimer) { clearClaimsOverlay(); return; }
 
     // Build set of involved country IDs: claimant + owners of claimed provinces
     std::unordered_set<int> involvedCids;
     involvedCids.insert(countryId);
-
     auto claimIt = m_claims.find(claimer->isoA3);
     if (claimIt != m_claims.end()) {
         for (int pid : claimIt->second) {
@@ -1426,57 +1348,32 @@ void Game::generateClaimsTexture() {
         }
     }
 
-    Color stripeCol{220, 140, 30, 200};
-
-    // Color all countries: grey for non-involved, blue for claimant, stripes for claimed
-    size_t maxCid = m_countryPixels.size();
-    for (int cid = 0; cid < (int)maxCid; ++cid) {
-        auto& pixels = m_countryPixels[cid];
-        if (pixels.empty()) continue;
-
-        if (cid == countryId) {
-            // Claimant: blue tint
-            for (int idx : pixels)
-                m_claimsPixelBuffer[idx] = Color{0, 60, 180, 100};
-        } else if (involvedCids.find(cid) != involvedCids.end()) {
-            // Country that owns claimed provinces: stripe pattern on claimed provinces,
-            // grey for non-claimed provinces
-            for (int idx : pixels)
-                m_claimsPixelBuffer[idx] = Color{60, 60, 60, 180};
-        } else {
-            // Non-involved: grey tint
-            for (int idx : pixels)
-                m_claimsPixelBuffer[idx] = Color{60, 60, 60, 180};
-        }
+    // Grey over every owned province, blue over the claimant's, and the
+    // claimed provinces hatched: stripe colour on the hatching, clear between.
+    std::vector<Color> base(kTableSize, Color{0, 0, 0, 0});
+    const int n = std::min<int>(kTableSize, (int)m_provinceCountryLookup.size());
+    for (int pid = 1; pid < n; ++pid) {
+        const int cid = m_provinceCountryLookup[pid];
+        if (cid <= 0) continue;
+        base[(size_t)pid] = cid == countryId ? Color{0, 60, 180, 100} : Color{60, 60, 60, 180};
     }
-
-    // Overlay stripe pattern only on the specific claimed provinces
+    std::vector<Color> stripe;
     if (claimIt != m_claims.end()) {
+        stripe.assign(kTableSize, Color{0, 0, 0, 0});
+        const Color stripeCol{220, 140, 30, 200};
         for (int pid : claimIt->second) {
-            auto ppIt = m_provincePixels.find(pid);
-            if (ppIt == m_provincePixels.end()) continue;
-            for (int idx : ppIt->second) {
-                int x = idx % w;
-                int y = idx / w;
-                bool onStripe = ((x + y) % 10) < 4;
-                m_claimsPixelBuffer[idx] = onStripe ? stripeCol : Color{0, 0, 0, 0};
-            }
+            if (pid <= 0 || pid >= kTableSize) continue;
+            base[(size_t)pid] = Color{0, 0, 0, 0};
+            stripe[(size_t)pid] = stripeCol;
         }
     }
-
-    m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+    ensureProvinceIndex();
+    m_renderer->setOverlayColours(MapRenderer::Overlay::Claims, base,
+                                  stripe.empty() ? nullptr : &stripe);
 }
 
 void Game::generateResourceTextureFor(int resIdx) {
-    int w = m_provinces.getWidth();
-    int h = m_provinces.getHeight();
-
-    if (m_resourceBuffer.size() != (size_t)w * h)
-        m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
-    auto& buf = m_resourceBuffer;
-    m_resourceBufferIdx = resIdx;
-
-    // First pass: find max resource amount for this resource type
+    m_resourceTableIdx = resIdx;
     float maxAmount = 1.0f;
     auto getAmount = [&](int pid) -> float {
         auto it = m_provinceResources.find(pid);
@@ -1495,86 +1392,35 @@ void Game::generateResourceTextureFor(int resIdx) {
         if (a > maxAmount) maxAmount = a;
     }
 
-    const auto* srcPixels = (const Color*)m_provinces.getImage().data;
-    for (int idx = 0; idx < w * h; ++idx) {
-        // Five of these run back to back, one per resource, each a full-map
-        // pass. Unpumped they were five separate stalls in one loading phase.
-        if ((idx & 8191) == 0) Audio::get().pump();
-        auto& sp = srcPixels[idx];
-        if (sp.r == 0 && sp.g == 0 && sp.b == 0) {
-            buf[idx] = Color{0, 0, 0, 255};
-            continue;
-        }
-        int pid = Province::colorToId(sp.r, sp.g, sp.b);
-        float amount = getAmount(pid);
-        float t = amount / maxAmount;
-
-        uint8_t baseR = 80, baseG = 80, baseB = 80;
-        uint8_t targetR, targetG, targetB;
-        switch (resIdx) {
-            case 0: targetR = 160; targetG = 50;  targetB = 200; break; // Oil:   grey -> purple
-            case 1: targetR = 255; targetG = 215; targetB = 0;   break; // Gold:  grey -> gold-ish yellow
-            case 2: targetR = 50;  targetG = 200; targetB = 50;  break; // Rubber: grey -> green
-            case 3: targetR = 100; targetG = 200; targetB = 255; break; // Gems:  grey -> light-blue
-            case 4: targetR = 255; targetG = 255; targetB = 255; break; // Metal: grey -> white
-            default: targetR = 255; targetG = 255; targetB = 255; break;
-        }
-        uint8_t r = (uint8_t)(baseR + (targetR - baseR) * t);
-        uint8_t g = (uint8_t)(baseG + (targetG - baseG) * t);
-        uint8_t b = (uint8_t)(baseB + (targetB - baseB) * t);
-        buf[idx] = Color{r, g, b, 255};
+    uint8_t baseR = 80, baseG = 80, baseB = 80;
+    uint8_t targetR, targetG, targetB;
+    switch (resIdx) {
+        case 0: targetR = 160; targetG = 50;  targetB = 200; break; // Oil:   grey -> purple
+        case 1: targetR = 255; targetG = 215; targetB = 0;   break; // Gold:  grey -> gold-ish yellow
+        case 2: targetR = 50;  targetG = 200; targetB = 50;  break; // Rubber: grey -> green
+        case 3: targetR = 100; targetG = 200; targetB = 255; break; // Gems:  grey -> light-blue
+        case 4: targetR = 255; targetG = 255; targetB = 255; break; // Metal: grey -> white
+        default: targetR = 255; targetG = 255; targetB = 255; break;
     }
-}
-
-void Game::ensureResourceTexture() {
-    if (!m_resourceBuffer.empty()) return;
-    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
-    if (w <= 0 || h <= 0) return;
-
-    m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
-    m_resourceBufferIdx = -1;
-    if (!m_provinceResources.empty()) generateResourceTextureFor(m_activeResourceIdx);
-
-    Image img{};
-    img.data = m_resourceBuffer.data();
-    img.width = w;
-    img.height = h;
-    img.mipmaps = 1;
-    img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-    Texture2D tex = LoadTextureFromImage(img);
-    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-    if (m_renderer) m_renderer->setResourceTexture(tex);
-}
-
-void Game::ensureClaimsTexture() {
-    if (!m_claimsPixelBuffer.empty()) return;
-    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
-    if (w <= 0 || h <= 0) return;
-
-    m_claimsPixelBuffer.assign((size_t)w * h, Color{0, 0, 0, 0});
-
-    Image img{};
-    img.data = m_claimsPixelBuffer.data();
-    img.width = w;
-    img.height = h;
-    img.mipmaps = 1;
-    img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-    Texture2D tex = LoadTextureFromImage(img);
-    SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
-    if (m_renderer) m_renderer->setClaimsTexture(tex);
+    auto shade = [&](float t) {
+        return Color{(uint8_t)(baseR + (targetR - baseR) * t), (uint8_t)(baseG + (targetG - baseG) * t),
+                     (uint8_t)(baseB + (targetB - baseB) * t), 255};
+    };
+    m_resourceTable.assign(kTableSize, shade(0.0f));
+    m_resourceTable[0] = Color{0, 0, 0, 255};
+    for (auto& [pid, _] : m_provinceResources)
+        if (pid > 0 && pid < kTableSize) m_resourceTable[(size_t)pid] = shade(getAmount(pid) / maxAmount);
 }
 
 void Game::generateResourceTexture() {
-    // First call in this world builds the buffer and the texture; see
-    // ensureResourceTexture().
-    ensureResourceTexture();
-    // Refill only when the player has actually switched. This is called every
-    // frame the resource view is up, so the guard is what keeps a full-map
-    // regeneration from running sixty times a second.
-    if (m_resourceBufferIdx != m_activeResourceIdx && !m_provinceResources.empty())
+    if (!m_renderer) return;
+    // Rebuilt only when the player has actually switched: this is called every
+    // frame the resource view is up.
+    if (m_resourceTableIdx != m_activeResourceIdx || m_resourceTable.empty()) {
         generateResourceTextureFor(m_activeResourceIdx);
-    if (m_resourceBuffer.empty()) return;
-    m_renderer->updateResourceTexture(m_resourceBuffer.data());
+        ensureProvinceIndex();
+        m_renderer->setOverlayColours(MapRenderer::Overlay::Resource, m_resourceTable);
+    }
 }
 
 void Game::generateIcons() {
@@ -2197,7 +2043,11 @@ bool Game::loadFromODM(const std::string& odmPath) {
     for (int i = 0; i < found; ++i) {
         auto& e = entries[i];
         if (e.name == "land_sea.png") {
-            m_landSea.loadFromMemory(e.data, (int)e.size);
+            // No texture: see LandSeaMap::loadFromMemory. The political layer
+            // covers every pixel of it, so it was 128 MB of GPU memory (twice
+            // that with the driver's copy) and a full-screen draw per frame
+            // that nobody could see.
+            m_landSea.loadFromMemory(e.data, (int)e.size, /*withTexture=*/false);
             // 128 MB back, immediately.
             //
             // The layer is 8192x4096 RGBA and every question anyone asks it is
@@ -2517,12 +2367,11 @@ void Game::unloadGameData() {
     std::vector<uint16_t>().swap(m_pixelCountryArray);
     std::vector<std::vector<int>>().swap(m_countryPixels);
     std::unordered_map<int, std::vector<int>>().swap(m_provincePixels);
-    std::vector<Color>().swap(m_populationPixelBuffer);
-    std::vector<Color>().swap(m_politicalPixelBuffer);
     std::vector<uint8_t>().swap(m_gradientDist);
-    std::vector<Color>().swap(m_claimsPixelBuffer);
-    std::vector<Color>().swap(m_resourceBuffer);
-    m_resourceBufferIdx = -1;
+    m_borderDistanceSent = false;
+    std::vector<Color>().swap(m_popTable);
+    std::vector<Color>().swap(m_resourceTable);
+    m_resourceTableIdx = -1;
     // Clean up script engine
     if (m_scriptEngine) { delete m_scriptEngine; m_scriptEngine = nullptr; }
     m_scriptErrors.clear();
@@ -2560,8 +2409,7 @@ void Game::unloadGameData() {
     // Delete renderer
     delete m_renderer;
     m_renderer = nullptr;
-    m_politicalTex = {};
-    m_politicalUploadedRev = kPoliticalUnsynced;   // the next renderer counts from 0 again
+    m_politicalTex = {};   // it was the renderer's
 
     // Clear thumbnail cache
     clearThumbCache();
@@ -3089,7 +2937,6 @@ bool Game::loadMapPack(const std::string& odmPath) {
                                  m_landSea.getWidth(), m_landSea.getHeight());
     m_renderer->setDpiScale(pointerScale());
     m_renderer->computeBorderTexture(m_provinces.getImage());
-    m_renderer->setPoliticalTexture(m_politicalTex);
     // Same as the loading path above: a map may carry its own sky, and one
     // that does not keeps the defaults. BOTH sites need this -- a map pack
     // loaded directly (the editor, a mod, the scenario browser) never goes
@@ -3112,47 +2959,10 @@ bool Game::loadMapPack(const std::string& odmPath) {
     setLoadingProgress(0.7f, "Generating resource textures...");
     drawLoadingScreen();
 
-    // Generate the ONE resource layer that will be displayed. The others are
-    // built on demand; see generateResourceTexture().
-    {
-        int w = m_provinces.getWidth();
-        int h = m_provinces.getHeight();
-        m_resourceBuffer.assign((size_t)w * h, Color{40, 40, 40, 255});
-        m_resourceBufferIdx = -1;
-        if (!m_provinceResources.empty()) {
-            LoadLog() << "  Generating resource texture... " << std::flush;
-            generateResourceTextureFor(m_activeResourceIdx);
-            setLoadingProgress(0.7f, "Generating resource textures...");
-            drawLoadingScreen();
-            LoadLog() << "done" << std::endl;
-        }
-        // The synchronous reload path's copy of the pair in
-        // LOAD_GEN_RESOURCE_TEXTURES, and it gets the same treatment: the same
-        // two uploads take the same ~200 ms, so a suspend is not worth it here
-        // either.
-        Audio::get().pump();
-
-        Image resImg{};
-        resImg.data = m_resourceBuffer.data();
-        resImg.width = w;
-        resImg.height = h;
-        resImg.mipmaps = 1;
-        resImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        Texture2D resTex = LoadTextureFromImage(resImg);
-        SetTextureFilter(resTex, TEXTURE_FILTER_BILINEAR);
-        m_renderer->setResourceTexture(resTex);
-
-        m_claimsPixelBuffer.resize(w * h, Color{0, 0, 0, 0});
-        Image claimsImg{};
-        claimsImg.data = m_claimsPixelBuffer.data();
-        claimsImg.width = w;
-        claimsImg.height = h;
-        claimsImg.mipmaps = 1;
-        claimsImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        Texture2D claimsTex = LoadTextureFromImage(claimsImg);
-        SetTextureFilter(claimsTex, TEXTURE_FILTER_BILINEAR);
-        m_renderer->setClaimsTexture(claimsTex);
-    }
+    // The resource and claims views are colour tables built when first shown;
+    // see generateResourceTexture() and generateClaimsTexture().
+    m_resourceTable.clear();
+    m_resourceTableIdx = -1;
 
     setLoadingProgress(0.9f, "Generating icons...");
     drawLoadingScreen();
@@ -3437,13 +3247,6 @@ void Game::rebuildOwnershipPixels() {
     int totalPixels = w2 * h2;
     const auto* srcPixels = (const Color*)provImg.data;
     for (auto& vec : m_countryPixels) vec.clear();
-    // Flat colours only when nothing will shade them. With a renderer,
-    // generatePoliticalTexture() below recomputes every pixel anyway, and
-    // painting here first made the buffer stop matching the texture, so that
-    // call had to rebuild the whole texture instead of patching what the
-    // replay actually moved. Empty on an agent load.
-    const bool paint = m_politicalPixelBuffer.size() == (size_t)totalPixels && !m_renderer;
-    if (paint) m_politicalUploadedRev = kPoliticalUnsynced;
     for (int i = 0; i < totalPixels; ++i) {
         // Once a raster row's worth. Same reason as the scans in MapRenderer:
         // this is a full-map pass and nothing refills the music while it runs.
@@ -3454,14 +3257,12 @@ void Game::rebuildOwnershipPixels() {
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
         m_pixelCountryArray[i] = (uint16_t)cid;
-        if (paint) m_politicalPixelBuffer[i] = (pid == 0 || cid == 0) ? Color{10, 15, 40, 255} :
-            (m_countries.getCountry(cid) ? m_countries.getCountry(cid)->color : Color{80, 80, 80, 255});
         if (cid > 0 && cid < (int)m_countryPixels.size())
             m_countryPixels[cid].push_back(i);
     }
     rebuildGradientField();
 
-    // AND THEN USE IT. The loop above used to fill m_politicalPixelBuffer with each
+    // AND THEN USE IT. The loop above used to fill a political buffer with each
     // country's FLAT colour, and the block after it recomputes the distance
     // field -- but nothing ever applied one to the other, so the field was
     // rebuilt and thrown away. The political map came back from a load or a

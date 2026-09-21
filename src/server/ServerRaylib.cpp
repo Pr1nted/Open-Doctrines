@@ -642,6 +642,11 @@ void rlDisableScissorTest(void);
 void rlScissor(int x, int y, int width, int height);
 void rlDrawRenderBatchActive(void);
 void rlSetBlendFactorsSeparate(int, int, int, int, int, int);
+void rlSetBlendFactors(int, int, int);
+unsigned int rlLoadTexture(const void*, int, int, int, int);
+unsigned int rlLoadFramebuffer(void);
+void rlFramebufferAttach(unsigned int, unsigned int, int, int, int);
+bool rlFramebufferComplete(unsigned int);
 void rlEnableDepthMask(void);
 void rlDisableDepthMask(void);
 void rlEnableBackfaceCulling(void);
@@ -658,6 +663,11 @@ void rlDisableScissorTest(void) {}
 void rlScissor(int, int, int, int) {}
 void rlDrawRenderBatchActive(void) {}
 void rlSetBlendFactorsSeparate(int, int, int, int, int, int) {}
+void rlSetBlendFactors(int, int, int) {}
+unsigned int rlLoadTexture(const void*, int, int, int, int) { return 0; }
+unsigned int rlLoadFramebuffer(void) { return 0; }
+void rlFramebufferAttach(unsigned int, unsigned int, int, int, int) {}
+bool rlFramebufferComplete(unsigned int) { return false; }
 void rlEnableDepthMask(void) {}
 void rlDisableDepthMask(void) {}
 void rlEnableBackfaceCulling(void) {}

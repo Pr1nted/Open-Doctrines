@@ -30,18 +30,10 @@ public:
     void setPoliticalTexture(Texture2D tex);
     void updatePoliticalTexture(const void* data);
     void updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h);
-    /// Bumped by every write to the political texture. A caller that uploads
-    /// only what changed since ITS last upload compares this first: if anyone
-    /// else wrote in between, what the texture holds is no longer known.
-    uint64_t politicalRevision() const { return m_politicalRevision; }
     // Recompute border/halo pixels in a map-space rect from raw province pixels
     // and patch just that region of the border texture (live painting feedback).
     void updateBorderRegion(const Color* provPixels, int mapW, int mapH,
                             int rx, int ry, int rw, int rh);
-    void setPopulationTexture(Texture2D tex);
-    void updatePopulationTexture(const void* data);
-    void setResourceTexture(Texture2D tex);
-    void updateResourceTexture(const void* data);
     void setShowClaims(bool on) { m_showClaims = on; }
     bool getShowClaims() const { return m_showClaims; }
     void setShowPolitical(bool on) { m_showPolitical = on; }
@@ -59,6 +51,54 @@ public:
     void updateClaimsTexture(const void* data);
     void updateClaimsTextureRec(const void* rectData, int x, int y, int w, int h);
     bool hasClaimsTexture() const { return m_claimsTex.id > 0; }
+    // ── Province-coloured overlays ──
+    //
+    // Population, relations, resources and claims colour whole provinces, so
+    // they are drawn from one texture of province ids and a colour table per
+    // overlay (one entry per id) instead of a full-map image each. Four of
+    // those images were 128 MB of CPU memory and 128 MB of texture apiece, and
+    // every change -- even hovering a different country in the population
+    // view -- rewrote and re-uploaded one whole. A table is 256 KB.
+    enum class Overlay { Population = 0, Resource = 1, Claims = 2, Count_ };
+    static constexpr int kOverlayEntries = 65536;   ///< one per 16-bit province id
+    /// The province ids, read from the province map (id = RGB colour). Built
+    /// once per map, the first time an overlay is needed.
+    void setProvinceIndex(const Image& provinces);
+    bool hasProvinceIndex() const { return m_provinceIndexTex.id > 0; }
+    /// base[id] colours province id; stripe[id], where its alpha is non-zero,
+    /// replaces it on the claims hatching ((x + y) % 10 < 4). Both at most
+    /// kOverlayEntries long; missing entries are transparent.
+    void setOverlayColours(Overlay which, const std::vector<Color>& base,
+                           const std::vector<Color>* stripe = nullptr);
+    /// Draw nothing for this overlay until its colours are set again.
+    void clearOverlay(Overlay which);
+
+    // ── The game's political layer ──
+    //
+    // Painted on the GPU into a render target from the province ids, a table
+    // of province owners, a table of colours and the distance-to-border field,
+    // whenever one of those changes. It was a CPU image uploaded every turn,
+    // which cost 128 MB of CPU memory and -- because the Mac's OpenGL keeps
+    // copies of a texture that is updated after it is made -- 384 MB of GPU
+    // memory. The map editor still sets an image with setPoliticalTexture().
+    //
+    // owners[id]: the owning country of province id (0 for none), compared
+    //             between neighbours to find the 1px border line.
+    // rows[id]:   which row of colours paints province id. One row per
+    //             distinct owner, row 0 for sea and unowned land: owner ids
+    //             are not a dense range (a special id is stored as 65534).
+    // colours:    one row of kPoliticalColumns per owner. Column d (0..63) is the colour at
+    //             distance d from a border; column 64 + d the same on a
+    //             border pixel (the 1px dark line). Exact CPU values: the
+    //             shader only looks them up.
+    // distance:   one byte per map pixel, the distance field, clamped to 63.
+    static constexpr int kPoliticalColumns = 128;
+    void setPoliticalOwners(const std::vector<uint16_t>& owners, const std::vector<uint16_t>& rows);
+    void setPoliticalColours(const std::vector<Color>& colours, int rows);
+    void setBorderDistance(const std::vector<uint8_t>& distance, int w, int h);
+    /// The painted layer's texture, for panels that draw the map small. Owned
+    /// by the renderer; its id does not change once made.
+    Texture2D gamePoliticalTexture() const { return m_politicalTarget.texture; }
     void setShowResource(int idx) { m_showResource = idx; }
     int  getShowResource() const { return m_showResource; }
     /**
@@ -236,10 +276,25 @@ private:
 
     Texture2D m_borderTex{};
     Texture2D m_politicalTex{};
-    uint64_t m_politicalRevision = 0;
-    Texture2D m_populationTex{};
-    Texture2D m_resourceTex{};
     Texture2D m_claimsTex{};
+    Texture2D m_provinceIndexTex{};
+    struct OverlaySlot { Texture2D base{}, stripe{}; bool active = false; };
+    OverlaySlot m_overlays[(int)Overlay::Count_];
+    Texture2D m_noStripe{};          ///< 1x1 transparent, bound when a slot has none
+    RenderTexture2D m_overlayTarget{};   ///< the shown overlay, painted from its table
+    RenderTexture2D m_politicalTarget{}; ///< the game's political layer, painted
+    Texture2D m_politicalOwners{}, m_politicalColours{}, m_borderDistance{};
+    int m_politicalRows = 0;
+    bool m_politicalStale = false;
+    Shader m_politicalShader{};
+    bool m_politicalShaderTried = false;
+    int m_locPolOwners = -1, m_locPolColours = -1, m_locPolDistance = -1, m_locPolMapSize = -1, m_locPolRows = -1;
+    void preparePolitical();
+    RenderTexture2D makeTarget(int w, int h);
+    int m_overlayPainted = -1;           ///< which Overlay m_overlayTarget holds
+    Shader m_overlayShader{};
+    bool m_overlayShaderTried = false;
+    int m_locOverlayBase = -1, m_locOverlayStripe = -1, m_locOverlayMapSize = -1;
     Camera2D m_camera{};
     mutable Camera2D m_viewCamera{};
 
@@ -290,7 +345,16 @@ private:
      * were looking at, and the symptom is a layer that exists in one view and
      * not the other.
      */
-    struct Layer { Texture2D tex; Color tint; };
+    /// overlay >= 0: tex is the province index, drawn through the overlay
+    /// shader with that Overlay's colour table.
+    /// scenery: the world under everything else (the land/sea layer). The
+    /// globe dims scenery at night and keeps what is drawn on it readable.
+    struct Layer { Texture2D tex; Color tint; bool scenery = false; };
+    bool overlayReady(Overlay which) const;
+    /// Which overlay the current view shows, or -1.
+    int wantedOverlay() const;
+    /// Paint that overlay's table into m_overlayTarget if it is not there yet.
+    void prepareOverlay();
     std::vector<Layer> layerStack(const LandSeaMap& landSea) const;
     Vector2 getMouse() const;
     int m_screenW, m_screenH;

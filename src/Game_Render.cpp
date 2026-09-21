@@ -3123,7 +3123,7 @@ void Game::drawSidebarButtons() {
             //
             // Claims goes out through clearClaimsView() rather than having
             // its flag dropped, because the overlay it paints lives in the
-            // renderer and in m_claimsPixelBuffer, not in m_inClaims -- clear
+            // renderer (its claims colour table), not in m_inClaims -- clear
             // the flag alone and the map keeps wearing the claims.
             if (m_showClaims) clearClaimsView();
             m_inClaims = false;

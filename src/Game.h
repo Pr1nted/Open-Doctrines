@@ -2301,10 +2301,16 @@ public:
     /// the pair at 8192x4096 -- and neither is needed until its view is
     /// opened. Building them during the load is what put an iPhone over its
     /// budget. Cheap and idempotent once built.
-    void ensureResourceTexture();
-    void ensureClaimsTexture();
-    void ensurePopulationTexture();
     void ensureProvincePixels();
+    // The province overlays are colour tables drawn over one texture of
+    // province ids (MapRenderer::setOverlayColours); see Game_Loading.cpp.
+    // The id texture is built the first time any of them is shown.
+    void ensureProvinceIndex();
+    int provinceOwnerForTable(int pid) const;
+    std::vector<Color> m_popTable;        ///< population and relations views
+    void pushPopulationTable();
+    void resetPopulationTable(Color landColor);
+    void clearClaimsOverlay();
 
     /// The canvas is too narrow to spell things out.
     ///
@@ -2962,14 +2968,9 @@ public:
     std::vector<uint16_t> m_pixelCountryArray;
     std::vector<std::vector<int>> m_countryPixels;
     std::unordered_map<int, std::vector<int>> m_provincePixels;
-    std::vector<Color> m_populationPixelBuffer;
-    std::vector<Color> m_politicalPixelBuffer;
-    /// The renderer's political revision as of our last upload. Differs from
-    /// it when anything else has written the texture, and is reset to
-    /// kPoliticalUnsynced when the buffer is written without an upload: in
-    /// both cases the next generatePoliticalTexture() uploads everything.
-    static constexpr uint64_t kPoliticalUnsynced = ~0ull;
-    uint64_t m_politicalUploadedRev = kPoliticalUnsynced;
+    /// Whether the renderer holds the current m_gradientDist; cleared when the
+    /// field is rebuilt, so the 32 MB goes across only when a border moved.
+    bool m_borderDistanceSent = false;
     std::vector<uint8_t> m_gradientDist; // distance-to-border (0-255, capped at ~30)
     // Set by reindexProvinceOwner whenever a province changes hands; cleared
     // by rebuildGradientField(). Rebuilding is a full-raster BFS, so it runs
@@ -3033,24 +3034,12 @@ public:
     std::unordered_map<int, ProvinceResources> m_provinceResources;
     int m_activeResourceIdx = 0;   // 0=oil, 1=gold, 2=rubber, 3=gemstones, 4=metal
     // ONE resource layer in memory, not five.
-    //
-    // These are full-map RGBA buffers -- 8192x4096x4 is 128 MB each -- and all
-    // five were generated at load and kept for the session: 640 MB to display
-    // one of them. Only m_activeResourceIdx is ever on screen, and
-    // generateResourceTextureFor() can rebuild any of them from
-    // m_provinceResources in a single pass, so the other four were being stored
-    // because nobody had priced them.
-    //
-    // This was the largest single item in the 1.2 GB a scenario load added to
-    // the heap, which is why a phone could reach the menu and die on the map.
-    // m_resourceBufferIdx says which resource the buffer currently holds, or
-    // -1 for none; generateResourceTexture() refills it when the player
-    // switches, which is the only moment it can become wrong.
-    std::vector<Color> m_resourceBuffer;
-    int m_resourceBufferIdx = -1;
+    // The resource view's colour table and which resource it holds (-1: none).
+    // Rebuilt by generateResourceTexture() when the player switches resource.
+    std::vector<Color> m_resourceTable;
+    int m_resourceTableIdx = -1;
     void generateResourceTexture();
     void generateResourceTextureFor(int resIdx);
-    Texture2D m_resourceTex{};
     static constexpr const char* RESOURCE_NAMES[5] = {"Oil", "Gold", "Rubber", "Gemstones", "Metal"};
 
     std::unordered_map<int, ProvinceIndustry> m_provinceIndustry;
@@ -3087,7 +3076,6 @@ public:
     std::unordered_map<int, std::vector<std::string>> m_claimsByProvince;  // province ID -> list of claimant ISOs
     bool m_showClaims = false;
     int m_lastClaimsCountryId = -1;
-    std::vector<Color> m_claimsPixelBuffer;
     void generateClaimsTexture();
     void clearClaimsView();
     bool isCountryInvolvedInClaims(int countryId, int claimantCid);

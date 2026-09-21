@@ -9,7 +9,11 @@ public:
     ~LandSeaMap();
 
     bool load(const std::string& path);
-    bool loadFromMemory(const void* data, int size);
+    /// withTexture false: the mask only, no GPU copy. The game draws its
+    /// political layer over every pixel of this one, opaque, so the 128 MB
+    /// texture it used to upload was never seen. The map editor, which shows
+    /// the coastline, loads its own copy with the texture.
+    bool loadFromMemory(const void* data, int size, bool withTexture = true);
     void setFromPixels(Color* pixels, int w, int h);
     void updatePixels(Color* pixels);
     void updatePixelsRect(Color* pixels, int x, int y, int w, int h);

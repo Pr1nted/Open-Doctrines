@@ -4,7 +4,7 @@
 
 LandSeaMap::~LandSeaMap() {
     if (m_loaded) {
-        UnloadTexture(m_texture);
+        if (m_texture.id > 0) UnloadTexture(m_texture);
         // dropPixels() may already have freed it. UnloadImage on a null data
         // pointer is not safe to assume, so ask.
         if (m_image.data) UnloadImage(m_image);
@@ -64,7 +64,7 @@ bool LandSeaMap::load(const std::string& path) {
     return true;
 }
 
-bool LandSeaMap::loadFromMemory(const void* data, int size) {
+bool LandSeaMap::loadFromMemory(const void* data, int size, bool withTexture) {
     m_image = LoadImageFromMemory(".png", static_cast<const unsigned char*>(data), size);
     if (m_image.data == nullptr) return false;
 
@@ -89,8 +89,10 @@ bool LandSeaMap::loadFromMemory(const void* data, int size) {
     }
 
     rebuildMask();
-    m_texture = LoadTextureFromImage(m_image);
-    SetTextureFilter(m_texture, TEXTURE_FILTER_BILINEAR);
+    if (withTexture) {
+        m_texture = LoadTextureFromImage(m_image);
+        SetTextureFilter(m_texture, TEXTURE_FILTER_BILINEAR);
+    }
     m_loaded = true;
     return true;
 }

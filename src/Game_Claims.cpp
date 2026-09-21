@@ -14,9 +14,7 @@ void Game::clearClaimsView() {
     m_lastClaimsCountryId = -1;
     m_renderer->setShowClaims(false);
     m_activeSidebarTab = 0;
-    ensureClaimsTexture();
-    std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-    m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+    clearClaimsOverlay();
 }
 
 void Game::grantClaim(const std::string& claimantIso, int pid) {
@@ -133,9 +131,7 @@ void Game::drawClaimsTab() {
             m_renderer->setShowClaims(false);
             m_renderer->setPaused(false);
         }
-        ensureClaimsTexture();
-        std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-        m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+        clearClaimsOverlay();
     }
     DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
@@ -196,9 +192,7 @@ void Game::drawClaimsTab() {
                 m_showClaims = false;
                 if (m_renderer) {
                     m_renderer->setShowClaims(false);
-                    ensureClaimsTexture();
-                    std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-                    m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
+                    clearClaimsOverlay();
                 }
             }
         }

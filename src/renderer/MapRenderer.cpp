@@ -21,7 +21,15 @@
 extern "C" void rlSetBlendFactorsSeparate(int glSrcRGB, int glDstRGB,
                                           int glSrcAlpha, int glDstAlpha,
                                           int glEqRGB, int glEqAlpha);
+// And for the overlay target, a framebuffer with a colour attachment only.
+extern "C" void rlSetBlendFactors(int glSrcFactor, int glDstFactor, int glEquation);
+extern "C" unsigned int rlLoadTexture(const void* data, int width, int height, int format, int mipmapCount);
+extern "C" unsigned int rlLoadFramebuffer(void);
+extern "C" void rlFramebufferAttach(unsigned int fboId, unsigned int texId, int attachType, int texType, int mipLevel);
+extern "C" bool rlFramebufferComplete(unsigned int id);
 namespace {
+constexpr int kRlAttachmentColor0 = 0;      // RL_ATTACHMENT_COLOR_CHANNEL0
+constexpr int kRlAttachmentTexture2D = 100; // RL_ATTACHMENT_TEXTURE2D
 // OpenGL's own numbers. Spelled out because rlgl.h is not included here and
 // these four have been stable since OpenGL 1.4.
 constexpr int kGlZero             = 0x0000;
@@ -72,9 +80,20 @@ MapRenderer::~MapRenderer() {
     if (m_politicalTex.id > 0) UnloadTexture(m_politicalTex);
     if (m_selectionTex.id > 0) UnloadTexture(m_selectionTex);
     if (m_bulkTex.id > 0) UnloadTexture(m_bulkTex);
-    if (m_populationTex.id > 0) UnloadTexture(m_populationTex);
-    if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
     if (m_claimsTex.id > 0) UnloadTexture(m_claimsTex);
+    if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
+    for (OverlaySlot& o : m_overlays) {
+        if (o.base.id > 0) UnloadTexture(o.base);
+        if (o.stripe.id > 0) UnloadTexture(o.stripe);
+    }
+    if (m_noStripe.id > 0) UnloadTexture(m_noStripe);
+    if (m_overlayTarget.id > 0) UnloadRenderTexture(m_overlayTarget);
+    if (m_politicalTarget.id > 0) UnloadRenderTexture(m_politicalTarget);
+    if (m_politicalOwners.id > 0) UnloadTexture(m_politicalOwners);
+    if (m_politicalColours.id > 0) UnloadTexture(m_politicalColours);
+    if (m_borderDistance.id > 0) UnloadTexture(m_borderDistance);
+    if (m_politicalShaderTried && m_politicalShader.id > 0) UnloadShader(m_politicalShader);
+    if (m_overlayShaderTried && m_overlayShader.id > 0) UnloadShader(m_overlayShader);
     if (m_editorOverlayTex.id > 0) UnloadTexture(m_editorOverlayTex);
     if (m_highlightTex.id > 0) UnloadTexture(m_highlightTex);
     if (m_surface.id > 0) UnloadRenderTexture(m_surface);
@@ -102,21 +121,18 @@ void MapRenderer::clearHighlight() {
 }
 
 void MapRenderer::setPoliticalTexture(Texture2D tex) {
-    ++m_politicalRevision;
     m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0) UnloadTexture(m_politicalTex);
     m_politicalTex = tex;
 }
 
 void MapRenderer::updatePoliticalTexture(const void* data) {
-    ++m_politicalRevision;
     m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0)
         UpdateTexture(m_politicalTex, data);
 }
 
 void MapRenderer::updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h) {
-    ++m_politicalRevision;
     m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0)
         UpdateTextureRec(m_politicalTex, {(float)x, (float)y, (float)w, (float)h}, rectData);
@@ -212,28 +228,345 @@ void MapRenderer::updateBorderRegion(const Color* provPixels, int mapW, int mapH
     UpdateTextureRec(m_borderTex, {(float)x0, (float)y0, (float)w, (float)h}, rect.data());
 }
 
-void MapRenderer::setPopulationTexture(Texture2D tex) {
-    m_surfaceDirty = true;   // the globe samples a composite of these
-    if (m_populationTex.id > 0) UnloadTexture(m_populationTex);
-    m_populationTex = tex;
+// ─── Province-coloured overlays ───────────────────────────────────────────
+//
+// The colour tables are painted into one map-sized render target when they
+// change, and the target is drawn like the images it replaces: one texture
+// read per pixel, filtered by the GPU as before. Colouring every frame in a
+// shader instead (four id lookups and eight table lookups per pixel) cost the
+// overlay views two thirds of their frame rate.
+//
+// Painting is one fragment per map texel, so the lookup is NEAREST and exact.
+// highp: texel coordinates on an 8192-wide map need more than the 11 bits of
+// mantissa mediump promises.
+namespace {
+const char* kOverlayFragEs = R"(#version 100
+precision highp float;
+varying vec2 fragTexCoord;
+uniform sampler2D texture0;
+uniform sampler2D overlayBase;
+uniform sampler2D overlayStripe;
+uniform vec2 mapSize;
+void main() {
+    vec2 texel = floor(fragTexCoord * mapSize);
+    vec4 s = texture2D(texture0, (texel + 0.5) / mapSize);
+    float id = floor(s.r * 255.0 + 0.5) + 256.0 * floor(s.a * 255.0 + 0.5);
+    vec2 uv = (vec2(mod(id, 256.0), floor(id / 256.0)) + 0.5) / 256.0;
+    vec4 c = texture2D(overlayBase, uv);
+    vec4 st = texture2D(overlayStripe, uv);
+    if (st.a > 0.0 && mod(texel.x + texel.y, 10.0) < 4.0) c = st;
+    gl_FragColor = c;
+})";
+
+const char* kOverlayFrag330 = R"(#version 330
+in vec2 fragTexCoord;
+uniform sampler2D texture0;
+uniform sampler2D overlayBase;
+uniform sampler2D overlayStripe;
+uniform vec2 mapSize;
+out vec4 finalColor;
+void main() {
+    vec2 texel = floor(fragTexCoord * mapSize);
+    vec4 s = texture(texture0, (texel + 0.5) / mapSize);
+    float id = floor(s.r * 255.0 + 0.5) + 256.0 * floor(s.a * 255.0 + 0.5);
+    vec2 uv = (vec2(mod(id, 256.0), floor(id / 256.0)) + 0.5) / 256.0;
+    vec4 c = texture(overlayBase, uv);
+    vec4 st = texture(overlayStripe, uv);
+    if (st.a > 0.0 && mod(texel.x + texel.y, 10.0) < 4.0) c = st;
+    finalColor = c;
+})";
+
+// The political layer: owner of this texel's province, its distance from a
+// border, and whether a 4-neighbour inside the map belongs to someone else --
+// then one lookup in the colour table the CPU filled with the exact values.
+// No arithmetic on colours here, so nothing can round differently.
+const char* kPoliticalFragEs = R"(#version 100
+precision highp float;
+varying vec2 fragTexCoord;
+uniform sampler2D texture0;
+uniform sampler2D owners;
+uniform sampler2D colours;
+uniform sampler2D borderDistance;
+uniform vec2 mapSize;
+uniform float rows;
+vec4 ownerEntry(vec2 texel) {
+    vec4 s = texture2D(texture0, (texel + 0.5) / mapSize);
+    float id = floor(s.r * 255.0 + 0.5) + 256.0 * floor(s.a * 255.0 + 0.5);
+    return texture2D(owners, (vec2(mod(id, 256.0), floor(id / 256.0)) + 0.5) / 256.0);
+}
+float ownerAt(vec2 texel) {
+    vec4 o = ownerEntry(texel);
+    return floor(o.r * 255.0 + 0.5) + 256.0 * floor(o.g * 255.0 + 0.5);
+}
+void main() {
+    vec2 texel = floor(fragTexCoord * mapSize);
+    vec4 own = ownerEntry(texel);
+    float cid = floor(own.r * 255.0 + 0.5) + 256.0 * floor(own.g * 255.0 + 0.5);
+    float row = floor(own.b * 255.0 + 0.5) + 256.0 * floor(own.a * 255.0 + 0.5);
+    float d = min(floor(texture2D(borderDistance, (texel + 0.5) / mapSize).r * 255.0 + 0.5), 63.0);
+    float edge = 0.0;
+    if (cid > 0.0) {
+        if ((texel.x > 0.0 && ownerAt(texel + vec2(-1.0, 0.0)) != cid) ||
+            (texel.x < mapSize.x - 1.0 && ownerAt(texel + vec2(1.0, 0.0)) != cid) ||
+            (texel.y > 0.0 && ownerAt(texel + vec2(0.0, -1.0)) != cid) ||
+            (texel.y < mapSize.y - 1.0 && ownerAt(texel + vec2(0.0, 1.0)) != cid)) edge = 1.0;
+    }
+    gl_FragColor = texture2D(colours, (vec2(d + 64.0 * edge, row) + 0.5) / vec2(128.0, rows));
+})";
+
+const char* kPoliticalFrag330 = R"(#version 330
+in vec2 fragTexCoord;
+uniform sampler2D texture0;
+uniform sampler2D owners;
+uniform sampler2D colours;
+uniform sampler2D borderDistance;
+uniform vec2 mapSize;
+uniform float rows;
+out vec4 finalColor;
+vec4 ownerEntry(vec2 texel) {
+    vec4 s = texture(texture0, (texel + 0.5) / mapSize);
+    float id = floor(s.r * 255.0 + 0.5) + 256.0 * floor(s.a * 255.0 + 0.5);
+    return texture(owners, (vec2(mod(id, 256.0), floor(id / 256.0)) + 0.5) / 256.0);
+}
+float ownerAt(vec2 texel) {
+    vec4 o = ownerEntry(texel);
+    return floor(o.r * 255.0 + 0.5) + 256.0 * floor(o.g * 255.0 + 0.5);
+}
+void main() {
+    vec2 texel = floor(fragTexCoord * mapSize);
+    vec4 own = ownerEntry(texel);
+    float cid = floor(own.r * 255.0 + 0.5) + 256.0 * floor(own.g * 255.0 + 0.5);
+    float row = floor(own.b * 255.0 + 0.5) + 256.0 * floor(own.a * 255.0 + 0.5);
+    float d = min(floor(texture(borderDistance, (texel + 0.5) / mapSize).r * 255.0 + 0.5), 63.0);
+    float edge = 0.0;
+    if (cid > 0.0) {
+        if ((texel.x > 0.0 && ownerAt(texel + vec2(-1.0, 0.0)) != cid) ||
+            (texel.x < mapSize.x - 1.0 && ownerAt(texel + vec2(1.0, 0.0)) != cid) ||
+            (texel.y > 0.0 && ownerAt(texel + vec2(0.0, -1.0)) != cid) ||
+            (texel.y < mapSize.y - 1.0 && ownerAt(texel + vec2(0.0, 1.0)) != cid)) edge = 1.0;
+    }
+    finalColor = texture(colours, (vec2(d + 64.0 * edge, row) + 0.5) / vec2(128.0, rows));
+})";
+
+#if defined(GRAPHICS_API_OPENGL_ES2) || defined(PLATFORM_ANDROID) || defined(PLATFORM_WEB)
+constexpr bool kOverlayEs = true;
+#else
+constexpr bool kOverlayEs = false;
+#endif
+
+Texture2D makeTableTexture(int w, int h) {
+    Image img = GenImageColor(w, h, BLANK);
+    Texture2D t = LoadTextureFromImage(img);
+    UnloadImage(img);
+    SetTextureFilter(t, TEXTURE_FILTER_POINT);
+    SetTextureWrap(t, TEXTURE_WRAP_CLAMP);
+    return t;
 }
 
-void MapRenderer::updatePopulationTexture(const void* data) {
-    m_surfaceDirty = true;   // the globe samples a composite of these
-    if (m_populationTex.id > 0)
-        UpdateTexture(m_populationTex, data);
+void uploadTable(Texture2D& tex, const std::vector<Color>& colours) {
+    constexpr int N = MapRenderer::kOverlayEntries;
+    if (tex.id == 0) tex = makeTableTexture(256, N / 256);
+    std::vector<Color> full(N, Color{0, 0, 0, 0});
+    std::copy_n(colours.begin(), std::min<size_t>(colours.size(), N), full.begin());
+    UpdateTexture(tex, full.data());
+}
+}  // namespace
+
+void MapRenderer::setProvinceIndex(const Image& provinces) {
+    if (!provinces.data || provinces.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) return;
+    const size_t n = (size_t)provinces.width * provinces.height;
+    // Two bytes per pixel, low then high: GRAY_ALPHA, which samples as
+    // (lo, lo, lo, hi) on every GL this game runs on.
+    std::vector<uint8_t> ids(n * 2);
+    const auto* px = (const Color*)provinces.data;
+    bool wide = false;
+    for (size_t i = 0; i < n; ++i) {
+        if (px[i].r) wide = true;   // id past 65535: the table cannot hold it
+        ids[i * 2] = px[i].b;
+        ids[i * 2 + 1] = px[i].r ? 0 : px[i].g;
+    }
+    if (wide) TraceLog(LOG_WARNING, "MAP: province ids above 65535 draw as sea in overlays");
+    if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
+    Image img{};
+    img.data = ids.data();
+    img.width = provinces.width;
+    img.height = provinces.height;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
+    m_provinceIndexTex = LoadTextureFromImage(img);
+    // NEAREST: the shader does the blending, after the lookup.
+    SetTextureFilter(m_provinceIndexTex, TEXTURE_FILTER_POINT);
+    m_surfaceDirty = true;
 }
 
-void MapRenderer::setResourceTexture(Texture2D tex) {
-    m_surfaceDirty = true;   // the globe samples a composite of these
-    if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
-    m_resourceTex = tex;
+void MapRenderer::setOverlayColours(Overlay which, const std::vector<Color>& base,
+                                    const std::vector<Color>* stripe) {
+    OverlaySlot& slot = m_overlays[(int)which];
+    uploadTable(slot.base, base);
+    if (stripe) uploadTable(slot.stripe, *stripe);
+    else if (slot.stripe.id > 0) { UnloadTexture(slot.stripe); slot.stripe = Texture2D{}; }
+    slot.active = true;
+    if (m_overlayPainted == (int)which) m_overlayPainted = -1;   // repaint before next draw
 }
 
-void MapRenderer::updateResourceTexture(const void* data) {
+void MapRenderer::clearOverlay(Overlay which) {
+    m_overlays[(int)which].active = false;
+}
+
+bool MapRenderer::overlayReady(Overlay which) const {
+    return m_provinceIndexTex.id > 0 && m_overlays[(int)which].active;
+}
+
+// A map-sized paint target. Colour only: LoadRenderTexture would add a depth
+// buffer the size of the map -- another 128 MB -- that a flat paint never
+// tests against. Bilinear and repeating across the seam, as the images these
+// replace were.
+RenderTexture2D MapRenderer::makeTarget(int w, int h) {
+    RenderTexture2D t{};
+    t.texture.id = rlLoadTexture(nullptr, w, h, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8, 1);
+    t.texture.width = w;
+    t.texture.height = h;
+    t.texture.mipmaps = 1;
+    t.texture.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    t.id = rlLoadFramebuffer();
+    rlFramebufferAttach(t.id, t.texture.id, kRlAttachmentColor0, kRlAttachmentTexture2D, 0);
+    if (t.id == 0 || !rlFramebufferComplete(t.id)) {
+        TraceLog(LOG_WARNING, "MAP: a %dx%d paint target could not be created", w, h);
+        if (t.id > 0 || t.texture.id > 0) UnloadRenderTexture(t);
+        return RenderTexture2D{};
+    }
+    SetTextureFilter(t.texture, TEXTURE_FILTER_BILINEAR);
+    SetTextureWrap(t.texture, TEXTURE_WRAP_REPEAT);
+    return t;
+}
+
+void MapRenderer::setPoliticalOwners(const std::vector<uint16_t>& owners, const std::vector<uint16_t>& rows) {
+    constexpr int N = kOverlayEntries;
+    // RGBA: owner low, owner high, row low, row high.
+    std::vector<uint8_t> bytes((size_t)N * 4, 0);
+    for (size_t i = 0; i < (size_t)N; ++i) {
+        const uint16_t o = i < owners.size() ? owners[i] : 0, r = i < rows.size() ? rows[i] : 0;
+        bytes[i * 4] = (uint8_t)(o & 0xFF);
+        bytes[i * 4 + 1] = (uint8_t)(o >> 8);
+        bytes[i * 4 + 2] = (uint8_t)(r & 0xFF);
+        bytes[i * 4 + 3] = (uint8_t)(r >> 8);
+    }
+    if (m_politicalOwners.id == 0) {
+        Image img{bytes.data(), 256, N / 256, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+        m_politicalOwners = LoadTextureFromImage(img);
+        SetTextureFilter(m_politicalOwners, TEXTURE_FILTER_POINT);
+        SetTextureWrap(m_politicalOwners, TEXTURE_WRAP_CLAMP);
+    } else {
+        UpdateTexture(m_politicalOwners, bytes.data());
+    }
+    m_politicalStale = true;
+}
+
+void MapRenderer::setPoliticalColours(const std::vector<Color>& colours, int rows) {
+    if (rows <= 0 || colours.size() < (size_t)rows * kPoliticalColumns) return;
+    if (m_politicalColours.id == 0 || rows != m_politicalRows) {
+        if (m_politicalColours.id > 0) UnloadTexture(m_politicalColours);
+        Image img{(void*)colours.data(), kPoliticalColumns, rows, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+        m_politicalColours = LoadTextureFromImage(img);
+        SetTextureFilter(m_politicalColours, TEXTURE_FILTER_POINT);
+        SetTextureWrap(m_politicalColours, TEXTURE_WRAP_CLAMP);
+        m_politicalRows = rows;
+    } else {
+        UpdateTexture(m_politicalColours, colours.data());
+    }
+    m_politicalStale = true;
+}
+
+void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int w, int h) {
+    if (distance.size() != (size_t)w * h) return;
+    // A new texture each time rather than an update, for the reason in the
+    // header: the Mac keeps copies of a texture that is written after it is
+    // made. This changes when a border moves, at most once a turn.
+    if (m_borderDistance.id > 0) UnloadTexture(m_borderDistance);
+    Image img{(void*)distance.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+    m_borderDistance = LoadTextureFromImage(img);
+    SetTextureFilter(m_borderDistance, TEXTURE_FILTER_POINT);
+    if (m_politicalTarget.id == 0) m_politicalTarget = makeTarget(w, h);
+    m_politicalStale = true;
+}
+
+void MapRenderer::preparePolitical() {
+    if (!m_politicalStale || m_politicalTarget.id == 0 || m_provinceIndexTex.id == 0 ||
+        m_politicalOwners.id == 0 || m_politicalColours.id == 0 || m_borderDistance.id == 0)
+        return;
+    if (!m_politicalShaderTried) {
+        m_politicalShaderTried = true;
+        m_politicalShader = LoadShaderFromMemory(nullptr, kOverlayEs ? kPoliticalFragEs : kPoliticalFrag330);
+        m_locPolOwners = GetShaderLocation(m_politicalShader, "owners");
+        m_locPolColours = GetShaderLocation(m_politicalShader, "colours");
+        m_locPolDistance = GetShaderLocation(m_politicalShader, "borderDistance");
+        m_locPolMapSize = GetShaderLocation(m_politicalShader, "mapSize");
+        m_locPolRows = GetShaderLocation(m_politicalShader, "rows");
+    }
+    const int w = m_provinceIndexTex.width, h = m_provinceIndexTex.height;
+    BeginTextureMode(m_politicalTarget);
+    rlSetBlendFactors(kGlOne, kGlZero, kGlFuncAdd);
+    BeginBlendMode(BLEND_CUSTOM);
+    BeginShaderMode(m_politicalShader);
+    SetShaderValueTexture(m_politicalShader, m_locPolOwners, m_politicalOwners);
+    SetShaderValueTexture(m_politicalShader, m_locPolColours, m_politicalColours);
+    SetShaderValueTexture(m_politicalShader, m_locPolDistance, m_borderDistance);
+    const float size[2] = {(float)w, (float)h};
+    SetShaderValue(m_politicalShader, m_locPolMapSize, size, SHADER_UNIFORM_VEC2);
+    const float rows = (float)m_politicalRows;
+    SetShaderValue(m_politicalShader, m_locPolRows, &rows, SHADER_UNIFORM_FLOAT);
+    DrawTexturePro(m_provinceIndexTex, {0.0f, 0.0f, (float)w, -(float)h}, {0.0f, 0.0f, (float)w, (float)h},
+                   {0.0f, 0.0f}, 0.0f, WHITE);
+    EndShaderMode();
+    EndBlendMode();
+    EndTextureMode();
+    m_politicalStale = false;
     m_surfaceDirty = true;   // the globe samples a composite of these
-    if (m_resourceTex.id > 0)
-        UpdateTexture(m_resourceTex, data);
+}
+
+int MapRenderer::wantedOverlay() const {
+    if (m_showClaims && overlayReady(Overlay::Claims)) return (int)Overlay::Claims;
+    if (m_showClaims && m_claimsTex.id > 0) return -1;   // the editor's image
+    if (m_showResource >= 0 && overlayReady(Overlay::Resource)) return (int)Overlay::Resource;
+    if ((m_showRelations || m_showPopulation) && overlayReady(Overlay::Population))
+        return (int)Overlay::Population;
+    return -1;
+}
+
+void MapRenderer::prepareOverlay() {
+    const int want = wantedOverlay();
+    if (want < 0 || want == m_overlayPainted) return;
+    const int w = m_provinceIndexTex.width, h = m_provinceIndexTex.height;
+    if (m_overlayTarget.id == 0) m_overlayTarget = makeTarget(w, h);
+    if (m_overlayTarget.id == 0) return;
+    if (!m_overlayShaderTried) {
+        m_overlayShaderTried = true;
+        m_overlayShader = LoadShaderFromMemory(nullptr, kOverlayEs ? kOverlayFragEs : kOverlayFrag330);
+        m_locOverlayBase = GetShaderLocation(m_overlayShader, "overlayBase");
+        m_locOverlayStripe = GetShaderLocation(m_overlayShader, "overlayStripe");
+        m_locOverlayMapSize = GetShaderLocation(m_overlayShader, "mapSize");
+        m_noStripe = makeTableTexture(1, 1);
+    }
+    const OverlaySlot& slot = m_overlays[want];
+    BeginTextureMode(m_overlayTarget);
+    // Written straight, not blended: a claims colour is translucent, and
+    // blending it over the cleared target would square its alpha.
+    rlSetBlendFactors(kGlOne, kGlZero, kGlFuncAdd);
+    BeginBlendMode(BLEND_CUSTOM);
+    BeginShaderMode(m_overlayShader);
+    SetShaderValueTexture(m_overlayShader, m_locOverlayBase, slot.base);
+    SetShaderValueTexture(m_overlayShader, m_locOverlayStripe, slot.stripe.id > 0 ? slot.stripe : m_noStripe);
+    const float size[2] = {(float)w, (float)h};
+    SetShaderValue(m_overlayShader, m_locOverlayMapSize, size, SHADER_UNIFORM_VEC2);
+    // Negative source height: a render target is stored bottom-up, and this
+    // flips it back so the target samples the right way up (see buildSurface).
+    DrawTexturePro(m_provinceIndexTex, {0.0f, 0.0f, (float)w, -(float)h}, {0.0f, 0.0f, (float)w, (float)h},
+                   {0.0f, 0.0f}, 0.0f, WHITE);
+    EndShaderMode();
+    EndBlendMode();
+    EndTextureMode();
+    m_overlayPainted = want;
+    m_surfaceDirty = true;   // the globe samples a composite of these
 }
 
 void MapRenderer::setClaimsTexture(Texture2D tex) {
@@ -789,19 +1122,25 @@ void MapRenderer::clearBulkSelection() {
 
 std::vector<MapRenderer::Layer> MapRenderer::layerStack(const LandSeaMap& landSea) const {
     std::vector<Layer> out;
-    out.push_back({landSea.getTexture(), WHITE});
+    // Absent in a game, which never uploads it; see LandSeaMap::loadFromMemory.
+    out.push_back({landSea.getTexture(), WHITE, /*scenery=*/true});
 
     // Claims mode paints the political base and then a semi-transparent claims
     // pattern over it; every other mode picks ONE base layer.
-    if (m_showClaims && m_claimsTex.id > 0) {
-        if (m_politicalTex.id > 0) out.push_back({m_politicalTex, WHITE});
-        out.push_back({m_claimsTex, WHITE});
+    // A game overlay is its colour table painted into m_overlayTarget (see
+    // prepareOverlay); the map editor, which has a renderer of its own, still
+    // paints claims as an image.
+    const int ov = wantedOverlay();
+    const Layer overlay{m_overlayTarget.texture, WHITE};
+    // The game's painted political layer, or the editor's image.
+    const Texture2D political = m_politicalTarget.id > 0 ? m_politicalTarget.texture : m_politicalTex;
+    if (m_showClaims && (ov == (int)Overlay::Claims || m_claimsTex.id > 0)) {
+        if (political.id > 0) out.push_back({political, WHITE});
+        out.push_back(ov == (int)Overlay::Claims ? overlay : Layer{m_claimsTex, WHITE});
     } else {
-        Texture2D mainTex = m_politicalTex;
-        if (m_showResource >= 0 && m_resourceTex.id > 0)      mainTex = m_resourceTex;
-        else if (m_showRelations && m_populationTex.id > 0)   mainTex = m_populationTex;
-        else if (m_showPopulation && m_populationTex.id > 0)  mainTex = m_populationTex;
-        if (mainTex.id > 0) out.push_back({mainTex, WHITE});
+        Layer main{political, WHITE};
+        if (ov >= 0) main = overlay;
+        if (main.tex.id > 0) out.push_back(main);
     }
 
     if (!m_showCountryNames && m_borderTex.id > 0)
@@ -983,22 +1322,24 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
     //
     // Telling them apart by colour does not work -- this map's ocean is a
     // saturated blue and reads exactly like a province to any test on hue or
-    // chroma. But the layer stack already knows: the first layer is the world,
-    // everything after it is what has been drawn ON the world. So the two groups
+    // chroma. But the layer stack already knows: the scenery layer is the world,
+    // everything else is what has been drawn ON the world. So the two groups
     // are composited with different ALPHA blending -- the base leaves alpha at
     // zero, the rest accumulate coverage into it -- and the shader reads that
     // coverage to decide how far to dim. The alpha channel was carrying nothing
     // before; the sphere is opaque.
+    //
+    // Marked on the layer rather than taken from its position: a game has no
+    // land/sea texture any more, and the first layer it draws is the political
+    // map, which is information and must not be dimmed as scenery.
     const std::vector<Layer> stack = layerStack(landSea);
-    bool first = true;
     for (const Layer& l : stack) {
         if (l.tex.id == 0) continue;
         rlSetBlendFactorsSeparate(kGlSrcAlpha, kGlOneMinusSrcAlpha,
-                                  first ? kGlZero : kGlOne,
-                                  first ? kGlOne  : kGlOneMinusSrcAlpha,
+                                  l.scenery ? kGlZero : kGlOne,
+                                  l.scenery ? kGlOne  : kGlOneMinusSrcAlpha,
                                   kGlFuncAdd, kGlFuncAdd);
         BeginBlendMode(BLEND_CUSTOM_SEPARATE);
-        first = false;
         const float tw = (float)l.tex.width, th = (float)l.tex.height;
         // NEGATIVE source height, and it is not a trick: a render target is
         // stored bottom-up, so anything drawn into it arrives upside down when
@@ -1392,6 +1733,8 @@ void MapRenderer::drawCountryNames() {
 }
 
 void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries) {
+    preparePolitical(); // repaint the political layer if its inputs changed
+    prepareOverlay();   // and the overlay target if its table changed
     if (m_view == ViewMode::Globe) {
         if (!m_globe) {
             m_globe = new GlobeView(m_mapW, m_mapH);

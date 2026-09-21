@@ -326,12 +326,7 @@ void Game::update(float dt) {
             m_renderer->setShowClaims(false);
             m_renderer->setPaused(false);
         }
-        // The claims buffer is built on demand; an empty one has nothing to
-        // clear and no texture to push. See ensureClaimsTexture().
-        if (!m_claimsPixelBuffer.empty()) {
-            std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-            m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
-        }
+        clearClaimsOverlay();
         return;
     }
 
@@ -395,21 +390,7 @@ void Game::update(float dt) {
                 m_lastRelationsCountryId = -1;
                 Color landColor = (m_activeViewTab == 4) ? Color{80, 80, 80, 255} : Color{60, 60, 60, 255};
                 m_countryRelationColors.assign(m_countryRelationColors.size(), landColor);
-                int w = m_provinces.getWidth();
-                int h = m_provinces.getHeight();
-                const auto* srcPixels = (const Color*)m_provinces.getImage().data;
-                // Built on demand; indexing an empty buffer would run off
-                // the end. See ensurePopulationTexture().
-                ensurePopulationTexture();
-                if (!m_populationPixelBuffer.empty()) {
-                    for (int i = 0; i < w * h; ++i) {
-                        int pid = Province::colorToId(srcPixels[i].r, srcPixels[i].g, srcPixels[i].b);
-                        m_populationPixelBuffer[i] = (pid == 0)
-                            ? Color{10, 15, 40, 255}
-                            : landColor;
-                    }
-                    m_renderer->updatePopulationTexture(m_populationPixelBuffer.data());
-                }
+                resetPopulationTable(landColor);
             }
         }
     }
@@ -787,12 +768,7 @@ void Game::update(float dt) {
                                 m_renderer->setShowClaims(false);
                                 m_renderer->setPaused(false);
                             }
-                            // Built on demand; an empty buffer has nothing to
-                            // clear. See ensureClaimsTexture().
-                            if (!m_claimsPixelBuffer.empty()) {
-                                std::fill(m_claimsPixelBuffer.begin(), m_claimsPixelBuffer.end(), Color{0, 0, 0, 0});
-                                m_renderer->updateClaimsTexture(m_claimsPixelBuffer.data());
-                            }
+                            clearClaimsOverlay();
                         } else {
                             // Open (close economy/policy first)
                             m_inEconomy = false;
