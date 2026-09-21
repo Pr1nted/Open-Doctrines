@@ -1786,14 +1786,7 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             if ((size_t)pid < m_game->m_provinceCountryLookup.size())
                 m_game->m_provinceCountryLookup[pid] = newCid;
             m_game->reindexProvinceOwner(pid, oldCid, newCid);
-            // Update pixel array
-            auto ppIt = m_game->m_provincePixels.find(pid);
-            if (ppIt != m_game->m_provincePixels.end()) {
-                for (int idx : ppIt->second) {
-                    if (idx >= 0 && idx < (int)m_game->m_pixelCountryArray.size())
-                        m_game->m_pixelCountryArray[idx] = (uint16_t)newCid;
-                }
-            }
+            // Pixels follow the province; nothing per-pixel to update.
             return true;
         }
         if (prop == "industry") {

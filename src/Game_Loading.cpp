@@ -896,25 +896,60 @@ void Game::drawLoadingScreen() {
 //
 // The >= 60 test inside relax() is the BFS's own cut, kept: it refused to
 // expand out of a pixel that had already reached 60.
-static void odBuildGradientField(const uint16_t* owner, int w, int h,
-                                 std::vector<uint8_t>& out) {
-    const size_t total = (size_t)w * h;
-    out.assign(total, 255);
-
-    // Seeds: a pixel with a 4-neighbour under different ownership.
+//
+// OWNERS FROM THE PROVINCES, A ROW AT A TIME. This read a per-pixel owner
+// array -- 64 MB kept for the whole session, and kept in step by every
+// capture, cession, revolt and script that moved a province. Ownership is per
+// province, so a pixel's owner is its province's (the uint16 of
+// m_provinceCountryLookup, as that array stored it); three rows of it are all
+// the seed test below ever looks at.
+// Every pixel with a 4-neighbour of a different province colour -- the only
+// pixels that can ever seed the field, because owners differ only where
+// provinces do. Province shapes do not change in a game, so this is built
+// once per map (a few MB) and each rebuild checks those pixels alone rather
+// than all 33.5 million. Scanning the whole province image instead of the old
+// per-pixel owner array measured ~195 ms a rebuild against ~160 ms.
+static std::vector<uint32_t> odProvinceEdgePixels(const Color* provPixels, int w, int h) {
+    std::vector<uint32_t> edges;
+    const auto* P = reinterpret_cast<const uint32_t*>(provPixels);
+    static_assert(sizeof(Color) == 4, "a province pixel is read as one uint32");
     for (int y = 0; y < h; ++y) {
-        // Once a row, as everywhere else on this path -- nothing refills the
-        // music while a full-raster pass runs. See Audio::pump().
         Audio::get().pump();
         const size_t row = (size_t)y * w;
         for (int x = 0; x < w; ++x) {
-            const uint16_t c = owner[row + x];
-            if ((x > 0     && owner[row + x - 1] != c) ||
-                (x < w - 1 && owner[row + x + 1] != c) ||
-                (y > 0     && owner[row - w + x]  != c) ||
-                (y < h - 1 && owner[row + w + x]  != c))
-                out[row + x] = 0;
+            const uint32_t c = P[row + x];
+            if ((x > 0     && P[row + x - 1] != c) || (x < w - 1 && P[row + x + 1] != c) ||
+                (y > 0     && P[row - w + x] != c) || (y < h - 1 && P[row + w + x] != c))
+                edges.push_back((uint32_t)(row + x));
         }
+    }
+    return edges;
+}
+
+static void odBuildGradientField(const Color* provPixels, const std::vector<uint32_t>& edges,
+                                 const std::vector<int>& lookup,
+                                 int w, int h, std::vector<uint8_t>& out) {
+    const size_t total = (size_t)w * h;
+    out.assign(total, 255);
+
+    // Seeds: a pixel with a 4-neighbour under different ownership, which can
+    // only be a province-edge pixel. Bytes, not a mask, for the id: in memory
+    // a Color is r, g, b, a, so as a uint32 on a little-endian machine it
+    // reads r | g<<8 | b<<16.
+    const auto* P = reinterpret_cast<const uint32_t*>(provPixels);
+    auto ownerOf = [&](uint32_t px) -> uint16_t {
+        const uint8_t* b = reinterpret_cast<const uint8_t*>(&px);
+        const int pid = Province::colorToId(b[0], b[1], b[2]);
+        return (pid > 0 && (size_t)pid < lookup.size()) ? (uint16_t)lookup[(size_t)pid] : (uint16_t)0;
+    };
+    for (uint32_t i : edges) {
+        const int x = (int)(i % (uint32_t)w), y = (int)(i / (uint32_t)w);
+        const uint16_t o = ownerOf(P[i]);
+        if ((x > 0     && ownerOf(P[i - 1]) != o) ||
+            (x < w - 1 && ownerOf(P[i + 1]) != o) ||
+            (y > 0     && ownerOf(P[i - (uint32_t)w]) != o) ||
+            (y < h - 1 && ownerOf(P[i + (uint32_t)w]) != o))
+            out[i] = 0;
     }
 
     auto relax = [&out](size_t i, size_t from, uint8_t step) {
@@ -987,8 +1022,6 @@ void Game::buildPopulationLookups() {
     // line. Reporting after each says which, and therefore what the device's
     // actual ceiling is.
     logHeapAt("  pop: before arrays");
-    m_pixelCountryArray.assign(totalPixels, 0);
-    logHeapAt("  pop: +pixelCountryArray");
     // The distance field is all this function builds that only the screen
     // reads. An agent load leaves it empty, and every later writer checks
     // (generatePoliticalTexture, rebuildGradientField).
@@ -1006,13 +1039,11 @@ void Game::buildPopulationLookups() {
     // load APPENDS its pixels onto the previous map's lists. That is a
     // ~100 MB-per-map leak that OOM-kills long training runs (the crash after a
     // dozen map rotations). Clear both before repopulating.
-    m_countryPixels.clear();
     m_provincePixels.clear();
     m_coastalCache.clear();   // answers belong to the map that is going away
     m_portAnchorCache.clear();
-    m_countryPixels.resize(maxCid + 1);
+    m_countryPixelCount.assign(maxCid + 1, 0);   // see Game.h
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
-    logHeapAt("  pop: +countryPixels(empty)");
 
     // ── TRUE AREA, ONE ROW-WEIGHT AT A TIME ──
     //
@@ -1048,13 +1079,9 @@ void Game::buildPopulationLookups() {
         int cid = 0;
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
-        m_pixelCountryArray[i] = (uint16_t)cid;
         if (pid > 0 && (size_t)pid < m_provinceAreaArray.size())
             m_provinceAreaArray[pid] += areaRowW;
-
-
-        if (cid > 0 && cid <= maxCid)
-            m_countryPixels[cid].push_back(i);
+        if (cid > 0 && cid <= maxCid) ++m_countryPixelCount[(size_t)cid];
 
         // m_provincePixels is NOT filled here any more: it is one int per map
         // pixel -- 128 MB -- and only the claims overlay reads it. Built on
@@ -1065,7 +1092,8 @@ void Game::buildPopulationLookups() {
 
     if (!paint) return;          // the rest is the political texture
 
-    odBuildGradientField(m_pixelCountryArray.data(), w, h, m_gradientDist);
+    m_provinceEdgePixels = odProvinceEdgePixels(srcPixels, w, h);
+    odBuildGradientField(srcPixels, m_provinceEdgePixels, m_provinceCountryLookup, w, h, m_gradientDist);
 
     // ONE guard around all three, not one each. Two full-map uploads and a
     // third pass inside generatePoliticalTexture() run back to back with
@@ -1095,14 +1123,18 @@ void Game::buildPopulationLookups() {
 void Game::rebuildGradientField() {
     const Image& provImg = m_provinces.getImage();
     const int w2 = provImg.width, h2 = provImg.height;
-    if ((int)m_pixelCountryArray.size() != w2 * h2) return;
+    // Between a map being cleared and the next population lookups there is
+    // no ownership to shade (this used to test the per-pixel owner array).
+    if (m_countryPixelCount.empty() || !provImg.data || w2 <= 0 || h2 <= 0) return;
     // The field only shades the political layer; an agent load has no field
     // and nothing to shade, and it was a full-raster BFS.
     if (m_gradientDist.empty()) { m_gradientDirty = false; return; }
     // The same field, by the same routine as the load builds it. It was a
     // second copy of the BFS, and this one ran once per TURN -- so the 256 MB
     // queue described above was not a load-time cost, it was a per-turn one.
-    odBuildGradientField(m_pixelCountryArray.data(), w2, h2, m_gradientDist);
+    if (m_provinceEdgePixels.empty())
+        m_provinceEdgePixels = odProvinceEdgePixels((const Color*)provImg.data, w2, h2);
+    odBuildGradientField((const Color*)provImg.data, m_provinceEdgePixels, m_provinceCountryLookup, w2, h2, m_gradientDist);
     m_gradientDirty = false;
     m_borderDistanceSent = false;
 }
@@ -1174,6 +1206,36 @@ void Game::generatePoliticalTexture() {
     m_politicalTex = m_renderer->gamePoliticalTexture();
 }
 
+std::vector<int> Game::pixelsOwnedBy(int cid) const {
+    std::vector<int> out;
+    const Image& img = m_provinces.getImage();
+    const auto* px = (const Color*)img.data;
+    const int w = img.width, h = img.height;
+    auto cp = m_countryProvinces.find(cid);
+    if (!px || w <= 0 || h <= 0 || cid <= 0 || cp == m_countryProvinces.end()) return out;
+    int x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (int pid : cp->second) {
+        // A candidate set (see provincesOf): the owner test below is what counts.
+        auto c = m_provinceCenters.find(pid);
+        auto r = m_provinceRadius.find(pid);
+        if (c == m_provinceCenters.end() || r == m_provinceRadius.end()) { x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; break; }
+        const float reach = 2.0f * r->second + 1.0f;
+        x0 = std::min(x0, std::max(0, (int)std::floor(c->second.x - reach)));
+        y0 = std::min(y0, std::max(0, (int)std::floor(c->second.y - reach)));
+        x1 = std::max(x1, std::min(w - 1, (int)std::ceil(c->second.x + reach)));
+        y1 = std::max(y1, std::min(h - 1, (int)std::ceil(c->second.y + reach)));
+    }
+    for (int y = y0; y <= y1; ++y) {
+        const Color* row = px + (size_t)y * w;
+        for (int x = x0; x <= x1; ++x) {
+            const int pid = Province::colorToId(row[x].r, row[x].g, row[x].b);
+            if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size() && m_provinceCountryLookup[(size_t)pid] == cid)
+                out.push_back(y * w + x);
+        }
+    }
+    return out;
+}
+
 void Game::ensureProvincePixels() {
     if (!m_provincePixels.empty()) return;
     const Image& provImg = m_provinces.getImage();
@@ -1184,7 +1246,7 @@ void Game::ensureProvincePixels() {
     // Province id -> the pixels that belong to it. Built once per world when
     // something first asks, because it is one int per map pixel -- 128 MB at
     // 8192x4096 -- and only the claims overlay reads it. Unlike
-    // m_countryPixels this is never mutated afterwards, so rebuilding it here
+    // a per-country list this is never mutated afterwards, so rebuilding it here
     // rather than during the load costs one walk and loses nothing.
     const auto* src = (const Color*)provImg.data;
     for (int i = 0; i < total; ++i) {
@@ -2364,8 +2426,8 @@ void Game::unloadGameData() {
     // capacity; clear() alone would keep it reserved). At 33.5M pixels these
     // total well over a gigabyte — leaving them resident while the NEXT map is
     // generated is what pushes long training runs into an out-of-memory kill.
-    std::vector<uint16_t>().swap(m_pixelCountryArray);
-    std::vector<std::vector<int>>().swap(m_countryPixels);
+    m_countryPixelCount.clear();
+    std::vector<uint32_t>().swap(m_provinceEdgePixels);
     std::unordered_map<int, std::vector<int>>().swap(m_provincePixels);
     std::vector<uint8_t>().swap(m_gradientDist);
     m_borderDistanceSent = false;
@@ -3242,27 +3304,26 @@ void Game::rebuildOwnershipPixels() {
     }
     // Replayed deltas move provinces without going through reindexProvinceOwner.
     rebuildCountryProvinceIndex();
-    const Image& provImg = m_provinces.getImage();
-    int w2 = provImg.width, h2 = provImg.height;
-    int totalPixels = w2 * h2;
-    const auto* srcPixels = (const Color*)provImg.data;
-    for (auto& vec : m_countryPixels) vec.clear();
-    for (int i = 0; i < totalPixels; ++i) {
-        // Once a raster row's worth. Same reason as the scans in MapRenderer:
-        // this is a full-map pass and nothing refills the music while it runs.
-        if ((i & 8191) == 0) Audio::get().pump();
-        Color src = srcPixels[i];
-        int pid = Province::colorToId(src.r, src.g, src.b);
-        int cid = 0;
-        if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
-            cid = m_provinceCountryLookup[pid];
-        m_pixelCountryArray[i] = (uint16_t)cid;
-        if (cid > 0 && cid < (int)m_countryPixels.size())
-            m_countryPixels[cid].push_back(i);
+    // Pixels are not owned separately any more: the gradient reads each
+    // pixel's owner from the province lookup rebuilt above. What is recounted
+    // here is how many each country holds, as the per-country lists were
+    // rebuilt here (sizes kept, ids below the size only). See Game.h.
+    {
+        const Image& provImg = m_provinces.getImage();
+        const auto* srcPixels = (const Color*)provImg.data;
+        const size_t total = (size_t)provImg.width * provImg.height;
+        std::fill(m_countryPixelCount.begin(), m_countryPixelCount.end(), (size_t)0);
+        for (size_t i = 0; srcPixels && i < total; ++i) {
+            if ((i & 8191) == 0) Audio::get().pump();
+            const int pid = Province::colorToId(srcPixels[i].r, srcPixels[i].g, srcPixels[i].b);
+            const int cid = (pid > 0 && (size_t)pid < m_provinceCountryLookup.size()) ? m_provinceCountryLookup[pid] : 0;
+            if (cid > 0 && cid < (int)m_countryPixelCount.size()) ++m_countryPixelCount[(size_t)cid];
+        }
     }
+    m_gradientDirty = true;
     rebuildGradientField();
 
-    // AND THEN USE IT. The loop above used to fill a political buffer with each
+    // AND THEN USE IT. A loop here used to fill a political buffer with each
     // country's FLAT colour, and the block after it recomputes the distance
     // field -- but nothing ever applied one to the other, so the field was
     // rebuilt and thrown away. The political map came back from a load or a
@@ -3414,11 +3475,11 @@ void Game::startNewGame(const std::string& mapName) {
     m_provincePixels.clear();
     m_coastalCache.clear();   // answers belong to the map that is going away
     m_portAnchorCache.clear();
-    m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
     m_countryProvinces.clear();
-    m_countryPixels.clear();
+    m_countryPixelCount.clear();
+    std::vector<uint32_t>().swap(m_provinceEdgePixels);
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
     m_lastSelectedProvince = 0;
@@ -3531,11 +3592,11 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_provincePixels.clear();
     m_coastalCache.clear();   // answers belong to the map that is going away
     m_portAnchorCache.clear();
-    m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
     m_countryProvinces.clear();
-    m_countryPixels.clear();
+    m_countryPixelCount.clear();
+    std::vector<uint32_t>().swap(m_provinceEdgePixels);
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
     m_lastSelectedProvince = 0;
@@ -3709,11 +3770,11 @@ void Game::startLoadedGame(const std::string& saveName) {
     m_provincePixels.clear();
     m_coastalCache.clear();   // answers belong to the map that is going away
     m_portAnchorCache.clear();
-    m_pixelCountryArray.clear();
     m_provincePopArray.clear();
     m_provinceCountryLookup.clear();
     m_countryProvinces.clear();
-    m_countryPixels.clear();
+    m_countryPixelCount.clear();
+    std::vector<uint32_t>().swap(m_provinceEdgePixels);
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
     m_lastSelectedProvince = 0;

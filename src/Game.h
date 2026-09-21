@@ -2900,7 +2900,7 @@ public:
      * reads this as land.
      *
      * Filled in buildPopulationLookups' existing full-map pass -- it already
-     * walks every pixel to build m_pixelCountryArray, so this costs one add per
+     * walks every pixel (for the province areas), so this costs one add per
      * pixel and one float per province rather than a second traversal. Unlike
      * m_provincePixels (one int per map PIXEL, 128 MB, built lazily) this is one
      * float per PROVINCE, so it is a few kilobytes and can simply always exist.
@@ -2956,17 +2956,27 @@ public:
     std::unordered_map<int, int> m_provinceConquestTurn; // turn# when province was conquered (0 = not conquered)
     std::unordered_map<int, int> m_conqueredProvincePrevOwner; // previous owner of conquered province (for ongoing war debuff)
     std::vector<long long> m_provincePopArray;
-    // Per-pixel lookups for fast population texture updates
-    // uint16, NOT int. One entry per map pixel -- 33.6 million of them at
-    // 8192x4096 -- so the width of this is 128 MB against 64 MB. Country ids
-    // are bounded by BLC_CID = 65535, which is exactly the top of the range,
-    // and REBEL_CID_MIN is 60000, so every id a pixel can hold fits.
+    // There is no per-pixel owner array and no per-country pixel list any
+    // more (64 MB and ~95 MB): ownership is per province, so a pixel's owner
+    // is m_provinceCountryLookup[its province], and a country's pixels are its
+    // provinces' pixels (pixelsOwnedBy, m_provincePixels).
     //
-    // Callers still read it into int and compare against int; the only place
-    // the narrowing matters is the write, and every writer is assigning an id
-    // that came from the same bounded set.
-    std::vector<uint16_t> m_pixelCountryArray;
-    std::vector<std::vector<int>> m_countryPixels;
+    // What survives is how MANY pixels each list held, because two things read
+    // that and they are not rendering: the AI's territory-share input
+    // (AISystem f[9], count / world total) and transferCountryPixels(), which
+    // returned early while the lists were empty -- before building
+    // m_provincePixels, which isProvinceCoastal(), portAnchor() and ship
+    // placement answer from. The counts move at exactly the points, and under
+    // exactly the conditions, that the lists did; see those sites.
+    std::vector<size_t> m_countryPixelCount;
+    /// Pixels on a province edge: the only ones the distance field's seed test
+    /// has to look at. Province shapes are fixed for a map; see Game_Loading.cpp.
+    std::vector<uint32_t> m_provinceEdgePixels;
+    /// Every map pixel `cid` owns now, in raster order: its provinces' pixels,
+    /// found by scanning the area those provinces cover (centre +- twice the
+    /// radius bounds each one). For the panels that paint a country; builds
+    /// nothing that outlives the call, and in particular not m_provincePixels.
+    std::vector<int> pixelsOwnedBy(int cid) const;
     std::unordered_map<int, std::vector<int>> m_provincePixels;
     /// Whether the renderer holds the current m_gradientDist; cleared when the
     /// field is rebuilt, so the 32 MB goes across only when a border moved.

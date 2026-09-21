@@ -401,9 +401,9 @@ void Game::drawClaimsTab() {
 
         // Gray out involved countries (skip player's own in tab 0)
         for (int cid : involvedCids) {
-            if (cid < 0 || cid >= (int)m_countryPixels.size()) continue;
+            if (cid <= 0) continue;
             if (m_claimsTab == 0 && cid == m_playerCountryId) continue;
-            auto& pixels = m_countryPixels[cid];
+            const std::vector<int> pixels = pixelsOwnedBy(cid);
             if (pixels.empty()) continue;
             Color countryColor = (claimantCid > 0 && cid == claimantCid)
                 ? Color{0, 60, 180, 80} : Color{60, 60, 60, 180};

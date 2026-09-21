@@ -2525,8 +2525,8 @@ void Game::createRebelCountry(int rebelCid, int parentCid,
     if (!rebel.isoA3.empty()) m_isoToCid[rebel.isoA3] = rebelCid;
     m_countryCompass[rebelCid] = makeCompass(avgEcon, avgSoc);
 
-    if (rebelCid >= (int)m_countryPixels.size())
-        m_countryPixels.resize(rebelCid + 1);
+    if (rebelCid >= (int)m_countryPixelCount.size())
+        m_countryPixelCount.resize(rebelCid + 1);
     if (rebelCid >= (int)m_countryRelationColors.size())
         m_countryRelationColors.resize(rebelCid + 1, Color{80, 80, 80, 255});
 
@@ -2580,9 +2580,13 @@ void Game::createRebelCountry(int rebelCid, int parentCid,
             rebelCid);
     }
 
-    // Transfer province ownership + populate m_countryPixels for population view
-    bool anyMoved = false;
+    // Transfer province ownership. Pixels follow their province (Game.h);
+    // only the counts move, and only where the pixel lists used to: for
+    // provinces m_provincePixels has been built for.
+    size_t movedPixels = 0;
     for (int pid : provinceIds) {
+        auto ppIt = m_provincePixels.find(pid);
+        if (ppIt != m_provincePixels.end()) movedPixels += ppIt->second.size();
         Province* pp = m_provinces.getProvinceById(pid);
         if (pp) {
             // noteRevolt teaches the AI that it LOST ground to unrest. A
@@ -2594,35 +2598,12 @@ void Game::createRebelCountry(int rebelCid, int parentCid,
                 m_provinceCountryLookup[pid] = rebelCid;
             reindexProvinceOwner(pid, parentCid, rebelCid);
         }
-        auto ppIt = m_provincePixels.find(pid);
-        if (ppIt != m_provincePixels.end()) {
-            for (int idx : ppIt->second) {
-                if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-                    m_pixelCountryArray[idx] = (uint16_t)rebelCid;
-                // Populate rebel's m_countryPixels
-                if (rebelCid >= 0 && rebelCid < (int)m_countryPixels.size())
-                    m_countryPixels[rebelCid].push_back(idx);
-                anyMoved = true;
-            }
-        }
     }
-    // Remove the moved pixels from the parent in ONE pass.
-    //
-    // The predicate asks m_pixelCountryArray -- which the loop above has
-    // already repointed at the rebel -- rather than probing a hash set of the
-    // moved pixels. Same answer, but a country holding 700k pixels was paying
-    // 700k hash lookups for a revolt in a SINGLE province: measured at 12-44 ms
-    // per rebellion, roughly 40% of the entire turn on a self-play map. An
-    // array read makes the same pass an order of magnitude cheaper.
-    if (anyMoved && parentCid >= 0 && parentCid < (int)m_countryPixels.size()) {
-        auto& parentPixels = m_countryPixels[parentCid];
-        parentPixels.erase(std::remove_if(parentPixels.begin(), parentPixels.end(),
-                                          [&](int idx) {
-                                              return idx < 0 ||
-                                                     idx >= (int)m_pixelCountryArray.size() ||
-                                                     m_pixelCountryArray[idx] != parentCid;
-                                          }),
-                           parentPixels.end());
+    if (movedPixels > 0) {
+        if (rebelCid >= 0 && rebelCid < (int)m_countryPixelCount.size())
+            m_countryPixelCount[(size_t)rebelCid] += movedPixels;
+        if (parentCid >= 0 && parentCid < (int)m_countryPixelCount.size())
+            m_countryPixelCount[(size_t)parentCid] -= std::min(m_countryPixelCount[(size_t)parentCid], movedPixels);
     }
 
     // Labels are rebuilt ONCE per turn (m_labelsDirty, consumed in
@@ -4917,10 +4898,7 @@ void Game::eliminateDefeatedCountries() {
         m_countryBalances.erase(cid);
         m_countryPacification.erase(cid);
         m_rebellionsThisTurnByCid.erase(cid);
-        if (cid < (int)m_countryPixels.size()) {
-            m_countryPixels[cid].clear();
-            m_countryPixels[cid].shrink_to_fit();
-        }
+        if (cid < (int)m_countryPixelCount.size()) m_countryPixelCount[(size_t)cid] = 0;
         m_eliminatedCids.erase(cid); // cid is free for reuse now
         m_countries.getAll().erase(cid);
     }
@@ -6226,34 +6204,17 @@ void Game::transferProvinceOwnership(int pid, int fromCid, int toCid) {
         // which is most of them.
         reconcileDistricts(fromCid);
         reconcileDistricts(toCid);
-        // Update per-pixel country array + move countryPixels
-        auto ppIt = m_provincePixels.find(pid);
-        if (ppIt != m_provincePixels.end()) {
-            const auto& px = ppIt->second;
-            for (int idx : px)
-                if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-                    m_pixelCountryArray[idx] = (uint16_t)toCid;
-            // One pass over the old owner's pixel list, not a full scan of it
-            // per transferred pixel. The original nested erase was O(province
-            // pixels x country pixels) — invisible while this was dead code
-            // (the AI never sent terms, so nothing was ever ceded), but a
-            // 10-20x per-turn slowdown the moment ceasefires actually moved
-            // territory. Same shape as transferCountryPixels in
-            // processShipDisembarks, which already did it this way.
-            if (!m_aiTraining &&   // rendering-only, see processArmyMovement
-                fromCid >= 0 && fromCid < (int)m_countryPixels.size() &&
-                toCid >= 0 && toCid < (int)m_countryPixels.size()) {
-                std::unordered_set<int> pxSet(px.begin(), px.end());
-                auto& fp = m_countryPixels[fromCid];
-                std::vector<int> moved;
-                moved.reserve(px.size());
-                auto newEnd = std::remove_if(fp.begin(), fp.end(), [&](int idx) {
-                    if (pxSet.count(idx)) { moved.push_back(idx); return true; }
-                    return false;
-                });
-                fp.erase(newEnd, fp.end());
-                auto& tp = m_countryPixels[toCid];
-                tp.insert(tp.end(), moved.begin(), moved.end());
+        // No pixel bookkeeping: a pixel's owner is its province's (Game.h).
+        // The counts move where the per-country lists did: outside training,
+        // for a province whose pixels have been listed.
+        if (!m_aiTraining) {
+            auto ppIt = m_provincePixels.find(pid);
+            if (ppIt != m_provincePixels.end() &&
+                fromCid >= 0 && fromCid < (int)m_countryPixelCount.size() &&
+                toCid >= 0 && toCid < (int)m_countryPixelCount.size()) {
+                const size_t n = std::min(m_countryPixelCount[(size_t)fromCid], ppIt->second.size());
+                m_countryPixelCount[(size_t)fromCid] -= n;
+                m_countryPixelCount[(size_t)toCid] += n;
             }
         }
 
@@ -6515,50 +6476,29 @@ bool Game::alliedCids(int a, int b) const {
 
 // === transferCountryPixels ===
 void Game::transferCountryPixels(int pid, int newOwner, int oldOwner) {
-    if (m_countryPixels.empty()) return;
-    // m_provincePixels IS BUILT ON DEMAND, AND THIS IS ONE OF THE DEMANDS.
+    // THE PIXELS THEMSELVES NEED NO MOVING: a pixel's owner is its province's,
+    // and the political layer and the distance field read it from
+    // m_provinceCountryLookup (Game.h). This used to repoint a per-pixel
+    // owner array and move the province between two per-country pixel lists.
     //
-    // Without this the lookup below missed and the function returned having
-    // done nothing at all -- no m_pixelCountryArray update, no move between
-    // the two countries' pixel lists. Those lists are what the political,
-    // relations, population and claims overlays paint from, so every province
-    // taken by force kept being drawn in its FORMER owner's colour: the
-    // Relations view showing someone else's province as yours, indefinitely.
-    //
-    // It only ever worked by accident. ensureProvincePixels() is called by the
-    // Claims view, so a player who had opened Claims before conquering
-    // anything got correct overlays and a player who had not did not, which is
-    // why this looks intermittent.
-    //
-    // Skipped while training: that path returns below without touching the
-    // lists anyway, and building the index there would cost memory nothing
-    // reads.
+    // WHAT IT STILL DOES, AND WHY IT IS NOT NOTHING. Building m_provincePixels
+    // here was a side effect with game consequences: isProvinceCoastal(),
+    // portAnchor() and ship placement answer from it, and answer "not
+    // coastal" / the centroid / "nowhere" while it is unbuilt. So a first
+    // conquest outside training is when those start giving real answers --
+    // that is behaviour this change keeps exactly, the same early return
+    // included. Whether they should have been waiting for it is a separate
+    // question.
+    if (m_countryPixelCount.empty()) return;
     if (!m_aiTraining) ensureProvincePixels();
     auto ppIt = m_provincePixels.find(pid);
-    if (ppIt == m_provincePixels.end()) return;
-    const auto& provincePixels = ppIt->second;
-    for (int idx : provincePixels)
-        if (idx >= 0 && idx < (int)m_pixelCountryArray.size())
-            m_pixelCountryArray[idx] = (uint16_t)newOwner;
-    // m_countryPixels only feeds texture generation (political, relations,
-    // population, claims overlays) -- never game logic. Maintaining it costs a
-    // full scan of the owning country's pixel list on every province capture,
-    // which profiled at ~39% of self-play runtime. Headless training draws its
-    // minimap from m_provinceCountryLookup, so the list is pure overhead there.
-    if (m_aiTraining) return;
-    if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixels.size() &&
-        newOwner >= 0 && (size_t)newOwner < m_countryPixels.size()) {
-        auto& oldPx = m_countryPixels[oldOwner];
-        auto& newPx = m_countryPixels[newOwner];
-        std::unordered_set<int> pxSet(provincePixels.begin(), provincePixels.end());
-        std::vector<int> transferred;
-        transferred.reserve(provincePixels.size());
-        auto newEnd = std::remove_if(oldPx.begin(), oldPx.end(), [&](int idx) {
-            if (pxSet.count(idx)) { transferred.push_back(idx); return true; }
-            return false;
-        });
-        oldPx.erase(newEnd, oldPx.end());
-        newPx.insert(newPx.end(), transferred.begin(), transferred.end());
+    if (ppIt == m_provincePixels.end() || m_aiTraining) return;
+    // And the counts, moved as the lists were (the AI reads them; Game.h).
+    if (oldOwner >= 0 && (size_t)oldOwner < m_countryPixelCount.size() &&
+        newOwner >= 0 && (size_t)newOwner < m_countryPixelCount.size()) {
+        const size_t n = std::min(m_countryPixelCount[(size_t)oldOwner], ppIt->second.size());
+        m_countryPixelCount[(size_t)oldOwner] -= n;
+        m_countryPixelCount[(size_t)newOwner] += n;
     }
 }
 

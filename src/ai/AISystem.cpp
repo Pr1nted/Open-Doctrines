@@ -2017,7 +2017,7 @@ void AISystem::refreshStats() {
             if (claimant < Game::SPC_CID) m_stats[claimant].myClaimsOutstanding++;
         }
     }
-    for (auto& v : g.m_countryPixels) m_worldPixels += v.size();
+    for (size_t n : g.m_countryPixelCount) m_worldPixels += n;
     if (m_worldPixels == 0) m_worldPixels = 1;
 
     // ── Naval invasion targets ──────────────────────────────
@@ -2601,8 +2601,8 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     if (histIt != g.m_incomeHistory.end() && histIt->second.size() >= 2)
         f[7] = std::tanh((histIt->second.back().net - histIt->second.front().net) / 50.0f);
     f[8] = std::tanh(st.provinces / 30.0f);
-    f[9] = (cid >= 0 && cid < (int)g.m_countryPixels.size())
-               ? std::min(1.0f, (float)((double)g.m_countryPixels[cid].size() / m_worldPixels * 10.0))
+    f[9] = (cid >= 0 && cid < (int)g.m_countryPixelCount.size())
+               ? std::min(1.0f, (float)((double)g.m_countryPixelCount[cid] / m_worldPixels * 10.0))
                : 0.0f;
     f[10] = nlog((double)st.population, 5.0);
     f[11] = nlog((double)st.army, 4.0);

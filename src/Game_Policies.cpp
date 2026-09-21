@@ -3851,7 +3851,6 @@ void Game::rebuildDistrictOverlay(int cid, int texW, int texH) {
                        (size_t)std::max(1, texW / DISTRICT_OVERLAY_DIV) *
                        (size_t)std::max(1, texH / DISTRICT_OVERLAY_DIV);
     if (!m_districtOverlayDirty && sized && m_districtOverlayCid == cid) return;
-    if (cid >= (int)m_countryPixels.size()) return;
 
     const auto t0 = std::chrono::steady_clock::now();
     m_districtOverlayDirty = false;
@@ -3895,7 +3894,7 @@ void Game::rebuildDistrictOverlay(int cid, int texW, int texH) {
 
     const Image& provImg = m_provinces.getImage();
     const Color* prov = (const Color*)provImg.data;
-    const std::vector<int>& own = m_countryPixels[cid];
+    const std::vector<int> own = pixelsOwnedBy(cid);
     int x0 = ovW, y0 = ovH, x1 = -1, y1 = -1;
     for (int idx : own) {
         if (idx < 0 || idx >= texW * texH) continue;
@@ -3916,8 +3915,7 @@ void Game::rebuildDistrictOverlay(int cid, int texW, int texH) {
     // outside the new bounding box; a full clear is only needed when the country
     // being shown changes, which is rare.
     if (m_districtOverlayCid != cid && m_districtOverlayCid > 0 && sized) {
-        if (m_districtOverlayCid < (int)m_countryPixels.size())
-            for (int idx : m_countryPixels[m_districtOverlayCid]) {
+        for (int idx : pixelsOwnedBy(m_districtOverlayCid)) {
                 if (idx < 0 || idx >= texW * texH) continue;
                 const int x = (idx % texW) / DISTRICT_OVERLAY_DIV;
                 const int y = (idx / texW) / DISTRICT_OVERLAY_DIV;
