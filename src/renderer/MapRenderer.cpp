@@ -102,18 +102,21 @@ void MapRenderer::clearHighlight() {
 }
 
 void MapRenderer::setPoliticalTexture(Texture2D tex) {
+    ++m_politicalRevision;
     m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0) UnloadTexture(m_politicalTex);
     m_politicalTex = tex;
 }
 
 void MapRenderer::updatePoliticalTexture(const void* data) {
+    ++m_politicalRevision;
     m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0)
         UpdateTexture(m_politicalTex, data);
 }
 
 void MapRenderer::updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h) {
+    ++m_politicalRevision;
     m_surfaceDirty = true;   // the globe samples a composite of these
     if (m_politicalTex.id > 0)
         UpdateTextureRec(m_politicalTex, {(float)x, (float)y, (float)w, (float)h}, rectData);

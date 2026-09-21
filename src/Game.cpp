@@ -1840,6 +1840,7 @@ void Game::shutdown() {
     if (m_gameFont.texture.id > 0) UnloadFont(m_gameFont);
     m_gameFont = {};
     if (m_menuBgTex.id > 0) UnloadTexture(m_menuBgTex);
+    if (m_menuBgSource.data) { UnloadImage(m_menuBgSource); m_menuBgSource = Image{}; }
     m_menuBgTex = {};
     if (m_resourceTex.id > 0) UnloadTexture(m_resourceTex);
     m_resourceTex = {};

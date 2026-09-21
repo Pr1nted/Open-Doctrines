@@ -2964,6 +2964,12 @@ public:
     std::unordered_map<int, std::vector<int>> m_provincePixels;
     std::vector<Color> m_populationPixelBuffer;
     std::vector<Color> m_politicalPixelBuffer;
+    /// The renderer's political revision as of our last upload. Differs from
+    /// it when anything else has written the texture, and is reset to
+    /// kPoliticalUnsynced when the buffer is written without an upload: in
+    /// both cases the next generatePoliticalTexture() uploads everything.
+    static constexpr uint64_t kPoliticalUnsynced = ~0ull;
+    uint64_t m_politicalUploadedRev = kPoliticalUnsynced;
     std::vector<uint8_t> m_gradientDist; // distance-to-border (0-255, capped at ~30)
     // Set by reindexProvinceOwner whenever a province changes hands; cleared
     // by rebuildGradientField(). Rebuilding is a full-raster BFS, so it runs
@@ -3417,6 +3423,7 @@ public:
 
     // ─── Menu background ──────────────────────────
     Texture2D m_menuBgTex{};
+    Image m_menuBgSource{};   ///< the land/sea map's red channel, at most 4096 wide
     int m_menuBgTexW = 0;
     int m_menuBgTexH = 0;
     float m_menuBgScroll = 0.0f;

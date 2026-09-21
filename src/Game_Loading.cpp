@@ -1083,17 +1083,12 @@ void Game::buildPopulationLookups() {
     {
         Audio::BlockingCall quiet;
 
-        // Create political texture from the pixel buffer
-        Image polImg{};
-        polImg.data = m_politicalPixelBuffer.data();
-        polImg.width = w;
-        polImg.height = h;
-        polImg.mipmaps = 1;
-        polImg.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        Texture2D polTex = LoadTextureFromImage(polImg);
-        SetTextureFilter(polTex, TEXTURE_FILTER_BILINEAR);
-        m_renderer->setPoliticalTexture(polTex);
-        m_politicalTex = polTex;
+        // The political texture is created by generatePoliticalTexture(), from
+        // the finished buffer. Creating it here from the flat colours and then
+        // overwriting the whole thing was one full-map upload too many, and
+        // the driver keeps a 128 MB staging copy of each for the texture's
+        // lifetime.
+        m_politicalUploadedRev = kPoliticalUnsynced;
 
         // The population overlay is built the first time it is asked for --
         // see ensurePopulationTexture(). It is one map-sized buffer plus one
@@ -1136,43 +1131,105 @@ void Game::generatePoliticalTexture() {
     if ((int)m_politicalPixelBuffer.size() != total || (int)m_gradientDist.size() != total) {
         return;
     }
-    const Image& provImg = m_provinces.getImage();
-    const auto* srcPixels = (const Color*)provImg.data;
-    for (int i = 0; i < total; ++i) {
-        int cid = m_pixelCountryArray[i];
-        float t = std::min(1.0f, m_gradientDist[i] / 60.0f);
-        if (cid <= 0) {
-            uint8_t rb = (uint8_t)(8 + (uint8_t)((1.0f - t) * 16));
-            uint8_t gb = (uint8_t)(10 + (uint8_t)((1.0f - t) * 22));
-            uint8_t bb = (uint8_t)(15 + (uint8_t)((1.0f - t) * 38));
-            m_politicalPixelBuffer[i] = {rb, gb, bb, 255};
-        } else {
-            const Country* c = m_countries.getCountry(cid);
-            Color base = c ? c->color : Color{80, 80, 80, 255};
-            m_politicalPixelBuffer[i] = blendColor(base, t);
-        }
-    }
-    // 1px dark borders at country boundaries (handles gradient field staleness after ownership changes)
+    // ONLY WHAT CHANGED GOES TO THE GPU. This runs at every turn end, and it
+    // used to send all 128 MB of the texture each time. The driver keeps a
+    // staging copy per upload in flight, and that held 384 MB of the game's
+    // footprint on its own. A turn moves a few provinces, so what changes is
+    // a few rectangles.
+    //
+    // The comparison is against the buffer, which is only safe while the
+    // buffer is exactly what the texture holds. Anything else that writes
+    // either one breaks that: another upload shows up as a new renderer
+    // revision, and a write to the buffer alone resets
+    // m_politicalUploadedRev. Either way this call uploads the whole texture.
+    const bool synced = m_politicalUploadedRev == m_renderer->politicalRevision();
+
+    // Dirty columns are tracked per band of rows: one bounding box for the
+    // whole map would grow to the full width the moment two wars are on
+    // opposite sides of it.
+    constexpr int kBand = 256;
+    const int bands = (h + kBand - 1) / kBand;
+    std::vector<int> bandX0((size_t)bands, w), bandX1((size_t)bands, -1);
+
+    // One pass. The shading and the 1px dark border used to be two passes
+    // over the map, the second rewriting pixels the first had just written.
+    // The colour each pixel ends up with is the same: base shaded by the
+    // distance field, then divided by three if any 4-neighbour belongs to
+    // another country.
+    int lastCid = -1;
+    Color lastBase{80, 80, 80, 255};
     for (int y = 0; y < h; ++y) {
+        int& x0 = bandX0[(size_t)(y / kBand)];
+        int& x1 = bandX1[(size_t)(y / kBand)];
+        const size_t rowStart = (size_t)y * w;
+        const uint16_t* row = &m_pixelCountryArray[rowStart];
+        const uint16_t* up = y > 0 ? row - w : nullptr;
+        const uint16_t* down = y + 1 < h ? row + w : nullptr;
         for (int x = 0; x < w; ++x) {
-            int i = y * w + x;
-            int cid = m_pixelCountryArray[i];
-            if (cid <= 0) continue;
-            int nx[4] = {x-1, x+1, x, x};
-            int ny[4] = {y, y, y-1, y+1};
-            for (int k = 0; k < 4; ++k) {
-                if (nx[k] < 0 || nx[k] >= w || ny[k] < 0 || ny[k] >= h) continue;
-                int ni = ny[k] * w + nx[k];
-                if (m_pixelCountryArray[ni] != cid) {
-                    m_politicalPixelBuffer[i] = {(uint8_t)(m_politicalPixelBuffer[i].r / 3),
-                                                  (uint8_t)(m_politicalPixelBuffer[i].g / 3),
-                                                  (uint8_t)(m_politicalPixelBuffer[i].b / 3), 255};
-                    break;
+            const size_t i = rowStart + x;
+            const int cid = row[x];
+            const float t = std::min(1.0f, m_gradientDist[i] / 60.0f);
+            Color c;
+            if (cid <= 0) {
+                c = {(uint8_t)(8 + (uint8_t)((1.0f - t) * 16)),
+                     (uint8_t)(10 + (uint8_t)((1.0f - t) * 22)),
+                     (uint8_t)(15 + (uint8_t)((1.0f - t) * 38)), 255};
+            } else {
+                if (cid != lastCid) {
+                    const Country* ctry = m_countries.getCountry(cid);
+                    lastBase = ctry ? ctry->color : Color{80, 80, 80, 255};
+                    lastCid = cid;
                 }
+                c = blendColor(lastBase, t);
+                const bool edge = (x > 0 && row[x - 1] != cid) || (x + 1 < w && row[x + 1] != cid) ||
+                                  (up && up[x] != cid) || (down && down[x] != cid);
+                if (edge) c = {(uint8_t)(c.r / 3), (uint8_t)(c.g / 3), (uint8_t)(c.b / 3), 255};
+            }
+            Color& dst = m_politicalPixelBuffer[i];
+            if (dst.r != c.r || dst.g != c.g || dst.b != c.b || dst.a != c.a) {
+                dst = c;
+                if (x < x0) x0 = x;
+                if (x > x1) x1 = x;
             }
         }
     }
-    m_renderer->updatePoliticalTexture(m_politicalPixelBuffer.data());
+
+    size_t dirty = 0;
+    for (int b = 0; b < bands; ++b)
+        if (bandX1[(size_t)b] >= bandX0[(size_t)b])
+            dirty += (size_t)(bandX1[(size_t)b] - bandX0[(size_t)b] + 1) *
+                     (size_t)(std::min(h, (b + 1) * kBand) - b * kBand);
+
+    if (!synced || dirty * 2 > (size_t)total) {
+        // A NEW TEXTURE, NOT A WHOLE-TEXTURE UPDATE. On macOS the driver keeps
+        // a staging copy of every full-map UpdateTexture for as long as the
+        // texture lives: two of them were 256 MB of footprint for the whole
+        // game. Replacing the texture frees the old one with its staging.
+        Image img{};
+        img.data = m_politicalPixelBuffer.data();
+        img.width = w;
+        img.height = h;
+        img.mipmaps = 1;
+        img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        Texture2D tex = LoadTextureFromImage(img);
+        SetTextureFilter(tex, TEXTURE_FILTER_BILINEAR);
+        m_renderer->setPoliticalTexture(tex);   // unloads the one it replaces
+        m_politicalTex = tex;
+    } else if (dirty > 0) {
+        std::vector<Color> rect;
+        for (int b = 0; b < bands; ++b) {
+            const int rx0 = bandX0[(size_t)b], rx1 = bandX1[(size_t)b];
+            if (rx1 < rx0) continue;
+            const int ry0 = b * kBand, ry1 = std::min(h, ry0 + kBand);
+            const int rw = rx1 - rx0 + 1, rh = ry1 - ry0;
+            rect.resize((size_t)rw * rh);
+            for (int y = ry0; y < ry1; ++y)
+                std::copy_n(&m_politicalPixelBuffer[(size_t)y * w + rx0], rw,
+                            &rect[(size_t)(y - ry0) * rw]);
+            m_renderer->updatePoliticalTextureRec(rect.data(), rx0, ry0, rw, rh);
+        }
+    }
+    m_politicalUploadedRev = m_renderer->politicalRevision();
 }
 
 void Game::ensureProvincePixels() {
@@ -2504,6 +2561,7 @@ void Game::unloadGameData() {
     delete m_renderer;
     m_renderer = nullptr;
     m_politicalTex = {};
+    m_politicalUploadedRev = kPoliticalUnsynced;   // the next renderer counts from 0 again
 
     // Clear thumbnail cache
     clearThumbCache();
@@ -3379,7 +3437,13 @@ void Game::rebuildOwnershipPixels() {
     int totalPixels = w2 * h2;
     const auto* srcPixels = (const Color*)provImg.data;
     for (auto& vec : m_countryPixels) vec.clear();
-    const bool paint = m_politicalPixelBuffer.size() == (size_t)totalPixels;   // empty on an agent load
+    // Flat colours only when nothing will shade them. With a renderer,
+    // generatePoliticalTexture() below recomputes every pixel anyway, and
+    // painting here first made the buffer stop matching the texture, so that
+    // call had to rebuild the whole texture instead of patching what the
+    // replay actually moved. Empty on an agent load.
+    const bool paint = m_politicalPixelBuffer.size() == (size_t)totalPixels && !m_renderer;
+    if (paint) m_politicalUploadedRev = kPoliticalUnsynced;
     for (int i = 0; i < totalPixels; ++i) {
         // Once a raster row's worth. Same reason as the scans in MapRenderer:
         // this is a full-map pass and nothing refills the music while it runs.
@@ -3397,7 +3461,7 @@ void Game::rebuildOwnershipPixels() {
     }
     rebuildGradientField();
 
-    // AND THEN USE IT. The loop above fills m_politicalPixelBuffer with each
+    // AND THEN USE IT. The loop above used to fill m_politicalPixelBuffer with each
     // country's FLAT colour, and the block after it recomputes the distance
     // field -- but nothing ever applied one to the other, so the field was
     // rebuilt and thrown away. The political map came back from a load or a

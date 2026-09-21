@@ -360,6 +360,11 @@ check "doctrine data" $PY "$root/tools/check_policies.py"
 # so it cannot be forgotten again.
 check "advertised effects are spent" $PY "$root/tools/check_effect_fields.py"
 
+# The menu draws data/menu_bg.png, a small copy of map.odmap's land/sea map, so
+# it never decodes the 8192x4096 original. Fails when the map moves and the copy
+# does not. Regenerate with: python3 tools/make_menu_bg.py
+check "menu background matches map.odmap" $PY "$root/tools/make_menu_bg.py" --check
+
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh
 # from Wikimedia with: python3 tools/audit_flag_licenses.py

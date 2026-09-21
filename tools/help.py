@@ -106,7 +106,7 @@ GROUPS = [
         "carve_states.py", "carve_borders.py",
         "check_map_history.py", "reanchor_map_history.py", "fetch_ohm_borders.py",
         "fill_water_speckle.py", "fix_naval_layer.py", "naval_placement.py",
-        "rebuild_map_preview.py", "check_map_integrity.py",
+        "rebuild_map_preview.py", "check_map_integrity.py", "make_menu_bg.py",
         # Mars, from real MOLA topography with the basins flooded. Its own
         # generator rather than a scenario: a scenario reassigns the Earth
         # map's provinces, and this builds a base map -- coastline, provinces

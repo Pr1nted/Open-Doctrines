@@ -98,6 +98,11 @@ DATA_ALLOWLIST = [
                       # and the tutorial does nothing at all.
     "tips.json",
     "credits.txt",
+    "menu_bg.png",    # the menu's land silhouette (tools/make_menu_bg.py).
+                      # Absent, the menu still draws -- by decoding the full
+                      # 8192x4096 map out of STDmaps/map.odmap, which is the
+                      # 187 MB of freed-but-counted memory this file exists
+                      # to avoid.
     "policies.json",  # the doctrine catalogue. Shipped maps carry their own
                       # copy inside the .odmap; this is the fallback every
                       # other map uses, including generated ones, which is

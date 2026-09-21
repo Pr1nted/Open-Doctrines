@@ -1662,21 +1662,32 @@ if(EMSCRIPTEN)
     # back to the archive as before, so this cannot break the build.
     # Cached for the same reason the font is: a fresh extraction on every
     # configure is a fresh timestamp, and the link depends on this tree.
+    # Now data/menu_bg.png, a 4096x2048 single-channel copy of the same picture
+    # (tools/make_menu_bg.py). Smaller to download than the full-size PNG, and
+    # the menu decodes 8 MB instead of 128 MB -- which on the web is heap that
+    # never shrinks again. The extraction stays as the fallback for a tree
+    # without it.
+    set(od_bg_small "${CMAKE_SOURCE_DIR}/data/menu_bg.png")
     set(od_bg_src "${CMAKE_SOURCE_DIR}/data/STDmaps/map.odmap")
     set(od_bg_out "${OD_WEB_CACHE}/menu_bg/land_sea.png")
-    if(NOT EXISTS "${od_bg_out}" OR "${od_bg_src}" IS_NEWER_THAN "${od_bg_out}")
-        file(REMOVE_RECURSE "${OD_WEB_CACHE}/menu_bg")
-        file(ARCHIVE_EXTRACT INPUT "${od_bg_src}"
-             DESTINATION "${OD_WEB_CACHE}/menu_bg" PATTERNS "land_sea.png")
-    endif()
-    if(EXISTS "${od_bg_out}")
-        file(COPY "${od_bg_out}" DESTINATION "${OD_WEB_CACHE}/staged")
-        file(RENAME "${OD_WEB_CACHE}/staged/land_sea.png"
-                    "${OD_WEB_DATA}/menu_bg.png")
-        message(STATUS "Web: menu background extracted from map.odmap")
+    if(EXISTS "${od_bg_small}")
+        configure_file("${od_bg_small}" "${OD_WEB_DATA}/menu_bg.png" COPYONLY)
+        message(STATUS "Web: menu background from data/menu_bg.png")
     else()
-        message(WARNING "Web: land_sea.png not found in map.odmap -- the menu "
-                        "will download a scenario to draw its background.")
+        if(NOT EXISTS "${od_bg_out}" OR "${od_bg_src}" IS_NEWER_THAN "${od_bg_out}")
+            file(REMOVE_RECURSE "${OD_WEB_CACHE}/menu_bg")
+            file(ARCHIVE_EXTRACT INPUT "${od_bg_src}"
+                 DESTINATION "${OD_WEB_CACHE}/menu_bg" PATTERNS "land_sea.png")
+        endif()
+        if(EXISTS "${od_bg_out}")
+            file(COPY "${od_bg_out}" DESTINATION "${OD_WEB_CACHE}/staged")
+            file(RENAME "${OD_WEB_CACHE}/staged/land_sea.png"
+                        "${OD_WEB_DATA}/menu_bg.png")
+            message(STATUS "Web: menu background extracted from map.odmap")
+        else()
+            message(WARNING "Web: land_sea.png not found in map.odmap -- the menu "
+                            "will download a scenario to draw its background.")
+        endif()
     endif()
 
     # The staged tree IS an input to the link, and CMake cannot see that any

@@ -30,6 +30,10 @@ public:
     void setPoliticalTexture(Texture2D tex);
     void updatePoliticalTexture(const void* data);
     void updatePoliticalTextureRec(const void* rectData, int x, int y, int w, int h);
+    /// Bumped by every write to the political texture. A caller that uploads
+    /// only what changed since ITS last upload compares this first: if anyone
+    /// else wrote in between, what the texture holds is no longer known.
+    uint64_t politicalRevision() const { return m_politicalRevision; }
     // Recompute border/halo pixels in a map-space rect from raw province pixels
     // and patch just that region of the border texture (live painting feedback).
     void updateBorderRegion(const Color* provPixels, int mapW, int mapH,
@@ -232,6 +236,7 @@ private:
 
     Texture2D m_borderTex{};
     Texture2D m_politicalTex{};
+    uint64_t m_politicalRevision = 0;
     Texture2D m_populationTex{};
     Texture2D m_resourceTex{};
     Texture2D m_claimsTex{};

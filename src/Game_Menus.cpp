@@ -122,6 +122,10 @@ void Game::initMenuBackground() {
     Image lsImg{};
     if (m_landSea.getImage().data != nullptr) {
         lsImg = m_landSea.getImage();
+    } else if (m_menuBgSource.data != nullptr) {
+        // Decoded once already. Every resize and every return to the menu
+        // lands here, and each one used to decode the whole 8192x4096 map.
+        lsImg = m_menuBgSource;
     } else {
         std::string landSeaPath = m_dataDir + "land_sea.png";
         struct stat st;
@@ -175,6 +179,18 @@ void Game::initMenuBackground() {
                 }
             }
         }
+    }
+    // KEEP ONLY WHAT THE SILHOUETTE NEEDS. The source decodes to 128 MB of
+    // RGBA to make a picture the height of the screen, and only its red
+    // channel is ever read (the land test below). One channel at up to 4096
+    // wide is 8 MB and still larger than any screen draws it.
+    if (lsImgOwned && lsImg.data != nullptr) {
+        Image small = ImageFromChannel(lsImg, 0);
+        UnloadImage(lsImg);
+        if (small.width > 4096) ImageResize(&small, 4096, (int)((long long)small.height * 4096 / small.width));
+        m_menuBgSource = small;
+        lsImg = m_menuBgSource;
+        lsImgOwned = false;
     }
     if (lsImg.data == nullptr) {
         // No land_sea.png available yet (will be loaded with first game)
