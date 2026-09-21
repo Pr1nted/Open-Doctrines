@@ -4,6 +4,25 @@
 #   tests/run_all.sh [build-dir]
 set -u
 root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── EVERY PYTHON TOOL READS UTF-8, WHATEVER THE MACHINE'S LOCALE IS ──
+#
+# Python's open() uses the platform default encoding, which is UTF-8 on macOS
+# and Linux and cp1252 on a US-English Windows runner. Sixteen of the twenty
+# tools this suite runs open a source file without saying otherwise, and the
+# sources are full of em-dashes -- src/Game_Policies.cpp alone has 2,945
+# non-ASCII bytes -- so on Windows they raise UnicodeDecodeError and the check
+# fails with a traceback about an encoding rather than about the code.
+#
+# check_effect_fields.py did exactly that, and only now: Windows had never got
+# this far before, because it was dying at compile time first.
+#
+# UTF-8 mode (PEP 540) makes open() default to UTF-8 everywhere. It is one line
+# instead of forty call sites, it covers tools written tomorrow, and Python 3.15
+# makes it the default anyway. PYTHONIOENCODING keeps the OUTPUT side honest on
+# a console that is not UTF-8.
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
 build="${1:-$root/build}"
 fail=0
 

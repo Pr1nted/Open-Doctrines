@@ -75,7 +75,7 @@ ALLOWED_DEAD_EFFECTS = {}
 
 
 def fields_the_resolver_knows():
-    with open(RESOLVER) as f:
+    with open(RESOLVER, encoding="utf-8") as f:
         return sorted(set(re.findall(r'effectField == "(\w+)"', f.read())))
 
 
@@ -98,12 +98,12 @@ def readers(field):
 def sellers(field):
     """How many research nodes and doctrines advertise it."""
     nodes = 0
-    with open(RESOLVER) as f:
+    with open(RESOLVER, encoding="utf-8") as f:
         nodes = len(re.findall(rf"\.{field}\s*=", f.read()))
     doctrines = []
     path = os.path.join(ROOT, "data", "policies.json")
     if os.path.exists(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for p in json.load(f).get("policies", []):
                 if field in (p.get("levers") or {}):
                     doctrines.append(p["id"])
@@ -121,7 +121,7 @@ EFFECT_NOT_A_READER = ("Game_Policies.cpp:150", "GameStructs.h")
 def effect_block_fields():
     """(json key, Policy::effect member) for every field parsePolicyJson copies
     out of the "effects" object."""
-    with open(POLICY_PARSER) as f:
+    with open(POLICY_PARSER, encoding="utf-8") as f:
         src = f.read()
     return sorted(set(re.findall(
         r'policy\.effect\.(\w+)\s*=\s*effects\.value\("(\w+)"', src)))
@@ -152,7 +152,7 @@ def check_effects_block():
     doctrines = []
     path = os.path.join(ROOT, "data", "policies.json")
     if os.path.exists(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             doctrines = json.load(f).get("policies", [])
 
     dead = []
