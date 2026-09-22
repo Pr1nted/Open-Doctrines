@@ -2,9 +2,9 @@
 #
 # THE SHAPE
 #
-#   build (matrix) ─┐
-#                   ├─>  confirm (manual gate)  ->  publish  ->  itch.io
-#   test  (test.yml)┘
+#   build (matrix) ─┐                                   ┌─>  itch.io
+#                   ├─>  confirm (manual gate)  ->  publish ─┤
+#   test  (test.yml)┘                                   └─>  website (opendoctrines.pages.dev)
 #
 # TWO gates, and they catch different things. `test` is a machine asking "does
 # this work on each platform" -- the mod system, four players hosting and
@@ -22,6 +22,11 @@
 # BUTLER_API_KEY is a repository secret and is never in the repository. If it is
 # absent the itch.io step warns and the release still succeeds -- a missing itch
 # key is not a reason to withhold a GitHub release.
+#
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (secrets) let the `website` job
+# put the release on the official site. Same bargain: absent, it warns and the
+# release stands -- but the site then goes on serving the previous version,
+# which is how 1.2.2a shipped everywhere except there.
 
 name: Release game
 
@@ -831,3 +836,66 @@ jobs:
           git commit -qam "OpenDoctrines ${version}"
           git push -q origin HEAD:main
           echo "Cask bumped to ${version}."
+
+  # ── THE OFFICIAL SITE, WHICH NO RELEASE EVER REACHED ──
+  #
+  # opendoctrines.pages.dev -- the landing page, the press kit and the web game
+  # at /play/ -- was published by running tools/deploy-web.sh by hand, and
+  # nothing in this workflow did it. So 1.2.2a went to GitHub and itch.io while
+  # the site went on serving 1.2.1a and saying so. This job runs the same
+  # script, so the release and the site cannot be staged two different ways:
+  # it builds the web version, stages the site with its version stamped from
+  # VERSION, deploys, and then checks the live site from outside -- including
+  # that it states this version.
+  #
+  # The released TAG, not the branch: a workflow_dispatch for an existing tag
+  # would otherwise deploy whatever main holds now.
+  website:
+    name: Publish the website
+    needs: publish
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Is Cloudflare configured?
+        id: gate
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::warning title=Website skipped::CLOUDFLARE_API_TOKEN and \
+            CLOUDFLARE_ACCOUNT_ID (secrets) are not both set, so \
+            opendoctrines.pages.dev still serves the previous version. Deploy \
+            this release by hand with tools/deploy-web.sh from a checkout of \
+            the tag, or add the secrets and re-run this job."
+            echo "go=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "go=yes" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.go == 'yes'
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: mymindstorm/setup-emsdk@v14
+        if: steps.gate.outputs.go == 'yes'
+        with: { version: latest }
+
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.go == 'yes'
+        with: { node-version: "22" }
+
+      # fonttools for the web build's font subset (as in the web job above);
+      # Pillow for tools/banner.py, which the script runs to build the link
+      # card, because that image is generated and not in the repository.
+      - name: Install Python tools
+        if: steps.gate.outputs.go == 'yes'
+        run: python3 -m pip install --user fonttools pillow
+
+      - name: Deploy and check the live site
+        if: steps.gate.outputs.go == 'yes'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: tools/deploy-web.sh opendoctrines main

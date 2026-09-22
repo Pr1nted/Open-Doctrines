@@ -81,6 +81,31 @@ cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
    packaging/web/site/sitemap.xml packaging/web/site/llms.txt "$out/"
 
+# ── THE VERSION THE SITE STATES IS THE VERSION BEING DEPLOYED ──
+#
+# index.html (the structured data search engines read) and press.html ("Current
+# version") carried the version as typed text, and nothing bumped it: the site
+# went on saying 1.2.1a through the 1.2.2a release. Stamped here from VERSION,
+# so a deploy cannot state a version other than the one it ships. Fails if a
+# marker is missing rather than deploying a page that states nothing.
+ver=$(tr -d '[:space:]' < VERSION)
+python3 - "$out" "$ver" <<'STAMP'
+import pathlib, re, sys
+out, ver = pathlib.Path(sys.argv[1]), sys.argv[2]
+marks = {
+    "index.html": (r'("softwareVersion":\s*")[^"]*(")', r"\g<1>" + ver + r"\g<2>"),
+    "press.html": (r"(<dt>Current version</dt><dd><strong>)[^<]*(</strong>)", r"\g<1>" + ver + r"\g<2>"),
+}
+for name, (pat, rep) in marks.items():
+    p = out / name
+    s = p.read_text(encoding="utf-8")
+    s2, n = re.subn(pat, rep, s)
+    if n != 1:
+        raise SystemExit(f"{name}: expected one version marker, found {n}")
+    p.write_text(s2, encoding="utf-8")
+print(f"  stamped version {ver} into index.html and press.html")
+STAMP
+
 # ANALYTICS ARE SITE-ONLY, AND THAT IS A PROMISE MADE IN WRITING. The cookie
 # policy and net/PRIVACY.md both say /play/ is excluded, so a stray copy of
 # analytics.js into the game directory would make a published policy false.
@@ -326,6 +351,14 @@ else
     echo "  FAIL  the root is not the landing page, or the Activity redirect is missing" >&2
     echo "        an Activity launched from Discord would land on a page that never forwards it" >&2
     fail=1
+fi
+
+# The version, read back from the live page: the check that would have caught
+# the site advertising 1.2.1a after 1.2.2a shipped.
+if probe "$site/" --bytes 16384 "\"softwareVersion\": \"$ver\""; then
+    echo "  ok    the site states version $ver"
+else
+    echo "  FAIL  the live site does not state version $ver" >&2; fail=1
 fi
 
 if probe "$site/play/" 'OpenDoctrines'; then
