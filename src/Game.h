@@ -2972,6 +2972,16 @@ public:
     /// Pixels on a province edge: the only ones the distance field's seed test
     /// has to look at. Province shapes are fixed for a map; see Game_Loading.cpp.
     std::vector<uint32_t> m_provinceEdgePixels;
+    /// Each province's bounding box on the province image, by id (x0 > x1 for
+    /// none). Filled in the load's full-map pass; 16 bytes a province.
+    struct PixelBox { int x0 = INT32_MAX, y0 = INT32_MAX, x1 = -1, y1 = -1; };
+    std::vector<PixelBox> m_provinceBounds;
+    /// One province's pixels in raster order -- m_provincePixels' entry when
+    /// that index has been built, otherwise found by scanning the province's
+    /// box. Game logic asks this, never m_provincePixels directly: the index is
+    /// built on demand (claims view, first conquest, never in training), and
+    /// answering "no pixels" until then made every province land-locked.
+    std::vector<int> pixelsOfProvince(int pid) const;
     /// Every map pixel `cid` owns now, in raster order: its provinces' pixels,
     /// found by scanning the area those provinces cover (centre +- twice the
     /// radius bounds each one). For the panels that paint a country; builds

@@ -1043,6 +1043,7 @@ void Game::buildPopulationLookups() {
     m_coastalCache.clear();   // answers belong to the map that is going away
     m_portAnchorCache.clear();
     m_countryPixelCount.assign(maxCid + 1, 0);   // see Game.h
+    m_provinceBounds.assign(m_provinceAreaArray.size(), PixelBox{});
     m_countryRelationColors.assign(maxCid + 1, Color{80, 80, 80, 255});
 
     // ── TRUE AREA, ONE ROW-WEIGHT AT A TIME ──
@@ -1079,8 +1080,13 @@ void Game::buildPopulationLookups() {
         int cid = 0;
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
-        if (pid > 0 && (size_t)pid < m_provinceAreaArray.size())
+        if (pid > 0 && (size_t)pid < m_provinceAreaArray.size()) {
             m_provinceAreaArray[pid] += areaRowW;
+            PixelBox& b = m_provinceBounds[(size_t)pid];
+            const int y = areaRow, x = i - (areaRowEnd - w);
+            b.x0 = std::min(b.x0, x); b.x1 = std::max(b.x1, x);
+            b.y0 = std::min(b.y0, y); b.y1 = std::max(b.y1, y);
+        }
         if (cid > 0 && cid <= maxCid) ++m_countryPixelCount[(size_t)cid];
 
         // m_provincePixels is NOT filled here any more: it is one int per map
@@ -1204,6 +1210,24 @@ void Game::generatePoliticalTexture() {
         m_borderDistanceSent = true;
     }
     m_politicalTex = m_renderer->gamePoliticalTexture();
+}
+
+std::vector<int> Game::pixelsOfProvince(int pid) const {
+    auto it = m_provincePixels.find(pid);
+    if (it != m_provincePixels.end()) return it->second;
+    std::vector<int> out;
+    if (pid <= 0 || (size_t)pid >= m_provinceBounds.size()) return out;
+    const PixelBox& b = m_provinceBounds[(size_t)pid];
+    const Image& img = m_provinces.getImage();
+    const auto* px = (const Color*)img.data;
+    if (!px || b.x1 < b.x0) return out;
+    for (int y = b.y0; y <= b.y1; ++y) {
+        const Color* row = px + (size_t)y * img.width;
+        for (int x = b.x0; x <= b.x1; ++x)
+            if (Province::colorToId(row[x].r, row[x].g, row[x].b) == pid)
+                out.push_back(y * img.width + x);
+    }
+    return out;
 }
 
 std::vector<int> Game::pixelsOwnedBy(int cid) const {
@@ -2428,6 +2452,7 @@ void Game::unloadGameData() {
     // generated is what pushes long training runs into an out-of-memory kill.
     m_countryPixelCount.clear();
     std::vector<uint32_t>().swap(m_provinceEdgePixels);
+    std::vector<PixelBox>().swap(m_provinceBounds);
     std::unordered_map<int, std::vector<int>>().swap(m_provincePixels);
     std::vector<uint8_t>().swap(m_gradientDist);
     m_borderDistanceSent = false;
@@ -3480,6 +3505,7 @@ void Game::startNewGame(const std::string& mapName) {
     m_countryProvinces.clear();
     m_countryPixelCount.clear();
     std::vector<uint32_t>().swap(m_provinceEdgePixels);
+    std::vector<PixelBox>().swap(m_provinceBounds);
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
     m_lastSelectedProvince = 0;
@@ -3597,6 +3623,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_countryProvinces.clear();
     m_countryPixelCount.clear();
     std::vector<uint32_t>().swap(m_provinceEdgePixels);
+    std::vector<PixelBox>().swap(m_provinceBounds);
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
     m_lastSelectedProvince = 0;
@@ -3775,6 +3802,7 @@ void Game::startLoadedGame(const std::string& saveName) {
     m_countryProvinces.clear();
     m_countryPixelCount.clear();
     std::vector<uint32_t>().swap(m_provinceEdgePixels);
+    std::vector<PixelBox>().swap(m_provinceBounds);
     m_countryRelationColors.clear();
     m_playerCountryId = 0;
     m_lastSelectedProvince = 0;

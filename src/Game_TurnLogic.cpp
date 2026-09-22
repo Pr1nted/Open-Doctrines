@@ -77,8 +77,11 @@ bool Game::isProvinceCoastal(int pid) const {
     auto cached = m_coastalCache.find(pid);
     if (cached != m_coastalCache.end()) return cached->second;
 
-    auto it = m_provincePixels.find(pid);
-    if (it == m_provincePixels.end()) return false;   // not cached: no province yet
+    // From the province's own pixels whether or not the shared index exists.
+    // Asking m_provincePixels directly answered "not coastal" -- uncached, so
+    // again next time -- until something had built it: the claims view or a
+    // first conquest, and in AI training never. See pixelsOfProvince().
+    const std::vector<int> pixels = pixelsOfProvince(pid);
 
     // Every return below this point goes through here, so the walk happens once
     // per province per map rather than once per frame.
@@ -113,7 +116,7 @@ bool Game::isProvinceCoastal(int pid) const {
     const int dy[4] = {0, 0, 1, -1};
 
     std::vector<int> seeds;
-    for (int idx : it->second) {
+    for (int idx : pixels) {
         int px = idx % w;
         int py = idx / w;
         for (int d = 0; d < 4; ++d) {
@@ -170,8 +173,10 @@ Vector2 Game::portAnchor(int pid) const {
     auto cit = m_provinceCenters.find(pid);
     if (cit != m_provinceCenters.end()) centre = cit->second;
 
-    auto it = m_provincePixels.find(pid);
-    if (it == m_provincePixels.end()) {
+    // The province's own pixels, built or not -- this cached the CENTRE,
+    // for good, whenever it was asked before m_provincePixels existed.
+    const std::vector<int> pixels = pixelsOfProvince(pid);
+    if (pixels.empty()) {
         m_portAnchorCache[pid] = centre;
         return centre;
     }
@@ -208,7 +213,7 @@ Vector2 Game::portAnchor(int pid) const {
     float bestDist = 0.0f;
     Vector2 best = centre;
 
-    for (int idx : it->second) {
+    for (int idx : pixels) {
         const int px = idx % w;
         const int py = idx / w;
 
@@ -3896,11 +3901,11 @@ void Game::processEmbarkations(int countryId) {
         // range), so ask isProvinceCoastal first. Everything below is measured
         // from this point, not from the province centre.
         double approachLon = 0.0, approachLat = 0.0;
-        // isProvinceCoastal reads m_provincePixels and answers "no" for every
-        // province while that index is unbuilt -- i.e. in every training and
-        // eval run (the same absent index that stopped boats spawning). A
-        // harbour is coastal by construction, so ask the port table first; the
-        // pixel test stays for the odd non-port coastal province.
+        // A harbour is coastal by construction, so the port table is asked
+        // first; the pixel test covers a coastal province without one. (That
+        // test used to answer "no" everywhere until m_provincePixels was
+        // built -- in training and eval, never. It reads the province's own
+        // pixels now; see pixelsOfProvince.)
         const bool coastal = (m_provincePorts.count(e.provinceId) > 0 ||
                               isProvinceCoastal(e.provinceId)) &&
                              portApproach(e.provinceId, approachLon, approachLat);
@@ -7941,10 +7946,12 @@ void Game::processUpgrades() {
         if (it->turnsRemaining <= 0) {
             int w = m_landSea.getWidth(), h = m_landSea.getHeight();
             bool placed = false;
-            auto ppIt = m_provincePixels.find(it->provinceId);
-            if (ppIt != m_provincePixels.end()) {
+            // The province's pixels whether or not m_provincePixels is built:
+            // a ship finished before it was used to be dropped here.
+            const std::vector<int> shipPixels = pixelsOfProvince(it->provinceId);
+            if (!shipPixels.empty()) {
                 int dx[4] = {1,-1,0,0}, dy[4] = {0,0,1,-1};
-                for (int idx : ppIt->second) {
+                for (int idx : shipPixels) {
                     if (placed) break;
                     int px = idx % w, py = idx / w;
                     for (int d = 0; d < 4; ++d) {
