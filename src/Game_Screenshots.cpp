@@ -293,6 +293,10 @@ const Shot SHOTS[] = {
     // The board's editing view: what is up, and writing the next one.
     {"admin-announce", 40, false},
     {"dev-lookup",    40, false},
+    // LAST, because it sets a tax and a subsidy that would otherwise change
+    // the income figures in every shot taken after it. One tax and one
+    // subsidy, so the rows show what a rate does rather than dashes.
+    {"economy-sectors", 20, true},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
 
@@ -1188,6 +1192,21 @@ bool Game::tickScreenshotTour() {
             m_activeSidebarTab = 2;
             m_inEconomy = true;
             m_turnState = TURN_NORMAL;
+        } else if (name == "economy-sectors") {
+            // Taken after the mail and admin shots, whose windows stay open.
+            m_mailOpen = m_mailSettingsOpen = m_reportOpen = false;
+            m_devReportsOpen = m_ratingPromptOpen = m_feedbackOpen = false;
+            m_inResearch = m_inPolitics = false;
+            if (m_dialogOpen) endDialogue();
+            m_comms.tuneOut();
+            m_comms2.tuneOut();
+            m_tutorialMode = false;
+            m_activeSidebarTab = 2;
+            m_inEconomy = true;
+            m_economyTab = 2;   // Sector Taxes
+            m_turnState = TURN_NORMAL;
+            setSpecTaxPct(m_playerCountryId, specResourceIndex("Oil"), 20.0f);
+            setSpecTaxPct(m_playerCountryId, specResourceIndex("Metal"), -15.0f);
         } else if (name == "economy-local") {
             // The half with the country's own books in it -- the breakdown, the
             // two pies and the three graphs. The tour only ever photographed

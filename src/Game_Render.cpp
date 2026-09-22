@@ -5725,6 +5725,8 @@ bool Game::specializationQuote(int pid, const char* resource,
     // max level, i.e. exactly when it is most worth doing.
     const float costMod = buildCostMod(getTotalEffect("industryCostPct", cid));
     cost = (float)IND_COST[std::clamp(indIt->second.level, 0, IND_MAX_LEVEL)] * 1.5f * costMod;
+    // A taxed sector is dearer to move into, a subsidised one cheaper (Game.h).
+    cost *= specTaxSwitchMul(cid, want);
     outResource = want;
     return true;
 }

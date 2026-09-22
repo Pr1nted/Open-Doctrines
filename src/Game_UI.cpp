@@ -1679,6 +1679,16 @@ std::string Game::saveStateJson() {
         }
     }
 
+    // Sector tax rates, as set -- the doctrine ceilings are applied when a rate
+    // is read, so a save keeps what the player chose. See Game.h.
+    for (const auto& [cid, rates] : m_specTaxPct) {
+        for (int r = 0; r < 5; ++r) {
+            if (rates[(size_t)r] == 0.0f) continue;
+            j["specTax"].push_back({{"countryId", cid}, {"resource", SPEC_RESOURCES[r]},
+                                    {"pct", rates[(size_t)r]}});
+        }
+    }
+
     // ── Catalogue entries mods added ──
     //
     // PERSIST entries only, and written even when the owning mod is gone: a
@@ -2683,6 +2693,23 @@ void Game::loadStateJsonBody(const std::string& json) {
             m_nationalised[n["countryId"].get<int>()].push_back(h);
         }
     }
+
+    // Sector tax rates. Clamped to the widest ceiling any doctrines can give,
+    // so an edited save cannot set one beyond it; the country's own ceiling is
+    // applied whenever the rate is read.
+    m_specTaxPct.clear();
+    if (j.contains("specTax") && j["specTax"].is_array()) {
+        for (const auto& t : j["specTax"]) {
+            if (!t.is_object() || !t.contains("countryId") || !t.contains("resource")) continue;
+            if (!t["countryId"].is_number_integer() || !t["resource"].is_string()) continue;
+            const int res = specResourceIndex(t["resource"].get<std::string>());
+            if (res < 0) continue;
+            const float pct = std::clamp(t.value("pct", 0.0f), -kSpecTaxRoomMax, kSpecTaxRoomMax);
+            if (pct != 0.0f) m_specTaxPct[t["countryId"].get<int>()][(size_t)res] = pct;
+        }
+    }
+    m_countryIncomeCache.clear();
+    invalidateIncomeCache();
 
     // Catalogue entries mods added. Read back whether or not the owning mod is
     // installed, for the reason above.

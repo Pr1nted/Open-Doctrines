@@ -698,6 +698,7 @@ private:
     void updateEconomy();
     void drawEconomyGlobal(int centerX, int startY);
     void drawEconomyLocal(int centerX, int startY);
+    void drawEconomySectors(int centerX, int startY);
     int drawBreakdownRow(int x, int y, int valX, const char* label, const char* value, Color col, bool highlight);
     void recordIncomeSnapshot();
 
@@ -5153,6 +5154,44 @@ private:
     std::string m_bulkSpecResource;
     /** The five a province may specialise in, in the panel's order. */
     static const char* const SPEC_RESOURCES[5];
+
+    // ── Sector taxes: a rate per resource specialisation ──
+    //
+    // A country sets, for each of SPEC_RESOURCES, a rate in percent: above zero
+    // a TAX on the resource income of its provinces specialised in it, below
+    // zero a SUBSIDY paid from the treasury. The price runs the other way: a
+    // taxed sector's factories cost (1 + kSpecTaxUpkeepK * rate) to run and
+    // (1 + kSpecTaxSwitchK * rate) to specialise into, so taxing is money now
+    // against a dearer sector, and a subsidy the reverse. How far either way is
+    // allowed is a ceiling set by doctrines (levers specTaxRoomPct and
+    // specSubsidyRoomPct on kSpecTaxRoomBase, held within 0..kSpecTaxRoomMax),
+    // applied when the rate is READ -- a doctrine enacted later narrows a rate
+    // already set, rather than leaving it outside what that doctrine allows.
+    //
+    // Only players set these; the AI leaves every rate at 0, where every term
+    // below is exactly neutral.
+    static constexpr float kSpecTaxRoomBase = 30.0f;
+    static constexpr float kSpecTaxRoomMax  = 60.0f;
+    static constexpr float kSpecTaxStep     = 5.0f;
+    static constexpr float kSpecTaxUpkeepK  = 2.0f;
+    static constexpr float kSpecTaxSwitchK  = 2.0f;
+    std::unordered_map<int, std::array<float, 5>> m_specTaxPct;   ///< cid -> percent per SPEC_RESOURCES
+    static int specResourceIndex(const std::string& resource);
+    float specTaxRoom(int cid) const;       ///< highest tax allowed, percent
+    float specSubsidyRoom(int cid) const;   ///< deepest subsidy allowed, percent (positive)
+    /** The rate in force, as a fraction, clamped to what doctrines allow now. */
+    float specTaxRate(int cid, int res) const;
+    /** Set a rate (percent), clamped and snapped to kSpecTaxStep. */
+    void setSpecTaxPct(int cid, int res, float pct);
+    struct SpecTaxSector { int provinces = 0; int levels = 0; float income = 0.0f; };
+    /** What `cid` holds specialised in resource `res`: provinces, levels, resource income. */
+    SpecTaxSector specTaxSector(int cid, int res) const;
+    /** Per turn, before resourceModPct: taxes collected and subsidies paid, both >= 0. */
+    void specTaxMoneyRaw(int cid, float& collected, float& paid) const;
+    /** Multiplier on the country's whole industry upkeep, by level share. */
+    float specTaxUpkeepMul(int cid) const;
+    /** Multiplier on the price of specialising a province into `resource`. */
+    float specTaxSwitchMul(int cid, const std::string& resource) const;
 
     bool m_bulkPaint = false;
     /**

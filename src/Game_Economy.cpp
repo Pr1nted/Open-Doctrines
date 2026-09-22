@@ -57,6 +57,98 @@ const char* Game::bestSpecializationFor(int pid) const {
     return best < 0 ? nullptr : SPEC_RESOURCES[best];
 }
 
+// ─── Sector taxes (see Game.h) ───────────────────────────────────────────
+
+int Game::specResourceIndex(const std::string& resource) {
+    for (int i = 0; i < 5; ++i) if (resource == SPEC_RESOURCES[i]) return i;
+    return -1;
+}
+
+float Game::specTaxRoom(int cid) const {
+    return std::clamp(kSpecTaxRoomBase + getTotalEffect("specTaxRoomPct", cid), 0.0f, kSpecTaxRoomMax);
+}
+
+float Game::specSubsidyRoom(int cid) const {
+    return std::clamp(kSpecTaxRoomBase + getTotalEffect("specSubsidyRoomPct", cid), 0.0f, kSpecTaxRoomMax);
+}
+
+float Game::specTaxRate(int cid, int res) const {
+    if (res < 0 || res >= 5) return 0.0f;
+    auto it = m_specTaxPct.find(cid);
+    if (it == m_specTaxPct.end()) return 0.0f;
+    const float pct = it->second[(size_t)res];
+    if (pct == 0.0f) return 0.0f;
+    return std::clamp(pct, -specSubsidyRoom(cid), specTaxRoom(cid)) / 100.0f;
+}
+
+void Game::setSpecTaxPct(int cid, int res, float pct) {
+    if (res < 0 || res >= 5 || cid <= 0) return;
+    pct = std::round(pct / kSpecTaxStep) * kSpecTaxStep;
+    pct = std::clamp(pct, -specSubsidyRoom(cid), specTaxRoom(cid));
+    auto& rates = m_specTaxPct[cid];   // zero-initialised on first use
+    if (rates[(size_t)res] == pct) return;
+    rates[(size_t)res] = pct;
+    if (std::all_of(rates.begin(), rates.end(), [](float v) { return v == 0.0f; }))
+        m_specTaxPct.erase(cid);
+    // Both income caches: the turn's snapshot and the last-asked one. Without
+    // the first the panel would show the old figures until the turn ended.
+    m_countryIncomeCache.erase(cid);
+    invalidateIncomeCache();
+}
+
+Game::SpecTaxSector Game::specTaxSector(int cid, int res) const {
+    SpecTaxSector s;
+    if (res < 0 || res >= 5) return s;
+    const std::string want = SPEC_RESOURCES[res];
+    for (int pid : provincesOf(cid)) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p || p->countryId != cid) continue;   // provincesOf is a candidate set
+        auto ind = m_provinceIndustry.find(pid);
+        if (ind == m_provinceIndustry.end() || ind->second.specialization != want) continue;
+        ++s.provinces;
+        s.levels += ind->second.level;
+        s.income += provinceResourceIncome(pid);
+    }
+    return s;
+}
+
+void Game::specTaxMoneyRaw(int cid, float& collected, float& paid) const {
+    collected = paid = 0.0f;
+    if (m_specTaxPct.find(cid) == m_specTaxPct.end()) return;   // every AI country
+    for (int r = 0; r < 5; ++r) {
+        const float rate = specTaxRate(cid, r);
+        if (rate == 0.0f) continue;
+        const float money = rate * specTaxSector(cid, r).income;
+        if (money > 0.0f) collected += money; else paid -= money;
+    }
+}
+
+float Game::specTaxUpkeepMul(int cid) const {
+    if (m_specTaxPct.find(cid) == m_specTaxPct.end()) return 1.0f;
+    int totalLevels = 0;
+    for (int pid : provincesOf(cid)) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        if (!p || p->countryId != cid) continue;
+        auto ind = m_provinceIndustry.find(pid);
+        if (ind != m_provinceIndustry.end()) totalLevels += ind->second.level;
+    }
+    if (totalLevels <= 0) return 1.0f;
+    // Upkeep is set for the country as a whole (industryUpkeep), so each
+    // sector's change is weighted by its share of the levels that set it.
+    float mul = 1.0f;
+    for (int r = 0; r < 5; ++r) {
+        const float rate = specTaxRate(cid, r);
+        if (rate == 0.0f) continue;
+        mul += kSpecTaxUpkeepK * rate * (float)specTaxSector(cid, r).levels / (float)totalLevels;
+    }
+    return std::max(0.0f, mul);
+}
+
+float Game::specTaxSwitchMul(int cid, const std::string& resource) const {
+    const float rate = specTaxRate(cid, specResourceIndex(resource));
+    return std::max(0.1f, 1.0f + kSpecTaxSwitchK * rate);
+}
+
 // === provinceIndustryCapacity / provinceIndustryIncome ===
 //
 // See industryCapacity() in BuildCosts.h for the rule, the four terms and the
@@ -127,6 +219,7 @@ std::vector<Game::ExpenseSlice> Game::expenseSlices(const CountryIncomeSnapshot&
         {s.minorityCosts,    Color{200, 140,  80, 255}, T("Minority")},
         {s.researchCost,     Color{ 80, 200,  80, 255}, T("Research")},
         {s.pacificationCost, Color{ 80, 180, 220, 255}, T("Pacification")},
+        {s.specSubsidy,      Color{150, 200, 120, 255}, T("Sector subsidies")},
     };
 }
 
@@ -848,7 +941,21 @@ float Game::pacificationRebate(int countryId) const {
 void Game::applyIncomeLevers(CountryIncomeSnapshot& cs, int countryId) const {
     cs.resource *= std::max(0.0f, 1.0f + getTotalEffect("resourceModPct", countryId) / 100.0f);
     cs.pop      *= std::max(0.0f, 1.0f + getTotalEffect("popModPct", countryId) / 100.0f);
-    cs.total = cs.gross + cs.resource + cs.pop + getTotalEffect("passiveIncome", countryId);
+    // Sector taxes are a share of resource income, so resourceModPct scales
+    // them as it scales the income they are levied on. 0 for any country that
+    // has set no rate.
+    //
+    // A tax is income and a subsidy is a bill, kept apart rather than netted,
+    // so that the income and expense charts each still sum to their totals.
+    // The subsidy is added to expenses where those are totalled.
+    {
+        float collected = 0.0f, paid = 0.0f;
+        specTaxMoneyRaw(countryId, collected, paid);
+        const float resMul = std::max(0.0f, 1.0f + getTotalEffect("resourceModPct", countryId) / 100.0f);
+        cs.specTax = collected * resMul;
+        cs.specSubsidy = paid * resMul;
+    }
+    cs.total = cs.gross + cs.resource + cs.pop + getTotalEffect("passiveIncome", countryId) + cs.specTax;
 }
 
 CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
@@ -902,7 +1009,8 @@ CountryIncomeSnapshot Game::projectIncome(int countryId, int turns) const {
     const float upkeepNow = cs.industryUpkeep;
     cs.industryUpkeep = industryUpkeep(cs.industryLevels, cs.gross,
                                        getTotalEffect("industryUpkeepPct", countryId))
-                      * odnat::upkeepMul(nationalisedIndustryShare(countryId));
+                      * odnat::upkeepMul(nationalisedIndustryShare(countryId))
+                      * specTaxUpkeepMul(countryId);
     cs.expenses += (cs.industryUpkeep - upkeepNow);
 
     cs.expenses += (cs.navyExpenses - navyNow);
@@ -1009,9 +1117,10 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
     // higher price.
     cs.industryUpkeep = industryUpkeep(cs.industryLevels, cs.gross,
                                        getTotalEffect("industryUpkeepPct", countryId))
-                      * odnat::upkeepMul(nationalisedIndustryShare(countryId));
+                      * odnat::upkeepMul(nationalisedIndustryShare(countryId))
+                      * specTaxUpkeepMul(countryId);
     float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
-                         cs.minorityCosts + cs.industryUpkeep;
+                         cs.minorityCosts + cs.industryUpkeep + cs.specSubsidy;
     float affordable = std::max(0.0f, cs.total - baseExpenses);
     // Allocations are per-country: only the player pays the research slider
     // Each country pays for ITS OWN allocations: the player's come from the
@@ -1100,7 +1209,8 @@ void Game::refreshIncomeCache() {
         cs.industryLevels = a.levels;
         cs.industryUpkeep = industryUpkeep(a.levels, a.gross,
                                            getTotalEffect("industryUpkeepPct", cid))
-                          * odnat::upkeepMul(nationalisedIndustryShare(cid));
+                          * odnat::upkeepMul(nationalisedIndustryShare(cid))
+                          * specTaxUpkeepMul(cid);
         // THE MODIFIER BELONGS HERE TOO, AND THIS IS THE COPY THAT COUNTS.
         //
         // The per-man rate above is a SECOND copy of the one in
@@ -1169,7 +1279,7 @@ void Game::refreshIncomeCache() {
         // games, which is the mistake the header of BuildCosts.h exists to
         // record.
         float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
-                             cs.minorityCosts + cs.industryUpkeep;
+                             cs.minorityCosts + cs.industryUpkeep + cs.specSubsidy;
         float affordable = std::max(0.0f, cs.total - baseExpenses);
         float rAlloc = m_researchAllocation;
         float pAlloc = m_pacificationAllocation;
@@ -1344,10 +1454,10 @@ void Game::updateEconomy() {
             printf("[DIAG] Economy X button clicked\n");
             return;
         }
-        const char* tabs[] = {"Global Economy", "Local Economy"};
-        int visibleTabs = 2;
+        const char* tabs[] = {"Global Economy", "Local Economy", "Sector Taxes"};
+        int visibleTabs = 3;
         int tabStartX = centerX - (visibleTabs * tabSpacing) / 2 + tabSpacing / 2;
-        for (int t = 0; t < 2; ++t) {
+        for (int t = 0; t < visibleTabs; ++t) {
             int tx = tabStartX + t * tabSpacing;
             int tw = MeasureText(tabs[t], 24);
             Rectangle tr = {(float)(tx - tw/2 - 10), (float)(tabY - 5), (float)(tw + 20), 34};
@@ -1400,10 +1510,10 @@ void Game::drawEconomy() {
     int tabY = 100;
     int tabSpacing = 200;
 
-    const char* tabs[] = {"Global Economy", "Local Economy"};
-    int visibleTabs = 2;
+    const char* tabs[] = {"Global Economy", "Local Economy", "Sector Taxes"};
+    int visibleTabs = 3;
     int tabStartX = centerX - (visibleTabs * tabSpacing) / 2 + tabSpacing / 2;
-    for (int t = 0; t < 2; ++t) {
+    for (int t = 0; t < visibleTabs; ++t) {
         int tx = tabStartX + t * tabSpacing;
         bool active = (t == m_economyTab);
         Color tc = active ? hexToColor(m_config.accent()) : LIGHTGRAY;
@@ -1428,9 +1538,136 @@ void Game::drawEconomy() {
     int startY = tabY + 70;
     if (m_economyTab == 0) {
         drawEconomyGlobal(centerX, startY);
-    } else {
+    } else if (m_economyTab == 1) {
         drawEconomyLocal(centerX, startY);
+    } else {
+        drawEconomySectors(centerX, startY);
     }
+}
+
+// ─── Sector taxes (Economy > Sector Taxes) ───────────────────────────────
+//
+// One row per resource specialisation: what the country holds in it, the rate,
+// and what that rate does -- money a turn, and the two costs it moves. The
+// rules are Game::specTax* (Game.h); this only shows and sets them, and every
+// figure on it comes from the same functions the income code calls, so the
+// screen cannot describe a different tax from the one charged.
+void Game::drawEconomySectors(int centerX, int startY) {
+    const int cid = m_playerCountryId;
+    if (cid <= 0 || !m_countries.getCountry(cid)) return;
+    const Color accent = hexToColor(m_config.accent());
+    const Color dim{150, 150, 165, 255};
+    const Vector2 mouse = getMouse();
+    const bool click = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+
+    const int panelW = std::min(980, m_screenW - 40);
+    const int x0 = centerX - panelW / 2;
+    int y = startY - 30;
+
+    DrawText(T("Tax a specialisation for income: its factories then cost more to run and to specialise into."),
+             x0, y, 16, LIGHTGRAY);
+    y += 20;
+    DrawText(T("Subsidise one for the reverse: it costs money and makes that sector cheaper."), x0, y, 16, LIGHTGRAY);
+    y += 28;
+
+    const float taxRoom = specTaxRoom(cid), subRoom = specSubsidyRoom(cid);
+    DrawText(TextFormat(T("Allowed: subsidy up to %.0f%%, tax up to %.0f%%"), subRoom, taxRoom), x0, y, 18, WHITE);
+    y += 22;
+    // Which doctrines moved the ceilings, so a player can see why a button is
+    // stuck and what to repeal.
+    std::string why;
+    for (const auto& ap : m_activePolicies) {
+        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        for (const auto& q : m_allPolicies) {
+            if (q.id != ap.policyId) continue;
+            for (const char* lever : {"specTaxRoomPct", "specSubsidyRoomPct"}) {
+                auto lv = q.levers.find(lever);
+                if (lv == q.levers.end() || lv->second == 0.0f) continue;
+                if (!why.empty()) why += ", ";
+                why += TextFormat(std::string(lever) == "specTaxRoomPct" ? T("%s: tax ceiling %+.0f")
+                                                                          : T("%s: subsidy ceiling %+.0f"),
+                                  od::i18n::tr(q.name), lv->second * policyTenure(ap));
+            }
+            break;
+        }
+    }
+    DrawText(why.empty() ? T("No doctrine in force changes these ceilings (30% each way by default).") : why.c_str(),
+             x0, y, 14, dim);
+    y += 30;
+
+    // Column positions.
+    const int cName = x0, cHeld = x0 + 150, cIncome = x0 + 320, cRate = x0 + 460,
+              cMoney = x0 + 640, cUpkeep = x0 + 760, cSwitch = x0 + 870;
+    DrawText(T("Specialisation"), cName, y, 14, dim);
+    DrawText(T("Provinces (levels)"), cHeld, y, 14, dim);
+    DrawText(T("Resource income"), cIncome, y, 14, dim);
+    DrawText(T("Rate"), cRate + 40, y, 14, dim);
+    DrawText(T("Per turn"), cMoney, y, 14, dim);
+    DrawText(T("Upkeep"), cUpkeep, y, 14, dim);
+    DrawText(T("Specialise"), cSwitch, y, 14, dim);
+    y += 22;
+
+    const float resMul = std::max(0.0f, 1.0f + getTotalEffect("resourceModPct", cid) / 100.0f);
+    const Color resCol[5] = {Color{160, 50, 200, 255}, accent, Color{200, 200, 200, 255},
+                             Color{50, 200, 50, 255}, Color{100, 200, 255, 255}};
+    for (int r = 0; r < 5; ++r) {
+        const SpecTaxSector sec = specTaxSector(cid, r);
+        auto it = m_specTaxPct.find(cid);
+        const float setPct = (it != m_specTaxPct.end()) ? it->second[(size_t)r] : 0.0f;
+        const float rate = specTaxRate(cid, r);   // what is charged: clamped now
+        const Rectangle row{(float)x0 - 8, (float)y - 6, (float)panelW + 16, 40};
+        DrawRectangleRounded(row, 0.15f, 5, Color{30, 32, 44, 200});
+
+        DrawRectangle(cName, y + 4, 10, 10, resCol[r]);
+        DrawText(od::i18n::tr(SPEC_RESOURCES[r]), cName + 16, y, 20, WHITE);
+        DrawText(TextFormat("%d (%d)", sec.provinces, sec.levels), cHeld, y + 2, 18, LIGHTGRAY);
+        DrawText(TextFormat("%.1f", sec.income * resMul), cIncome, y + 2, 18, LIGHTGRAY);
+
+        // - rate +
+        const Rectangle minus{(float)cRate, (float)y - 2, 28, 26};
+        const Rectangle plus{(float)cRate + 132, (float)y - 2, 28, 26};
+        const bool canDown = setPct - kSpecTaxStep >= -subRoom - 0.01f;
+        const bool canUp   = setPct + kSpecTaxStep <= taxRoom + 0.01f;
+        for (int b = 0; b < 2; ++b) {
+            const Rectangle& br = b == 0 ? minus : plus;
+            const bool ok = b == 0 ? canDown : canUp;
+            const bool hov = ok && CheckCollisionPointRec(mouse, br);
+            DrawRectangleRounded(br, 0.25f, 5, hov ? Color{70, 72, 96, 255} : Color{45, 47, 62, 255});
+            DrawText(b == 0 ? "-" : "+", (int)br.x + 9, (int)br.y + 3, 20, ok ? WHITE : Color{90, 90, 100, 255});
+            if (hov && click && !m_paused) {
+                setSpecTaxPct(cid, r, setPct + (b == 0 ? -kSpecTaxStep : kSpecTaxStep));
+                Audio::get().playSfx("click_soft");
+            }
+        }
+        const float shownPct = rate * 100.0f;
+        const char* rateTxt = shownPct == 0.0f ? T("none")
+                            : shownPct > 0.0f ? TextFormat(T("tax %.0f%%"), shownPct)
+                                              : TextFormat(T("subsidy %.0f%%"), -shownPct);
+        const Color rateCol = shownPct > 0.0f ? Color{230, 200, 90, 255}
+                            : shownPct < 0.0f ? Color{150, 200, 120, 255} : dim;
+        DrawText(rateTxt, cRate + 80 - MeasureText(rateTxt, 18) / 2, y + 2, 18, rateCol);
+
+        const float money = rate * sec.income * resMul;
+        DrawText(money == 0.0f ? "-" : TextFormat("%+.1f", money), cMoney, y + 2, 18,
+                 money > 0.0f ? Color{120, 220, 120, 255} : money < 0.0f ? Color{230, 120, 110, 255} : dim);
+        const float upk = 1.0f + kSpecTaxUpkeepK * rate;
+        DrawText(rate == 0.0f ? "-" : TextFormat("x%.2f", std::max(0.0f, upk)), cUpkeep, y + 2, 18, LIGHTGRAY);
+        DrawText(rate == 0.0f ? "-" : TextFormat("x%.2f", specTaxSwitchMul(cid, SPEC_RESOURCES[r])), cSwitch, y + 2, 18,
+                 LIGHTGRAY);
+        y += 46;
+    }
+
+    // Totals, from the same snapshot the treasury is paid from.
+    const CountryIncomeSnapshot cs = computeCountryIncome(cid);
+    y += 6;
+    DrawText(TextFormat(T("Collected %.1f a turn, paid out %.1f a turn."), cs.specTax, cs.specSubsidy),
+             x0, y, 18, WHITE);
+    y += 24;
+    DrawText(TextFormat(T("Industry upkeep x%.2f overall: %.1f a turn."), specTaxUpkeepMul(cid), cs.industryUpkeep),
+             x0, y, 16, LIGHTGRAY);
+    y += 20;
+    DrawText(T("Upkeep is scaled by each sector's share of your industry levels. Rates above a new ceiling are held at it."),
+             x0, y, 14, dim);
 }
 
 void Game::drawEconomyGlobal(int centerX, int startY) {
@@ -1958,6 +2195,7 @@ void Game::drawEconomyLocal(int centerX, int startY) {
             {cs.gross, SKYBLUE, T("Industry")},
             {cs.resource, odPalette::of(odPalette::Role::Good), T("Resource")},
             {cs.pop, ORANGE, T("Population")},
+            {cs.specTax, Color{230, 200, 90, 255}, T("Sector taxes")},
         };
 
         int radius = 55;

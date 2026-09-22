@@ -69,6 +69,8 @@ const char* kTradeoffForms[] = {
     "Unrest %s",
     "Upkeep %s",
     "War declarations %s/turn",
+    "Sector tax ceiling %s pts",
+    "Sector subsidy ceiling %s pts",
 };
 
 /// What a doctrine's compass position is CALLED, as opposed to what the JSON

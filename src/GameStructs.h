@@ -908,6 +908,8 @@ struct CountryIncomeSnapshot {
     float researchCost = 0;// research allocation cost per turn
     float pacificationCost = 0;// pacification budget cost per turn
     float industryUpkeep = 0;// what the factories cost to run; see industryUpkeep()
+    float specTax = 0;    // sector taxes collected; part of `total`
+    float specSubsidy = 0;// sector subsidies paid; part of `expenses`
     int   industryLevels = 0;// total levels held, which is what sets the above
     float net = 0;        // gross + resource + pop - expenses = net income
     float total = 0;      // gross + resource + pop (pre-expenses)

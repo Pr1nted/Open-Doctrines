@@ -51,6 +51,12 @@ LEVER_TEXT = {
     # A COUNT, not a percentage: how many separate wars this country may
     # declare in one turn. See Game::warDeclarationLimit.
     "warDeclarations":     ("War declarations {sign}{v:.0f}/turn", True),
+    # Percentage POINTS on the ceilings of the sector taxes (Economy >
+    # Specialisations): how far above zero a country may tax one resource
+    # specialisation, and how far below zero it may subsidise one. Base 30 each,
+    # held within 0..60. See Game::specTaxRoom.
+    "specTaxRoomPct":      ("Sector tax ceiling {sign}{v:.0f} pts", True),
+    "specSubsidyRoomPct":  ("Sector subsidy ceiling {sign}{v:.0f} pts", True),
 }
 
 
@@ -139,7 +145,8 @@ P = [
          description="Nationalise the commanding heights. Factories get cheaper; the men who ran them leave.",
          cost_per_turn=10, implementation_turns=5,
          compass_shift={"economic": -20, "social": -5}, requirements=R(maxe=40),
-         levers={"industryCostPct": 18, "passiveIncome": 3, "resourceModPct": -5},
+         levers={"industryCostPct": 18, "passiveIncome": 3, "resourceModPct": -5,
+                 "specSubsidyRoomPct": 20},
          incompatible_with=["privatization", "deregulation"]),
     dict(id="worker_rights", name="Worker Rights Act", category="left",
          description="Unions, hours, safety. A healthier country and a dearer conscript.",
@@ -152,7 +159,7 @@ P = [
          cost_per_turn=0, implementation_turns=2,
          compass_shift={"economic": -10, "social": 0}, requirements=R(maxe=50),
          pacification=5.0, unrest=0.015,
-         levers={"passiveIncome": 6, "industryCostPct": -10},
+         levers={"passiveIncome": 6, "industryCostPct": -10, "specTaxRoomPct": 20},
          incompatible_with=["flat_tax"]),
     dict(id="total_war_economy", name="Total War Economy", category="left",
          description="Every factory to the front. Nothing is built that does not shoot.",
@@ -169,18 +176,21 @@ P = [
          cost_per_turn=0, implementation_turns=2,
          compass_shift={"economic": 15, "social": 5}, requirements=R(mine=-40),
          unrest=-0.01,
-         levers={"industryCostPct": 20, "passiveIncome": 4}),
+         levers={"industryCostPct": 20, "passiveIncome": 4,
+                 "specTaxRoomPct": -15, "specSubsidyRoomPct": -15}),
     dict(id="privatization", name="Privatisation", category="right",
          description="Sell the state's holdings. A windfall, then somebody else owns the mines.",
          cost_per_turn=0, implementation_turns=4,
          compass_shift={"economic": 20, "social": -5}, requirements=R(mine=-30),
-         levers={"industryCostPct": 25, "maintenanceCostPct": 10, "resourceModPct": -8}),
+         levers={"industryCostPct": 25, "maintenanceCostPct": 10, "resourceModPct": -8,
+                 "specSubsidyRoomPct": -30}),
     dict(id="flat_tax", name="Flat Tax", category="right",
          description="One rate for everyone. Simple, popular with those who have most.",
          cost_per_turn=0, implementation_turns=2,
          compass_shift={"economic": 10, "social": 0}, requirements=R(mine=-60),
          unrest=-0.005,
-         levers={"passiveIncome": 7, "popGrowthPct": -0.5}),
+         # One rate for everyone is the doctrine: no sector may be singled out.
+         levers={"passiveIncome": 7, "popGrowthPct": -0.5, "specTaxRoomPct": -30}),
     dict(id="consumer_economy", name="Consumer Economy", category="right",
          description="Build for the people who live here. They are happier, and there are fewer shells.",
          cost_per_turn=6, implementation_turns=4,

@@ -1336,6 +1336,127 @@ struct PolicyRules {
         check(old && old->turnsHeld == 0,
               "a save written before the rule existed starts at zero");
     }
+
+    /// Economy > Sector Taxes (Game.h: specTax*). Every figure is checked
+    /// against the income snapshot the treasury is paid from, not against the
+    /// helper that computes it, so the screen and the charge cannot disagree.
+    void sectorTaxes() {
+        printf("\nsector taxes\n");
+        Game& g = game;
+        reset();
+        g.m_specTaxPct.clear();
+        auto fresh = [&]() { g.m_countryIncomeCache.clear(); g.invalidateIncomeCache();
+                             return g.computeCountryIncome(cid); };
+
+        check(g.specTaxRoom(cid) == Game::kSpecTaxRoomBase && g.specSubsidyRoom(cid) == Game::kSpecTaxRoomBase,
+              "with no doctrine, 30% each way");
+
+        // Give the country an Oil sector it can be taxed on: its own provinces
+        // with resource income, specialised in Oil.
+        const int oil = Game::specResourceIndex("Oil");
+        int made = 0, spare = 0;
+        for (int pid : g.provincesOf(cid)) {
+            const Province* owned = g.m_provinces.getProvinceById(pid);
+            if (!owned || owned->countryId != cid) continue;   // provincesOf is a candidate set
+            auto ind = g.m_provinceIndustry.find(pid);
+            if (ind == g.m_provinceIndustry.end() || ind->second.level < 1) continue;
+            if (made < 3) {
+                ind->second.specialization = "Oil";
+                if (ind->second.resourceIncome <= 0.0f) ind->second.resourceIncome = 5.0f;
+                ++made;
+            } else if (!spare) {
+                ind->second.specialization = "Gold";
+                spare = pid;   // a province to price a switch INTO Oil with
+            }
+        }
+        const Game::SpecTaxSector sec = g.specTaxSector(cid, oil);
+        // At least the ones made here: the map may have specialised some already.
+        check(made > 0 && sec.provinces >= made && sec.income > 0.0f, "the country has an Oil sector to tax");
+
+        const CountryIncomeSnapshot base = fresh();
+        check(base.specTax == 0.0f && base.specSubsidy == 0.0f && g.specTaxUpkeepMul(cid) == 1.0f,
+              "at zero every term is neutral");
+        float baseSwitch = 0.0f; std::string res;
+        const bool quoted = spare && g.specializationQuote(spare, "Oil", baseSwitch, res, cid);
+
+        g.setSpecTaxPct(cid, oil, 33.0f);
+        check(g.m_specTaxPct[cid][(size_t)oil] == 30.0f, "33% snaps to the step and is held at the 30% ceiling");
+
+        const float resMul = std::max(0.0f, 1.0f + g.getTotalEffect("resourceModPct", cid) / 100.0f);
+        const CountryIncomeSnapshot taxed = fresh();
+        const float want = 0.30f * sec.income * resMul;
+        check(std::fabs(taxed.specTax - want) < 1e-3f, "a 30% tax collects 30% of the sector's resource income");
+        check(std::fabs((taxed.total - base.total) - want) < 1e-3f, "and it is in the country's income");
+
+        int totalLevels = 0;
+        for (int pid : g.provincesOf(cid)) {
+            auto ind = g.m_provinceIndustry.find(pid);
+            const Province* pp = g.m_provinces.getProvinceById(pid);
+            if (ind != g.m_provinceIndustry.end() && pp && pp->countryId == cid) totalLevels += ind->second.level;
+        }
+        const float wantMul = 1.0f + Game::kSpecTaxUpkeepK * 0.30f * (float)sec.levels / (float)totalLevels;
+        check(std::fabs(g.specTaxUpkeepMul(cid) - wantMul) < 1e-4f, "its factories' share of upkeep rises by twice the rate");
+        check(base.industryUpkeep > 0.0f && std::fabs(taxed.industryUpkeep / base.industryUpkeep - wantMul) < 1e-3f,
+              "and the upkeep charged rises by exactly that");
+        if (quoted) {
+            float taxedSwitch = 0.0f;
+            g.specializationQuote(spare, "Oil", taxedSwitch, res, cid);
+            check(std::fabs(taxedSwitch / baseSwitch - 1.6f) < 1e-3f, "specialising into a 30%-taxed sector costs 1.6x");
+        }
+
+        g.setSpecTaxPct(cid, oil, -20.0f);
+        const CountryIncomeSnapshot sub = fresh();
+        const float paid = 0.20f * sec.income * resMul;
+        check(sub.specTax == 0.0f && std::fabs(sub.specSubsidy - paid) < 1e-3f, "a 20% subsidy pays 20% of the sector's income");
+        check(std::fabs((sub.expenses - base.expenses) - (paid + sub.industryUpkeep - base.industryUpkeep)) < 1e-2f,
+              "as an expense, beside the cheaper upkeep");
+        check(sub.industryUpkeep < base.industryUpkeep, "and the subsidised sector is cheaper to run");
+
+        // THE COPY THAT PAYS. The treasury reads the per-turn batch
+        // (refreshIncomeCache), which totals income a second time; it has to
+        // charge what the snapshot above says, with a tax and a subsidy at once.
+        g.setSpecTaxPct(cid, Game::specResourceIndex("Gold"), 10.0f);
+        const CountryIncomeSnapshot one = fresh();
+        g.refreshIncomeCache();
+        const CountryIncomeSnapshot& batch = g.m_countryIncomeCache[cid];
+        check(std::fabs(batch.specSubsidy - one.specSubsidy) < 1e-3f && std::fabs(batch.specTax - one.specTax) < 1e-3f &&
+              std::fabs(batch.expenses - one.expenses) < 1e-2f && std::fabs(batch.total - one.total) < 1e-2f,
+              "the per-turn batch charges the same tax, subsidy and totals");
+        g.setSpecTaxPct(cid, Game::specResourceIndex("Gold"), 0.0f);
+
+        // Doctrine ceilings, read when the rate is read.
+        g.setSpecTaxPct(cid, oil, 30.0f);
+        g.m_activePolicies.push_back({"flat_tax", cid, 0});
+        check(g.specTaxRoom(cid) == 0.0f, "Flat Tax leaves no room to tax a sector");
+        check(g.specTaxRate(cid, oil) == 0.0f && fresh().specTax == 0.0f, "and a tax already set stops being charged");
+        check(g.m_specTaxPct[cid][(size_t)oil] == 30.0f, "while the rate the player chose is kept");
+        reset();
+        g.m_activePolicies.push_back({"wealth_tax", cid, 0});
+        check(g.specTaxRoom(cid) == 50.0f, "a Progressive Wealth Tax raises the ceiling to 50%");
+        reset();
+        g.m_activePolicies.push_back({"privatization", cid, 0});
+        check(g.specSubsidyRoom(cid) == 0.0f, "Privatisation leaves no room to subsidise");
+        reset();
+
+        // A save keeps it.
+        g.setSpecTaxPct(cid, oil, 15.0f);
+        const std::string saved = g.saveStateJson();
+        g.m_specTaxPct.clear();
+        g.loadStateJson(saved);
+        check(g.m_specTaxPct.count(cid) && g.m_specTaxPct[cid][(size_t)oil] == 15.0f, "a save keeps the rate");
+
+        // The host clamps a client's rate to what that country is allowed, and
+        // refuses one that is not a number.
+        g.mpApplyOrders(cid, [] { std::string o = R"({"specTax":[{"resource":"Oil","pct":60}]})";
+                                   return std::vector<uint8_t>(o.begin(), o.end()); }());
+        check(g.m_specTaxPct[cid][(size_t)oil] == 30.0f, "a client asking for 60% gets the 30% it is allowed");
+        g.mpApplyOrders(cid, [] { std::string o = R"({"specTax":[{"resource":"Oil","pct":"lots"}]})";
+                                   return std::vector<uint8_t>(o.begin(), o.end()); }());
+        check(g.m_specTaxPct[cid][(size_t)oil] == 30.0f, "and a rate that is not a number changes nothing");
+
+        g.setSpecTaxPct(cid, oil, 0.0f);
+        check(!g.m_specTaxPct.count(cid) && fresh().specTax == 0.0f, "back to zero leaves nothing behind");
+    }
 };
 
 int main(int argc, char** argv) {
@@ -1359,6 +1480,7 @@ int main(int argc, char** argv) {
     t.exampleMod(dataDir);
     t.deadEffectsNowLive();
     t.nationalisation(dataDir);
+    t.sectorTaxes();
 
     printf("%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;

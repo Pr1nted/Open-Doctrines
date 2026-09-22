@@ -2791,6 +2791,13 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
                                                {"specialization", s.specialization},
                                                {"turnsRemaining", s.turnsRemaining}});
     }
+    // All five, zeros included: a rate put back to nothing has to reach the
+    // host too, or its copy keeps the old one.
+    for (int r = 0; r < 5; ++r) {
+        auto it = m_specTaxPct.find(countryId);
+        const float pct = (it != m_specTaxPct.end()) ? it->second[(size_t)r] : 0.0f;
+        j["specTax"].push_back({{"resource", SPEC_RESOURCES[r]}, {"pct", (int)std::lround(pct)}});
+    }
     for (auto& r : m_pendingRecruitments) if (ownsProvince(r.provinceId)) {
         j["pendingRecruitments"].push_back({{"provinceId", r.provinceId}, {"count", r.count},
                                             {"turnsRemaining", r.turnsRemaining},
@@ -3083,6 +3090,17 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         const std::string want = textIn(e, "specialization");
         if (rejected) return;
         queueSpecialization((int)pid, want.c_str(), countryId);
+    });
+
+    // Sector tax rates. setSpecTaxPct snaps to the step and clamps to what
+    // THIS country's doctrines allow on the host, so a client cannot set a
+    // rate its own screen would have refused.
+    each("specTax", [&](const nlohmann::json& e) {
+        const std::string resource = textIn(e, "resource");
+        const long long pct = intIn(e, "pct", -(long long)kSpecTaxRoomMax, (long long)kSpecTaxRoomMax, 0);
+        if (rejected) return;
+        const int res = specResourceIndex(resource);
+        if (res >= 0) setSpecTaxPct(countryId, res, (float)pct);
     });
 
     // Recruitment is charged here for the same reason builds are: the price,

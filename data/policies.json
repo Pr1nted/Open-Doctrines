@@ -71,7 +71,8 @@
       "levers": {
         "industryCostPct": 18,
         "passiveIncome": 3,
-        "resourceModPct": -5
+        "resourceModPct": -5,
+        "specSubsidyRoomPct": 20
       },
       "incompatible_with": [
         "privatization",
@@ -92,7 +93,8 @@
       "tradeoffs": {
         "gains": [
           "Industry cost -18%",
-          "Treasury +3/turn"
+          "Treasury +3/turn",
+          "Sector subsidy ceiling +20 pts"
         ],
         "costs": [
           "Resource income -5%",
@@ -172,7 +174,8 @@
       },
       "levers": {
         "passiveIncome": 6,
-        "industryCostPct": -10
+        "industryCostPct": -10,
+        "specTaxRoomPct": 20
       },
       "incompatible_with": [
         "flat_tax"
@@ -189,6 +192,7 @@
       "tradeoffs": {
         "gains": [
           "Treasury +6/turn",
+          "Sector tax ceiling +20 pts",
           "Unrest -1.5%",
           "Pacification budget +5/turn"
         ],
@@ -278,7 +282,9 @@
       },
       "levers": {
         "industryCostPct": 20,
-        "passiveIncome": 4
+        "passiveIncome": 4,
+        "specTaxRoomPct": -15,
+        "specSubsidyRoomPct": -15
       },
       "folder": "Right",
       "effects": {
@@ -295,6 +301,8 @@
           "Treasury +4/turn"
         ],
         "costs": [
+          "Sector tax ceiling -15 pts",
+          "Sector subsidy ceiling -15 pts",
           "Unrest +1.0%",
           "Economic +15",
           "Social +5"
@@ -327,7 +335,8 @@
       "levers": {
         "industryCostPct": 25,
         "maintenanceCostPct": 10,
-        "resourceModPct": -8
+        "resourceModPct": -8,
+        "specSubsidyRoomPct": -30
       },
       "folder": "Right",
       "effects": {
@@ -345,6 +354,7 @@
         ],
         "costs": [
           "Resource income -8%",
+          "Sector subsidy ceiling -30 pts",
           "Economic +20",
           "Social -5"
         ]
@@ -376,7 +386,8 @@
       },
       "levers": {
         "passiveIncome": 7,
-        "popGrowthPct": -0.5
+        "popGrowthPct": -0.5,
+        "specTaxRoomPct": -30
       },
       "folder": "Right",
       "effects": {
@@ -393,6 +404,7 @@
         ],
         "costs": [
           "Population growth -0.5%/turn",
+          "Sector tax ceiling -30 pts",
           "Unrest +0.5%",
           "Economic +10"
         ]
