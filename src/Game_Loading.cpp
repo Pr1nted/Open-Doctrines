@@ -2541,6 +2541,7 @@ void Game::unloadGameData() {
     m_pendingUpgrades.clear();
     m_pendingSpecializations.clear();
     m_specTaxPct.clear();   // sector tax rates belong to the world
+    m_specTaxNow.clear();
     m_pendingRecruitments.clear();
     m_pendingDisbandOrders.clear();
     m_pendingDiplomaticActions.clear();
@@ -3640,6 +3641,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     m_pendingUpgrades.clear();
     m_pendingSpecializations.clear();
     m_specTaxPct.clear();   // sector tax rates belong to the world
+    m_specTaxNow.clear();
     m_pendingRecruitments.clear();
     m_pendingDisbandOrders.clear();
     m_pendingMoveOrders.clear();

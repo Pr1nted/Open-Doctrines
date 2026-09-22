@@ -1207,6 +1207,8 @@ bool Game::tickScreenshotTour() {
             m_turnState = TURN_NORMAL;
             setSpecTaxPct(m_playerCountryId, specResourceIndex("Oil"), 20.0f);
             setSpecTaxPct(m_playerCountryId, specResourceIndex("Metal"), -15.0f);
+            // Four turns in, so both rows are still on their way and show it.
+            for (int t = 0; t < 4; ++t) advanceSpecTaxes();
         } else if (name == "economy-local") {
             // The half with the country's own books in it -- the breakdown, the
             // two pies and the three graphs. The tour only ever photographed

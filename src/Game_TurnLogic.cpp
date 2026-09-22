@@ -7940,6 +7940,8 @@ void Game::processUpgrades() {
             it = m_pendingSpecializations.erase(it);
         } else ++it;
     }
+    // Sector tax rates in force take one step towards what was set.
+    advanceSpecTaxes();
     // Process ship builds
     for (auto it = m_pendingShipBuilds.begin(); it != m_pendingShipBuilds.end(); ) {
         it->turnsRemaining--;

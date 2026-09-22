@@ -1345,8 +1345,11 @@ struct PolicyRules {
         Game& g = game;
         reset();
         g.m_specTaxPct.clear();
+        g.m_specTaxNow.clear();
         auto fresh = [&]() { g.m_countryIncomeCache.clear(); g.invalidateIncomeCache();
                              return g.computeCountryIncome(cid); };
+        // Enough turns for any rate in force to reach its target (60 points at 2 a turn).
+        auto settle = [&]() { for (int t = 0; t < 40; ++t) g.advanceSpecTaxes(); };
 
         check(g.specTaxRoom(cid) == Game::kSpecTaxRoomBase && g.specSubsidyRoom(cid) == Game::kSpecTaxRoomBase,
               "with no doctrine, 30% each way");
@@ -1382,6 +1385,31 @@ struct PolicyRules {
         g.setSpecTaxPct(cid, oil, 33.0f);
         check(g.m_specTaxPct[cid][(size_t)oil] == 30.0f, "33% snaps to the step and is held at the 30% ceiling");
 
+        // PHASED IN. Setting a rate charges nothing yet; each turn moves the rate
+        // in force kSpecTaxDrift points, and it stops at the target.
+        check(g.specTaxRate(cid, oil) == 0.0f && fresh().specTax == 0.0f && g.specTaxUpkeepMul(cid) == 1.0f,
+              "a rate just set is not charged yet");
+        check(g.specTaxTurnsLeft(cid, oil) == 15, "30% at 2 points a turn is 15 turns away");
+        g.advanceSpecTaxes();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.02f) < 1e-6f && g.specTaxTurnsLeft(cid, oil) == 14,
+              "one turn later 2% is in force, 14 turns to go");
+        for (int t = 0; t < 14; ++t) g.advanceSpecTaxes();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.30f) < 1e-6f && g.specTaxTurnsLeft(cid, oil) == 0,
+              "after 15 turns the 30% is in force");
+        g.advanceSpecTaxes();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.30f) < 1e-6f, "and it does not overshoot");
+        g.setSpecTaxPct(cid, oil, 25.0f);
+        g.advanceSpecTaxes();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.28f) < 1e-6f, "lowering the target walks it back down too");
+        g.advanceSpecTaxes(); g.advanceSpecTaxes(); g.advanceSpecTaxes();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.25f) < 1e-6f, "and stops at the new target, not past it");
+        // The turn itself takes the step: processUpgrades is what the turn runs.
+        g.setSpecTaxPct(cid, oil, 20.0f);
+        g.processUpgrades();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.23f) < 1e-6f, "the turn's own pass moves the rate");
+        g.setSpecTaxPct(cid, oil, 30.0f);
+        settle();
+
         const float resMul = std::max(0.0f, 1.0f + g.getTotalEffect("resourceModPct", cid) / 100.0f);
         const CountryIncomeSnapshot taxed = fresh();
         const float want = 0.30f * sec.income * resMul;
@@ -1405,6 +1433,10 @@ struct PolicyRules {
         }
 
         g.setSpecTaxPct(cid, oil, -20.0f);
+        g.advanceSpecTaxes();
+        check(std::fabs(g.specTaxRate(cid, oil) - 0.28f) < 1e-6f,
+              "turning a tax into a subsidy first has to unwind the tax");
+        settle();
         const CountryIncomeSnapshot sub = fresh();
         const float paid = 0.20f * sec.income * resMul;
         check(sub.specTax == 0.0f && std::fabs(sub.specSubsidy - paid) < 1e-3f, "a 20% subsidy pays 20% of the sector's income");
@@ -1416,6 +1448,7 @@ struct PolicyRules {
         // (refreshIncomeCache), which totals income a second time; it has to
         // charge what the snapshot above says, with a tax and a subsidy at once.
         g.setSpecTaxPct(cid, Game::specResourceIndex("Gold"), 10.0f);
+        settle();
         const CountryIncomeSnapshot one = fresh();
         g.refreshIncomeCache();
         const CountryIncomeSnapshot& batch = g.m_countryIncomeCache[cid];
@@ -1426,6 +1459,7 @@ struct PolicyRules {
 
         // Doctrine ceilings, read when the rate is read.
         g.setSpecTaxPct(cid, oil, 30.0f);
+        settle();
         g.m_activePolicies.push_back({"flat_tax", cid, 0});
         check(g.specTaxRoom(cid) == 0.0f, "Flat Tax leaves no room to tax a sector");
         check(g.specTaxRate(cid, oil) == 0.0f && fresh().specTax == 0.0f, "and a tax already set stops being charged");
@@ -1438,12 +1472,27 @@ struct PolicyRules {
         check(g.specSubsidyRoom(cid) == 0.0f, "Privatisation leaves no room to subsidise");
         reset();
 
-        // A save keeps it.
+        // A save keeps both the target and how far the rate in force has got.
+        g.m_specTaxPct.clear();
+        g.m_specTaxNow.clear();
         g.setSpecTaxPct(cid, oil, 15.0f);
+        g.advanceSpecTaxes(); g.advanceSpecTaxes(); g.advanceSpecTaxes();
         const std::string saved = g.saveStateJson();
         g.m_specTaxPct.clear();
+        g.m_specTaxNow.clear();
         g.loadStateJson(saved);
-        check(g.m_specTaxPct.count(cid) && g.m_specTaxPct[cid][(size_t)oil] == 15.0f, "a save keeps the rate");
+        check(g.m_specTaxPct.count(cid) && g.m_specTaxPct[cid][(size_t)oil] == 15.0f &&
+              std::fabs(g.specTaxRate(cid, oil) - 0.06f) < 1e-6f,
+              "a save keeps the target and the rate in force");
+        {
+            nlohmann::json bad = nlohmann::json::parse(saved);
+            bad["specTax"] = nlohmann::json::array({{{"countryId", cid}, {"resource", "Oil"},
+                                                     {"pct", "lots"}, {"now", 1e9}}});
+            g.loadStateJson(bad.dump());
+        }
+        check(g.specTaxTargetPct(cid, oil) == 0.0f && g.m_specTaxNow[cid][(size_t)oil] == Game::kSpecTaxRoomMax,
+              "a save with a bad target or a huge rate is held to what any doctrine allows");
+        g.loadStateJson(saved);
 
         // The host clamps a client's rate to what that country is allowed, and
         // refuses one that is not a number.
@@ -1455,7 +1504,10 @@ struct PolicyRules {
         check(g.m_specTaxPct[cid][(size_t)oil] == 30.0f, "and a rate that is not a number changes nothing");
 
         g.setSpecTaxPct(cid, oil, 0.0f);
-        check(!g.m_specTaxPct.count(cid) && fresh().specTax == 0.0f, "back to zero leaves nothing behind");
+        check(!g.m_specTaxPct.count(cid) && g.specTaxRate(cid, oil) > 0.0f,
+              "a target of zero still has the old rate to unwind");
+        settle();
+        check(!g.m_specTaxNow.count(cid) && fresh().specTax == 0.0f, "back to zero leaves nothing behind");
     }
 };
 

@@ -5168,6 +5168,12 @@ private:
     // applied when the rate is READ -- a doctrine enacted later narrows a rate
     // already set, rather than leaving it outside what that doctrine allows.
     //
+    // A RATE IS A TARGET, NOT A SWITCH. What the player sets is m_specTaxPct;
+    // what is charged is m_specTaxNow, which advanceSpecTaxes walks towards it
+    // by kSpecTaxDrift points a turn. A 20% tax is 10 turns of rising, and
+    // abandoning it is 10 turns of falling -- a sector cannot be taxed for one
+    // turn and relieved the next.
+    //
     // Only players set these; the AI leaves every rate at 0, where every term
     // below is exactly neutral.
     static constexpr float kSpecTaxRoomBase = 30.0f;
@@ -5175,14 +5181,22 @@ private:
     static constexpr float kSpecTaxStep     = 5.0f;
     static constexpr float kSpecTaxUpkeepK  = 2.0f;
     static constexpr float kSpecTaxSwitchK  = 2.0f;
-    std::unordered_map<int, std::array<float, 5>> m_specTaxPct;   ///< cid -> percent per SPEC_RESOURCES
+    static constexpr float kSpecTaxDrift    = 2.0f;   ///< points a turn the rate in force moves
+    std::unordered_map<int, std::array<float, 5>> m_specTaxPct;   ///< cid -> TARGET percent per SPEC_RESOURCES
+    std::unordered_map<int, std::array<float, 5>> m_specTaxNow;   ///< cid -> percent IN FORCE per SPEC_RESOURCES
     static int specResourceIndex(const std::string& resource);
     float specTaxRoom(int cid) const;       ///< highest tax allowed, percent
     float specSubsidyRoom(int cid) const;   ///< deepest subsidy allowed, percent (positive)
     /** The rate in force, as a fraction, clamped to what doctrines allow now. */
     float specTaxRate(int cid, int res) const;
-    /** Set a rate (percent), clamped and snapped to kSpecTaxStep. */
+    /** Set a target rate (percent), clamped and snapped to kSpecTaxStep. */
     void setSpecTaxPct(int cid, int res, float pct);
+    /** The target, as set (percent, unclamped by a later doctrine). */
+    float specTaxTargetPct(int cid, int res) const;
+    /** Turn step: every rate in force moves kSpecTaxDrift points to its target. */
+    void advanceSpecTaxes();
+    /** Turns until the rate in force reaches the target as it stands now. */
+    int specTaxTurnsLeft(int cid, int res) const;
     struct SpecTaxSector { int provinces = 0; int levels = 0; float income = 0.0f; };
     /** What `cid` holds specialised in resource `res`: provinces, levels, resource income. */
     SpecTaxSector specTaxSector(int cid, int res) const;

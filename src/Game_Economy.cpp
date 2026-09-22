@@ -74,8 +74,8 @@ float Game::specSubsidyRoom(int cid) const {
 
 float Game::specTaxRate(int cid, int res) const {
     if (res < 0 || res >= 5) return 0.0f;
-    auto it = m_specTaxPct.find(cid);
-    if (it == m_specTaxPct.end()) return 0.0f;
+    auto it = m_specTaxNow.find(cid);
+    if (it == m_specTaxNow.end()) return 0.0f;
     const float pct = it->second[(size_t)res];
     if (pct == 0.0f) return 0.0f;
     return std::clamp(pct, -specSubsidyRoom(cid), specTaxRoom(cid)) / 100.0f;
@@ -90,9 +90,49 @@ void Game::setSpecTaxPct(int cid, int res, float pct) {
     rates[(size_t)res] = pct;
     if (std::all_of(rates.begin(), rates.end(), [](float v) { return v == 0.0f; }))
         m_specTaxPct.erase(cid);
-    // Both income caches: the turn's snapshot and the last-asked one. Without
-    // the first the panel would show the old figures until the turn ended.
-    m_countryIncomeCache.erase(cid);
+    // Nothing charged changes here: only the target moved, and the rate in
+    // force follows it a turn at a time (advanceSpecTaxes).
+}
+
+float Game::specTaxTargetPct(int cid, int res) const {
+    if (res < 0 || res >= 5) return 0.0f;
+    auto it = m_specTaxPct.find(cid);
+    return it == m_specTaxPct.end() ? 0.0f : it->second[(size_t)res];
+}
+
+// Both the target and the rate in force are read through today's ceilings, so
+// a doctrine that narrows them takes effect at once -- it is a law -- and the
+// walk resumes from there.
+static float clampRoom(float pct, float sub, float tax) { return std::clamp(pct, -sub, tax); }
+
+int Game::specTaxTurnsLeft(int cid, int res) const {
+    const float sub = specSubsidyRoom(cid), tax = specTaxRoom(cid);
+    const float target = clampRoom(specTaxTargetPct(cid, res), sub, tax);
+    const float now = specTaxRate(cid, res) * 100.0f;
+    return (int)std::ceil(std::fabs(target - now) / kSpecTaxDrift - 1e-4f);
+}
+
+void Game::advanceSpecTaxes() {
+    std::vector<int> cids;
+    for (const auto& [cid, _] : m_specTaxPct) cids.push_back(cid);
+    for (const auto& [cid, _] : m_specTaxNow) if (!m_specTaxPct.count(cid)) cids.push_back(cid);
+    for (int cid : cids) {
+        const float sub = specSubsidyRoom(cid), tax = specTaxRoom(cid);
+        std::array<float, 5> now{};
+        if (auto it = m_specTaxNow.find(cid); it != m_specTaxNow.end()) now = it->second;
+        const std::array<float, 5> was = now;
+        for (int r = 0; r < 5; ++r) {
+            const float target = clampRoom(specTaxTargetPct(cid, r), sub, tax);
+            float& n = now[(size_t)r];
+            n = clampRoom(n, sub, tax);
+            n = target > n ? std::min(target, n + kSpecTaxDrift) : std::max(target, n - kSpecTaxDrift);
+        }
+        if (now == was) continue;
+        if (std::all_of(now.begin(), now.end(), [](float v) { return v == 0.0f; })) m_specTaxNow.erase(cid);
+        else m_specTaxNow[cid] = now;
+        // Both income caches: the turn's snapshot and the last-asked one.
+        m_countryIncomeCache.erase(cid);
+    }
     invalidateIncomeCache();
 }
 
@@ -114,7 +154,7 @@ Game::SpecTaxSector Game::specTaxSector(int cid, int res) const {
 
 void Game::specTaxMoneyRaw(int cid, float& collected, float& paid) const {
     collected = paid = 0.0f;
-    if (m_specTaxPct.find(cid) == m_specTaxPct.end()) return;   // every AI country
+    if (m_specTaxNow.find(cid) == m_specTaxNow.end()) return;   // every AI country
     for (int r = 0; r < 5; ++r) {
         const float rate = specTaxRate(cid, r);
         if (rate == 0.0f) continue;
@@ -124,7 +164,7 @@ void Game::specTaxMoneyRaw(int cid, float& collected, float& paid) const {
 }
 
 float Game::specTaxUpkeepMul(int cid) const {
-    if (m_specTaxPct.find(cid) == m_specTaxPct.end()) return 1.0f;
+    if (m_specTaxNow.find(cid) == m_specTaxNow.end()) return 1.0f;
     int totalLevels = 0;
     for (int pid : provincesOf(cid)) {
         const Province* p = m_provinces.getProvinceById(pid);
@@ -1568,6 +1608,9 @@ void Game::drawEconomySectors(int centerX, int startY) {
              x0, y, 16, LIGHTGRAY);
     y += 20;
     DrawText(T("Subsidise one for the reverse: it costs money and makes that sector cheaper."), x0, y, 16, LIGHTGRAY);
+    y += 20;
+    DrawText(TextFormat(T("A new rate is phased in: it moves %.0f points a turn towards what you set."), kSpecTaxDrift),
+             x0, y, 16, LIGHTGRAY);
     y += 28;
 
     const float taxRoom = specTaxRoom(cid), subRoom = specSubsidyRoom(cid);
@@ -1612,9 +1655,8 @@ void Game::drawEconomySectors(int centerX, int startY) {
                              Color{50, 200, 50, 255}, Color{100, 200, 255, 255}};
     for (int r = 0; r < 5; ++r) {
         const SpecTaxSector sec = specTaxSector(cid, r);
-        auto it = m_specTaxPct.find(cid);
-        const float setPct = (it != m_specTaxPct.end()) ? it->second[(size_t)r] : 0.0f;
-        const float rate = specTaxRate(cid, r);   // what is charged: clamped now
+        const float setPct = specTaxTargetPct(cid, r);   // what the buttons move
+        const float rate = specTaxRate(cid, r);   // what is charged: in force, clamped now
         const Rectangle row{(float)x0 - 8, (float)y - 6, (float)panelW + 16, 40};
         DrawRectangleRounded(row, 0.15f, 5, Color{30, 32, 44, 200});
 
@@ -1646,6 +1688,15 @@ void Game::drawEconomySectors(int centerX, int startY) {
         const Color rateCol = shownPct > 0.0f ? Color{230, 200, 90, 255}
                             : shownPct < 0.0f ? Color{150, 200, 120, 255} : dim;
         DrawText(rateTxt, cRate + 80 - MeasureText(rateTxt, 18) / 2, y + 2, 18, rateCol);
+        // Still on its way: where it is heading, and how long until it gets there.
+        if (const int left = specTaxTurnsLeft(cid, r); left > 0) {
+            const float goal = std::clamp(setPct, -subRoom, taxRoom);
+            const char* goalTxt = goal == 0.0f ? T("none")
+                                : goal > 0.0f ? TextFormat(T("tax %.0f%%"), goal)
+                                              : TextFormat(T("subsidy %.0f%%"), -goal);
+            const char* way = TextFormat(left == 1 ? T("to %s, 1 turn") : T("to %s, %d turns"), goalTxt, left);
+            DrawText(way, cRate + 80 - MeasureText(way, 12) / 2, y + 23, 12, dim);
+        }
 
         const float money = rate * sec.income * resMul;
         DrawText(money == 0.0f ? "-" : TextFormat("%+.1f", money), cMoney, y + 2, 18,

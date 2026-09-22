@@ -1679,13 +1679,23 @@ std::string Game::saveStateJson() {
         }
     }
 
-    // Sector tax rates, as set -- the doctrine ceilings are applied when a rate
-    // is read, so a save keeps what the player chose. See Game.h.
-    for (const auto& [cid, rates] : m_specTaxPct) {
-        for (int r = 0; r < 5; ++r) {
-            if (rates[(size_t)r] == 0.0f) continue;
-            j["specTax"].push_back({{"countryId", cid}, {"resource", SPEC_RESOURCES[r]},
-                                    {"pct", rates[(size_t)r]}});
+    // Sector tax rates: the target as set ("pct") and the rate in force
+    // ("now"), which walks towards it a turn at a time. The doctrine ceilings
+    // are applied when a rate is read, so a save keeps what the player chose.
+    // See Game.h.
+    {
+        std::set<int> cids;
+        for (const auto& [cid, _] : m_specTaxPct) cids.insert(cid);
+        for (const auto& [cid, _] : m_specTaxNow) cids.insert(cid);
+        for (int cid : cids) {
+            auto nt = m_specTaxNow.find(cid);
+            for (int r = 0; r < 5; ++r) {
+                const float target = specTaxTargetPct(cid, r);
+                const float now = nt != m_specTaxNow.end() ? nt->second[(size_t)r] : 0.0f;
+                if (target == 0.0f && now == 0.0f) continue;
+                j["specTax"].push_back({{"countryId", cid}, {"resource", SPEC_RESOURCES[r]},
+                                        {"pct", target}, {"now", now}});
+            }
         }
     }
 
@@ -2698,14 +2708,20 @@ void Game::loadStateJsonBody(const std::string& json) {
     // so an edited save cannot set one beyond it; the country's own ceiling is
     // applied whenever the rate is read.
     m_specTaxPct.clear();
+    m_specTaxNow.clear();
     if (j.contains("specTax") && j["specTax"].is_array()) {
+        auto num = [](const nlohmann::json& t, const char* key) {
+            const float v = (t.contains(key) && t[key].is_number()) ? t[key].get<float>() : 0.0f;
+            return std::isfinite(v) ? std::clamp(v, -kSpecTaxRoomMax, kSpecTaxRoomMax) : 0.0f;
+        };
         for (const auto& t : j["specTax"]) {
             if (!t.is_object() || !t.contains("countryId") || !t.contains("resource")) continue;
             if (!t["countryId"].is_number_integer() || !t["resource"].is_string()) continue;
             const int res = specResourceIndex(t["resource"].get<std::string>());
             if (res < 0) continue;
-            const float pct = std::clamp(t.value("pct", 0.0f), -kSpecTaxRoomMax, kSpecTaxRoomMax);
-            if (pct != 0.0f) m_specTaxPct[t["countryId"].get<int>()][(size_t)res] = pct;
+            const int cid = t["countryId"].get<int>();
+            if (const float pct = num(t, "pct"); pct != 0.0f) m_specTaxPct[cid][(size_t)res] = pct;
+            if (const float now = num(t, "now"); now != 0.0f) m_specTaxNow[cid][(size_t)res] = now;
         }
     }
     m_countryIncomeCache.clear();
