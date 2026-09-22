@@ -1402,7 +1402,14 @@ set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses comms
                     # preload and the installers, both built from this list --
                     # is missing them. 3.2 MB together.
                     lang dialog
-                    ai/model.bin tips.json credits.txt policies.json)
+                    ai/model.bin tips.json credits.txt policies.json
+                    # Missing from 1.2.2a on every platform: the Districts tab
+                    # listed no laws, parties were absent, and the installers
+                    # decoded the full map for the menu. release.py had its own
+                    # list and it disagreed with this one, which the comment
+                    # further down said must not happen and nothing checked.
+                    # tools/check_shipped_data.py checks it now.
+                    district_laws.json parties.json menu_bg.png)
 
 # ── Android: stage the APK's assets, and list them ──
 #

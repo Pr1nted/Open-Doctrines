@@ -98,6 +98,14 @@ DATA_ALLOWLIST = [
                       # and the tutorial does nothing at all.
     "tips.json",
     "credits.txt",
+    "district_laws.json",  # the regional laws a district can run. Absent, the
+                      # Districts tab lists none and says nothing: 1.2.2a
+                      # shipped exactly that, because this line did not exist.
+    "parties.json",   # the political parties. Missing from 1.2.2a too.
+    "comms",          # the dialogue cast (cast.json) and its portraits.
+                      # Missing from 1.2.2a, like the two above -- all three
+                      # were only ever reported as a warning, which a release
+                      # log does not stop for. package.py now refuses instead.
     "menu_bg.png",    # the menu's land silhouette (tools/make_menu_bg.py).
                       # Absent, the menu still draws -- by decoding the full
                       # 8192x4096 map out of STDmaps/map.odmap, which is the
@@ -130,6 +138,9 @@ KNOWN_USER_DATA = [
                       # is fetched per-platform and verified on arrival, so
                       # shipping one machine's copy would add ~37 MB to every
                       # download and be the wrong binary for most of them.
+    "llm",            # the local advisor runtime (ollama and a model), which
+                      # the game downloads for itself -- hundreds of MB and
+                      # per-platform, like tools/ below.
     ".DS_Store",      # macOS leaves these everywhere
     "Icon\r",         # macOS custom-folder-icon marker; the name really does
     "Icon",           # end in a carriage return, so both spellings are listed

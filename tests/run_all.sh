@@ -365,6 +365,11 @@ check "advertised effects are spent" $PY "$root/tools/check_effect_fields.py"
 # does not. Regenerate with: python3 tools/make_menu_bg.py
 check "menu background matches map.odmap" $PY "$root/tools/make_menu_bg.py" --check
 
+# What a player receives is listed twice -- OD_SHIPPED_DATA in CMakeLists.txt
+# (web, Android, installers) and DATA_ALLOWLIST in tools/release.py (zips) --
+# and the two drifted: 1.2.2a shipped without its regional laws and parties.
+check "shipped data lists agree, data/ classified" $PY "$root/tools/check_shipped_data.py"
+
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh
 # from Wikimedia with: python3 tools/audit_flag_licenses.py

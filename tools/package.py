@@ -245,6 +245,21 @@ def main():
             tag = "" if e in rel.KNOWN_USER_DATA else "   <- not in the known list, check it"
             print(f"    {e}{tag}")
 
+    # AN UNCLASSIFIED ENTRY STOPS THE PACKAGE. This used to be the tag above and
+    # nothing else, and 1.2.2a shipped without district_laws.json, parties.json
+    # and comms/ -- each one printed "check it" into a release log that nobody
+    # stops to read. Every entry in data/ is either shipped (DATA_ALLOWLIST) or
+    # deliberately not (KNOWN_USER_DATA) in tools/release.py; decide there.
+    unclassified = [e for e in excluded if e not in rel.KNOWN_USER_DATA]
+    if unclassified:
+        print("\nFAILED: data/ has entries that are neither shipped nor known to be local:",
+              file=sys.stderr)
+        for e in unclassified:
+            print(f"    {e}", file=sys.stderr)
+        print("  Add each to DATA_ALLOWLIST (ships) or KNOWN_USER_DATA (does not) "
+              "in tools/release.py.", file=sys.stderr)
+        return 1
+
     # A release that still contains a save or a mod is a bug in this script, so
     # it is checked rather than assumed.
     leaked = []
