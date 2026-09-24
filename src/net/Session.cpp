@@ -805,6 +805,9 @@ bool NetSession::submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& p
     // sending them at all means there is nothing for a server to mishandle.
     if (phase() != Phase::InGame || spectating()) return false;
     if (payload.size() > NetLimits::kOrders) {
+        // Under the lock: error() and fail() both take it, and fail() runs on
+        // the join worker.
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
         m_impl->errorText = "these orders are larger than a turn may carry";
         return false;
     }
