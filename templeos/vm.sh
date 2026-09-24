@@ -19,6 +19,7 @@
 #     templeos/vm.sh pull N     copy a file back out
 #     templeos/vm.sh shot F.png  capture the screen
 #     templeos/vm.sh key <keys>  send keystrokes (QEMU key names, space separated)
+#     templeos/vm.sh click X Y  click at an absolute point
 #     templeos/vm.sh type "txt"  type a string
 #     templeos/vm.sh stop        shut the machine down
 #     templeos/vm.sh status      is it running?
@@ -202,6 +203,32 @@ shot)
         cp "$ppm" "$out"
     fi
     echo "$out"
+    ;;
+click)
+    # A click at an absolute point, out of a relative mouse.
+    #
+    # This OS drives a PS/2 mouse, which reports MOVEMENT, not position -- and
+    # a USB tablet, the usual way to get absolute coordinates out of QEMU, is
+    # not something it can talk to. So: shove the pointer hard into the
+    # top-left corner, where it stops, and then move by exactly the offset
+    # wanted. The overshoot is the whole trick.
+    shift
+    x="${1:?usage: vm.sh click <x> <y>}"; y="${2:?}"
+    # IN SMALL STEPS, BOTH WAYS. A PS/2 packet carries nine signed bits of
+    # movement, so one giant shove is not delivered as one giant move -- the
+    # first attempt at this pinned the pointer by about 127 pixels instead of
+    # 3000, clicked TempleOS's own menu bar and opened the File menu.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do mon "mouse_move -100 -100"; done
+    sleep 0.3
+    dx=$x; dy=$y
+    while [ "$dx" -gt 0 ] || [ "$dy" -gt 0 ]; do
+        sx=$(( dx > 100 ? 100 : dx )); sy=$(( dy > 100 ? 100 : dy ))
+        mon "mouse_move $sx $sy"
+        sleep 0.08          # without this only the first packet lands
+        dx=$(( dx - sx )); dy=$(( dy - sy ))
+    done
+    sleep 0.4
+    [ "${OD_NO_CLICK:-0}" = "1" ] || { mon "mouse_button 1"; sleep 0.2; mon "mouse_button 0"; }
     ;;
 key)
     shift
