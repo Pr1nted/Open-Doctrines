@@ -20,14 +20,14 @@
 #define DT_MAXCLP   128        /* claimed provinces, total */
 #define DT_DEPS       4
 #define DT_RREC      48
-#define DT_PREC      76
+#define DT_PREC      78
 
 U8   d_rid[DT_MAXR][12], d_rname[DT_MAXR][24];
 I64  d_rcost[DT_MAXR], d_rcat[DT_MAXR], d_rndep[DT_MAXR];
 I64  d_rdep[DT_MAXR][DT_DEPS];
 I64  d_nres = 0;
 
-#define DT_NLEV      11        /* levers this build acts on */
+#define DT_NLEV      12        /* levers this build acts on */
 
 U8   d_pid[DT_MAXPOL][16], d_pname[DT_MAXPOL][24], d_pcat[DT_MAXPOL][10];
 I64  d_pcost[DT_MAXPOL], d_pturns[DT_MAXPOL];
@@ -66,6 +66,7 @@ U0 DInitCats()
   d_levname[8] = "naval attack";
   d_levname[9] = "naval defence";
   d_levname[10] = "ship cost";
+  d_levname[11] = "naval speed";
   d_rcatname[0] = "Buildings";
   d_rcatname[1] = "Army";
   d_rcatname[2] = "Formations";

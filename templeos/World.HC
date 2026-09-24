@@ -13,14 +13,14 @@
  * guessing the nearest centre.
  */
 
-#define OD_WORLD_VER  7
+#define OD_WORLD_VER  8
 /* Sized to the world, not to a round number: eleven arrays of this length
  * live in the global segment, and at 4096 they were 440 KB before Rules.HC
  * and the renderer added theirs. */
 #define OD_MAXP    2048
 #define OD_MAXC     256
 #define OD_SEA   0xFFFF        /* the index meaning "no province" */
-#define OD_HDR      24
+#define OD_HDR      30
 #define OD_PREC     50         /* bytes per province record */
 #define OD_CREC     34         /* bytes per country record  */
 
@@ -44,6 +44,17 @@ I64  w_port[OD_MAXP];                   /* harbour level, 0 for inland */
 I64  w_ns = 0;
 I64  w_scid[OD_MAXS], w_skind[OD_MAXS], w_shp[OD_MAXS], w_sprov[OD_MAXS];
 U8  *w_kindname[7];
+
+/* ── THE SEA ──
+ *
+ * A coarse grid of the water, because the province graph is a LAND graph:
+ * two harbours on the same ocean are usually not neighbours in it at all, so
+ * it can neither route a fleet nor say how far it went. Cells are sixteen
+ * pixels and count as navigable when at least half sea, which closes Panama
+ * -- two pixels wide here -- and leaves real straits open. */
+I64  w_gw = 0, w_gh = 0;
+U8  *w_nav = NULL;                      /* one byte per cell */
+I64  w_pcell[OD_MAXP];                  /* a province's harbour cell, or -1 */
 U8   w_name[OD_MAXP][16];
 
 I64  w_ccid[OD_MAXC], w_ccol[OD_MAXC], w_tre[OD_MAXC];
@@ -214,7 +225,9 @@ Bool WLoad(U8 *path = "world.odw")
     off += OD_CREC;
   }
 
-  /* the fleets, after the countries */
+  /* the sea grid and the fleets, after the countries */
+  w_gw = WU16(b + 24);
+  w_gh = WU16(b + 26);
   w_ns = WU16(b + 22);
   if (w_ns > OD_MAXS) w_ns = OD_MAXS;
   for (p = 0; p < w_ns; p++)
@@ -224,6 +237,20 @@ Bool WLoad(U8 *path = "world.odw")
     w_shp[p]   = b[off + 3];
     w_sprov[p] = WU16(b + off + 4);
     off += 6;
+  }
+
+  w_nav = MAlloc(w_gw * w_gh + 1);
+  for (p = 0; p < w_gw * w_gh; p++)
+    w_nav[p] = b[off + p];
+  off += w_gw * w_gh;
+
+  for (p = 0; p < w_np; p++) w_pcell[p] = -1;
+  k = WU16(b + 28);
+  for (p = 0; p < k; p++)
+  {
+    i = WU16(b + off);
+    if (i >= 0 && i < w_np) w_pcell[i] = WU16(b + off + 2);
+    off += 4;
   }
 
   Free(b);
@@ -237,8 +264,10 @@ U0 WFree()
 {
   if (w_pmap) Free(w_pmap);
   if (w_adj) Free(w_adj);
+  if (w_nav) Free(w_nav);
   w_pmap = NULL;
   w_adj = NULL;
+  w_nav = NULL;
 }
 
 /* The province under a point, or -1 for sea. Exact: this reads the raster, it

@@ -75,6 +75,7 @@ I64 r_wartime[OD_MAXC];             /* turns this war has run */
 #define RL_NAVYATK    8
 #define RL_NAVYDEF    9
 #define RL_NAVYCOST  10
+#define RL_NAVYSPEED 11
 
 /* ── KEEPING AN ARMY COSTS SOMETHING ──
  *
@@ -97,6 +98,17 @@ I64 r_wartime[OD_MAXC];             /* turns this war has run */
 #define R_SHIP_UPKEEP      2       /* tenths of a dollar, per hull per turn */
 #define R_SHIP_BUILD      200      /* tenths, before the harbour and levers */
 I64 r_shipstr[7];                  /* by class; filled by RInit */
+I64 r_shipspeed[7];                /* cells of sea, per turn */
+
+/* ── HOW FAR A FLEET CAN SAIL ──
+ *
+ * Breadth-first across navigable cells, marking every harbour reached within
+ * range. The grid is 2,048 cells, so this is small enough to run whenever
+ * somebody asks where a fleet could go -- which is the only time it runs.
+ */
+#define R_SEA_MAX   4096
+I64 r_seadist[R_SEA_MAX];          /* cells from the origin, -1 for unreached */
+I64 r_seaq[R_SEA_MAX];
 
 I64 r_ord_recruit[OD_MAXP];         /* men to raise here this turn */
 I64 r_ord_attack[OD_MAXP];          /* province index to assault, or -1 */
@@ -163,6 +175,80 @@ I64 RFleetAt(I64 ix, I64 cid)
   return n;
 }
 
+/* Fill r_seadist from a starting cell, stopping at `range`. */
+U0 RSeaFlood(I64 from, I64 range)
+{
+  I64 head = 0, tail = 0, c, cx_, cy_, nx, ny, k, i, cells;
+
+  cells = w_gw * w_gh;
+  if (cells > R_SEA_MAX) cells = R_SEA_MAX;
+  for (i = 0; i < cells; i++) r_seadist[i] = -1;
+  if (from < 0 || from >= cells || !w_nav[from]) return;
+
+  r_seadist[from] = 0;
+  r_seaq[tail] = from;
+  tail++;
+  while (head < tail)
+  {
+    c = r_seaq[head];
+    head++;
+    if (r_seadist[c] < range)
+    {
+      cy_ = c / w_gw;
+      cx_ = c - cy_ * w_gw;
+      for (i = 0; i < 4; i++)
+      {
+        nx = cx_;
+        ny = cy_;
+        if (i == 0) nx++;
+        if (i == 1) nx--;
+        if (i == 2) ny++;
+        if (i == 3) ny--;
+        /* The map wraps east to west: a fleet leaving the Pacific on one
+         * edge arrives on the other, which is the same ocean. */
+        if (nx < 0) nx = w_gw - 1;
+        if (nx >= w_gw) nx = 0;
+        if (ny >= 0 && ny < w_gh)
+        {
+          k = ny * w_gw + nx;
+          if (w_nav[k] && r_seadist[k] < 0 && tail < R_SEA_MAX)
+          {
+            r_seadist[k] = r_seadist[c] + 1;
+            r_seaq[tail] = k;
+            tail++;
+          }
+        }
+      }
+    }
+  }
+}
+
+/* The fleet's range out of a harbour: the slowest hull in it sets the pace. */
+I64 RFleetRange(I64 ix, I64 cid)
+{
+  I64 i, r = -1;
+  for (i = 0; i < w_ns; i++)
+    if (w_sprov[i] == ix && w_scid[i] == cid && w_shp[i] > 0)
+      if (r < 0 || r_shipspeed[w_skind[i]] < r) r = r_shipspeed[w_skind[i]];
+  if (r < 0) return 0;
+  return RScale(r, RLever(cid, RL_NAVYSPEED));
+}
+
+/* Can this fleet reach that harbour? Call RSeaFlood first. */
+Bool RSeaReaches(I64 to)
+{
+  if (w_pcell[to] < 0) return FALSE;
+  return r_seadist[w_pcell[to]] >= 0;
+}
+
+U0 RMoveFleet(I64 from, I64 to, I64 cid)
+{
+  I64 i;
+  for (i = 0; i < w_ns; i++)
+    if (w_sprov[i] == from && w_scid[i] == cid && w_shp[i] > 0)
+      w_sprov[i] = to;
+}
+
 I64 RFleetOf(I64 cid)
 {
   I64 i, n = 0;
@@ -182,6 +268,15 @@ U0 RInit()
   r_shipstr[4] = 10;   /* carrier    */
   r_shipstr[5] = 8;    /* battleship */
   r_shipstr[6] = 3;    /* frigate    */
+
+  /* Smaller hulls move further; a carrier group is not a torpedo boat. */
+  r_shipspeed[0] = 8;  /* boat       */
+  r_shipspeed[1] = 7;  /* destroyer  */
+  r_shipspeed[2] = 6;  /* cruiser    */
+  r_shipspeed[3] = 7;  /* submarine  */
+  r_shipspeed[4] = 5;  /* carrier    */
+  r_shipspeed[5] = 5;  /* battleship */
+  r_shipspeed[6] = 7;  /* frigate    */
   for (i = 0; i < OD_MAXC; i++)
   {
     r_enemy[i] = -1;

@@ -61,6 +61,7 @@ LEVERS = [
     "navyAtkPct",           # bombardment
     "navyDefPct",           # a fleet defending its harbour
     "navyCostPct",          # what a hull costs to lay down
+    "navySpeedPct",         # how far a fleet sails in a turn
 ]
 LEVER_SCALE = 10            # stored as tenths, so 0.5 survives as an integer
 
@@ -70,8 +71,6 @@ LEVERS_SKIPPED = {
     "industryUpkeepPct":   "industry cannot be built here",
     "migrationRate":       "no migration model",
     "popModPct":           "no per-province population modifier",
-    "navySpeedPct":        "ships act from their home port; there is no sea "
-                           "map to move across",
     "specSubsidyRoomPct":  "no industry specialisation",
     "specTaxRoomPct":      "no industry specialisation",
     "warDeclarations":     "one war at a time, by construction",

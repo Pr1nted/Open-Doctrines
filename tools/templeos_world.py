@@ -39,7 +39,7 @@ SEA_IX = 0xFFFF                  # the province index that means "no province"
 BORDER, SEA_COLOUR = 0, 1        # BLACK, BLUE
 LAND = [i for i in range(16) if i not in (SEA_COLOUR, BORDER)]
 
-MAGIC, VERSION = b"ODTW", 7
+MAGIC, VERSION = b"ODTW", 8
 
 # The record layouts, named once so the reader in templeos/World.HC can be
 # checked against a single number instead of against a shape spread over three
@@ -294,8 +294,58 @@ def main() -> int:
     KINDS = ["boat", "destroyer", "cruiser", "submarine", "carrier",
              "battleship", "frigate"]
 
-    blob += struct.pack("<HHHHHIIH", VERSION, W, H, n, len(cids),
-                        len(runs), len(adj_flat) // 2, len(fleet))
+    # ── THE SEA, AS A COARSE GRID ──
+    #
+    # Ships need somewhere to go and a distance to cover getting there, and
+    # the province graph cannot supply either: it is a land graph, and two
+    # harbours on the same ocean are usually not neighbours in it at all.
+    #
+    # So the water is divided into 16-pixel cells, a cell counting as
+    # navigable when it is at least half sea. That threshold does real work:
+    # at this resolution the Panama isthmus is about two pixels wide, so its
+    # cells are mostly land and the canal is correctly closed, while genuine
+    # straits stay open. Measured on the shipped raster, the result is one
+    # ocean -- 98% of navigable cells in a single connected body.
+    #
+    # Coarse on purpose. A per-pixel sea graph would be half a million nodes
+    # for a machine that has to search it every time somebody moves a fleet.
+    CELL = 16
+    GW, GH = W // CELL, H // CELL
+    nav = bytearray(GW * GH)
+    for gy in range(GH):
+        for gx in range(GW):
+            sea = 0
+            for yy in range(gy * CELL, gy * CELL + CELL):
+                row = yy * W
+                for xx in range(gx * CELL, gx * CELL + CELL):
+                    if grid[row + xx] == SEA_IX:
+                        sea += 1
+            if sea * 2 >= CELL * CELL:
+                nav[gy * GW + gx] = 1
+
+    # Each harbour's cell: the nearest navigable one to its centre. A port
+    # whose water is more than three cells away is not on this sea and is
+    # left out rather than given a berth it cannot reach.
+    port_cells = []
+    for ix in range(n):
+        if portlvl[ix] <= 0:
+            continue
+        px_ = cx[ix] // max(cn[ix], 1)
+        py_ = cy[ix] // max(cn[ix], 1)
+        gx0, gy0 = px_ // CELL, py_ // CELL
+        best, bestd = -1, None
+        for gy in range(max(0, gy0 - 3), min(GH, gy0 + 4)):
+            for gx in range(max(0, gx0 - 3), min(GW, gx0 + 4)):
+                if nav[gy * GW + gx]:
+                    d = (gx - gx0) ** 2 + (gy - gy0) ** 2
+                    if bestd is None or d < bestd:
+                        best, bestd = gy * GW + gx, d
+        if best >= 0:
+            port_cells.append((ix, best))
+
+    blob += struct.pack("<HHHHHIIHHHH", VERSION, W, H, n, len(cids),
+                        len(runs), len(adj_flat) // 2, len(fleet),
+                        GW, GH, len(port_cells))
     blob += runs
     # ── ONE PROVINCE RECORD, 44 BYTES, WRITTEN IN ONE PLACE ──
     #
@@ -343,12 +393,17 @@ def main() -> int:
         k = KINDS.index(kind) if kind in KINDS else 0
         blob += struct.pack("<HBBH", cid & 0xFFFF, k, health, ix)
 
+    blob += bytes(nav)
+    for ix, cell in port_cells:
+        blob += struct.pack("<HH", ix, cell)
+
     pathlib.Path(a.out).write_bytes(blob)
     # The reader's arithmetic, done here: if this does not land exactly on the
     # end of the file, the two sides disagree about a record size and every
     # country will come out as garbage.
-    expect = (24 + len(runs) + n * PROV_REC + len(adj_flat)
-              + len(cids) * CTRY_REC + len(fleet) * 6)
+    expect = (30 + len(runs) + n * PROV_REC + len(adj_flat)
+              + len(cids) * CTRY_REC + len(fleet) * 6
+              + GW * GH + len(port_cells) * 4)
     assert expect == len(blob), f"layout mismatch: {expect} computed, {len(blob)} written"
 
     print(f"{a.out}: {W}x{H}, {n} provinces, {len(cids)} countries, "
@@ -359,6 +414,8 @@ def main() -> int:
           f"{sum(1 for f in forts if f)} fortified, "
           f"{sum(1 for m in resmask if m)} with deposits, "
           f"{sum(1 for v in portlvl if v)} ports, {len(fleet)} ships")
+    print(f"  sea grid {GW}x{GH}, {sum(nav)} navigable cells, "
+          f"{len(port_cells)} harbours on the water")
     return 0
 
 

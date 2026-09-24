@@ -51,6 +51,16 @@ U8 *g_side[4];
  * and the C++'s sixth share a number and nothing else. One numbering, and it
  * belongs to the C++.
  */
+/* ── SENDING A FLEET SOMEWHERE ──
+ *
+ * Entered with m at a harbour you have ships in: the sea is flooded out to
+ * the fleet's range, every harbour of yours it reaches becomes a candidate,
+ * and h/l walks them. The distance is real -- cells of open water crossed --
+ * so a policy that changes naval speed changes where your ships can be next
+ * turn, which is the only way that lever could mean anything. */
+I64 g_navfrom = -1;
+I64 g_navlist[512], g_navn = 0, g_navi = 0;
+
 I64 g_view_live[G_NTAB];          /* which of the eight this build can draw */
 I64 g_view = -1;                  /* a SY_VIEW_* value, or -1 for political */
 
@@ -274,6 +284,25 @@ U0 GShips()
           PFill(x - 1, y - k * 3, 3, 2, 200, 120, 110);
       }
     }
+}
+
+/* The harbour a fleet is being sent to, ringed while you choose. */
+U0 GNavTarget()
+{
+  I64 x, y, i;
+  if (g_navfrom < 0 || !g_navn) return;
+  x = w_cx[g_navlist[g_navi]];
+  y = w_cy[g_navlist[g_navi]] + G_MAPY;
+  for (i = 0; i < 7; i++)
+  {
+    PFill(x - 6 + i, y - 6, 1, 1, 235, 205, 60);
+    PFill(x - 6 + i, y + 6, 1, 1, 235, 205, 60);
+    PFill(x - 6, y - 6 + i, 1, 1, 235, 205, 60);
+    PFill(x + 6, y - 6 + i, 1, 1, 235, 205, 60);
+  }
+  x = w_cx[g_navfrom];
+  y = w_cy[g_navfrom] + G_MAPY;
+  PFill(x - 2, y - 2, 5, 5, 120, 215, 130);
 }
 
 U0 GNames()
@@ -677,6 +706,7 @@ U0 GDraw()
 {
   GDrawMap;
   GShips;
+  GNavTarget;
   GNames;
   GPanel;
   GSide;
@@ -890,6 +920,7 @@ U0 ODPlay(I64 cid)
   g_minei = -1;
   g_overlay = -1;
   g_view = -1;
+  g_navfrom = -1;
   for (i = 0; i < 4; i++)
   {
     g_ocur[i] = 0;
@@ -899,7 +930,7 @@ U0 ODPlay(I64 cid)
   for (i = 0; i < d_npol; i++) d_active[i] = 0;
   d_rp = 0;
   StrCpy(g_status, "h/l province  r raise  a assault  b shell  B build  "
-                   "1-8 views  P E C R panels");
+                   "f fleet  m sail  1-8 views  P E C R panels");
 
   try
   {
@@ -912,7 +943,14 @@ U0 ODPlay(I64 cid)
       if (ch)
       {
         if (ch == CH_ESC || ch == CH_SHIFT_ESC)
-          goto g_done;
+        {
+          /* Escape backs out of whatever is open before it leaves the game:
+           * quitting because somebody cancelled a fleet order would be a
+           * memorable way to lose a campaign. */
+          if (g_navfrom >= 0) g_navfrom = -1;
+          else if (g_overlay >= 0) g_overlay = -1;
+          else goto g_done;
+        }
         else if (ch >= '1' && ch <= '8')
         {
           /* The tab keys follow the desktop game's bar, so "3" is Defence
@@ -1004,8 +1042,16 @@ U0 ODPlay(I64 cid)
           if (g_overlay == i) g_overlay = -1;
           else                g_overlay = i;
         }
-        else if (ch == 'l' || ch == 'h')
+        else if ((ch == 'l' || ch == 'h') && g_navfrom < 0)
         {
+          /* ── ORDER IN THIS CHAIN IS MEANING ──
+           *
+           * h and l walk your provinces, and they also choose a destination
+           * once a fleet is being sent somewhere. Whichever branch comes
+           * first in the chain wins, so the one that must NOT win says so in
+           * its own condition rather than relying on where it happens to sit.
+           * Without this guard the fleet dialogue was on screen, taking keys,
+           * and silently unable to change its answer. */
           if (g_nmine)
           {
             if (ch == 'l') g_minei++;
@@ -1029,6 +1075,76 @@ U0 ODPlay(I64 cid)
           else
             StrPrint(g_status, "not enough money to raise men in %s",
                      w_name[g_sel]);
+        }
+        else if (ch == 'f')
+        {
+          /* Jump to the next harbour of yours with ships in it. Walking
+           * forty provinces to find the three with a fleet is not a naval
+           * interface. */
+          n = -1;
+          for (i = 1; i <= w_np && n < 0; i++)
+          {
+            s = g_sel + i;
+            if (s >= w_np) s -= w_np;
+            if (s >= 0 && w_own[s] == w_me && RFleetAt(s, w_me) > 0) n = s;
+          }
+          if (n < 0)
+            StrCpy(g_status, "you have no ships");
+          else
+          {
+            g_sel = n;
+            StrPrint(g_status, "%s: fleet of %d strength, range %d",
+                     w_name[n], RFleetAt(n, w_me), RFleetRange(n, w_me));
+          }
+        }
+        else if (ch == 'm' && g_sel >= 0 && w_own[g_sel] == w_me &&
+                 g_navfrom < 0)
+        {
+          n = RFleetRange(g_sel, w_me);
+          if (!n)
+            StrPrint(g_status, "no ships at %s", w_name[g_sel]);
+          else
+          {
+            RSeaFlood(w_pcell[g_sel], n);
+            g_navn = 0;
+            for (i = 0; i < w_np && g_navn < 512; i++)
+              if (i != g_sel && w_own[i] == w_me && w_port[i] > 0 &&
+                  RSeaReaches(i))
+              {
+                g_navlist[g_navn] = i;
+                g_navn++;
+              }
+            if (!g_navn)
+              StrPrint(g_status,
+                       "nowhere within %d cells of sea from %s", n,
+                       w_name[g_sel]);
+            else
+            {
+              g_navfrom = g_sel;
+              g_navi = 0;
+              StrPrint(g_status, "sail to %s (%d cells)  h/l choose  ENTER go",
+                       w_name[g_navlist[0]], r_seadist[w_pcell[g_navlist[0]]]);
+            }
+          }
+        }
+        else if (g_navfrom >= 0 && (ch == 'h' || ch == 'l'))
+        {
+          if (ch == 'l') g_navi++;
+          else           g_navi--;
+          if (g_navi >= g_navn) g_navi = 0;
+          if (g_navi < 0) g_navi = g_navn - 1;
+          StrPrint(g_status, "sail to %s (%d cells)  h/l choose  ENTER go",
+                   w_name[g_navlist[g_navi]],
+                   r_seadist[w_pcell[g_navlist[g_navi]]]);
+        }
+        else if (g_navfrom >= 0 && ch == '\n')
+        {
+          i = g_navlist[g_navi];
+          RMoveFleet(g_navfrom, i, w_me);
+          StrPrint(g_status, "the fleet sailed from %s to %s",
+                   w_name[g_navfrom], w_name[i]);
+          g_navfrom = -1;
+          g_sel = i;
         }
         else if (ch == 'b' && g_sel >= 0 && w_own[g_sel] == w_me)
         {
