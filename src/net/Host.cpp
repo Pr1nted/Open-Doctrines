@@ -1221,6 +1221,18 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
                 broadcastLobbyInternal();
                 return;
             }
+            // ── FOR THE TURN THAT IS RUNNING ──
+            //
+            // The number came straight off the wire and was stored unchecked,
+            // so a client that had fallen a turn behind submitted for the turn
+            // it thought was current, the lobby recorded it, and the roster
+            // told that player their orders were in -- while the turn actually
+            // running still counted them missing and let the AI play them.
+            // Every turn, invisibly, for as long as they stayed behind.
+            if (turnNumber != 0 && o.turnNumber != turnNumber) {
+                push({NetHostEvent::Kind::OrdersReceived, peerId, "for another turn", {}});
+                return;
+            }
             if (lobby.submitOrders(peerId, o.turnNumber, o.payload) == LobbyDenial::None) {
                 push({NetHostEvent::Kind::OrdersReceived, peerId, "", {}});
                 broadcastLobbyInternal();
