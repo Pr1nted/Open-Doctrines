@@ -35,6 +35,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RENDER = ROOT / "src" / "Game_Render.cpp"
+RESEARCH = ROOT / "src" / "Game_Research.cpp"
+DATA = ROOT / "templeos" / "game.odd"
 GAMEH = ROOT / "src" / "Game.h"
 CLIENT = ROOT / "templeos" / "ODGame.HC"
 OUT = ROOT / "templeos" / "Sync.HH"
@@ -135,6 +137,31 @@ def main() -> int:
             if v not in views:
                 problems.append(f"{v} is recorded as skipped but the C++ no "
                                 f"longer has it")
+        # ── THE RESEARCH TREE, BY COUNT ──
+        #
+        # The tree is built in C++ code, not a data file, and templeos_data.py
+        # parses those calls. If a node is added there and the baked table is
+        # not rebuilt, the TempleOS build is simply missing a technology --
+        # which nothing else here would notice.
+        if DATA.exists():
+            import struct as _s
+            blob = DATA.read_bytes()
+            if blob[:4] != b"ODTD":
+                problems.append("templeos/game.odd is not a data file")
+            else:
+                baked = _s.unpack("<H", blob[6:8])[0]
+                src = re.sub(r"//[^\n]*", "",
+                             RESEARCH.read_text(errors="replace"))
+                want = len(re.findall(r'add\(\s*"', src))
+                if baked != want:
+                    problems.append(
+                        f"the research tree has {want} nodes and "
+                        f"templeos/game.odd has {baked} -- run "
+                        f"tools/templeos_data.py")
+        else:
+            problems.append("templeos/game.odd is missing -- run "
+                            "tools/templeos_data.py")
+
         for v in sorted(mine - set(views)):
             problems.append(f"the TempleOS client implements {v}, which the "
                             f"C++ does not have")
@@ -143,8 +170,10 @@ def main() -> int:
         if problems:
             print(f"templeos sync: {len(problems)} divergence(s)")
             return 1
+        import struct as _s
+        nodes = _s.unpack("<H", DATA.read_bytes()[6:8])[0]
         print(f"templeos sync: {len(views)} views, {len(CONSTANTS)} constants, "
-              f"{len(SKIPPED)} skipped on the record")
+              f"{nodes} research nodes, {len(SKIPPED)} skipped on the record")
         return 0
 
     OUT.write_text(text)

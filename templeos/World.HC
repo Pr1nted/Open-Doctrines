@@ -13,7 +13,7 @@
  * guessing the nearest centre.
  */
 
-#define OD_WORLD_VER  5
+#define OD_WORLD_VER  6
 /* Sized to the world, not to a round number: eleven arrays of this length
  * live in the global segment, and at 4096 they were 440 KB before Rules.HC
  * and the renderer added theirs. */
@@ -21,7 +21,7 @@
 #define OD_MAXC     256
 #define OD_SEA   0xFFFF        /* the index meaning "no province" */
 #define OD_HDR      22
-#define OD_PREC     48         /* bytes per province record */
+#define OD_PREC     50         /* bytes per province record */
 #define OD_CREC     34         /* bytes per country record  */
 
 U16 *w_pmap = NULL;            /* province index per pixel */
@@ -151,16 +151,16 @@ Bool WLoad(U8 *path = "world.odw")
     w_cy[p]   = WU16(b + off + 6);
     w_own[p]  = WU16(b + off + 8);
     w_pop[p]  = WU32(b + off + 10);
-    w_army[p] = WU16(b + off + 14);
-    w_inc[p]  = WU16(b + off + 16);
-    w_adjn[p] = b[off + 18];
-    w_fort[p] = b[off + 19];
-    w_adjo[p] = WU32(b + off + 20);
-    w_area[p] = WU32(b + off + 24);
-    w_ind[p]  = b[off + 28];
-    w_res[p]  = b[off + 29];
+    w_army[p] = WU32(b + off + 14);      /* 32-bit: garrisons reach millions */
+    w_inc[p]  = WU16(b + off + 18);
+    w_adjn[p] = b[off + 20];
+    w_fort[p] = b[off + 21];
+    w_adjo[p] = WU32(b + off + 22);
+    w_area[p] = WU32(b + off + 26);
+    w_ind[p]  = b[off + 30];
+    w_res[p]  = b[off + 31];
     for (k = 0; k < 15; k++)
-      w_name[p][k] = b[off + 32 + k];
+      w_name[p][k] = b[off + 34 + k];
     w_name[p][15] = 0;
     off += OD_PREC;
   }

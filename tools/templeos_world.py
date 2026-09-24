@@ -39,13 +39,16 @@ SEA_IX = 0xFFFF                  # the province index that means "no province"
 BORDER, SEA_COLOUR = 0, 1        # BLACK, BLUE
 LAND = [i for i in range(16) if i not in (SEA_COLOUR, BORDER)]
 
-MAGIC, VERSION = b"ODTW", 5
+MAGIC, VERSION = b"ODTW", 6
 
 # The record layouts, named once so the reader in templeos/World.HC can be
 # checked against a single number instead of against a shape spread over three
 # calls. PROV_REC and CTRY_REC are what OD_PREC and OD_CREC must equal there.
-PROV_FMT = "<IHHHIHHBBIIBBH"
-PROV_REC = 48          # PROV_FMT plus a 16-byte name
+# army is 32-bit: a sixteen-bit field saturates at 65,535 and this game
+# routinely garrisons millions, so India showed up in the claims panel with
+# exactly 65535 men -- a number that looks like data and is a clamp.
+PROV_FMT = "<IHHHIIHBBIIBBH"
+PROV_REC = 50          # PROV_FMT plus a 16-byte name
 CTRY_FMT = "<HBB"
 CTRY_REC = 34          # CTRY_FMT plus iso(4) treasury(2) rgb(4) name(20)
 
@@ -196,7 +199,7 @@ def main() -> int:
 
         garrison = armies.get(str(pid), [])
         army.append(min(sum(int(g.get("count", 0)) for g in garrison
-                            if isinstance(g, dict)), 0xFFFF))
+                            if isinstance(g, dict)), 0xFFFFFFFF))
 
         r = resources.get(str(pid), {})
         ind = r.get("industry", {}) if isinstance(r, dict) else {}

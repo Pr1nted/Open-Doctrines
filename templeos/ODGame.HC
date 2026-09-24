@@ -15,6 +15,7 @@
  */
 #include "Paint"
 #include "Rules"
+#include "Data"
 #include "Sync.HH"
 
 #define G_MAPY    128           /* the map is 2:1; the screen is 4:3 */
@@ -330,8 +331,11 @@ U0 GPanel()
  * desktop game puts them. Two of them open something; the other two are drawn
  * dimmed and say so when pressed, because a button that looks live and does
  * nothing is worse than one that admits it. */
-I64 g_side_live[4] = {0, 1, 1, 0};
+I64 g_side_live[4] = {1, 1, 1, 1};   /* all four carry real tables now */
 I64 g_overlay = -1;              /* which side panel is open, or -1 */
+I64 g_ocur[4];                   /* the highlighted row in each panel */
+I64 g_otop[4];                   /* the first row shown, for scrolling */
+#define G_ROWS  26               /* rows a panel shows at once */
 
 #define G_SIDEX   (P_W - 104)
 #define G_SIDEY   200
@@ -361,7 +365,7 @@ U0 GSide()
 
 U0 GBar()
 {
-  I64 i, v, x, w, tw, lit;
+  I64 i, x, w, tw, lit;
 
   PGlass(0, G_BARY, P_W, P_H - G_BARY, 34, 36, 40, 225);
   PFill(0, G_BARY, P_W, 1, 70, 74, 84);
@@ -405,21 +409,65 @@ U0 GBar()
  * Economy and Claims, from the numbers actually in the world file. Politics
  * and Research need policy and technology tables this build does not carry,
  * and rather than draw a convincing empty frame they say so. */
+/* One row of a panel, with the highlight the cursor sits on. */
+U0 GRow(I64 y, Bool cur, U8 *text, I64 r, I64 g, I64 b)
+{
+  if (cur)
+  {
+    PFill(166, y - 2, P_W - 432, 13, 30, 38, 52);
+    PText(170, y, ">", 235, 200, 90);
+  }
+  PText(182, y, text, r, g, b);
+}
+
+/* ── THE PANELS ──
+ *
+ * Politics, Economy, Claims and Research, from the tables the build actually
+ * carries: 59 policies and 86 research nodes baked out of the desktop game's
+ * own definitions, and the real claims table. Nothing here is invented, and
+ * where a number is not available it is left out rather than guessed.
+ */
 U0 GOverlay()
 {
-  I64 i, s, prov, men, inc, y, n, upkeep, k, nb;
+  I64 i, s, prov, men, inc, y, n, upkeep, k, nb, cur, top, shown;
+  U8 line[128], *word, *branch;
 
   if (g_overlay < 0) return;
-  PGlass(150, 90, P_W - 400, 520, 8, 10, 14, 238);
-  PRect(150, 90, P_W - 400, 520, 70, 74, 84);
+  PGlass(150, 90, P_W - 400, 560, 8, 10, 14, 238);
+  PRect(150, 90, P_W - 400, 560, 70, 74, 84);
   PText(170, 108, g_side[g_overlay], 240, 240, 245, 2);
   PFill(170, 134, P_W - 440, 1, 70, 74, 84);
 
   s = WSlot(w_me);
   RCountryStats(w_me, &prov, &men, &inc);
   y = 152;
+  cur = g_ocur[g_overlay];
+  top = g_otop[g_overlay];
 
-  if (g_overlay == 1)            /* Economy */
+  if (g_overlay == 0)            /* ── POLITICS ── */
+  {
+    PPrint(170, y, 150, 160, 175, 1,
+           "%d policies.  ENTER enacts or repeals.  Upkeep comes out of income "
+           "every turn.", d_npol);
+    y += 20;
+    PText(170, y, "Policy                    Category    Cost/turn  Turns",
+          150, 160, 175);
+    y += 14;
+    shown = 0;
+    for (i = top; i < d_npol && shown < G_ROWS; i++)
+    {
+      StrPrint(line, "%-24s  %-10s  %6d.%d  %5d",
+               d_pname[i], d_pcat[i], d_pcost[i] / 10, d_pcost[i] % 10,
+               d_pturns[i]);
+      if (d_active[i])
+        GRow(y, i == cur, line, 120, 215, 130);
+      else
+        GRow(y, i == cur, line, 205, 210, 220);
+      y += 13;
+      shown++;
+    }
+  }
+  else if (g_overlay == 1)       /* ── ECONOMY ── */
   {
     PPrint(170, y, 235, 235, 240, 1, "Treasury        %c%d.%d",
            0x24, w_tre[s] / 10, w_tre[s] % 10);
@@ -427,66 +475,97 @@ U0 GOverlay()
     PPrint(170, y, 230, 200, 90, 1, "Income          %d.%d per turn",
            inc / 10, inc % 10);
     y += 16;
-    /* Upkeep is what the standing army costs to raise again, which is the
-     * only price this rule set charges for it. */
-    upkeep = men / 1000;
+    upkeep = 0;
+    for (i = 0; i < d_npol; i++)
+      if (d_active[i]) upkeep += d_pcost[i];
+    PPrint(170, y, 205, 130, 120, 1, "Policy upkeep   %d.%d per turn",
+           upkeep / 10, upkeep % 10);
+    y += 16;
     PPrint(170, y, 200, 205, 215, 1, "Standing army   %d men", men);
     y += 16;
-    PPrint(170, y, 200, 205, 215, 1, "Raising that again would cost %c%d.%d",
-           0x24, upkeep / 10, upkeep % 10);
+    PPrint(170, y, 200, 205, 215, 1, "Research        %d points, %d per turn",
+           d_rp, DResearchRate(inc));
     y += 24;
     PText(170, y, "Province            People      Income   Ind  Fort",
           150, 160, 175);
     y += 14;
     n = 0;
-    for (i = 0; i < w_np && n < 22; i++)
+    for (i = 0; i < w_np && n < 20; i++)
       if (w_own[i] == w_me)
       {
-        PPrint(170, y, 205, 210, 220, 1, "%-18s %9d %8d.%d %4d %5d",
+        PPrint(182, y, 205, 210, 220, 1, "%-18s %9d %8d.%d %4d %5d",
                w_name[i], w_pop[i], w_inc[i] / 10, w_inc[i] % 10,
                w_ind[i], w_fort[i]);
         y += 13;
         n++;
       }
   }
-  else if (g_overlay == 2)       /* Claims */
+  else if (g_overlay == 2)       /* ── CLAIMS ── */
   {
-    /* A claim here is a border this country is actually fighting over: the
-     * desktop game has a claims table and this build does not carry it, so
-     * rather than invent one, these are the real adjacencies to countries at
-     * war with you -- which is the same question asked of the data there is. */
-    PText(170, y, "Contested borders -- neighbours you are at war with",
-          150, 160, 175);
-    y += 20;
-    n = 0;
-    for (i = 0; i < w_np && n < 24; i++)
-      if (w_own[i] == w_me)
+    k = DClaimsOf(w_me);
+    if (k < 0)
+      PText(170, y, "This country claims nothing.", 150, 160, 175);
+    else
+    {
+      PPrint(170, y, 150, 160, 175, 1,
+             "%d provinces claimed.  A claim is land the desktop game's claims "
+             "table says is yours.", d_cln[k]);
+      y += 20;
+      PText(170, y, "Province                Held by      Garrison   Adjacent",
+            150, 160, 175);
+      y += 14;
+      for (i = 0; i < d_cln[k] && i < G_ROWS; i++)
       {
-        for (k = 0; k < w_adjn[i]; k++)
-        {
-          nb = WNeighbour(i, k);
-          if (nb >= 0 && w_own[nb] != w_me && RAtWar(w_me, w_own[nb]) && n < 24)
-          {
-            PPrint(170, y, 225, 130, 120, 1, "%-18s borders %-18s (%s) %d men",
-                   w_name[i], w_name[nb], WIso(w_own[nb]), w_army[nb]);
-            y += 13;
-            n++;
-          }
-        }
+        nb = d_clprov[d_clfirst[k] + i];
+        n = 0;
+        for (s = 0; s < w_adjn[nb]; s++)
+          if (WNeighbour(nb, s) >= 0 && w_own[WNeighbour(nb, s)] == w_me) n = 1;
+        word = "no";
+        if (n) word = "yes";
+        StrPrint(line, "%-22s  %-11s  %8d   %s",
+                 w_name[nb], WCName(w_own[nb]), w_army[nb], word);
+        if (w_own[nb] == w_me)
+          GRow(y, FALSE, line, 120, 215, 130);
+        else
+          GRow(y, FALSE, line, 225, 130, 120);
+        y += 13;
       }
-    if (!n)
-      PText(170, y, "None. You are at war with nobody.", 150, 160, 175);
+    }
   }
-  else
+  else                           /* ── RESEARCH ── */
   {
-    PText(170, y, "This panel needs tables the TempleOS build does not carry",
-          200, 205, 215);
-    y += 16;
-    PText(170, y, "(policies and the research tree). Nothing is faked here.",
+    PPrint(170, y, 150, 160, 175, 1,
+           "%d technologies.  %d points, %d per turn.  ENTER starts one.",
+           d_nres, d_rp, DResearchRate(inc));
+    y += 20;
+    PText(170, y, "Technology                Branch        Cost   State",
           150, 160, 175);
+    y += 14;
+    shown = 0;
+    for (i = top; i < d_nres && shown < G_ROWS; i++)
+    {
+      /* Spelled out rather than nested in a conditional expression, which
+       * HolyC does not have at all. */
+      branch = "-";
+      if (d_rcat[i] < 6) branch = d_rcatname[d_rcat[i]];
+      word = "locked";
+      if (DResAvailable(i)) word = "available";
+      if (i == d_researching) word = "researching";
+      if (d_done[i]) word = "done";
+      StrPrint(line, "%-24s  %-12s  %5d   %s",
+               d_rname[i], branch, d_rcost[i], word);
+      if (d_done[i])
+        GRow(y, i == cur, line, 120, 215, 130);
+      else if (DResAvailable(i))
+        GRow(y, i == cur, line, 205, 210, 220);
+      else
+        GRow(y, i == cur, line, 110, 116, 128);
+      y += 13;
+      shown++;
+    }
   }
 
-  PText(170, 570, "press the same key again, or ESC, to close",
+  PText(170, 620, "j/k move   ENTER act   ESC close",
         130, 138, 150);
 }
 
@@ -534,39 +613,185 @@ I64 GWeakestNeighbour(I64 ix)
  * directory defining a function of that name, and the two resolving against
  * each other produced a call that did nothing at all -- no output, no error,
  * no elapsed time. */
-U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
-{
-  I64 ch, i, s, men, cost, tgt;
 
-  if (!WLoad(world))
+/* ── THE MAIN MENU ──
+ *
+ * The desktop game's, as closely as this screen allows: the world in
+ * silhouette behind, the title in yellow over it, and the items centred with
+ * the selected one underlined. Four of the seven do nothing here and are
+ * dimmed, for the same reason the Navy tab is -- a menu that hides what it
+ * cannot do is lying about the game.
+ */
+U8 *g_menu[7];
+I64 g_menu_live[7];
+
+U0 GMenuInit()
+{
+  g_menu[0] = "Play Singleplayer";   g_menu_live[0] = 1;
+  g_menu[1] = "Play Multiplayer";    g_menu_live[1] = 0;
+  g_menu[2] = "Map Editor";          g_menu_live[2] = 0;
+  g_menu[3] = "Mod Menu";            g_menu_live[3] = 0;
+  g_menu[4] = "Community";           g_menu_live[4] = 0;
+  g_menu[5] = "Credits";             g_menu_live[5] = 1;
+  g_menu[6] = "Quit";                g_menu_live[6] = 1;
+}
+
+/* The world as land and sea only, which is what the menu behind the title is
+ * in the real game. Drawn from the same raster the map uses. */
+U0 GSilhouette(I64 top)
+{
+  I64 x, y, k, o;
+  for (y = 0; y < w_h; y++)
+    for (x = 0; x < w_w; x++)
+    {
+      k = y * w_w + x;
+      o = ((y + top) * P_W + x) * P_BPP;
+      if (w_pmap[k] == OD_SEA)
+      {
+        p_fb[o] = 40; p_fb[o + 1] = 26; p_fb[o + 2] = 16;
+      }
+      else
+      {
+        p_fb[o] = 78; p_fb[o + 1] = 74; p_fb[o + 2] = 70;
+      }
+    }
+}
+
+U0 GMenuDraw(I64 cur)
+{
+  I64 i, y, tw, r, g, b;
+
+  PFill(0, 0, P_W, P_H, 6, 7, 11);
+  GSilhouette(128);
+  /* The band the items sit on, so the text is legible over Africa. */
+  PGlass(0, 280, P_W, 300, 0, 0, 0, 205);
+
+  tw = PTextW("OpenDoctrines", 4);
+  PText((P_W - tw) / 2, 90, "OpenDoctrines", 235, 205, 60, 4);
+  tw = PTextW("A Grand Strategy Game", 1);
+  PText((P_W - tw) / 2, 140, "A Grand Strategy Game", 175, 180, 190);
+  PFill((P_W - 300) / 2, 154, 300, 1, 150, 130, 60);
+
+  y = 310;
+  for (i = 0; i < 7; i++)
   {
-    "$$FG,RED$$cannot load %s$$FG$$\n", world;
-    return;
+    tw = PTextW(g_menu[i], 2);
+    r = 205; g = 210; b = 220;
+    if (!g_menu_live[i]) { r = 95; g = 100; b = 110; }
+    if (i == cur)        { r = 235; g = 205; b = 60; }
+    PText((P_W - tw) / 2, y, g_menu[i], r, g, b, 2);
+    if (i == cur)
+      PFill((P_W - tw) / 2, y + 21, tw, 1, 235, 205, 60);
+    y += 36;
   }
-  w_me = -1;
-  for (i = 0; i < w_nc; i++)
-    if (!StrCmp(w_ciso[i], iso)) w_me = w_ccid[i];
-  if (w_me < 0)
+
+  PText(14, P_H - 18, "j/k move   ENTER choose   ESC quit", 120, 128, 140);
+  PText(P_W - 150, P_H - 18, "TempleOS build", 120, 128, 140);
+}
+
+/* ── CHOOSING A COUNTRY ──
+ *
+ * Every country with land, by province count, because that is the only
+ * measure of a seat this build can show before the game starts. */
+I64 GSelect()
+{
+  I64 ch, i, s, cur = 0, top = 0, y, n, rows = 24;
+  I64 cnt[OD_MAXC];
+  U8 line[96];
+  Bool dirty = TRUE;
+
+  for (i = 0; i < w_nc; i++) cnt[i] = 0;
+  for (i = 0; i < w_np; i++)
   {
-    "$$FG,RED$$no country %s in this world$$FG$$\n", iso;
-    return;
+    s = WSlot(w_own[i]);
+    if (s >= 0) cnt[s]++;
   }
-  GInitTables;
+
+  /* ── DRAWN ON INPUT, NOT ON A LOOP ──
+   *
+   * A full repaint is half a million pixels and the silhouette is most of
+   * them. Redrawing every pass through the loop does not merely waste the
+   * machine: the screen is visibly half-painted most of the time, because
+   * nothing here double-buffers. Nothing on this screen moves by itself, so
+   * it is drawn when something changes and left alone otherwise. */
+  while (TRUE)
+  {
+    if (dirty)
+    {
+    dirty = FALSE;
+    PFill(0, 0, P_W, P_H, 6, 7, 11);
+    GSilhouette(128);
+    PGlass(0, 0, P_W, P_H, 0, 0, 0, 215);
+    PText(60, 40, "Choose a country", 235, 235, 245, 2);
+    PText(60, 74, "j/k move   ENTER play   ESC back", 140, 148, 160);
+
+    y = 110;
+    n = 0;
+    for (i = top; i < w_nc && n < rows; i++)
+    {
+      if (cnt[i] > 0)
+      {
+        StrPrint(line, "%-22s  %-4s  %4d provinces", w_cname[i], w_ciso[i],
+                 cnt[i]);
+        if (i == cur)
+        {
+          PFill(56, y - 2, 420, 13, 30, 38, 52);
+          PText(60, y, ">", 235, 200, 90);
+          PText(74, y, line, 235, 205, 60);
+        }
+        else
+          PText(74, y, line, 205, 210, 220);
+        y += 13;
+        n++;
+      }
+    }
+    }
+
+    ch = ScanChar;
+    if (ch == CH_ESC || ch == CH_SHIFT_ESC) return -1;
+    if (ch == '\n' && cnt[cur] > 0) return w_ccid[cur];
+    if (ch == 'j' || ch == 'k')
+    {
+      dirty = TRUE;
+      if (ch == 'j') cur++;
+      else           cur--;
+      if (cur >= w_nc) cur = 0;
+      if (cur < 0) cur = w_nc - 1;
+      while (cur < w_nc && cnt[cur] == 0) cur++;
+      if (cur >= w_nc) cur = 0;
+      if (cur < top) top = cur;
+      if (cur >= top + rows) top = cur - rows + 1;
+    }
+    Sleep(10);
+  }
+}
+
+/* ── ONE GAME, ON A SCREEN SOMEBODY ELSE OPENED ──
+ *
+ * Takes a country and plays, assuming the world is loaded and the framebuffer
+ * is already ours. Split out so the menu can start a game and get control
+ * back when it ends, without either of them owning the video mode. */
+U0 ODPlay(I64 cid)
+{
+  I64 ch, i, s, men, cost, tgt, n, prov, inc;
+
+  w_me = cid;
   RInit;
   GOwnList;
   GShade;
-  StrCpy(g_status, "h/l to walk your provinces, r to raise men, ENTER to end the turn");
-
-  /* The game's own font, if it was baked. Everything still works without it,
-   * in the OS's 8x8 face -- worse looking, never broken. */
-  PFontLoad;
-
-  if (!PaintBegin)
+  g_sel = -1;
+  g_minei = -1;
+  g_overlay = -1;
+  g_view = -1;
+  for (i = 0; i < 4; i++)
   {
-    "$$FG,RED$$no linear framebuffer here -- this needs the DISPI registers"
-    " (QEMU, Bochs, VirtualBox)$$FG$$\n";
-    return;
+    g_ocur[i] = 0;
+    g_otop[i] = 0;
   }
+  for (i = 0; i < d_nres; i++) d_done[i] = 0;
+  for (i = 0; i < d_npol; i++) d_active[i] = 0;
+  d_rp = 0;
+  StrCpy(g_status, "h/l province  r raise  a assault  1-8 views  P E C R panels");
 
   try
   {
@@ -601,6 +826,66 @@ U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
           g_view = -1;
           StrCpy(g_status, "political map");
           GShade;
+        }
+        else if (g_overlay >= 0 && (ch == 'j' || ch == 'k'))
+        {
+          /* While a panel is open the cursor keys belong to it, not to the
+           * map underneath. */
+          n = 0;
+          if (g_overlay == 0) n = d_npol;
+          if (g_overlay == 3) n = d_nres;
+          if (n)
+          {
+            if (ch == 'j') g_ocur[g_overlay]++;
+            else           g_ocur[g_overlay]--;
+            if (g_ocur[g_overlay] >= n) g_ocur[g_overlay] = n - 1;
+            if (g_ocur[g_overlay] < 0) g_ocur[g_overlay] = 0;
+            if (g_ocur[g_overlay] < g_otop[g_overlay])
+              g_otop[g_overlay] = g_ocur[g_overlay];
+            if (g_ocur[g_overlay] >= g_otop[g_overlay] + G_ROWS)
+              g_otop[g_overlay] = g_ocur[g_overlay] - G_ROWS + 1;
+          }
+        }
+        else if (g_overlay == 0 && ch == '\n')
+        {
+          /* Enact or repeal. The cost is per turn and comes out of income, so
+           * nothing is charged here -- the turn charges it. */
+          i = g_ocur[0];
+          if (i >= 0 && i < d_npol)
+          {
+            if (d_active[i])
+            {
+              d_active[i] = 0;
+              StrPrint(g_status, "repealed %s", d_pname[i]);
+            }
+            else
+            {
+              d_active[i] = 1;
+              StrPrint(g_status, "enacted %s (%d.%d per turn)",
+                       d_pname[i], d_pcost[i] / 10, d_pcost[i] % 10);
+            }
+          }
+        }
+        else if (g_overlay == 3 && ch == '\n')
+        {
+          i = g_ocur[3];
+          if (i >= 0 && i < d_nres)
+          {
+            if (d_done[i])
+              StrPrint(g_status, "%s is already researched", d_rname[i]);
+            else if (!DResAvailable(i))
+              StrPrint(g_status, "%s needs its prerequisites first",
+                       d_rname[i]);
+            else if (d_rp < d_rcost[i])
+              StrPrint(g_status, "%s costs %d points and you have %d",
+                       d_rname[i], d_rcost[i], d_rp);
+            else
+            {
+              d_rp -= d_rcost[i];
+              d_done[i] = 1;
+              StrPrint(g_status, "researched %s", d_rname[i]);
+            }
+          }
         }
         else if (ch == 'P' || ch == 'E' || ch == 'C' || ch == 'R')
         {
@@ -651,6 +936,15 @@ U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
         }
         else if (ch == '\n')
         {
+          /* Policy upkeep and research income ride with the turn, so a policy
+           * enacted here is paid for from the same purse everything else is. */
+          s = WSlot(w_me);
+          RCountryStats(w_me, &prov, &men, &inc);
+          d_rp += DResearchRate(inc);
+          n = 0;
+          for (i = 0; i < d_npol; i++)
+            if (d_active[i]) n += d_pcost[i];
+          if (s >= 0) w_tre[s] -= n;
           RTurn;
           GOwnList;
           GShade;
@@ -670,12 +964,129 @@ g_done:
   catch
     PutExcept;
 
+}
+
+/* The direct entry: load a world, take the screen, play one seat, give it
+ * back. Convenient when you already know which country you want. */
+U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
+{
+  I64 i, cid = -1;
+
+  if (!WLoad(world))
+  {
+    "$$FG,RED$$cannot load %s$$FG$$\n", world;
+    return;
+  }
+  DLoad;
+  GInitTables;
+  for (i = 0; i < w_nc; i++)
+    if (!StrCmp(w_ciso[i], iso)) cid = w_ccid[i];
+  if (cid < 0)
+  {
+    "$$FG,RED$$no country %s in this world$$FG$$\n", iso;
+    return;
+  }
+  PFontLoad;
+  if (!PaintBegin)
+  {
+    "$$FG,RED$$no linear framebuffer here -- this needs the DISPI registers "
+    "(QEMU, Bochs, VirtualBox)$$FG$$\n";
+    return;
+  }
+  ODPlay(cid);
   PaintEnd;
-  if (w_pmap) Free(w_pmap);
-  if (w_adj) Free(w_adj);
-  w_pmap = NULL;
-  w_adj = NULL;
 }
 
 /* Runs at include time: if this does not appear, the file was never
  * compiled, whatever the silence suggests. */
+
+/* ── THE WHOLE THING ──
+ *
+ * Boot into the menu, pick a country, play, come back. This is the entry
+ * point; ODGame() is still callable directly when you know the seat you want.
+ *
+ *     #include "ODGame"
+ *     OD;
+ */
+U0 OD(U8 *world = "world.odw")
+{
+  I64 ch, cur = 0, cid;
+  Bool dirty;
+
+  if (!WLoad(world))
+  {
+    "$$FG,RED$$cannot load %s$$FG$$\n", world;
+    return;
+  }
+  if (!DLoad)
+    "$$FG,YELLOW$$no game.odd -- politics, research and claims will be "
+    "empty$$FG$$\n";
+  GInitTables;
+  GMenuInit;
+  PFontLoad;
+
+  if (!PaintBegin)
+  {
+    "$$FG,RED$$no linear framebuffer here -- this needs the DISPI registers "
+    "(QEMU, Bochs, VirtualBox)$$FG$$\n";
+    return;
+  }
+
+  try
+  {
+    dirty = TRUE;
+    while (TRUE)
+    {
+      if (dirty)
+      {
+        GMenuDraw(cur);
+        dirty = FALSE;
+      }
+      ch = ScanChar;
+      if (ch == CH_ESC || ch == CH_SHIFT_ESC)
+        goto od_done;
+      else if (ch == 'j' || ch == 'k')
+      {
+        if (ch == 'j') cur++;
+        else           cur--;
+        if (cur > 6) cur = 0;
+        if (cur < 0) cur = 6;
+        dirty = TRUE;
+      }
+      else if (ch == '\n')
+      {
+        if (cur == 6)
+          goto od_done;
+        else if (cur == 0)
+        {
+          cid = GSelect;
+          if (cid >= 0) ODPlay(cid);
+          dirty = TRUE;
+        }
+        else if (cur == 5)
+        {
+          PFill(0, 0, P_W, P_H, 6, 7, 11);
+          PText(60, 80, "Open Doctrines", 235, 205, 60, 3);
+          PText(60, 130, "TempleOS build.", 215, 220, 230);
+          PText(60, 150, "The rules, the map and the interface run on this "
+                         "machine.", 175, 182, 195);
+          PText(60, 170, "The world is baked from the desktop game's own data "
+                         "by tools/templeos_world.py.", 175, 182, 195);
+          PText(60, 200, "Font: raylib's built-in face, the same glyphs the "
+                         "desktop game draws.", 175, 182, 195);
+          PText(60, 230, "TempleOS is public domain, by Terry A. Davis.",
+                175, 182, 195);
+          PText(60, 280, "any key", 140, 148, 160);
+          while (!ScanChar) Sleep(20);
+          dirty = TRUE;
+        }
+      }
+      Sleep(20);
+    }
+od_done:
+  }
+  catch
+    PutExcept;
+
+  PaintEnd;
+}
