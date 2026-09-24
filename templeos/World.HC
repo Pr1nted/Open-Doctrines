@@ -13,14 +13,14 @@
  * guessing the nearest centre.
  */
 
-#define OD_WORLD_VER  6
+#define OD_WORLD_VER  7
 /* Sized to the world, not to a round number: eleven arrays of this length
  * live in the global segment, and at 4096 they were 440 KB before Rules.HC
  * and the renderer added theirs. */
 #define OD_MAXP    2048
 #define OD_MAXC     256
 #define OD_SEA   0xFFFF        /* the index meaning "no province" */
-#define OD_HDR      22
+#define OD_HDR      24
 #define OD_PREC     50         /* bytes per province record */
 #define OD_CREC     34         /* bytes per country record  */
 
@@ -33,6 +33,17 @@ I64  w_own[OD_MAXP],  w_pop[OD_MAXP],  w_army[OD_MAXP];
 I64  w_inc[OD_MAXP],  w_fort[OD_MAXP], w_area[OD_MAXP];
 I64  w_adjn[OD_MAXP], w_adjo[OD_MAXP];
 I64  w_ind[OD_MAXP],  w_res[OD_MAXP];   /* industry level, resource bits */
+I64  w_port[OD_MAXP];                   /* harbour level, 0 for inland */
+
+/* ── THE FLEETS ──
+ *
+ * Hulls, not a naval map: each one sits in a port province and acts from
+ * there. ships.json gives latitude and longitude, and the baker resolves
+ * those to the owner's nearest harbour rather than trusting a projection. */
+#define OD_MAXS    256
+I64  w_ns = 0;
+I64  w_scid[OD_MAXS], w_skind[OD_MAXS], w_shp[OD_MAXS], w_sprov[OD_MAXS];
+U8  *w_kindname[7];
 U8   w_name[OD_MAXP][16];
 
 I64  w_ccid[OD_MAXC], w_ccol[OD_MAXC], w_tre[OD_MAXC];
@@ -41,6 +52,17 @@ U8   w_cr[OD_MAXC], w_cg[OD_MAXC], w_cb[OD_MAXC];
 
 I64  w_turn = 0;
 I64  w_me = -1;                /* the player's country id */
+
+U0 WInitKinds()
+{
+  w_kindname[0] = "boat";
+  w_kindname[1] = "destroyer";
+  w_kindname[2] = "cruiser";
+  w_kindname[3] = "submarine";
+  w_kindname[4] = "carrier";
+  w_kindname[5] = "battleship";
+  w_kindname[6] = "frigate";
+}
 
 I64 WU16(U8 *b) { return b[0] + (b[1] << 8); }
 I64 WU32(U8 *b) { return b[0] + (b[1] << 8) + (b[2] << 16) + (b[3] << 24); }
@@ -96,6 +118,7 @@ Bool WLoad(U8 *path = "world.odw")
   U8 *b;
   I64 size = 0, i, p, total, n, ix, off, runs, k;
 
+  WInitKinds;
   b = WReadEither(path, &size);
   if (!b) return FALSE;
   if (b[0] != 'O' || b[1] != 'D' || b[2] != 'T' || b[3] != 'W')
@@ -159,6 +182,7 @@ Bool WLoad(U8 *path = "world.odw")
     w_area[p] = WU32(b + off + 26);
     w_ind[p]  = b[off + 30];
     w_res[p]  = b[off + 31];
+    w_port[p] = b[off + 32];
     for (k = 0; k < 15; k++)
       w_name[p][k] = b[off + 34 + k];
     w_name[p][15] = 0;
@@ -188,6 +212,18 @@ Bool WLoad(U8 *path = "world.odw")
       w_cname[p][k] = b[off + 14 + k];
     w_cname[p][19] = 0;
     off += OD_CREC;
+  }
+
+  /* the fleets, after the countries */
+  w_ns = WU16(b + 22);
+  if (w_ns > OD_MAXS) w_ns = OD_MAXS;
+  for (p = 0; p < w_ns; p++)
+  {
+    w_scid[p]  = WU16(b + off);
+    w_skind[p] = b[off + 2];
+    w_shp[p]   = b[off + 3];
+    w_sprov[p] = WU16(b + off + 4);
+    off += 6;
   }
 
   Free(b);

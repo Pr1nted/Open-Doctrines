@@ -35,7 +35,7 @@
  * Game_Render.cpp and fails the build if this table has fallen behind. The
  * ids, not the labels: the words are translated, the slot is not.
  */
-#define G_NVIEW  7
+#define G_NVIEW  8
 #define G_NTAB   8
 
 U8 *g_view_ids[G_NVIEW];
@@ -69,7 +69,8 @@ U0 GInitTables()
   g_view_ids[3] = "view.relations";
   g_view_ids[4] = "view.army";
   g_view_ids[5] = "view.resources";
-  g_view_ids[6] = "view.names";
+  g_view_ids[6] = "view.navy";
+  g_view_ids[7] = "view.names";
 
   g_view_tabs[0] = "Population";
   g_view_tabs[1] = "Industry";
@@ -85,7 +86,7 @@ U0 GInitTables()
   g_view_live[SY_VIEW_DEFENCE]    = 1;
   g_view_live[SY_VIEW_RELATIONS]  = 1;
   g_view_live[SY_VIEW_ARMY]       = 1;
-  g_view_live[SY_VIEW_NAVY]       = 0;   /* no fleets in these rules yet */
+  g_view_live[SY_VIEW_NAVY]       = 1;
   g_view_live[SY_VIEW_RESOURCES]  = 1;
   g_view_live[SY_VIEW_NAMES]      = 1;
 
@@ -163,6 +164,18 @@ U0 GShade()
       else if (w_res[i] & 16) { r = 170; g = 110; b = 200; }   /* gemstones */
       else                    { r = 30;  g = 34;  b = 40;  }
     }
+    else if (g_view == SY_VIEW_NAVY)
+    {
+      /* Harbours by size, and everything inland pushed right down: a naval
+       * view whose land is as bright as its ports is a political map with
+       * extra steps. */
+      if (w_port[i] > 0)
+        GHeat(w_port[i], 5, &r, &g, &b);
+      else
+      {
+        r = 26; g = 29; b = 34;
+      }
+    }
     else if (g_view == SY_VIEW_RELATIONS)
     {
       if (w_own[i] == w_me)            { r = 230; g = 230; b = 240; }
@@ -222,6 +235,47 @@ U0 GDrawMap()
  * One label per country, at the centre of its largest province, drawn only in
  * the view that asks for it. Largest rather than the average of all of them,
  * because the average of an empire with islands lands in the sea. */
+/* ── THE FLEETS, DRAWN ──
+ *
+ * One mark per hull at its harbour, stacked upwards so a big naval base reads
+ * as a column rather than a single dot. Only in the navy view: everywhere
+ * else they would be noise over the thing you asked to see. */
+U0 GShips()
+{
+  /* The array on its own line: a 256-entry buffer declared in the same
+   * statement as six scalars is the sort of thing that works everywhere
+   * except where it does not, and this is not a compiler to find out with. */
+  I64 i, j, x, y, k, n;
+  I64 seen[OD_MAXS];
+
+  if (g_view != SY_VIEW_NAVY) return;
+
+  for (i = 0; i < w_ns; i++) seen[i] = 0;
+  for (i = 0; i < w_ns; i++)
+    /* A hull whose harbour is out of range would index the centroid arrays
+     * past their end, which on this machine is a fault and not a wrong
+     * pixel. Cheap to refuse, and it costs nothing when the file is sound. */
+    if (!seen[i] && w_shp[i] > 0 && w_sprov[i] >= 0 && w_sprov[i] < w_np)
+    {
+      n = 0;
+      for (j = i; j < w_ns; j++)
+        if (w_sprov[j] == w_sprov[i] && w_scid[j] == w_scid[i] && w_shp[j] > 0)
+        {
+          seen[j] = 1;
+          n++;
+        }
+      x = w_cx[w_sprov[i]];
+      y = w_cy[w_sprov[i]] + G_MAPY;
+      for (k = 0; k < n && k < 12; k++)
+      {
+        if (w_scid[i] == w_me)
+          PFill(x - 1, y - k * 3, 3, 2, 235, 235, 245);
+        else
+          PFill(x - 1, y - k * 3, 3, 2, 200, 120, 110);
+      }
+    }
+}
+
 U0 GNames()
 {
   I64 i, s, best[OD_MAXC], bestarea[OD_MAXC], tw, x, y;
@@ -256,7 +310,7 @@ U0 GNames()
 
 U0 GPanel()
 {
-  I64 s, prov, men, inc, y, ix;
+  I64 s, prov, men, inc, y, ix, n;
 
   s = WSlot(w_me);
   RCountryStats(w_me, &prov, &men, &inc);
@@ -311,6 +365,17 @@ U0 GPanel()
     y += 12;
     PPrint(14, y, 150, 160, 175, 1, "Frontage:   %d", RWidth(ix));
     y += 12;
+    if (w_port[ix] > 0)
+    {
+      PPrint(14, y, 150, 190, 215, 1, "Harbour:    level %d", w_port[ix]);
+      y += 12;
+      n = RFleetAt(ix, w_own[ix]);
+      if (n)
+      {
+        PPrint(14, y, 150, 190, 215, 1, "Fleet:      %d strength", n);
+        y += 12;
+      }
+    }
     if (r_ord_recruit[ix] > 0)
     {
       PPrint(14, y, 120, 215, 130, 1, "raising %d men", r_ord_recruit[ix]);
@@ -611,6 +676,7 @@ U0 GOverlay()
 U0 GDraw()
 {
   GDrawMap;
+  GShips;
   GNames;
   GPanel;
   GSide;
@@ -725,7 +791,9 @@ U0 GMenuDraw(I64 cur)
   }
 
   PText(14, P_H - 18, "j/k move   ENTER choose   ESC quit", 120, 128, 140);
-  PText(P_W - 150, P_H - 18, "TempleOS build", 120, 128, 140);
+  /* The version the rest of the build stamps: CMake and this both read the
+   * VERSION file, so the menu cannot claim a release nobody cut. */
+  PPrint(P_W - 170, P_H - 18, 120, 128, 140, 1, "v%s  TempleOS", SY_VERSION);
 }
 
 /* ── CHOOSING A COUNTRY ──
@@ -830,7 +898,8 @@ U0 ODPlay(I64 cid)
   for (i = 0; i < d_nres; i++) d_done[i] = 0;
   for (i = 0; i < d_npol; i++) d_active[i] = 0;
   d_rp = 0;
-  StrCpy(g_status, "h/l province  r raise  a assault  1-8 views  P E C R panels");
+  StrCpy(g_status, "h/l province  r raise  a assault  b shell  B build  "
+                   "1-8 views  P E C R panels");
 
   try
   {
@@ -960,6 +1029,55 @@ U0 ODPlay(I64 cid)
           else
             StrPrint(g_status, "not enough money to raise men in %s",
                      w_name[g_sel]);
+        }
+        else if (ch == 'b' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          /* Shelling takes no ground, so the target is simply the strongest
+           * enemy garrison next door -- the one worth thinning. */
+          tgt = -1;
+          n = -1;
+          for (i = 0; i < w_adjn[g_sel]; i++)
+          {
+            s = WNeighbour(g_sel, i);
+            if (s >= 0 && w_own[s] != w_me && w_army[s] > n)
+            {
+              n = w_army[s];
+              tgt = s;
+            }
+          }
+          if (!RFleetAt(g_sel, w_me))
+            StrPrint(g_status, "no ships at %s", w_name[g_sel]);
+          else if (tgt < 0)
+            StrPrint(g_status, "nothing next to %s to shell", w_name[g_sel]);
+          else
+          {
+            r_ord_bombard[g_sel] = tgt;
+            StrPrint(g_status, "%s will shell %s", w_name[g_sel], w_name[tgt]);
+          }
+        }
+        else if (ch == 'B' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          s = WSlot(w_me);
+          cost = RScale(R_SHIP_BUILD - w_port[g_sel] * 20,
+                        RLever(w_me, RL_NAVYCOST));
+          if (!w_port[g_sel])
+            StrPrint(g_status, "%s has no harbour", w_name[g_sel]);
+          else if (w_ns >= OD_MAXS)
+            StrPrint(g_status, "no room for another hull");
+          else if (w_tre[s] < cost)
+            StrPrint(g_status, "a hull at %s costs %c%d.%d", w_name[g_sel],
+                     0x24, cost / 10, cost % 10);
+          else
+          {
+            w_tre[s] -= cost;
+            w_scid[w_ns] = w_me;
+            w_skind[w_ns] = 1;              /* destroyer */
+            w_shp[w_ns] = 100;
+            w_sprov[w_ns] = g_sel;
+            w_ns++;
+            StrPrint(g_status, "laid down a destroyer at %s for %c%d.%d",
+                     w_name[g_sel], 0x24, cost / 10, cost % 10);
+          }
         }
         else if (ch == 'a' && g_sel >= 0 && w_own[g_sel] == w_me)
         {

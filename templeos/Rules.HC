@@ -72,6 +72,9 @@ I64 r_wartime[OD_MAXC];             /* turns this war has run */
 #define RL_CONSCRIPT  5
 #define RL_CONSCOST   6
 #define RL_MAINT      7
+#define RL_NAVYATK    8
+#define RL_NAVYDEF    9
+#define RL_NAVYCOST  10
 
 /* ── KEEPING AN ARMY COSTS SOMETHING ──
  *
@@ -83,8 +86,21 @@ I64 r_wartime[OD_MAXC];             /* turns this war has run */
  */
 #define R_UPKEEP_PER_MAN  20000
 
+/* ── THE FLEET ──
+ *
+ * A hull is worth what its class is worth, scaled by how much of it is left.
+ * Ships act from the harbour they sit in: they bombard what is next to it and
+ * they stiffen its defence. There is no sea to move across in these rules,
+ * which is why navySpeedPct is recorded as having nothing to act on rather
+ * than quietly multiplying something unrelated.
+ */
+#define R_SHIP_UPKEEP      2       /* tenths of a dollar, per hull per turn */
+#define R_SHIP_BUILD      200      /* tenths, before the harbour and levers */
+I64 r_shipstr[7];                  /* by class; filled by RInit */
+
 I64 r_ord_recruit[OD_MAXP];         /* men to raise here this turn */
 I64 r_ord_attack[OD_MAXP];          /* province index to assault, or -1 */
+I64 r_ord_bombard[OD_MAXP];         /* province index to shell from here, or -1 */
 I64 r_last_report = 0;              /* battles resolved in the last turn */
 U8  r_log[8][80];                   /* what happened, for the panel */
 I64 r_nlog = 0;
@@ -133,12 +149,39 @@ U0 RClearOrders()
   {
     r_ord_recruit[i] = 0;
     r_ord_attack[i] = -1;
+    r_ord_bombard[i] = -1;
   }
+}
+
+/* What a country's ships in one province are worth, together. */
+I64 RFleetAt(I64 ix, I64 cid)
+{
+  I64 i, n = 0;
+  for (i = 0; i < w_ns; i++)
+    if (w_sprov[i] == ix && w_scid[i] == cid && w_shp[i] > 0)
+      n += r_shipstr[w_skind[i]] * w_shp[i] / 100;
+  return n;
+}
+
+I64 RFleetOf(I64 cid)
+{
+  I64 i, n = 0;
+  for (i = 0; i < w_ns; i++)
+    if (w_scid[i] == cid && w_shp[i] > 0) n++;
+  return n;
 }
 
 U0 RInit()
 {
   I64 i;
+
+  r_shipstr[0] = 1;    /* boat       */
+  r_shipstr[1] = 4;    /* destroyer  */
+  r_shipstr[2] = 6;    /* cruiser    */
+  r_shipstr[3] = 5;    /* submarine  */
+  r_shipstr[4] = 10;   /* carrier    */
+  r_shipstr[5] = 8;    /* battleship */
+  r_shipstr[6] = 3;    /* frigate    */
   for (i = 0; i < OD_MAXC; i++)
   {
     r_enemy[i] = -1;
@@ -208,6 +251,11 @@ Bool RAssault(I64 from, I64 to, I64 men)
    * the frontage. */
   eatk = RScale(eatk, RLever(w_own[from], RL_ATK));
   def  = RScale(def,  RLever(w_own[to],   RL_DEF));
+
+  /* A fleet in the harbour fights for it. Worth men rather than a multiplier,
+   * so a squadron helps a small garrison and barely shows beside a large one
+   * -- which is what a handful of hulls should do to a land battle. */
+  def += RScale(RFleetAt(to, w_own[to]) * 2000, RLever(w_own[to], RL_NAVYDEF));
 
   if (eatk > def)
   {
@@ -353,7 +401,8 @@ U0 RTurn()
     men = 0;
     for (s = 0; s < w_np; s++)
       if (w_own[s] == w_ccid[i]) men += w_army[s];
-    cost = RScale(men / R_UPKEEP_PER_MAN, RLever(w_ccid[i], RL_MAINT));
+    cost = RScale(men / R_UPKEEP_PER_MAN + RFleetOf(w_ccid[i]) * R_SHIP_UPKEEP,
+                  RLever(w_ccid[i], RL_MAINT));
     w_tre[i] -= cost;
     w_tre[i] += RLever(w_ccid[i], RL_PASSIVE);
     if (w_tre[i] < 0) w_tre[i] = 0;
@@ -375,6 +424,21 @@ U0 RTurn()
         w_army[i] += men;
         RLog("raised %d men in %s", men, w_name[i]);
       }
+    }
+
+  /* ── BOMBARDMENT ──
+   *
+   * Ships shell what is next to their harbour. It kills men and takes no
+   * ground: a fleet cannot hold a province, and pretending otherwise would
+   * make navies win land wars by themselves. */
+  for (i = 0; i < w_np; i++)
+    if (r_ord_bombard[i] >= 0 && w_own[i] == w_me)
+    {
+      s = r_ord_bombard[i];
+      men = RScale(RFleetAt(i, w_me) * 1500, RLever(w_me, RL_NAVYATK));
+      if (men > w_army[s]) men = w_army[s];
+      w_army[s] -= men;
+      RLog("shelled %s, %d dead", w_name[s], men);
     }
 
   /* the player's assaults */

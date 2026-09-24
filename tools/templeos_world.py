@@ -39,7 +39,7 @@ SEA_IX = 0xFFFF                  # the province index that means "no province"
 BORDER, SEA_COLOUR = 0, 1        # BLACK, BLUE
 LAND = [i for i in range(16) if i not in (SEA_COLOUR, BORDER)]
 
-MAGIC, VERSION = b"ODTW", 6
+MAGIC, VERSION = b"ODTW", 7
 
 # The record layouts, named once so the reader in templeos/World.HC can be
 # checked against a single number instead of against a shape spread over three
@@ -47,8 +47,8 @@ MAGIC, VERSION = b"ODTW", 6
 # army is 32-bit: a sixteen-bit field saturates at 65,535 and this game
 # routinely garrisons millions, so India showed up in the claims panel with
 # exactly 65535 men -- a number that looks like data and is a clamp.
-PROV_FMT = "<IHHHIIHBBIIBBH"
-PROV_REC = 50          # PROV_FMT plus a 16-byte name
+PROV_FMT = "<IHHHIIHBBIIBBBB"
+PROV_REC = 50   # the trailing pad became the port level          # PROV_FMT plus a 16-byte name
 CTRY_FMT = "<HBB"
 CTRY_REC = 34          # CTRY_FMT plus iso(4) treasury(2) rgb(4) name(20)
 
@@ -91,6 +91,14 @@ def main() -> int:
         resources = json.loads(z.read("resources.json"))
     except KeyError:
         resources = {}
+    try:
+        ports = json.loads(z.read("ports.json"))
+    except KeyError:
+        ports = {}
+    try:
+        ships = json.loads(z.read("ships.json"))
+    except KeyError:
+        ships = []
 
     W, H = a.width, a.height
     sw, sh = src.size
@@ -192,7 +200,7 @@ def main() -> int:
     #                    6.1e9, which is how you can tell it is not thousands)
     #   armies.json      pid -> [{country_id, count}, ...]
     #   resources.json   pid -> {"industry": {income, resourceIncome, popIncome}}
-    pop, army, income, forts, indlvl, resmask = [], [], [], [], [], []
+    pop, army, income, forts, indlvl, resmask, portlvl = [], [], [], [], [], [], []
     for pid in order:
         v = population.get(str(pid), 0)
         pop.append(min(int(v) if isinstance(v, (int, float)) else 0, 0xFFFFFFFF))
@@ -219,6 +227,9 @@ def main() -> int:
                                         or float(d.get("b", 0) or 0) > 0):
                 mask |= 1 << bit
         resmask.append(mask)
+
+        pt = ports.get(str(pid))
+        portlvl.append(min(int(pt.get("level", 0)) if isinstance(pt, dict) else 0, 255))
 
     # ── run-length encode the index raster ──
     runs = bytearray()
@@ -251,8 +262,40 @@ def main() -> int:
 
     blob = bytearray()
     blob += MAGIC
-    blob += struct.pack("<HHHHHII", VERSION, W, H, n, len(cids),
-                        len(runs), len(adj_flat) // 2)
+    # ── SHIPS, PUT WHERE THEY CAN BE FOUND ──
+    #
+    # ships.json places each hull at a latitude and longitude. Rather than
+    # assume this raster's projection, every ship is assigned to the nearest
+    # PORT its owner holds: the projection only has to be good enough to pick
+    # between one country's harbours, and a fleet at its own dockyard is right
+    # whichever way the map is drawn.
+    port_of = {}
+    for ix in range(n):
+        if portlvl[ix] > 0:
+            port_of.setdefault(owner_cid[ix], []).append(ix)
+
+    fleet = []
+    for sh in ships:
+        if not isinstance(sh, dict):
+            continue
+        cid = int(sh.get("country_id", 0))
+        cand = port_of.get(cid)
+        if not cand:
+            continue
+        lon = float(sh.get("lon", 0.0))
+        lat = float(sh.get("lat", 0.0))
+        sx = int((lon + 180.0) / 360.0 * W)
+        sy = int((90.0 - lat) / 180.0 * H)
+        best = min(cand, key=lambda i: (cx[i] // max(cn[i], 1) - sx) ** 2
+                   + (cy[i] // max(cn[i], 1) - sy) ** 2)
+        kind = str(sh.get("type", ""))
+        fleet.append((cid, kind, min(int(sh.get("health", 100)), 255), best))
+
+    KINDS = ["boat", "destroyer", "cruiser", "submarine", "carrier",
+             "battleship", "frigate"]
+
+    blob += struct.pack("<HHHHHIIH", VERSION, W, H, n, len(cids),
+                        len(runs), len(adj_flat) // 2, len(fleet))
     blob += runs
     # ── ONE PROVINCE RECORD, 44 BYTES, WRITTEN IN ONE PLACE ──
     #
@@ -271,7 +314,7 @@ def main() -> int:
                             min(adj_n[ix], 255), forts[ix],
                             adj_off[ix],
                             min(full_area.get(order[ix], 1), 0xFFFFFFFF),
-                            indlvl[ix], resmask[ix], 0)
+                            indlvl[ix], resmask[ix], portlvl[ix], 0)
         blob += names[ix]
     blob += adj_flat
     for cid in cids:
@@ -296,11 +339,16 @@ def main() -> int:
         assert len(rec) == CTRY_REC
         blob += rec
 
+    for cid, kind, health, ix in fleet:
+        k = KINDS.index(kind) if kind in KINDS else 0
+        blob += struct.pack("<HBBH", cid & 0xFFFF, k, health, ix)
+
     pathlib.Path(a.out).write_bytes(blob)
     # The reader's arithmetic, done here: if this does not land exactly on the
     # end of the file, the two sides disagree about a record size and every
     # country will come out as garbage.
-    expect = 22 + len(runs) + n * PROV_REC + len(adj_flat) + len(cids) * CTRY_REC
+    expect = (24 + len(runs) + n * PROV_REC + len(adj_flat)
+              + len(cids) * CTRY_REC + len(fleet) * 6)
     assert expect == len(blob), f"layout mismatch: {expect} computed, {len(blob)} written"
 
     print(f"{a.out}: {W}x{H}, {n} provinces, {len(cids)} countries, "
@@ -309,7 +357,8 @@ def main() -> int:
     print(f"  population {sum(pop) / 1e6:.0f}M, armies {sum(army):,}, "
           f"income {sum(income) / 10:.0f}/turn, "
           f"{sum(1 for f in forts if f)} fortified, "
-          f"{sum(1 for m in resmask if m)} with deposits")
+          f"{sum(1 for m in resmask if m)} with deposits, "
+          f"{sum(1 for v in portlvl if v)} ports, {len(fleet)} ships")
     return 0
 
 

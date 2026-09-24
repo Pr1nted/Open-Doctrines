@@ -6,6 +6,8 @@
  * source disagree.
  */
 
+#define SY_VERSION           "1.2.2a"
+
 #define SY_WIDTH_MIN         20000
 #define SY_WIDTH_PER_AREA    25
 #define SY_FORT_NARROW_PCT   12
