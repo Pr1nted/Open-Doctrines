@@ -264,6 +264,8 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
       -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       >> "$build/test-targets-build.log" 2>&1 \
     && run "dedicated server starts" "$root/tests/server_smoke_test.sh" "$build" \
+    && run "agent protocol" "$root/tests/agent_protocol_test.sh" "$build" \
+    && run "templeos bridge" "$root/tests/templeos_bridge_test.sh" "$build" \
     || note_fail "dedicated server build"
 # Drives the same async loader the game does, which SaveRoundTripTest cannot
 # reach: that one links SaveManager alone and never turns a save into a world.
