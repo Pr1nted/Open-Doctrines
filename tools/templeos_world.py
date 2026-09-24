@@ -39,7 +39,15 @@ SEA_IX = 0xFFFF                  # the province index that means "no province"
 BORDER, SEA_COLOUR = 0, 1        # BLACK, BLUE
 LAND = [i for i in range(16) if i not in (SEA_COLOUR, BORDER)]
 
-MAGIC, VERSION = b"ODTW", 3
+MAGIC, VERSION = b"ODTW", 4
+
+# The record layouts, named once so the reader in templeos/World.HC can be
+# checked against a single number instead of against a shape spread over three
+# calls. PROV_REC and CTRY_REC are what OD_PREC and OD_CREC must equal there.
+PROV_FMT = "<IHHHIHHBBII"
+PROV_REC = 44          # PROV_FMT plus a 16-byte name
+CTRY_FMT = "<HBB"
+CTRY_REC = 34          # CTRY_FMT plus iso(4) treasury(2) rgb(4) name(20)
 
 
 def nearest(rgb):
@@ -105,6 +113,21 @@ def main() -> int:
                 ix = seen[pid] = len(order)
                 order.append(pid)
             grid[y * W + x] = ix
+
+    # ── AREA AT FULL RESOLUTION ──
+    #
+    # Not the downscaled pixel count. Open Doctrines' combat width is
+    # max(20000, area x 25) in the units of the ORIGINAL province raster, so an
+    # area measured on a 640-wide copy would put every province on the floor of
+    # that formula and delete the mechanic. Counted on the source image, which
+    # is the same number the real engine uses, so its constants transfer.
+    full_area: dict[int, int] = {}
+    for yy in range(sh):
+        for xx in range(sw):
+            r, g, b = px[xx, yy]
+            pid = (r << 16) | (g << 8) | b
+            if pid:
+                full_area[pid] = full_area.get(pid, 0) + 1
 
     n = len(order)
     cx = [0] * n; cy = [0] * n; cn = [0] * n
@@ -203,6 +226,12 @@ def main() -> int:
         for j in lst:
             adj_flat += struct.pack("<H", j)
 
+    # Province names, for a panel that can say "Bavaria" instead of "#412".
+    names = []
+    for pid in order:
+        nm = str(provinces.get(str(pid), {}).get("name", ""))[:15]
+        names.append(nm.encode("ascii", "replace").ljust(16, b"\0"))
+
     cids = sorted({c for c in owner_cid if c in iso})
 
     blob = bytearray()
@@ -210,12 +239,24 @@ def main() -> int:
     blob += struct.pack("<HHHHHII", VERSION, W, H, n, len(cids),
                         len(runs), len(adj_flat) // 2)
     blob += runs
+    # ── ONE PROVINCE RECORD, 44 BYTES, WRITTEN IN ONE PLACE ──
+    #
+    # Assembled as a single pack rather than three appended ones. Two earlier
+    # versions of this file were edited by pattern-matching the middle of a
+    # multi-line pack, the pattern stopped matching, and the fields were
+    # silently dropped: forts were written as a constant zero and the area and
+    # the names never reached the file at all. It still loaded, still reported
+    # 1,615 provinces, and every province was unfortified. One call, one
+    # format string, one length the reader can be checked against.
+    assert struct.calcsize(PROV_FMT) + 16 == PROV_REC
     for ix in range(n):
-        blob += struct.pack("<IHHHIHHBB", order[ix],
+        blob += struct.pack(PROV_FMT, order[ix],
                             cx[ix] // max(cn[ix], 1), cy[ix] // max(cn[ix], 1),
                             owner_cid[ix], pop[ix], army[ix], income[ix],
-                            min(adj_n[ix], 255), 0)
-        blob += struct.pack("<I", adj_off[ix])
+                            min(adj_n[ix], 255), forts[ix],
+                            adj_off[ix],
+                            min(full_area.get(order[ix], 1), 0xFFFFFFFF))
+        blob += names[ix]
     blob += adj_flat
     for cid in cids:
         treasury = 0
@@ -224,11 +265,28 @@ def main() -> int:
             treasury = min(int(float(c.get("treasury", 0)) * 10), 0xFFFF)
         except (TypeError, ValueError):
             pass
-        blob += struct.pack("<HBB", cid, colour.get(cid, 8), 0)
-        blob += iso[cid].encode("ascii").ljust(4, b"\0")
-        blob += struct.pack("<H", treasury)
+        # The palette index AND the true colour. The index is what a sixteen
+        # colour screen needs; the rgb is what the real game looks like, and
+        # the machine can be talked into showing it.
+        rgb = (128, 128, 128)
+        col = c.get("color", "")
+        if isinstance(col, str) and col.startswith("#") and len(col) >= 7:
+            rgb = tuple(int(col[i:i + 2], 16) for i in (1, 3, 5))
+        rec = struct.pack(CTRY_FMT, cid, colour.get(cid, 8), 0)
+        rec += iso[cid].encode("ascii").ljust(4, b"\0")
+        rec += struct.pack("<H", treasury)
+        rec += struct.pack("<BBBB", rgb[0], rgb[1], rgb[2], 0)
+        rec += str(c.get("name", iso[cid]))[:19].encode("ascii", "replace").ljust(20, b"\0")
+        assert len(rec) == CTRY_REC
+        blob += rec
 
     pathlib.Path(a.out).write_bytes(blob)
+    # The reader's arithmetic, done here: if this does not land exactly on the
+    # end of the file, the two sides disagree about a record size and every
+    # country will come out as garbage.
+    expect = 22 + len(runs) + n * PROV_REC + len(adj_flat) + len(cids) * CTRY_REC
+    assert expect == len(blob), f"layout mismatch: {expect} computed, {len(blob)} written"
+
     print(f"{a.out}: {W}x{H}, {n} provinces, {len(cids)} countries, "
           f"{len(runs) // 3} runs, {len(adj_flat) // 2} adjacencies, "
           f"{len(blob) / 1024:.0f} KB")
