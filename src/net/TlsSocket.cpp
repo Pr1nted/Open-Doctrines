@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
+#include <csignal>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -377,6 +378,21 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
     {
         int one = 1;
         ::setsockopt(m_impl->net.fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    }
+#elif !defined(_WIN32)
+    // LINUX HAS NEITHER HALF OF THE USUAL ANSWER. There is no SO_NOSIGPIPE,
+    // and mbedtls_net_send is a bare write() with no MSG_NOSIGNAL -- so the
+    // per-socket fix above does not exist and the per-send one is not taken.
+    // The only thing left is to ignore the signal for the process, which is
+    // what a networked program does: every write here checks its return value,
+    // so the error arrives as EPIPE where it can be handled instead of as a
+    // death nobody logs. Windows has no SIGPIPE at all.
+    //
+    // Once, on the first socket, and never restored: a handler this process
+    // did not install is not this process's to put back.
+    {
+        static const bool ignored = [] { ::signal(SIGPIPE, SIG_IGN); return true; }();
+        (void)ignored;
     }
 #endif
 
