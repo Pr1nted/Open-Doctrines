@@ -12,8 +12,8 @@
 #include <atomic>
 #include <deque>
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
+#include <chrono>
 #include <mutex>
 #include <random>
 #include <thread>
@@ -114,6 +114,8 @@ struct NetHost::Impl {
 
     /** Set once we have connected as host and been accepted. */
     uint16_t hostPeerId = 0;
+    /** The opener has a seat to hand over; update() takes it. See takeHostSeat. */
+    bool seatHostPending = false;
     uint32_t turnNumber = 0;
 
     WsServer  server;
@@ -235,6 +237,23 @@ struct NetHost::Impl {
                   const std::string& badges, const std::string& issuer);
     /** Connect, hand over the host ticket, and translate relayed frames. */
     void pumpRelay();
+    /**
+     * Take the host's own seat, from update(), on the thread that owns the
+     * lobby.
+     *
+     * THE LOBBY HAS NO LOCK, and it never needed one while only update()
+     * touched it. The opener thread used to admit the host itself, seconds
+     * after the code appeared on screen -- so the frame thread could be walking
+     * roster() (drawMpLobby draws it every frame, and "Find players for this
+     * game" reads it on a click) while push_back reallocated underneath. That
+     * is a crash, and it landed on whoever pressed a button during the two or
+     * three seconds a host is "Opening the game...".
+     *
+     * So the opener only says a seat is due; the seat is taken here, where
+     * every other mutation of the lobby already happens. Same rule as the relay
+     * socket below: worker threads fetch, update() applies.
+     */
+    void takeHostSeat();
     /** Seat a peer the relay has already authenticated. */
     void admitRelayPeer(uint16_t relayPeerId, const std::string& identityJson);
     uint16_t nextPeerId = 1;        // 0 is "nobody"
@@ -488,24 +507,15 @@ bool NetHost::open(const Config& config) {
             return;
         }
 
-        uint16_t hostSeat = 0;
         {
             std::lock_guard<std::mutex> lock(impl->mutex);
             impl->issuerKeys = std::move(parsed);
-            if (!c.dedicated) hostSeat = impl->nextPeerId++;
+            // A host that plays holds a seat like anyone else, but takes it
+            // locally: there is no socket to itself and no ticket to present.
+            // A dedicated host holds none, which is what host-only mode is.
+            // Either way the seat is taken in update(); see takeHostSeat.
+            impl->seatHostPending = true;
         }
-
-        // A host that plays holds a seat like anyone else, but takes it
-        // locally: there is no socket to itself and no ticket to present.
-        // A dedicated host holds none, which is what host-only mode is.
-        if (hostSeat) {
-            impl->lobby.admit(hostSeat, impl->hostPsid,
-                              c.anonymous ? "" : impl->hostName,
-                              c.anonymous ? "" : impl->hostBadges,
-                              c.issuer, true);
-        }
-        impl->hostPeerId = hostSeat;
-        impl->lobby.setHost(hostSeat);
 
         // ── THE HOST'S OWN TICKET, WHEN HOSTING THROUGH THE RELAY ──
         //
@@ -563,12 +573,37 @@ bool NetHost::open(const Config& config) {
     return true;
 }
 
+void NetHost::Impl::takeHostSeat() {
+    Config c;
+    std::string psid, name, badges;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!seatHostPending) return;
+        seatHostPending = false;
+        c = config;
+        psid = hostPsid;
+        name = hostName;
+        badges = hostBadges;
+    }
+    const uint16_t seat = c.dedicated ? 0 : nextPeerId++;
+    if (seat) {
+        lobby.admit(seat, psid, c.anonymous ? "" : name, c.anonymous ? "" : badges,
+                    c.issuer, true);
+    }
+    hostPeerId = seat;
+    lobby.setHost(seat);
+}
+
 // ---------------------------------------------------------------- update ----
 
 void NetHost::update() {
     Impl& impl = *m_impl;
     const Phase p = impl.phase.load();
     if (p == Phase::Idle || p == Phase::Closed) return;
+
+    // FIRST, so the host holds its seat before any peer is admitted or any
+    // event the caller polls afterwards is drawn.
+    impl.takeHostSeat();
 
     impl.server.update();
     impl.pumpRelay();

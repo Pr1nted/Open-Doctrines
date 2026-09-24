@@ -130,6 +130,17 @@ when anything near the transport changes:
 Each of the four fixes behind those cases was put back in turn to check the
 case fails without it.
 
+```bash
+tests/net_race_test.sh        # ThreadSanitizer over the lobby, needs node
+OD_TSAN=1 tests/run_all.sh    # the same, from the full suite
+```
+
+`net_race_test.sh` builds the connectivity test with ThreadSanitizer and reads
+the lobby while a host opens -- the pattern behind "the server crashes when I
+press the invite button". It runs in CI as its own job; it is opt-in locally
+because it wants a build of its own. The stand-in issuer takes `--delay-host`
+for it: a real account service is slow for a HOST too, and without that delay
+the window the race lives in never opens.
 
 ## What is still not covered by anything
 

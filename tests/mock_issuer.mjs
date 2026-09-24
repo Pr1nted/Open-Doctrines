@@ -20,6 +20,7 @@
 //
 // Usage:
 //     node tests/mock_issuer.mjs --port 8787 [--wrong-key] [--delay MS]
+//                                    [--delay-host MS]
 //
 // `--wrong-key` publishes a key that does NOT match the one it signs with, so a
 // test can assert the game REFUSES those tickets. Without a negative case, a
@@ -42,6 +43,16 @@ const PAD = padArg >= 0 ? Number(args[padArg + 1]) : 0;
 // exposes that, so a test needs to be able to introduce some.
 const delayArg = args.indexOf("--delay");
 const DELAY = delayArg >= 0 ? Number(args[delayArg + 1]) : 0;
+
+// Delays what a HOST asks for -- opening a session and fetching the
+// verification key -- rather than what a joiner asks for. On a real network
+// those take a few hundred milliseconds, and the game draws its lobby for the
+// whole of that window: the seconds in which the lobby used to be filled in
+// from a worker thread while the screen was reading it.
+const hostDelayArg = args.indexOf("--delay-host");
+const HOST_DELAY = hostDelayArg >= 0 ? Number(args[hostDelayArg + 1]) : 0;
+const slowHost = () =>
+    HOST_DELAY ? new Promise((r) => setTimeout(r, HOST_DELAY)) : Promise.resolve();
 
 const b64url = (bytes) =>
     Buffer.from(bytes).toString("base64")
@@ -122,6 +133,7 @@ const server = createServer(async (req, res) => {
     // The verification key. This is the ONE endpoint that matters for whether
     // the game will believe anything below.
     if (req.method === "GET" && path === "/.well-known/od-keys.json") {
+        await slowHost();
         return json(res, { keys: [publishedJwk], issuer: ISSUER });
     }
 
@@ -131,6 +143,7 @@ const server = createServer(async (req, res) => {
 
     // A host opening a session.
     if (req.method === "POST" && path === "/session") {
+        await slowHost();
         return json(res, {
             code: CODE,
             hostPsid: devPsid || "psid_host_aaaaaaaaaaaa",

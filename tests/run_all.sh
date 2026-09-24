@@ -143,6 +143,13 @@ run "websocket server" "$bin/NetWsServerTest"
 # A real host and a real client over loopback, against a stand-in account
 # service. Skips itself if node is missing; see tests/connectivity_test.sh.
 run "connectivity"     "$root/tests/connectivity_test.sh" "$build"
+# The lobby read from the frame thread while a worker fills it: a data race,
+# and the crash a host got for pressing "Find players for this game" while the
+# game was still opening. It needs its own sanitized build, so it is opt-in
+# rather than part of every run -- CI sets OD_TSAN=1 (see .github/workflows).
+if [ "${OD_TSAN:-0}" != "0" ]; then
+    run "lobby thread safety" "$root/tests/net_race_test.sh" "$build-tsan"
+fi
 run "abi conformance"  "$bin/ModAbiTest" "$root/sdk/abi.json"
 run "runtime"          "$bin/ModRuntimeTest" "$build/testmods"
 run "mod manager"      "$bin/ModManagerTest" "$build/testmods" "$build/modmgr_scratch"

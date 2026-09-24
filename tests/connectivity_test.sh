@@ -186,6 +186,12 @@ OD_NET_DEAD_SECONDS=4 OD_WS_PING_MS=700 run_case quiet || fail=1
 step "a player on the released build, who sends nothing, is still not dropped"
 OD_NET_DEAD_SECONDS=4 OD_WS_PING_MS=700 OD_WS_NO_KEEPALIVE=1 run_case quiet || fail=1
 
+# The screen reads the lobby every frame, from the moment a host presses Host --
+# including the seconds before the account service has answered. Whether that is
+# SAFE is a question for tests/net_race_test.sh, which runs this same case under
+# ThreadSanitizer; here it is a smoke test that the window works at all.
+step "the lobby is read while the host is still opening"
+run_case race "--delay-host 700" || fail=1
 
 if [ "$fail" -eq 0 ]; then
     printf '\nCONNECTIVITY OK\n'

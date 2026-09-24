@@ -348,6 +348,26 @@ jobs:
   # was never noticed. It cannot run tests_all.sh -- there is no shell in a
   # browser -- so what is checked is that it builds and that the package is
   # assembled.
+  # ── THE LOBBY, READ FROM TWO THREADS ──
+  #
+  # A data race cannot be caught by running the game: it fires as a crash
+  # somewhere unrelated, days later, on somebody else's machine. The host used
+  # to fill its lobby from a worker thread while the screen drew it, and the
+  # first player to press "Find players for this game" during the two seconds a
+  # host spends opening took the crash. One sanitized build, one case, and it
+  # is a real answer rather than a hope.
+  race:
+    name: thread safety (tsan)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'      # the stand-in account service needs WebCrypto Ed25519
+      - name: Data race check
+        run: tests/net_race_test.sh "${{ github.workspace }}/build-tsan"
+
   android:
     name: android (arm64-v8a)
     runs-on: ubuntu-22.04

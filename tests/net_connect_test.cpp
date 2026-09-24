@@ -1087,11 +1087,77 @@ int testQuiet(const std::string& issuer) {
 }
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE LOBBY BELONGS TO ONE THREAD.
+//
+// drawMpLobby reads the roster every frame, and "Find players for this game"
+// reads it again on a click -- both from the frame thread, while the host is
+// still opening. The opener thread used to admit the host into that same
+// vector a couple of seconds in, so a push_back could reallocate underneath a
+// roster() walking it: a crash, reported as "the server crashes when I press
+// the invite button".
+//
+// Run this under ThreadSanitizer (tests/net_race_test.sh) and the old code is
+// reported as a data race on Lobby::m_members. Run it plain and it is a
+// reasonable smoke test of the same window.
+int testRace(const std::string& issuer) {
+    printf("\n=== the lobby is read while the host opens ===\n");
+
+    NetHost host;
+    Seen seen;
+    NetHost::Config c = hostConfig(issuer);
+    if (!host.open(c)) {
+        check("the host starts", false, host.error());
+        return 1;
+    }
+
+    // Exactly what the screen does: pump, then read the roster, over and over,
+    // from the moment open() returns -- which is well before the account
+    // service has answered.
+    size_t reads = 0;
+    size_t lastSeen = 0;
+    size_t seatChanges = 0;
+    const auto deadline = Clock::now() + std::chrono::seconds(15);
+    while (Clock::now() < deadline) {
+        host.update();
+        for (const NetPeer& p : host.lobby().roster()) { (void)p.peerId; reads++; }
+        (void)host.lobby().members().size();
+        (void)host.lobby().hostPeerId();
+        drain(&host, nullptr, seen);
+        // The size is COMPARED, not merely fetched: a read whose result is
+        // thrown away can be optimised out, and then the loop is not reading
+        // the lobby at all -- which is a race test that cannot see a race.
+        if (host.lobby().members().size() != lastSeen) {
+            lastSeen = host.lobby().members().size();
+            seatChanges++;
+        }
+        if (host.phase() == NetHost::Phase::Live || host.phase() == NetHost::Phase::Closed) {
+            // Keep reading for a moment after it goes live: the seat is taken
+            // on the first update() of that phase, which is mid-loop here.
+            for (int i = 0; i < 50; ++i) {
+                host.update();
+                for (const NetPeer& p : host.lobby().roster()) { (void)p.peerId; reads++; }
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    check("the host opens", host.phase() == NetHost::Phase::Live, host.error());
+    check("and its own seat is there once it has", host.lobby().roster().size() == 1,
+          "roster of " + std::to_string(host.lobby().roster().size()));
+    check("the lobby was read throughout", reads > 0);
+    check("and the seat appeared while it was being read", seatChanges > 0,
+          "the host never took a seat during the window this test watches");
+    return 0;
+}
+
 int main(int argc, char** argv) {
     // Unbuffered: if this crashes, the last line printed is the clue.
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
-        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|live|host> [port] [--all]\n", argv[0]);
+        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|race|live|host> [port] [--all]\n", argv[0]);
         return 2;
     }
     const std::string issuer = argv[1];
@@ -1105,6 +1171,7 @@ int main(int argc, char** argv) {
     else if (mode == "party") testParty(issuer);
     else if (mode == "live") testLive(issuer);
     else if (mode == "quiet") testQuiet(issuer);
+    else if (mode == "race") testRace(issuer);
     else if (mode == "host") {
         // Not a check-counting mode: it reports its own success and returns,
         // so the "N checks, 0 failed" tail below would be a lie about it.
