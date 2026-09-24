@@ -30,6 +30,12 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <netdb.h>
+// Bionic does not pull these in through netdb.h the way glibc and the BSDs do,
+// so IPPROTO_TCP and TCP_NODELAY are undeclared on Android and the whole
+// transport fails to compile. That is why the APK is built with
+// -DOD_ENABLE_NET=OFF.
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <csignal>
 #include <sys/socket.h>
