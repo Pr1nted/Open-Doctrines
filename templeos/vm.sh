@@ -16,6 +16,7 @@
 #     templeos/vm.sh boot        boot the ISO (installer / live)
 #     templeos/vm.sh run         boot the installed disk
 #     templeos/vm.sh push F...   copy files in to D:/Home
+#     templeos/vm.sh pull N     copy a file back out
 #     templeos/vm.sh shot F.png  capture the screen
 #     templeos/vm.sh key <keys>  send keystrokes (QEMU key names, space separated)
 #     templeos/vm.sh type "txt"  type a string
@@ -141,6 +142,44 @@ push)
         echo "restarted; it will stop at the boot menu (send: vm.sh key 2)"
     fi
     exit 0
+    ;;
+pull)
+    # Files OUT of the guest: the other half of push, and the half that makes a
+    # game possible rather than just a display. Same stopped-and-mounted dance,
+    # same reason.
+    #
+    # The name is matched case-insensitively on purpose. A lower-case 8.3 name
+    # written by the guest comes back as ORDERS.TXT, because FAT stores the
+    # "this was lower case" flag and this OS does not set it.
+    shift
+    name="${1:?usage: vm.sh pull <name> [dest]}"
+    dest="${2:-.}"
+    sub="${OD_TOS_DEST:-Home}"
+    [ -f "$DISK" ] || die "no $DISK"
+    was_running=0
+    running && { was_running=1; "$0" stop >/dev/null; sleep 2; }
+    dev=$(hdiutil attach -nomount -imagekey diskimage-class=CRawDiskImage "$DISK" | head -1 | awk '{print $1}')
+    [ -n "$dev" ] || die "could not attach $DISK"
+    mnt=$(mktemp -d)
+    rc=1
+    if mount -t msdos "${dev}s2" "$mnt" 2>/dev/null; then
+        found=$(ls "$mnt/$sub" 2>/dev/null | awk -v n="$name" 'tolower($0)==tolower(n){print;exit}')
+        if [ -n "$found" ]; then
+            cp "$mnt/$sub/$found" "$dest/$name" && echo "pulled D:/$sub/$found -> $dest/$name" && rc=0
+        else
+            echo "no $name in D:/$sub" >&2
+        fi
+        diskutil unmount "$mnt" >/dev/null 2>&1 || umount "$mnt" 2>/dev/null
+    else
+        echo "could not mount ${dev}s2" >&2
+    fi
+    hdiutil detach "$dev" >/dev/null 2>&1
+    rmdir "$mnt" 2>/dev/null
+    if [ "$was_running" -eq 1 ]; then
+        "$0" run >/dev/null
+        echo "restarted; it will stop at the boot menu (send: vm.sh key 2)"
+    fi
+    exit "$rc"
     ;;
 boot)  start d ;;
 run)   start c ;;

@@ -432,7 +432,6 @@ U0 ODDraw(ODTurn *t)
 
   if (!t->waiting)
     ODRow("This capture never reached '[AGENT] waiting'.", "", "RED");
-  ODRow("Read-only. Orders are not sent yet.", "", "DKGRAY");
 }
 
 /* ── the entry point ──
@@ -476,17 +475,113 @@ U8 *ODReadEither(U8 *path, I64 *size)
   return FileRead(upper, size);
 }
 
-U0 OpenDoc(U8 *path = "turn.txt")
+/* ── SENDING ORDERS BACK ──
+ *
+ * One line of `module:action` tokens, the same line the door reads from its
+ * FIFO on the host. It is written with the turn it answers in the first line:
+ *
+ *     # turn 5
+ *     e:1, w:1
+ *
+ * which is the whole defence against a leftover file. A file from turn 4 looks
+ * exactly like a file for turn 5, and if the host took it the player would
+ * quietly stop being asked and the game would play itself. The host refuses
+ * anything whose number is not the turn on offer -- see templeos/bridge.py,
+ * where the same rule is tested.
+ */
+
+/* The module a letter names, or NULL. */
+ODModule *ODModuleOf(ODTurn *t, U8 letter)
+{
+  I64 i;
+  for (i = 0; i < 4; i++)
+    if (t->mod[i].letter == letter) return &t->mod[i];
+  return NULL;
+}
+
+/* ── CHECK THE ORDER AGAINST THE MENU THAT WAS OFFERED ──
+ *
+ * The engine drops a token it does not recognise without saying so, which from
+ * this side is indistinguishable from an order that was carried out. A typo
+ * would read as the game ignoring you. So a number that is not on the menu is
+ * refused here, where it can still be retyped. */
+Bool ODCheck(ODTurn *t, U8 *line)
+{
+  ODModule *m;
+  U8 *q;
+  I64 n, i;
+  Bool found;
+
+  q = line;
+  while (*q)
+  {
+    while (*q == ' ' || *q == ',') q++;
+    if (*q)
+    {
+      m = ODModuleOf(t, *q);
+      if (!m)
+      {
+        "$$FG,RED$$'%c' is not one of e, p, w, n.$$FG$$\n", *q;
+        return FALSE;
+      }
+      q++;
+      if (*q != ':')
+      {
+        "$$FG,RED$$Expected a ':' after '%c'.$$FG$$\n", m->letter;
+        return FALSE;
+      }
+      q++;
+      n = ODNum(&q);
+      found = FALSE;
+      for (i = 0; i < m->count; i++)
+        if (m->act[i].num == n) found = TRUE;
+      if (!found)
+      {
+        "$$FG,RED$$%s has no action %d this turn.$$FG$$\n", m->label, n;
+        return FALSE;
+      }
+    }
+  }
+  return TRUE;
+}
+
+U0 ODWriteOrders(ODTurn *t, U8 *line, U8 *path)
+{
+  U8 out[512];
+  StrPrint(out, "# turn %d\n%s\n", t->turn, line);
+  FileWrite(path, out, StrLen(out));
+  "$$FG,GREEN$$Sent for turn %d: %s$$FG$$\n", t->turn, line;
+}
+
+U0 OpenDoc(U8 *path = "turn.txt", U8 *orders = "orders.txt")
 {
   I64 size = 0;
   U8 *buf = ODReadEither(path, &size);
+  U8 *line;
+  ODTurn t;
+
   if (!buf)
   {
     "$$FG,RED$$Cannot read %s (tried it shouted, too)$$FG$$\n", path;
     return;
   }
-  ODTurn t;
   ODParse(&t, buf);
   Free(buf);
   ODDraw(&t);
+
+  if (!t.waiting)
+  {
+    ODRow("This turn never reached '[AGENT] waiting' -- nothing to answer.",
+          "", "RED");
+    return;
+  }
+
+  /* Empty is a legitimate answer: it means hold everything. Somebody who wants
+   * to look at the position and decide later just presses escape. */
+  line = GetStr("orders (e:1, w:1 ...  empty = hold): ");
+  if (!line)
+    return;
+  if (ODCheck(&t, line))
+    ODWriteOrders(&t, line, orders);
+  Free(line);
 }

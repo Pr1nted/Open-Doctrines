@@ -37,16 +37,34 @@ game — same map, same AI opponents, same rules.
 | Getting files into a guest | ✅ `templeos/vm.sh push` — TempleOS installs onto FAT32 |
 | `OpenDoc.HC` compiles under HolyC | ✅ |
 | `OpenDoc.HC` parses and draws a real turn | ✅ **on a real machine — screenshot below** |
-| `OpenDoc.HC` sends orders back | ❌ not started |
+| `OpenDoc.HC` sends orders back | ✅ the engine accepted a line typed in TempleOS |
+| Files back out of the guest | ✅ `templeos/vm.sh pull` |
 
 ![Open Doctrines running on TempleOS](../docs/img/templeos-running.png)
 
 That is TempleOS V5.03 under QEMU, reading a turn the engine's agent door
 actually printed: Sweden in 1914, twelve provinces of 1,143, an army of 300,000,
-and the four menus it may act through. Everything on it came out of
-`[AGENT]` lines; nothing is mocked.
+and the four menus it may act through. Everything on it came out of `[AGENT]`
+lines; nothing is mocked. The line at the bottom was typed at that prompt, and
+the file it wrote was handed to the engine, which played the turn:
 
-Still read-only. Writing `orders.txt` back is the easy half and is next.
+```
+turn 0: sent 'e:1, w:1, n:2'
+bridge: 1 turn(s) exchanged. [BENCH] seat 1914:SWE (rung) for 1 turns
+```
+
+So the loop is closed: **the host runs the engine, TempleOS runs the player**,
+and the only thing passing between them is a 23-byte file.
+
+An action the menu did not offer is refused before it is written. The engine
+drops a token it does not recognise without saying so, which from the guest is
+indistinguishable from an order that was carried out — a typo would read as the
+game ignoring you. Typing `e:3` when economy offers 0, 1, 2, 4, 5, 7, 9, 10, 11
+gets *"ECONOMY has no action 3 this turn"* and writes nothing.
+
+What is left is cadence, not capability: each exchange stops and restarts the
+VM, because mounting a filesystem a running guest has open would corrupt it.
+At one turn per hour that is irrelevant; for a rapid game it would not do.
 
 ## Running it yourself
 
@@ -56,9 +74,18 @@ templeos/vm.sh boot                           # install TempleOS from the ISO
 templeos/vm.sh push templeos/OpenDoc.HC turn.txt
 templeos/vm.sh run
 templeos/vm.sh shot /tmp/screen.png           # look, without a window
+templeos/vm.sh pull orders.txt /tmp/          # bring the answer back
 ```
 
 Then in the guest: `#include "OpenDoc"` and `OpenDoc;`.
+
+A whole turn, host side:
+
+```
+python3 templeos/bridge.py --build build --dir /tmp/odloop --turns 1 &
+templeos/vm.sh push /tmp/odloop/turn.txt      # ... play it in the guest ...
+templeos/vm.sh pull orders.txt /tmp/odloop/   # the engine takes it from here
+```
 
 The ISO is not in this repository. Get it from templeos.org and check it
 against their `md5sums.txt` before booting it.
