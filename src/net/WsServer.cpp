@@ -30,6 +30,12 @@
 #include <vector>
 
 #ifdef _WIN32
+  // NOMINMAX before winsock2.h, which drags in windows.h: without it `min` is
+  // a macro and the std::min in the fragmenting sender below does not parse.
+  // That is how one fix broke the Windows build and no other platform's.
+  #ifndef NOMINMAX
+    #define NOMINMAX
+  #endif
   #include <winsock2.h>
   #include <ws2tcpip.h>
   using SocketFd = SOCKET;
@@ -222,7 +228,9 @@ void appendMessage(std::vector<uint8_t>& out, uint8_t opcode,
     if (n <= kFragmentBytes) { appendFrame(out, opcode, payload, n); return; }
     size_t at = 0;
     while (at < n) {
-        const size_t take = std::min(kFragmentBytes, n - at);
+        // (std::min) parenthesised, so a `min` macro cannot reach it whatever
+        // else a platform header decides to define.
+        const size_t take = (std::min)(kFragmentBytes, n - at);
         const bool first = (at == 0);
         const bool last  = (at + take == n);
         // FIN only on the last; opcode only on the first (continuations are 0).

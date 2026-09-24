@@ -365,6 +365,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'      # the stand-in account service needs WebCrypto Ed25519
+      # The sanitized build configures the whole project, raylib included, so it
+      # wants the same X11 and ALSA headers every other Linux job installs --
+      # even though the target it builds opens no window.
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev
       - name: Data race check
         run: tests/net_race_test.sh "${{ github.workspace }}/build-tsan"
 

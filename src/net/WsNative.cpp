@@ -543,7 +543,7 @@ bool WebSocket::Impl::writeMessage(uint8_t opcode, const uint8_t* data, size_t n
     if (n <= kSendFragmentBytes) return writeFrame(opcode, data, n);
     size_t at = 0;
     while (at < n) {
-        const size_t take = std::min(kSendFragmentBytes, n - at);
+        const size_t take = (std::min)(kSendFragmentBytes, n - at);
         const bool first = (at == 0);
         const bool last  = (at + take == n);
         // The opcode rides on the first fragment; the rest are continuations,
