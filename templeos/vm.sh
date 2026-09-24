@@ -51,11 +51,21 @@ start() {
     [ -f "$ISO" ] || die "no $ISO"
     [ -f "$DISK" ] || die "no $DISK -- run: templeos/vm.sh install"
     rm -f "$MON"
-    # -boot d is the CD, -boot c the hard disk. No network device at all: this
-    # OS has no stack to use one, and an emulated NIC it cannot drive is one
-    # more thing to go wrong.
+    # -boot d is the CD, -boot c the hard disk.
+    #
+    # THE NIC. TempleOS ships no network stack, so this card is useless until
+    # something drives it -- templeos/Rtl8139.HC is that something. An RTL8139
+    # rather than the default e1000 because its programming interface is four
+    # registers and a ring buffer, which is a driver you can read in one sitting.
+    #
+    # User-mode networking: the guest is 10.0.2.15, the host is 10.0.2.2, and
+    # the forward lets the host open a conversation rather than only answer
+    # one. Host 15001, not 15000: a forward BINDS the host port, and would
+    # leave nothing for a listener on the host to bind to.
     qemu-system-x86_64 \
         -m "$MEM" \
+        -netdev user,id=n0,hostfwd=udp::15001-:15000 \
+        -device rtl8139,netdev=n0 \
         -drive file="$DISK",format=raw,if=ide,index=0 \
         -drive file="$ISO",format=raw,if=ide,index=2,media=cdrom \
         $( [ -f "$SWAP" ] && echo -drive file="$SWAP",format=raw,if=ide,index=1 ) \
@@ -214,6 +224,15 @@ click)
     # wanted. The overshoot is the whole trick.
     shift
     x="${1:?usage: vm.sh click <x> <y>}"; y="${2:?}"
+    # ── THE FACTOR OF TWO ──
+    #
+    # A click asked for at 400,200 arrives at 196,96. It is not ms.scale --
+    # setting that to 1.0 inside the guest changes nothing -- so the halving
+    # is below it, in the PS/2 path between QEMU and the mouse handler.
+    # Measured, not derived, and compensated here because here is where it can
+    # be measured. OD_TOS_MOUSE overrides it if a different build disagrees.
+    f="${OD_TOS_MOUSE:-2}"
+    x=$(( x * f )); y=$(( y * f ))
     # IN SMALL STEPS, BOTH WAYS. A PS/2 packet carries nine signed bits of
     # movement, so one giant shove is not delivered as one giant move -- the
     # first attempt at this pinned the pointer by about 127 pixels instead of

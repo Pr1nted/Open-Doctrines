@@ -39,6 +39,10 @@ game — same map, same AI opponents, same rules.
 | `OpenDoc.HC` parses and draws a real turn | ✅ **on a real machine — screenshot below** |
 | `OpenDoc.HC` sends orders back | ✅ the engine accepted a line typed in TempleOS |
 | Files back out of the guest | ✅ `templeos/vm.sh pull` |
+| A map you can see and click | ✅ `OpenDocUI.HC` + `tools/templeos_world.py` |
+| Ethernet, ARP, IPv4, UDP | ✅ `templeos/Net.HC`, both directions |
+| True colour | ✅ proven, `templeos/Gfx.HC` — see below |
+| The rules running in TempleOS | ❌ next |
 
 ![Open Doctrines running on TempleOS](../docs/img/templeos-running.png)
 
@@ -65,6 +69,32 @@ gets *"ECONOMY has no action 3 this turn"* and writes nothing.
 What is left is cadence, not capability: each exchange stops and restarts the
 VM, because mounting a filesystem a running guest has open would corrupt it.
 At one turn per hour that is irrelevant; for a rapid game it would not do.
+
+## Networking
+
+TempleOS ships no network stack, so `templeos/Net.HC` is the card, the frames,
+the addresses and the checksums, all of it: an RTL8139 driver, ARP, IPv4 and
+UDP in one file. Proven both ways -- the guest sent `hello from TempleOS` to a
+listener on the host, and read `pong from the host` back.
+
+An RTL8139 because its whole programming interface is a few registers and one
+ring buffer. Polling rather than interrupts, because a turn-based game gains
+nothing from an interrupt handler running at ring 0 next to the scheduler.
+
+What made it short: TempleOS is *"always fully identity-mapped on all cores"*
+(`Kernel/Sched.HC`), so a pointer **is** a physical address and the receive
+buffer's address goes straight into the card's register. No translation, no
+pinning.
+
+The bug worth recording: **CAPR starts at -16, not 0.** The card treats the
+read pointer as sixteen bytes behind the writer, so a ring initialised to zero
+tells it the reader is ahead and nothing is ever delivered. The driver found
+the card, reset it, read its MAC and received precisely nothing.
+
+It is **not WiFi**, and that is not a gap to be filled later: 802.11 needs
+per-chipset firmware, a MAC layer and a WPA2 supplicant, and a USB dongle would
+need a USB stack this OS does not have. It is not TCP either -- no
+retransmission, no ordering. ARP, IPv4 and UDP is what a turn game needs.
 
 ## Running it yourself
 
