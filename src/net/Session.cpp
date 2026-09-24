@@ -487,9 +487,27 @@ void NetSession::update() {
         }
     }
 
-    // The host's challenge arrives as text; everything after is binary.
-    std::string challenge;
-    while (impl.socket.pollText(challenge)) impl.answerChallenge(challenge);
+    // ── ONE PLACE THAT READS TEXT FRAMES ──
+    //
+    // A direct host's challenge and the relay's ok/refusal both arrive as
+    // text, and there used to be two loops reading the same queue: this one,
+    // and one further down for the relay. The first drained it, so the
+    // relay's {"error": ...} -- session full, banned, you are not the host --
+    // was handed to answerChallenge, which had already seen its one challenge
+    // and returned at its first line. The player was told nothing at all and
+    // sat until the socket closed.
+    std::string text;
+    while (impl.socket.pollText(text)) {
+        if (impl.relay.load()) {
+            if (httpJsonBool(text, "ok", false)) continue;    // accepted; wait for WELCOME
+            const std::string why = httpJsonString(text, "error", 256);
+            if (!why.empty() || text.find("\"error\"") != std::string::npos) {
+                impl.fail(why.empty() ? "That server refused the connection." : why);
+                return;
+            }
+        }
+        impl.answerChallenge(text);
+    }
 
     // ── THE RELAY DOES NOT SPEAK FIRST ──
     //
@@ -585,15 +603,6 @@ void NetSession::update() {
         } else {
             impl.fail(err.empty() ? "The connection to that server was lost." : err);
         }
-        return;
-    }
-
-    // The relay's own ok/refusal is a text frame; game traffic is binary.
-    std::string text;
-    while (impl.socket.pollText(text)) {
-        if (httpJsonBool(text, "ok", false)) continue;   // accepted; wait for WELCOME
-        const std::string why = httpJsonString(text, "error", 256);
-        impl.fail(why.empty() ? "That server refused the connection." : why);
         return;
     }
 
