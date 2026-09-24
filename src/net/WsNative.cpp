@@ -89,6 +89,17 @@ inline bool keepaliveOn() {
 // enough for the host to give up on it.
 constexpr int kReadsPerPass = 64;
 
+// Outgoing messages are fragmented at this size, for the same reason the
+// server fragments: a host that reaches its players THROUGH THE RELAY sends
+// every snapshot down this socket, and one multi-megabyte frame is something
+// each hop has to hold whole before any of it moves.
+constexpr size_t kSendFragmentBytes = 64u * 1024;
+
+// And the queue behind it is bounded, as the server's is. It had no limit at
+// all: a relayed host sending seven players a world queued the lot with
+// nothing to push back, and the deque simply grew.
+constexpr size_t kMaxPendingOut = 32u * 1024 * 1024;
+
 enum : uint8_t {
     kOpContinuation = 0x0, kOpText = 0x1, kOpBinary = 0x2,
     kOpClose = 0x8, kOpPing = 0x9, kOpPong = 0xA,
@@ -142,7 +153,9 @@ struct WebSocket::Impl {
     /** -1 lost, 0 nothing waiting, else bytes read. */
     int readSome();
     bool consumeFrames();
-    bool writeFrame(uint8_t opcode, const uint8_t* data, size_t n);
+    bool writeFrame(uint8_t opcode, const uint8_t* data, size_t n, bool fin = true);
+    /** One message, in fragments when it is big. See kSendFragmentBytes. */
+    bool writeMessage(uint8_t opcode, const uint8_t* data, size_t n);
     bool writeAll(const uint8_t* data, size_t n);
     void teardown();
 };
@@ -184,11 +197,23 @@ bool WebSocket::connect(const std::string& url, bool allowInsecure) {
 }
 
 void WebSocket::send(const std::vector<uint8_t>& payload) {
-    if (payload.size() > kMaxMessageBytes) return;
+    // SAY SO. Both of these used to be a bare `return`: the caller was told
+    // nothing, and a relayed host whose world had grown past the ceiling left
+    // its joiner waiting for a message that was never put on the wire.
+    if (payload.size() > kMaxMessageBytes) {
+        m_impl->setError("that message is larger than this connection can carry");
+        return;
+    }
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         const WsState s = m_impl->state.load();
         if (s != WsState::Open && s != WsState::Connecting) return;
+        size_t queued = 0;
+        for (const Outgoing& o : m_impl->outbox) queued += o.payload.size();
+        if (queued + payload.size() > kMaxPendingOut) {
+            m_impl->setError("the connection could not keep up with what was queued for it");
+            return;
+        }
         m_impl->outbox.push_back(Outgoing{payload, false});
     }
     m_impl->wake.notify_all();
@@ -476,10 +501,11 @@ bool WebSocket::Impl::consumeFrames() {
     }
 }
 
-bool WebSocket::Impl::writeFrame(uint8_t opcode, const uint8_t* data, size_t n) {
+bool WebSocket::Impl::writeFrame(uint8_t opcode, const uint8_t* data, size_t n, bool fin) {
     std::vector<uint8_t> frame;
     frame.reserve(n + 14);
-    frame.push_back(static_cast<uint8_t>(0x80 | opcode));   // always FIN
+    // FIN unless this is a fragment with more to come; see writeMessage.
+    frame.push_back(static_cast<uint8_t>((fin ? 0x80 : 0x00) | opcode));
 
     // Every client frame is masked. Not optional: an unmasked one is a
     // protocol violation and intermediaries are entitled to drop the
@@ -513,6 +539,21 @@ bool WebSocket::Impl::writeFrame(uint8_t opcode, const uint8_t* data, size_t n) 
     return writeAll(frame.data(), frame.size());
 }
 
+bool WebSocket::Impl::writeMessage(uint8_t opcode, const uint8_t* data, size_t n) {
+    if (n <= kSendFragmentBytes) return writeFrame(opcode, data, n);
+    size_t at = 0;
+    while (at < n) {
+        const size_t take = std::min(kSendFragmentBytes, n - at);
+        const bool first = (at == 0);
+        const bool last  = (at + take == n);
+        // The opcode rides on the first fragment; the rest are continuations,
+        // and only the last one sets FIN. writeFrame masks each, as it must.
+        if (!writeFrame(first ? opcode : kOpContinuation, data + at, take, last)) return false;
+        at += take;
+    }
+    return true;
+}
+
 bool WebSocket::Impl::pump() {
     std::deque<Outgoing> pending;
     {
@@ -530,8 +571,8 @@ bool WebSocket::Impl::pump() {
         pending.swap(outbox);
     }
     for (const auto& message : pending) {
-        if (!writeFrame(message.text ? kOpText : kOpBinary,
-                        message.payload.data(), message.payload.size())) {
+        if (!writeMessage(message.text ? kOpText : kOpBinary,
+                          message.payload.data(), message.payload.size())) {
             setError("the connection was lost while sending");
             return false;
         }

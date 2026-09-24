@@ -276,6 +276,25 @@ int testJoin(const std::string& issuer) {
             }, 6000);
             check("withdrawn orders reach the host as well", tookBack);
 
+            // ── A SUBMISSION BIGGER THAN ONE FRAGMENT ──
+            //
+            // Client frames were never fragmented, so a big one went out whole
+            // -- the same shape that made a host's world so awkward for a
+            // tunnel to carry, and this direction is the one a RELAYED host
+            // sends its world down. 200 KB is over three fragments and well
+            // inside the 1 MB the host accepts.
+            std::vector<uint8_t> big(200u * 1024);
+            for (size_t i = 0; i < big.size(); ++i) big[i] = (uint8_t)(i * 31 + (i >> 9));
+            session.submitOrders(1, big);
+            const bool arrivedWhole = pumpUntil(&host, &session, [&] {
+                drain(&host, &session, seen);
+                const LobbyMember* m = host.lobby().find(w.peerId);
+                return m && m->orders.size() == big.size();
+            }, 8000);
+            check("a submission larger than one fragment reaches the host", arrivedWhole);
+            const LobbyMember* mine = host.lobby().find(w.peerId);
+            check("and arrives byte for byte", mine && mine->orders == big);
+
 
             // Put them back, so the rest of this case sees what it expects.
             session.submitOrders(1, std::vector<uint8_t>(ordersText.begin(),
