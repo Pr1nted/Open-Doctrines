@@ -1335,6 +1335,24 @@ int testRelay(const std::string& issuer) {
     // One frame, whatever the room holds. The relay counts frames from the
     // host against a token bucket; a fan-out per player is how a full game
     // spends it in a single turn.
+    // ── QUIET FIRST ──
+    //
+    // The count is every frame the host sends, and a lobby broadcast is
+    // coalesced and flushed on its own schedule -- so a roster update from the
+    // second player's join could still be in flight and land inside the
+    // window, which is exactly what made this read 3 on a slower machine and 1
+    // here. Wait for the host to stop talking, THEN measure.
+    size_t quiet = relayFramesSent(issuer, host.code());
+    for (int i = 0; i < 20; ++i) {
+        pumpUntil(&host, nullptr, [&] {
+            host.update(); session.update(); second.update();
+            drain(&host, nullptr, hostSeen); return false;
+        }, 300);
+        const size_t now = relayFramesSent(issuer, host.code());
+        if (now == quiet) break;
+        quiet = now;
+    }
+
     const size_t before = relayFramesSent(issuer, host.code());
     host.broadcastDelta(1, std::vector<uint8_t>{1, 2, 3, 4});
     pumpUntil(&host, nullptr, [&] {

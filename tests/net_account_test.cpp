@@ -11,6 +11,8 @@
 #include "net/HttpClient.h"
 #include "net/BadgeStyle.h"
 #include "net/ServerBook.h"
+
+#include <filesystem>
 #include "net/TurnStore.h"
 #include "net/TurnStoreRunner.h"
 
@@ -346,8 +348,12 @@ void testServerBook() {
     // dropped, the game closes, and what they click tomorrow was read back
     // from disk.
     {
-        const std::string path = std::string(getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp") +
-                                 "/od_serverbook_test.json";
+        // std::filesystem, not $TMPDIR or /tmp: Windows has neither, so this
+        // wrote to a directory that does not exist and the save failed there
+        // and nowhere else.
+        std::error_code ec;
+        const std::string path =
+            (std::filesystem::temp_directory_path(ec) / "od_serverbook_test.json").string();
         ::remove(path.c_str());
         ServerBook writing;
         writing.load(path);          // missing is empty, not an error
