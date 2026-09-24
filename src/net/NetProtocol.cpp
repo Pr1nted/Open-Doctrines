@@ -416,7 +416,12 @@ bool NetRejectMsg::decode(const uint8_t* data, size_t size, NetRejectMsg& out) {
     // a newer server explaining itself in a way we do not understand should
     // still get its sentence shown to the player.
     const uint16_t raw = r.u16();
-    out.reason = raw <= static_cast<uint16_t>(NetReject::ServerShuttingDown)
+    // HostNotDeclared, not ServerShuttingDown: the bound was left behind when
+    // IssuerNotAccepted and HostNotDeclared were added, so a host sending
+    // either -- seatPeer does send IssuerNotAccepted -- had it flattened to
+    // Unknown, and the player was given the generic refusal in place of the
+    // sentence written for exactly their case.
+    out.reason = raw <= static_cast<uint16_t>(NetReject::HostNotDeclared)
         ? static_cast<NetReject>(raw) : NetReject::Unknown;
     out.text = r.str(NetLimits::kReason);
     return r.done();

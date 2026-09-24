@@ -230,6 +230,22 @@ void testMessages() {
               out.reason == NetReject::ModMismatch && out.text == in.text);
     }
     {
+        // ── EVERY REASON THE HOST ACTUALLY SENDS ──
+        //
+        // The decoder's bound was left behind when two reasons were added, so
+        // IssuerNotAccepted -- which seatPeer sends -- and HostNotDeclared
+        // arrived as Unknown, and the player was shown the generic refusal
+        // instead of the sentence written for their case.
+        for (NetReject reason : {NetReject::IssuerNotAccepted, NetReject::HostNotDeclared}) {
+            NetRejectMsg in{reason, "because of that"};
+            auto bytes = in.encode();
+            NetRejectMsg out;
+            check("a reason the host really sends survives the wire",
+                  NetRejectMsg::decode(bytes.data(), bytes.size(), out) &&
+                  out.reason == reason);
+        }
+    }
+    {
         // A newer server explaining itself in terms we do not know should
         // still get its sentence in front of the player.
         NetWriter w;
