@@ -76,6 +76,25 @@ constexpr size_t kMaxControlBytes = 125;
 constexpr size_t kMaxHandshakeBytes = 16 * 1024;
 constexpr int    kHandshakeTimeoutMs = 10000;
 
+// ── KEEPALIVE, BOTH WAYS ──
+//
+// A tunnel in front of this server closes a socket nothing has travelled on
+// (cloudflared's origin timeout is ~90 s, Cloudflare's edge shorter), and a
+// player sitting in a lobby sends nothing at all. So an idle connection is
+// pinged rather than left to rot, and every frame that arrives -- ping, pong
+// or message -- counts as the peer being alive.
+// Settable for tests only; the game never sets it. See tests/net_live_test.cpp.
+inline int serverPingMs() {
+    static const int ms = [] {
+        if (const char* s = getenv("OD_WS_PING_MS")) {
+            const int v = atoi(s);
+            if (v > 0) return v;
+        }
+        return 15000;
+    }();
+    return ms;
+}
+
 // A message larger than this goes out in fragments. One 8 MB frame is legal
 // and every intermediary hates it: a tunnel must buffer the whole thing before
 // the client sees a byte, and nothing else can be sent in the meantime.
@@ -156,6 +175,9 @@ struct Conn {
     bool dead = false;          // reap on this pass
 
     Clock::time_point since = Clock::now();
+    /// Any byte from this peer, control frames included. See kServerPingMs.
+    Clock::time_point lastHeard = Clock::now();
+    Clock::time_point lastPinged = Clock::now();
 
     std::string          handshake;   // bytes read before the upgrade completes
     std::vector<uint8_t> in;          // undecoded frame bytes
@@ -246,6 +268,8 @@ struct WsServer::Impl {
 
     std::vector<Conn>          conns;
     std::deque<WsServerEvent>  events;
+    /// When update() last ran, for the stall forgiveness in it.
+    Clock::time_point lastUpdate = Clock::now();
 
     const Conn* find(WsConnId id) const {
         for (const Conn& c : conns)
@@ -510,6 +534,7 @@ void WsServer::Impl::doRead(Conn& c) {
         if (rc < 0) { if (!wouldBlock()) drop(c); return; }
 
         const size_t n = static_cast<size_t>(rc);
+        c.lastHeard = Clock::now();
         if (!c.open) {
             c.handshake.append(reinterpret_cast<char*>(buf), n);
             progressHandshake(c);
@@ -657,10 +682,39 @@ void WsServer::stop() {
 bool WsServer::listening() const { return !m_impl->listenFds.empty(); }
 uint16_t WsServer::port() const { return m_impl->boundPort; }
 
+double WsServer::quietSeconds(WsConnId conn) const {
+    const Conn* c = m_impl->find(conn);
+    if (!c) return 0.0;
+    return std::chrono::duration<double>(Clock::now() - c->lastHeard).count();
+}
+
+size_t WsServer::pendingBytes(WsConnId conn) const {
+    const Conn* c = m_impl->find(conn);
+    return c ? c->out.size() : 0;
+}
+
 void WsServer::update() {
     if (!listening()) return;
     Impl& s = *m_impl;
 
+    // ── TIME WE WERE NOT LISTENING IS NOT THE PEER'S SILENCE ──
+    //
+    // There is no network thread here: this is pumped from the frame loop, and
+    // the frame loop stops for a world load or a save. Coming back after such a
+    // gap, every peer looked silent for the whole of it and the lot were
+    // dropped at once. So a gap is added back to what each peer is owed.
+    {
+        const auto now = Clock::now();
+        const auto gap = now - s.lastUpdate;
+        if (gap > std::chrono::seconds(2)) {
+            for (Conn& c : s.conns) {
+                c.lastHeard += gap;
+                c.lastPinged += gap;
+                c.since += gap;
+            }
+        }
+        s.lastUpdate = now;
+    }
 
     const size_t listeners = s.listenFds.size();
     std::vector<pollfd> fds;
@@ -692,6 +746,19 @@ void WsServer::update() {
         if ((ev & POLLOUT) || !c.out.empty()) s.doWrite(c);
         if (c.dead) continue;
         if (ev & POLLHUP) { s.drop(c); continue; }
+
+        // An open connection nothing has crossed for a while gets a ping, so
+        // that neither the tunnel nor the host mistakes quiet for gone.
+        if (c.open && !c.closing) {
+            const auto quiet = std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - c.lastHeard).count();
+            const auto sincePing = std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - c.lastPinged).count();
+            if (quiet >= serverPingMs() && sincePing >= serverPingMs()) {
+                c.lastPinged = Clock::now();
+                appendFrame(c.out, kOpPing, nullptr, 0);
+            }
+        }
 
         // Connected, silent, and out of time: the classic way to hold a
         // server's sockets open for nothing.
@@ -771,6 +838,8 @@ void WsServer::stop() {}
 bool WsServer::listening() const { return false; }
 uint16_t WsServer::port() const { return 0; }
 void WsServer::update() {}
+double WsServer::quietSeconds(WsConnId) const { return 0.0; }
+size_t WsServer::pendingBytes(WsConnId) const { return 0; }
 bool WsServer::nextEvent(WsServerEvent&) { return false; }
 void WsServer::send(WsConnId, const std::vector<uint8_t>&) {}
 void WsServer::sendText(WsConnId, const std::string&) {}

@@ -106,9 +106,39 @@ You can still exercise most of it:
 The mock issuer cannot stand in for interactive sign-in — it has `/session` and
 `/ticket` but no OAuth — so it tests the join path, not the account screen.
 
+## Silence, which is what players mostly do
+
+`--verify` keeps both ends talking in a tight loop, and for a long time that was
+the whole of the automated coverage. Players do the opposite: they sit in a
+lobby without clicking, and their game stops pumping its socket entirely while
+it loads the world the host just sent. All of that read as a dead connection,
+and the first people to join a 1.2.2a game were cut off mid-lobby and mid-start.
+
+So `tests/connectivity_test.sh` has two more cases, and they are the ones to run
+when anything near the transport changes:
+
+- **`quiet`** — a lobby nobody touches, a client whose game thread is busy, a
+  host whose own frame loop is blocked, and a four-megabyte world. The
+  intervals are shortened through `OD_NET_DEAD_SECONDS` and `OD_WS_PING_MS` so a
+  60-second rule can be watched in four; nothing in the game sets either.
+- **the same case again with `OD_WS_NO_KEEPALIVE=1`**, which makes the client
+  behave like every copy of 1.2.2a in the wild: it says nothing at all, and what
+  has to carry it is the host's ping and the reply the WebSocket layer has
+  always sent. Mixed versions are the normal case for a while after a release,
+  and this is the arm that proves they still work.
+
+Each of the four fixes behind those cases was put back in turn to check the
+case fails without it.
+
+
 ## What is still not covered by anything
 
 Two live clients taking a turn against each other. Specifically: one player
 timing out while another is still thinking, and the per-player clocks that
 follow from it. The turn loop needs a real host to exercise, so it has no
 automated coverage. If something is going to be wrong, that is where.
+
+Nor is a real tunnel. The keepalives above are what cloudflared's idle timeout
+needs, and they are tested against a host that keeps its sockets open rather
+than against cloudflared itself -- which would mean a live tunnel in CI, and a
+test that fails when somebody else's free service is busy.

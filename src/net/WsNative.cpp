@@ -34,6 +34,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <condition_variable>
 #include <cstring>
 #include <thread>
@@ -51,6 +52,36 @@ constexpr size_t kMaxControlBytes = 125;
 
 constexpr int kHandshakeTimeoutMs = 20000;
 constexpr int kPollIntervalMs = 20;
+
+// ── KEEPALIVE ──
+//
+// Nothing used to be sent from a client that was only listening, and three
+// separate things read that silence as a dead connection: the host's own
+// 60-second liveness check, cloudflared's ~90-second origin timeout, and
+// Cloudflare's edge idle timeout. A player who sat in a lobby without
+// clicking, or whose game thread was busy loading the world it had just been
+// sent, was disconnected for being quiet.
+//
+// A WebSocket ping is the right answer rather than an application message: it
+// is sent from THIS thread, so it keeps going out while the game thread is
+// blocked in a map load, and every intermediary counts it as traffic.
+constexpr int kKeepaliveMs = 15000;
+
+/**
+ * Off for one test only, to stand in for a client that predates the keepalive.
+ *
+ * Every copy of 1.2.2a in the wild is such a client, and they must keep working
+ * against a host that has this fix: what carries them is the host's own ping
+ * and the reply this layer has always sent. That is worth a test, and a test
+ * needs a way to be that client. Nothing in the game sets it.
+ */
+inline bool keepaliveOn() {
+    static const bool on = [] {
+        const char* s = getenv("OD_WS_NO_KEEPALIVE");
+        return !(s && *s && *s != '0');
+    }();
+    return on;
+}
 
 // How many 8 KB reads one pass may take before going back round the loop. The
 // old code read exactly one and then waited 20 ms whatever was pending, which
@@ -94,6 +125,8 @@ struct WebSocket::Impl {
     bool                 assembling = false;
     /// Bytes arrived on the last pass, so do not idle before the next read.
     bool                 rxActive = false;
+    /// When anything last went out, keepalive included. See kKeepaliveMs.
+    std::chrono::steady_clock::time_point lastSentAt = std::chrono::steady_clock::now();
 
     std::vector<uint8_t> rx;    // bytes read but not yet framed
 
@@ -474,6 +507,9 @@ bool WebSocket::Impl::writeFrame(uint8_t opcode, const uint8_t* data, size_t n) 
     frame.resize(at + n);
     for (size_t i = 0; i < n; i++) frame[at + i] = data[i] ^ mask[i & 3];
 
+    // Stamped for every frame, keepalive pings included: the next one is due a
+    // fixed time after the last thing this end said, whatever that was.
+    lastSentAt = std::chrono::steady_clock::now();
     return writeAll(frame.data(), frame.size());
 }
 
@@ -501,6 +537,15 @@ bool WebSocket::Impl::pump() {
         }
     }
     if (stopRequested.load()) return false;
+
+    // Say something, even when the game has nothing to say. See kKeepaliveMs.
+    const auto now = std::chrono::steady_clock::now();
+    if (keepaliveOn() && now - lastSentAt >= std::chrono::milliseconds(kKeepaliveMs)) {
+        if (!writeFrame(kOpPing, nullptr, 0)) {
+            setError("the connection was lost while sending");
+            return false;
+        }
+    }
 
     rxActive = false;
     for (int i = 0; i < kReadsPerPass; ++i) {

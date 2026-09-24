@@ -11,7 +11,9 @@
 
 #include <atomic>
 #include <deque>
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <mutex>
 #include <random>
 #include <thread>
@@ -982,14 +984,35 @@ void NetHost::Impl::checkLiveness() {
     // Generous, because a player thinking about a turn sends nothing at all,
     // and being dropped for concentrating would be absurd.
     constexpr long long kQuietSeconds = 20;
-    constexpr long long kDeadSeconds  = 60;
+    // Settable ONLY so a test can watch a peer be kept alive, or dropped, in
+    // seconds rather than in a minute. Nothing in the game sets it.
+    static const long long kDeadSeconds = [] {
+        if (const char* s = getenv("OD_NET_DEAD_SECONDS")) {
+            const long long v = atoll(s);
+            if (v > 0) return v;
+        }
+        return 60LL;
+    }();
 
     const long long now = nowSeconds();
     for (size_t i = seated.size(); i-- > 0;) {
         Seated& s = seated[i];
-        const long long quiet = now - s.lastHeard;
+        // ── WHAT COUNTS AS BEING THERE ──
+        //
+        // Anything at all on the socket, which is what the transport knows:
+        // an application frame, or the answer to a ping. Counting only
+        // application frames meant a client that was LISTENING -- the whole of
+        // a lobby, and the whole of a world transfer -- was dropped at 60
+        // seconds for not speaking, and the host then showed nobody to wait
+        // for. Time the host itself spent not pumping does not count either;
+        // WsServer::quietSeconds subtracts it.
+        //
+        // And a peer we are still sending to cannot be silent: the bytes we
+        // owe it are the reason it has said nothing.
+        const long long quiet = std::min<long long>(
+            now - s.lastHeard, (long long)server.quietSeconds(s.conn));
 
-        if (quiet >= kDeadSeconds) {
+        if (quiet >= kDeadSeconds && server.pendingBytes(s.conn) == 0) {
             // The seat is KEPT: this is a lost connection, not a departure,
             // and the psid still owns that country. Lobby::disconnect marks
             // them away so the turn can stop waiting on them.

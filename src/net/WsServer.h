@@ -79,6 +79,23 @@ public:
 
     size_t connectionCount() const;
 
+    /**
+     * How long nothing has arrived from this peer, control frames included.
+     *
+     * The host's liveness check used to count only application frames, so a
+     * client that was listening rather than acting -- the whole of a lobby,
+     * and all of a world transfer -- looked dead after 60 seconds and was cut
+     * off. A ping answered is a peer that is there.
+     *
+     * Time during which this server was not being pumped at all does NOT
+     * count: see the stall forgiveness in update(). A host that spent a minute
+     * loading a map has not been ignored by anybody.
+     */
+    double quietSeconds(WsConnId conn) const;
+
+    /** Bytes still queued for this peer: it cannot be silent while we are talking. */
+    size_t pendingBytes(WsConnId conn) const;
+
     /** False when built without networking. */
     static bool available();
 

@@ -69,6 +69,8 @@ struct Seen {
     bool disconnected = false;
     bool peerJoined = false;
     bool turnBegan = false;
+    bool snapshot = false;
+    std::vector<uint8_t> snapshotBytes;
     bool delta = false;
     uint32_t deltaTurn = 0;
     std::string hostError;
@@ -95,6 +97,8 @@ void drain(NetHost* host, NetSession* session, Seen& seen) {
                 case NetSessionEvent::Kind::TurnBegan:      seen.turnBegan = true; break;
                 case NetSessionEvent::Kind::Delta:
                     seen.delta = true; seen.deltaTurn = e.turnNumber; break;
+                case NetSessionEvent::Kind::Snapshot:
+                    seen.snapshot = true; seen.snapshotBytes = e.payload; break;
                 default: break;
             }
         }
@@ -930,11 +934,164 @@ int runHost(const std::string& issuer, int port, bool bindAll) {
     return 0;
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHAT PLAYERS ACTUALLY DID, WHICH NOTHING HERE USED TO DO: nothing.
+//
+// Every other case in this file keeps both ends talking in a tight loop for a
+// second or two. Real players sit in a lobby without clicking, and real
+// clients stop pumping the socket entirely while they load the world the host
+// has just sent them. Both read as silence, and silence used to be fatal:
+//
+//   - the host's liveness check counted only application frames, so a peer
+//     that was listening was dropped after 60 seconds ("did it disconnect me
+//     again? there's no more ready up, just process turn");
+//   - the client never sent anything unprompted, so no tunnel between them saw
+//     traffic either, and cloudflared closed the socket on its own schedule;
+//   - the client read 8 KB per 20 ms, so a multi-megabyte world took tens of
+//     seconds to arrive -- inside which the drop above happened;
+//   - and the host dropped EVERYONE at once when its own frame loop came back
+//     from a long block, because it counted the time it spent not listening
+//     against the peers.
+//
+// The intervals are shortened through the environment (see OD_NET_DEAD_SECONDS
+// and OD_WS_PING_MS) so the rule can be watched in seconds. The rule is the
+// same one the game runs.
+int testQuiet(const std::string& issuer) {
+    printf("\n=== nobody says anything, and nobody is dropped ===\n");
+
+    const long long dead = [] {
+        const char* s = getenv("OD_NET_DEAD_SECONDS");
+        return s ? atoll(s) : 60;
+    }();
+    if (dead >= 20) {
+        printf("  set OD_NET_DEAD_SECONDS (and OD_WS_PING_MS) to run this quickly\n");
+    }
+
+    NetHost host;
+    Seen hostSeen;
+    if (!openHost(host, issuer, hostSeen)) return 1;
+    NetCountryList countries;
+    countries.countries.push_back({101, "Testland"});
+    host.setCountries(countries);
+
+    const std::string address = "127.0.0.1:" + std::to_string(host.listenPort());
+    std::vector<std::unique_ptr<Client>> cs;
+    auto c = std::make_unique<Client>();
+    c->who = "alice";
+    if (!c->session.join(address, issuer, host.code(), "dev-alice", "test", "")) {
+        check("the join starts", false, c->session.error());
+        return 1;
+    }
+    cs.push_back(std::move(c));
+    const bool welcomed = pumpAll(&host, cs, [&] {
+        drainAll(&host, cs, hostSeen);
+        return cs[0]->seen.welcomed || cs[0]->seen.rejected;
+    });
+    check("the player is welcomed", welcomed && cs[0]->seen.welcomed, cs[0]->session.error());
+    if (!cs[0]->seen.welcomed) return 1;
+
+    const uint16_t peerId = cs[0]->session.welcome().peerId;
+    auto stillSeated = [&] {
+        for (const NetPeer& p : host.lobby().roster())
+            if (p.peerId == peerId && p.connected) return true;
+        return false;
+    };
+
+    // ── 1. A LOBBY NOBODY TOUCHES ──
+    // Both ends pumped, neither sending anything the game would recognise.
+    {
+        const auto until = Clock::now() + std::chrono::seconds(dead + 2);
+        while (Clock::now() < until) {
+            host.update();
+            cs[0]->session.update();
+            drainAll(&host, cs, hostSeen);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        check("a player who says nothing keeps their seat", stillSeated());
+        check("and is not told the connection was lost", !cs[0]->seen.disconnected,
+              cs[0]->session.error());
+    }
+
+    // ── 2. THE CLIENT'S GAME THREAD IS BUSY ──
+    // A joiner applying a world does not pump its session at all; the socket
+    // thread has to keep the connection alive by itself. This is the exact
+    // shape of "I joined, the host started, and I was gone".
+    {
+        cs[0]->seen.disconnected = false;
+        const auto until = Clock::now() + std::chrono::seconds(dead + 2);
+        while (Clock::now() < until) {
+            host.update();                       // only the host is pumped
+            drain(&host, nullptr, hostSeen);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        check("a client whose game thread is busy keeps its seat", stillSeated());
+        cs[0]->session.update();
+        drainAll(&host, cs, hostSeen);
+        check("and finds itself still connected when it comes back",
+              !cs[0]->seen.disconnected, cs[0]->session.error());
+    }
+
+    // ── 3. THE HOST'S OWN FRAME LOOP STOPS ──
+    // Loading a map blocks it for as long as the map takes. The peers were not
+    // silent during that; the host was not listening.
+    {
+        cs[0]->seen.disconnected = false;
+        std::this_thread::sleep_for(std::chrono::seconds(dead + 2));
+        // Pumped for a while AFTER the block, because the drop is decided by
+        // the host's liveness sweep and that runs from update(): checking on
+        // the first frame back asks before anything has had the chance to go
+        // wrong, which is a test that cannot fail.
+        const auto until = Clock::now() + std::chrono::seconds(2);
+        while (Clock::now() < until) {
+            host.update();
+            cs[0]->session.update();
+            drainAll(&host, cs, hostSeen);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        check("a host coming back from a long block keeps its players",
+              stillSeated());
+    }
+
+    // ── 4. THE WORLD ITSELF ──
+    // Four megabytes, which is a small world, sent the way startGame sends it.
+    // The old client read it at ~400 KB/s and was dropped before the end.
+    {
+        std::vector<uint8_t> world(4u * 1024 * 1024);
+        for (size_t i = 0; i < world.size(); ++i) world[i] = (uint8_t)(i * 7 + (i >> 11));
+        const auto began = Clock::now();
+        host.sendSnapshot(peerId, 1, world);
+        const bool arrived = pumpAll(&host, cs, [&] {
+            drainAll(&host, cs, hostSeen);
+            return cs[0]->seen.snapshot;
+        }, 30000);
+        const double secs = std::chrono::duration<double>(Clock::now() - began).count();
+        check("a four megabyte world reaches the player", arrived && cs[0]->seen.snapshot);
+        check("whole, byte for byte", cs[0]->seen.snapshotBytes == world);
+        // Loopback is not the link that matters; the ceiling this catches was
+        // the client's own read loop, which no link speed could lift.
+        check("and fast enough that nothing gives up on it",
+              secs < 5.0, "took " + std::to_string(secs) + "s");
+        printf("  (4 MB in %.2fs)\n", secs);
+    }
+
+    // ── 5. A CLIENT FROM BEFORE ANY OF THIS ──
+    // Every copy of 1.2.2a in the wild sends nothing unprompted. What keeps
+    // one alive is the host pinging it and this layer answering, which the
+    // WebSocket layer has always done -- and, when the host's own loop stops,
+    // the host not counting its own blindness against it.
+    //
+    // Run as a second process so the stand-in is the CLIENT, not this host:
+    // see the OD_WS_NO_KEEPALIVE arm in tests/connectivity_test.sh.
+    return 0;
+}
+
+
 int main(int argc, char** argv) {
     // Unbuffered: if this crashes, the last line printed is the clue.
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
-        printf("usage: %s <issuer-url> <join|refuse|mods|party|live|host> [port] [--all]\n", argv[0]);
+        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|live|host> [port] [--all]\n", argv[0]);
         return 2;
     }
     const std::string issuer = argv[1];
@@ -947,6 +1104,7 @@ int main(int argc, char** argv) {
     else if (mode == "mods") testMods(issuer);
     else if (mode == "party") testParty(issuer);
     else if (mode == "live") testLive(issuer);
+    else if (mode == "quiet") testQuiet(issuer);
     else if (mode == "host") {
         // Not a check-counting mode: it reports its own success and returns,
         // so the "N checks, 0 failed" tail below would be a lie about it.

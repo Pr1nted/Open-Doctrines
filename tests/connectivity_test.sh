@@ -168,6 +168,25 @@ run_case refuse --wrong-key || fail=1
 step "a join still completes when the account service is slow"
 run_case join "--delay 600" || fail=1
 
+# ── NOBODY SAYING ANYTHING IS THE NORMAL CASE ──
+#
+# Every case above keeps both ends talking. Players do not: they sit in a lobby
+# without clicking, and their game stops pumping the socket entirely while it
+# loads the world the host just sent. All of that used to read as a dead
+# connection, and the host cut them off mid-game -- which is what happened to
+# the first people who joined a 1.2.2a game. The intervals are shortened here
+# so the rule can be watched in seconds; the rule is the game's own.
+step "a quiet lobby, a busy client, a blocked host, and a four-megabyte world"
+OD_NET_DEAD_SECONDS=4 OD_WS_PING_MS=700 run_case quiet || fail=1
+
+# The same, against a client that predates the keepalive -- which is every copy
+# of 1.2.2a anyone has installed. Such a client says nothing at all, so what
+# has to carry it is the host's ping, the reply the WebSocket layer has always
+# sent, and the host not counting its own blocked frame loop against it.
+step "a player on the released build, who sends nothing, is still not dropped"
+OD_NET_DEAD_SECONDS=4 OD_WS_PING_MS=700 OD_WS_NO_KEEPALIVE=1 run_case quiet || fail=1
+
+
 if [ "$fail" -eq 0 ]; then
     printf '\nCONNECTIVITY OK\n'
 else
