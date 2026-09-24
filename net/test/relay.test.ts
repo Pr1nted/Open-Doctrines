@@ -1,7 +1,7 @@
 // The relay's own guarantees: who it lets in, what it tells the host about
 // them, and what it refuses to carry.
 
-import { env as testEnv, SELF } from "cloudflare:test";
+import { env as testEnv, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Env } from "../src/env.js";
 import { clearKv, setupEnv } from "./helpers.js";
@@ -119,6 +119,24 @@ async function connect(code: string, role: "host" | "player" | "spectator"): Pro
     const socket = response.webSocket!;
     socket.accept();
     return wrap(socket);
+}
+
+/**
+ * Run the object's alarm now, optionally winding its state first.
+ *
+ * Typed loosely on purpose: runInDurableObject's own generics recurse through
+ * the whole Durable Object surface and tsc gives up on the depth
+ * ("excessively deep"), which is a typing limit rather than anything about
+ * this test.
+ */
+async function fireAlarm(code: string,
+                         before?: (instance: any) => void): Promise<void> {
+    const run = runInDurableObject as unknown as (
+        stub: unknown, fn: (instance: any) => Promise<void>) => Promise<void>;
+    await run(lobby(code), async (instance: any) => {
+        before?.(instance);
+        await instance.alarm();
+    });
 }
 
 async function anAccount(nick: string, sub: string): Promise<Account> {
@@ -364,6 +382,60 @@ describe("routing", () => {
 
         const second = await join("FFFF-0004", await anAccount("Bob", "b-sub"), "player");
         expect(await second.next()).toMatchObject({ type: "close", code: 4409 });
+    });
+});
+
+// ── A HOST WHO BLINKS, WHILE SOMEBODY ELSE CONNECTS ──
+//
+// A Durable Object has ONE alarm, and two deadlines wanted it: five seconds to
+// sweep a socket that never authenticates, and ninety seconds of grace for a
+// host that dropped off wifi. Arming the short one overwrote the long one, so
+// any reconnect during those ninety seconds brought the sweep forward, the
+// sweep saw no host, and it closed everybody with "host left" -- and for a
+// rapid game deleted the session, so nobody could get back in at all. One
+// player's connection blinking ended the game.
+describe("a host that drops while somebody else connects", () => {
+    it("keeps the game while the grace has not run out", async () => {
+        const owner = await hosted("FFFF-0010");
+        const host = await join("FFFF-0010", owner, "host");
+        expect(await host.next()).toMatchObject({ type: "text" });
+
+        const player = await join("FFFF-0010", await anAccount("Ann", "ann-sub"), "player");
+        expect(await player.next()).toMatchObject({ type: "text" });
+
+        // The host goes, and a second player arrives in the window -- which is
+        // what used to re-arm the alarm five seconds out.
+        host.socket.close();
+        await new Promise((r) => setTimeout(r, 50));
+        const late = await connect("FFFF-0010", "player");   // never says hello
+
+        await fireAlarm("FFFF-0010");
+
+        // The player who was playing is still connected, and the session is
+        // still there to come back to.
+        expect(await player.next(300)).toMatchObject({ type: "close", code: -1 });
+        const still = await lobby("FFFF-0010").fetch(new Request("https://lobby/info"));
+        expect(still.status).toBe(200);
+        late.socket.close();
+    });
+
+    it("ends it once the grace really has run out", async () => {
+        const owner = await hosted("FFFF-0011");
+        const host = await join("FFFF-0011", owner, "host");
+        expect(await host.next()).toMatchObject({ type: "text" });
+        const player = await join("FFFF-0011", await anAccount("Bo", "bo-sub"), "player");
+        expect(await player.next()).toMatchObject({ type: "text" });
+
+        host.socket.close();
+        await new Promise((r) => setTimeout(r, 50));
+
+        // Wind the departure back past the grace rather than waiting ninety
+        // seconds for it.
+        await fireAlarm("FFFF-0011", (instance) => {
+            instance.set("hostGoneAt", String(Date.now() - 10 * 60 * 1000));
+        });
+
+        expect(await player.next()).toMatchObject({ type: "close", code: 4404 });
     });
 });
 

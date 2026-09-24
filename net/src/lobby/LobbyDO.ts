@@ -395,8 +395,9 @@ export class LobbyDO extends DurableObject<Env> {
         } satisfies Attachment);
 
         // Anyone who connects and then says nothing is holding a slot for
-        // free. Sweep them.
-        void this.ctx.storage.setAlarm(now + AUTH_GRACE_MS);
+        // free. Sweep them -- without moving a sooner deadline, and without
+        // replacing a later one that alarm() knows how to re-arm.
+        void this.armAlarm(now + AUTH_GRACE_MS);
 
         return new Response(null, { status: 101, webSocket: client });
     }
@@ -520,8 +521,11 @@ export class LobbyDO extends DurableObject<Env> {
                 JSON.stringify(identity),
             ));
         }
-        // Cancel the host-gone teardown: somebody is here.
-        if (peer.role === "host") await this.ctx.storage.deleteAlarm();
+        // The host is here, so there is no departure to count from. The alarm
+        // itself is left alone: other sockets may still be inside their own
+        // five second grace, and cancelling it outright let an unauthenticated
+        // one sit forever.
+        if (peer.role === "host") this.set("hostGoneAt", "");
     }
 
     /**
@@ -849,11 +853,20 @@ export class LobbyDO extends DurableObject<Env> {
             // Do not tear down immediately: a host that dropped off wifi should
             // come back to a lobby that still has everyone in it.
             //
-            // For a long-form game the host is SUPPOSED to be gone -- that is
-            // what long-form means -- so the deadline is months, not seconds.
+            // WRITTEN DOWN, not merely armed. A Durable Object has one alarm,
+            // and every new connection arms it five seconds out to sweep
+            // sockets that never say hello -- so any player reconnecting, or
+            // the host's own second attempt, used to overwrite this ninety
+            // second grace with five, and the sweep then found no host and
+            // ended the game for everybody. For a rapid game it also deleted
+            // the session, so nobody could get back in at all.
+            //
+            // The deadline lives in storage; the alarm is only ever the next
+            // thing to look at, and alarm() re-arms for whatever is still due.
             const longForm = this.settings()?.longForm === true;
-            await this.ctx.storage.setAlarm(
-                Date.now() + (longForm ? LONGFORM_IDLE_MS : HOST_GRACE_MS));
+            this.set("hostGoneAt", String(Date.now()));
+            this.set("hostGraceMs", String(longForm ? LONGFORM_IDLE_MS : HOST_GRACE_MS));
+            await this.armAlarm(Date.now() + (longForm ? LONGFORM_IDLE_MS : HOST_GRACE_MS));
         }
     }
 
@@ -896,21 +909,55 @@ export class LobbyDO extends DurableObject<Env> {
         }
     }
 
+    /**
+     * Set the alarm for `when`, unless something sooner is already due.
+     *
+     * One alarm, several deadlines: the auth sweep is seconds away and a host's
+     * grace is a minute and a half or a season. Taking the earliest and having
+     * alarm() re-arm is what keeps the short one from eating the long one.
+     */
+    private async armAlarm(when: number): Promise<void> {
+        const existing = await this.ctx.storage.getAlarm();
+        if (existing === null || existing > when) await this.ctx.storage.setAlarm(when);
+    }
+
     override async alarm(): Promise<void> {
         const sockets = this.ctx.getWebSockets();
 
         // Sweep anyone who connected and never authenticated.
-        const cutoff = Date.now() - AUTH_GRACE_MS;
+        const now = Date.now();
+        const cutoff = now - AUTH_GRACE_MS;
+        let nextDue = 0;
         for (const ws of sockets) {
             const peer = this.attachment(ws);
-            if (peer && !peer.authed && peer.joinedAt < cutoff) ws.close(4401, "no hello");
+            if (!peer || peer.authed) continue;
+            if (peer.joinedAt < cutoff) ws.close(4401, "no hello");
+            else nextDue = nextDue ? Math.min(nextDue, peer.joinedAt + AUTH_GRACE_MS)
+                                   : peer.joinedAt + AUTH_GRACE_MS;
         }
 
         const hostHere = sockets.some((ws) => {
             const peer = this.attachment(ws);
             return peer?.authed && peer.role === "host";
         });
-        if (hostHere) return;
+        if (hostHere) {
+            if (nextDue) await this.armAlarm(nextDue);
+            return;
+        }
+
+        // ── IS THE HOST'S GRACE ACTUALLY UP? ──
+        //
+        // This used to be assumed: the alarm fired, no host was seen, and the
+        // game was ended. But the alarm that fired was often the five second
+        // sweep somebody else's connection had armed, seconds into a ninety
+        // second grace.
+        const goneAt = Number(this.get("hostGoneAt") ?? "");
+        const graceMs = Number(this.get("hostGraceMs") ?? "") || HOST_GRACE_MS;
+        if (goneAt > 0 && now < goneAt + graceMs) {
+            await this.armAlarm(goneAt + graceMs);
+            if (nextDue) await this.armAlarm(nextDue);
+            return;
+        }
 
         // No host. Disconnect whoever is still waiting either way -- without an
         // authoritative server there is nothing to be connected TO.
