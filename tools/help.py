@@ -93,6 +93,8 @@ GROUPS = [
     ("Inspecting game files", [
         "read_odsv.py", "package_odmap.py", "generate_map_thumb.py",
         "generate_sample_odsv.py", "generate_zero_turn_odsv.py",
+        # Turning a map into something the TempleOS build can draw and play.
+        "templeos_map.py", "templeos_world.py",
     ]),
     ("Building the world data", [
         "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",
