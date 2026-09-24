@@ -204,6 +204,16 @@ OD_NET_DEAD_SECONDS=8 OD_NET_KEEPALIVE_SECONDS=2 OD_WS_PING_MS=600000 OD_WS_NO_K
 step "the lobby is read while the host is still opening"
 run_case race "--delay-host 700" || fail=1
 
+# ── THE WAY A BROWSER PLAYER ARRIVES ──
+#
+# Nothing exercised the relay until this case existed, and the first run of it
+# found a crash: the relay join answered its own challenge on the worker
+# thread, which joins that thread, which is an uncaught system_error. Only the
+# web build escaped, because there the same work is queued rather than
+# threaded. The stand-in relay is in tests/mock_issuer.mjs.
+step "a host and two players, all through the relay"
+run_case relay || fail=1
+
 if [ "$fail" -eq 0 ]; then
     printf '\nCONNECTIVITY OK\n'
 else

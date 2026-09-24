@@ -74,7 +74,14 @@ const publishedJwk = await webcrypto.subtle.exportKey("jwk", publishedPair.publi
 // line is printed after the reassignment, so nothing can observe the
 // placeholder.
 let ISSUER = `http://localhost:${PORT}`;
-const CODE = "TESTCODE";
+// SHAPED LIKE A REAL ONE: four, a dash, four, from the unambiguous alphabet in
+// src/net/RelayLink.cpp (no I, L, O, 0 or 1). It used to be "TESTCODE", which
+// no relay URL could be built from -- so a relayed host could not be tested at
+// all, and the whole relay path went uncovered.
+const CODE = "TEST-GAME";
+
+// code -> { host, players: Map<peerId, conn>, relayFrames } for the stand-in relay
+const relayRooms = new Map();
 
 async function sign(claims) {
     const message = "od1." + b64url(new TextEncoder().encode(JSON.stringify(claims)));
@@ -137,6 +144,14 @@ const server = createServer(async (req, res) => {
         return json(res, { keys: [publishedJwk], issuer: ISSUER });
     }
 
+    // How many frames the stand-in relay has had from the host of `code`.
+    // Only a test asks; the real service has no such thing.
+    if (req.method === "GET" && path.startsWith("/relay-stats/")) {
+        const room = relayRooms.get(path.slice("/relay-stats/".length));
+        return json(res, { frames: room?.relayFrames ?? 0,
+                           players: room ? room.players.size : 0 });
+    }
+
     if (req.method === "POST" && path === "/server/register") {
         return json(res, { serverCredential: "mock-server-credential" });
     }
@@ -154,7 +169,10 @@ const server = createServer(async (req, res) => {
     // descriptor is opaque to the game; only we ever read it back.
     if (req.method === "GET" && path.startsWith("/session/")) {
         const code = path.slice("/session/".length);
-        return json(res, { descriptor: `descriptor-for-${code}`, code });
+        // A nonce too: a host opening THROUGH THE RELAY answers a challenge
+        // here before it may connect, exactly as a joiner does.
+        return json(res, { descriptor: `descriptor-for-${code}`, code,
+                           nonce: "nonce-" + code });
     }
 
     // Mint a join ticket answering the host's challenge. No checks: the point
@@ -213,6 +231,142 @@ const server = createServer(async (req, res) => {
     }
 
     json(res, { error: "not_found" }, 404);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A RELAY, ENOUGH OF ONE TO TEST AGAINST
+//
+// Browser players reach a host through the account service's relay, and until
+// now nothing exercised that path at all -- which is where three separate bugs
+// were found by reading rather than by failing: the host fanned a broadcast out
+// as one frame per player and tripped the relay's own rate limit, it checked
+// its snapshot against the wrong ceiling, and a refusal from the relay never
+// reached the player.
+//
+// This is not the real relay (net/src/lobby/LobbyDO.ts). It seats whoever
+// asks, keeps no state worth the name, and enforces nothing. What it does is
+// speak the same wire format in both directions, so the game's relay code can
+// be driven end to end on one machine.
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const ToHost = { Data: 1, PeerJoined: 2, PeerLeft: 3 };
+const FromHost = { ToPeer: 1, Broadcast: 2, Kick: 3, Ban: 4 };
+
+/** One socket, framed. Handles fragments and control frames; masks nothing. */
+function wsWrap(socket) {
+    const self = { socket, buf: Buffer.alloc(0), asm: null, asmOp: 0, onText: null, onBinary: null, onClose: null };
+    socket.on("data", (chunk) => {
+        self.buf = Buffer.concat([self.buf, chunk]);
+        for (;;) {
+            if (self.buf.length < 2) return;
+            const b0 = self.buf[0], b1 = self.buf[1];
+            const fin = (b0 & 0x80) !== 0, op = b0 & 0x0f, masked = (b1 & 0x80) !== 0;
+            let len = b1 & 0x7f, at = 2;
+            if (len === 126) { if (self.buf.length < 4) return; len = self.buf.readUInt16BE(2); at = 4; }
+            else if (len === 127) { if (self.buf.length < 10) return; len = Number(self.buf.readBigUInt64BE(2)); at = 10; }
+            const maskAt = at;
+            if (masked) at += 4;
+            if (self.buf.length < at + len) return;
+            let payload = self.buf.subarray(at, at + len);
+            if (masked) {
+                const m = self.buf.subarray(maskAt, maskAt + 4);
+                payload = Buffer.from(payload);
+                for (let i = 0; i < payload.length; i++) payload[i] ^= m[i & 3];
+            } else payload = Buffer.from(payload);
+            self.buf = self.buf.subarray(at + len);
+
+            if (op === 0x8) { self.onClose?.(); socket.end(); return; }
+            if (op === 0x9) { wsSend(self, 0xA, payload); continue; }
+            if (op === 0xA) continue;
+            if (op === 0x0) self.asm = Buffer.concat([self.asm ?? Buffer.alloc(0), payload]);
+            else { self.asm = payload; self.asmOp = op; }
+            if (!fin) continue;
+            const whole = self.asm; self.asm = null;
+            if (self.asmOp === 0x1) self.onText?.(whole.toString("utf8"));
+            else self.onBinary?.(whole);
+        }
+    });
+    socket.on("error", () => self.onClose?.());
+    socket.on("close", () => self.onClose?.());
+    return self;
+}
+
+function wsSend(conn, opcode, payload) {
+    const n = payload.length;
+    const head = n < 126 ? Buffer.from([0x80 | opcode, n])
+        : n <= 0xffff ? Buffer.concat([Buffer.from([0x80 | opcode, 126]), (() => { const b = Buffer.alloc(2); b.writeUInt16BE(n); return b; })()])
+        : Buffer.concat([Buffer.from([0x80 | opcode, 127]), (() => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(n)); return b; })()]);
+    try { conn.socket.write(Buffer.concat([head, payload])); } catch { /* gone */ }
+}
+
+
+server.on("upgrade", async (req, socket) => {
+    const url = new URL(req.url, "http://localhost");
+    const m = url.pathname.match(/^\/session\/([A-Za-z0-9-]+)\/ws$/);
+    const key = req.headers["sec-websocket-key"];
+    if (!m || !key) { socket.destroy(); return; }
+    const role = url.searchParams.get("role") === "host" ? "host" : "player";
+    const code = m[1];
+
+    const digest = await webcrypto.subtle.digest("SHA-1", Buffer.from(key + WS_GUID));
+    socket.write("HTTP/1.1 101 Switching Protocols\r\n" +
+                 "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+                 "Sec-WebSocket-Accept: " + Buffer.from(digest).toString("base64") + "\r\n\r\n");
+
+    const conn = wsWrap(socket);
+    const room = relayRooms.get(code) ?? { host: null, players: new Map(), nextPeer: 1 };
+    relayRooms.set(code, room);
+
+    conn.onText = (text) => {
+        // The HELLO. Anything is accepted: this stands in for the relay's
+        // authentication, and what is under test is everything after it.
+        if (role === "host") {
+            room.host = conn;
+            // peerId 0 for the host: parseHelloReply wants the field present
+            // whichever side is asking.
+            wsSend(conn, 0x1, Buffer.from(JSON.stringify({ ok: true, peerId: 0, role: "host" })));
+            return;
+        }
+        const peerId = room.nextPeer++;
+        conn.peerId = peerId;
+        room.players.set(peerId, conn);
+        wsSend(conn, 0x1, Buffer.from(JSON.stringify({ ok: true, peerId, role: "player" })));
+        if (room.host) {
+            const head = Buffer.from([ToHost.PeerJoined, peerId & 0xff, (peerId >> 8) & 0xff]);
+            wsSend(room.host, 0x2, Buffer.concat([head, Buffer.from(JSON.stringify({ psid: "psid-relay-" + peerId, name: "Relayed " + peerId, issuer: ISSUER }))]));
+        }
+    };
+
+    conn.onBinary = (data) => {
+        if (role === "host") {
+            if (data.length < 3) return;
+            const kind = data[0], target = data[1] | (data[2] << 8);
+            const payload = data.subarray(3);
+            room.relayFrames = (room.relayFrames ?? 0) + 1;
+            if (kind === FromHost.Broadcast) {
+                for (const p of room.players.values()) wsSend(p, 0x2, payload);
+            } else if (kind === FromHost.ToPeer) {
+                const p = room.players.get(target);
+                if (p) wsSend(p, 0x2, payload);
+            } else if (kind === FromHost.Kick || kind === FromHost.Ban) {
+                const p = room.players.get(target);
+                if (p) { room.players.delete(target); p.socket.end(); }
+            }
+            return;
+        }
+        if (!room.host) return;
+        const id = conn.peerId ?? 0;
+        const head = Buffer.from([ToHost.Data, id & 0xff, (id >> 8) & 0xff]);
+        wsSend(room.host, 0x2, Buffer.concat([head, data]));
+    };
+
+    conn.onClose = () => {
+        if (role === "host") { if (room.host === conn) room.host = null; return; }
+        const id = conn.peerId ?? 0;
+        if (room.players.delete(id) && room.host) {
+            const head = Buffer.from([ToHost.PeerLeft, id & 0xff, (id >> 8) & 0xff]);
+            wsSend(room.host, 0x2, head);
+        }
+    };
 });
 
 server.listen(PORT, "127.0.0.1", () => {

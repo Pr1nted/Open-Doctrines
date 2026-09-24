@@ -117,6 +117,18 @@ struct NetSession::Impl {
 
     WebSocket socket;
     std::thread joinWorker;
+    /**
+     * A relay's answer to /session/<code>, waiting for the game thread.
+     *
+     * THE WORKER MUST NOT ANSWER IT ITSELF. answerChallenge starts the ticket
+     * worker, and starting it begins by joining the one that is running -- so
+     * a relayed join called join() on its own thread, which is
+     * "Resource deadlock avoided" and an uncaught system_error: the game
+     * terminated on the spot. Only the web build escaped it, because there the
+     * work is queued rather than threaded.
+     */
+    std::string pendingChallenge;
+    bool        havePendingChallenge = false;
     std::atomic<bool> abandon{false};
 
     /**
@@ -540,7 +552,11 @@ void NetSession::update() {
                                             : res.error);
                 return;
             }
-            impl.answerChallenge(res.body);
+            // Handed to the game thread rather than answered here: see
+            // pendingChallenge.
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            impl.pendingChallenge = res.body;
+            impl.havePendingChallenge = true;
         };
 #ifdef __EMSCRIPTEN__
         odasync::run(askRelay);
@@ -548,6 +564,19 @@ void NetSession::update() {
         if (impl.joinWorker.joinable()) impl.joinWorker.join();
         impl.joinWorker = std::thread(askRelay);
 #endif
+    }
+
+    // The relay's challenge, picked up on this thread. See pendingChallenge.
+    {
+        std::string challengeBody;
+        {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.havePendingChallenge) {
+                impl.havePendingChallenge = false;
+                challengeBody.swap(impl.pendingChallenge);
+            }
+        }
+        if (!challengeBody.empty()) impl.answerChallenge(challengeBody);
     }
 
     // Sent from here rather than from the worker so the socket is only ever

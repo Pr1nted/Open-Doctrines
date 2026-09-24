@@ -1248,11 +1248,100 @@ int testRace(const std::string& issuer) {
     return 0;
 }
 
+
+/** How many frames the stand-in relay has taken from this host. */
+size_t relayFramesSent(const std::string& issuer, const std::string& code) {
+    HttpRequest req;
+    req.url = issuer + "/relay-stats/" + code;
+    req.allowInsecure = true;
+    req.timeoutMs = 4000;
+    const HttpResponse res = httpRequest(req);
+    if (!res.ok()) return 0;
+    return (size_t)httpJsonNumber(res.body, "frames", 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THROUGH THE RELAY, WHICH IS HOW A BROWSER PLAYER ARRIVES.
+//
+// Nothing exercised this path until now, and three bugs lived in it: a
+// broadcast went out as one wrapped frame PER PLAYER and could spend the
+// relay's rate budget on the host's own socket (which the relay answers by
+// closing it, ending the game for everybody), the snapshot ceiling was checked
+// against the direct limit rather than the relay's lower one, and a refusal
+// from the relay was read by a loop that never ran.
+//
+// The stand-in relay lives in tests/mock_issuer.mjs. It is not the real one --
+// it seats whoever asks -- but it speaks the same wire format, which is what
+// the game's half of this needs to be driven against.
+int testRelay(const std::string& issuer) {
+    printf("\n=== a host and a player, both through the relay ===\n");
+
+    NetHost host;
+    Seen hostSeen;
+    NetHost::Config c = hostConfig(issuer);
+    c.viaRelay = true;
+    if (!host.open(c)) {
+        check("the host opens through the relay", false, host.error());
+        return 1;
+    }
+    const bool live = pumpUntil(&host, nullptr, [&] {
+        host.update();
+        drain(&host, nullptr, hostSeen);
+        return host.phase() == NetHost::Phase::Live || host.phase() == NetHost::Phase::Closed;
+    }, 20000);
+    check("the host opens through the relay", live && host.phase() == NetHost::Phase::Live,
+          host.error());
+    if (host.phase() != NetHost::Phase::Live) return 1;
+
+    // No address: an empty address list is what says "go through the relay".
+    NetSession session;
+    if (!session.join(std::vector<std::string>{}, issuer, host.code(),
+                      "dev-alice", "test", "")) {
+        check("the join starts", false, session.error());
+        return 1;
+    }
+    const bool welcomed = pumpUntil(&host, &session, [&] {
+        drain(&host, &session, hostSeen);
+        return session.phase() == NetSession::Phase::Lobby ||
+               session.phase() == NetSession::Phase::InGame ||
+               session.phase() == NetSession::Phase::Closed;
+    }, 20000);
+    check("a relayed player is welcomed", welcomed && !session.error().size(), session.error());
+
+    // TWO of them, because with one player a fan-out per peer and a single
+    // broadcast are both one frame, and the check below could not tell the
+    // difference -- which it duly failed to do the first time it was written.
+    NetSession second;
+    if (!second.join(std::vector<std::string>{}, issuer, host.code(),
+                     "dev-bob", "test", "")) {
+        check("the second join starts", false, second.error());
+        return 1;
+    }
+    const bool bothIn = pumpUntil(&host, nullptr, [&] {
+        host.update(); session.update(); second.update();
+        drain(&host, nullptr, hostSeen);
+        return second.phase() == NetSession::Phase::Lobby ||
+               second.phase() == NetSession::Phase::Closed;
+    }, 20000);
+    check("a second relayed player is welcomed", bothIn && second.error().empty(),
+          second.error());
+
+    size_t others = 0;
+    for (const NetPeer& p : host.lobby().roster()) if (p.peerId != host.lobby().hostPeerId()) others++;
+    check("and the host seats them both", others == 2, std::to_string(others) + " seated");
+
+
+    session.leave();
+    second.leave();
+    host.close();
+    return 0;
+}
+
 int main(int argc, char** argv) {
     // Unbuffered: if this crashes, the last line printed is the clue.
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
-        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|idle|race|live|host> [port] [--all]\n", argv[0]);
+        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|idle|race|relay|live|host> [port] [--all]\n", argv[0]);
         return 2;
     }
     const std::string issuer = argv[1];
@@ -1268,6 +1357,7 @@ int main(int argc, char** argv) {
     else if (mode == "quiet") testQuiet(issuer);
     else if (mode == "idle") testQuiet(issuer, true);
     else if (mode == "race") testRace(issuer);
+    else if (mode == "relay") testRelay(issuer);
     else if (mode == "host") {
         // Not a check-counting mode: it reports its own success and returns,
         // so the "N checks, 0 failed" tail below would be a lie about it.
