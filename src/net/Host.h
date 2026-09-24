@@ -46,6 +46,13 @@ struct NetHostEvent {
         Chat,
         PlayerReport,    // somebody told the host about somebody else
         JoinRefused,     // somebody tried and was turned away; text says why
+        /**
+         * A player says they have lost track of the world and wants it again.
+         *
+         * Answered by sending them a snapshot, which is the caller's job: this
+         * layer does not know what a world is. See NetMsg::ResyncRequest.
+         */
+        WorldWanted,
         Failed,          // error() says why
         Closed,
     } kind = Kind::LobbyChanged;

@@ -856,6 +856,12 @@ void NetSession::sendPlayerReport(uint16_t aboutPeer, const std::string& reason,
 }
 
 
+void NetSession::requestWorld() {
+    if (!joined(phase())) return;
+    m_impl->socket.send(netEncodeFrame(NetMsg::ResyncRequest, {}));
+    m_impl->lastSpoke = nowSeconds();
+}
+
 void NetSession::sendReady() {
     if (!joined(phase())) return;
     m_impl->socket.send(netEncodeFrame(NetMsg::Ready, {}));

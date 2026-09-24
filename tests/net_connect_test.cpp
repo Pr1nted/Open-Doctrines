@@ -70,6 +70,7 @@ struct Seen {
     bool peerJoined = false;
     bool turnBegan = false;
     bool snapshot = false;
+    int  worldWanted = 0;
     std::vector<uint8_t> snapshotBytes;
     bool delta = false;
     uint32_t deltaTurn = 0;
@@ -84,6 +85,7 @@ void drain(NetHost* host, NetSession* session, Seen& seen) {
             if (e.kind == NetHostEvent::Kind::PeerJoined) seen.peerJoined = true;
             if (e.kind == NetHostEvent::Kind::Failed) seen.hostError = e.text;
             if (e.kind == NetHostEvent::Kind::PlayerReport) seen.report = e.report;
+            if (e.kind == NetHostEvent::Kind::WorldWanted) seen.worldWanted++;
         }
     }
     if (session) {
@@ -301,6 +303,24 @@ int testJoin(const std::string& issuer) {
             const std::vector<uint8_t> tooMuch(NetLimits::kOrders + 1, 7);
             check("orders too large for a turn are refused here, not silently lost there",
                   !session.submitOrders(1, tooMuch));
+            // ── ASKING FOR THE WORLD AGAIN ──
+            //
+            // A client that cannot follow the turns says so, and the host is
+            // told who asked. Answering is the game's job; what the transport
+            // owes is the message and a limit on how often one peer can spend
+            // the host's time rebuilding a world.
+            seen.worldWanted = 0;
+            session.requestWorld();
+            const bool asked = pumpUntil(&host, &session, [&] {
+                drain(&host, &session, seen);
+                return seen.worldWanted > 0;
+            }, 6000);
+            check("a client can ask the host for the world again", asked);
+            for (int i = 0; i < 5; ++i) session.requestWorld();
+            pumpUntil(&host, &session, [&] { drain(&host, &session, seen); return false; }, 1500);
+            check("and asking five more times in a second does not ask the host five more times",
+                  seen.worldWanted == 1, "host saw " + std::to_string(seen.worldWanted));
+
             check("and the reason is one a player can be shown",
                   session.error().find("larger") != std::string::npos, session.error());
 

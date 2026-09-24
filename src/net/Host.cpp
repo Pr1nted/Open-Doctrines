@@ -223,6 +223,8 @@ struct NetHost::Impl {
          * turn timer, the game waits on somebody who is not there.
          */
         long long lastHeard = 0;
+        /// When this peer was last sent the world again. See ResyncRequest.
+        long long lastResyncSent = 0;
         long long lastPinged = 0;
     };
     std::vector<Seated> seated;
@@ -1304,6 +1306,21 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
             // that announces itself is a report nobody files.
             NetHostEvent e{NetHostEvent::Kind::PlayerReport, peerId, r.reason, {}, r};
             push(std::move(e));
+            return;
+        }
+        case NetMsg::ResyncRequest: {
+            // ONE AT A TIME. Rebuilding a world is expensive and a client that
+            // is confused may ask repeatedly; this answers at most one request
+            // per peer every few seconds and drops the rest on the floor.
+            constexpr long long kResyncEverySeconds = 5;
+            const long long now = nowSeconds();
+            for (Seated& s : seated) {
+                if (s.peerId != peerId) continue;
+                if (now - s.lastResyncSent < kResyncEverySeconds) return;
+                s.lastResyncSent = now;
+                break;
+            }
+            push({NetHostEvent::Kind::WorldWanted, peerId, "", {}});
             return;
         }
         default:

@@ -66,6 +66,20 @@ enum class NetMsg : uint16_t {
     ModMsg       = 10,
     PlayerReport = 11,  // "this player wrote something you should see"
 
+    /**
+     * "I have lost track of the world; send it again."
+     *
+     * A client applies one turn after another and has no way back if it ever
+     * misses one -- and it could miss one, because a delta that arrived while
+     * a joiner was still loading its world was simply dropped. It then applied
+     * the NEXT delta to the wrong world and said nothing, which is a desync
+     * that lasts for the rest of the game.
+     *
+     * Additive: a host that predates this ignores an id it does not know, and
+     * the client is no worse off than it was.
+     */
+    ResyncRequest = 12,
+
     // ---- server -> client -------------------------------------------------
     Welcome  = 64,
     Reject   = 65,  // always the last frame before a close

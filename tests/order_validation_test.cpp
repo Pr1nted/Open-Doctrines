@@ -171,8 +171,27 @@ struct OrderValidationTest {
               "and twice unanswered means telling the player, not waiting on");
     }
 
+    /** Which turns a client may apply, and what it does with the rest. */
+    void turnsArrivingFromTheHost() {
+        printf("\n== a turn that arrives from the host ==\n");
+        using D = Game::DeltaStep;
+        check(Game::mpDeltaStep(false, true, 5, 4) == D::Apply,
+              "the turn after this one is applied");
+        check(Game::mpDeltaStep(false, true, 4, 4) == D::Ignore,
+              "the turn we already have is ignored, not applied twice");
+        check(Game::mpDeltaStep(false, true, 2, 4) == D::Ignore,
+              "and so is an older one");
+        check(Game::mpDeltaStep(false, true, 7, 4) == D::Resync,
+              "a gap asks for the world rather than guessing at it");
+        check(Game::mpDeltaStep(true, true, 5, 4) == D::Queue,
+              "a turn arriving mid-load is held, not applied to the old world");
+        check(Game::mpDeltaStep(false, false, 5, 4) == D::Resync,
+              "and with no world at all there is nothing to apply it to");
+    }
+
     void run() {
         hostedGameSettings();
+        turnsArrivingFromTheHost();
         worldForAJoiner();
         ordersNobodyAcknowledged();
         const int cid = anyCountry();

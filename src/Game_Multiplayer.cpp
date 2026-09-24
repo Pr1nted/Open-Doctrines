@@ -720,6 +720,18 @@ void Game::mpDrainEvents() {
         NetHostEvent e;
         while (m_netHost->nextEvent(e)) {
             switch (e.kind) {
+                case NetHostEvent::Kind::WorldWanted:
+                    // A player who cannot follow the turns any more. Sending
+                    // the world back is the only repair; the alternative is a
+                    // player quietly playing a different game.
+                    if (m_netHost->lobby().state() == NetSessionState::Game && e.peerId) {
+                        if (!m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
+                                                     mpSnapshotForJoiner()))
+                            mpNote("A player asked for the world and it is too large to send.",
+                                   true);
+                    }
+                    break;
+
                 case NetHostEvent::Kind::PeerJoined:
                     // ── SOMEBODY ARRIVING INTO A GAME THAT IS RUNNING ──
                     //
@@ -2722,6 +2734,10 @@ void Game::mpOnWorldLoaded() {
         }
         m_mpPendingSnapshot.clear();
         mpEnterGame(m_mpMyCountry);
+        // Turns that arrived while all that was loading. They were held rather
+        // than applied to the world being replaced; now there is one to apply
+        // them to, and mpApplyDelta drops the ones this world already has.
+        mpDrainQueuedDeltas();
         return;
     }
 }
@@ -3669,18 +3685,57 @@ void Game::mpResolveTurn() {
     mpSaveSeats();
 }
 
+Game::DeltaStep Game::mpDeltaStep(bool worldLoading, bool haveWorld,
+                                  uint32_t arrived, int currentTurn) {
+    // A world on its way: hold the turn rather than applying it to the world
+    // being replaced, or dropping it because the new one is not here yet.
+    if (worldLoading) return DeltaStep::Queue;
+    if (!haveWorld) return DeltaStep::Resync;
+    const uint32_t expected = (uint32_t)currentTurn + 1;
+    if (arrived == expected) return DeltaStep::Apply;
+    // Already played: a duplicate, or one the snapshot we were just sent
+    // already contained. Applying it again would move every army twice.
+    if (arrived <= (uint32_t)currentTurn) return DeltaStep::Ignore;
+    // A gap. Nothing here can reconstruct what is missing, so ask for the
+    // world rather than carry on in a game of our own.
+    return DeltaStep::Resync;
+}
+
+void Game::mpDrainQueuedDeltas() {
+    if (m_mpQueuedDeltas.empty()) return;
+    // In turn order, whatever order they arrived in.
+    std::sort(m_mpQueuedDeltas.begin(), m_mpQueuedDeltas.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    auto queued = std::move(m_mpQueuedDeltas);
+    m_mpQueuedDeltas.clear();
+    for (auto& [turn, bytes] : queued) mpApplyDelta(turn, bytes);
+}
+
 void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
-    // ── NO WORLD, NO TURN ──
-    //
-    // A rejoining player used to be sent nothing and then handed the next
-    // turn's delta, which applied army and ownership changes to provinces that
-    // did not exist in an empty game. Being sent the world is the fix (see
-    // mpSnapshotForJoiner); refusing to pretend is the guard, because a host
-    // that is older, or busy, or has hit a snapshot it cannot send, still
-    // leaves this client with nothing to apply a turn to.
-    if (m_provinceCountryLookup.empty()) {
-        mpNote("Waiting for the world before this turn can be applied.", true);
-        return;
+    switch (mpDeltaStep(m_mpLoad != MpLoad::None, !m_provinceCountryLookup.empty(),
+                        turnNumber, m_turnNumber)) {
+        case DeltaStep::Apply:
+            break;
+        case DeltaStep::Queue:
+            // Bounded: a client that is loading for long enough to fall this
+            // far behind is going to ask for the world anyway.
+            if (m_mpQueuedDeltas.size() < 64)
+                m_mpQueuedDeltas.emplace_back(turnNumber, payload);
+            return;
+        case DeltaStep::Ignore:
+            return;
+        case DeltaStep::Resync: {
+            // Once every few seconds at most, and the host answers at most as
+            // often (see NetMsg::ResyncRequest).
+            const double now = GetTime();
+            if (m_netSession && now - m_mpLastResyncAsk > 5.0) {
+                m_mpLastResyncAsk = now;
+                m_netSession->requestWorld();
+                mpNote("This turn does not follow the last one, so the world has "
+                       "been asked for again.", true);
+            }
+            return;
+        }
     }
 
     TurnDelta delta;

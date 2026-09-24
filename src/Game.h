@@ -907,6 +907,26 @@ private:
      * before telling the player plainly.
      */
     void mpCheckOrdersAcked();
+
+    /**
+     * What to do with a turn that has arrived from the host.
+     *
+     * A client used to apply whatever it was handed: any turn number, in any
+     * order, any number of times, and `m_turnNumber` was ASSIGNED from the
+     * message rather than checked against it. So a turn dropped while a joiner
+     * was still loading its world left that client applying the next one to a
+     * world one turn behind -- a different game from everybody else's, with
+     * nothing on screen to say so. The other two delta paths (the turn store
+     * and the manual one) have always checked; this one was the outlier.
+     */
+    enum class DeltaStep { Apply, Ignore, Queue, Resync };
+    static DeltaStep mpDeltaStep(bool worldLoading, bool haveWorld,
+                                 uint32_t arrived, int currentTurn);
+    /** Turns that arrived while the world was still being loaded. */
+    std::vector<std::pair<uint32_t, std::vector<uint8_t>>> m_mpQueuedDeltas;
+    /** So one confused client does not ask the host for the world every frame. */
+    double m_mpLastResyncAsk = 0.0;
+    void mpDrainQueuedDeltas();
     /** What to do about orders the host has not acknowledged yet. */
     enum class OrdersAck { Settled, Waiting, Resend, GiveUp };
     static OrdersAck mpOrdersAckStep(bool submitted, bool alreadyResent, long long waitedMs);

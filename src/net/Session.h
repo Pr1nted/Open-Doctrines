@@ -211,6 +211,16 @@ public:
     bool nextModMessage(NetModMsg& out);
     void sendReady();
 
+    /**
+     * Ask the host for the world again.
+     *
+     * Sent when this client cannot apply the turn it has been given -- because
+     * it missed one, or because one arrived while it was still loading. The
+     * alternative is to apply it anyway and play a different game from
+     * everybody else without knowing.
+     */
+    void requestWorld();
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
