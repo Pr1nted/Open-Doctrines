@@ -1219,7 +1219,13 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
         }
         case NetMsg::Withdraw: {
             NetOrdersMsg o;
-            if (!NetOrdersMsg::decode(body, size, o)) return;
+            // PAYLOAD, like every other case here. This one was decoding the
+            // whole frame, header included, so the length it read was nonsense
+            // and the decode always failed: "Withdraw" told the player their
+            // orders were taken back and told the host nothing at all, leaving
+            // the stale orders to resolve and everybody else waiting on a
+            // player the lobby thought had already submitted.
+            if (!NetOrdersMsg::decode(payload, payloadSize, o)) return;
             if (lobby.withdrawOrders(peerId, o.turnNumber) == LobbyDenial::None) {
                 // Everyone is told, because "waiting for" just changed and the
                 // other players are reading exactly that.

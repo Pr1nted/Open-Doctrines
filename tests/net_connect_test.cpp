@@ -261,6 +261,30 @@ int testJoin(const std::string& issuer) {
             }, 6000);
             check("submitted orders reach the host", got);
 
+            // ── AND TAKING THEM BACK REACHES IT TOO ──
+            //
+            // "Not ready" decoded the whole frame rather than its payload, so
+            // it always failed to decode and the host simply returned: the
+            // player was told their orders were withdrawn while the host still
+            // held them, and the turn resolved on orders the player had
+            // retracted. Nothing noticed, because the client says so locally.
+            session.withdrawOrders(1);
+            const bool tookBack = pumpUntil(&host, &session, [&] {
+                drain(&host, &session, seen);
+                const auto missing = host.lobby().missingSubmissions(1);
+                return std::find(missing.begin(), missing.end(), w.peerId) != missing.end();
+            }, 6000);
+            check("withdrawn orders reach the host as well", tookBack);
+
+            // Put them back, so the rest of this case sees what it expects.
+            session.submitOrders(1, std::vector<uint8_t>(ordersText.begin(),
+                                                         ordersText.end()));
+            pumpUntil(&host, &session, [&] {
+                drain(&host, &session, seen);
+                const auto missing = host.lobby().missingSubmissions(1);
+                return std::find(missing.begin(), missing.end(), w.peerId) == missing.end();
+            }, 6000);
+
             // And the delta comes back down.
             const std::string deltaBytes = "not-a-real-delta";
             host.broadcastDelta(1, std::vector<uint8_t>(deltaBytes.begin(), deltaBytes.end()));
@@ -957,7 +981,7 @@ int runHost(const std::string& issuer, int port, bool bindAll) {
 // The intervals are shortened through the environment (see OD_NET_DEAD_SECONDS
 // and OD_WS_PING_MS) so the rule can be watched in seconds. The rule is the
 // same one the game runs.
-int testQuiet(const std::string& issuer) {
+int testQuiet(const std::string& issuer, bool onlyIdle = false) {
     printf("\n=== nobody says anything, and nobody is dropped ===\n");
 
     const long long dead = [] {
@@ -1012,6 +1036,13 @@ int testQuiet(const std::string& issuer) {
         check("and is not told the connection was lost", !cs[0]->seen.disconnected,
               cs[0]->session.error());
     }
+
+    // Stop here when the point is the SESSION keepalive rather than the
+    // socket's: what follows needs a socket ping, because a client whose game
+    // thread is blocked cannot send an application frame by definition, and
+    // over the relay -- where this arm is the stand-in -- that is a player who
+    // is genuinely gone until their game comes back.
+    if (onlyIdle) return 0;
 
     // ── 2. THE CLIENT'S GAME THREAD IS BUSY ──
     // A joiner applying a world does not pump its session at all; the socket
@@ -1157,7 +1188,7 @@ int main(int argc, char** argv) {
     // Unbuffered: if this crashes, the last line printed is the clue.
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
-        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|race|live|host> [port] [--all]\n", argv[0]);
+        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|idle|race|live|host> [port] [--all]\n", argv[0]);
         return 2;
     }
     const std::string issuer = argv[1];
@@ -1171,6 +1202,7 @@ int main(int argc, char** argv) {
     else if (mode == "party") testParty(issuer);
     else if (mode == "live") testLive(issuer);
     else if (mode == "quiet") testQuiet(issuer);
+    else if (mode == "idle") testQuiet(issuer, true);
     else if (mode == "race") testRace(issuer);
     else if (mode == "host") {
         // Not a check-counting mode: it reports its own success and returns,
