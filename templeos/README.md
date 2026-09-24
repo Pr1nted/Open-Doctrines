@@ -17,8 +17,9 @@ The engine's agent door prints a turn as plain text and reads one line of
 
 ![The turn above, drawn at 80x60 in 16 colours](../docs/img/templeos-mockup.png)
 
-*Turn 0 of `1914:SWE`, from a real capture. Regenerate with
-`python3 templeos/mockup.py <capture> out.png`.*
+*The design mockup that settled the layout: turn 0 of `1914:SWE`, from a real
+capture, drawn at the real size. Regenerate with `python3 templeos/mockup.py
+<capture> out.png`. What the machine itself now draws is under Status.*
 
 So a client has to read a file, draw 80×60 characters, and write a file. That
 is inside what this OS offers, and the turn it plays is a turn of the actual
@@ -31,37 +32,71 @@ game — same map, same AI opponents, same rules.
 | | |
 |---|---|
 | Protocol pinned by a test | ✅ `tests/agent_protocol_test.sh` |
-| Screen layout designed against a real capture | ✅ see below |
 | Host bridge: a whole game as two files | ✅ `templeos/bridge.py`, tested |
 | Reference client | ✅ `templeos/guest_sim.py` |
-| `OpenDoc.HC` parses and draws a turn | ⚠️ **written, never compiled** |
+| Getting files into a guest | ✅ `templeos/vm.sh push` — TempleOS installs onto FAT32 |
+| `OpenDoc.HC` compiles under HolyC | ✅ |
+| `OpenDoc.HC` parses and draws a real turn | ✅ **on a real machine — screenshot below** |
 | `OpenDoc.HC` sends orders back | ❌ not started |
-| Getting the directory into a guest | ❌ the one part needing TempleOS |
 
-`OpenDoc.HC` has not been through HolyC once. It was written against the
-protocol and a rendering mockup on a machine with no TempleOS on it. Treat it
-as a proposal, not as working code.
+![Open Doctrines running on TempleOS](../docs/img/templeos-running.png)
 
-## What to check first, when you boot it
+That is TempleOS V5.03 under QEMU, reading a turn the engine's agent door
+actually printed: Sweden in 1914, twelve provinces of 1,143, an army of 300,000,
+and the four menus it may act through. Everything on it came out of
+`[AGENT]` lines; nothing is mocked.
 
-These are the things most likely to be wrong, roughly in the order they will
-bite. None of them is deep; all of them are the kind of thing you only learn
-from the compiler.
+Still read-only. Writing `orders.txt` back is the easy half and is next.
 
-1. **The DolDoc escapes.** Colour and cursor moves are written as
-   `"$$FG,BLUE$$"` and `"$$CM,%d,%d$$"`. Whether `$` needs doubling inside a
-   HolyC string literal is exactly the sort of detail that differs from what
-   the documentation looks like it says. If the screen fills with literal `$FG`
-   text, that is this. The fallback is setting `Fs->text_attr` directly.
-2. **`StrFirstOcc`'s signature.** Used for finding `(`, `army`, `net`. If it
-   takes a character rather than a string, or returns an index rather than a
-   pointer, the position line will parse to zeros.
-3. **`DocClear`** — called without parentheses, which is legal for a HolyC
-   function with no arguments, but check it is the right name for clearing the
-   window rather than the document.
-4. **Default argument on `OpenDoc`.** HolyC supports them; confirm the syntax.
-5. **`class` with no methods** is HolyC's struct. Confirm `MemSet(t, 0,
-   sizeof(ODTurn))` sizes it the way you expect.
+## Running it yourself
+
+```
+templeos/vm.sh install                        # make the disk (once)
+templeos/vm.sh boot                           # install TempleOS from the ISO
+templeos/vm.sh push templeos/OpenDoc.HC turn.txt
+templeos/vm.sh run
+templeos/vm.sh shot /tmp/screen.png           # look, without a window
+```
+
+Then in the guest: `#include "OpenDoc"` and `OpenDoc;`.
+
+The ISO is not in this repository. Get it from templeos.org and check it
+against their `md5sums.txt` before booting it.
+
+## What the compiler and the machine actually said
+
+Everything below was learned by running it. Each cost a round trip, and each is
+the kind of thing no amount of reading finds.
+
+1. **`sizeof` takes a type, not an expression.** `sizeof(t->country)` is not a
+   size, it is `ERROR: Missing ')'` — reported against a line whose brackets
+   are all balanced, which is a thoroughly misleading thing to be told. Buffer
+   lengths are named constants now, used both in the class and at every call.
+2. **`StrFirstOcc` takes a SET OF CHARACTERS, not a substring.**
+   `StrFirstOcc(q, "army")` asks for the first `a`, `r`, `m` *or* `y` — which
+   in "of the world" is the `r` of "world". This is why the client's first
+   working run showed Sweden with no army and a treasury of `(d)`. The
+   substring search is `StrMatch(needle, haystack)`. Single characters are
+   fine, and correct usage.
+3. **There is no `continue`.** Both loops that wanted one are if/else instead.
+4. **There is no block scope.** A declaration anywhere in a function belongs to
+   the whole function, so a second `U8 *q` in the next branch is not a new
+   variable — it is `Duplicate member`, and the file does not compile. Every
+   local in `ODParse` is declared once, at the top.
+5. **`$$CM,x,y$$` does not lay out a screen.** The window is a scrolling
+   document, not a grid you can address; placing every field by cursor move
+   drew almost nothing. The display is composed line by line now, padded to
+   columns, which survives being scrolled or resized.
+6. **The window is half the screen.** The desktop gives a task the left ~40
+   columns and keeps the right for its own help. `WinHorz` grants the full
+   width but does not stop the help task painting over it, so the display
+   measures its window and uses one column or two. Maximise it and it widens
+   by itself.
+7. **`%-2d` ignores the width flag** in `StrPrint`, so single digits are padded
+   by hand.
+8. **DolDoc escapes and `class`/`DocClear`/default arguments were all fine** as
+   written — four of the five things the first draft of this file predicted
+   would break did not.
 
 ## Producing a turn to feed it
 
@@ -110,10 +145,10 @@ the defence gone. Comparing content catches it, and so does planting the stale
 file *during* a turn rather than before the run — a file planted first is
 cleared on startup and never read.
 
-## Getting the directory into a guest — the unsolved part
+## Getting files into a guest — solved, and more simply than expected
 
 TempleOS has no networking — Terry Davis left it out deliberately — so **the
-file is the network**. The intended shape:
+file is the network**:
 
 ```
 host                                    guest (QEMU)
@@ -122,20 +157,32 @@ engine writes turn.txt   ──▶  disk image  ──▶  OpenDoc reads it
 engine reads orders.txt  ◀──  disk image  ◀──  you type a line
 ```
 
-The fiddly parts, honestly:
+The expected difficulty was RedSea, TempleOS's own filesystem, and the plan was
+a second image, or nbd, or vvfat. None of that was needed: **a default TempleOS
+install lands on FAT32**, which macOS and Linux mount natively. `DrvRep;` in
+the guest says so — `C FAT32 / D FAT32 / T ISO9660`. So the exchange is
 
-- **RedSea is TempleOS's own filesystem.** The simplest exchange is probably a
-  second raw image the guest mounts, written by the host between turns rather
-  than during them.
-- **The guest caches.** Swapping an image under a running guest is not safe in
-  general; expect to need a remount, or to pause the VM while the host writes.
-- **Turn cadence covers this.** Open Doctrines' long-form multiplayer already
-  runs at one turn per hour to one per week. A bridge that takes ten seconds to
-  hand a file across is not a problem at that pace — which is why long-form is
-  the mode to aim at, not a 2-minute rapid game.
+```
+stop the VM → mount the raw disk's second partition → copy → unmount → start
+```
 
-This is the piece to prototype before writing any more HolyC: if files cannot
-be moved in and out reliably, nothing above it matters.
+which is all `templeos/vm.sh push` does.
+
+Two things that are not obvious:
+
+- **The VM must be stopped.** Mounting a filesystem a running guest has open
+  read-write corrupts both views of it. The stop is not a convenience.
+- **A lower-case 8.3 name arrives shouted.** Other systems store `turn.txt` as
+  a short entry with a "this was lower case" flag; TempleOS's FAT driver does
+  not read that flag, so the file is `TURN.TXT` in the guest and opening it by
+  the name you wrote fails. `OpenDoc.HC` is unaffected only because mixed case
+  forces a long-name entry. The client tries both, so this is invisible now —
+  but it is worth knowing before it costs somebody an afternoon.
+
+**Turn cadence makes the cost irrelevant.** Open Doctrines' long-form
+multiplayer already runs at one turn per hour to one per week. A bridge that
+takes half a minute to hand a file across is not a problem at that pace — which
+is why long-form is the mode to aim at, not a 2-minute rapid game.
 
 ## Why not port a C++ compiler instead
 
