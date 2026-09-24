@@ -620,6 +620,16 @@ void Game::mpLeave() {
     // Before the host goes: seats claimed since the last turn resolved would
     // otherwise be lost, and re-picking is exactly what this is meant to spare.
     if (m_netHost)    { mpSaveSeats(); m_netHost->close(); delete m_netHost; m_netHost = nullptr; }
+    // ── THE TURN CLOCK BELONGS TO THE GAME THAT STARTED IT ──
+    //
+    // It used to survive until the process exited, so hosting a SECOND game in
+    // one sitting inherited the first one's turn number, its turn length and
+    // its deadline. Because it was still `running()`, the new game never began
+    // a turn at all: no TurnBegin reached anybody, and the stale deadline was
+    // already long past, so the first frame resolved a turn nobody had played
+    // and broadcast whatever delta that number happened to name.
+    if (m_mpTurns)    { delete m_mpTurns;    m_mpTurns = nullptr; }
+    m_mpDeadlineMs.clear();
     m_mpPage = MpPage::Hub;
     m_mpPlayersTab = false;
     m_mpIpWarningAccepted = false;
@@ -3432,14 +3442,24 @@ void Game::mpForceResolve() {
     mpResolveTurn();
 }
 
+Game::TurnRunnerConfig Game::mpTurnRunnerConfig() const {
+    // WHAT THE HOST ACTUALLY CHOSE. `absent` was left at its default, so the
+    // AI played for a missing player in every game ever hosted -- while the
+    // rules tab said "their country sits idle", the lobby carried that answer
+    // to every client in the welcome, and every client's screen repeated it.
+    return {(uint32_t)mpTurnSeconds(), m_mpAbsent == 0 ? 0 : 1};
+}
+
 void Game::mpHostTurnUpdate() {
     if (!mpIsHost()) return;
     if (m_netHost->lobby().state() != NetSessionState::Game) return;
 
     if (!m_mpTurns) {
         m_mpTurns = new TurnRunner();
+        const TurnRunnerConfig want = mpTurnRunnerConfig();
         TurnRunner::Config c;
-        c.turnSeconds = (uint32_t)mpTurnSeconds();
+        c.turnSeconds = want.turnSeconds;
+        c.absent = want.absentIsIdle ? NetAbsent::Idle : NetAbsent::Ai;
         m_mpTurns->configure(c);
     }
 

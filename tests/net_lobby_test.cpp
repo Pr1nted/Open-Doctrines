@@ -452,6 +452,26 @@ void testResolution() {
 
     check("something was substituted", TurnRunner::anySubstituted(res));
 
+    // ── "THEIR COUNTRY SITS IDLE" MEANS IDLE ──
+    //
+    // The other half of the setting, which the host offers and every client's
+    // screen describes. A player who sent nothing gets no AI; a player whose
+    // orders arrived broken still does, because a malformed submission is a
+    // fault rather than an absence.
+    TurnRunner idle;
+    idle.configure({60, NetAbsent::Idle});
+    const auto quiet = idle.resolve(l, 5);
+    auto forPeerIn = [&](const std::vector<TurnResolution>& rs, uint16_t p) -> const TurnResolution* {
+        for (const auto& one : rs) if (one.peerId == p) return &one;
+        return nullptr;
+    };
+    check("with idle chosen, an absent player's country is not played",
+          !forPeerIn(quiet, c)->aiPlays);
+    check("and their orders are still not invented",
+          !forPeerIn(quiet, c)->usePlayerOrders);
+    check("a malformed submission is still played, whatever the setting",
+          forPeerIn(quiet, b)->aiPlays);
+
     // Orders for turn 5 must not satisfy turn 6.
     const auto next = r.resolve(l, 6);
     bool noneUsed = true;

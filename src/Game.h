@@ -1138,6 +1138,16 @@ private:
      * never opened it would run the game on a stale value.
      */
     int mpTurnSeconds() const;
+    /**
+     * How the turn clock should be set for the game being hosted.
+     *
+     * Its own function so a test can ask what the host WOULD configure without
+     * standing up a session: the `absent` half of it was never assigned at all,
+     * so the AI played for missing players in every game while the lobby, the
+     * welcome and every client's screen said their country would sit idle.
+     */
+    struct TurnRunnerConfig { uint32_t turnSeconds; int absentIsIdle; };
+    TurnRunnerConfig mpTurnRunnerConfig() const;
 
     // --- what the host can configure ---
     int  m_mpAssignment = 1;    // NetAssignment: 0 host-assigns, 1 players pick

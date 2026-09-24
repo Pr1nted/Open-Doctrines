@@ -30,6 +30,7 @@
 
 #include "../src/Game.h"
 #include "../src/net/NetProtocol.h"
+#include "../src/net/TurnRunner.h"
 
 #include <cstdio>
 #include <cstring>
@@ -87,7 +88,38 @@ struct OrderValidationTest {
         return it == game.m_countries.getAll().end() ? 0.0 : it->second.treasury;
     }
 
+    /**
+     * The two settings a hosted game carries between one game and the next.
+     *
+     * Neither is about hostile input, but both live on this side of Game's
+     * private wall and both were wrong in the same way: something the host
+     * chose never reached the thing that acts on it.
+     */
+    void hostedGameSettings() {
+        printf("\n== what a hosted game is configured with ==\n");
+
+        game.m_mpAbsent = 0;
+        check(game.mpTurnRunnerConfig().absentIsIdle == 0,
+              "'the AI plays them' reaches the turn clock");
+        game.m_mpAbsent = 1;
+        check(game.mpTurnRunnerConfig().absentIsIdle == 1,
+              "and so does 'their country sits idle'");
+
+        // The clock itself must not outlive the game that started it: a second
+        // game in one sitting inherited the first one's turn number and its
+        // long-expired deadline, and resolved a turn nobody had played.
+        game.mpHostTurnUpdate();          // no host, so this must not create one
+        check(game.m_mpTurns == nullptr,
+              "no turn clock is made for a game that is not being hosted");
+        game.m_mpTurns = new TurnRunner();
+        game.m_mpDeadlineMs[7] = 1234;
+        game.mpLeave();
+        check(game.m_mpTurns == nullptr, "leaving a game takes its turn clock with it");
+        check(game.m_mpDeadlineMs.empty(), "and the per-player deadlines it held");
+    }
+
     void run() {
+        hostedGameSettings();
         const int cid = anyCountry();
         check(cid != 0, "found a country to act as");
         const int mine = ownedProvince(cid);
