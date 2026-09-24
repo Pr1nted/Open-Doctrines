@@ -295,6 +295,14 @@ int testJoin(const std::string& issuer) {
             const LobbyMember* mine = host.lobby().find(w.peerId);
             check("and arrives byte for byte", mine && mine->orders == big);
 
+            // Past what a turn may carry, the host decodes nothing and calls
+            // the submission malformed -- so this end refuses instead, and
+            // says why, rather than reporting orders as sent.
+            const std::vector<uint8_t> tooMuch(NetLimits::kOrders + 1, 7);
+            check("orders too large for a turn are refused here, not silently lost there",
+                  !session.submitOrders(1, tooMuch));
+            check("and the reason is one a player can be shown",
+                  session.error().find("larger") != std::string::npos, session.error());
 
             // Put them back, so the rest of this case sees what it expects.
             session.submitOrders(1, std::vector<uint8_t>(ordersText.begin(),

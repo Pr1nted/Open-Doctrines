@@ -181,7 +181,15 @@ public:
     void claimCountry(uint16_t countryId);
     void offerSwap(uint16_t toPeerId);
     void replySwap(uint16_t fromPeerId, bool accept);
-    void submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload);
+    /**
+     * Send this turn's orders.
+     *
+     * FALSE when they were not sent. The size was never checked here while the
+     * host caps a submission at NetLimits::kOrders -- so an oversized one was
+     * put on the wire, refused at the far end as malformed, and the AI played
+     * that country while the player was told "orders sent".
+     */
+    bool submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload);
     /** "Not ready after all" -- retracts this turn's submission. */
     void withdrawOrders(uint32_t turnNumber);
     void sendChat(const std::string& text);

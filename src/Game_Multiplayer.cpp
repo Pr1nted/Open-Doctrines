@@ -800,6 +800,9 @@ void Game::mpDrainEvents() {
 
     if (m_netSession) {
         m_netSession->update();
+        // After the roster has been read, because that is where the host's
+        // acknowledgement of our orders arrives.
+        mpCheckOrdersAcked();
         NetSessionEvent e;
         while (m_netSession->nextEvent(e)) {
             switch (e.kind) {
@@ -3371,7 +3374,14 @@ void Game::mpSubmitTurn() {
     // Sent down the connection when there is one. In long-form there often is
     // not: the host is away, which is the mode working as intended rather than
     // anything being wrong.
-    if (m_netSession) m_netSession->submitOrders(turn, orders);
+    // Refused rather than sent when they are too large for a turn to carry:
+    // the host would decode nothing, call the submission malformed and let the
+    // AI play this country, and the player would be told none of it.
+    if (m_netSession && !m_netSession->submitOrders(turn, orders) &&
+        !m_netSession->error().empty() && !mpLongForm()) {
+        mpNote("Your orders could not be sent: " + m_netSession->error(), true);
+        return;
+    }
 
     // In long-form, ALSO through the store -- sealed. The socket copy is what
     // makes the turn resolve now if the host happens to be here; the store
@@ -3397,7 +3407,55 @@ void Game::mpSubmitTurn() {
     }
 
     m_mpWaitingForTurn = true;
+    m_mpSentOrders = orders;
+    m_mpSentOrdersTurn = turn;
+    m_mpSentOrdersAtMs = (long long)(GetTime() * 1000.0);
+    m_mpResentOrders = false;
     mpNote("Orders sent. Waiting for the other players...");
+}
+
+Game::OrdersAck Game::mpOrdersAckStep(bool submitted, bool alreadyResent,
+                                      long long waitedMs) {
+    // Six seconds, twice. Long enough that an ordinary turn's roster update
+    // has arrived, short enough to still be inside the turn it is about.
+    constexpr long long kResendAfterMs = 6000;
+    if (submitted) return OrdersAck::Settled;
+    if (waitedMs < kResendAfterMs) return OrdersAck::Waiting;
+    return alreadyResent ? OrdersAck::GiveUp : OrdersAck::Resend;
+}
+
+void Game::mpCheckOrdersAcked() {
+    if (!m_netSession || m_mpSentOrders.empty()) return;
+
+    // The host says who has submitted, every time the lobby changes. Our own
+    // row is the acknowledgement; there is no other.
+    bool submitted = false;
+    const uint16_t me = m_netSession->welcome().peerId;
+    for (const NetPeer& p : m_netSession->roster())
+        if (p.peerId == me) { submitted = p.submitted; break; }
+
+    const long long nowMs = (long long)(GetTime() * 1000.0);
+    switch (mpOrdersAckStep(submitted, m_mpResentOrders, nowMs - m_mpSentOrdersAtMs)) {
+        case OrdersAck::Settled:
+            m_mpSentOrders.clear();
+            break;
+        case OrdersAck::Waiting:
+            break;
+        case OrdersAck::Resend:
+            m_mpResentOrders = true;
+            m_mpSentOrdersAtMs = nowMs;
+            if (!m_netSession->submitOrders(m_mpSentOrdersTurn, m_mpSentOrders))
+                mpNote("Your orders could not be sent: " + m_netSession->error(), true);
+            break;
+        case OrdersAck::GiveUp:
+            // Twice is enough to stop pretending. The turn may still resolve
+            // with the AI playing this country, and a player who knows that
+            // can act; one who is told "waiting for the other players" cannot.
+            m_mpSentOrders.clear();
+            mpNote("The host has not acknowledged your orders. If the turn resolves "
+                   "without them, your country will be played for you.", true);
+            break;
+    }
 }
 
 long long Game::mpDeadlineLeft(uint16_t peerId, long long nowMs) const {

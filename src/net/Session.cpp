@@ -791,14 +791,20 @@ void NetSession::withdrawOrders(uint32_t turnNumber) {
     m_impl->socket.send(netEncodeFrame(NetMsg::Withdraw, o.encode()));
 }
 
-void NetSession::submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
+bool NetSession::submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
     // A spectator's orders are discarded rather than merely ignored: not
     // sending them at all means there is nothing for a server to mishandle.
-    if (phase() != Phase::InGame || spectating()) return;
+    if (phase() != Phase::InGame || spectating()) return false;
+    if (payload.size() > NetLimits::kOrders) {
+        m_impl->errorText = "these orders are larger than a turn may carry";
+        return false;
+    }
     NetOrdersMsg o;
     o.turnNumber = turnNumber;
     o.payload = payload;
     m_impl->socket.send(netEncodeFrame(NetMsg::Orders, o.encode()));
+    m_impl->lastSpoke = nowSeconds();       // this counts as the keepalive too
+    return true;
 }
 
 void NetSession::sendModMessage(const std::string& modId, int32_t toPeer,

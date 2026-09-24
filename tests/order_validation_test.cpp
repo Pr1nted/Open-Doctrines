@@ -155,9 +155,26 @@ struct OrderValidationTest {
         game.m_provinceCountryLookup = owners;
     }
 
+    /** Orders the host never acknowledged. */
+    void ordersNobodyAcknowledged() {
+        printf("\n== orders the host has not taken ==\n");
+        using A = Game::OrdersAck;
+        check(Game::mpOrdersAckStep(true, false, 0) == A::Settled,
+              "orders the host has are settled at once");
+        check(Game::mpOrdersAckStep(true, true, 60000) == A::Settled,
+              "and stay settled however long it took");
+        check(Game::mpOrdersAckStep(false, false, 1000) == A::Waiting,
+              "a moment's wait is only a wait");
+        check(Game::mpOrdersAckStep(false, false, 6000) == A::Resend,
+              "six seconds without a word means send them again");
+        check(Game::mpOrdersAckStep(false, true, 6000) == A::GiveUp,
+              "and twice unanswered means telling the player, not waiting on");
+    }
+
     void run() {
         hostedGameSettings();
         worldForAJoiner();
+        ordersNobodyAcknowledged();
         const int cid = anyCountry();
         check(cid != 0, "found a country to act as");
         const int mine = ownedProvince(cid);

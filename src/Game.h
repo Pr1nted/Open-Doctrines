@@ -892,6 +892,28 @@ private:
      * between two turns.
      */
     const std::vector<uint8_t>& mpSnapshotForJoiner();
+
+    /**
+     * Did the host actually take the orders we sent?
+     *
+     * Sending was fire-and-forget: one frame, no acknowledgement, no retry. A
+     * frame dropped by the host's rate limiter -- which a chatty mod can
+     * exhaust on a player's behalf -- or lost on a connection that was closing
+     * left the player reading "Orders sent. Waiting for the other players..."
+     * while the turn resolved without them and the AI played their country.
+     *
+     * The lobby already says who has submitted, so the answer is in the roster:
+     * this watches for our own flag and, failing that, sends them once more
+     * before telling the player plainly.
+     */
+    void mpCheckOrdersAcked();
+    /** What to do about orders the host has not acknowledged yet. */
+    enum class OrdersAck { Settled, Waiting, Resend, GiveUp };
+    static OrdersAck mpOrdersAckStep(bool submitted, bool alreadyResent, long long waitedMs);
+    std::vector<uint8_t> m_mpSentOrders;
+    uint32_t  m_mpSentOrdersTurn = 0;
+    long long m_mpSentOrdersAtMs = 0;
+    bool      m_mpResentOrders = false;
     std::vector<uint8_t> m_mpSnapshotCache;
     int m_mpSnapshotTurn = -1;
     /** Load the world a snapshot describes. Client only. */
