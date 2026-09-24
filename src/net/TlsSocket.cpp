@@ -68,6 +68,23 @@ std::string mbedError(int rc) {
 //
 // loadWindowsRoots below is the Windows half. This list stays Unix-only on
 // purpose: a made-up Windows path would be a guess that fails the same way.
+/**
+ * Android keeps its roots as a DIRECTORY of one certificate per file, not as a
+ * bundle, so none of the paths below exist there and the game refused every
+ * connection -- which is why the APK is built with no networking at all.
+ *
+ * Two directories, because Android 14 moved the store into an APEX module and
+ * older devices only have the system one. Both are tried and whichever answers
+ * is used; a device with both ends up trusting the union, which is what the
+ * platform itself does.
+ */
+const char* const kTrustDirs[] = {
+    "/apex/com.android.conscrypt/cacerts",      // Android 14+
+    "/system/etc/security/cacerts",             // Android 13 and earlier
+    "/etc/ssl/certs",                           // Debian and friends, when the
+                                                // bundle above is absent
+};
+
 const char* const kTrustBundles[] = {
     "/etc/ssl/cert.pem",                        // macOS, FreeBSD
     "/etc/ssl/certs/ca-certificates.crt",       // Debian, Ubuntu, Alpine
@@ -422,6 +439,19 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
         if (mbedtls_x509_crt_parse_file(&m_impl->cacert, path) == 0) {
             haveTrust = true;
             break;
+        }
+    }
+    if (!haveTrust) {
+        // A directory of certificates, which is how Android stores them. A
+        // partly readable store still counts: parse_path returns how many
+        // files it could NOT read, and a store where some entry is unreadable
+        // is not a reason to refuse every connection. Only a negative return,
+        // meaning nothing parsed at all, leaves us untrusting.
+        for (const char* dir : kTrustDirs) {
+            if (mbedtls_x509_crt_parse_path(&m_impl->cacert, dir) >= 0) {
+                haveTrust = true;
+                break;
+            }
         }
     }
 #endif
