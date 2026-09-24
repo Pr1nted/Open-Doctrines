@@ -101,6 +101,9 @@ void ServerBook::load(const std::string& path) {
         e.code         = httpJsonString(obj, "code", 32);
         e.lastJoined   = httpJsonNumber(obj, "lastJoined", 0);
         e.lastHostName = clamp(httpJsonString(obj, "lastHostName", 64), 64);
+        // Absent in books written before this existed, which is every book on
+        // disk today: an entry without one simply behaves as it used to.
+        e.address      = clamp(httpJsonString(obj, "address", 256), 256);
 
         if (!e.valid()) continue;
         if (!e.code.empty() && !validCode(e.code)) e.code.clear();
@@ -122,6 +125,7 @@ bool ServerBook::save() const {
             << "\",\"code\":\"" << httpJsonEscape(e.code)
             << "\",\"lastJoined\":" << e.lastJoined
             << ",\"lastHostName\":\"" << httpJsonEscape(e.lastHostName)
+            << "\",\"address\":\"" << httpJsonEscape(e.address)
             << "\"}" << (i + 1 < m_entries.size() ? "," : "") << "\n";
     }
     out << "  ]\n}\n";
@@ -143,6 +147,7 @@ void ServerBook::addOrUpdate(const ServerEntry& entry) {
             if (!e.code.empty()) existing.code = e.code;
             if (e.lastJoined) existing.lastJoined = e.lastJoined;
             if (!e.lastHostName.empty()) existing.lastHostName = e.lastHostName;
+            if (!e.address.empty()) existing.address = e.address;
             return;
         }
     }
@@ -166,6 +171,12 @@ bool ServerBook::setCode(size_t index, const std::string& code) {
     if (index >= m_entries.size()) return false;
     if (!code.empty() && !validCode(code)) return false;
     m_entries[index].code = code;
+    return true;
+}
+
+bool ServerBook::setAddress(size_t index, const std::string& address) {
+    if (index >= m_entries.size()) return false;
+    m_entries[index].address = address.size() > 256 ? address.substr(0, 256) : address;
     return true;
 }
 

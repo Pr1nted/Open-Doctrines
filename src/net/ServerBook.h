@@ -44,6 +44,23 @@ struct ServerEntry {
     /** Set once seen, so the list can show it before you connect. */
     std::string lastHostName;
 
+    /**
+     * Where this server was last reached: a tunnel hostname, an address and
+     * port, or empty for a game reached through the relay.
+     *
+     * THIS IS WHAT MAKES REJOINING WORK. An entry used to carry only the code,
+     * so pressing a saved server cleared the address field -- and an empty
+     * address means the relay. A host reached over a tunnel has never been to
+     * the relay, so every rejoin after a dropped connection went to a lobby
+     * the host was not in, was told "the host left", and then got 404s from
+     * the account service because that answer deletes the session. One player
+     * losing their connection for a moment ended the game for everybody.
+     *
+     * Kept per entry rather than per code because the code changes every
+     * session and the address usually does not.
+     */
+    std::string address;
+
     bool valid() const { return !name.empty() && !issuer.empty(); }
 };
 
@@ -67,6 +84,8 @@ public:
     bool remove(size_t index);
     bool rename(size_t index, const std::string& name);
     bool setCode(size_t index, const std::string& code);
+    /** Remember where this server was reached, for the next join. */
+    bool setAddress(size_t index, const std::string& address);
     void markJoined(size_t index, const std::string& hostName, long long nowUnix);
 
     /** Most recently joined first, then never-joined, then by name. */

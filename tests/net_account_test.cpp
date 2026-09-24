@@ -308,6 +308,63 @@ void testServerBook() {
     bad.name = "no issuer";
     book.addOrUpdate(bad);
     check("an entry with no service is not stored", book.entries().size() == 2);
+
+    // ── WHERE, NOT ONLY WHAT ──
+    //
+    // An entry that remembers the code but not the address sends the next join
+    // to the relay, and a host behind a tunnel has never been there: the lobby
+    // says "the host left" and deletes the session, so the game is over for
+    // everybody because one player's connection blinked. See
+    // ServerEntry::address.
+    ServerEntry tunnelled;
+    tunnelled.name = "Friday game"; tunnelled.issuer = issuer;
+    tunnelled.address = "wss://exercises-whats-breed-vat.trycloudflare.com";
+    book.addOrUpdate(tunnelled);
+    check("an entry remembers where the server was reached",
+          book.entries()[0].address == "wss://exercises-whats-breed-vat.trycloudflare.com" ||
+          book.entries()[1].address == "wss://exercises-whats-breed-vat.trycloudflare.com");
+
+    ServerEntry codeOnly;
+    codeOnly.name = "Friday game"; codeOnly.issuer = issuer; codeOnly.code = "DDDD-4444";
+    book.addOrUpdate(codeOnly);
+    const ServerEntry* friday = nullptr;
+    for (const ServerEntry& x : book.entries()) if (x.name == "Friday game") friday = &x;
+    check("and pasting tonight's code does not throw the address away",
+          friday && friday->address == "wss://exercises-whats-breed-vat.trycloudflare.com" &&
+          friday->code == "DDDD-4444");
+
+    // A game reached through the relay has no address, and must not acquire
+    // one: empty is the instruction to use the relay again.
+    ServerEntry relayed;
+    relayed.name = "Relayed"; relayed.issuer = issuer; relayed.code = "EEEE-5555";
+    book.addOrUpdate(relayed);
+    const ServerEntry* r = nullptr;
+    for (const ServerEntry& x : book.entries()) if (x.name == "Relayed") r = &x;
+    check("a relayed game stays addressless", r && r->address.empty());
+
+    // Through the file, because that is the trip that matters: the player is
+    // dropped, the game closes, and what they click tomorrow was read back
+    // from disk.
+    {
+        const std::string path = std::string(getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp") +
+                                 "/od_serverbook_test.json";
+        ::remove(path.c_str());
+        ServerBook writing;
+        writing.load(path);          // missing is empty, not an error
+        ServerEntry e2;
+        e2.name = "Friday game"; e2.issuer = issuer; e2.code = "FFFF-6666";
+        e2.address = "wss://doors-ride-supplies-affiliates.trycloudflare.com";
+        writing.addOrUpdate(e2);
+        check("the book writes", writing.save());
+
+        ServerBook reading;
+        reading.load(path);
+        check("and reads back the address it was reached at",
+              reading.entries().size() == 1 &&
+              reading.entries()[0].address ==
+                  "wss://doors-ride-supplies-affiliates.trycloudflare.com");
+        ::remove(path.c_str());
+    }
 }
 
 

@@ -791,6 +791,13 @@ void Game::mpDrainEvents() {
                         entry.code = m_mpCodeField;
                         entry.lastJoined = (long long)time(nullptr);
                         entry.lastHostName = w.host.name;
+                        // WHERE it was, not only what it was called. Without
+                        // this a rejoin goes to the relay, and a host reached
+                        // over a tunnel is not there: the lobby answers "the
+                        // host left" and then deletes the session, so nobody
+                        // can get back in at all. Empty for a relayed game,
+                        // which is exactly right -- that is where it was.
+                        entry.address = m_mpAddressField;
                         m_serverBook->addOrUpdate(entry);
                         m_serverBook->save();
                     }
@@ -1069,7 +1076,10 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
             if (click && row.hovered) {
                 m_mpSelected = (int)i;
                 m_mpCodeField = e.code;
-                m_mpAddressField.clear();
+                // The address it was last reached at, if it had one. See
+                // ServerEntry::address: clearing it sent every rejoin to the
+                // relay.
+                m_mpAddressField = e.address;
                 m_mpPage = MpPage::Join;
                 m_mpIpWarningAccepted = false;
                 m_mpFocus = 0;
