@@ -276,6 +276,8 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
 # layer in rebuildGlowMap -- a latent overrun since 7f878d0 that nothing had
 # ever driven, because reloadBorders() runs on a save load and not on a map
 # load. Gating again now that it is fixed.
+# Needs no build: it reads the C++ source and the HolyC beside it.
+run "templeos in sync with C++" "$root/tests/templeos_sync_test.sh"
 run "a damaged save is refused" "$root/tests/save_corrupt_test.sh" "$build"
 run "neural net gradients" "$bin/NeuralNetTest"
 # The model container, against the shipped model when it is there: the file

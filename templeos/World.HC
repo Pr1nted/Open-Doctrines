@@ -1,3 +1,6 @@
+#ifndef OD_WORLD_HC
+#define OD_WORLD_HC
+
 /* The world, in memory: provinces, who owns them, and what they are worth.
  *
  * Loaded from world.odw, which tools/templeos_world.py bakes out of an .odmap.
@@ -10,7 +13,7 @@
  * guessing the nearest centre.
  */
 
-#define OD_WORLD_VER  4
+#define OD_WORLD_VER  5
 /* Sized to the world, not to a round number: eleven arrays of this length
  * live in the global segment, and at 4096 they were 440 KB before Rules.HC
  * and the renderer added theirs. */
@@ -18,7 +21,7 @@
 #define OD_MAXC     256
 #define OD_SEA   0xFFFF        /* the index meaning "no province" */
 #define OD_HDR      22
-#define OD_PREC     44         /* bytes per province record */
+#define OD_PREC     48         /* bytes per province record */
 #define OD_CREC     34         /* bytes per country record  */
 
 U16 *w_pmap = NULL;            /* province index per pixel */
@@ -29,6 +32,7 @@ I64  w_pid[OD_MAXP],  w_cx[OD_MAXP],   w_cy[OD_MAXP];
 I64  w_own[OD_MAXP],  w_pop[OD_MAXP],  w_army[OD_MAXP];
 I64  w_inc[OD_MAXP],  w_fort[OD_MAXP], w_area[OD_MAXP];
 I64  w_adjn[OD_MAXP], w_adjo[OD_MAXP];
+I64  w_ind[OD_MAXP],  w_res[OD_MAXP];   /* industry level, resource bits */
 U8   w_name[OD_MAXP][16];
 
 I64  w_ccid[OD_MAXC], w_ccol[OD_MAXC], w_tre[OD_MAXC];
@@ -153,8 +157,10 @@ Bool WLoad(U8 *path = "world.odw")
     w_fort[p] = b[off + 19];
     w_adjo[p] = WU32(b + off + 20);
     w_area[p] = WU32(b + off + 24);
+    w_ind[p]  = b[off + 28];
+    w_res[p]  = b[off + 29];
     for (k = 0; k < 15; k++)
-      w_name[p][k] = b[off + 28 + k];
+      w_name[p][k] = b[off + 32 + k];
     w_name[p][15] = 0;
     off += OD_PREC;
   }
@@ -204,3 +210,5 @@ I64 WNeighbour(I64 ix, I64 k)
   if (ix < 0 || ix >= w_np || k < 0 || k >= w_adjn[ix]) return -1;
   return w_adj[w_adjo[ix] + k];
 }
+
+#endif

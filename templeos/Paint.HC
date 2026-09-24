@@ -11,6 +11,7 @@
  * translucent over the map instead of a bar beside it.
  */
 #include "Gfx"
+#include "World"   /* for WReadEither: the shouted-filename dance */
 
 #define P_W    1024
 #define P_H     768
@@ -112,6 +113,75 @@ U0 PRect(I64 x, I64 y, I64 w, I64 h, I64 r, I64 g, I64 b)
   }
 }
 
+/* ── THE GAME'S OWN FONT ──
+ *
+ * Open Doctrines draws its interface with raylib's built-in bitmap font, so
+ * matching it is not a matter of choosing something similar: tools/
+ * templeos_font.py bakes the SAME 224 glyphs out of raylib's rtext.c, and the
+ * text here is pixel-for-pixel what the desktop game draws.
+ *
+ * It is one bit per pixel, which also settles the obvious temptation: the
+ * desktop game's text is not antialiased either, and a smooth atlas baked
+ * from a TTF would look less like the game rather than more.
+ *
+ * Without the file everything still works in the OS's own 8x8 font -- worse
+ * looking, never broken.
+ */
+U8 *pf_data = NULL;
+I64 pf_count = 0, pf_height = 0, pf_first = 32, pf_rows = 0, pf_widths = 0;
+
+Bool PFontLoad(U8 *path = "font.odf")
+{
+  U8 *b;
+  I64 size = 0;
+
+  b = WReadEither(path, &size);
+  if (!b) return FALSE;
+  if (b[0] != 'O' || b[1] != 'D' || b[2] != 'T' || b[3] != 'F')
+  {
+    Free(b);
+    return FALSE;
+  }
+  pf_count  = b[6] + (b[7] << 8);
+  pf_height = b[8] + (b[9] << 8);
+  pf_first  = b[10] + (b[11] << 8);
+  pf_widths = 12;
+  pf_rows   = 12 + pf_count;
+  pf_data   = b;                   /* kept for the life of the program */
+  return TRUE;
+}
+
+I64 PFWidth(I64 ch)
+{
+  I64 gi = ch - pf_first;
+  if (!pf_data || gi < 0 || gi >= pf_count) return 8;
+  return pf_data[pf_widths + gi];
+}
+
+U0 PFChar(I64 x, I64 y, I64 ch, I64 r, I64 g, I64 b, I64 scale)
+{
+  I64 gi, row, col, bits, off, w, i, j;
+
+  gi = ch - pf_first;
+  if (gi < 0 || gi >= pf_count) return;
+  w = pf_data[pf_widths + gi];
+  off = pf_rows + gi * pf_height * 2;
+  for (row = 0; row < pf_height; row++)
+  {
+    bits = pf_data[off + row * 2] + (pf_data[off + row * 2 + 1] << 8);
+    for (col = 0; col < w; col++)
+      if (bits & (1 << col))
+      {
+        if (scale == 1)
+          Px(x + col, y + row, r, g, b);
+        else
+          for (j = 0; j < scale; j++)
+            for (i = 0; i < scale; i++)
+              Px(x + col * scale + i, y + row * scale + j, r, g, b);
+      }
+  }
+}
+
 /* ── TEXT ──
  *
  * text.font is 256 glyphs of eight bytes, one byte per row, bit 0 leftmost.
@@ -146,14 +216,39 @@ U0 PChar(I64 x, I64 y, I64 ch, I64 r, I64 g, I64 b, I64 scale = 1)
       }
 }
 
+/* Proportional when the game's font is loaded, fixed-pitch when it is not.
+ * The advance is width + 1, which is the divisor raylib lays the sheet out
+ * with, so a line of text is the same length here as on the desktop. */
 U0 PText(I64 x, I64 y, U8 *s, I64 r, I64 g, I64 b, I64 scale = 1)
 {
-  I64 i = 0;
+  I64 i = 0, pen = x;
   while (s[i])
   {
-    PChar(x + i * 8 * scale, y, s[i], r, g, b, scale);
+    if (pf_data)
+    {
+      PFChar(pen, y, s[i], r, g, b, scale);
+      pen += (PFWidth(s[i]) + 1) * scale;
+    }
+    else
+    {
+      PChar(pen, y, s[i], r, g, b, scale);
+      pen += 8 * scale;
+    }
     i++;
   }
+}
+
+/* How wide a string will be, for right-aligning and for centring in a tab. */
+I64 PTextW(U8 *s, I64 scale = 1)
+{
+  I64 i = 0, n = 0;
+  while (s[i])
+  {
+    if (pf_data) n += (PFWidth(s[i]) + 1) * scale;
+    else         n += 8 * scale;
+    i++;
+  }
+  return n;
 }
 
 /* Printf into a buffer, then draw it. Saves every caller writing the same

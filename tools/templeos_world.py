@@ -39,13 +39,13 @@ SEA_IX = 0xFFFF                  # the province index that means "no province"
 BORDER, SEA_COLOUR = 0, 1        # BLACK, BLUE
 LAND = [i for i in range(16) if i not in (SEA_COLOUR, BORDER)]
 
-MAGIC, VERSION = b"ODTW", 4
+MAGIC, VERSION = b"ODTW", 5
 
 # The record layouts, named once so the reader in templeos/World.HC can be
 # checked against a single number instead of against a shape spread over three
 # calls. PROV_REC and CTRY_REC are what OD_PREC and OD_CREC must equal there.
-PROV_FMT = "<IHHHIHHBBII"
-PROV_REC = 44          # PROV_FMT plus a 16-byte name
+PROV_FMT = "<IHHHIHHBBIIBBH"
+PROV_REC = 48          # PROV_FMT plus a 16-byte name
 CTRY_FMT = "<HBB"
 CTRY_REC = 34          # CTRY_FMT plus iso(4) treasury(2) rgb(4) name(20)
 
@@ -189,7 +189,7 @@ def main() -> int:
     #                    6.1e9, which is how you can tell it is not thousands)
     #   armies.json      pid -> [{country_id, count}, ...]
     #   resources.json   pid -> {"industry": {income, resourceIncome, popIncome}}
-    pop, army, income, forts = [], [], [], []
+    pop, army, income, forts, indlvl, resmask = [], [], [], [], [], []
     for pid in order:
         v = population.get(str(pid), 0)
         pop.append(min(int(v) if isinstance(v, (int, float)) else 0, 0xFFFFFFFF))
@@ -204,6 +204,18 @@ def main() -> int:
                     for k in ("income", "resourceIncome", "popIncome"))
         income.append(min(int(total * 10), 0xFFFF))          # tenths, to stay integer
         forts.append(min(int(r.get("fortification", 0) or 0) if isinstance(r, dict) else 0, 255))
+        indlvl.append(min(int(ind.get("level", 0) or 0), 255))
+
+        # One bit per resource, in the order the desktop game lists them. A
+        # deposit counts when either of its two figures is above zero, which
+        # is what the engine's own "has any" test amounts to.
+        mask = 0
+        for bit, key in enumerate(("oil", "gold", "metal", "rubber", "gemstones")):
+            d = r.get(key) if isinstance(r, dict) else None
+            if isinstance(d, dict) and (float(d.get("a", 0) or 0) > 0
+                                        or float(d.get("b", 0) or 0) > 0):
+                mask |= 1 << bit
+        resmask.append(mask)
 
     # ── run-length encode the index raster ──
     runs = bytearray()
@@ -255,7 +267,8 @@ def main() -> int:
                             owner_cid[ix], pop[ix], army[ix], income[ix],
                             min(adj_n[ix], 255), forts[ix],
                             adj_off[ix],
-                            min(full_area.get(order[ix], 1), 0xFFFFFFFF))
+                            min(full_area.get(order[ix], 1), 0xFFFFFFFF),
+                            indlvl[ix], resmask[ix], 0)
         blob += names[ix]
     blob += adj_flat
     for cid in cids:
@@ -292,7 +305,8 @@ def main() -> int:
           f"{len(blob) / 1024:.0f} KB")
     print(f"  population {sum(pop) / 1e6:.0f}M, armies {sum(army):,}, "
           f"income {sum(income) / 10:.0f}/turn, "
-          f"{sum(1 for f in forts if f)} fortified")
+          f"{sum(1 for f in forts if f)} fortified, "
+          f"{sum(1 for m in resmask if m)} with deposits")
     return 0
 
 
