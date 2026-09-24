@@ -31,6 +31,7 @@
  * pretends to a number it has not got.
  */
 #include "World"
+#include "Data"
 
 #define R_WIDTH_MIN      20000
 #define R_WIDTH_PER_AREA    25
@@ -56,6 +57,32 @@ I64 r_wartime[OD_MAXC];             /* turns this war has run */
 #define R_WAR_MAX_TURNS     12      /* then exhaustion, and peace */
 #define R_WAR_ODDS         600      /* 1 in this many per country per turn */
 
+/* ── WHAT A POLICY ACTUALLY DOES ──
+ *
+ * Every lever is stored in TENTHS of its own unit, so a percentage lever is
+ * applied as (1000 + v) / 1000 and a growth lever is already per-mille. The
+ * eight are the ones these rules can act on; tools/templeos_data.py records
+ * why the other twelve cannot, and fails the build if a new one appears.
+ */
+#define RL_POPGROWTH  0
+#define RL_PASSIVE    1
+#define RL_RESOURCE   2
+#define RL_ATK        3
+#define RL_DEF        4
+#define RL_CONSCRIPT  5
+#define RL_CONSCOST   6
+#define RL_MAINT      7
+
+/* ── KEEPING AN ARMY COSTS SOMETHING ──
+ *
+ * It did not, until the policy levers arrived and one of them modified a
+ * maintenance cost that was not being charged. The desktop game bills fuel
+ * and upkeep every turn (Game_Economy.cpp); these rules had men who ate
+ * nothing, so an army once raised was free for ever and there was no reason
+ * not to raise the maximum every turn. One tenth of a dollar per 20,000 men.
+ */
+#define R_UPKEEP_PER_MAN  20000
+
 I64 r_ord_recruit[OD_MAXP];         /* men to raise here this turn */
 I64 r_ord_attack[OD_MAXP];          /* province index to assault, or -1 */
 I64 r_last_report = 0;              /* battles resolved in the last turn */
@@ -77,6 +104,26 @@ U0 RLog(U8 *fmt, ...)
     r_nlog++;
   }
   Free(s);
+}
+
+/* The player's active policies, summed. Only the player has policies in this
+ * build, so an AI country's levers are all zero and every formula below
+ * reduces to what it was. */
+I64 RLever(I64 cid, I64 which)
+{
+  I64 i, n = 0;
+  if (cid != w_me) return 0;
+  for (i = 0; i < d_npol; i++)
+    if (d_active[i]) n += d_plev[i][which];
+  return n;
+}
+
+/* v scaled by a percentage lever given in tenths of a percent. */
+I64 RScale(I64 v, I64 tenths)
+{
+  I64 r = v * (1000 + tenths) / 1000;
+  if (r < 0) r = 0;
+  return r;
 }
 
 U0 RClearOrders()
@@ -155,6 +202,12 @@ Bool RAssault(I64 from, I64 to, I64 men)
 
   fortmul = 100 + w_fort[to] * R_FORT_DEF_PCT;
   def = edef * fortmul / 100;
+
+  /* Policy, applied to the men on the line rather than to the headcount: a
+   * doctrine makes a front hit harder, it does not conjure more soldiers past
+   * the frontage. */
+  eatk = RScale(eatk, RLever(w_own[from], RL_ATK));
+  def  = RScale(def,  RLever(w_own[to],   RL_DEF));
 
   if (eatk > def)
   {
@@ -281,16 +334,29 @@ U0 RAiTurn(I64 cid)
  */
 U0 RTurn()
 {
-  I64 i, s, men, cost;
+  I64 i, s, men, cost, cap;
 
   r_nlog = 0;
   r_last_report = 0;
 
-  /* income */
+  /* income, scaled by whatever the owner's policies do to it */
   for (i = 0; i < w_np; i++)
   {
     s = WSlot(w_own[i]);
-    if (s >= 0) w_tre[s] += w_inc[i];
+    if (s >= 0)
+      w_tre[s] += RScale(w_inc[i], RLever(w_own[i], RL_RESOURCE));
+  }
+
+  /* passive income, and what the standing army costs to keep */
+  for (i = 0; i < w_nc; i++)
+  {
+    men = 0;
+    for (s = 0; s < w_np; s++)
+      if (w_own[s] == w_ccid[i]) men += w_army[s];
+    cost = RScale(men / R_UPKEEP_PER_MAN, RLever(w_ccid[i], RL_MAINT));
+    w_tre[i] -= cost;
+    w_tre[i] += RLever(w_ccid[i], RL_PASSIVE);
+    if (w_tre[i] < 0) w_tre[i] = 0;
   }
 
   /* the player's recruitment */
@@ -298,9 +364,10 @@ U0 RTurn()
     if (r_ord_recruit[i] > 0 && w_own[i] == w_me)
     {
       men = r_ord_recruit[i];
-      if (men > w_pop[i] * R_RECRUIT_CAP_PCT / 100)
-        men = w_pop[i] * R_RECRUIT_CAP_PCT / 100;
-      cost = men / 1000;
+      cap = RScale(w_pop[i] * R_RECRUIT_CAP_PCT / 100,
+                   RLever(w_me, RL_CONSCRIPT));
+      if (men > cap) men = cap;
+      cost = RScale(men / 1000, RLever(w_me, RL_CONSCOST));
       s = WSlot(w_me);
       if (s >= 0 && cost > 0 && w_tre[s] >= cost)
       {
@@ -327,9 +394,14 @@ U0 RTurn()
     if (w_ccid[i] != w_me)
       RAiTurn(w_ccid[i]);
 
-  /* the people */
+  /* the people. popGrowthPct is a percentage, stored in tenths, which is the
+   * same thing as per mille -- so it adds straight onto the base rate. */
   for (i = 0; i < w_np; i++)
-    w_pop[i] += w_pop[i] * R_GROWTH_PER_MILLE / 1000;
+  {
+    cost = R_GROWTH_PER_MILLE + RLever(w_own[i], RL_POPGROWTH);
+    if (cost < 0) cost = 0;
+    w_pop[i] += w_pop[i] * cost / 1000;
+  }
 
   RClearOrders;
   w_turn++;

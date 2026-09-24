@@ -29,6 +29,7 @@ protects you. Two kinds of drift matter and they fail differently:
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import sys
@@ -37,6 +38,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 RENDER = ROOT / "src" / "Game_Render.cpp"
 RESEARCH = ROOT / "src" / "Game_Research.cpp"
 DATA = ROOT / "templeos" / "game.odd"
+ODMAP = ROOT / "data" / "STDmaps" / "map.odmap"
 GAMEH = ROOT / "src" / "Game.h"
 CLIENT = ROOT / "templeos" / "ODGame.HC"
 OUT = ROOT / "templeos" / "Sync.HH"
@@ -162,6 +164,35 @@ def main() -> int:
             problems.append("templeos/game.odd is missing -- run "
                             "tools/templeos_data.py")
 
+        # ── EVERY POLICY LEVER IS CLASSIFIED ──
+        #
+        # A policy that pulls a lever nobody has looked at still costs the
+        # player money every turn and does nothing for it. Adding an effect to
+        # the desktop game must therefore fail here until somebody decides
+        # whether these rules can act on it -- honoured, or skipped with the
+        # reason written down.
+        try:
+            import zipfile as _z
+            pol = json.loads(_z.ZipFile(ODMAP).read("policies.json"))["policies"]
+        except Exception as e:                      # noqa: BLE001
+            problems.append(f"could not read policies.json ({e})")
+            pol = []
+        import importlib.util as _u
+        spec = _u.spec_from_file_location("td", ROOT / "tools" / "templeos_data.py")
+        td = _u.module_from_spec(spec)
+        spec.loader.exec_module(td)
+        known = set(td.LEVERS) | set(td.LEVERS_SKIPPED)
+        seen = set()
+        for x in pol:
+            seen |= set((x.get("levers") or {}).keys())
+        for lever in sorted(seen - known):
+            problems.append(f"policies pull {lever!r} and nothing in "
+                            f"tools/templeos_data.py says whether these rules "
+                            f"act on it (add it to LEVERS or LEVERS_SKIPPED)")
+        for lever in sorted(known - seen):
+            problems.append(f"{lever!r} is classified but no policy pulls it "
+                            f"any more")
+
         for v in sorted(mine - set(views)):
             problems.append(f"the TempleOS client implements {v}, which the "
                             f"C++ does not have")
@@ -173,7 +204,8 @@ def main() -> int:
         import struct as _s
         nodes = _s.unpack("<H", DATA.read_bytes()[6:8])[0]
         print(f"templeos sync: {len(views)} views, {len(CONSTANTS)} constants, "
-              f"{nodes} research nodes, {len(SKIPPED)} skipped on the record")
+              f"{nodes} research nodes, {len(seen)} policy levers, "
+              f"{len(SKIPPED)} skipped on the record")
         return 0
 
     OUT.write_text(text)

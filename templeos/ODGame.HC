@@ -466,6 +466,34 @@ U0 GOverlay()
       y += 13;
       shown++;
     }
+
+    /* ── WHAT THE HIGHLIGHTED POLICY ACTUALLY DOES ──
+     *
+     * Listed rather than summarised, because a policy that costs money every
+     * turn and shows no effect is indistinguishable from one that is broken.
+     * A policy with nothing here pulls only levers these rules cannot act on,
+     * and says so. */
+    i = cur;
+    y = 560;
+    PFill(170, y - 6, P_W - 440, 1, 70, 74, 84);
+    if (i >= 0 && i < d_npol)
+    {
+      PPrint(170, y, 235, 235, 240, 1, "%s", d_pname[i]);
+      y += 14;
+      n = 0;
+      for (k = 0; k < DT_NLEV; k++)
+        if (d_plev[i][k])
+        {
+          word = "+";
+          if (d_plev[i][k] < 0) word = "";
+          PPrint(182 + n * 210, y, 200, 205, 215, 1, "%s  %s%d.%d",
+                 d_levname[k], word, d_plev[i][k] / 10, AbsI64(d_plev[i][k]) % 10);
+          n++;
+          if (n == 3) { n = 0; y += 13; }
+        }
+      if (!n && y == 574)
+        PText(182, y, "pulls no lever these rules act on", 150, 160, 175);
+    }
   }
   else if (g_overlay == 1)       /* ── ECONOMY ── */
   {
@@ -481,8 +509,19 @@ U0 GOverlay()
     PPrint(170, y, 205, 130, 120, 1, "Policy upkeep   %d.%d per turn",
            upkeep / 10, upkeep % 10);
     y += 16;
+    n = RScale(men / R_UPKEEP_PER_MAN, RLever(w_me, RL_MAINT));
+    PPrint(170, y, 205, 130, 120, 1, "Army upkeep     %d.%d per turn",
+           n / 10, n % 10);
+    y += 16;
     PPrint(170, y, 200, 205, 215, 1, "Standing army   %d men", men);
     y += 16;
+    k = RLever(w_me, RL_PASSIVE);
+    if (k)
+    {
+      PPrint(170, y, 120, 215, 130, 1, "Policy income   %d.%d per turn",
+             k / 10, k % 10);
+      y += 16;
+    }
     PPrint(170, y, 200, 205, 215, 1, "Research        %d points, %d per turn",
            d_rp, DResearchRate(inc));
     y += 24;
@@ -995,6 +1034,7 @@ U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
   }
   ODPlay(cid);
   PaintEnd;
+  WFree;
 }
 
 /* Runs at include time: if this does not appear, the file was never
@@ -1060,7 +1100,18 @@ U0 OD(U8 *world = "world.odw")
         else if (cur == 0)
         {
           cid = GSelect;
-          if (cid >= 0) ODPlay(cid);
+          if (cid >= 0)
+          {
+            ODPlay(cid);
+            /* ── A NEW GAME STARTS FROM THE WORLD, NOT FROM THE LAST ONE ──
+             *
+             * The world lives in globals that a game plays on directly, so
+             * the second game inherits the first one's borders, armies and
+             * dead empires unless it is read again. Freed first: otherwise
+             * every game leaks the raster and the adjacency. */
+            WFree;
+            WLoad(world);
+          }
           dirty = TRUE;
         }
         else if (cur == 5)
@@ -1089,4 +1140,5 @@ od_done:
     PutExcept;
 
   PaintEnd;
+  WFree;
 }

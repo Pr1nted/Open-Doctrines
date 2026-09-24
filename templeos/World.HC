@@ -194,6 +194,17 @@ Bool WLoad(U8 *path = "world.odw")
   return TRUE;
 }
 
+/* Give back what WLoad took. Loading twice without this leaks a megabyte and
+ * a half a time -- and, worse, loading a second time without reloading at all
+ * would start the next game from the last one's ruins. */
+U0 WFree()
+{
+  if (w_pmap) Free(w_pmap);
+  if (w_adj) Free(w_adj);
+  w_pmap = NULL;
+  w_adj = NULL;
+}
+
 /* The province under a point, or -1 for sea. Exact: this reads the raster, it
  * does not measure distance to a centre. */
 I64 WAt(I64 x, I64 y)

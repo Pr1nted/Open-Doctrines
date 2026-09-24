@@ -31,12 +31,50 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RESEARCH_SRC = ROOT / "src" / "Game_Research.cpp"
 
-MAGIC, VERSION = b"ODTD", 1
+MAGIC, VERSION = b"ODTD", 2
 MAX_DEPS = 4
 
 # The five categories the research tree uses, as fixed slots so the guest can
 # group without carrying strings it would only compare.
 CATS = ["buildings", "army", "formations", "population", "efficiency", "misc"]
+
+# ── THE LEVERS THIS BUILD HONOURS ──
+#
+# A policy in the desktop game pulls up to twenty different levers. The
+# TempleOS rules are income, recruitment, combat and population, so these
+# eight are the ones with something to act on -- and each is applied, not
+# merely displayed.
+#
+# Everything else is listed below it, with the reason. That list is not
+# decoration: templeos_sync.py fails the build when policies.json grows a
+# lever that appears in neither, so a new effect cannot be silently ignored
+# by a build that still charges you for the policy.
+LEVERS = [
+    "popGrowthPct",         # population growth, per turn
+    "passiveIncome",        # flat money per turn
+    "resourceModPct",       # scales province income
+    "armyAtkPct",           # assault strength
+    "armyDefPct",           # defence strength
+    "conscriptionPct",      # how much of a population can be raised
+    "conscriptionCostPct",  # what raising it costs
+    "maintenanceCostPct",   # what keeping it costs
+]
+LEVER_SCALE = 10            # stored as tenths, so 0.5 survives as an integer
+
+LEVERS_SKIPPED = {
+    "indoctrinationPct":   "no minority or alignment model",
+    "industryCostPct":     "industry cannot be built here",
+    "industryUpkeepPct":   "industry cannot be built here",
+    "migrationRate":       "no migration model",
+    "popModPct":           "no per-province population modifier",
+    "navySpeedPct":        "no fleets",
+    "navyCostPct":         "no fleets",
+    "navyAtkPct":          "no fleets",
+    "navyDefPct":          "no fleets",
+    "specSubsidyRoomPct":  "no industry specialisation",
+    "specTaxRoomPct":      "no industry specialisation",
+    "warDeclarations":     "one war at a time, by construction",
+}
 
 
 def fixed(s: str, n: int) -> bytes:
@@ -117,6 +155,10 @@ def main() -> int:
         blob += fixed(str(p.get("category", "")), 10)
         blob += struct.pack("<HB B", min(int(p.get("cost_per_turn", 0) or 0), 0xFFFF),
                             min(int(p.get("implementation_turns", 0) or 0), 255), 0)
+        lv = p.get("levers") or {}
+        for name in LEVERS:
+            v = int(round(float(lv.get(name, 0) or 0) * LEVER_SCALE))
+            blob += struct.pack("<h", max(-32768, min(32767, v)))
 
     for cid, pids in rows:
         blob += struct.pack("<HH", cid, len(pids))
@@ -127,6 +169,11 @@ def main() -> int:
     by_cat = {}
     for n in nodes:
         by_cat[n["cat"]] = by_cat.get(n["cat"], 0) + 1
+    honoured = sum(1 for p in policies
+                   if any(k in LEVERS for k in (p.get("levers") or {})))
+    print(f"  {honoured} of {len(policies)} policies pull a lever this build "
+          f"acts on; {len(LEVERS)} honoured, {len(LEVERS_SKIPPED)} recorded as "
+          f"having nothing to act on")
     print(f"{a.out}: {len(nodes)} research nodes, {len(policies)} policies, "
           f"{len(rows)} countries with claims "
           f"({sum(len(p) for _, p in rows)} provinces), {len(blob)/1024:.1f} KB")

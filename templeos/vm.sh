@@ -14,7 +14,7 @@
 #
 #     templeos/vm.sh install     make the disk, first time only
 #     templeos/vm.sh boot        boot the ISO (installer / live)
-#     templeos/vm.sh run         boot the installed disk
+#     templeos/vm.sh run         boot the installed disk (OD_TOS_GUI=1 for a window)
 #     templeos/vm.sh push F...   copy files in to D:/Home
 #     templeos/vm.sh pull N     copy a file back out
 #     templeos/vm.sh shot F.png  capture the screen
@@ -47,6 +47,18 @@ running() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
 
 start() {
     local bootdev="$1"
+    # OD_TOS_GUI=1 opens a real window instead of running blind. The monitor
+    # socket stays either way, so everything that drives this machine by
+    # script keeps working while somebody watches.
+    #
+    # Not daemonized in GUI mode: a Cocoa window wants the process that owns
+    # it to stay in the foreground, and -daemonize hands it to a child that
+    # has no business drawing one.
+    local disp="-display none" bg="-daemonize"
+    if [ "${OD_TOS_GUI:-0}" = "1" ]; then
+        disp="-display cocoa"
+        bg=""
+    fi
     running && die "already running (pid $(cat "$PIDF")). vm.sh stop first."
     [ -f "$ISO" ] || die "no $ISO"
     [ -f "$DISK" ] || die "no $DISK -- run: templeos/vm.sh install"
@@ -71,11 +83,11 @@ start() {
         $( [ -f "$SWAP" ] && echo -drive file="$SWAP",format=raw,if=ide,index=1 ) \
         $( [ -f "$PAYLOAD" ] && echo -drive file="$PAYLOAD",format=raw,if=ide,index=3,media=cdrom ) \
         -boot "$bootdev" \
-        -display none \
+        $disp \
         -monitor unix:"$MON",server,nowait \
         -pidfile "$PIDF" \
-        -daemonize 2>&1 | sed 's/^/qemu: /'
-    sleep 1
+        $bg 2>&1 | sed 's/^/qemu: /' &
+    sleep 2
     running || die "qemu did not start"
     echo "started (pid $(cat "$PIDF")), booting from $( [ "$bootdev" = d ] && echo CD || echo disk )"
     echo "screenshot with: templeos/vm.sh shot /tmp/tos.png"

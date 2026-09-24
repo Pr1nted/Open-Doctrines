@@ -20,15 +20,19 @@
 #define DT_MAXCLP   128        /* claimed provinces, total */
 #define DT_DEPS       4
 #define DT_RREC      48
-#define DT_PREC      54
+#define DT_PREC      70
 
 U8   d_rid[DT_MAXR][12], d_rname[DT_MAXR][24];
 I64  d_rcost[DT_MAXR], d_rcat[DT_MAXR], d_rndep[DT_MAXR];
 I64  d_rdep[DT_MAXR][DT_DEPS];
 I64  d_nres = 0;
 
+#define DT_NLEV       8        /* levers this build acts on */
+
 U8   d_pid[DT_MAXPOL][16], d_pname[DT_MAXPOL][24], d_pcat[DT_MAXPOL][10];
 I64  d_pcost[DT_MAXPOL], d_pturns[DT_MAXPOL];
+I64  d_plev[DT_MAXPOL][DT_NLEV];   /* in TENTHS of the policy's own unit */
+U8  *d_levname[DT_NLEV];
 I64  d_npol = 0;
 
 /* Claims arrive as province IDS because the world file's indices depend on the
@@ -51,6 +55,14 @@ I64 DU32(U8 *b) { return b[0] + (b[1] << 8) + (b[2] << 16) + (b[3] << 24); }
 
 U0 DInitCats()
 {
+  d_levname[0] = "population growth";
+  d_levname[1] = "passive income";
+  d_levname[2] = "resource income";
+  d_levname[3] = "army attack";
+  d_levname[4] = "army defence";
+  d_levname[5] = "conscription";
+  d_levname[6] = "conscription cost";
+  d_levname[7] = "maintenance cost";
   d_rcatname[0] = "Buildings";
   d_rcatname[1] = "Army";
   d_rcatname[2] = "Formations";
@@ -118,6 +130,13 @@ Bool DLoad(U8 *path = "game.odd")
     d_pcost[i]  = DU16(b + off + 50);
     d_pturns[i] = b[off + 52];
     d_active[i] = 0;
+    /* Signed: half the levers are negative, and a policy that reads -25% as
+     * +65511% would be quite a policy. */
+    for (k = 0; k < DT_NLEV; k++)
+    {
+      d_plev[i][k] = DU16(b + off + 54 + k * 2);
+      if (d_plev[i][k] > 32767) d_plev[i][k] -= 65536;
+    }
     off += DT_PREC;
   }
 
