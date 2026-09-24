@@ -1521,5 +1521,12 @@ void NetHost::kick(uint16_t peerId, const std::string& reason) {
                 m_impl->seated.erase(m_impl->seated.begin() + static_cast<long>(i));
     }
     m_impl->lobby.evict(peerId);
+    // The per-peer budgets go with the peer, as they do on a disconnect and on
+    // a timeout. Relay peer ids are handed out again, so a bucket left
+    // exhausted here was inherited by whoever arrived on that handle next and
+    // had their frames dropped for somebody else's behaviour.
+    m_impl->chatGate.forget(peerId);
+    m_impl->frameBudget.forget(peerId);
+    m_impl->byteBudget.forget(peerId);
     m_impl->broadcastLobbyInternal();
 }
