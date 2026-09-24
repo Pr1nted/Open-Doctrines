@@ -14340,9 +14340,22 @@ void AISystem::dumpNationalised() {
 }
 
 void AISystem::doctrineReflex(int cid) {
-    // 0/unset off; 1 = as journal 399 measured it; 2 = narrowed, see below.
+    // ON BY DEFAULT at mode 3 since 2026-09-25, on the user's decision.
+    // OD_DOCTRINE_REFLEX=0 turns it off, which is how every A/B here was run;
+    // 1 and 2 are kept so journals 399 and 400 stay reproducible.
+    //
+    // What was measured, three times on three binaries and two disjoint seed
+    // sets: the three rung seats gain +52.1, +51.8 and +86.3 rating, each
+    // clearing its own floor, and every rung seat's land share rises
+    // (journals 401, 402, 406). 1914:FRA:rush is not harmed at 64 seeds
+    // (31/64 collapses against 33/64, journal 403). Two things a reader
+    // should know before trusting that: 1914:SWE is not significantly worse
+    // on any single run but points the same way on both paired ones
+    // (pooled 14/64 -> 20/64 annihilated, Fisher p 0.317), and 1939:NOR:hood
+    // read clean because the seat is below the median army and the rule can
+    // never fire for it (journal 404), so it guards nothing here.
     static const int mode = std::getenv("OD_DOCTRINE_REFLEX")
-                          ? atoi(std::getenv("OD_DOCTRINE_REFLEX")) : 0;
+                          ? atoi(std::getenv("OD_DOCTRINE_REFLEX")) : 3;
     if (mode <= 0) return;
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
