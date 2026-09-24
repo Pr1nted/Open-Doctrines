@@ -52,6 +52,12 @@ constexpr size_t kMaxControlBytes = 125;
 constexpr int kHandshakeTimeoutMs = 20000;
 constexpr int kPollIntervalMs = 20;
 
+// How many 8 KB reads one pass may take before going back round the loop. The
+// old code read exactly one and then waited 20 ms whatever was pending, which
+// capped a client at ~400 KB/s -- so a multi-megabyte world snapshot took long
+// enough for the host to give up on it.
+constexpr int kReadsPerPass = 64;
+
 enum : uint8_t {
     kOpContinuation = 0x0, kOpText = 0x1, kOpBinary = 0x2,
     kOpClose = 0x8, kOpPing = 0x9, kOpPong = 0xA,
@@ -86,6 +92,8 @@ struct WebSocket::Impl {
     std::vector<uint8_t> assembly;
     uint8_t              assemblyOpcode = 0;
     bool                 assembling = false;
+    /// Bytes arrived on the last pass, so do not idle before the next read.
+    bool                 rxActive = false;
 
     std::vector<uint8_t> rx;    // bytes read but not yet framed
 
@@ -98,7 +106,8 @@ struct WebSocket::Impl {
     bool openTransport();
     bool handshake();
     bool pump();
-    bool readSome();
+    /** -1 lost, 0 nothing waiting, else bytes read. */
+    int readSome();
     bool consumeFrames();
     bool writeFrame(uint8_t opcode, const uint8_t* data, size_t n);
     bool writeAll(const uint8_t* data, size_t n);
@@ -318,21 +327,21 @@ bool WebSocket::Impl::handshake() {
     return true;
 }
 
-bool WebSocket::Impl::readSome() {
+int WebSocket::Impl::readSome() {
     uint8_t buf[8192];
     const int rc = sock.read(buf, sizeof(buf));
-    if (rc == TlsSocket::kRetry) return true;
-    if (rc == TlsSocket::kClosed) return false;
-    if (rc < 0) { setError("the connection was lost"); return false; }
+    if (rc == TlsSocket::kRetry) return 0;
+    if (rc == TlsSocket::kClosed) return -1;
+    if (rc < 0) { setError("the connection was lost"); return -1; }
 
     // The framing buffer holds at most one message plus a partial header, so
     // a peer cannot make us grow it without bound by never finishing a frame.
     if (rx.size() + static_cast<size_t>(rc) > kMaxMessageBytes + 64 * 1024) {
         setError("the server sent more than this client will buffer");
-        return false;
+        return -1;
     }
     rx.insert(rx.end(), buf, buf + rc);
-    return true;
+    return rc;
 }
 
 bool WebSocket::Impl::consumeFrames() {
@@ -475,8 +484,13 @@ bool WebSocket::Impl::pump() {
         // A short wait rather than a busy loop: there is no portable way to
         // wait on both a socket and a condition variable, and 20 ms of latency
         // is nothing next to a turn timer measured in seconds.
-        wake.wait_for(lock, std::chrono::milliseconds(kPollIntervalMs),
-                      [this] { return !outbox.empty() || stopRequested.load(); });
+        //
+        // NOT while bytes are arriving: waiting out the full interval between
+        // reads is what held a receiving client to one 8 KB read per 20 ms.
+        if (!rxActive) {
+            wake.wait_for(lock, std::chrono::milliseconds(kPollIntervalMs),
+                          [this] { return !outbox.empty() || stopRequested.load(); });
+        }
         pending.swap(outbox);
     }
     for (const auto& message : pending) {
@@ -487,7 +501,15 @@ bool WebSocket::Impl::pump() {
         }
     }
     if (stopRequested.load()) return false;
-    if (!readSome()) return false;
+
+    rxActive = false;
+    for (int i = 0; i < kReadsPerPass; ++i) {
+        const int got = readSome();
+        if (got < 0) return false;
+        if (got == 0) break;
+        rxActive = true;
+        if (static_cast<size_t>(got) < 8192) break;   // the socket is drained
+    }
     return consumeFrames();
 }
 
