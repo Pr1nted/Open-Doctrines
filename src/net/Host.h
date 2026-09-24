@@ -228,7 +228,21 @@ public:
     void setMapName(const std::string& name);
 
     /** Send the whole world to one peer, for a joiner or a spectator. */
-    void sendSnapshot(uint16_t peerId, uint32_t turnNumber,
+    /**
+     * Send one player the whole world.
+     *
+     * FALSE WHEN IT WILL NOT FIT. Every ceiling in the transport is 16 MB
+     * (kNetMaxFrameBytes, and the same number again in both WebSocket layers),
+     * and a world grows with the turns played -- roughly 20 KB a turn, so a
+     * standard map crosses it somewhere past turn 800. Nothing checked:
+     * a direct host emitted a frame its own clients kill the connection over,
+     * and a relayed host had it dropped inside the socket with no error at all,
+     * leaving the joiner waiting for a world that was never sent.
+     *
+     * The caller is expected to tell somebody. There is nothing this layer can
+     * do about it; what it can do is not pretend it sent one.
+     */
+    bool sendSnapshot(uint16_t peerId, uint32_t turnNumber,
                       const std::vector<uint8_t>& payload);
 
     /**

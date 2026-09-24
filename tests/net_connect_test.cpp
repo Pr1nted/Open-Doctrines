@@ -276,6 +276,7 @@ int testJoin(const std::string& issuer) {
             }, 6000);
             check("withdrawn orders reach the host as well", tookBack);
 
+
             // Put them back, so the rest of this case sees what it expects.
             session.submitOrders(1, std::vector<uint8_t>(ordersText.begin(),
                                                          ordersText.end()));
@@ -1104,6 +1105,22 @@ int testQuiet(const std::string& issuer, bool onlyIdle = false) {
         check("and fast enough that nothing gives up on it",
               secs < 5.0, "took " + std::to_string(secs) + "s");
         printf("  (4 MB in %.2fs)\n", secs);
+
+        // ── AND ONE THAT CANNOT BE SENT AT ALL ──
+        //
+        // Past the transport's 16 MB ceiling, which a standard map reaches
+        // somewhere beyond turn 800. This used to be emitted anyway: the
+        // client killed the connection over it, or -- over the relay -- the
+        // socket dropped it without a word and the joiner waited forever.
+        std::vector<uint8_t> huge(17u * 1024 * 1024, 0x5A);
+        hostSeen.hostError.clear();
+        const bool sent = host.sendSnapshot(peerId, 1, huge);
+        check("a world too large to send is refused rather than emitted", !sent);
+        pumpAll(&host, cs, [&] { drainAll(&host, cs, hostSeen); return !hostSeen.hostError.empty(); }, 2000);
+        check("and the host is told why, in a sentence it can show somebody",
+              hostSeen.hostError.find("too large") != std::string::npos,
+              hostSeen.hostError);
+        check("the player is still connected afterwards", stillSeated());
     }
 
     // ── 5. A CLIENT FROM BEFORE ANY OF THIS ──

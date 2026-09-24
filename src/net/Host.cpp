@@ -1442,12 +1442,25 @@ void NetHost::broadcastTurnOrders(uint32_t turnNumber,
     m_impl->broadcast(NetMsg::TurnOrders, t.encode());
 }
 
-void NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
+bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
                            const std::vector<uint8_t>& payload) {
     NetWorld w;
     w.turnNumber = turnNumber;
     w.payload = payload;
-    m_impl->toPeer(peerId, NetMsg::Snapshot, w.encode());
+    const std::vector<uint8_t> frame = w.encode();
+    // The frame carries a 6-byte header on top of this, and the ceiling is on
+    // the whole frame. Checked here rather than at the socket because this is
+    // the last place that knows WHO it was for.
+    if (frame.size() + 6 > kNetMaxFrameBytes) {
+        m_impl->push({NetHostEvent::Kind::Failed, peerId,
+                      "This game has grown too large to send to a joining player (" +
+                      std::to_string(frame.size() / (1024 * 1024)) + " MB, and " +
+                      std::to_string(kNetMaxFrameBytes / (1024 * 1024)) +
+                      " MB is the most that can be sent). They cannot be let in.", {}});
+        return false;
+    }
+    m_impl->toPeer(peerId, NetMsg::Snapshot, frame);
+    return true;
 }
 
 void NetHost::sendTurnStoreInfo(uint16_t peerId) {
