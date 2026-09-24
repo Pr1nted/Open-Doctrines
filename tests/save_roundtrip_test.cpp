@@ -27,6 +27,9 @@
 
 #include "SaveManager.h"
 
+#include "miniz.h"
+#include "miniz_zip.h"
+
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -228,6 +231,40 @@ int main(int argc, char** argv) {
     writeCanonical(path);
     check("the file exists after writing", std::filesystem::exists(path, ec));
     verifyCanonical(path, "written and read on this platform");
+
+    // ── A TURN WRITTEN TWICE IS ONE TURN ──
+    //
+    // A rewind, a replay, or a host resolving the same turn twice re-appends a
+    // turn number the archive already has. That used to leave two entries with
+    // the same name, and miniz's binary search picks between them arbitrarily:
+    // in multiplayer the host could broadcast a delta other than the one it
+    // resolved. `Quick Start.odsv` carries 160 such pairs.
+    printf("== the same turn, written twice ==\n");
+    {
+        TurnDelta again = canonicalTurn(2);
+        again.researchAllocation = 0.75f;          // distinguishable from the first
+        SaveManager::appendTurn(path, again);
+
+        const TurnDelta got = SaveManager::readTurn(path, 2);
+        check("re-writing a turn replaces it rather than adding a second copy",
+              got.researchAllocation == 0.75f,
+              "read back " + std::to_string(got.researchAllocation));
+
+        // Counted in the archive itself, because "the read returned the new
+        // one" would also pass if the search happened to land on it.
+        size_t copies = 0;
+        mz_zip_archive z{};
+        if (mz_zip_reader_init_file(&z, path.c_str(), 0)) {
+            const int fc = (int)mz_zip_reader_get_num_files(&z);
+            for (int i = 0; i < fc; ++i) {
+                mz_zip_archive_file_stat st{};
+                if (mz_zip_reader_file_stat(&z, i, &st) &&
+                    strcmp(st.m_filename, "turns/t_00002.dat") == 0) copies++;
+            }
+            mz_zip_reader_end(&z);
+        }
+        checkEq("and the archive holds exactly one entry for that turn", 1, (int)copies);
+    }
 
     // ── what a broken save must do ──
     printf("== a save that is not one ==\n");

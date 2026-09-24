@@ -605,6 +605,18 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // metadata.json / index.json are regenerated above, so they're skipped
     // here. state.json is skipped when we're writing a fresh one below;
     // entries supplied via extraFiles are skipped too, since those override.
+    // THE TURN BEING WRITTEN IS NOT CARRIED OVER. Re-appending a turn number
+    // the archive already has -- which a rewind, a replay, or a host resolving
+    // the same turn twice all do -- used to leave TWO entries with the same
+    // name. `data/saves/Quick Start.odsv` has 160 such pairs. miniz finds an
+    // entry by binary search over the sorted directory, so which of the two
+    // any later read returns is unspecified: in multiplayer that means the
+    // host can broadcast a different turn from the one it resolved, and the
+    // game desyncs permanently with nothing to see.
+    char turnPath[32];
+    snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", delta.turnNumber);
+    char turnStatePath[40];
+    snprintf(turnStatePath, sizeof(turnStatePath), "turns/s_%05d.json", delta.turnNumber);
     {
         const int fc = (int)mz_zip_reader_get_num_files(&srcZip);
         for (int i = 0; i < fc; ++i) {
@@ -612,6 +624,8 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
             if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
             if (strcmp(st.m_filename, "metadata.json") == 0 ||
                 strcmp(st.m_filename, "index.json") == 0) continue;
+            if (strcmp(st.m_filename, turnPath) == 0) continue;
+            if (stateJson && strcmp(st.m_filename, turnStatePath) == 0) continue;
             if (stateJson && strcmp(st.m_filename, "state.json") == 0) continue;
             bool overridden = false;
             if (extraFiles)
@@ -628,8 +642,6 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
 
     // Add new turn
     auto packed = packTurn(delta);
-    char turnPath[32];
-    snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", delta.turnNumber);
     mz_zip_writer_add_mem(&newZip, turnPath, packed.data(), packed.size(), MZ_BEST_COMPRESSION);
 
     // Fold the state snapshot into this same rewrite when supplied.
@@ -641,9 +653,7 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // an earlier turn needs.
     if (stateJson) {
         mz_zip_writer_add_mem(&newZip, "state.json", stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
-        char statePath[40];
-        snprintf(statePath, sizeof(statePath), "turns/s_%05d.json", delta.turnNumber);
-        mz_zip_writer_add_mem(&newZip, statePath, stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
+        mz_zip_writer_add_mem(&newZip, turnStatePath, stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
     }
     if (extraFiles)
         for (auto& [name, content] : *extraFiles)
