@@ -1330,6 +1330,23 @@ int testRelay(const std::string& issuer) {
     for (const NetPeer& p : host.lobby().roster()) if (p.peerId != host.lobby().hostPeerId()) others++;
     check("and the host seats them both", others == 2, std::to_string(others) + " seated");
 
+    // ── WHAT A BROADCAST COSTS THE HOST ──
+    //
+    // One frame, whatever the room holds. The relay counts frames from the
+    // host against a token bucket; a fan-out per player is how a full game
+    // spends it in a single turn.
+    const size_t before = relayFramesSent(issuer, host.code());
+    host.broadcastDelta(1, std::vector<uint8_t>{1, 2, 3, 4});
+    pumpUntil(&host, nullptr, [&] {
+        host.update(); session.update(); second.update();
+        drain(&host, nullptr, hostSeen); return false;
+    }, 1200);
+    const size_t after = relayFramesSent(issuer, host.code());
+    check("a broadcast is one frame to the relay, not one per player",
+          after - before == 1, std::to_string(after - before) + " frames");
+
+    check("and it still arrives", hostSeen.hostError.empty(), hostSeen.hostError);
+
 
     session.leave();
     second.leave();

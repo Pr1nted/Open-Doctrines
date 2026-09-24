@@ -900,6 +900,30 @@ void NetHost::Impl::toPeer(uint16_t peerId, NetMsg type,
 
 void NetHost::Impl::broadcast(NetMsg type, const std::vector<uint8_t>& payload) {
     const std::vector<uint8_t> frame = netEncodeFrame(type, payload);
+
+    // ── OVER THE RELAY, ONE FRAME ──
+    //
+    // The relay has a Broadcast kind and the host never used it: every
+    // broadcast went out as one wrapped ToPeer per player. The relay counts
+    // frames from the host against a 30-a-second bucket with a burst of 60, so
+    // one resolved turn in an eight-player game -- delta, turn orders, the
+    // substitution notices, the new turn, the roster -- could spend the lot
+    // and have the relay close THE HOST's socket. Which ends the game for
+    // everybody, over a rate limit meant to stop one player flooding another.
+    if (viaRelay && relaySeated) {
+        bool anyRelayed = false;
+        for (const Seated& s : seated) {
+            if (isRelayConn(s.conn)) { anyRelayed = true; continue; }
+            sendToConn(s.conn, frame);      // a directly attached peer, if any
+        }
+        if (anyRelayed) {
+            const auto wrapped = netrelay::encodeFromHost(
+                netrelay::FromHost::Broadcast, 0, frame.data(), frame.size());
+            relaySock.send(wrapped);
+        }
+        return;
+    }
+
     for (const Seated& s : seated) sendToConn(s.conn, frame);
 }
 
@@ -1480,7 +1504,8 @@ bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
     // The frame carries a 6-byte header on top of this, and the ceiling is on
     // the whole frame. Checked here rather than at the socket because this is
     // the last place that knows WHO it was for.
-    if (frame.size() + 6 > kNetMaxFrameBytes) {
+    const uint32_t ceiling = kNetMaxFrameBytes;
+    if (frame.size() + 6 > ceiling) {
         m_impl->push({NetHostEvent::Kind::Failed, peerId,
                       "This game has grown too large to send to a joining player (" +
                       std::to_string(frame.size() / (1024 * 1024)) + " MB, and " +
