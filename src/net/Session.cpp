@@ -833,11 +833,17 @@ bool NetSession::submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& p
     // A spectator's orders are discarded rather than merely ignored: not
     // sending them at all means there is nothing for a server to mishandle.
     if (phase() != Phase::InGame || spectating()) return false;
-    if (payload.size() > NetLimits::kOrders) {
+    // What the host accepts, or what the relay will carry, whichever is less:
+    // the relay drops a client frame over 256 KB without telling either end,
+    // so orders between that and the host's own 1 MB limit simply vanished and
+    // the AI played that country.
+    const size_t ceiling = m_impl->relay.load()
+        ? (size_t)kNetRelayMaxFromClient : (size_t)NetLimits::kOrders;
+    if (payload.size() > ceiling) {
         // Under the lock: error() and fail() both take it, and fail() runs on
         // the join worker.
         std::lock_guard<std::mutex> lock(m_impl->mutex);
-        m_impl->errorText = "these orders are larger than a turn may carry";
+        m_impl->errorText = "these orders are larger than this connection will carry";
         return false;
     }
     NetOrdersMsg o;

@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "check_shipped_data.py", "build.py", "screenshots.sh",
+        "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_relay_limits.py", "build.py", "screenshots.sh",
         "itch-cover.py", "banner.py", "package_android.sh",
         # Builds the web version and puts it on Cloudflare Pages -- the hosting
         # a Discord Activity needs, and the thing that makes the web build

@@ -1347,6 +1347,12 @@ int testRelay(const std::string& issuer) {
 
     check("and it still arrives", hostSeen.hostError.empty(), hostSeen.hostError);
 
+    // The relay's ceiling is lower than a direct host's, and a frame past it is
+    // dropped there without a word to anybody. So it is refused here instead.
+    std::vector<uint8_t> tooBig(9u * 1024 * 1024, 0x11);
+    const uint16_t peer = session.welcome().peerId;
+    check("a world past what the RELAY will carry is refused, not sent into a hole",
+          !host.sendSnapshot(peer ? peer : 1, 1, tooBig));
 
     session.leave();
     second.leave();

@@ -228,6 +228,22 @@ private:
 // near it.
 inline constexpr uint32_t kNetMaxFrameBytes = 16u * 1024 * 1024;
 
+/**
+ * What the RELAY will carry, which is less.
+ *
+ * These mirror MAX_FROM_HOST and MAX_FROM_CLIENT in net/src/lobby/LobbyDO.ts,
+ * where a frame past them is dropped and NOTHING is said in either direction.
+ * Checking against kNetMaxFrameBytes alone was therefore checking the wrong
+ * number for half the games played: a relayed host's snapshot between 8 and
+ * 16 MB passed every check here and vanished at the relay, leaving the joiner
+ * waiting for a world that had never been sent.
+ *
+ * If they ever disagree with the Worker's, the Worker wins -- it is the thing
+ * doing the dropping. tests/net_protocol_test.cpp pins them.
+ */
+inline constexpr uint32_t kNetRelayMaxFromHost   = 8u * 1024 * 1024;
+inline constexpr uint32_t kNetRelayMaxFromClient = 256u * 1024;
+
 std::vector<uint8_t> netEncodeFrame(NetMsg type, const std::vector<uint8_t>& payload);
 
 // Splits a received message into its type and payload. False if the header is

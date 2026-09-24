@@ -380,6 +380,11 @@ check "menu background matches map.odmap" $PY "$root/tools/make_menu_bg.py" --ch
 # and the two drifted: 1.2.2a shipped without its regional laws and parties.
 check "shipped data lists agree, data/ classified" $PY "$root/tools/check_shipped_data.py"
 
+# The relay drops an oversized frame without telling anybody, so the game
+# checks the relay's limits before it sends -- and those limits are written
+# down twice, in two languages. See tools/check_relay_limits.py.
+check "the game knows what the relay will carry" $PY "$root/tools/check_relay_limits.py"
+
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh
 # from Wikimedia with: python3 tools/audit_flag_licenses.py

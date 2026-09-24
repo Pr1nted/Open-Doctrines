@@ -1503,13 +1503,15 @@ bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
     const std::vector<uint8_t> frame = w.encode();
     // The frame carries a 6-byte header on top of this, and the ceiling is on
     // the whole frame. Checked here rather than at the socket because this is
-    // the last place that knows WHO it was for.
-    const uint32_t ceiling = kNetMaxFrameBytes;
+    // the last place that knows WHO it was for -- and against the RELAY's
+    // lower limit when that is the way out, because a frame it will not carry
+    // is dropped there in silence.
+    const uint32_t ceiling = m_impl->viaRelay ? kNetRelayMaxFromHost : kNetMaxFrameBytes;
     if (frame.size() + 6 > ceiling) {
         m_impl->push({NetHostEvent::Kind::Failed, peerId,
                       "This game has grown too large to send to a joining player (" +
                       std::to_string(frame.size() / (1024 * 1024)) + " MB, and " +
-                      std::to_string(kNetMaxFrameBytes / (1024 * 1024)) +
+                      std::to_string(ceiling / (1024 * 1024)) +
                       " MB is the most that can be sent). They cannot be let in.", {}});
         return false;
     }
