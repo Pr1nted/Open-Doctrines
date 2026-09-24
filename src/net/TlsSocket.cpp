@@ -362,6 +362,24 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
     }
     m_impl->netReady = true;
 
+    // ── A CLOSED PEER MUST NOT KILL THIS PROCESS ──
+    //
+    // Writing to a socket the other end has already closed raises SIGPIPE, and
+    // its default action is to terminate. mbedtls_net_send does not suppress
+    // it, so a host that went away between one frame and the next took the
+    // player's game down with it -- no error, no message, the window simply
+    // vanishes. The server's own sockets have had this since they were
+    // written (WsServer::doAccept); the client's never did.
+    //
+    // Per-socket on the BSDs and macOS; on Linux mbedtls already passes
+    // MSG_NOSIGNAL for every send.
+#ifdef SO_NOSIGPIPE
+    {
+        int one = 1;
+        ::setsockopt(m_impl->net.fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    }
+#endif
+
     if (!secure) { m_open = true; return true; }
 
     rc = mbedtls_ssl_config_defaults(&m_impl->conf, MBEDTLS_SSL_IS_CLIENT,
