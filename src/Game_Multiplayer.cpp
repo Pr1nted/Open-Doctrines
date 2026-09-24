@@ -720,6 +720,22 @@ void Game::mpDrainEvents() {
         NetHostEvent e;
         while (m_netHost->nextEvent(e)) {
             switch (e.kind) {
+                case NetHostEvent::Kind::PeerJoined:
+                    // ── SOMEBODY ARRIVING INTO A GAME THAT IS RUNNING ──
+                    //
+                    // A reconnect after a dropped connection, or a late joiner
+                    // taking a seat that was kept for them. Either way they
+                    // have nothing: the world only ever went out from the
+                    // Start button, so they sat on an empty map and the next
+                    // delta was applied to a world that was not there.
+                    if (m_netHost->lobby().state() == NetSessionState::Game && e.peerId &&
+                        e.peerId != m_netHost->lobby().hostPeerId()) {
+                        m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
+                                                mpSnapshotForJoiner());
+                    }
+                    mpNote(e.text + " joined");
+                    break;
+
                 case NetHostEvent::Kind::Opened:
                     mpNote("Game open. Share the code: " + e.text);
                     // The session code only exists once the service has issued
@@ -729,9 +745,6 @@ void Game::mpDrainEvents() {
                         m_mpSessionCode = m_netHost->code();
                         mpConfigureStore();
                     }
-                    break;
-                case NetHostEvent::Kind::PeerJoined:
-                    mpNote(e.text + " joined");
                     break;
                 case NetHostEvent::Kind::PeerLeft:
                     mpNote("A player disconnected");
@@ -2556,7 +2569,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                 mpNote(why, true);
             } else {
                 // Everyone gets the world before the host disappears into it.
-                const std::vector<uint8_t> snapshot = mpBuildSnapshot();
+                const std::vector<uint8_t>& snapshot = mpSnapshotForJoiner();
                 for (const NetPeer& p : m_netHost->lobby().roster()) {
                     if (p.peerId == m_netHost->lobby().hostPeerId()) continue;
                     m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot);
@@ -2710,6 +2723,16 @@ void Game::mpOnWorldLoaded() {
     }
 }
 
+const std::vector<uint8_t>& Game::mpSnapshotForJoiner() {
+    // Rebuilt when the world has moved on, and not otherwise: several people
+    // arriving between two turns are sent the same bytes.
+    if (m_mpSnapshotTurn != m_turnNumber || m_mpSnapshotCache.empty()) {
+        m_mpSnapshotCache = mpBuildSnapshot();
+        m_mpSnapshotTurn = m_turnNumber;
+    }
+    return m_mpSnapshotCache;
+}
+
 std::vector<uint8_t> Game::mpBuildSnapshot() {
     NetWorldSnapshot snap;
     snap.mapName = m_mpMapId;
@@ -2720,8 +2743,13 @@ std::vector<uint8_t> Game::mpBuildSnapshot() {
     // to the start. A game that has not begun has none, and the map's own
     // initial state is already right.
     if (!m_currentSavePath.empty()) {
-        for (int t = 1; t <= m_turnNumber; t++) {
-            TurnDelta delta = SaveManager::readTurn(m_currentSavePath, t);
+        // ONE OPEN, not one per turn. SaveManager::readTurn opens the archive
+        // and sorts its whole central directory every call, so a long game
+        // spent that once per turn played -- on the frame thread, with nothing
+        // pumping the sockets meanwhile.
+        SaveReader reader(m_currentSavePath);
+        for (int t = 1; reader.ok() && t <= m_turnNumber; t++) {
+            TurnDelta delta = reader.readTurn(t);
             std::vector<uint8_t> packed = SaveManager::packTurn(delta);
             if (packed.empty()) continue;
             snap.turns.push_back(NetTurnDelta{(uint32_t)t, std::move(packed)});
@@ -3584,6 +3612,19 @@ void Game::mpResolveTurn() {
 }
 
 void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
+    // ── NO WORLD, NO TURN ──
+    //
+    // A rejoining player used to be sent nothing and then handed the next
+    // turn's delta, which applied army and ownership changes to provinces that
+    // did not exist in an empty game. Being sent the world is the fix (see
+    // mpSnapshotForJoiner); refusing to pretend is the guard, because a host
+    // that is older, or busy, or has hit a snapshot it cannot send, still
+    // leaves this client with nothing to apply a turn to.
+    if (m_provinceCountryLookup.empty()) {
+        mpNote("Waiting for the world before this turn can be applied.", true);
+        return;
+    }
+
     TurnDelta delta;
     if (!SaveManager::unpackTurn(payload.data(), payload.size(), delta)) {
         mpNote("The server sent a turn this build could not read.", true);

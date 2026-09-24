@@ -879,6 +879,21 @@ private:
     void mpOnWorldLoaded();
     /** Build the whole-world payload. Host only. */
     std::vector<uint8_t> mpBuildSnapshot();
+    /**
+     * The world as it stands, for somebody who has just arrived in a game that
+     * is already running.
+     *
+     * A REJOIN USED TO GET NOTHING. The world was sent from the "Start game"
+     * button and nowhere else, so a player who lost their connection came back
+     * to a welcome, a lobby roster, and no world at all -- and then applied the
+     * next turn's delta to it. Late joiners arrived the same way.
+     *
+     * Cached per turn because it is expensive and several people can arrive
+     * between two turns.
+     */
+    const std::vector<uint8_t>& mpSnapshotForJoiner();
+    std::vector<uint8_t> m_mpSnapshotCache;
+    int m_mpSnapshotTurn = -1;
     /** Load the world a snapshot describes. Client only. */
     void mpApplySnapshot(const std::vector<uint8_t>& payload);
     /** Enter the game as `countryId`. */

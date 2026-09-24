@@ -118,8 +118,46 @@ struct OrderValidationTest {
         check(game.m_mpDeadlineMs.empty(), "and the per-player deadlines it held");
     }
 
+    /**
+     * The world a joiner is sent, and the guard for when they were not.
+     */
+    void worldForAJoiner() {
+        printf("\n== the world somebody arriving is given ==\n");
+
+        game.m_turnNumber = 0;
+        game.m_mpSnapshotCache.clear();
+        game.m_mpSnapshotTurn = -1;
+
+        const std::vector<uint8_t> first = game.mpSnapshotForJoiner();
+        check(!first.empty(), "a snapshot is built for somebody arriving");
+        check(game.m_mpSnapshotTurn == game.m_turnNumber, "and remembered for the turn it is of");
+
+        // Several people arriving between two turns are sent the same bytes
+        // rather than each paying for a rebuild.
+        const uint8_t* was = game.m_mpSnapshotCache.data();
+        const std::vector<uint8_t> again = game.mpSnapshotForJoiner();
+        check(again == first && game.m_mpSnapshotCache.data() == was,
+              "a second arrival in the same turn is sent the same world, not a new build");
+
+        game.m_turnNumber = 1;
+        game.mpSnapshotForJoiner();
+        check(game.m_mpSnapshotTurn == 1, "and the next turn rebuilds it");
+        game.m_turnNumber = 0;
+
+        // The guard: a delta with no world to apply it to is refused rather
+        // than written into provinces that are not there.
+        const auto owners = game.m_provinceCountryLookup;
+        game.m_provinceCountryLookup.clear();
+        const int turnWas = game.m_turnNumber;
+        game.mpApplyDelta(7, std::vector<uint8_t>{1, 2, 3});
+        check(game.m_turnNumber == turnWas,
+              "a turn that arrives before the world is not applied to nothing");
+        game.m_provinceCountryLookup = owners;
+    }
+
     void run() {
         hostedGameSettings();
+        worldForAJoiner();
         const int cid = anyCountry();
         check(cid != 0, "found a country to act as");
         const int mine = ownedProvince(cid);
