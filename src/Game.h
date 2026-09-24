@@ -1089,6 +1089,10 @@ private:
     /// My own open listing's id, so the board offers to take it down.
     std::string m_lfgMineId;
     int         m_lfgScroll = 0;
+    /// Posting came from the lobby, so go back there rather than to the board.
+    bool        m_lfgPostFromLobby = false;
+    /// Which tag the board is showing. See odlfg::Filter.
+    odlfg::Filter m_lfgFilter = odlfg::Filter::All;
     /// Which row's report box is open, by id. Empty means none.
     std::string m_lfgReporting;
     std::string m_lfgReportNote;

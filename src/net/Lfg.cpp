@@ -250,6 +250,35 @@ std::string problemWith(const Draft& draft) {
     return {};
 }
 
+std::vector<Listing> view(const std::vector<Listing>& all, Filter f) {
+    std::vector<Listing> out;
+    out.reserve(all.size());
+    for (const Listing& l : all) {
+        if (f == Filter::Hosting && l.kind != Kind::Hosting) continue;
+        if (f == Filter::Looking && l.kind != Kind::Looking) continue;
+        out.push_back(l);
+    }
+    // A stable sort, so everything else keeps the order the service chose --
+    // which is newest first, and the only ordering the board promises.
+    std::stable_sort(out.begin(), out.end(), [](const Listing& a, const Listing& b) {
+        const bool af = a.kind == Kind::Hosting && a.slotsTotal > 0 &&
+                        a.slotsTaken >= a.slotsTotal;
+        const bool bf = b.kind == Kind::Hosting && b.slotsTotal > 0 &&
+                        b.slotsTaken >= b.slotsTotal;
+        return !af && bf;
+    });
+    return out;
+}
+
+Counts count(const std::vector<Listing>& all) {
+    Counts c;
+    for (const Listing& l : all) {
+        if (l.kind == Kind::Hosting) c.hosting++;
+        else c.looking++;
+    }
+    return c;
+}
+
 std::string postBody(const Draft& draft) {
     std::string out = "{";
     out += "\"kind\":\"" + std::string(kindName(draft.kind)) + "\"";

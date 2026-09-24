@@ -232,6 +232,48 @@ int main() {
            "quotes in a note are escaped");
     }
 
+    // ── ONE BOARD, TWO REASONS TO OPEN IT ──
+    //
+    // A player who wants a game now reads the hosting listings; a host with an
+    // empty lobby reads the looking ones. Before this the board was one list in
+    // arrival order and you scrolled past half of it either way.
+    section("the board can be read as one tag or the other");
+    {
+        auto make = [](odlfg::Kind k, const char* id, int taken, int total) {
+            odlfg::Listing l;
+            l.kind = k; l.id = id; l.nick = id; l.map = "1914";
+            l.code = (k == odlfg::Kind::Hosting) ? "AAAA-BBBB" : "";
+            l.slotsTaken = taken; l.slotsTotal = total;
+            return l;
+        };
+        std::vector<odlfg::Listing> all = {
+            make(odlfg::Kind::Hosting, "full",  6, 6),
+            make(odlfg::Kind::Looking, "waiting", 0, 0),
+            make(odlfg::Kind::Hosting, "open",  2, 6),
+            make(odlfg::Kind::Looking, "waiting2", 0, 0),
+        };
+
+        const odlfg::Counts c = odlfg::count(all);
+        ok(c.hosting == 2 && c.looking == 2, "each tag is counted for its chip");
+
+        const std::vector<odlfg::Listing> everything = odlfg::view(all, odlfg::Filter::All);
+        ok(everything.size() == 4, "everything shows everything");
+
+        const std::vector<odlfg::Listing> hosting = odlfg::view(all, odlfg::Filter::Hosting);
+        ok(hosting.size() == 2, "games to join shows only the hosts");
+        for (const odlfg::Listing& l : hosting)
+            ok(l.kind == odlfg::Kind::Hosting, "and nothing else got in");
+        ok(!hosting.empty() && hosting[0].id == "open",
+           "a game with a seat left is above one that is full");
+
+        const std::vector<odlfg::Listing> looking = odlfg::view(all, odlfg::Filter::Looking);
+        ok(looking.size() == 2, "players looking shows only the players");
+        ok(looking.size() == 2 && looking[0].id == "waiting" && looking[1].id == "waiting2",
+           "and keeps the order the service sent, which is newest first");
+
+        ok(odlfg::view({}, odlfg::Filter::Hosting).empty(), "an empty board filters to nothing");
+    }
+
     section("the guidelines are the channel's, in the channel's order");
     {
         const std::vector<std::string> rules = odlfg::guidelines();

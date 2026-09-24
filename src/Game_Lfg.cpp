@@ -199,8 +199,14 @@ void Game::lfgDraftFromLobby() {
         }
     }
     if (m_lfgDraft.map.empty() && !m_mpMapId.empty()) {
+        // ONLY IF THE BROWSER IS ALREADY LOADED. mpResolveMap falls back to
+        // loadMapEntries, which clears the thumbnail cache (unloading textures)
+        // and opens every map archive on disk -- from inside a draw call, and
+        // on the web from inside a frame. The map id is a worse label than the
+        // map's name and an incomparably better one than a hitch.
         std::string path, name;
-        if (mpResolveMap(m_mpMapId, path, name)) m_lfgDraft.map = name;
+        if (!m_mapEntries.empty() && mpResolveMap(m_mpMapId, path, name)) m_lfgDraft.map = name;
+        else m_lfgDraft.map = m_mpMapId;
     }
     if (m_lfgDraft.map.empty()) m_lfgDraft.map = "any";
 }
@@ -237,7 +243,8 @@ void Game::lfgSubmitDraft() {
         fetchInto(base);
         finish("Posted. It is on the board and in Discord, and it closes itself when it expires.", false);
     });
-    m_mpPage = MpPage::Board;
+    m_mpPage = m_lfgPostFromLobby ? MpPage::Lobby : MpPage::Board;
+    m_lfgPostFromLobby = false;
     m_mpFocus = -1;
 }
 
@@ -403,8 +410,43 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
         return;
     }
 
-    DrawText(T("Games open right now"), left, y, 19, Color{170, 180, 200, 255});
-    y += 30;
+    // ── THE TWO TAGS, AS THE WAY IN ──
+    //
+    // Somebody who wants to play now reads only the hosting listings, and a
+    // host with an empty lobby reads only the looking ones. One board, but
+    // never both halves at once unless that is what was asked for. The counts
+    // are on the chips because "Looking for players (0)" answers the question
+    // without being pressed.
+    const odlfg::Counts counts = odlfg::count(m_lfgListings);
+    {
+        struct Chip { odlfg::Filter f; std::string label; };
+        const Chip chips[3] = {
+            {odlfg::Filter::All,     TextFormat(T("Everything (%d)"), (int)m_lfgListings.size())},
+            {odlfg::Filter::Hosting, TextFormat(T("Games to join (%d)"), counts.hosting)},
+            {odlfg::Filter::Looking, TextFormat(T("Players looking (%d)"), counts.looking)},
+        };
+        int cx = left;
+        for (const Chip& c : chips) {
+            const int w = MeasureText(c.label.c_str(), 15) + 26;
+            const MpButton b = buttonAt((float)cx, (float)y, (float)w, 30.0f, mouse);
+            const bool on = (m_lfgFilter == c.f);
+            drawButton(b, c.label.c_str(), 15,
+                       on ? Color{44, 62, 50, 235} : Color{28, 30, 38, 220},
+                       on ? Color{130, 190, 140, 215} : Color{80, 85, 100, 180});
+            if (click && b.hovered && !on) { m_lfgFilter = c.f; m_lfgScroll = 0; }
+            cx += w + 8;
+        }
+        y += 40;
+    }
+
+    const std::vector<odlfg::Listing> shown = odlfg::view(m_lfgListings, m_lfgFilter);
+    if (shown.empty()) {
+        DrawText(m_lfgFilter == odlfg::Filter::Hosting
+                     ? T("Nobody is hosting right now. The players below are waiting for someone to.")
+                     : T("Nobody is waiting for a game right now."),
+                 left, y, 17, Color{150, 158, 175, 255});
+        return;
+    }
 
     // The wheel scrolls the list, not the page: the buttons above stay put.
     if (CheckCollisionPointRec(mouse, {(float)left, (float)y, (float)listW,
@@ -416,7 +458,7 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
     BeginScissorMode(left - 4, top, listW + 8, listBottom - top);
     int ry = top - m_lfgScroll;
 
-    for (const odlfg::Listing& l : m_lfgListings) {
+    for (const odlfg::Listing& l : shown) {
         const bool reporting = (m_lfgReporting == l.id);
         const int rowH = (l.note.empty() ? 74 : 94) + (reporting ? 52 : 0);
         // Rows scrolled out of sight are not drawn, but their height still

@@ -2053,6 +2053,14 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             // shown for editing, not posted behind their back.
             {
                 const bool listed = !m_lfgMineId.empty();
+                // A LISTING IS ITS INVITE CODE. Until the account service has
+                // answered there is none, and the form the button opens can
+                // never be posted -- it says "no invite code yet" and disables
+                // its own Post. So the button waits with the code, which is
+                // also the two or three seconds in which pressing it used to
+                // read the lobby while the opener thread was still filling it.
+                const bool ready = m_netHost && !m_netHost->code().empty() &&
+                                   !m_config.accountIssuer.empty();
                 const MpButton advertise = buttonAt((float)(centerX - bw - 6), (float)y,
                                                     (float)(bw * 2 + 12), (float)bh, mouse);
                 // Both labels on one line: tools/i18n_extract.py reads the
@@ -2061,14 +2069,20 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                 // language while the report says the file is done.
                 drawButton(advertise, listed ? "Take my listing down" : "Find players for this game",
                            15, listed ? Color{58, 40, 40, 230} : Color{44, 62, 50, 230},
-                           listed ? Color{190, 130, 130, 210} : Color{130, 190, 140, 210});
-                if (click && advertise.hovered) {
+                           listed ? Color{190, 130, 130, 210} : Color{130, 190, 140, 210},
+                           ready || listed);
+                if (click && advertise.hovered && (ready || listed)) {
                     if (listed) {
                         lfgCloseMine();
                     } else if (!AccountClient::get().account().valid()) {
                         mpNote("Sign in first -- a listing is posted under your nickname.", true);
                     } else {
                         lfgDraftFromLobby();
+                        // Remembered, so posting puts the host back in their
+                        // own lobby rather than on the board: the lobby is
+                        // where the chat is and where the game is started
+                        // from, and there was no way back to it.
+                        m_lfgPostFromLobby = true;
                         m_mpPage = MpPage::Post;
                         m_mpFocus = -1;
                     }

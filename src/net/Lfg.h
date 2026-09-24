@@ -128,6 +128,31 @@ std::string postBody(const Draft& draft);
 std::string closeBody(const std::string& id);
 std::string reportBody(const std::string& id, const std::string& reason, const std::string& note);
 
+/**
+ * Which tag the board is showing.
+ *
+ * Both kinds on one board is right -- half a dozen people do not fill two
+ * rooms -- but the two are read for opposite reasons: somebody who wants to
+ * play now is looking for HOSTING and nothing else, and a host with an empty
+ * lobby wants the people who said they are LOOKING. Scrolling past the other
+ * half to find them is the whole of the complaint.
+ */
+enum class Filter : uint8_t { All = 0, Hosting, Looking };
+
+/**
+ * The listings a filter shows, in the order they should be drawn.
+ *
+ * Newest first, as the service sends them, EXCEPT that a hosting listing with
+ * no seat left sinks below the ones you can still join: a full game is not a
+ * reason to open the board, and it is not what the top of a list is for.
+ * Pure, so it is tested without a board (tests/lfg_test.cpp).
+ */
+std::vector<Listing> view(const std::vector<Listing>& all, Filter f);
+
+/** How many of each tag are on the board, for the chips that switch filters. */
+struct Counts { int hosting = 0; int looking = 0; };
+Counts count(const std::vector<Listing>& all);
+
 /** The guidelines, in the words the channel uses. Drawn above the form. */
 std::vector<std::string> guidelines();
 
