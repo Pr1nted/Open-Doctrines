@@ -37,6 +37,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RENDER = ROOT / "src" / "Game_Render.cpp"
 RESEARCH = ROOT / "src" / "Game_Research.cpp"
+AITRAIN = ROOT / "src" / "Game_AITrain.cpp"
 DATA = ROOT / "templeos" / "game.odd"
 ODMAP = ROOT / "data" / "STDmaps" / "map.odmap"
 VERSION_FILE = ROOT / "VERSION"
@@ -59,6 +60,60 @@ CONSTANTS = [
 # entry here is a decision on the record; an absence from both lists is a bug.
 SKIPPED = {
 }
+
+# ── THE 39 ACTIONS ──
+#
+# Game_AITrain.cpp names every action the game offers, in four menus. That is
+# the canonical list -- the agent door prints from it and the benchmark scores
+# against it -- so it is the right thing to hold this build to.
+#
+# An action here is either implemented or recorded with the reason it cannot
+# be. Anything in neither list fails the build, which is the point: adding an
+# action to the desktop game should not quietly leave the TempleOS one a
+# smaller game that looks complete.
+ACTION_ARRAYS = {
+    "war": "WN",
+    "econ": "ECON_NAME",
+    "pol": "POL_NAME",
+    "navy": "NAVY_NAME",
+}
+
+ACTIONS_SKIPPED = {
+    "war/artillery":    "no artillery types; the desktop game's eight shell "
+                        "kinds come from its research tree",
+    "war/stage":        "staging is for multi-turn amphibious operations these "
+                        "rules do not run",
+    "econ/specialize":  "no industry specialisation",
+    "econ/focus bldg":  "the AI's own budget weights; a human spends directly",
+    "econ/focus army":  "the AI's own budget weights; a human spends directly",
+    "econ/focus navy":  "the AI's own budget weights; a human spends directly",
+    "pol/pacify up":    "no unrest model",
+    "pol/pacify dn":    "no unrest model",
+    "pol/calming":      "no minority model",
+    "pol/conciliate":   "no minority model",
+    "pol/repress":      "no minority model",
+}
+
+
+def cpp_actions() -> list[str]:
+    """Every action the desktop game names, as menu/name."""
+    src = AITRAIN.read_text(errors="replace")
+    src = re.sub(r"//[^\n]*", "", src)
+    out = []
+    for menu, arr in ACTION_ARRAYS.items():
+        m = re.search(re.escape(arr) + r"\[[^\]]*\]\s*=\s*\{(.*?)\};", src, re.S)
+        if not m:
+            raise SystemExit(f"{arr}[] not found in Game_AITrain.cpp -- the "
+                             f"action list has moved and this tool must follow")
+        for name in re.findall(r'"([^"]+)"', m[1]):
+            out.append(f"{menu}/{name}")
+    return out
+
+
+def client_actions() -> set:
+    """What the HolyC client claims, one assignment per line."""
+    src = CLIENT.read_text(errors="replace")
+    return set(re.findall(r'g_act_ids\[\d+\]\s*=\s*"([^"]+)"', src))
 
 
 def cpp_views() -> list[str]:
@@ -205,6 +260,22 @@ def main() -> int:
             problems.append(f"{lever!r} is classified but no policy pulls it "
                             f"any more")
 
+        # ── ACTIONS ──
+        acts = cpp_actions()
+        have = client_actions()
+        for a in acts:
+            if a not in have and a not in ACTIONS_SKIPPED:
+                problems.append(f"the C++ offers {a!r} and the TempleOS client "
+                                f"does not (implement it, or record it in "
+                                f"ACTIONS_SKIPPED with a reason)")
+        for a in ACTIONS_SKIPPED:
+            if a not in acts:
+                problems.append(f"{a!r} is recorded as skipped but the C++ no "
+                                f"longer offers it")
+        for a in sorted(have - set(acts)):
+            problems.append(f"the TempleOS client claims {a!r}, which the C++ "
+                            f"does not offer")
+
         for v in sorted(mine - set(views)):
             problems.append(f"the TempleOS client implements {v}, which the "
                             f"C++ does not have")
@@ -217,7 +288,8 @@ def main() -> int:
         nodes = _s.unpack("<H", DATA.read_bytes()[6:8])[0]
         print(f"templeos sync: {len(views)} views, {len(CONSTANTS)} constants, "
               f"{nodes} research nodes, {len(seen)} policy levers, "
-              f"{len(SKIPPED)} skipped on the record")
+              f"{len(acts) - len(ACTIONS_SKIPPED)}/{len(acts)} actions, "
+              f"{len(SKIPPED) + len(ACTIONS_SKIPPED)} skipped on the record")
         return 0
 
     OUT.write_text(text)

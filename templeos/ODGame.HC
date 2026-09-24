@@ -38,6 +38,16 @@
 #define G_NVIEW  8
 #define G_NTAB   8
 
+/* ── EVERY ACTION THIS BUILD OFFERS ──
+ *
+ * The desktop game names 39 in Game_AITrain.cpp; 28 of them are here and the
+ * other 11 are recorded in tools/templeos_sync.py with the reason they cannot
+ * be. One assignment per line, which is the shape the sync tool reads and the
+ * only shape HolyC takes for an array of pointers. */
+#define G_NACT  28
+U8 *g_act_ids[G_NACT];
+U8 *g_act_keys[G_NACT];
+
 U8 *g_view_ids[G_NVIEW];
 U8 *g_view_tabs[G_NTAB];
 U8 *g_side[4];
@@ -58,6 +68,19 @@ U8 *g_side[4];
  * and h/l walks them. The distance is real -- cells of open water crossed --
  * so a policy that changes naval speed changes where your ships can be next
  * turn, which is the only way that lever could mean anything. */
+/* ── ONE PICKER, FOUR ORDERS ──
+ *
+ * Sailing, reinforcing, landing and engaging all ask the same question --
+ * which of these places -- so they share the machinery and differ only in
+ * what fills the list and what happens on ENTER. */
+#define G_PICK_NONE   0
+#define G_PICK_SAIL   1
+#define G_PICK_REINF  2
+#define G_PICK_LAND   3
+#define G_PICK_ENGAGE 4
+
+I64 g_pick = G_PICK_NONE;
+Bool g_help = FALSE;
 I64 g_navfrom = -1;
 I64 g_navlist[512], g_navn = 0, g_navi = 0;
 
@@ -99,6 +122,35 @@ U0 GInitTables()
   g_view_live[SY_VIEW_NAVY]       = 1;
   g_view_live[SY_VIEW_RESOURCES]  = 1;
   g_view_live[SY_VIEW_NAMES]      = 1;
+
+  g_act_ids[0]  = "war/hold";        g_act_keys[0]  = "(default)";
+  g_act_ids[1]  = "war/recruit";     g_act_keys[1]  = "r";
+  g_act_ids[2]  = "war/reinforce";   g_act_keys[2]  = "v";
+  g_act_ids[3]  = "war/attack";      g_act_keys[3]  = "a";
+  g_act_ids[4]  = "war/declare war"; g_act_keys[4]  = "w";
+  g_act_ids[5]  = "war/ceasefire";   g_act_keys[5]  = "W";
+  g_act_ids[6]  = "econ/save";       g_act_keys[6]  = "(default)";
+  g_act_ids[7]  = "econ/industry";   g_act_keys[7]  = "i";
+  g_act_ids[8]  = "econ/fort";       g_act_keys[8]  = "o";
+  g_act_ids[9]  = "econ/port";       g_act_keys[9]  = "p";
+  g_act_ids[10] = "econ/destroyer";  g_act_keys[10] = "B";
+  g_act_ids[11] = "econ/carrier";    g_act_keys[11] = "N";
+  g_act_ids[12] = "econ/fund up";    g_act_keys[12] = "u";
+  g_act_ids[13] = "econ/fund down";  g_act_keys[13] = "d";
+  g_act_ids[14] = "pol/hold";        g_act_keys[14] = "(default)";
+  g_act_ids[15] = "pol/enact";       g_act_keys[15] = "P then ENTER";
+  g_act_ids[16] = "pol/cancel";      g_act_keys[16] = "P then ENTER";
+  g_act_ids[17] = "pol/alliance";    g_act_keys[17] = "A";
+  g_act_ids[18] = "pol/nap";         g_act_keys[18] = "T";
+  g_act_ids[19] = "pol/guarantee";   g_act_keys[19] = "G";
+  g_act_ids[20] = "pol/trade";       g_act_keys[20] = "D";
+  g_act_ids[21] = "navy/hold";       g_act_keys[21] = "(default)";
+  g_act_ids[22] = "navy/move";       g_act_keys[22] = "m";
+  g_act_ids[23] = "navy/bombard";    g_act_keys[23] = "b";
+  g_act_ids[24] = "navy/embark";     g_act_keys[24] = "e";
+  g_act_ids[25] = "navy/land";       g_act_keys[25] = "L";
+  g_act_ids[26] = "navy/scrap";      g_act_keys[26] = "s";
+  g_act_ids[27] = "navy/engage";     g_act_keys[27] = "g";
 
   g_side[0] = "Politics";
   g_side[1] = "Economy";
@@ -290,7 +342,7 @@ U0 GShips()
 U0 GNavTarget()
 {
   I64 x, y, i;
-  if (g_navfrom < 0 || !g_navn) return;
+  if (g_pick == G_PICK_NONE || !g_navn) return;
   x = w_cx[g_navlist[g_navi]];
   y = w_cy[g_navlist[g_navi]] + G_MAPY;
   for (i = 0; i < 7; i++)
@@ -702,6 +754,55 @@ U0 GOverlay()
         130, 138, 150);
 }
 
+/* ── WHAT YOU CAN DO ──
+ *
+ * The whole action list, with the key for each. Worth a panel of its own
+ * because there are twenty-eight of them and no menus to discover them in --
+ * and because a list that matches the desktop game's own enumeration is the
+ * honest way to say what this build does and does not have. */
+U0 GHelp()
+{
+  I64 i, x, y;
+
+  if (!g_help) return;
+  PGlass(120, 70, P_W - 240, 620, 8, 10, 14, 242);
+  PRect(120, 70, P_W - 240, 620, 70, 74, 84);
+  PText(140, 88, "Actions", 240, 240, 245, 2);
+  PPrint(140, 118, 150, 160, 175, 1,
+         "%d of the 39 the desktop game offers. The other 11 need models "
+         "these rules do not have.", G_NACT);
+
+  for (i = 0; i < G_NACT; i++)
+  {
+    x = 140 + (i / 14) * 260;
+    y = 146 + (i % 14) * 15;
+    PPrint(x, y, 235, 200, 90, 1, "%-11s", g_act_keys[i]);
+    PText(x + 92, y, g_act_ids[i], 205, 210, 220);
+  }
+
+  y = 146 + 14 * 15 + 16;
+  PFill(140, y, P_W - 280, 1, 70, 74, 84);
+  y += 12;
+  PText(140, y, "Not here, and why:", 150, 160, 175);
+  y += 15;
+  PText(152, y, "artillery, stage      no shell types, no multi-turn staging",
+        150, 160, 175);
+  y += 14;
+  PText(152, y, "specialize            no industry specialisation",
+        150, 160, 175);
+  y += 14;
+  PText(152, y, "focus bldg/army/navy  the AI's budget weights; you spend "
+                "directly", 150, 160, 175);
+  y += 14;
+  PText(152, y, "pacify up/dn          no unrest model", 150, 160, 175);
+  y += 14;
+  PText(152, y, "calming, conciliate, repress   no minority model",
+        150, 160, 175);
+  y += 22;
+  PText(140, y, "1-8 views   P E C R panels   ENTER end turn   ? close",
+        130, 138, 150);
+}
+
 U0 GDraw()
 {
   GDrawMap;
@@ -712,6 +813,7 @@ U0 GDraw()
   GSide;
   GBar;
   GOverlay;
+  GHelp;
 }
 
 U0 GOwnList()
@@ -930,7 +1032,7 @@ U0 ODPlay(I64 cid)
   for (i = 0; i < d_npol; i++) d_active[i] = 0;
   d_rp = 0;
   StrCpy(g_status, "h/l province  r raise  a assault  b shell  B build  "
-                   "f fleet  m sail  1-8 views  P E C R panels");
+                   "? for every action");
 
   try
   {
@@ -947,7 +1049,12 @@ U0 ODPlay(I64 cid)
           /* Escape backs out of whatever is open before it leaves the game:
            * quitting because somebody cancelled a fleet order would be a
            * memorable way to lose a campaign. */
-          if (g_navfrom >= 0) g_navfrom = -1;
+          if (g_help) g_help = FALSE;
+          else if (g_pick != G_PICK_NONE)
+          {
+            g_pick = G_PICK_NONE;
+            g_navfrom = -1;
+          }
           else if (g_overlay >= 0) g_overlay = -1;
           else goto g_done;
         }
@@ -1042,7 +1149,7 @@ U0 ODPlay(I64 cid)
           if (g_overlay == i) g_overlay = -1;
           else                g_overlay = i;
         }
-        else if ((ch == 'l' || ch == 'h') && g_navfrom < 0)
+        else if ((ch == 'l' || ch == 'h') && g_pick == G_PICK_NONE)
         {
           /* ── ORDER IN THIS CHAIN IS MEANING ──
            *
@@ -1098,7 +1205,7 @@ U0 ODPlay(I64 cid)
           }
         }
         else if (ch == 'm' && g_sel >= 0 && w_own[g_sel] == w_me &&
-                 g_navfrom < 0)
+                 g_pick == G_PICK_NONE)
         {
           n = RFleetRange(g_sel, w_me);
           if (!n)
@@ -1115,36 +1222,167 @@ U0 ODPlay(I64 cid)
                 g_navn++;
               }
             if (!g_navn)
-              StrPrint(g_status,
-                       "nowhere within %d cells of sea from %s", n,
+              StrPrint(g_status, "nowhere within %d cells of sea from %s", n,
                        w_name[g_sel]);
             else
             {
+              g_pick = G_PICK_SAIL;
               g_navfrom = g_sel;
               g_navi = 0;
-              StrPrint(g_status, "sail to %s (%d cells)  h/l choose  ENTER go",
-                       w_name[g_navlist[0]], r_seadist[w_pcell[g_navlist[0]]]);
+              StrCpy(g_status, "sail where?  h/l choose  ENTER go  ESC cancel");
             }
           }
         }
-        else if (g_navfrom >= 0 && (ch == 'h' || ch == 'l'))
+        else if (ch == 'v' && g_sel >= 0 && w_own[g_sel] == w_me &&
+                 g_pick == G_PICK_NONE)
+        {
+          /* Reinforce: men walk to a province next door that is already
+           * yours. Half the garrison, because a province stripped bare is
+           * how a front collapses behind you. */
+          g_navn = 0;
+          for (i = 0; i < w_adjn[g_sel] && g_navn < 512; i++)
+          {
+            s = WNeighbour(g_sel, i);
+            if (s >= 0 && w_own[s] == w_me)
+            {
+              g_navlist[g_navn] = s;
+              g_navn++;
+            }
+          }
+          if (!w_army[g_sel])
+            StrPrint(g_status, "no men in %s", w_name[g_sel]);
+          else if (!g_navn)
+            StrPrint(g_status, "%s has no province of yours next door",
+                     w_name[g_sel]);
+          else
+          {
+            g_pick = G_PICK_REINF;
+            g_navfrom = g_sel;
+            g_navi = 0;
+            StrCpy(g_status,
+                   "reinforce where?  h/l choose  ENTER march  ESC cancel");
+          }
+        }
+        else if (ch == 'L' && g_sel >= 0 && g_pick == G_PICK_NONE)
+        {
+          /* Put the cargo ashore. Onto your own ground it is a reinforcement;
+           * onto anybody else's it is a landing, and a landing that fails
+           * drowns -- there is no ground behind it to fall back to. */
+          if (!RCargoAt(g_sel, w_me))
+            StrPrint(g_status, "nothing embarked at %s", w_name[g_sel]);
+          else
+          {
+            g_navn = 0;
+            for (i = 0; i < w_adjn[g_sel] && g_navn < 512; i++)
+            {
+              s = WNeighbour(g_sel, i);
+              if (s >= 0)
+              {
+                g_navlist[g_navn] = s;
+                g_navn++;
+              }
+            }
+            if (!g_navn)
+              StrPrint(g_status, "nowhere to land from %s", w_name[g_sel]);
+            else
+            {
+              g_pick = G_PICK_LAND;
+              g_navfrom = g_sel;
+              g_navi = 0;
+              StrCpy(g_status,
+                     "land where?  h/l choose  ENTER go ashore  ESC cancel");
+            }
+          }
+        }
+        else if (ch == 'g' && g_sel >= 0 && w_own[g_sel] == w_me &&
+                 g_pick == G_PICK_NONE)
+        {
+          n = RFleetRange(g_sel, w_me);
+          if (!n)
+            StrPrint(g_status, "no ships at %s", w_name[g_sel]);
+          else
+          {
+            RSeaFlood(w_pcell[g_sel], n);
+            g_navn = 0;
+            for (i = 0; i < w_np && g_navn < 512; i++)
+              if (w_own[i] != w_me && w_port[i] > 0 && RSeaReaches(i) &&
+                  RFleetAt(i, w_own[i]) > 0)
+              {
+                g_navlist[g_navn] = i;
+                g_navn++;
+              }
+            if (!g_navn)
+              StrPrint(g_status, "no enemy fleet within reach of %s",
+                       w_name[g_sel]);
+            else
+            {
+              g_pick = G_PICK_ENGAGE;
+              g_navfrom = g_sel;
+              g_navi = 0;
+              StrCpy(g_status,
+                     "engage whom?  h/l choose  ENTER attack  ESC cancel");
+            }
+          }
+        }
+        else if (g_pick != G_PICK_NONE && (ch == 'h' || ch == 'l'))
         {
           if (ch == 'l') g_navi++;
           else           g_navi--;
           if (g_navi >= g_navn) g_navi = 0;
           if (g_navi < 0) g_navi = g_navn - 1;
-          StrPrint(g_status, "sail to %s (%d cells)  h/l choose  ENTER go",
-                   w_name[g_navlist[g_navi]],
-                   r_seadist[w_pcell[g_navlist[g_navi]]]);
+          i = g_navlist[g_navi];
+          if (g_pick == G_PICK_SAIL || g_pick == G_PICK_ENGAGE)
+            StrPrint(g_status, "%s  (%d cells)  h/l choose  ENTER go",
+                     w_name[i], r_seadist[w_pcell[i]]);
+          else
+            StrPrint(g_status, "%s  (%s, %d men)  h/l choose  ENTER go",
+                     w_name[i], WIso(w_own[i]), w_army[i]);
         }
-        else if (g_navfrom >= 0 && ch == '\n')
+        else if (g_pick != G_PICK_NONE && ch == '\n')
         {
           i = g_navlist[g_navi];
-          RMoveFleet(g_navfrom, i, w_me);
-          StrPrint(g_status, "the fleet sailed from %s to %s",
-                   w_name[g_navfrom], w_name[i]);
+          if (g_pick == G_PICK_SAIL)
+          {
+            RMoveFleet(g_navfrom, i, w_me);
+            StrPrint(g_status, "the fleet sailed from %s to %s",
+                     w_name[g_navfrom], w_name[i]);
+            g_sel = i;
+          }
+          else if (g_pick == G_PICK_REINF)
+          {
+            n = w_army[g_navfrom] / 2;
+            w_army[g_navfrom] -= n;
+            w_army[i] += n;
+            StrPrint(g_status, "%d men marched from %s to %s", n,
+                     w_name[g_navfrom], w_name[i]);
+            g_sel = i;
+          }
+          else if (g_pick == G_PICK_LAND)
+          {
+            n = RDisembark(g_navfrom, w_me);
+            if (w_own[i] == w_me)
+            {
+              w_army[i] += n;
+              StrPrint(g_status, "%d men came ashore at %s", n, w_name[i]);
+            }
+            else if (RAssault(g_navfrom, i, n))
+              StrPrint(g_status, "%d men stormed %s and took it", n,
+                       w_name[i]);
+            else
+              StrPrint(g_status, "the landing at %s was thrown back",
+                       w_name[i]);
+            g_sel = i;
+          }
+          else
+          {
+            if (REngage(g_navfrom, i, w_me))
+              StrPrint(g_status, "the enemy fleet at %s was sunk", w_name[i]);
+            else
+              StrPrint(g_status, "our fleet was lost off %s", w_name[i]);
+          }
+          g_pick = G_PICK_NONE;
           g_navfrom = -1;
-          g_sel = i;
+          GShade;
         }
         else if (ch == 'b' && g_sel >= 0 && w_own[g_sel] == w_me)
         {
@@ -1195,6 +1433,168 @@ U0 ODPlay(I64 cid)
                      w_name[g_sel], 0x24, cost / 10, cost % 10);
           }
         }
+        else if (ch == 'i' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          s = WSlot(w_me);
+          cost = (w_ind[g_sel] + 1) * 100;
+          if (w_ind[g_sel] >= 10)
+            StrPrint(g_status, "%s is at the top industry level",
+                     w_name[g_sel]);
+          else if (w_tre[s] < cost)
+            StrPrint(g_status, "industry at %s costs %c%d.%d", w_name[g_sel],
+                     0x24, cost / 10, cost % 10);
+          else
+          {
+            w_tre[s] -= cost;
+            w_ind[g_sel]++;
+            w_inc[g_sel] += 5;
+            StrPrint(g_status, "%s industry is now level %d", w_name[g_sel],
+                     w_ind[g_sel]);
+            GShade;
+          }
+        }
+        else if (ch == 'o' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          s = WSlot(w_me);
+          cost = (w_fort[g_sel] + 1) * 150;
+          if (w_fort[g_sel] >= 5)
+            StrPrint(g_status, "%s is fortified as far as it goes",
+                     w_name[g_sel]);
+          else if (w_tre[s] < cost)
+            StrPrint(g_status, "fortifying %s costs %c%d.%d", w_name[g_sel],
+                     0x24, cost / 10, cost % 10);
+          else
+          {
+            w_tre[s] -= cost;
+            w_fort[g_sel]++;
+            StrPrint(g_status, "%s is now fort level %d (frontage %d)",
+                     w_name[g_sel], w_fort[g_sel], RWidth(g_sel));
+            GShade;
+          }
+        }
+        else if (ch == 'p' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          s = WSlot(w_me);
+          cost = (w_port[g_sel] + 1) * 120;
+          if (w_pcell[g_sel] < 0)
+            StrPrint(g_status, "%s is not on the sea", w_name[g_sel]);
+          else if (w_port[g_sel] >= 5)
+            StrPrint(g_status, "%s has the largest harbour there is",
+                     w_name[g_sel]);
+          else if (w_tre[s] < cost)
+            StrPrint(g_status, "a harbour at %s costs %c%d.%d", w_name[g_sel],
+                     0x24, cost / 10, cost % 10);
+          else
+          {
+            w_tre[s] -= cost;
+            w_port[g_sel]++;
+            StrPrint(g_status, "%s harbour is now level %d", w_name[g_sel],
+                     w_port[g_sel]);
+            GShade;
+          }
+        }
+        else if (ch == 'e' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          n = RCapacityAt(g_sel, w_me);
+          if (n > w_army[g_sel]) n = w_army[g_sel];
+          if (!RFleetAt(g_sel, w_me))
+            StrPrint(g_status, "no ships at %s", w_name[g_sel]);
+          else if (n <= 0)
+            StrPrint(g_status, "nothing to embark at %s", w_name[g_sel]);
+          else
+            StrPrint(g_status, "%d men embarked at %s",
+                     REmbark(g_sel, w_me, n), w_name[g_sel]);
+        }
+        else if (ch == 's' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          n = -1;
+          for (i = 0; i < w_ns; i++)
+            if (w_sprov[i] == g_sel && w_scid[i] == w_me && w_shp[i] > 0)
+              n = i;
+          if (n < 0)
+            StrPrint(g_status, "no ships at %s", w_name[g_sel]);
+          else
+          {
+            s = WSlot(w_me);
+            w_tre[s] += r_shipcost[w_skind[n]] / 4;   /* scrap value */
+            w_shp[n] = 0;
+            StrPrint(g_status, "scrapped a %s at %s", w_kindname[w_skind[n]],
+                     w_name[g_sel]);
+          }
+        }
+        else if (ch == 'N' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          s = WSlot(w_me);
+          cost = RScale(r_shipcost[4], RLever(w_me, RL_NAVYCOST));
+          if (!w_port[g_sel])
+            StrPrint(g_status, "%s has no harbour", w_name[g_sel]);
+          else if (w_ns >= OD_MAXS)
+            StrPrint(g_status, "no room for another hull");
+          else if (w_tre[s] < cost)
+            StrPrint(g_status, "a carrier costs %c%d.%d", 0x24, cost / 10,
+                     cost % 10);
+          else
+          {
+            w_tre[s] -= cost;
+            w_scid[w_ns] = w_me;
+            w_skind[w_ns] = 4;
+            w_shp[w_ns] = 100;
+            w_sprov[w_ns] = g_sel;
+            w_scargo[w_ns] = 0;
+            w_ns++;
+            StrPrint(g_status, "laid down a carrier at %s", w_name[g_sel]);
+          }
+        }
+        else if (ch == '?')
+          g_help = !g_help;
+        else if (ch == 'u' || ch == 'd')
+        {
+          /* Research funding: income diverted before it reaches the treasury.
+           * The desktop game's slider, in five-point steps. */
+          if (ch == 'u') r_fund += 5;
+          else           r_fund -= 5;
+          if (r_fund > 50) r_fund = 50;
+          if (r_fund < 0) r_fund = 0;
+          StrPrint(g_status, "research funding %d%% of income", r_fund);
+        }
+        else if (g_sel >= 0 && w_own[g_sel] != w_me &&
+                 (ch == 'w' || ch == 'W' || ch == 'A' || ch == 'T' ||
+                  ch == 'G' || ch == 'D'))
+        {
+          tgt = w_own[g_sel];
+          if (ch == 'w')
+          {
+            RPact(w_me, tgt, 0);
+            RDeclareWar(w_me, tgt);
+            StrPrint(g_status, "war declared on %s", WCName(tgt));
+          }
+          else if (ch == 'W')
+          {
+            RCeasefire(w_me);
+            StrPrint(g_status, "a ceasefire with %s", WCName(tgt));
+          }
+          else if (ch == 'A')
+          {
+            RPact(w_me, tgt, 1);
+            StrPrint(g_status, "an alliance with %s", WCName(tgt));
+          }
+          else if (ch == 'T')
+          {
+            RPact(w_me, tgt, 2);
+            StrPrint(g_status, "a non-aggression pact with %s", WCName(tgt));
+          }
+          else if (ch == 'G')
+          {
+            RPact(w_me, tgt, 3);
+            StrPrint(g_status, "%s is guaranteed", WCName(tgt));
+          }
+          else
+          {
+            RPact(w_me, tgt, 4);
+            StrPrint(g_status, "a trade agreement with %s", WCName(tgt));
+          }
+          GShade;
+        }
         else if (ch == 'a' && g_sel >= 0 && w_own[g_sel] == w_me)
         {
           tgt = GWeakestNeighbour(g_sel);
@@ -1213,7 +1613,12 @@ U0 ODPlay(I64 cid)
            * enacted here is paid for from the same purse everything else is. */
           s = WSlot(w_me);
           RCountryStats(w_me, &prov, &men, &inc);
-          d_rp += DResearchRate(inc);
+          /* Funding is income diverted BEFORE it is spent on anything else,
+           * which is what makes "fund up" a decision rather than a free
+           * upgrade. At zero you still learn slowly: the base is one point. */
+          cost = inc * r_fund / 100;
+          if (s >= 0) w_tre[s] -= cost;
+          d_rp += DResearchRate(cost);
           n = 0;
           for (i = 0; i < d_npol; i++)
             if (d_active[i]) n += d_pcost[i];
@@ -1221,8 +1626,11 @@ U0 ODPlay(I64 cid)
           RTurn;
           GOwnList;
           GShade;
-          g_sel = -1;
-          g_minei = -1;
+          /* The selection survives the turn. Clearing it meant every order
+           * after the first had to re-find its province, and an interface
+           * that forgets where you were looking is one you fight. It is only
+           * dropped if the province stopped being yours. */
+          if (g_sel >= 0 && w_own[g_sel] != w_me) g_sel = -1;
           if (r_nlog)
             StrCpy(g_status, r_log[0]);
           else

@@ -43,6 +43,7 @@ I64  w_port[OD_MAXP];                   /* harbour level, 0 for inland */
 #define OD_MAXS    256
 I64  w_ns = 0;
 I64  w_scid[OD_MAXS], w_skind[OD_MAXS], w_shp[OD_MAXS], w_sprov[OD_MAXS];
+I64  w_scargo[OD_MAXS];                 /* men aboard */
 U8  *w_kindname[7];
 
 /* ── THE SEA ──
@@ -236,6 +237,7 @@ Bool WLoad(U8 *path = "world.odw")
     w_skind[p] = b[off + 2];
     w_shp[p]   = b[off + 3];
     w_sprov[p] = WU16(b + off + 4);
+    w_scargo[p] = 0;
     off += 6;
   }
 

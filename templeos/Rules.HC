@@ -98,6 +98,9 @@ I64 r_wartime[OD_MAXC];             /* turns this war has run */
 #define R_SHIP_UPKEEP      2       /* tenths of a dollar, per hull per turn */
 #define R_SHIP_BUILD      200      /* tenths, before the harbour and levers */
 I64 r_shipstr[7];                  /* by class; filled by RInit */
+I64 r_shipcap[7];                  /* men a hull can carry */
+I64 r_shipcost[7];                 /* tenths, before harbour and levers */
+I64 r_fund = 0;                    /* percent of income diverted to research */
 I64 r_shipspeed[7];                /* cells of sea, per turn */
 
 /* ── HOW FAR A FLEET CAN SAIL ──
@@ -241,6 +244,163 @@ Bool RSeaReaches(I64 to)
   return r_seadist[w_pcell[to]] >= 0;
 }
 
+/* ── WHAT A FLEET IS CARRYING ──
+ *
+ * Troops ride in the hulls, not in the province: a landing is the cargo
+ * going ashore, and a fleet sunk at sea takes what it was carrying with it.
+ */
+I64 RCargoAt(I64 ix, I64 cid)
+{
+  I64 i, n = 0;
+  for (i = 0; i < w_ns; i++)
+    if (w_sprov[i] == ix && w_scid[i] == cid && w_shp[i] > 0)
+      n += w_scargo[i];
+  return n;
+}
+
+I64 RCapacityAt(I64 ix, I64 cid)
+{
+  I64 i, n = 0;
+  for (i = 0; i < w_ns; i++)
+    if (w_sprov[i] == ix && w_scid[i] == cid && w_shp[i] > 0)
+      n += r_shipcap[w_skind[i]] - w_scargo[i];
+  return n;
+}
+
+/* Load men from the province the fleet is sitting in. */
+I64 REmbark(I64 ix, I64 cid, I64 men)
+{
+  I64 i, room, took = 0;
+  for (i = 0; i < w_ns && men > 0; i++)
+    if (w_sprov[i] == ix && w_scid[i] == cid && w_shp[i] > 0)
+    {
+      room = r_shipcap[w_skind[i]] - w_scargo[i];
+      if (room > men) room = men;
+      w_scargo[i] += room;
+      men -= room;
+      took += room;
+    }
+  w_army[ix] -= took;
+  if (w_army[ix] < 0) w_army[ix] = 0;
+  return took;
+}
+
+/* Put everything ashore, and say how many went. */
+I64 RDisembark(I64 ix, I64 cid)
+{
+  I64 i, n = 0;
+  for (i = 0; i < w_ns; i++)
+    if (w_sprov[i] == ix && w_scid[i] == cid && w_shp[i] > 0)
+    {
+      n += w_scargo[i];
+      w_scargo[i] = 0;
+    }
+  return n;
+}
+
+/* ── FLEET AGAINST FLEET ──
+ *
+ * Strength against strength, with the loser's hulls damaged in proportion.
+ * No frontage here: the sea has no flanks in these rules, so a bigger fleet
+ * simply wins and pays for it.
+ */
+Bool REngage(I64 from, I64 to, I64 cid)
+{
+  I64 i, mine, theirs, defcid, dmg;
+
+  defcid = w_own[to];
+  mine = RScale(RFleetAt(from, cid), RLever(cid, RL_NAVYATK));
+  theirs = RScale(RFleetAt(to, defcid), RLever(defcid, RL_NAVYDEF));
+  if (mine <= 0 || theirs <= 0) return FALSE;
+
+  if (mine > theirs)
+  {
+    dmg = theirs * 100 / mine;          /* what it cost to win, as a share */
+    for (i = 0; i < w_ns; i++)
+    {
+      if (w_sprov[i] == to && w_scid[i] == defcid) w_shp[i] = 0;
+      else if (w_sprov[i] == from && w_scid[i] == cid)
+      {
+        w_shp[i] -= dmg;
+        if (w_shp[i] < 0) w_shp[i] = 0;
+      }
+    }
+    return TRUE;
+  }
+
+  dmg = mine * 100 / theirs;
+  for (i = 0; i < w_ns; i++)
+  {
+    if (w_sprov[i] == from && w_scid[i] == cid) w_shp[i] = 0;
+    else if (w_sprov[i] == to && w_scid[i] == defcid)
+    {
+      w_shp[i] -= dmg;
+      if (w_shp[i] < 0) w_shp[i] = 0;
+    }
+  }
+  return FALSE;
+}
+
+/* ── DIPLOMACY ──
+ *
+ * One enemy at a time, and pacts that are simply recorded: these rules have
+ * no negotiation, so a pact is a statement about who will not be attacked
+ * rather than an agreement somebody could refuse. */
+U0 RDeclareWar(I64 a, I64 b)
+{
+  I64 sa = WSlot(a);
+  if (sa < 0) return;
+  r_enemy[sa] = b;
+  r_wartime[sa] = 0;
+}
+
+U0 RCeasefire(I64 a)
+{
+  I64 sa = WSlot(a), sb;
+  if (sa < 0) return;
+  sb = WSlot(r_enemy[sa]);
+  r_enemy[sa] = -1;
+  r_wartime[sa] = 0;
+  if (sb >= 0 && r_enemy[sb] == a)
+  {
+    r_enemy[sb] = -1;
+    r_wartime[sb] = 0;
+  }
+}
+
+/* Pacts, by kind: 1 alliance, 2 non-aggression, 3 guarantee, 4 trade. */
+#define R_MAXPACT 64
+I64 r_pact_a[R_MAXPACT], r_pact_b[R_MAXPACT], r_pact_k[R_MAXPACT];
+I64 r_npact = 0;
+
+I64 RPactWith(I64 a, I64 b)
+{
+  I64 i;
+  for (i = 0; i < r_npact; i++)
+    if ((r_pact_a[i] == a && r_pact_b[i] == b) ||
+        (r_pact_a[i] == b && r_pact_b[i] == a))
+      return r_pact_k[i];
+  return 0;
+}
+
+Bool RPact(I64 a, I64 b, I64 kind)
+{
+  I64 i;
+  for (i = 0; i < r_npact; i++)
+    if ((r_pact_a[i] == a && r_pact_b[i] == b) ||
+        (r_pact_a[i] == b && r_pact_b[i] == a))
+    {
+      r_pact_k[i] = kind;
+      return TRUE;
+    }
+  if (r_npact >= R_MAXPACT) return FALSE;
+  r_pact_a[r_npact] = a;
+  r_pact_b[r_npact] = b;
+  r_pact_k[r_npact] = kind;
+  r_npact++;
+  return TRUE;
+}
+
 U0 RMoveFleet(I64 from, I64 to, I64 cid)
 {
   I64 i;
@@ -277,11 +437,24 @@ U0 RInit()
   r_shipspeed[4] = 5;  /* carrier    */
   r_shipspeed[5] = 5;  /* battleship */
   r_shipspeed[6] = 7;  /* frigate    */
+
+  /* What a hull carries, and what it costs. A carrier is a floating airfield
+   * rather than a troopship, but it is the biggest thing here and moving an
+   * army needs the biggest thing here. */
+  r_shipcap[0] = 5000;    r_shipcost[0] = 60;
+  r_shipcap[1] = 12000;   r_shipcost[1] = 200;
+  r_shipcap[2] = 20000;   r_shipcost[2] = 320;
+  r_shipcap[3] = 2000;    r_shipcost[3] = 240;
+  r_shipcap[4] = 50000;   r_shipcost[4] = 600;
+  r_shipcap[5] = 30000;   r_shipcost[5] = 480;
+  r_shipcap[6] = 8000;    r_shipcost[6] = 140;
   for (i = 0; i < OD_MAXC; i++)
   {
     r_enemy[i] = -1;
     r_wartime[i] = 0;
   }
+  r_npact = 0;
+  r_fund = 0;
   RClearOrders;
   w_turn = 0;
 }
@@ -290,6 +463,10 @@ Bool RAtWar(I64 a, I64 b)
 {
   I64 sa = WSlot(a), sb = WSlot(b);
   if (sa < 0 || sb < 0) return FALSE;
+  /* A pact is worth something: an alliance or a non-aggression pact keeps a
+   * border quiet, which is the only thing these rules can offer for signing
+   * one. Declaring war regardless is allowed, and tears it up. */
+  if (RPactWith(a, b) == 1 || RPactWith(a, b) == 2) return FALSE;
   return r_enemy[sa] == b || r_enemy[sb] == a;
 }
 
