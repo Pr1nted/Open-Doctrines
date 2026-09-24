@@ -20,6 +20,7 @@
 
 #if !defined(__EMSCRIPTEN__) && defined(OD_ENABLE_NET)
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -74,6 +75,12 @@ constexpr size_t kMaxControlBytes = 125;
 // broken or probing.
 constexpr size_t kMaxHandshakeBytes = 16 * 1024;
 constexpr int    kHandshakeTimeoutMs = 10000;
+
+// A message larger than this goes out in fragments. One 8 MB frame is legal
+// and every intermediary hates it: a tunnel must buffer the whole thing before
+// the client sees a byte, and nothing else can be sent in the meantime.
+// Fragments are reassembled by the client, which has always done so.
+constexpr size_t kFragmentBytes = 64u * 1024;
 
 // Enough for any game this runs, and a hard stop on socket exhaustion.
 constexpr size_t kMaxConnections = 64;
@@ -159,6 +166,17 @@ struct Conn {
     bool                 assembling = false;
 };
 
+/**
+ * Encode a message, fragmented once it is big enough to be worth it.
+ *
+ * The first fragment carries the opcode with FIN clear, the rest carry
+ * opcode 0, and the last sets FIN. That is the same message on the wire as far
+ * as any client is concerned, and it starts arriving immediately instead of
+ * after the host has queued every last byte.
+ */
+void appendMessage(std::vector<uint8_t>& out, uint8_t opcode,
+                   const uint8_t* payload, size_t n);
+
 /** Encode a server-to-client frame. Server frames are never masked. */
 void appendFrame(std::vector<uint8_t>& out, uint8_t opcode,
                  const uint8_t* payload, size_t n) {
@@ -175,6 +193,32 @@ void appendFrame(std::vector<uint8_t>& out, uint8_t opcode,
             out.push_back(static_cast<uint8_t>((static_cast<uint64_t>(n) >> shift) & 0xFF));
     }
     if (n) out.insert(out.end(), payload, payload + n);
+}
+
+void appendMessage(std::vector<uint8_t>& out, uint8_t opcode,
+                   const uint8_t* payload, size_t n) {
+    if (n <= kFragmentBytes) { appendFrame(out, opcode, payload, n); return; }
+    size_t at = 0;
+    while (at < n) {
+        const size_t take = std::min(kFragmentBytes, n - at);
+        const bool first = (at == 0);
+        const bool last  = (at + take == n);
+        // FIN only on the last; opcode only on the first (continuations are 0).
+        out.push_back(static_cast<uint8_t>((last ? 0x80 : 0x00) | (first ? opcode : 0x00)));
+        if (take < 126) {
+            out.push_back(static_cast<uint8_t>(take));
+        } else if (take <= 0xFFFF) {
+            out.push_back(126);
+            out.push_back(static_cast<uint8_t>((take >> 8) & 0xFF));
+            out.push_back(static_cast<uint8_t>(take & 0xFF));
+        } else {
+            out.push_back(127);
+            for (int shift = 56; shift >= 0; shift -= 8)
+                out.push_back(static_cast<uint8_t>((static_cast<uint64_t>(take) >> shift) & 0xFF));
+        }
+        out.insert(out.end(), payload + at, payload + at + take);
+        at += take;
+    }
 }
 
 void appendClose(std::vector<uint8_t>& out, uint16_t code, const std::string& reason) {
@@ -202,6 +246,12 @@ struct WsServer::Impl {
 
     std::vector<Conn>          conns;
     std::deque<WsServerEvent>  events;
+
+    const Conn* find(WsConnId id) const {
+        for (const Conn& c : conns)
+            if (c.id == id && !c.dead) return &c;
+        return nullptr;
+    }
 
     Conn* find(WsConnId id) {
         for (Conn& c : conns)
@@ -611,6 +661,7 @@ void WsServer::update() {
     if (!listening()) return;
     Impl& s = *m_impl;
 
+
     const size_t listeners = s.listenFds.size();
     std::vector<pollfd> fds;
     fds.reserve(s.conns.size() + listeners);
@@ -669,7 +720,7 @@ void WsServer::send(WsConnId conn, const std::vector<uint8_t>& payload) {
         m_impl->beginClose(*c, kCloseTooBig, "the connection could not keep up");
         return;
     }
-    appendFrame(c->out, kOpBinary, payload.data(), payload.size());
+    appendMessage(c->out, kOpBinary, payload.data(), payload.size());
 }
 
 void WsServer::sendText(WsConnId conn, const std::string& text) {
