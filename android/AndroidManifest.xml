@@ -20,6 +20,19 @@
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
+    <!--
+      Multiplayer. Without this every socket fails with EACCES and nothing in
+      the game can say why, because the failure arrives as an ordinary refused
+      connection. Not a prompt: INTERNET is granted at install time and is not
+      one of the runtime permissions.
+
+      Cleartext ws:// is unaffected by the platform's cleartext policy, which
+      governs the Java HTTP stacks rather than the sockets this game opens.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- So the menu can say "you are offline" rather than time out. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- The renderer is GLES 2.0; raylib's PLATFORM_ANDROID backend targets it. -->
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <!-- A controller is genuinely the better way to play this, but not required. -->

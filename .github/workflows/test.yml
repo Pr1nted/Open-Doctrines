@@ -392,25 +392,8 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
             -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
-            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
-          cmake --build build-android -j 2
-
-      # ── THE TRANSPORT, COMPILED FOR THIS PLATFORM ──
-      #
-      # The APK above is built with -DOD_ENABLE_NET=OFF, so src/net was never
-      # compiled for Android at all -- and when it finally was, it failed on a
-      # header bionic does not pull in transitively. A whole platform's worth of
-      # code that no job ever compiles rots, and it rots silently. This builds
-      # it and throws the result away; it does not change what ships.
-      - name: The multiplayer transport compiles for Android
-        run: |
-          set -e
-          cmake -B build-android-net \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
-            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
             -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON
-          cmake --build build-android-net -j 2
+          cmake --build build-android -j 2
 
       # A .so that linked is not the same as one Android can start. Both symbols
       # are reached only by dlsym, so the linker will happily drop them and the
