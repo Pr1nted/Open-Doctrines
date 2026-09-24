@@ -1044,10 +1044,20 @@ void NetHost::Impl::checkLiveness() {
         //
         // And a peer we are still sending to cannot be silent: the bytes we
         // owe it are the reason it has said nothing.
-        const long long quiet = std::min<long long>(
-            now - s.lastHeard, (long long)server.quietSeconds(s.conn));
+        //
+        // ONLY FOR PEERS THE TRANSPORT HOLDS. A relayed peer's conn id is a
+        // tagged number, not one of WsServer's, so quietSeconds() answers 0 for
+        // it -- and taking the smaller of the two would make every relayed
+        // player immortal, seat and all, however long ago their browser died.
+        // What keeps a relayed player alive instead is the session keepalive
+        // they send through the relay (see NetSession::update).
+        const bool relayed = (s.conn & kRelayTag) != 0;
+        const long long quiet = relayed
+            ? now - s.lastHeard
+            : std::min<long long>(now - s.lastHeard,
+                                  (long long)server.quietSeconds(s.conn));
 
-        if (quiet >= kDeadSeconds && server.pendingBytes(s.conn) == 0) {
+        if (quiet >= kDeadSeconds && (relayed || server.pendingBytes(s.conn) == 0)) {
             // The seat is KEPT: this is a lost connection, not a departure,
             // and the psid still owns that country. Lobby::disconnect marks
             // them away so the turn can stop waiting on them.

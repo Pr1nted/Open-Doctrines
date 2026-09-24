@@ -186,6 +186,17 @@ OD_NET_DEAD_SECONDS=4 OD_WS_PING_MS=700 run_case quiet || fail=1
 step "a player on the released build, who sends nothing, is still not dropped"
 OD_NET_DEAD_SECONDS=4 OD_WS_PING_MS=700 OD_WS_NO_KEEPALIVE=1 run_case quiet || fail=1
 
+# ── THE RELAY CASE, WITHOUT A RELAY ──
+#
+# Over the relay the host never sees the socket: it counts the frames the relay
+# forwards, and a WebSocket ping is not one of them. Neither is anything a
+# browser can send. So with BOTH pings switched off -- the client's and the
+# host's -- the only thing that can keep this player seated is the session
+# keepalive, which is a frame like any other and goes wherever frames go.
+step "with no socket pings at all, the session's own keepalive carries the player"
+OD_NET_DEAD_SECONDS=8 OD_NET_KEEPALIVE_SECONDS=2 OD_WS_PING_MS=600000 OD_WS_NO_KEEPALIVE=1 \
+    run_case idle || fail=1
+
 # The screen reads the lobby every frame, from the moment a host presses Host --
 # including the seconds before the account service has answered. Whether that is
 # SAFE is a question for tests/net_race_test.sh, which runs this same case under

@@ -16,6 +16,24 @@ namespace {
 
 constexpr int kJoinTimeoutMs = 20000;
 
+/// How often a session says something when the player is doing nothing.
+/// Settable for tests only, as OD_NET_DEAD_SECONDS and OD_WS_PING_MS are.
+long long sessionKeepaliveSeconds() {
+    static const long long s = [] {
+        if (const char* v = getenv("OD_NET_KEEPALIVE_SECONDS")) {
+            const long long n = atoll(v);
+            if (n > 0) return n;
+        }
+        return 15LL;
+    }();
+    return s;
+}
+
+long long nowSeconds() {
+    return (long long)std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 }  // namespace
 
 const char* netSessionPhaseName(NetSession::Phase p) {
@@ -71,6 +89,9 @@ std::string netRejectAdvice(NetReject reason, const std::string& serverText) {
 
 struct NetSession::Impl {
     mutable std::mutex mutex;
+
+    /// When this session last put a frame on the wire. See the keepalive.
+    long long lastSpoke = 0;
 
     std::atomic<Phase> phase{Phase::Idle};
     std::string        errorText;
@@ -443,6 +464,28 @@ void NetSession::update() {
     if (p == Phase::Idle || p == Phase::Closed) return;
 
     const WsState ws = impl.socket.state();
+
+    // ── A WORD EVERY FIFTEEN SECONDS ──
+    //
+    // The WebSocket ping in WsNative keeps the SOCKET alive, and that is enough
+    // for a direct host, which sees the socket. It is not enough over the
+    // relay: there the host counts only the frames the relay forwards, and a
+    // ping is not one of them -- so a relayed player who sat still was dropped
+    // at sixty seconds exactly as before. A browser cannot send a ping at all.
+    //
+    // So the session sends a frame of its own. The host stamps any frame from a
+    // peer as life before it looks at what it is, and a host that has never
+    // heard of NetMsg::Ping ignores it -- which is what every copy of 1.2.2a
+    // will do, and it still counts.
+    const bool inGame = (p == Phase::Lobby || p == Phase::InGame);
+    if (inGame && ws == WsState::Open) {
+        const long long now = nowSeconds();
+        if (impl.lastSpoke == 0) impl.lastSpoke = now;
+        if (now - impl.lastSpoke >= sessionKeepaliveSeconds()) {
+            impl.lastSpoke = now;
+            impl.socket.send(netEncodeFrame(NetMsg::Ping, {}));
+        }
+    }
 
     // The host's challenge arrives as text; everything after is binary.
     std::string challenge;
