@@ -142,6 +142,30 @@ because it wants a build of its own. The stand-in issuer takes `--delay-host`
 for it: a real account service is slow for a HOST too, and without that delay
 the window the race lives in never opens.
 
+## What CI runs, and what it cannot
+
+Every platform job runs the whole suite through `tools/qualify.sh`, and two
+things were added after each of them let a real bug through:
+
+- **A real HTTPS request** (`tests/net_live_check.cpp`), on all four desktop
+  platforms. The suite's only networking is plaintext to localhost, so the TLS
+  path -- and each platform's own certificate loading inside it -- was never
+  entered by anything automated. Windows shipped a release that loaded no roots
+  at all and could not sign in, with CI green throughout. The check fails only
+  when the machine cannot VERIFY a server it reached; "nothing answered" is
+  treated as the runner's network, because a check that cries wolf is one
+  nobody keeps.
+- **Android tests on an emulator** (`android-run`). Nothing built for Android
+  was ever executed: the platform's job compiled a library, checked it was a
+  NativeActivity, and packaged it. Android-only behaviour was therefore only
+  discovered by somebody holding a phone -- a swipe that could not pan the map,
+  a keyboard that did not exist, a transport that had not compiled since it was
+  written. The job runs the parts whose answers are the same everywhere and
+  were simply never asked there.
+
+Neither can judge how anything feels. An emulator does not have a thumb, and
+the live check says nothing about whether sign-in is usable once it connects.
+
 ## What is still not covered by anything
 
 Two live clients taking a turn against each other. Specifically: one player

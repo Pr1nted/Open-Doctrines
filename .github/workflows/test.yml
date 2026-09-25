@@ -215,6 +215,26 @@ jobs:
         shell: bash
         run: tools/qualify.sh build
 
+      # ── A REAL HTTPS REQUEST, ON THIS PLATFORM ──
+      #
+      # The only networking the suite does is plaintext to localhost, so the
+      # TLS path -- and with it each platform's own certificate loading -- was
+      # never entered by anything automated. That is how a release shipped in
+      # which Windows loaded no roots at all, refused every HTTPS call before
+      # opening a socket, and could not sign in: nothing here would have
+      # noticed, and nothing did until players said so.
+      #
+      # A runner's network belonging to somebody else is accounted for: this
+      # fails only when the machine cannot VERIFY a server it reached, and
+      # treats "nothing answered" as the network. See tests/net_live_check.cpp.
+      - name: The account service can actually be reached
+        shell: bash
+        run: |
+          cmake --build build --config Release --target NetLiveCheck
+          BIN=build/NetLiveCheck
+          [ -f build/Release/NetLiveCheck.exe ] && BIN=build/Release/NetLiveCheck.exe
+          "$BIN"
+
       # THE PACKAGED COPY, not the build tree.
       #
       # Everything above runs the game out of build/, with OD_DATA_DIR pointed
@@ -348,6 +368,78 @@ jobs:
   # was never noticed. It cannot run tests_all.sh -- there is no shell in a
   # browser -- so what is checked is that it builds and that the package is
   # assembled.
+  # ── ANDROID CODE, ACTUALLY RUN ──
+  #
+  # Until this job existed, nothing built for Android was ever executed: the
+  # platform's jobs compiled a library, checked it was a NativeActivity and
+  # packaged it, and that was the whole of the coverage. So Android-only
+  # behaviour was only ever discovered by somebody holding a phone -- the
+  # swipe that could not pan the map, the keyboard that did not exist, the
+  # transport that had not compiled since it was written.
+  #
+  # An emulator cannot judge how the game feels, and these are not the game:
+  # they are the parts whose answers are the same everywhere and were simply
+  # never asked on this platform. x86_64 because that is what an emulator
+  # runs; the ABI the phone uses is built by the job above.
+  android-run:
+    name: android (tests on an emulator)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Locate the NDK
+        run: |
+          NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}"
+          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
+      - name: Build the tests for the emulator's ABI
+        run: |
+          set -e
+          cmake -B build-android-x86 \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 \
+            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON
+          cmake --build build-android-x86 -j 2 --target \
+            TouchGestureTest TouchKeyboardTest NetProtocolTest LfgTest
+
+      # KVM, or the emulator takes tens of minutes rather than two.
+      - name: Let the runner use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run them on a device
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -e
+            adb wait-for-device
+            for t in TouchGestureTest TouchKeyboardTest NetProtocolTest LfgTest; do
+              echo "=== $t ==="
+              adb push "build-android-x86/$t" "/data/local/tmp/$t"
+              adb shell "chmod 755 /data/local/tmp/$t"
+              # The exit status has to come back over adb, which does not
+              # forward it: echo it and read it, or a failing test looks like a
+              # passing one.
+              rc=$(adb shell "/data/local/tmp/$t > /data/local/tmp/$t.log 2>&1; echo \$?" | tr -d '\r')
+              adb shell "cat /data/local/tmp/$t.log"
+              if [ "$rc" != "0" ]; then
+                echo "::error title=$t failed on Android::exit $rc"
+                exit 1
+              fi
+            done
+
   # ── THE LOBBY, READ FROM TWO THREADS ──
   #
   # A data race cannot be caught by running the game: it fires as a crash
