@@ -274,6 +274,7 @@ public:
     // 3-11% of the world's doctrines, so the gain is what the WORLD does with
     // them. This counts the turnover the slot story predicts.
     void warLifeCensus();
+    void seatTrace();           ///< OD_SEAT_TRACE, off by default. Journal 414.
     static void dumpWarLife();
     static std::map<std::pair<int,int>, int> s_warOpen;   ///< pair -> turn it opened
     static long long s_warsStarted, s_warsEnded, s_warLenSum, s_warOpenSum, s_warTurns;

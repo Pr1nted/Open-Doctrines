@@ -1663,6 +1663,7 @@ void AISystem::beginTurn() {
     updateCoalition();
     updateTrends();
     warLifeCensus();   // reads m_warWith; writes nothing the game can see
+    seatTrace();       // reads m_stats and m_warWith; writes nothing the game can see
 
     // This map's frozen opponent, drawn once the world exists.
     //
@@ -14493,6 +14494,39 @@ void AISystem::warLifeCensus() {
     ++s_warTurns;
     static const bool reg = (atexit(&AISystem::dumpWarLife), true);
     (void)reg;
+}
+
+// ── PER-TURN SEAT TRACE (OD_SEAT_TRACE) ──
+//
+// Backlog 112. Journal 412 needed FOUR full games to learn one seat's trajectory,
+// because nothing is recorded between map load and the final [BENCH] line, and
+// journal 413 then found the collapse it was chasing leaves no event in the log
+// at all: France's war list is byte-identical at turn 100 holding 10.3% of the
+// world and at turn 200 holding 0.2%.
+//
+// RAW COUNTS, not a share. The bench's own seat share divides by the two
+// cohorts' provinces (Game_AITrain.cpp), which this does not have and must not
+// guess at -- a second copy of a number is how they drift apart (memory
+// expose-the-resolvers-numbers). Provinces here, share computed later if wanted.
+void AISystem::seatTrace() {
+    static const bool on = std::getenv("OD_SEAT_TRACE") &&
+                           atoi(std::getenv("OD_SEAT_TRACE")) != 0;
+    if (!on) return;
+    Game& g = *m_g;
+    if (g.m_benchSeatIso.empty()) return;
+    const int cid = g.cidForIso(g.m_benchSeatIso);
+    if (cid < 0) return;
+    auto it = m_stats.find(cid);
+    if (it == m_stats.end()) return;
+    const Country* c = g.m_countries.getCountry(cid);
+    int foreign = 0, rebel = 0;
+    auto w = m_warWith.find(cid);
+    if (w != m_warWith.end())
+        for (int e : w->second) (e >= Game::REBEL_CID_MIN ? rebel : foreign)++;
+    fprintf(stderr, "[SEATTRACE] turn %d %s prov %d army %lld treasury %.1f "
+            "wars %d rebelwars %d\n", m_turn, g.m_benchSeatIso.c_str(),
+            it->second.provinces, it->second.army,
+            c ? c->treasury : 0.0, foreign, rebel);
 }
 
 void AISystem::dumpWarLife() {
