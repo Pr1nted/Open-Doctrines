@@ -21,7 +21,8 @@ repository records them.
 | Packages | 1843321 dev comp, 1843322 beta, 1843323 + 1843324 retail |
 | App created | **26 Sep 2026** — the 30-day wall runs from here, so **26 Oct** at the earliest |
 | `STEAM_APPID` / `STEAM_USERNAME` | set |
-| `STEAM_CONFIG_VDF` | not yet — needs the builder account to exist |
+| Builder account | `od_builder` |
+| `STEAM_CONFIG_VDF` | not yet |
 | Depots | not verified; do not assume appid+1 / appid+2 |
 | Store page | not built |
 | Trailer | **missing.** See section 4 |
@@ -141,7 +142,7 @@ publish everything and change the bank details.
 Then, once, on your own machine:
 
 ```bash
-steamcmd +login od-builder +quit
+steamcmd +login od_builder +quit
 ```
 
 Type the password and the Steam Guard code. On success steamcmd writes a
@@ -169,7 +170,7 @@ redo the two commands above.
 | Name | Kind | Example | Absent means |
 |---|---|---|---|
 | `STEAM_APPID` | variable | `3401230` | Steam step skips with a warning |
-| `STEAM_USERNAME` | variable | `od-builder` | Steam step skips with a warning |
+| `STEAM_USERNAME` | variable | `od_builder` | Steam step skips with a warning |
 | `STEAM_CONFIG_VDF` | **secret** | base64 blob | Steam step skips with a warning |
 | `STEAM_DEPOT_WINDOWS` | variable | `3401231` | defaults to appid + 1 |
 | `STEAM_DEPOT_LINUX` | variable | `3401232` | defaults to appid + 2 |
@@ -177,7 +178,7 @@ redo the two commands above.
 
 ```bash
 gh variable set STEAM_APPID --body 3401230
-gh variable set STEAM_USERNAME --body od-builder
+gh variable set STEAM_USERNAME --body od_builder
 ```
 
 Missing Steam configuration **warns and does not fail the release**, the same
