@@ -421,7 +421,12 @@ jobs:
           arch: arm64-v8a
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # -gpu auto, NOT swiftshader_indirect: that is a software GL renderer
+          # for x86 hosts, and on Apple silicon the emulator starts and then
+          # never comes up -- which the action reports as "timeout waiting for
+          # emulator to boot", naming the symptom and not the cause.
+          emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 900
           disable-animations: true
           script: |
             set -e
