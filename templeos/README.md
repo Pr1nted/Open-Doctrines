@@ -96,6 +96,26 @@ per-chipset firmware, a MAC layer and a WPA2 supplicant, and a USB dongle would
 need a USB stack this OS does not have. It is not TCP either -- no
 retransmission, no ordering. ARP, IPv4 and UDP is what a turn game needs.
 
+## Building it: use the live CD, and mount the disk
+
+`tools/templeos_release.sh` boots the **ISO**, not the installed system, and
+compiles there. That is not a workaround, it is the better arrangement: the CD
+boots a complete TempleOS every time and nothing the build does can damage it,
+whereas the installed system is the one thing here that accumulates state.
+
+The CD does not mount hard drives by itself. `Mount;` -> drive letter `C` ->
+all partitions -> probe -> device 1 defines C: and D:, and only then can the
+sources on the disk be reached.
+
+**That mount step cost an afternoon**, because its absence looks exactly like
+disk corruption. `Cd("D:/Home")` threw `Except:Drv` out of `DrvChk`, I had
+been hard-stopping the VM mid-write for days, and the installed system was
+separately faulting at boot -- so "the partition is damaged" fitted everything
+I could see. It was wrong. A freshly created partition, made minutes earlier
+by TempleOS's own installer, threw the same error. The evidence equally
+supported "not mounted", and I did not consider it until `Mount;` printed a
+drive list with no hard drive in it.
+
 ## Is it a binary?
 
 **Yes, now.** `dist/open-doctrines-templeos-<version>.zip` carries `ODBIN.BIN`

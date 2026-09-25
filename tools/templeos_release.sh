@@ -88,16 +88,31 @@ say "compiling inside TempleOS"
 sleep 2
 "$vm" push templeos/*.HC templeos/*.HH templeos/world.odw templeos/game.odd \
              templeos/font.odf >/dev/null
-"$vm" run >/dev/null
-# The boot menu, the tour prompt, then the compile. The waits are generous
-# because this is an emulated 1990s machine and a short wait here means a
-# keystroke lands in the wrong prompt and the build silently does nothing.
-sleep 28; "$vm" key 2
-sleep 40; "$vm" key n
-sleep 10; "$vm" type 'Cmp("ODBIN.HC",,"ODBIN.BIN");'; "$vm" key ret
-sleep 150
+
+# ── BUILT ON THE LIVE CD, NOT THE INSTALLED SYSTEM ──
+#
+# The ISO boots a complete TempleOS every time and nothing this script does
+# can damage it. The installed system, by contrast, is the one thing here that
+# accumulated state -- and chasing a fault in it cost more than the port did.
+#
+# The CD does not mount hard drives by itself, so the disk has to be mounted
+# before the sources on it can be reached: Mount, drive letter C, all
+# partitions, probe, device 1. Six prompts, and every one of them is why this
+# is a script rather than a paragraph of instructions.
+"$vm" boot >/dev/null
+"$vm" live
+"$vm" type 'Mount;';               "$vm" key ret; "$vm" settle 180 10
+"$vm" type 'C';                    "$vm" key ret; "$vm" settle 180 8
+"$vm" type 'p';                                   "$vm" settle 240 12
+"$vm" type '1';                    "$vm" key ret; "$vm" settle 240 12
+"$vm" key ret;                                    "$vm" settle 120 6
+"$vm" type 'Cd("D:/Home");';       "$vm" key ret; "$vm" settle 120 6
+"$vm" type 'Cmp("ODBIN.HC",,"ODBIN.BIN");'
+"$vm" key ret
+"$vm" settle 900 60
 "$vm" shot "$root/dist/templeos-build.png" >/dev/null 2>&1 || true
 "$vm" stop >/dev/null
+sleep 2
 
 say "collecting"
 if ! "$vm" pull ODBIN.BIN "$out"; then

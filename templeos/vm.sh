@@ -18,7 +18,8 @@
 #     templeos/vm.sh push F...   copy files in to D:/Home
 #     templeos/vm.sh pull N     copy a file back out
 #     templeos/vm.sh shot F.png  capture the screen
-#     templeos/vm.sh ready       boot all the way to a clean shell
+#     templeos/vm.sh ready       boot the installed system to a shell
+#     templeos/vm.sh live        boot the ISO to a shell (the build environment)
 #     templeos/vm.sh settle [s]  wait until the screen stops changing
 #     templeos/vm.sh key <keys>  send keystrokes (QEMU key names, space separated)
 #     templeos/vm.sh click X Y  click at an absolute point
@@ -30,7 +31,11 @@ set -u
 VM="${OD_TOS_HOME:-$HOME/TempleOS-VM}"
 ISO="$VM/TempleOS.ISO"
 DISK="$VM/TempleOS.raw"
-SWAP="$VM/exchange.img"          # the bridge disk; see templeos/README.md
+# A second disk was once going to be the file bridge, before it turned out
+# TempleOS installs onto FAT32 and the host can simply mount the main disk.
+# It is left unattached: an empty drive the installer offers as a target is a
+# way to install the OS onto the wrong thing, and it earns nothing.
+SWAP=""
 PAYLOAD="$VM/payload.iso"        # files going IN, as a second CD
 MON="$VM/monitor.sock"
 PIDF="$VM/qemu.pid"
@@ -82,7 +87,7 @@ start() {
         -device rtl8139,netdev=n0 \
         -drive file="$DISK",format=raw,if=ide,index=0 \
         -drive file="$ISO",format=raw,if=ide,index=2,media=cdrom \
-        $( [ -f "$SWAP" ] && echo -drive file="$SWAP",format=raw,if=ide,index=1 ) \
+        $( [ -n "$SWAP" ] && [ -f "$SWAP" ] && echo -drive file="$SWAP",format=raw,if=ide,index=1 ) \
         $( [ -f "$PAYLOAD" ] && echo -drive file="$PAYLOAD",format=raw,if=ide,index=3,media=cdrom ) \
         -boot "$bootdev" \
         $disp \
@@ -270,6 +275,27 @@ click)
     done
     sleep 0.4
     [ "${OD_NO_CLICK:-0}" = "1" ] || { mon "mouse_button 1"; sleep 0.2; mon "mouse_button 0"; }
+    ;;
+live)
+    # ── BUILD ON THE LIVE CD ──
+    #
+    # The installed OS is not needed to compile anything, and depending on it
+    # turned out to be the single biggest source of trouble here: repeated
+    # hard stops of the VM damaged the installed partition badly enough that
+    # TempleOS's own DrvChk refused it, from the installed system AND from the
+    # CD. The ISO, meanwhile, boots a complete TempleOS every time and cannot
+    # be damaged by anything this script does.
+    #
+    # So the build environment is the CD, and the disk is only somewhere to
+    # keep files and put the binary. Two prompts on the way in: install to
+    # hard drive (no), and take the tour (no).
+    "$0" settle 300 30
+    "$0" key n
+    "$0" settle 240 12
+    "$0" key n
+    "$0" settle 180 10
+    "$0" key ret
+    "$0" settle 120 5
     ;;
 ready)
     # Boot to a usable shell, however this particular boot behaves.
