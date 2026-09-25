@@ -84,6 +84,8 @@ U8 *g_side[4];
 I64 g_pick = G_PICK_NONE;
 Bool g_help = FALSE;
 I64 g_shell = 0;                 /* which shell type is loaded */
+I64 g_nbi = -1;                  /* which neighbour n steps to next */
+F64 odp_sx, odp_sy;              /* the mouse scale we borrowed */
 I64 g_navfrom = -1;
 I64 g_navlist[512], g_navn = 0, g_navi = 0;
 
@@ -842,6 +844,9 @@ U0 GHelp()
   PText(140, y, "causes, they have consequences, and these actions move them.",
         150, 160, 175);
   y += 22;
+  PText(140, y, "click a province, or n to step to a neighbour (anyone's); "
+                "h/l walk your own", 150, 160, 175);
+  y += 14;
   PText(140, y, "1-8 views   P E C R panels   ENTER end turn   ? close",
         130, 138, 150);
 }
@@ -1055,9 +1060,16 @@ I64 GSelect()
  * back when it ends, without either of them owning the video mode. */
 public U0 ODPlay(I64 cid)
 {
-  I64 ch, i, s, men, cost, tgt, n, prov, inc;
+  I64 ch, i, s, men, cost, tgt, n, prov, inc, mx, my;
 
   w_me = cid;
+  /* The pointer arrives scaled by ms.scale, and on a world map half a
+   * pixel is a different country. Borrowed for the game, given back after. */
+  odp_sx = ms.scale.x;
+  odp_sy = ms.scale.y;
+  ms.scale.x = 1.0;
+  ms.scale.y = 1.0;
+
   RInit;
   GOwnList;
   GShade;
@@ -1075,7 +1087,7 @@ public U0 ODPlay(I64 cid)
   for (i = 0; i < d_npol; i++) d_active[i] = 0;
   d_rp = 0;
   StrCpy(g_status, "h/l province  r raise  a assault  b shell  B build  "
-                   "? for every action");
+                   "click or n for any province, h/l for yours, ? for actions");
 
   try
   {
@@ -1084,6 +1096,27 @@ public U0 ODPlay(I64 cid)
      * under emulation is not a frame rate, and nothing here animates. */
     while (TRUE)
     {
+      /* ── THE POINTER ──
+       *
+       * Reads the province index straight out of the raster under the
+       * cursor, so a click is exact rather than a guess at the nearest
+       * centre -- and unlike h/l it can land on anybody's ground. */
+      if (ms.lb)
+      {
+        mx = ms.pos.x - Fs->pix_left - Fs->scroll_x;
+        my = ms.pos.y - Fs->pix_top - Fs->scroll_y - G_MAPY;
+        i = WAt(mx, my);
+        if (i >= 0 && i != g_sel)
+        {
+          g_sel = i;
+          g_nbi = -1;
+          StrPrint(g_status, "%s  (%s)", w_name[i], WCName(w_own[i]));
+          GShade;
+          GDraw;
+        }
+        while (ms.lb) Yield;
+      }
+
       ch = ScanChar;
       if (ch)
       {
@@ -1225,6 +1258,27 @@ public U0 ODPlay(I64 cid)
           else
             StrPrint(g_status, "not enough money to raise men in %s",
                      w_name[g_sel]);
+        }
+        else if (ch == 'n' && g_sel >= 0)
+        {
+          /* ── STEPPING ONTO SOMEBODY ELSE'S GROUND ──
+           *
+           * h and l walk YOUR provinces, which is what you want nine times in
+           * ten and leaves the tenth impossible: every diplomatic action
+           * needs a foreign province selected, so without this they could not
+           * be reached from the keyboard at all. This walks the neighbours of
+           * whatever is selected, whoever owns them. */
+          if (g_nbi < 0) g_nbi = 0;
+          else g_nbi++;
+          if (g_nbi >= w_adjn[g_sel]) g_nbi = 0;
+          n = WNeighbour(g_sel, g_nbi);
+          if (n >= 0)
+          {
+            g_sel = n;
+            g_nbi = -1;
+            StrPrint(g_status, "%s  (%s)", w_name[n], WCName(w_own[n]));
+            GShade;
+          }
         }
         else if (ch == 'f')
         {
@@ -1881,6 +1935,9 @@ g_done:
   }
   catch
     PutExcept;
+
+  ms.scale.x = odp_sx;
+  ms.scale.y = odp_sy;
 
 }
 

@@ -18,6 +18,8 @@
 #     templeos/vm.sh push F...   copy files in to D:/Home
 #     templeos/vm.sh pull N     copy a file back out
 #     templeos/vm.sh shot F.png  capture the screen
+#     templeos/vm.sh ready       boot all the way to a clean shell
+#     templeos/vm.sh settle [s]  wait until the screen stops changing
 #     templeos/vm.sh key <keys>  send keystrokes (QEMU key names, space separated)
 #     templeos/vm.sh click X Y  click at an absolute point
 #     templeos/vm.sh type "txt"  type a string
@@ -154,6 +156,14 @@ push)
     for f in "$@"; do
         cp "$f" "$mnt/$sub/" && echo "pushed $(basename "$f") -> D:/$sub/"
     done
+    # ── SWEEP UP AFTER THE HOST ──
+    #
+    # macOS writes ._resource forks, .DS_Store and a .fseventsd directory into
+    # any volume it mounts. The guest does not want them, they accumulate on
+    # every push, and a filesystem this old is not the place to find out which
+    # of them it can tolerate.
+    find "$mnt" \( -name "._*" -o -name ".DS_Store" \) -delete 2>/dev/null
+    rm -rf "$mnt/.fseventsd" "$mnt/.Spotlight-V100" "$mnt/.Trashes" 2>/dev/null
     diskutil unmount "$mnt" >/dev/null 2>&1 || umount "$mnt" 2>/dev/null
     hdiutil detach "$dev" >/dev/null 2>&1
     rmdir "$mnt" 2>/dev/null
@@ -260,6 +270,96 @@ click)
     done
     sleep 0.4
     [ "${OD_NO_CLICK:-0}" = "1" ] || { mon "mouse_button 1"; sleep 0.2; mon "mouse_button 0"; }
+    ;;
+ready)
+    # Boot to a usable shell, however this particular boot behaves.
+    #
+    # The tour question does not always appear -- after a fault it is skipped
+    # -- and an "n" typed at a shell that never asked becomes the first
+    # character of the next command. That produced `n#include "ODGame"` and an
+    # afternoon of chasing a compiler bug that was a keystroke. So: answer it
+    # if it came, then press return to commit whatever ended up on the line,
+    # leaving a clean prompt either way.
+    # ── BOOT C:, WORK ON D: ──
+    #
+    # The installer puts TempleOS on both partitions. D:'s boot files were
+    # damaged by repeated hard stops of the VM mid-write -- it faults at
+    # DirMk("/Tmp") and drops into the debugger -- while C: still boots
+    # clean. The game's files live on D:/Home either way, and a booted C:
+    # can read them perfectly well, so this boots the healthy one and
+    # changes directory to the other.
+    #
+    # OD_TOS_BOOT=2 forces the old behaviour if D: is ever repaired.
+    "$0" settle 240 22
+    "$0" key "${OD_TOS_BOOT:-1}"
+    "$0" settle 240 30
+    "$0" key n
+    "$0" settle 120 6
+    "$0" key ret
+    "$0" settle 120 4
+    "$0" type 'Cd("D:/Home");'
+    "$0" key ret
+    "$0" settle 120 4
+    ;;
+settle)
+    # ── WAIT FOR THE MACHINE TO STOP DOING THINGS ──
+    #
+    # Every timing failure in this project has been the same one: a keystroke
+    # sent while the guest was still booting or still compiling, which lands
+    # in the wrong prompt and produces a mangled command -- "h7elp", or an
+    # include swallowed by the tour question. Sleeping a guessed number of
+    # seconds is what caused that; waiting for the screen to stop changing is
+    # what fixes it.
+    #
+    # The clock in the title bar ticks every second, so the top rows are
+    # ignored. Two identical frames in a row is "settled".
+    # A minimum wait as well as a maximum: booting has quiet moments, and the
+    # first version of this declared victory five seconds in because two
+    # samples four seconds apart happened to match while the machine was
+    # still loading. And two matching frames is not enough on its own -- the
+    # screen must hold still for STABLE consecutive samples.
+    shift
+    max="${1:-180}"
+    min="${2:-20}"
+    stable_want=3
+    sleep "$min"
+    prev=""
+    stable=0
+    n=$(( max / 2 ))
+    i=0
+    while [ "$i" -lt "$n" ]; do
+        "$0" shot "$VM/.settle.png" >/dev/null 2>&1
+        cp -f "$VM/.settle.png" "$VM/.settle$(( i % 2 )).png" 2>/dev/null
+        # ── HOW MUCH CHANGED, NOT WHETHER ANYTHING DID ──
+        #
+        # A blinking cursor never stops changing, so demanding two identical
+        # frames waits for ever. What matters is whether the machine is still
+        # DOING something, and a cursor is a handful of pixels while a boot or
+        # a compile repaints half the screen.
+        cur=$(python3 -c "
+import sys
+from PIL import Image, ImageChops
+try:
+    a = Image.open('$VM/.settle0.png').convert('L').crop((0,16,640,480))
+    b = Image.open('$VM/.settle1.png').convert('L').crop((0,16,640,480))
+except Exception:
+    print('x'); sys.exit()
+d = ImageChops.difference(a, b)
+n = sum(1 for p in d.getdata() if p > 24)
+print('same' if n < 600 else 'busy')
+" 2>/dev/null)
+        if [ "$cur" = "same" ]; then
+            stable=$(( stable + 1 ))
+            [ "$stable" -ge "$stable_want" ] && exit 0
+        else
+            stable=0
+        fi
+        prev="$cur"
+        sleep 2
+        i=$(( i + 1 ))
+    done
+    echo "did not settle within ${max}s" >&2
+    exit 1
     ;;
 key)
     shift
