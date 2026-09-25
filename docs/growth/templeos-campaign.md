@@ -131,7 +131,7 @@ sail, menu
 Kept for comment replies, and for anywhere that wants the detail rather than
 the pitch.
 
-## The posts
+## Why they are short
 
 Short on purpose. The first drafts of these read as written by a committee:
 every one opened with a setup paragraph, every one had a list of three, every
@@ -145,7 +145,8 @@ wrong. That is what makes it credible. Cut the connective tissue.
 
 ## 1. r/TempleOS_Official
 
-Gallery: menu, game, actions, navy, truecolor.
+One image only -- that subreddit allows a single attachment. The short
+version above is what to post; this is material for the comments.
 
 **Title:** Open Doctrines runs on TempleOS. 1,632 provinces, all 39 actions,
 no host.

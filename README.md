@@ -2,9 +2,9 @@
 
 **A free, source-available grand strategy game that runs in a browser.**
 
-It is the kind of game Hearts of Iron IV and Victoria are: provinces with
-population and industry, a research tree, doctrines you pick and live with,
-war, rebellion and diplomacy across a world map. It plays on Windows, macOS,
+It works the way Hearts of Iron IV and Victoria do: provinces with population
+and industry, a research tree, doctrines you have to live with once you pick
+them, and war, rebellion and diplomacy across a world map. It plays on Windows, macOS,
 Linux, Android, **in a browser tab with no download and no account** — and,
 since v1.2.2a, on [TempleOS](#templeos). It costs nothing on every one of
 them.
@@ -18,8 +18,8 @@ research, its politics and its neighbours. Six historical scenarios on a
 1641-province world map, a map editor for building your own, multiplayer that
 needs no port forwarding, and a mod SDK for thirteen languages.
 
-Alpha. See [Status](#status) for what that word is doing here, and for which
-platforms have actually been sat down in front of.
+Alpha. [Status](#status) says what that means here, and which platforms
+anyone has actually sat down and played it on.
 
 ![The world map](docs/img/world-map.png)
 
@@ -46,10 +46,10 @@ each other.
 garrisons, ports and navies. Eight map modes: population, industry, defence,
 relations, army navigation, navy, resources, country names.
 
-Industry is bounded by the ground it stands on: each province states the level
-it can support, set by its population, how densely that population lives, its
-land area and its mineral wealth. Building an industrial power means holding
-places worth industrialising, not buying the same factory everywhere.
+A province can only take so much industry. The ceiling comes from its
+population, how tightly that population lives, how big it is and what is in
+the ground. So you cannot buy the same factory everywhere — you have to hold
+the places worth building in.
 
 ![Province panel](docs/img/province.png)
 
@@ -69,8 +69,9 @@ bad one.
 
 ![Politics](docs/img/policies.png)
 
-Rebellions spawn from unrest and hold real territory. Wars pull in guarantee
-chains. Ceasefires are negotiated over provinces, money and dropped claims.
+Unrest turns into rebellions, and rebels hold real ground. Declaring war
+drags in everyone who guaranteed the other side. Ceasefires are haggled over:
+provinces, money, and claims you agree to drop.
 
 ### Scenarios
 
@@ -95,22 +96,22 @@ generator for when you want a world rather than a specific one.
 
 ![Multiplayer](docs/img/multiplayer.png)
 
-Players dial **out** over `wss://`, so joining needs no router configuration and
-works from a browser tab. Hosting is a listening socket on the host's machine,
-and the game can open a [cloudflared](docs/multiplayer-hosting.md) tunnel to it
-for you — so in practice there is still nothing to forward, but the host does
-need to be a desktop build. **You cannot host from a browser.**
+Joining is an outgoing connection over `wss://`, so there is nothing to set up
+on your router and it works from a browser tab. Hosting opens a socket on the
+host's machine, and the game can put a [cloudflared](docs/multiplayer-hosting.md)
+tunnel in front of it for you — so there is still nothing to forward, but the
+host has to be a desktop build. **You cannot host from a browser.**
 
-The host is authoritative. State only ever flows server to client, orders are
-validated server-side and re-attributed to the authenticated player's country,
-and a client never computes a turn. A player who disconnects keeps their seat
-and their country: the turn resolves without them, and they get that same
-country back when they return.
+The host decides everything. Turns are worked out there and sent to the
+players; your own copy of the game never computes one. Orders are checked on
+the host and applied to the country you actually signed in as. If you drop out
+you keep your seat: the turn resolves without you, and you get the same
+country back when you return.
 
-**Finding people to play with** is the other half, and used to be nobody's job.
-Multiplayer → *Looking for a game* is a board of open games: post that you are
-hosting and it appears in the game and in the Discord channel at the same time,
-because it is one board with two windows onto it.
+**Finding people to play with** used to be the hard part. Multiplayer →
+*Looking for a game* lists the open ones. Post that you are hosting and it
+shows up in the game and in the Discord channel at the same time — one board,
+two windows onto it.
 
 Detail in [docs/multiplayer.md](docs/multiplayer.md), hosting in
 [docs/multiplayer-hosting.md](docs/multiplayer-hosting.md), the board in
@@ -120,9 +121,9 @@ Detail in [docs/multiplayer.md](docs/multiplayer.md), hosting in
 
 ![Mods](docs/img/mods.png)
 
-Mods are WebAssembly, so a mod is the same file on every platform including the
-browser, and it runs in a sandbox with a capability grant the player can see and
-revoke. The Gearbox SDK has bindings for **C, C++, Rust, Zig, Go, Java, Kotlin,
+Mods are WebAssembly, so one file works everywhere, browser included. Each one
+runs in a sandbox, and the player can see what it is allowed to do and take
+that away. The Gearbox SDK has bindings for **C, C++, Rust, Zig, Go, Java, Kotlin,
 JavaScript, TypeScript, AssemblyScript, Lua, Python and hand-written WAT** —
 every one builds the same example, and the test suite checks that all of them
 render byte-identical output.
@@ -136,10 +137,10 @@ tools/gearbox build my-mod      # compile, pack and verify -> my-mod.odmod
 [ABI reference](docs/gearbox-abi.md) ·
 [Troubleshooting](docs/gearbox-troubleshooting.md)
 
-The same material is written up as a wiki, in two places that stay in step: the
-[Wiki tab](https://github.com/Pr1nted/Open-Doctrines/wiki) for reading, and
-[`wiki/`](wiki/) for reading it here beside the code, with the history and the
-diffs. The tree is the source; the Wiki tab is published from it.
+The same material is also a wiki, in two places that stay in step: the
+[Wiki tab](https://github.com/Pr1nted/Open-Doctrines/wiki) to read on its own,
+and [`wiki/`](wiki/) to read here next to the code with its history. The files
+are the source; the Wiki tab is published from them.
 
 ## Installing
 
@@ -438,11 +439,13 @@ Alpha, and the honest version of that word:
   qualified — the four-platform matrix in `.github/workflows/release-game.yml`
   compiles them, and "it compiled" is not "somebody played it". Qualifying them
   means `tests/run_all.sh` and `tools/playtest.sh --verify` passing on each.
+  [TempleOS](#templeos) is a separate build and a separate promise: it has been
+  played in QEMU, it will not run on real hardware, and it has no multiplayer.
 - **The AI plays a whole game now, and is still not a match for a good
   player.** Both halves of that are worth saying plainly.
 
-  Where it stands, measured rather than asserted: it reliably beats random play,
-  and is currently about level with the hand-written strategy it is benchmarked
+  Where it stands, measured rather than claimed: it beats random play every
+  time, and it is about level with the hand-written strategy it is benchmarked
   against (`--vs-script`: 0.99x the land, 3 wins to 4 with one draw over eight
   worlds). Parity with that rung is the target it has reached and not yet passed.
   It is still being trained.
