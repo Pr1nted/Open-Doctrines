@@ -1,11 +1,86 @@
 # Open Doctrines on TempleOS
 
-**The game does not run here, and will not.** TempleOS has no C++ compiler, no
-OpenGL and no network stack; Open Doctrines needs all three. What runs here is
-the *other half* of a real game.
+**The game runs here.** Not a viewer and not a terminal onto a host: the map,
+the rules and the AI are on the machine, written in HolyC, and nothing leaves
+it.
 
-The engine's agent door prints a turn as plain text and reads one line of
-`module:action` tokens back:
+![Open Doctrines on TempleOS](../docs/img/templeos-game.png)
+
+1,632 provinces with population, industry, forts, harbours and resources. All
+39 actions the desktop build has, all 8 map views, 86 technologies, 59
+policies, fleets and a sea to sail them on. 1024x768 in true colour, drawn
+with the desktop game's own font.
+
+It needs a **virtual machine** — QEMU, Bochs or VirtualBox. Not a real PC: the
+screen mode is set through registers those emulators provide and graphics
+cards do not.
+
+## Running it
+
+Copy the release into `D:/Home`, then:
+
+```
+#include "ODGame"
+ODStart;
+```
+
+About 1.7 seconds to compile, and the menu opens. `templeos/vm.sh push` puts
+the files in if you are on QEMU; otherwise stop the VM and mount its disk
+image, which is FAT32 and opens on any host.
+
+The release also carries `ODBIN.BIN`, compiled ahead of time:
+
+```
+#include "RUN"
+U0 (*f)(U8 *w) = ODStart;
+(*f)("world.odw");
+```
+
+Three lines rather than one, for a reason worth reading — see [Is it a
+binary?](#is-it-a-binary).
+
+**Controls.** Click a province, `n` steps to one next to it, `h` and `l` walk
+your own, `?` lists every key.
+
+## What is in here
+
+| | |
+|---|---|
+| `ODGame.HC` | menu, map, panels, all 39 actions, all 8 views |
+| `Rules.HC` | the turn — combat width, assault, artillery, fleets, unrest, alignment |
+| `World.HC` | the world loader; `world.odw` is baked by `tools/templeos_world.py` |
+| `Data.HC` | research, policies, claims, artillery, minorities; `game.odd` |
+| `Paint.HC` | the true-colour renderer and the font |
+| `Gfx.HC` | the mode-set, and putting the desktop back afterwards |
+| `Net.HC` | RTL8139, ARP, IPv4, UDP — built, and nothing uses it yet |
+| `ODBIN.HC` | the project file an ahead-of-time compile needs |
+| `OpenDoc.HC` | the older text client, for the host-engine mode below |
+
+## What it does not have
+
+**Multiplayer.** `Net.HC` is a working stack — the guest sent a UDP packet to
+the host and read the reply back — but no part of the game calls it.
+
+**Real hardware.** See above. The mode-set is Bochs DISPI.
+
+## Keeping the two builds in step
+
+No code is shared. One is C++ and the other HolyC, and nothing ports between
+them. What is shared is a list of numbers.
+
+`tools/templeos_sync.py` reads the desktop source for everything both builds
+have to agree about — the combat width constants, the 8 map views in their
+order, the 39 actions, the 20 policy levers, the research node count — writes
+them into `Sync.HH`, and `--check` fails the suite when the two have drifted,
+or when something new turns up on the C++ side that nobody has classified.
+
+It cannot port a change. It makes one impossible to miss, which is the most a
+tool can do across two languages that share no compiler.
+
+## The other mode: a terminal onto a host engine
+
+This came first, and still works. The engine's agent door prints a turn as
+plain text and reads one line of `module:action` tokens back:
 
 ```
 [AGENT] ===== turn 0/120  Sweden (SWE) =====
@@ -19,30 +94,12 @@ The engine's agent door prints a turn as plain text and reads one line of
 
 *The design mockup that settled the layout: turn 0 of `1914:SWE`, from a real
 capture, drawn at the real size. Regenerate with `python3 templeos/mockup.py
-<capture> out.png`. What the machine itself now draws is under Status.*
+<capture> out.png`.*
 
-So a client has to read a file, draw 80×60 characters, and write a file. That
-is inside what this OS offers, and the turn it plays is a turn of the actual
-game — same map, same AI opponents, same rules.
-
-**The host runs the engine. TempleOS runs the player.**
-
-## Status
-
-| | |
-|---|---|
-| Protocol pinned by a test | ✅ `tests/agent_protocol_test.sh` |
-| Host bridge: a whole game as two files | ✅ `templeos/bridge.py`, tested |
-| Reference client | ✅ `templeos/guest_sim.py` |
-| Getting files into a guest | ✅ `templeos/vm.sh push` — TempleOS installs onto FAT32 |
-| `OpenDoc.HC` compiles under HolyC | ✅ |
-| `OpenDoc.HC` parses and draws a real turn | ✅ **on a real machine — screenshot below** |
-| `OpenDoc.HC` sends orders back | ✅ the engine accepted a line typed in TempleOS |
-| Files back out of the guest | ✅ `templeos/vm.sh pull` |
-| A map you can see and click | ✅ `OpenDocUI.HC` + `tools/templeos_world.py` |
-| Ethernet, ARP, IPv4, UDP | ✅ `templeos/Net.HC`, both directions |
-| True colour | ✅ proven, `templeos/Gfx.HC` — see below |
-| The rules running in TempleOS | ❌ next |
+So a client has to read a file, draw 80×60 characters, and write a file — well
+inside what this OS offers, and the turn it plays is a turn of the actual game:
+same map, same AI opponents, same rules. **The host runs the engine, TempleOS
+runs the player.** In the guest it is `#include "OpenDoc"` and `OpenDoc;`.
 
 ![Open Doctrines running on TempleOS](../docs/img/templeos-running.png)
 
@@ -57,8 +114,7 @@ turn 0: sent 'e:1, w:1, n:2'
 bridge: 1 turn(s) exchanged. [BENCH] seat 1914:SWE (rung) for 1 turns
 ```
 
-So the loop is closed: **the host runs the engine, TempleOS runs the player**,
-and the only thing passing between them is a 23-byte file.
+The only thing passing between them is a 23-byte file.
 
 An action the menu did not offer is refused before it is written. The engine
 drops a token it does not recognise without saying so, which from the guest is
@@ -66,7 +122,7 @@ indistinguishable from an order that was carried out — a typo would read as th
 game ignoring you. Typing `e:3` when economy offers 0, 1, 2, 4, 5, 7, 9, 10, 11
 gets *"ECONOMY has no action 3 this turn"* and writes nothing.
 
-What is left is cadence, not capability: each exchange stops and restarts the
+What limits it is cadence, not capability: each exchange stops and restarts the
 VM, because mounting a filesystem a running guest has open would corrupt it.
 At one turn per hour that is irrelevant; for a rapid game it would not do.
 
@@ -162,20 +218,21 @@ pointer in the same file faults. The shell manages it only because each
 command line is compiled *and run* before the next is read. Three lines, and
 the gap is written down rather than papered over.
 
-## Running it yourself
+## Driving the VM from the host
 
 ```
 templeos/vm.sh install                        # make the disk (once)
 templeos/vm.sh boot                           # install TempleOS from the ISO
-templeos/vm.sh push templeos/OpenDoc.HC turn.txt
+templeos/vm.sh push templeos/ODGame.HC world.odw game.odd font.odf
 templeos/vm.sh run
 templeos/vm.sh shot /tmp/screen.png           # look, without a window
 templeos/vm.sh pull orders.txt /tmp/          # bring the answer back
 ```
 
-Then in the guest: `#include "OpenDoc"` and `OpenDoc;`.
+Then in the guest: `#include "ODGame"` and `ODStart;`.
 
-A whole turn, host side:
+For the host-engine mode instead, push `OpenDoc.HC` and a `turn.txt`, and run
+`OpenDoc;`. A whole turn of it, host side:
 
 ```
 python3 templeos/bridge.py --build build --dir /tmp/odloop --turns 1 &
@@ -318,11 +375,14 @@ no threads for the 21 source files that use `std::thread`, no `mmap`, no
 process model, no ELF loader, and its own ABI. That is writing a userland, not
 porting a compiler.
 
-**And it would not be enough.** raylib needs OpenGL; this OS has a 640×480
-16-colour framebuffer and no GPU. Multiplayer needs TCP/IP; this OS has no
-network stack and no NIC driver. A perfect toolchain gets you a binary that
-cannot draw and cannot connect — you would still be writing a software renderer
-and a TCP stack, which is the actual work either way.
+**And it would not be enough.** raylib needs OpenGL, and there is no GPU here
+at all — the true colour above is a linear framebuffer written a pixel at a
+time. Multiplayer needs TCP; `Net.HC` is UDP. A perfect toolchain gets you a
+binary that cannot draw and cannot connect, and you would still be writing a
+software renderer and a TCP stack, which is the actual work either way.
+
+Which is what happened, in HolyC: `Paint.HC` is that software renderer, and it
+is 261 lines, because a map is flat regions rather than triangles.
 
 If the goal is "TempleOS-flavoured but reachable", **ZealOS** is a maintained
 fork with broader hardware support and is worth checking first. Whether it has
