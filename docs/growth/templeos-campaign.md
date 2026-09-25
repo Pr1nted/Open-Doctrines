@@ -1,72 +1,117 @@
-# The TempleOS campaign
+## The posts, one paragraph each
 
-## What the story actually is
+Use these. A paragraph gets read; a wall of headers gets scrolled past, and on
+Reddit the comments are where the detail belongs anyway — answer the questions
+people actually ask rather than pre-empting all of them. The longer versions
+are kept below for the comment replies and for anywhere that wants depth.
 
-Not "we ported a game". The story is that TempleOS turned out to be capable of
-far more than its reputation allows, and the evidence is specific:
-
-- It boots into 640×480 and sixteen colours because **one line of
-  `KStart16.HC` asks the BIOS for mode 0x12**. The Bochs DISPI registers set a
-  linear-framebuffer mode with no BIOS call, and the game runs at 1024×768 in
-  32-bit colour.
-- It ships **no network stack at all**, so the port carries one: an RTL8139
-  driver, ARP, IPv4 and UDP, about 380 lines. `hello from TempleOS` arrived on
-  a host listener; `pong from the host` came back.
-- It **decompresses its own source on read**, so the machine can be made to
-  unpack all 510 of its files for you to read — which is how most of the above
-  was found rather than guessed.
-
-That is a post about an operating system, told through a game. It is far more
-interesting than a post about a game that happens to run on one, and it is the
-version that is actually true.
-
-## Tone, and one thing to get right
-
-TempleOS's community is protective of Terry Davis, and rightly so. The tone
-that works is **respect through effort**: take the machine seriously, show
-your working, credit the OS for what it does well. The tone that fails is
-novelty — "look at this weird OS" — which reads as a joke at his expense.
-
-Concretely:
-- Say what the OS made *easy*. Identity-mapped memory means a pointer is a
-  physical address, so the NIC driver needs no DMA translation at all. Its
-  compiler builds 3,000 lines in 1.7 seconds. Say so.
-- Never imply the port "fixes" TempleOS or that it was hampering you.
-- "TempleOS is public domain, by Terry A. Davis" in every post. No more, no
-  less; do not editorialise about him.
-- Open Doctrines is **source-available, not open source**. Do not call it open
-  source anywhere.
-
-## Assets
-
-| File | Use |
-|---|---|
-| `docs/img/templeos-menu.png` | the lead image everywhere — it is instantly legible |
-| `docs/img/templeos-game.png` | the map in play |
-| `docs/img/templeos-actions.png` | all 39 actions; the "this is a real port" proof |
-| `docs/img/templeos-navy.png` | harbours and fleets |
-| `docs/img/templeos-truecolor.png` | the gradient; use only in technical posts |
-
-## The sequence
-
-Post to the technical audiences **first**. They will find the failure modes
-and the questions, and the answers make the later posts better. The game
-audiences last, when the release has survived contact.
-
-1. **r/TempleOS_Official** — the people whose machine it is. Day 1.
-2. **r/osdev** — day 1, a few hours later. Different post; this audience wants
-   the driver and the mode switch.
-3. **Hacker News**, Show HN — day 2 morning (US). Only after the first two
-   have gone quiet enough to answer comments properly.
-4. **r/grandstrategygames** and **r/StrategyGames** — day 3. The r/StrategyGames
-   post for Open Animal Stage did ~150k views; the format there is known to
-   work, so reuse its shape.
-5. **Lobste.rs** — only if HN lands. Tag `osdev`, `gamedev`.
-
-Do not post the same text twice. Each community is answering a different
-question.
+Link everywhere:
+https://github.com/Pr1nted/Open-Doctrines/releases/tag/templeos-v1.2.2a
 
 ---
+
+**r/TempleOS_Official** — gallery: menu, game, actions, navy, truecolor
+
+> *Title:* Open Doctrines runs on TempleOS. 1,632 provinces, all 39 actions, no host.
+
+> Rules, map and interface all on the machine, nothing on the other end of a
+> bridge: 1,632 provinces, 86 techs, 59 policies, fleets with a sea to cross,
+> at 1024x768 in 32-bit colour. The OS made more of this easy than I expected
+> — the compiler does 3,000 lines in 1.7 seconds so I stopped using a build
+> step, memory is identity-mapped so the NIC's receive buffer pointer goes
+> straight into the card's register, and it decompresses its own source on
+> read, so I had it unpack all 510 `.HC.Z` files and grepped them instead of
+> guessing. Two things I had wrong: the sixteen-colour limit is one line of
+> `KStart16.HC` asking VBE for mode 0x12, and `Except:Drv` out of
+> `Cd("D:/Home")` is not disk corruption, it is the live CD not mounting hard
+> drives. [link] — copy into `D:/Home`, `#include "ODGame"; ODStart;`, wants
+> DISPI so QEMU, Bochs or VirtualBox. TempleOS is public domain, by Terry A.
+> Davis.
+
+---
+
+**r/osdev** — gallery: truecolor, navy, game
+
+> *Title:* True colour and a network stack on TempleOS, which has neither
+
+> TempleOS asks VBE for mode 0x12 in one line of `KStart16.HC`, and you cannot
+> call the BIOS again later because it is long mode with no v86 — but the
+> Bochs DISPI ports at 0x1CE/0x1CF set a linear framebuffer with no BIOS at
+> all, so 1024x768x32 with the aperture from PCI BAR0, and the page tables
+> already cover it. Watch the legacy VGA window while you are there: 0xA0000 is
+> the first 64 KB of video memory, which at 1024 wide and 32bpp is your top
+> sixteen rows, and the window manager keeps repainting planar through it. For
+> networking I wrote an RTL8139 driver with ARP, IPv4 and UDP; identity-mapped
+> memory means the receive buffer pointer goes straight into RBSTART with no
+> translation or pinning, and the bug that cost me most was that CAPR starts
+> at -16, not 0, so a ring initialised to zero receives nothing and looks
+> exactly like dead hardware. Two more if you go further: an AOT compile
+> chains onto `cmp.asm_hash` rather than the running system's symbol table, so
+> it begins with no C types and rejects a two-line function until you hand it
+> the kernel headers in a project file; and a bare `$` stops the HolyC
+> compiler reading the file, silently, so every function after it ceases to
+> exist. [link]. TempleOS is public domain, by Terry A. Davis.
+
+---
+
+**Hacker News** — no images, submit the release URL
+
+> *Title:* Show HN: A grand strategy game running natively on TempleOS
+
+> Not streamed from a host and not a thin client: the rules, the map and the
+> interface all execute on the machine. TempleOS has no C++ compiler, no
+> OpenGL and no network stack, so this is a reimplementation of the rules in
+> HolyC with the world as a data file — 1,632 provinces, 39 actions, 86
+> research nodes, 59 policies, a sea map — and the port carries a video mode
+> the OS does not normally use plus an RTL8139 driver with ARP, IPv4 and UDP.
+> The sixteen-colour limit turned out to be one constant in the boot stub. What
+> keeps the two versions honest is CI rather than discipline: the desktop build
+> names its 39 actions, 8 map views and 20 policy levers in C++ source, and a
+> tool reads those lists and fails the build when the TempleOS side falls
+> behind or something new turns up unclassified. It cannot port code, but it
+> makes divergence loud. Source-available, not open source. TempleOS is public
+> domain, by Terry A. Davis.
+
+---
+
+**r/grandstrategygames / r/StrategyGames** — gallery: actions first, then
+game, views, sail, menu
+
+> *Title (grandstrategy):* My grand strategy game now runs on TempleOS, which has sixteen colours and no networking
+> *Title (StrategyGames):* I ported my strategy game to TempleOS
+
+> The whole game is on the machine, not a tech demo with a map painted on it:
+> 1,632 provinces with population, industry, forts, garrisons, harbours and
+> deposits, all 39 actions the PC version has from recruiting and shelling to
+> amphibious landings and trade agreements, the real 86-node tech tree with its
+> real gating, 59 policies that pull their levers, and unrest so conquered
+> ground costs you to hold. The rule I most wanted to keep survived — frontage:
+> a province fits only so many men, forts narrow it further, and past that
+> number extra troops do not fight at all, so ten million attackers hit a
+> narrow province with the same force as one million and the only difference is
+> who can afford the losses. TempleOS has sixteen colours and no networking, so
+> the port also carries a video mode the OS does not normally use and a network
+> driver, and the text is raylib's bitmap font baked glyph for glyph so it
+> reads the same as the desktop build. Free, runs in a VM: [link]. TempleOS is
+> public domain, by Terry A. Davis.
+
+---
+
+**Lobste.rs** — link, tags `osdev` and `gamedev`, one comment:
+
+> Author here. Two bits most likely to be useful: TempleOS's sixteen-colour
+> limit is one constant in the boot stub — it already calls VBE and asks for
+> mode 0x12, and the Bochs DISPI registers set a linear framebuffer with no
+> BIOS call. And an AOT compile chains onto `cmp.asm_hash` rather than the
+> running system's symbol table, so it starts with no C types and rejects a
+> two-line function until you hand it the kernel headers in a project file.
+
+---
+
+# Longer versions
+
+Kept for comment replies, and for anywhere that wants the detail rather than
+the pitch.
 
 ## The posts
 
