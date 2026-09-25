@@ -171,7 +171,9 @@ pixel out rather than scaling it.
 | Library logo | 1280×720 | the wordmark, **transparent**, over the hero |
 | Page background | 1438×810 | behind the store page |
 
-`tools/banner.py` builds all but the logo:
+`tools/banner.py` builds all but the logo, and `tools/steam-logo.py` builds
+that one — it is the wordmark on transparency rather than a map crop, so it
+does not belong in the same tool:
 
 ```bash
 python3 tools/banner.py --size steam-header   --region europe --out-dir docs/steam
@@ -196,10 +198,13 @@ For the **231×87 small capsule**, check it at actual size before uploading. A
 world map at that scale is a blue-grey smudge; if the wordmark does not read,
 crop tighter rather than shipping something illegible.
 
-For the **library logo**, `tools/itch-cover.py` already lifts the wordmark
-pixel-for-pixel out of the game's own menu and masks everything but the gold
-strokes to transparent. That mask is the asset — place it on a 1280×720
-transparent canvas.
+For the **library logo**, run `python3 tools/steam-logo.py`. It imports
+`tools/itch-cover.py`, which lifts the wordmark pixel-for-pixel out of the
+game's own menu and masks every pixel that is not a gold stroke to
+transparent, and centres it on the 1280×720 canvas at two thirds width. The
+margin is deliberate: Steam scales and places the logo over the hero from the
+library settings, and a wordmark that already fills its canvas can only be
+made smaller there.
 
 ### Screenshots
 
