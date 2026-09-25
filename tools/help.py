@@ -96,7 +96,7 @@ GROUPS = [
         # Turning a map into something the TempleOS build can draw and play,
         # and keeping that build's baked tables in step with this one.
         "templeos_map.py", "templeos_world.py", "templeos_data.py",
-        "templeos_font.py", "templeos_sync.py",
+        "templeos_font.py", "templeos_sync.py", "templeos_release.sh",
     ]),
     ("Building the world data", [
         "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",

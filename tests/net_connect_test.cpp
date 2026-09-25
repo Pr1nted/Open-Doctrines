@@ -1326,9 +1326,21 @@ int testRelay(const std::string& issuer) {
     check("a second relayed player is welcomed", bothIn && second.error().empty(),
           second.error());
 
+    // WAITED FOR, not sampled. A client reaching Lobby means the RELAY has
+    // answered it; the host seats it when the relay passes the join on, which
+    // is a frame or two later and more on a loaded machine. Reading the roster
+    // at the first opportunity passed here and failed on a CI runner.
     size_t others = 0;
-    for (const NetPeer& p : host.lobby().roster()) if (p.peerId != host.lobby().hostPeerId()) others++;
-    check("and the host seats them both", others == 2, std::to_string(others) + " seated");
+    const bool bothSeated = pumpUntil(&host, nullptr, [&] {
+        host.update(); session.update(); second.update();
+        drain(&host, nullptr, hostSeen);
+        others = 0;
+        for (const NetPeer& p : host.lobby().roster())
+            if (p.peerId != host.lobby().hostPeerId()) others++;
+        return others >= 2;
+    }, 15000);
+    check("and the host seats them both", bothSeated && others == 2,
+          std::to_string(others) + " seated");
 
     // ── WHAT A BROADCAST COSTS THE HOST ──
     //
