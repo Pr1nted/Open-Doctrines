@@ -96,6 +96,35 @@ per-chipset firmware, a MAC layer and a WPA2 supplicant, and a USB dongle would
 need a USB stack this OS does not have. It is not TCP either -- no
 retransmission, no ordering. ARP, IPv4 and UDP is what a turn game needs.
 
+## Is it a binary?
+
+**No. It is source, compiled on include.** `#include "ODGame"` runs the HolyC
+compiler over about 3,000 lines in roughly 1.7 seconds on every boot, and then
+`OD;` starts it. That is also how TempleOS ships everything it has -- the OS
+carries its own source and compiles it -- so it is the normal shape for
+software here rather than a shortcut.
+
+Ahead-of-time compilation does exist: `Cmp(file, map, out)` writes a `.BIN`
+and `Load()` reads one back, and it is how the kernel and the compiler
+themselves are built (`Adam/Opt/Boot/BootHDIns.HC`). Three things stand
+between that and a standalone Open Doctrines binary, and none of them is
+solved here:
+
+- **`Cmp` defaults its INPUT extension to `.PRJ`.** `Cmp("ODGame")` looks for
+  `ODGame.PRJ.Z`, finds nothing, and reports `Errs:0 Code:0` -- a clean
+  success that compiled nothing at all.
+- **`.BIN.Z` is not an 8.3 name.** Two dots do not fit `name.ext`, and this
+  OS's FAT32 writer only creates short names, so the output has to be named
+  explicitly.
+- **AOT rejects a typed parameter, at least from a booted shell.** `Cmp` on a
+  two-line `U0 Hi(I64 n)` fails with `Expecting type at "I64"` and drops into
+  the debugger, alongside the note *"Still in boot phase"*. The kernel build
+  passes a map file; whatever that sets up, an ordinary shell does not have
+  it. This was not chased further, and the gap is a real one rather than a
+  formality.
+
+So: source today, and a binary is a piece of work rather than a flag.
+
 ## Running it yourself
 
 ```

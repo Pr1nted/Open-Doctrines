@@ -72,8 +72,21 @@ U8 *GfxFrameBuffer()
 }
 
 /* Put the machine back the way TempleOS booted it: 640x480, sixteen colours,
- * planar -- which is what the rest of the OS is still drawing for. */
+ * planar -- which is what the rest of the OS is still drawing for.
+ *
+ * ── THE OFFSETS COME BACK TOO ──
+ *
+ * Paint.HC moves the visible page down the framebuffer to dodge the legacy
+ * VGA aperture, and setting the mode does not undo that. Leaving it set means
+ * the OS resumes drawing its planar screen at the start of video memory while
+ * the card is displaying from thirty-two rows in: the desktop comes back as
+ * diagonal confetti and stays that way until the machine is rebooted. Quitting
+ * the game used to do exactly that. */
 U0 GfxRestore()
 {
   DispiMode(640, 480, 4);
+  DispiWrite(6, 640);        /* virtual width  */
+  DispiWrite(7, 480);        /* virtual height */
+  DispiWrite(8, 0);          /* x offset */
+  DispiWrite(9, 0);          /* y offset */
 }
