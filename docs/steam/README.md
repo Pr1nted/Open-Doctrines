@@ -9,6 +9,42 @@ The counterpart to `docs/itch/README.md`. Read that one too — the screenshots,
 the honest "what is not finished" copy and the reasoning behind them are shared,
 and only the mechanics differ.
 
+## Where this actually stands
+
+Filled in as it happens, because the dates matter and nothing else in the
+repository records them.
+
+| | |
+|---|---|
+| Partner account | **443196**, verified 26 Sep 2026 |
+| appid | **1345390** |
+| Packages | 1843321 dev comp, 1843322 beta, 1843323 + 1843324 retail |
+| App created | **26 Sep 2026** — the 30-day wall runs from here, so **26 Oct** at the earliest |
+| `STEAM_APPID` / `STEAM_USERNAME` | set |
+| `STEAM_CONFIG_VDF` | not yet — needs the builder account to exist |
+| Depots | not verified; do not assume appid+1 / appid+2 |
+| Store page | not built |
+| Trailer | **missing.** See section 4 |
+
+The page has to be public a fortnight before release, so it must be submitted
+and through review well inside October for the 26th to be real.
+
+**steamcmd on macOS fails twice before it works**, and neither failure names
+its cause. Homebrew's cask arrives quarantined, so the first run aborts with
+`Abort trap: 6` and the second with `Fatal Error: Failed to load
+steamconsole.dylib` — Gatekeeper refusing to load unsigned frameworks Valve
+does not sign for distribution outside the Steam client. Finder offers to move
+`Breakpad.framework` to the Bin; do not, that deletes part of the install.
+
+```bash
+xattr -dr com.apple.quarantine /opt/homebrew/Caskroom/steamcmd
+```
+
+One `Permission denied` on `.homebrew-command-wrappers/steamcmd` is expected
+and harmless: the file is read-only and carries no quarantine flag to remove.
+
+---
+
 ## Read this first: Steam is not itch, in three ways that cost time
 
 **It costs $100 per app.** Recoupable against $1,000 of revenue, which a free
