@@ -318,6 +318,24 @@ Link, tags `osdev` and `gamedev`, one comment:
 
 ---
 
+## The comment you will get every time
+
+**"DesecratedOS?"** — or any variation on having defiled the temple. It came
+within the hour on r/osdev and it will come again on r/TempleOS_Official,
+because TempleOS's spec is not a set of limitations somebody worked around:
+640x480, sixteen colours, single-user and no networking were deliberate, and
+Terry Davis described them as fixed by God. Adding true colour and a NIC is
+exactly the thing the joke is for.
+
+It is friendly. It means they noticed you changed something load-bearing.
+
+The answer is short and happens to be true: nothing is patched. `Gfx.HC` sets
+the DISPI registers from an ordinary program and `GfxRestore` puts the desktop
+back on exit, so the machine still boots to 640x480 in sixteen colours. Say
+that, do not get defensive, and do not argue that the constraints were
+arbitrary -- to that crowd they were not, and the post does not need to win
+that argument to stand.
+
 ## What not to say
 
 - Do not call it open source.
