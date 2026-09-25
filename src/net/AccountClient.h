@@ -86,6 +86,16 @@ public:
 
     bool serviceReachable() const;
 
+    /**
+     * Why the service could not be reached, as the transport said it.
+     *
+     * Empty when it was reached, or when nothing has been tried yet. This is
+     * shown to the player: "could not reach it" and "this machine has no
+     * certificate store, so it cannot verify anybody" are the same screen and
+     * entirely different problems, and only one of them is about the service.
+     */
+    std::string unreachableReason() const;
+
     /** Asks the service what it offers. Cheap, and does not need a token. */
     bool probeService();
 

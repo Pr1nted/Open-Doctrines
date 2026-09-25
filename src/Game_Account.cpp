@@ -447,14 +447,21 @@ void Game::drawAccountMenu() {
 
             const std::vector<AuthProvider> providers = client.providers();
             if (providers.empty()) {
+                // THE REASON, WHEN THERE IS ONE. "Check that it is deployed"
+                // is the right advice for a service that is down and exactly
+                // the wrong advice for a machine that cannot verify a
+                // certificate -- which is what Windows was doing for a whole
+                // release, while players dutifully checked the service.
+                const std::string why = client.unreachableReason();
                 const char* a = client.serviceReachable()
-                    ? "The account service has no sign-in providers set up."
-                    : "Could not reach the account service.";
-                const char* b = client.serviceReachable()
-                    ? "Register an OAuth app and set its secrets, then try again."
-                    : "Check that it is deployed and that accountIssuer is right.";
+                    ? T("The account service has no sign-in providers set up.")
+                    : T("Could not reach the account service.");
+                const std::string b = client.serviceReachable()
+                    ? T("Register an OAuth app and set its secrets, then try again.")
+                    : why.empty() ? T("Check that it is deployed and that accountIssuer is right.")
+                                  : why;
                 DrawText(a, centerX - MeasureText(a, 19) / 2, startY - 10, 19, LIGHTGRAY);
-                DrawText(b, centerX - MeasureText(b, 15) / 2, startY + 18, 15, GRAY);
+                DrawText(b.c_str(), centerX - MeasureText(b.c_str(), 15) / 2, startY + 18, 15, GRAY);
 
                 const Button retry = buttonAt((float)(centerX - btnW / 2),
                                               (float)(startY + 60), (float)btnW,

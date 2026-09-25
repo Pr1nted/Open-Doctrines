@@ -241,6 +241,38 @@ void testBadgeStyle() {
 }
 
 
+// ── WHY IT COULD NOT BE REACHED ──
+//
+// The probe used to throw the transport's error away, and the sign-in screen
+// then told the player to check that the service was deployed. On Windows the
+// real answer for a whole release was "no system certificate store was found,
+// so the server's identity cannot be verified" -- which names the fault
+// exactly and was discarded three lines after it was produced. The players who
+// reported "cannot connect to the account service" were repeating what the
+// game told them.
+void testUnreachableReason() {
+    printf("\n=== why the account service could not be reached ===\n");
+
+    AccountClient& client = AccountClient::get();
+    // RFC5737 documentation space: guaranteed not routed, so this fails the
+    // way an unreachable service fails rather than by finding something.
+    client.init("http://198.51.100.1:9", "");
+    check("a probe against nowhere starts", client.probeService());
+
+    // The job runs on a worker, and the connect itself is bounded at three
+    // seconds by HttpClient. Poll for the answer rather than sleeping a
+    // guessed amount.
+    std::string why;
+    for (int i = 0; i < 300 && why.empty(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        why = client.unreachableReason();
+    }
+
+    check("and the service is not reachable", !client.serviceReachable());
+    check("and the reason survives instead of being discarded", !why.empty(),
+          "reason: '" + why + "'");
+}
+
 void testServerBook() {
     printf("\n=== server book ===\n");
 
@@ -591,6 +623,7 @@ int main() {
     testNicknameValidation();
     testKeyVsValue();
     testBadgeStyle();
+    testUnreachableReason();
     testServerBook();
     testTurnStoreWarnings();
     testManualTurnText();

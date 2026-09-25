@@ -128,6 +128,8 @@ struct AccountClient::Impl {
     std::vector<AuthProvider> providers;
     std::vector<AuthProvider> linkOnly;
     bool serviceReachable = false;
+    /// Why not, in the transport's own words. See probeInto.
+    std::string unreachableWhy;
     bool probed = false;
 
     std::string token;            // session token; never leaves this process
@@ -325,8 +327,18 @@ void AccountClient::Impl::applyAccountJson(const std::string& json) {
 void AccountClient::Impl::probeInto() {
     const HttpResponse res = httpRequest(baseRequest("GET", "/", false));
     if (!res.ok()) {
+        // ── KEEP THE REASON ──
+        //
+        // This used to discard res.error, and the screen then told the player
+        // to check that the service was deployed. On Windows the real answer
+        // was "no system certificate store was found, so the server's identity
+        // cannot be verified" -- a message that names the fault exactly, is
+        // produced, and was thrown away here. Players reported it as the
+        // service being unreachable, which is what they were told, and the
+        // actual bug went undiagnosed.
         std::lock_guard<std::mutex> lock(mutex);
         serviceReachable = false;
+        unreachableWhy = res.error;
         return;
     }
     // The reply is a small, flat, known object of ours. Looking for the exact
@@ -510,6 +522,11 @@ bool AccountClient::isLinkOnly(AuthProvider p) const {
 bool AccountClient::serviceReachable() const {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     return m_impl->serviceReachable;
+}
+
+std::string AccountClient::unreachableReason() const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    return m_impl->serviceReachable ? std::string() : m_impl->unreachableWhy;
 }
 
 bool AccountClient::probeService() {
