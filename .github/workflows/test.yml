@@ -397,12 +397,48 @@ jobs:
       - name: Build the shared library
         run: |
           set -e
+          # ── THE ACCOUNT SERVICE, BAKED IN ──
+          #
+          # This job builds the APK that is PUBLISHED: the release workflow
+          # runs this one and pushes the artifact it produces to itch. Every
+          # other platform gets -DOD_ACCOUNT_ISSUER from the release workflow's
+          # own build step; the APK never did, so multiplayer would compile in
+          # and then report "no account service is configured" on the one
+          # screen a player has to get past to use it. That is the same shape
+          # as v1.0.4a shipping with sign-in disabled -- see the note in
+          # release-game.yml -- and it is checked below rather than assumed.
           cmake -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
             -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
-            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON
+            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
           cmake --build build-android -j 2
+
+      # The library that is about to be packaged, not a build made to test
+      # with: if the address is not in it, the Multiplayer screen on a phone
+      # says there is no account service and nothing a player does gets past
+      # that.
+      - name: The APK knows where to sign in
+        run: |
+          set -e
+          SO=build-android/libopendoctrines.so
+          # -a: without it grep treats the library as binary and answers
+          # "binary file matches" or nothing at all depending on which grep the
+          # runner has -- which is a check that passes by accident.
+          grep -aqF "opendoctrines-net.opendoctrines.workers.dev" "$SO" || {
+            echo "::error title=No account service::The Android library carries no"
+            echo "account service address, so multiplayer cannot be signed into."
+            echo "Check the -DOD_ACCOUNT_ISSUER on the configure step above."
+            exit 1; }
+          echo "the account service address is in the library"
+          # Networking itself, for the same reason: the APK shipped without it
+          # for a long time and nothing said so.
+          grep -aqF "cannot join or host a multiplayer game" "$SO" && {
+            echo "::error title=No networking::This library was built with"
+            echo "-DOD_ENABLE_NET=OFF, so it cannot play multiplayer at all."
+            exit 1; }
+          echo "and the multiplayer transport is compiled in"
 
       # A .so that linked is not the same as one Android can start. Both symbols
       # are reached only by dlsym, so the linker will happily drop them and the
