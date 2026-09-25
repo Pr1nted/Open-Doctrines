@@ -6,7 +6,8 @@
  * only thing outside is the disk it was read from.
  *
  *     #include "ODGame"
- *     ODGame("SWE");
+ *     ODStart;          // the menu
+ *     ODGame("SWE");    // or straight into a seat
  *
  * The file is called ODGame.HC and not OpenDocGame.HC because a name longer
  * than eight characters needs a long-filename entry on FAT, and an #include
@@ -1052,7 +1053,7 @@ I64 GSelect()
  * Takes a country and plays, assuming the world is loaded and the framebuffer
  * is already ours. Split out so the menu can start a game and get control
  * back when it ends, without either of them owning the video mode. */
-U0 ODPlay(I64 cid)
+public U0 ODPlay(I64 cid)
 {
   I64 ch, i, s, men, cost, tgt, n, prov, inc;
 
@@ -1885,7 +1886,7 @@ g_done:
 
 /* The direct entry: load a world, take the screen, play one seat, give it
  * back. Convenient when you already know which country you want. */
-U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
+public U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
 {
   I64 i, cid = -1;
 
@@ -1926,7 +1927,14 @@ U0 ODGame(U8 *iso = "SWE", U8 *world = "world.odw")
  *     #include "ODGame"
  *     OD;
  */
-U0 OD(U8 *world = "world.odw")
+/* ── public, AND NOT CALLED "OD" ──
+ *
+ * `public` is what puts a symbol in the table Load() adds to the running
+ * system; without it the binary loads and exports nothing anybody can call.
+ * And the short name resolved to a class rather than a function when called
+ * from the shell -- "Invalid class at )" -- so the entry point has a name
+ * nothing else wants. */
+public U0 ODStart(U8 *world = "world.odw")
 {
   I64 ch, cur = 0, cid;
   Bool dirty;

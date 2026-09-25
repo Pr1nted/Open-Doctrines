@@ -98,32 +98,49 @@ retransmission, no ordering. ARP, IPv4 and UDP is what a turn game needs.
 
 ## Is it a binary?
 
-**No. It is source, compiled on include.** `#include "ODGame"` runs the HolyC
-compiler over about 3,000 lines in roughly 1.7 seconds on every boot, and then
-`OD;` starts it. That is also how TempleOS ships everything it has -- the OS
-carries its own source and compiles it -- so it is the normal shape for
-software here rather than a shortcut.
+**Yes, now.** `dist/open-doctrines-templeos-<version>.zip` carries `ODBIN.BIN`
+-- 881 KB of machine code with a `TOSB` signature, compiled ahead of time by
+TempleOS's own compiler -- plus the world, the tables and the font. Build it
+with `tools/templeos_release.sh`, which bakes the data, boots the guest, runs
+`Cmp` inside it and takes the result back out. The VM is part of the build
+because there is no cross-compiler and the artifact ought to be what that
+machine actually produced.
 
-Ahead-of-time compilation does exist: `Cmp(file, map, out)` writes a `.BIN`
-and `Load()` reads one back, and it is how the kernel and the compiler
-themselves are built (`Adam/Opt/Boot/BootHDIns.HC`). Three things stand
-between that and a standalone Open Doctrines binary, and none of them is
-solved here:
+Getting there took four discoveries, each of which looked like a bug in the
+game and was not:
 
 - **`Cmp` defaults its INPUT extension to `.PRJ`.** `Cmp("ODGame")` looks for
   `ODGame.PRJ.Z`, finds nothing, and reports `Errs:0 Code:0` -- a clean
-  success that compiled nothing at all.
-- **`.BIN.Z` is not an 8.3 name.** Two dots do not fit `name.ext`, and this
-  OS's FAT32 writer only creates short names, so the output has to be named
-  explicitly.
-- **AOT rejects a typed parameter, at least from a booted shell.** `Cmp` on a
-  two-line `U0 Hi(I64 n)` fails with `Expecting type at "I64"` and drops into
-  the debugger, alongside the note *"Still in boot phase"*. The kernel build
-  passes a map file; whatever that sets up, an ordinary shell does not have
-  it. This was not chased further, and the gap is a real one rather than a
-  formality.
+  success that compiled nothing.
+- **An AOT build starts with no C types at all.** `CmpJoin` chains a JIT
+  compile onto the running system's symbol table and an AOT compile onto
+  `cmp.asm_hash`, the assembler symbols. That is why `Cmp` on a two-line
+  `U0 Hi(I64 n)` fails with *"Expecting type at I64"*: not the code, a build
+  with no headers.
+- **So the preamble is the whole trick**, and it is copied from
+  `/Compiler/Compiler.PRJ`, this machine's own example of a module compiled
+  against a kernel it does not contain. `KernelA.HH` for the types,
+  `CompilerA.HH` for the `IC_*` intrinsic codes -- without those,
+  `KernelB.HH`'s `public _intern IC_BSF I64 Bsf(...)` is "Invalid lval" --
+  and `OPTf_EXTERNS_TO_IMPORTS` so the system's externs become names resolved
+  by `Load()` instead of code emitted into the binary.
+- **`public` is what exports a symbol**, and the entry point may not be called
+  `OD`: the short name resolved to a class from the shell ("Invalid class at
+  )"). It is `ODStart` now.
 
-So: source today, and a binary is a piece of work rather than a flag.
+What is still not one command: launching it.
+
+```
+#include "RUN"                      loads the binary
+U0 (*f)(U8 *w) = ODStart;           the symbol arrives as an ADDRESS
+(*f)("world.odw");                  so it is entered through a pointer
+```
+
+A file is compiled in full before any of it runs, so a `Load()` on line one
+leaves `ODStart` unknown to line two; `#exe` gets past that but declaring the
+pointer in the same file faults. The shell manages it only because each
+command line is compiled *and run* before the next is read. Three lines, and
+the gap is written down rather than papered over.
 
 ## Running it yourself
 
