@@ -21,8 +21,8 @@ repository records them.
 | Packages | 1843321 dev comp, 1843322 beta, 1843323 + 1843324 retail |
 | App created | **26 Sep 2026** — the 30-day wall runs from here, so **26 Oct** at the earliest |
 | `STEAM_APPID` / `STEAM_USERNAME` | set |
-| Builder account | `od_builder` |
-| `STEAM_CONFIG_VDF` | not yet |
+| Builder account | `od_builder`, isolated HOME |
+| `STEAM_CONFIG_VDF` | set; `check-steam.yml` green 26 Sep 2026 |
 | Depots | not verified; do not assume appid+1 / appid+2 |
 | Store page | not built |
 | Trailer | **missing.** See section 4 |
@@ -139,25 +139,38 @@ website with. Give it access to this app only, in **Users & Permissions**. A CI
 credential that can publish one app is a much smaller problem than one that can
 publish everything and change the bank details.
 
-Then, once, on your own machine:
+Then, once, on your own machine — **and not into the Steam directory you
+already have**:
 
 ```bash
-steamcmd +login od_builder +quit
+mkdir -p ~/.steam-od-builder
+HOME=~/.steam-od-builder steamcmd +login od_builder +quit
 ```
 
 Type the password and the Steam Guard code. On success steamcmd writes a
-`config.vdf` holding a refresh token:
-
-| Platform | Path |
-|---|---|
-| macOS | `~/Library/Application Support/Steam/config/config.vdf` |
-| Linux | `~/Steam/config/config.vdf` |
-
-Base64 it and store that as the repository secret:
+`config.vdf` holding a refresh token, and the secret is that file:
 
 ```bash
-base64 -i ~/Library/Application\ Support/Steam/config/config.vdf | gh secret set STEAM_CONFIG_VDF
+base64 -i ~/.steam-od-builder/Library/Application\ Support/Steam/config/config.vdf \
+  | gh secret set STEAM_CONFIG_VDF
 ```
+
+**Why the separate HOME, and not the default path.** steamcmd shares its
+directory with the desktop Steam client. On a machine where you are also
+signed in to Steam normally, `~/Library/Application Support/Steam/config/config.vdf`
+holds *your own* account — its SteamID, its sentry file, its session — and
+base64ing the whole thing into a repository secret uploads that too. Which is
+precisely the blast radius the separate builder account exists to avoid, so
+the two instructions were cancelling out. A clean HOME gives steamcmd a root
+of its own, and the resulting file has one account in it and nothing else.
+Check before you upload:
+
+```bash
+grep -c '<your own steam login>' ~/.steam-od-builder/Library/Application\ Support/Steam/config/config.vdf
+```
+
+Zero, or start again. On Linux the isolated path is
+`~/.steam-od-builder/Steam/config/config.vdf`.
 
 **It will expire.** Not on a schedule you control, and the symptom is a release
 whose very last step fails after everything else has published. That is exactly
