@@ -84,6 +84,25 @@ void update(float dt, int screenW, int screenH) {
     s_dragNotches = 0.0f;
     s_delta = {0.0f, 0.0f};
 
+    // ── THE ARMED REGION LASTS ONE FRAME, WHICH IS WHAT IT ALWAYS CLAIMED ──
+    //
+    // armScrollRegion set a flag that nothing ever cleared, and the screens on
+    // the way into a game -- pick a world, load a save, settings -- arm the
+    // WHOLE SCREEN every frame through odScrollWheelScreen. So after visiting
+    // any of them, every one-finger drag anywhere was classified as a list
+    // scroll for the rest of the session. A scroll deliberately withholds the
+    // left button, and the map pan is gated on that button, so on Android the
+    // map simply could not be dragged: no button, no wheel, and a delta
+    // nothing was allowed to read. Sliders went the same way.
+    //
+    // Consumed here, at the top: odScrollWheel arms during the update and draw
+    // that follow, so an arm from frame N is read by frame N+1 and then
+    // forgotten. A list still on screen re-arms itself every frame and keeps
+    // scrolling exactly as before. NOT cleared at the end of this function --
+    // it has two early returns below.
+    const bool armedLastFrame = s_scrollArmed;
+    s_scrollArmed = false;
+
     const Vector2 mouseNow = GetMousePosition();
     const int n = GetTouchPointCount();
     if (n > 0) {
@@ -163,7 +182,7 @@ void update(float dt, int screenW, int screenH) {
             // finger actually does.
             s_dragOrigin = p;
             s_dragAccum = 0.0f;
-            s_dragScrolling = s_scrollArmed && inRect(p, s_scrollArm);
+            s_dragScrolling = armedLastFrame && inRect(p, s_scrollArm);
         }
         s_cursor = p;
         s_prevP0 = p;

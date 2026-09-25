@@ -248,6 +248,58 @@ int main() {
         ok(!odTouch::dragScrolling(), "and is not a scroll");
     }
 
+    section("a list left behind does not keep claiming every drag");
+    {
+        // WHAT ACTUALLY SHIPPED. Every case above re-arms the region on every
+        // frame, so none of them could see that the flag was never cleared --
+        // and the screens on the way into a game arm the WHOLE SCREEN
+        // (odScrollWheelScreen passes {0,0,1e6,1e6}) every frame they are up.
+        // So after picking a world or loading a save, the arm stayed on for
+        // the rest of the session and every drag anywhere became a list
+        // scroll: no left button, and therefore no map pan and no slider,
+        // for as long as the game was open.
+        lift(); frame();
+        const Rectangle wholeScreen = {0.0f, 0.0f, 1.0e6f, 1.0e6f};
+        odTouch::armScrollRegion(wholeScreen);     // a browser screen, once
+        frame();                                   // ... which is then left
+        for (int i = 0; i < 5; ++i) frame();       // several frames on the map
+
+        oneFinger(600, 150); frame();
+        bool down = false;
+        float notches = 0.0f;
+        Vector2 lastDelta = {0, 0};
+        for (int i = 0; i < 10; ++i) {
+            oneFinger(600, 150.0f + 10.0f * (i + 1));
+            frame();
+            notches += odTouch::takeDragScroll();
+            if (odTouch::mouseDown(MOUSE_BUTTON_LEFT)) down = true;
+            lastDelta = odTouch::delta();
+        }
+        ok(down, "a drag after leaving that screen holds the left button");
+        ok(!isZero(lastDelta), "and reports travel, so the map can pan");
+        ok(notches == 0.0f, "and is not turned into wheel notches");
+        ok(!odTouch::dragScrolling(), "and is not a scroll");
+    }
+
+    section("a list still on screen keeps scrolling");
+    {
+        // The other side of the same rule: a list re-arms itself every frame,
+        // so expiring the arm must not cost it its scroll.
+        lift(); frame();
+        float notches = 0.0f;
+        odTouch::armScrollRegion(list);
+        oneFinger(150, 150); frame();
+        for (int i = 0; i < 10; ++i) {
+            odTouch::armScrollRegion(list);        // as the list does, per frame
+            oneFinger(150, 150.0f + 12.0f * (i + 1));
+            frame();
+            notches += odTouch::takeDragScroll();
+        }
+        ok(notches != 0.0f, "a swipe on a live list still scrolls it");
+        ok(!odTouch::mouseDown(MOUSE_BUTTON_LEFT),
+           "and still withholds the button, so it does not press a row");
+    }
+
     section("the origin decides, once");
     {
         // A finger that starts on a list and wanders off the edge of it is
