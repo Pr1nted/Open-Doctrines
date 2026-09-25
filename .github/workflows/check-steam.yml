@@ -97,7 +97,22 @@ jobs:
           cd steamcmd
           ./steamcmd.sh +login "$STEAM_USERNAME" +quit < /dev/null | tee login.log
 
-          if grep -q "Logged in OK" login.log; then
+          # steamcmd COLOURS its output, so the escapes come off before
+          # anything is matched. The success line arrives as
+          #   Logging in user 'x' [U:1:n] to Steam Public...<ESC>[0mOK
+          # with a reset between the dots and the OK, so a grep for a literal
+          # "...OK" never fires. This check previously looked for "Logged in
+          # OK", a string steamcmd does not print at all -- so it failed on a
+          # perfectly good session and told you to regenerate the credential.
+          perl -pe 's/\e\[[0-9;]*[a-zA-Z]//g' login.log > login.txt
+
+          # Both halves matter. The second says the login worked; the first
+          # says it worked WITHOUT a password, which is the only thing CI can
+          # do. A session that prompts would read EOF from < /dev/null and
+          # fail as an invalid password, which is the same symptom as a wrong
+          # one and worth distinguishing in the log.
+          if grep -q "Logging in using cached credentials" login.txt \
+             && grep -qE "Logging in user .* to Steam Public\.\.\.OK" login.txt; then
             echo "Steam builder session is valid."
           else
             echo "::error title=Steam login failed::The stored session did not \
