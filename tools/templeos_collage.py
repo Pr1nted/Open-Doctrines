@@ -3,11 +3,16 @@
 
 For posts that allow a single image. Side by side is the whole argument: the
 desktop build and the TempleOS build have the same map, the same left-hand
-statistics panel, the same tab bar along the bottom and the same buttons down
-the right -- so the comparison makes its own case without a caption doing it.
+statistics panel, the same tab bar along the bottom and the same four buttons
+down the right -- so the comparison makes its own case without a caption doing
+it for it. Which is why the desktop half is world-map.png and not one of the
+screenshots with a panel open: an open panel is detail this picture is not
+making an argument about, and it costs the side-by-side its symmetry.
 
-Stacked rather than side by side because both are landscape; sitting them in a
-column keeps each one wide enough to read.
+Matched on HEIGHT, not width. The two screenshots are different shapes (16:9
+against TempleOS's 1024x768), so scaling both to one width would leave the
+shorter one floating in a gap and the pair reading as two pictures that happen
+to be near each other rather than as one comparison.
 
     python3 tools/templeos_collage.py docs/img/templeos-compare.png
 """
@@ -19,16 +24,16 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-W = 1280                 # width each screenshot is scaled to
+H = 800                  # height both screenshots are scaled to
 PAD = 28
-GAP = 20
-LABEL_H = 46
+GAP = 24
+LABEL_H = 48
 BG = (14, 15, 19)
 FG = (232, 234, 240)
 DIM = (140, 146, 158)
 
-TOP = ("docs/img/province.png", "Windows, macOS, Linux, browser", "C++ and OpenGL")
-BOT = ("docs/img/templeos-game.png", "TempleOS", "HolyC, 1024x768, no host")
+LEFT = ("docs/img/world-map.png", "Windows, macOS, Linux, browser", "C++ and OpenGL")
+RIGHT = ("docs/img/templeos-game.png", "TempleOS", "HolyC, no host")
 
 
 def font(size, bold=False):
@@ -44,7 +49,7 @@ def font(size, bold=False):
 
 def scaled(path):
     im = Image.open(path).convert("RGB")
-    return im.resize((W, round(im.height * W / im.width)), Image.LANCZOS)
+    return im.resize((round(im.width * H / im.height), H), Image.LANCZOS)
 
 
 def main() -> int:
@@ -54,27 +59,27 @@ def main() -> int:
 
     root = pathlib.Path(__file__).resolve().parent.parent
     try:
-        top, bot = scaled(root / TOP[0]), scaled(root / BOT[0])
+        left, right = scaled(root / LEFT[0]), scaled(root / RIGHT[0])
     except FileNotFoundError as e:
         print(f"missing screenshot: {e}", file=sys.stderr)
         return 1
 
-    h = PAD + LABEL_H + top.height + GAP + LABEL_H + bot.height + PAD
-    out = Image.new("RGB", (W + PAD * 2, h), BG)
+    out = Image.new("RGB", (PAD * 2 + left.width + GAP + right.width,
+                            PAD * 2 + LABEL_H + H), BG)
     d = ImageDraw.Draw(out)
-    big, small = font(24, True), font(17)
+    big, small = font(26, True), font(18)
 
-    y = PAD
-    for im, (_, title, note) in ((top, TOP), (bot, BOT)):
-        d.text((PAD, y), title, font=big, fill=FG)
-        tw = d.textlength(title, font=big)
-        d.text((PAD + tw + 14, y + 6), note, font=small, fill=DIM)
-        y += LABEL_H
-        out.paste(im, (PAD, y))
-        # A hairline keeps the two screenshots from bleeding into each other
-        # where both are nearly black at the edges.
-        d.rectangle([PAD, y, PAD + W - 1, y + im.height - 1], outline=(46, 49, 56))
-        y += im.height + GAP
+    x = PAD
+    for im, (_, title, note) in ((left, LEFT), (right, RIGHT)):
+        d.text((x, PAD), title, font=big, fill=FG)
+        d.text((x + d.textlength(title, font=big) + 14, PAD + 7), note,
+               font=small, fill=DIM)
+        out.paste(im, (x, PAD + LABEL_H))
+        # A hairline, because both screenshots are nearly black at the edges
+        # and would otherwise bleed into the background and into each other.
+        d.rectangle([x, PAD + LABEL_H, x + im.width - 1, PAD + LABEL_H + H - 1],
+                    outline=(46, 49, 56))
+        x += im.width + GAP
 
     out.save(a.out)
     print(f"{a.out}: {out.width}x{out.height}")

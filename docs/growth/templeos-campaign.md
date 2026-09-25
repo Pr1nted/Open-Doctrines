@@ -12,9 +12,11 @@ https://github.com/Pr1nted/Open-Doctrines/releases/tag/templeos-v1.2.2a
 
 **r/TempleOS_Official** — one image: `docs/img/templeos-compare.png`
 
-That collage is the post. Same game, same screen layout, one running on
-Windows and one on TempleOS. It makes the point before anyone reads a word,
-which is what you want from a single image.
+That collage is the post: the desktop game on the left, TempleOS on the right.
+They line up element for element -- the same four buttons down the side in the
+same order, the same eight tabs along the bottom, the same green Process Turn
+in the corner -- so it makes the point before anyone reads a word, which is
+what you want from a single image.
 
 This one presents the thing rather than telling war stories. The people there
 know the machine; what they have not seen is a grand strategy game on it. Save
