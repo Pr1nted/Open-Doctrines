@@ -69,10 +69,13 @@ Vector2 MapRenderer::getMouse() const {
     // happens to follow touch point zero so this looked like it worked, but a
     // desktop touchscreen synthesises nothing -- there the map was the one
     // surface that could not see the cursor every panel could.
-    if (odTouch::active()) { Vector2 c = odTouch::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
-    if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale, c.y * m_dpiScale }; }
-    Vector2 m = GetMousePosition();
-    return { m.x * m_dpiScale, m.y * m_dpiScale };
+    // Through odPointerIn, which divides by the UI scale -- see there. This
+    // used not to, while every panel's copy did, so on Android the map was
+    // hit-tested and panned a scale factor away from the finger.
+    const float ui = odUi::scale();
+    if (odTouch::active()) return odPointerIn(odTouch::cursor(), m_dpiScale, ui);
+    if (odPad::active())   return odPointerIn(odPad::cursor(), m_dpiScale, ui);
+    return odPointerIn(GetMousePosition(), m_dpiScale, ui);
 }
 
 MapRenderer::~MapRenderer() {

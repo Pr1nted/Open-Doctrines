@@ -23,6 +23,7 @@
 
 #include "raylib.h"
 #include "Touch.h"
+#include "UiScale.h"
 
 #include <cmath>
 #include <cstdio>
@@ -279,6 +280,33 @@ int main() {
         ok(!isZero(lastDelta), "and reports travel, so the map can pan");
         ok(notches == 0.0f, "and is not turned into wheel notches");
         ok(!odTouch::dragScrolling(), "and is not a scroll");
+    }
+
+    section("a pointer lands where it is drawn, whatever the scale");
+    {
+        // Two copies of this sum disagreed: every panel divided by the UI
+        // scale and the map did not. On a desktop the scale is 1 and nothing
+        // showed; on a phone it never is, so the map was hit-tested and
+        // panned a scale factor away from the finger that every panel saw in
+        // the right place.
+        const Vector2 raw = {600.0f, 300.0f};
+        const Vector2 plain = odPointerIn(raw, 1.0f, 1.0f);
+        ok(plain.x == 600.0f && plain.y == 300.0f, "with no scaling it is itself");
+
+        const Vector2 scaled = odPointerIn(raw, 1.0f, 1.5f);
+        ok(scaled.x == 400.0f && scaled.y == 200.0f,
+           "a magnified frame divides the pointer by the magnification");
+
+        const Vector2 hidpi = odPointerIn(raw, 2.0f, 1.0f);
+        ok(hidpi.x == 1200.0f && hidpi.y == 600.0f,
+           "and a high-density window multiplies it by the density");
+
+        const Vector2 both = odPointerIn(raw, 2.0f, 2.0f);
+        ok(both.x == 600.0f && both.y == 300.0f, "both together cancel out");
+
+        const Vector2 safe = odPointerIn(raw, 1.0f, 0.0f);
+        ok(safe.x == 600.0f && safe.y == 300.0f,
+           "and a scale of zero is treated as one rather than dividing by it");
     }
 
     section("a list still on screen keeps scrolling");

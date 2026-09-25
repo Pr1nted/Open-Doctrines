@@ -1796,9 +1796,9 @@ public:
         // every screen now hit-tests in the LOGICAL space odUi magnifies from.
         // Without this the cursor lands 1.5x away from whatever it is over.
         const float u = odUi::scale();
-        if (odTouch::active()) { Vector2 c = odTouch::cursor(); return { c.x * m_dpiScale / u, c.y * m_dpiScale / u }; }
-        if (odPad::active()) { Vector2 c = odPad::cursor(); return { c.x * m_dpiScale / u, c.y * m_dpiScale / u }; }
-        return { GetMousePosition().x * m_dpiScale / u, GetMousePosition().y * m_dpiScale / u };
+        if (odTouch::active()) return odPointerIn(odTouch::cursor(), m_dpiScale, u);
+        if (odPad::active())   return odPointerIn(odPad::cursor(), m_dpiScale, u);
+        return odPointerIn(GetMousePosition(), m_dpiScale, u);
     }
 
     LandSeaMap m_landSea;

@@ -42,6 +42,26 @@ void setScale(float s);
 
 }  // namespace odUi
 
+/**
+ * Where a pointer really is, in the space the game lays itself out in.
+ *
+ * `raw` is what the platform reports, `dpi` converts a window point to a
+ * framebuffer pixel, and `ui` is the magnification the whole frame is drawn
+ * through (odBeginDrawingScaled below). Dividing by `ui` is what nobody can
+ * skip: EVERYTHING is drawn inside that matrix, the map included, so a
+ * pointer left in physical pixels lands `ui` times away from what it is over.
+ *
+ * ONE FUNCTION because there were two copies and they disagreed: Game::getMouse
+ * divided by the scale and MapRenderer::getMouse did not, so on a phone -- the
+ * one platform where the scale is never 1 -- every panel saw the finger in one
+ * place and the map saw it somewhere else, and a drag moved the camera by the
+ * wrong distance.
+ */
+inline Vector2 odPointerIn(Vector2 raw, float dpi, float ui) {
+    const float u = (ui > 0.0f) ? ui : 1.0f;
+    return { raw.x * dpi / u, raw.y * dpi / u };
+}
+
 inline void odBeginDrawingScaled() {
     BeginDrawing();
     const float s = odUi::scale();
