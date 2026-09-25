@@ -51,28 +51,32 @@ the debugging for the comments, where somebody has asked.
 
 ---
 
-**r/osdev** — images: truecolor, navy, game
+**r/osdev** — images: truecolor, game
 
-> *Title:* True colour and a network stack on TempleOS, which has neither
+The OS work is the post here, not the game. A "look what I made" on r/osdev
+gets removed; a driver and a mode-set is what that sub is for, and the game is
+what it was for. Two findings, not five — the AOT compiler and the HolyC
+parser bugs are in the longer version below, for when somebody asks.
 
-> TempleOS asks VBE for mode 0x12 in one line of `KStart16.HC`, and you cannot
-> call the BIOS again later because it runs in long mode with no v86. The
-> Bochs DISPI ports at 0x1CE/0x1CF set a linear framebuffer without the BIOS,
-> so you can have 1024x768x32 with the aperture from PCI BAR0, and the page
-> tables already cover it. Watch the old VGA window while you are there:
-> 0xA0000 is the first 64 KB of video memory, which at 1024 wide and 32bpp is
-> your top sixteen rows, and the window manager keeps painting planar through
-> it. For networking I wrote an RTL8139 driver with ARP, IPv4 and UDP. Memory
-> is identity-mapped, so the receive buffer pointer goes straight into RBSTART
-> with no translation and no pinning. The bug that cost me most: CAPR starts
-> at -16, not 0. Set it to zero and the card thinks the reader is ahead of the
-> writer and delivers nothing, which looks exactly like dead hardware. Two
-> more if you go further. An AOT compile chains onto `cmp.asm_hash` instead of
-> the running system's symbol table, so it starts with no C types and rejects
-> a two-line function until you give it the kernel headers in a project file.
-> And a bare `$` stops the HolyC compiler reading the file without saying so,
-> which quietly deletes every function after it. [link]. TempleOS is public
-> domain, by Terry A. Davis.
+> *Title:* Getting 1024x768x32 and an RTL8139 working on TempleOS
+
+> I wanted to run a game on it, so it needed a screen mode and a NIC first.
+>
+> The colour limit is one line in `KStart16.HC` — it already calls VBE and
+> just asks for mode 0x12. You cannot call the BIOS again later, since it runs
+> in long mode with no v86, but the Bochs DISPI ports at 0x1CE/0x1CF set a
+> linear framebuffer without it: 1024x768x32, aperture from PCI BAR0, and the
+> page tables already cover it.
+>
+> The NIC is an RTL8139 with ARP, IPv4 and UDP over it. Memory is
+> identity-mapped, so the receive buffer pointer goes straight into RBSTART
+> with no translation and no pinning. The bug that cost me most: CAPR
+> starts at -16, not 0. Set it to zero and the card thinks the reader is ahead
+> of the writer and hands you nothing, which looks exactly like dead hardware.
+>
+> [link]
+>
+> TempleOS is public domain, by Terry A. Davis.
 
 ---
 
