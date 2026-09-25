@@ -68,48 +68,68 @@ question.
 
 ---
 
-## 1. r/TempleOS_Official
+## 1. r/TempleOS_Official  — FINAL, paste as-is
 
-**Title:** Open Doctrines runs on TempleOS — 1,632 provinces, all 39 actions,
-no host engine
+Post as an **image gallery** in this order: menu, game, actions, navy,
+truecolor. The menu is the hook — it is instantly legible as a game and
+instantly legible as TempleOS.
 
-I have spent the last while getting a grand strategy game to run properly on
-TempleOS, and it is now doing the whole job on the machine: the rules, the
-map and the interface, with nothing on the other side of a bridge.
+**Title:**
 
-What it does:
+    Open Doctrines runs natively on TempleOS — 1,632 provinces, all 39 actions, no host
+
+**Body:**
+
+I have spent a while getting a grand strategy game running properly on
+TempleOS, and it now does the whole job on the machine: the rules, the map and
+the interface, with nothing on the other side of a bridge.
+
+What it carries:
 
 - 1,632 provinces with adjacency, population, armies, harbours and deposits
-- all 39 actions the desktop game offers — war, economy, politics, navy
-- 86 research nodes and 59 policies, taken from the desktop game's own tables
+- all 39 actions the desktop version offers — war, economy, politics, navy
+- 86 research nodes and 59 policies, taken from the desktop version's own tables
 - a sea map, so fleets sail between harbours across open water
 - 1024×768 in 32-bit colour
 
-Three things the OS deserves credit for, because they made this far easier
-than it would have been anywhere else:
+Three things the OS deserves credit for, because each made this easier than it
+would have been anywhere else:
 
 **The compiler is genuinely fast.** Three thousand lines of HolyC compile in
-about 1.7 seconds on an emulated machine. I stopped bothering with a build
-step for most of this work.
+about 1.7 seconds on an emulated machine. For most of this work I stopped
+bothering with a build step at all — `#include` and it is running.
 
 **Memory is identity-mapped**, so a pointer *is* a physical address. The
 network driver writes its receive buffer's address straight into the card's
-register — no translation, no page pinning, none of the ceremony that
-normally surrounds DMA.
+register. No translation, no page pinning, none of the ceremony that usually
+surrounds DMA. I have written that driver on other systems and this was the
+short version.
 
 **It decompresses its own source on read.** I had the machine unpack all 510
-of its `.HC.Z` files so I could read them from outside, and after that nearly
-every question I had was a grep rather than a guess. The colour depth, the
-video mode, the loader — all of it answered by the source that ships with the
-OS.
+of its `.HC.Z` files so I could read them from outside, and after that almost
+every question was a grep rather than a guess. The video mode, the loader, the
+colour depth — all answered by the source that ships with the OS.
 
-Source and data are in the release; copy them into `D:/Home` and
-`#include "ODGame"; ODStart;`. It wants a linear-framebuffer mode through the
+Two things I got wrong, in case they save somebody else the time:
+
+The sixteen-colour limit is one line of `KStart16.HC` — it already calls VBE,
+it just asks for mode 0x12. The Bochs DISPI registers set a linear framebuffer
+with no BIOS call, which is how it ends up at 1024×768.
+
+And when `Cd("D:/Home")` threw `Except:Drv` I spent an afternoon convinced I
+had corrupted the disk. I had not. The live CD does not mount hard drives;
+`Mount;` prints a drive list with no hard drive in it. Six prompts and it was
+fine.
+
+Release (source and the compiled binary): [link]
+
+Copy the files into `D:/Home` and `#include "ODGame"; ODStart;` — or load the
+binary, which is in the README. It wants a linear-framebuffer mode through the
 DISPI registers, so QEMU, Bochs or VirtualBox rather than metal.
 
-TempleOS is public domain, by Terry A. Davis.
+Happy to answer anything about the internals.
 
-[link] [menu screenshot] [actions screenshot]
+TempleOS is public domain, by Terry A. Davis.
 
 ---
 
