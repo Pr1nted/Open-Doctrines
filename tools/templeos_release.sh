@@ -32,6 +32,52 @@ if [ "${1:-}" = "--data" ]; then
     exit 0
 fi
 
+# ── SOURCE-ONLY IS A REAL RELEASE, NOT A FALLBACK ──
+#
+# TempleOS software ships as source and compiles on include; the OS carries
+# its own that way. The binary saves about 1.7 seconds a boot and nothing
+# else, so a release without one is complete -- and it is the right thing to
+# ship whenever the build VM cannot produce a binary that matches this
+# source, because a prebuilt artifact quietly behind its own code is worse
+# than no prebuilt artifact at all.
+if [ "${1:-}" = "--source" ]; then
+    say "source release (no binary)"
+    mkdir -p "$out"
+    rm -f "$out/ODBIN.BIN"
+    cp templeos/world.odw templeos/game.odd templeos/font.odf "$out/"
+    cp templeos/*.HC templeos/*.HH "$out/"
+    cat > "$out/READ.ME" <<EOF
+Open Doctrines $ver -- TempleOS build
+
+Copy every file here into D:/Home on a TempleOS machine, then:
+
+    #include "ODGame"
+    ODStart;
+
+That compiles the game -- about 3,000 lines of HolyC, roughly 1.7 seconds --
+and opens the menu. Pick a country and play.
+
+Moving about: click a province, or n to step to a neighbour (anyone's), or
+h/l to walk your own. ? lists all 39 actions.
+
+world.odw  the world: 1,632 provinces, who owns them, the sea they sail
+game.odd   research, policies, claims, shell types, who lives where
+font.odf   raylib's bitmap font -- the same glyphs the desktop game draws
+
+Wants a linear-framebuffer mode through the Bochs DISPI registers, which
+QEMU, Bochs and VirtualBox provide and real hardware does not.
+
+ODBIN.HC compiles this ahead of time into a loadable binary; see
+templeos/README.md for what that takes and why it is not one command.
+EOF
+    zip="$root/dist/open-doctrines-templeos-$ver.zip"
+    rm -f "$zip"
+    (cd "$out/.." && zip -qr "$zip" templeos)
+    say "built $zip"
+    ls -la "$zip"
+    exit 0
+fi
+
 # The output directory exists before anything writes near it: the first
 # version of this pointed a screenshot at "$out/.." before $out existed, and
 # the file landed AS the directory it was supposed to sit beside.
