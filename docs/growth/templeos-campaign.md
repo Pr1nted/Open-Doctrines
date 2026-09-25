@@ -336,6 +336,29 @@ that, do not get defensive, and do not argue that the constraints were
 arbitrary -- to that crowd they were not, and the post does not need to win
 that argument to stand.
 
+## The other comment: "AI slop"
+
+It arrived on r/osdev within two hours, alongside the desecration joke, and it
+will arrive on every one of these. Decide the answer now rather than in the
+moment, because the moment is when people write the reply they regret.
+
+**Do not deny it.** These posts were drafted with AI help, and a denial on a
+thread with several hundred views is both a lie and fragile.
+
+**Do not argue the "misses the point" half either.** Whether the port respects
+TempleOS is an opinion, and there is no version of that argument that ends
+with the other person agreeing.
+
+**Answer with something checkable, to a different comment.** The findings hold
+regardless of how the prose was written: CAPR starts at -16 and a ring
+initialised to zero looks exactly like dead hardware; DISPI sets a linear
+framebuffer with no BIOS call. Reply to the friendliest comment in the thread
+with one of those, and the verifiable claim sits above the accusation without
+ever engaging it. Slop does not survive being checked, so invite the check.
+
+Replying to the hostile comment directly promotes it to the top thread and
+makes the post about that argument instead of the work.
+
 ## What not to say
 
 - Do not call it open source.
