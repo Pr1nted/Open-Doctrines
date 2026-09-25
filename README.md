@@ -5,8 +5,9 @@
 It is the kind of game Hearts of Iron IV and Victoria are: provinces with
 population and industry, a research tree, doctrines you pick and live with,
 war, rebellion and diplomacy across a world map. It plays on Windows, macOS,
-Linux, Android and **in a browser tab with no download and no account** — and
-it costs nothing, on every one of them.
+Linux, Android, **in a browser tab with no download and no account** — and,
+since v1.2.2a, on [TempleOS](#templeos). It costs nothing on every one of
+them.
 
 [**Play it in your browser**](https://pr1nted.itch.io/open-doctrines) ·
 [Downloads](https://github.com/Pr1nted/Open-Doctrines/releases) ·
@@ -228,6 +229,56 @@ Specifically:
 
 Build it with `tools/package_android.sh` after configuring with the NDK
 toolchain; the CI builds and checks the same APK on every push.
+
+### TempleOS
+
+There is a TempleOS version. It is a separate build of the game, written in
+HolyC, and the whole thing runs on that machine: the map, the rules and the
+AI. Nothing is sent to another computer.
+
+You need TempleOS in a virtual machine — QEMU, Bochs or VirtualBox. It will
+not work on a real PC. The game needs a screen mode TempleOS can only reach
+through registers those emulators provide and real graphics cards do not.
+
+Download [the TempleOS release][tos-rel], then:
+
+1. Start TempleOS in your VM.
+2. Copy every file from the zip into `D:/Home`. The easiest way is to shut the
+   VM down and mount its disk image on your own computer — TempleOS uses
+   FAT32, so Windows, macOS and Linux can all open it. `templeos/vm.sh push`
+   in this repository does it for you if you use QEMU.
+3. Start the VM again and type:
+
+   ```
+   #include "ODGame"
+   ODStart;
+   ```
+
+That builds the game — about 1.7 seconds — and opens the menu. Pick a country
+and play.
+
+If you would rather not build it, the zip also has `ODBIN.BIN`, the game
+already compiled:
+
+```
+#include "RUN"
+U0 (*f)(U8 *w) = ODStart;
+(*f)("world.odw");
+```
+
+Three lines instead of one because of how TempleOS loads things;
+[templeos/README.md](templeos/README.md) explains it.
+
+**Controls.** Click a province, or press `n` to move to one next to it, or
+`h` and `l` to step through your own. Press `?` for every key.
+
+**What it has:** 1,632 provinces, all 39 actions the desktop game has, all 8
+map views, 86 technologies, 59 policies, fleets and a sea to sail them on.
+
+**What it does not:** multiplayer. There is a working network driver in
+`templeos/Net.HC` — TempleOS ships without one — but no game uses it yet.
+
+[tos-rel]: https://github.com/Pr1nted/Open-Doctrines/releases/tag/templeos-v1.2.2a
 
 ## Building
 
