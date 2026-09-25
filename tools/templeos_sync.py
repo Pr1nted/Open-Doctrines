@@ -79,20 +79,30 @@ ACTION_ARRAYS = {
 }
 
 ACTIONS_SKIPPED = {
-    "war/artillery":    "no artillery types; the desktop game's eight shell "
-                        "kinds come from its research tree",
-    "war/stage":        "staging is for multi-turn amphibious operations these "
-                        "rules do not run",
-    "econ/specialize":  "no industry specialisation",
-    "econ/focus bldg":  "the AI's own budget weights; a human spends directly",
-    "econ/focus army":  "the AI's own budget weights; a human spends directly",
-    "econ/focus navy":  "the AI's own budget weights; a human spends directly",
-    "pol/pacify up":    "no unrest model",
-    "pol/pacify dn":    "no unrest model",
-    "pol/calming":      "no minority model",
-    "pol/conciliate":   "no minority model",
-    "pol/repress":      "no minority model",
 }
+
+
+def bare_dollars() -> list[str]:
+    """Every bare currency sign in the HolyC sources.
+
+    ── WHY THIS IS A BUILD FAILURE AND NOT A STYLE NOTE ──
+    A lone dollar opens a DolDoc command wherever it appears. In a string it
+    is a visible parse error; in a character literal or a COMMENT the compiler
+    stops reading the file, prints nothing, and reports success -- every
+    function after it silently ceases to exist, and the first sign is a call
+    site failing with a parse error that makes no sense.
+
+    This cost an afternoon once, was written up in the file it happened in,
+    and then happened again a thousand lines later. A note in a comment is not
+    a control; this is. Write the sign as %c with 0x24.
+    """
+    bad = []
+    for f in sorted((ROOT / "templeos").glob("*.H[CH]")):
+        for i, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            stripped = line.replace("$$", "")
+            if "$" in stripped:
+                bad.append(f"{f.relative_to(ROOT)}:{i}: {line.strip()[:60]}")
+    return bad
 
 
 def cpp_actions() -> list[str]:
@@ -259,6 +269,10 @@ def main() -> int:
         for lever in sorted(known - seen):
             problems.append(f"{lever!r} is classified but no policy pulls it "
                             f"any more")
+
+        for d in bare_dollars():
+            problems.append(f"a bare currency sign stops the HolyC compiler "
+                            f"reading the file -- {d}")
 
         # ── ACTIONS ──
         acts = cpp_actions()

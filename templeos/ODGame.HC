@@ -44,7 +44,7 @@
  * other 11 are recorded in tools/templeos_sync.py with the reason they cannot
  * be. One assignment per line, which is the shape the sync tool reads and the
  * only shape HolyC takes for an array of pointers. */
-#define G_NACT  28
+#define G_NACT  39
 U8 *g_act_ids[G_NACT];
 U8 *g_act_keys[G_NACT];
 
@@ -78,9 +78,11 @@ U8 *g_side[4];
 #define G_PICK_REINF  2
 #define G_PICK_LAND   3
 #define G_PICK_ENGAGE 4
+#define G_PICK_ARTY   5
 
 I64 g_pick = G_PICK_NONE;
 Bool g_help = FALSE;
+I64 g_shell = 0;                 /* which shell type is loaded */
 I64 g_navfrom = -1;
 I64 g_navlist[512], g_navn = 0, g_navi = 0;
 
@@ -151,6 +153,18 @@ U0 GInitTables()
   g_act_ids[25] = "navy/land";       g_act_keys[25] = "L";
   g_act_ids[26] = "navy/scrap";      g_act_keys[26] = "s";
   g_act_ids[27] = "navy/engage";     g_act_keys[27] = "g";
+
+  g_act_ids[28] = "war/artillery";   g_act_keys[28] = "x  (X picks)";
+  g_act_ids[29] = "war/stage";       g_act_keys[29] = "S";
+  g_act_ids[30] = "econ/specialize"; g_act_keys[30] = "y";
+  g_act_ids[31] = "econ/focus bldg"; g_act_keys[31] = "q";
+  g_act_ids[32] = "econ/focus army"; g_act_keys[32] = "Q";
+  g_act_ids[33] = "econ/focus navy"; g_act_keys[33] = "z";
+  g_act_ids[34] = "pol/pacify up";   g_act_keys[34] = "+";
+  g_act_ids[35] = "pol/pacify dn";   g_act_keys[35] = "-";
+  g_act_ids[36] = "pol/calming";     g_act_keys[36] = "k";
+  g_act_ids[37] = "pol/conciliate";  g_act_keys[37] = "K";
+  g_act_ids[38] = "pol/repress";     g_act_keys[38] = "Z";
 
   g_side[0] = "Politics";
   g_side[1] = "Economy";
@@ -302,6 +316,17 @@ U0 GDrawMap()
  * One mark per hull at its harbour, stacked upwards so a big naval base reads
  * as a column rather than a single dot. Only in the navy view: everywhere
  * else they would be noise over the thing you asked to see. */
+/* The five deposits, in the order their bits are packed. */
+U8 *GResName(I64 bit)
+{
+  if (bit == 0) return "oil";
+  if (bit == 1) return "gold";
+  if (bit == 2) return "metal";
+  if (bit == 3) return "rubber";
+  if (bit == 4) return "gemstones";
+  return "nothing";
+}
+
 U0 GShips()
 {
   /* The array on its own line: a 256-entry buffer declared in the same
@@ -446,6 +471,31 @@ U0 GPanel()
     y += 12;
     PPrint(14, y, 150, 160, 175, 1, "Frontage:   %d", RWidth(ix));
     y += 12;
+    if (r_unrest[ix])
+    {
+      PPrint(14, y, 225, 130, 120, 1, "Unrest:     %d", r_unrest[ix]);
+      y += 12;
+    }
+    if (r_align[ix] != 50)
+    {
+      PPrint(14, y, 150, 190, 215, 1, "Alignment:  %d", r_align[ix]);
+      y += 12;
+    }
+    if (r_spec[ix])
+    {
+      n = 0;
+      for (s = 0; s < 5; s++)
+        if (r_spec[ix] == (1 << s)) n = s;
+      PPrint(14, y, 150, 190, 215, 1, "Works:      %s", GResName(n));
+      y += 12;
+    }
+    n = DMinorityOf(ix);
+    if (n >= 0 && d_mgrp[n][1] != 0xFF && d_mpct[n][1] > 0)
+    {
+      PPrint(14, y, 150, 160, 175, 1, "Largest minority: %s %d%%",
+             d_gname[d_mgrp[n][1]], d_mpct[n][1]);
+      y += 12;
+    }
     if (w_port[ix] > 0)
     {
       PPrint(14, y, 150, 190, 215, 1, "Harbour:    level %d", w_port[ix]);
@@ -769,34 +819,26 @@ U0 GHelp()
   PRect(120, 70, P_W - 240, 620, 70, 74, 84);
   PText(140, 88, "Actions", 240, 240, 245, 2);
   PPrint(140, 118, 150, 160, 175, 1,
-         "%d of the 39 the desktop game offers. The other 11 need models "
-         "these rules do not have.", G_NACT);
+         "All %d the desktop game offers.", G_NACT);
 
   for (i = 0; i < G_NACT; i++)
   {
-    x = 140 + (i / 14) * 260;
-    y = 146 + (i % 14) * 15;
+    x = 140 + (i / 20) * 260;
+    y = 146 + (i % 20) * 15;
     PPrint(x, y, 235, 200, 90, 1, "%-11s", g_act_keys[i]);
     PText(x + 92, y, g_act_ids[i], 205, 210, 220);
   }
 
-  y = 146 + 14 * 15 + 16;
+  y = 146 + 20 * 15 + 16;
   PFill(140, y, P_W - 280, 1, 70, 74, 84);
   y += 12;
-  PText(140, y, "Not here, and why:", 150, 160, 175);
-  y += 15;
-  PText(152, y, "artillery, stage      no shell types, no multi-turn staging",
-        150, 160, 175);
+  PText(140, y, "All 39. The four models the last eleven needed -- shells, "
+                "specialisation, unrest and", 150, 160, 175);
   y += 14;
-  PText(152, y, "specialize            no industry specialisation",
-        150, 160, 175);
+  PText(140, y, "who lives where -- are simpler than the desktop game's, and "
+                "they are real: they have", 150, 160, 175);
   y += 14;
-  PText(152, y, "focus bldg/army/navy  the AI's budget weights; you spend "
-                "directly", 150, 160, 175);
-  y += 14;
-  PText(152, y, "pacify up/dn          no unrest model", 150, 160, 175);
-  y += 14;
-  PText(152, y, "calming, conciliate, repress   no minority model",
+  PText(140, y, "causes, they have consequences, and these actions move them.",
         150, 160, 175);
   y += 22;
   PText(140, y, "1-8 views   P E C R panels   ENTER end turn   ? close",
@@ -1373,6 +1415,22 @@ U0 ODPlay(I64 cid)
                        w_name[i]);
             g_sel = i;
           }
+          else if (g_pick == G_PICK_ARTY)
+          {
+            s = WSlot(w_me);
+            cost = d_acost[g_shell] * 10;
+            if (w_tre[s] < cost)
+              StrPrint(g_status, "a %s shell costs %c%d", d_aname[g_shell],
+                       0x24, d_acost[g_shell]);
+            else
+            {
+              w_tre[s] -= cost;
+              RArtillery(g_navfrom, i, g_shell);
+              StrPrint(g_status, "%s fell on %s", d_aname[g_shell],
+                       w_name[i]);
+              GShade;
+            }
+          }
           else
           {
             if (REngage(g_navfrom, i, w_me))
@@ -1543,6 +1601,184 @@ U0 ODPlay(I64 cid)
             w_scargo[w_ns] = 0;
             w_ns++;
             StrPrint(g_status, "laid down a carrier at %s", w_name[g_sel]);
+          }
+        }
+        else if (ch == 'X')
+        {
+          /* Cycle to the next shell this country has actually researched. */
+          n = -1;
+          for (i = 1; i <= d_narty && n < 0; i++)
+          {
+            s = g_shell + i;
+            if (s >= d_narty) s -= d_narty;
+            if (DArtyReady(s)) n = s;
+          }
+          if (n < 0)
+            StrCpy(g_status, "no artillery researched yet");
+          else
+          {
+            g_shell = n;
+            StrPrint(g_status, "%s loaded: %d%% of troops, %d%% of people, "
+                     "%c%d a shot", d_aname[n], d_atroop[n], d_apop[n],
+                     0x24, d_acost[n]);
+          }
+        }
+        else if (ch == 'x' && g_sel >= 0 && w_own[g_sel] == w_me &&
+                 g_pick == G_PICK_NONE)
+        {
+          if (!DArtyReady(g_shell))
+            StrCpy(g_status, "that shell is not researched -- X to pick another");
+          else
+          {
+            g_navn = 0;
+            for (i = 0; i < w_adjn[g_sel] && g_navn < 512; i++)
+            {
+              s = WNeighbour(g_sel, i);
+              if (s >= 0 && w_own[s] != w_me)
+              {
+                g_navlist[g_navn] = s;
+                g_navn++;
+              }
+            }
+            if (!g_navn)
+              StrPrint(g_status, "nothing next to %s to shell", w_name[g_sel]);
+            else
+            {
+              g_pick = G_PICK_ARTY;
+              g_navfrom = g_sel;
+              g_navi = 0;
+              StrPrint(g_status, "shell where with %s?  h/l choose  ENTER fire",
+                       d_aname[g_shell]);
+            }
+          }
+        }
+        else if (ch == 'S' && g_sel >= 0 && w_own[g_sel] == w_me &&
+                 g_pick == G_PICK_NONE)
+        {
+          /* Staging: men cross into an ALLY'S province to attack from it.
+           * The desktop game's own phrasing is "stage troops into allied
+           * prov X from Y", and an alliance is what makes it possible. */
+          g_navn = 0;
+          for (i = 0; i < w_adjn[g_sel] && g_navn < 512; i++)
+          {
+            s = WNeighbour(g_sel, i);
+            if (s >= 0 && w_own[s] != w_me && RPactWith(w_me, w_own[s]) == 1)
+            {
+              g_navlist[g_navn] = s;
+              g_navn++;
+            }
+          }
+          if (!w_army[g_sel])
+            StrPrint(g_status, "no men in %s", w_name[g_sel]);
+          else if (!g_navn)
+            StrPrint(g_status, "no allied ground next to %s", w_name[g_sel]);
+          else
+          {
+            g_pick = G_PICK_REINF;       /* the march is the same march */
+            g_navfrom = g_sel;
+            g_navi = 0;
+            StrCpy(g_status, "stage into whose ground?  h/l  ENTER march");
+          }
+        }
+        else if (ch == 'y' && g_sel >= 0 && w_own[g_sel] == w_me)
+        {
+          /* Work the next deposit the province actually has, wrapping round
+           * to none. Written as an index over five bits rather than shifting
+           * a mask about, because the shifting version was wrong in a way
+           * that read as correct. */
+          cost = -1;
+          for (i = 0; i < 5; i++)
+            if (r_spec[g_sel] == (1 << i)) cost = i;
+          n = -1;
+          for (i = 1; i <= 5 && n < 0; i++)
+          {
+            s = cost + i;
+            while (s >= 5) s -= 5;
+            if (w_res[g_sel] & (1 << s)) n = s;
+          }
+          if (!w_res[g_sel])
+            StrPrint(g_status, "%s has nothing to work", w_name[g_sel]);
+          else
+          {
+            r_spec[g_sel] = 1 << n;
+            StrPrint(g_status, "%s now works its %s  (+20%% income)",
+                     w_name[g_sel], GResName(n));
+            GShade;
+          }
+        }
+        else if (ch == 'q' || ch == 'Q' || ch == 'z')
+        {
+          if (ch == 'q') i = RFocus("Buildings", FALSE);
+          else if (ch == 'Q') i = RFocus("Army", FALSE);
+          else i = RFocus("navy", TRUE);
+          if (i < 0)
+            StrCpy(g_status, "nothing available in that branch");
+          else if (d_rp < d_rcost[i])
+            StrPrint(g_status, "%s costs %d points and you have %d",
+                     d_rname[i], d_rcost[i], d_rp);
+          else
+          {
+            d_rp -= d_rcost[i];
+            d_done[i] = 1;
+            StrPrint(g_status, "researched %s", d_rname[i]);
+          }
+        }
+        else if (ch == '+' || ch == '-')
+        {
+          if (ch == '+') r_pacify += 5;
+          else           r_pacify -= 5;
+          if (r_pacify > 50) r_pacify = 50;
+          if (r_pacify < 0) r_pacify = 0;
+          StrPrint(g_status, "pacification budget %d%% of income", r_pacify);
+        }
+        else if (ch == 'k' || ch == 'K' || ch == 'Z')
+        {
+          s = WSlot(w_me);
+          if (ch == 'k')
+          {
+            /* Calming: a national gesture, priced nationally. */
+            cost = 0;
+            for (i = 0; i < w_np; i++)
+              if (w_own[i] == w_me) cost += 5;
+            if (w_tre[s] < cost)
+              StrPrint(g_status, "calming the country costs %c%d.%d", 0x24,
+                       cost / 10, cost % 10);
+            else
+            {
+              w_tre[s] -= cost;
+              for (i = 0; i < w_np; i++)
+                if (w_own[i] == w_me)
+                {
+                  r_align[i] += 5;
+                  if (r_align[i] > 100) r_align[i] = 100;
+                }
+              StrCpy(g_status, "the country was calmed");
+            }
+          }
+          else if (ch == 'K' && g_sel >= 0 && w_own[g_sel] == w_me)
+          {
+            if (w_tre[s] < 100)
+              StrPrint(g_status, "conciliation costs %c10.0", 0x24);
+            else
+            {
+              w_tre[s] -= 100;
+              r_align[g_sel] += 15;
+              if (r_align[g_sel] > 100) r_align[g_sel] = 100;
+              StrPrint(g_status, "%s was conciliated (alignment %d)",
+                       w_name[g_sel], r_align[g_sel]);
+            }
+          }
+          else if (ch == 'Z' && g_sel >= 0 && w_own[g_sel] == w_me)
+          {
+            /* Repression buys quiet now and resentment later, which is the
+             * whole of what it is for. */
+            r_unrest[g_sel] -= 25;
+            if (r_unrest[g_sel] < 0) r_unrest[g_sel] = 0;
+            r_align[g_sel] -= 10;
+            if (r_align[g_sel] < 0) r_align[g_sel] = 0;
+            StrPrint(g_status, "%s was repressed: unrest %d, alignment %d",
+                     w_name[g_sel], r_unrest[g_sel], r_align[g_sel]);
+            GShade;
           }
         }
         else if (ch == '?')

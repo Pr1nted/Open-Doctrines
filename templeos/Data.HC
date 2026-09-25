@@ -19,10 +19,10 @@
 #define DT_MAXCL     64        /* countries with claims */
 #define DT_MAXCLP   128        /* claimed provinces, total */
 #define DT_DEPS       4
-#define DT_RREC      48
+#define DT_RREC      58
 #define DT_PREC      78
 
-U8   d_rid[DT_MAXR][12], d_rname[DT_MAXR][24];
+U8   d_rid[DT_MAXR][12], d_rname[DT_MAXR][24], d_rsub[DT_MAXR][10];
 I64  d_rcost[DT_MAXR], d_rcat[DT_MAXR], d_rndep[DT_MAXR];
 I64  d_rdep[DT_MAXR][DT_DEPS];
 I64  d_nres = 0;
@@ -43,6 +43,30 @@ I64  d_clprov[DT_MAXCLP];
 I64  d_ncl = 0, d_nclp = 0;
 
 U8  *d_rcatname[6];
+
+/* ── THE EIGHT SHELLS ──
+ *
+ * Transcribed from the desktop game, not invented: what each kills, what it
+ * breaks and what it costs, each gated by the research that unlocks it. */
+#define DT_MAXA  16
+#define DT_AREC  30
+U8   d_aname[DT_MAXA][14], d_anode[DT_MAXA][8];
+I64  d_atroop[DT_MAXA], d_apop[DT_MAXA], d_afort[DT_MAXA], d_aind[DT_MAXA];
+I64  d_achance[DT_MAXA], d_acost[DT_MAXA];
+I64  d_narty = 0;
+
+/* ── WHO LIVES WHERE ──
+ *
+ * The four largest groups in each province. Enough to name who is unhappy
+ * and to weight it; the desktop game's full composition is 451 KB of JSON
+ * and this is sixteen. */
+#define DT_MAXG   768
+#define DT_MAXMP 2048
+U8   d_gname[DT_MAXG][20];
+I64  d_ngrp = 0, d_nmin = 0;
+I64  d_mpid[DT_MAXMP];
+I64  d_mgrp[DT_MAXMP][4], d_mpct[DT_MAXMP][4];
+I64  d_mprov[DT_MAXMP];              /* province index, resolved at load */
 
 /* ── PLAYER STATE ── */
 I64  d_done[DT_MAXR];          /* researched */
@@ -101,24 +125,30 @@ Bool DLoad(U8 *path = "game.odd")
   nr = DU16(b + 6);
   np = DU16(b + 8);
   nc = DU16(b + 10);
+  d_ngrp = DU16(b + 12);
+  d_nmin = DU16(b + 14);
+  if (d_ngrp > DT_MAXG) d_ngrp = DT_MAXG;
+  if (d_nmin > DT_MAXMP) d_nmin = DT_MAXMP;
   if (nr > DT_MAXR) nr = DT_MAXR;
   if (np > DT_MAXPOL) np = DT_MAXPOL;
   if (nc > DT_MAXCL) nc = DT_MAXCL;
   d_nres = nr;
   d_npol = np;
 
-  off = 12;
+  off = 16;
   for (i = 0; i < nr; i++)
   {
     for (k = 0; k < 11; k++) d_rid[i][k] = b[off + k];
     d_rid[i][11] = 0;
     for (k = 0; k < 23; k++) d_rname[i][k] = b[off + 12 + k];
     d_rname[i][23] = 0;
-    d_rcost[i] = DU16(b + off + 36);
-    d_rcat[i]  = b[off + 38];
-    d_rndep[i] = b[off + 39];
+    for (k = 0; k < 9; k++) d_rsub[i][k] = b[off + 36 + k];
+    d_rsub[i][9] = 0;
+    d_rcost[i] = DU16(b + off + 46);
+    d_rcat[i]  = b[off + 48];
+    d_rndep[i] = b[off + 49];
     for (k = 0; k < DT_DEPS; k++)
-      d_rdep[i][k] = DU16(b + off + 40 + k * 2);
+      d_rdep[i][k] = DU16(b + off + 50 + k * 2);
     d_done[i] = 0;
     off += DT_RREC;
   }
@@ -168,8 +198,63 @@ Bool DLoad(U8 *path = "game.odd")
     d_ncl++;
   }
 
+  /* the shells */
+  d_narty = 8;
+  for (i = 0; i < d_narty; i++)
+  {
+    for (k = 0; k < 13; k++) d_aname[i][k] = b[off + k];
+    d_aname[i][13] = 0;
+    for (k = 0; k < 7; k++) d_anode[i][k] = b[off + 14 + k];
+    d_anode[i][7] = 0;
+    d_atroop[i]  = b[off + 22];
+    d_apop[i]    = b[off + 23];
+    d_afort[i]   = b[off + 24];
+    d_aind[i]    = b[off + 25];
+    d_achance[i] = b[off + 26];
+    d_acost[i]   = DU16(b + off + 28);
+    off += DT_AREC;
+  }
+
+  /* who lives where */
+  for (i = 0; i < d_ngrp; i++)
+  {
+    for (k = 0; k < 19; k++) d_gname[i][k] = b[off + k];
+    d_gname[i][19] = 0;
+    off += 20;
+  }
+  for (i = 0; i < d_nmin; i++)
+  {
+    d_mpid[i] = DU32(b + off);
+    for (k = 0; k < 4; k++)
+    {
+      d_mgrp[i][k] = b[off + 4 + k * 2];
+      d_mpct[i][k] = b[off + 5 + k * 2];
+    }
+    d_mprov[i] = DProvByPid(d_mpid[i]);
+    off += 12;
+  }
+
   Free(b);
   return TRUE;
+}
+
+/* The minority row for a province index, or -1. */
+I64 DMinorityOf(I64 ix)
+{
+  I64 i;
+  for (i = 0; i < d_nmin; i++)
+    if (d_mprov[i] == ix) return i;
+  return -1;
+}
+
+/* Which shell types this country has researched. */
+Bool DArtyReady(I64 a)
+{
+  I64 i;
+  if (a < 0 || a >= d_narty) return FALSE;
+  for (i = 0; i < d_nres; i++)
+    if (!StrCmp(d_rid[i], d_anode[a])) return d_done[i];
+  return FALSE;
 }
 
 /* A node can be started when everything it depends on is done. */

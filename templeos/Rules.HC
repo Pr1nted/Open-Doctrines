@@ -101,6 +101,32 @@ I64 r_shipstr[7];                  /* by class; filled by RInit */
 I64 r_shipcap[7];                  /* men a hull can carry */
 I64 r_shipcost[7];                 /* tenths, before harbour and levers */
 I64 r_fund = 0;                    /* percent of income diverted to research */
+I64 r_pacify = 0;                  /* percent of income spent keeping order */
+
+/* ── UNREST AND ALIGNMENT ──
+ *
+ * The two models the last eleven actions needed. Neither is the desktop
+ * game's in full -- that one runs migration, minority policies per group and
+ * a political compass -- but both are real here: they have causes, they have
+ * consequences, and the actions that address them change the numbers.
+ *
+ * UNREST rises where a province has just changed hands and where a war is
+ * being fought next door. It costs income and makes men dearer to raise.
+ * PACIFYING spends money to bring it down.
+ *
+ * ALIGNMENT is how the people in a province feel about who governs them.
+ * Conquest and repression push it down; calming and conciliation push it up.
+ * Badly aligned provinces breed unrest on their own, which is what makes
+ * holding a hostile province expensive rather than merely slow.
+ */
+I64 r_unrest[OD_MAXP];             /* 0..100 */
+I64 r_align[OD_MAXP];              /* 0..100, 50 is indifference */
+I64 r_spec[OD_MAXP];               /* the resource bit a province works, or 0 */
+
+#define R_UNREST_CONQUEST  40
+#define R_UNREST_FRONT      2      /* per turn, next to a war */
+#define R_UNREST_HOSTILE    3      /* per turn, from a disaffected people */
+#define R_ALIGN_LOW        30
 I64 r_shipspeed[7];                /* cells of sea, per turn */
 
 /* ── HOW FAR A FLEET CAN SAIL ──
@@ -401,6 +427,70 @@ Bool RPact(I64 a, I64 b, I64 kind)
   return TRUE;
 }
 
+/* ── SHELLING ──
+ *
+ * The desktop game's eight types, each doing exactly what it does there.
+ * Artillery kills and breaks; it does not take ground, and a province shelled
+ * flat still has to be walked into. */
+U0 RArtillery(I64 from, I64 to, I64 a)
+{
+  I64 killed;
+
+  if (to < 0 || a < 0 || a >= d_narty) return;
+  killed = w_army[to] * d_atroop[a] / 100;
+  w_army[to] -= killed;
+  if (w_army[to] < 0) w_army[to] = 0;
+  w_pop[to] -= w_pop[to] * d_apop[a] / 100;
+  if (w_fort[to] > 0 && d_afort[a] > 0)
+  {
+    w_fort[to] -= d_afort[a];
+    if (w_fort[to] < 0) w_fort[to] = 0;
+  }
+  if (w_fort[to] > 0 && d_achance[a] > 0)
+    if (RandU32 % 100 < d_achance[a]) w_fort[to]--;
+  if (w_ind[to] > 0 && d_aind[a] > 0)
+  {
+    w_ind[to] -= d_aind[a];
+    if (w_ind[to] < 0) w_ind[to] = 0;
+    w_inc[to] = w_inc[to] / 2;
+  }
+  /* People remember being shelled. */
+  r_align[to] -= 10;
+  if (r_align[to] < 0) r_align[to] = 0;
+  RLog("%s shelled %s: %d dead", w_name[from], w_name[to], killed);
+}
+
+/* ── THE NEXT THING TO LEARN, BY BRANCH ──
+ *
+ * The desktop game's executor takes the cheapest available node in the
+ * focused branch, so this does too. "navy" is a SUBcategory under army, which
+ * is why the subcategory is carried across at all. */
+I64 RFocus(U8 *branch, Bool by_sub)
+{
+  I64 i, best = -1;
+  Bool match;
+
+  /* Written with a flag rather than a skip: HolyC has no `continue`, and a
+   * label in the middle of a loop body is not the same thing however much it
+   * looks like one. */
+  for (i = 0; i < d_nres; i++)
+    if (DResAvailable(i))
+    {
+      match = FALSE;
+      if (by_sub)
+      {
+        if (!StrCmp(d_rsub[i], branch)) match = TRUE;
+      }
+      else if (d_rcat[i] < 6)
+      {
+        if (!StrCmp(d_rcatname[d_rcat[i]], branch)) match = TRUE;
+      }
+      if (match)
+        if (best < 0 || d_rcost[i] < d_rcost[best]) best = i;
+    }
+  return best;
+}
+
 U0 RMoveFleet(I64 from, I64 to, I64 cid)
 {
   I64 i;
@@ -455,6 +545,13 @@ U0 RInit()
   }
   r_npact = 0;
   r_fund = 0;
+  r_pacify = 0;
+  for (i = 0; i < w_np; i++)
+  {
+    r_unrest[i] = 0;
+    r_align[i] = 50;
+    r_spec[i] = 0;
+  }
   RClearOrders;
   w_turn = 0;
 }
@@ -539,6 +636,11 @@ Bool RAssault(I64 from, I64 to, I64 men)
     w_army[to] = men - lossA;
     if (w_army[to] < 0) w_army[to] = 0;
     w_own[to] = w_own[from];
+    /* Taking a province is not the same as holding it. */
+    r_unrest[to] += R_UNREST_CONQUEST;
+    if (r_unrest[to] > 100) r_unrest[to] = 100;
+    r_align[to] -= 20;
+    if (r_align[to] < 0) r_align[to] = 0;
     return TRUE;
   }
 
@@ -659,12 +761,21 @@ U0 RTurn()
   r_nlog = 0;
   r_last_report = 0;
 
-  /* income, scaled by whatever the owner's policies do to it */
+  /* ── INCOME, LESS WHAT UNREST COSTS ──
+   *
+   * A province in open disorder does not pay: this is where unrest stops
+   * being a number on a panel and starts being a reason to spend money on
+   * it. A worked specialisation adds a fifth. */
   for (i = 0; i < w_np; i++)
   {
     s = WSlot(w_own[i]);
     if (s >= 0)
-      w_tre[s] += RScale(w_inc[i], RLever(w_own[i], RL_RESOURCE));
+    {
+      men = RScale(w_inc[i], RLever(w_own[i], RL_RESOURCE));
+      if (r_spec[i]) men = men * 120 / 100;
+      men = men * (100 - r_unrest[i]) / 100;
+      w_tre[s] += men;
+    }
   }
 
   /* passive income, and what the standing army costs to keep */
@@ -688,7 +799,9 @@ U0 RTurn()
       cap = RScale(w_pop[i] * R_RECRUIT_CAP_PCT / 100,
                    RLever(w_me, RL_CONSCRIPT));
       if (men > cap) men = cap;
+      /* Men are dearer where the province resents you. */
       cost = RScale(men / 1000, RLever(w_me, RL_CONSCOST));
+      cost = cost * (100 + r_unrest[i]) / 100;
       s = WSlot(w_me);
       if (s >= 0 && cost > 0 && w_tre[s] >= cost)
       {
@@ -729,6 +842,53 @@ U0 RTurn()
   for (i = 0; i < w_nc; i++)
     if (w_ccid[i] != w_me)
       RAiTurn(w_ccid[i]);
+
+  /* ── ORDER, AND THE COST OF KEEPING IT ──
+   *
+   * Pacification is money spent before anything else, like research funding,
+   * and it buys a reduction spread over every province that needs one. */
+  s = WSlot(w_me);
+  if (s >= 0 && r_pacify > 0)
+  {
+    men = 0;
+    for (i = 0; i < w_np; i++)
+      if (w_own[i] == w_me && r_unrest[i] > 0) men++;
+    if (men > 0)
+    {
+      cost = 0;
+      for (i = 0; i < w_np; i++)
+        if (w_own[i] == w_me) cost += w_inc[i];
+      cost = cost * r_pacify / 100;
+      w_tre[s] -= cost;
+      /* Spread evenly: ten pounds across ten provinces is one each. The
+       * divisor is the count of provinces that HAVE unrest, so calm ground
+       * does not absorb the budget. */
+      cost = cost * 4 / (men * 10);
+      if (cost < 1) cost = 1;
+      for (i = 0; i < w_np; i++)
+        if (w_own[i] == w_me && r_unrest[i] > 0)
+        {
+          r_unrest[i] -= cost;
+          if (r_unrest[i] < 0) r_unrest[i] = 0;
+        }
+    }
+  }
+
+  /* Unrest from the front and from disaffection. */
+  for (i = 0; i < w_np; i++)
+  {
+    if (r_align[i] < R_ALIGN_LOW) r_unrest[i] += R_UNREST_HOSTILE;
+    for (s = 0; s < w_adjn[i]; s++)
+    {
+      men = WNeighbour(i, s);
+      if (men >= 0 && w_own[men] != w_own[i] && RAtWar(w_own[i], w_own[men]))
+      {
+        r_unrest[i] += R_UNREST_FRONT;
+        s = w_adjn[i];
+      }
+    }
+    if (r_unrest[i] > 100) r_unrest[i] = 100;
+  }
 
   /* the people. popGrowthPct is a percentage, stored in tenths, which is the
    * same thing as per mille -- so it adds straight onto the base rate. */

@@ -31,7 +31,7 @@ import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RESEARCH_SRC = ROOT / "src" / "Game_Research.cpp"
 
-MAGIC, VERSION = b"ODTD", 2
+MAGIC, VERSION = b"ODTD", 3
 MAX_DEPS = 4
 
 # The five categories the research tree uses, as fixed slots so the guest can
@@ -64,6 +64,25 @@ LEVERS = [
     "navySpeedPct",         # how far a fleet sails in a turn
 ]
 LEVER_SCALE = 10            # stored as tenths, so 0.5 survives as an integer
+
+# ── ARTILLERY ──
+#
+# The eight shell types, their effects and their prices, transcribed from the
+# desktop game rather than invented: ALL_ARTY in Game_Render.cpp for what each
+# one does, artyCosts beside it for what it costs, and getNodeId for the
+# research that unlocks it. Numbers this specific are worth copying exactly --
+# a Nuclear shell that kills 70% instead of 75% is a different game quietly.
+ARTY = [
+    # name,          node,     troopKill, popKill, fortDmg, indDmg, fortChance, cost
+    ("Mortar",       "arty1",   5,  0, 0, 0,  0,  5),
+    ("Light Arty",   "arty2",  10,  0, 0, 0,  0, 10),
+    ("Heavy Arty",   "arty3",  20,  5, 0, 0,  0, 20),
+    ("Napalm",       "arty4a", 25, 15, 0, 0,  0, 30),
+    ("Carpet Bomb",  "arty4b", 15, 10, 0, 0, 50, 25),
+    ("Chemical",     "arty5",  50, 30, 0, 0,  0, 40),
+    ("Nuclear",      "arty6a", 75,  0, 2, 3,  0, 80),
+    ("Biological",   "arty6b", 80, 95, 0, 0,  0, 60),
+]
 
 LEVERS_SKIPPED = {
     "indoctrinationPct":   "no minority or alignment model",
@@ -104,11 +123,14 @@ def parse_research(src: str):
     nodes = []
     pat = re.compile(
         r'add\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"[^"]*"\s*,\s*'
-        r'"([^"]*)"\s*,\s*"[^"]*"\s*,\s*\{([^}]*)\}\s*,\s*(\d+)', re.S)
+        r'"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*\{([^}]*)\}\s*,\s*(\d+)', re.S)
     for m in pat.finditer(body):
-        deps = re.findall(r'"([^"]+)"', m[4])
-        nodes.append({"id": m[1], "name": m[2], "cat": m[3],
-                      "deps": deps, "cost": int(m[5])})
+        deps = re.findall(r'"([^"]+)"', m[5])
+        # The SUBcategory matters as much as the category: the naval ladder is
+        # category "army", subcategory "navy", so "focus navy" finds nothing
+        # if only the category is carried across.
+        nodes.append({"id": m[1], "name": m[2], "cat": m[3], "sub": m[4],
+                      "deps": deps, "cost": int(m[6])})
     return nodes
 
 
@@ -140,12 +162,40 @@ def main() -> int:
 
     blob = bytearray()
     blob += MAGIC
-    blob += struct.pack("<HHHH", VERSION, len(nodes), len(policies), len(rows))
+    # ── MINORITIES ──
+    #
+    # Who lives where. The desktop game carries a full composition per
+    # province; this keeps the four largest groups, which is enough to name
+    # who is unhappy and to weight it, and turns 451 KB of JSON into 16.
+    try:
+        mins = json.loads(z.read("minorities.json"))
+    except KeyError:
+        mins = {}
+    gname, gindex = [], {}
+    mrows = []
+    for pid, groups in sorted(mins.items(), key=lambda kv: int(kv[0])):
+        if not isinstance(groups, list):
+            continue
+        top = sorted((g for g in groups if isinstance(g, dict)),
+                     key=lambda g: -float(g.get("p", 0)))[:4]
+        ent = []
+        for g in top:
+            nm = str(g.get("n", ""))[:19]
+            if nm not in gindex:
+                gindex[nm] = len(gname)
+                gname.append(nm)
+            ent.append((gindex[nm], min(int(float(g.get("p", 0))), 255)))
+        while len(ent) < 4:
+            ent.append((0xFF, 0))
+        mrows.append((int(pid), ent))
+
+    blob += struct.pack("<HHHHHH", VERSION, len(nodes), len(policies),
+                        len(rows), len(gname), len(mrows))
 
     for n in nodes:
         cat = CATS.index(n["cat"]) if n["cat"] in CATS else 0xFF
         deps = [index[d] for d in n["deps"] if d in index][:MAX_DEPS]
-        blob += fixed(n["id"], 12) + fixed(n["name"], 24)
+        blob += fixed(n["id"], 12) + fixed(n["name"], 24) + fixed(n["sub"], 10)
         blob += struct.pack("<HBB", min(n["cost"], 0xFFFF), cat, len(deps))
         for i in range(MAX_DEPS):
             blob += struct.pack("<H", deps[i] if i < len(deps) else 0xFFFF)
@@ -165,6 +215,17 @@ def main() -> int:
         for p in pids:
             blob += struct.pack("<I", p)
 
+    for name, node, tk, pk, fd, idmg, fc, cost in ARTY:
+        blob += fixed(name, 14) + fixed(node, 8)
+        blob += struct.pack("<BBBBBBH", tk, pk, fd, idmg, fc, 0, cost)
+
+    for nm in gname:
+        blob += fixed(nm, 20)
+    for pid, ent in mrows:
+        blob += struct.pack("<I", pid)
+        for gi, pct in ent:
+            blob += struct.pack("<BB", gi & 0xFF, pct)
+
     pathlib.Path(a.out).write_bytes(blob)
     by_cat = {}
     for n in nodes:
@@ -174,6 +235,8 @@ def main() -> int:
     print(f"  {honoured} of {len(policies)} policies pull a lever this build "
           f"acts on; {len(LEVERS)} honoured, {len(LEVERS_SKIPPED)} recorded as "
           f"having nothing to act on")
+    print(f"  {len(ARTY)} shell types, {len(gname)} ethnic groups across "
+          f"{len(mrows)} provinces")
     print(f"{a.out}: {len(nodes)} research nodes, {len(policies)} policies, "
           f"{len(rows)} countries with claims "
           f"({sum(len(p) for _, p in rows)} provinces), {len(blob)/1024:.1f} KB")
