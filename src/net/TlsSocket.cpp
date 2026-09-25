@@ -112,6 +112,22 @@ const char* const kTrustBundles[] = {
  *
  * Returns how many were accepted.
  */
+/**
+ * Fill `chain` from the platform's own trust store, and say where from.
+ *
+ * ITS OWN FUNCTION so a test can ask. Everything about this is
+ * platform-specific -- a file on one, a directory on another, an API on
+ * Windows -- and when it comes up empty the game correctly refuses to connect
+ * to anything at all, which reads to a player as "cannot reach the account
+ * service" and to a developer as a network problem. Nothing could ask the
+ * question without opening a socket, so nothing did, and the answer was only
+ * ever discovered by a player on the platform that was broken.
+ *
+ * Returns the number of certificates loaded; 0 means this machine cannot
+ * verify anybody.
+ */
+int loadSystemRoots(mbedtls_x509_crt* chain, std::string& sourceOut);
+
 int loadWindowsRoots(mbedtls_x509_crt* chain) {
     HCERTSTORE store = ::CertOpenSystemStoreW(0, L"ROOT");
     if (!store) return 0;
@@ -130,6 +146,41 @@ int loadWindowsRoots(mbedtls_x509_crt* chain) {
     return added;
 }
 #endif
+
+int loadSystemRoots(mbedtls_x509_crt* chain, std::string& sourceOut) {
+    sourceOut.clear();
+#if defined(_WIN32)
+    // Windows first and only: its roots are in the Schannel store and not in
+    // any file, and before this every Windows sign-in failed here.
+    const int n = loadWindowsRoots(chain);
+    if (n > 0) sourceOut = "the Windows certificate store";
+    return n;
+#else
+    for (const char* path : kTrustBundles) {
+        if (mbedtls_x509_crt_parse_file(chain, path) == 0) {
+            sourceOut = path;
+            break;
+        }
+    }
+    if (sourceOut.empty()) {
+        // A directory of certificates, which is how Android stores them. A
+        // partly readable store still counts: parse_path returns how many
+        // files it could NOT read, and a store where some entry is unreadable
+        // is not a reason to refuse every connection. Only a negative return,
+        // meaning nothing parsed at all, leaves us untrusting.
+        for (const char* dir : kTrustDirs) {
+            if (mbedtls_x509_crt_parse_path(chain, dir) >= 0) {
+                sourceOut = dir;
+                break;
+            }
+        }
+    }
+    if (sourceOut.empty()) return 0;
+    int n = 0;
+    for (const mbedtls_x509_crt* c = chain; c; c = c->next) ++n;
+    return n;
+#endif
+}
 
 }  // namespace
 
@@ -429,32 +480,8 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
     mbedtls_ssl_conf_authmode(&m_impl->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_rng(&m_impl->conf, mbedtls_ctr_drbg_random, &m_impl->drbg);
 
-    bool haveTrust = false;
-#if defined(_WIN32)
-    // Windows first and only: its roots are not in any of the files below, and
-    // before this every Windows sign-in failed here.
-    haveTrust = loadWindowsRoots(&m_impl->cacert) > 0;
-#else
-    for (const char* path : kTrustBundles) {
-        if (mbedtls_x509_crt_parse_file(&m_impl->cacert, path) == 0) {
-            haveTrust = true;
-            break;
-        }
-    }
-    if (!haveTrust) {
-        // A directory of certificates, which is how Android stores them. A
-        // partly readable store still counts: parse_path returns how many
-        // files it could NOT read, and a store where some entry is unreadable
-        // is not a reason to refuse every connection. Only a negative return,
-        // meaning nothing parsed at all, leaves us untrusting.
-        for (const char* dir : kTrustDirs) {
-            if (mbedtls_x509_crt_parse_path(&m_impl->cacert, dir) >= 0) {
-                haveTrust = true;
-                break;
-            }
-        }
-    }
-#endif
+    std::string trustFrom;
+    const bool haveTrust = loadSystemRoots(&m_impl->cacert, trustFrom) > 0;
     if (!haveTrust) {
         // Refusing is the only correct answer. Connecting anyway, with
         // verification disabled, would mean the game silently accepts any
@@ -515,6 +542,14 @@ int TlsSocket::read(uint8_t* buf, size_t n) {
     if (rc == 0) return kClosed;
     if (rc < 0) return kError;
     return rc;
+}
+
+int tlsSystemRootCount(std::string& sourceOut) {
+    mbedtls_x509_crt chain{};
+    mbedtls_x509_crt_init(&chain);
+    const int n = loadSystemRoots(&chain, sourceOut);
+    mbedtls_x509_crt_free(&chain);
+    return n;
 }
 
 bool TlsSocket::writeAll(const uint8_t* data, size_t n) {

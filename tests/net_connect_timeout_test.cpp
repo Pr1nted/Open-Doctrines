@@ -159,6 +159,26 @@ static long long walkMs(const std::vector<const char*>& ips, int timeoutMs) {
 
 int main() {
     printf("HttpClient connect timeout\n\n");
+
+    // ── CAN THIS MACHINE VERIFY ANYBODY AT ALL? ──
+    //
+    // With no root certificates the game refuses every HTTPS connection --
+    // which is right, since it cannot check who it is talking to -- and the
+    // player sees "cannot reach the account service" and reasonably concludes
+    // the service is down. Every platform keeps its roots somewhere different
+    // (a file, a directory, an API), and nothing could ask whether THIS one
+    // had any without opening a socket, so nobody asked until a player on the
+    // affected platform said sign-in did not work.
+    //
+    // First in this file because it is the cheapest question and the one whose
+    // wrong answer explains the most.
+    {
+        std::string from;
+        const int roots = tlsSystemRootCount(from);
+        ok(roots > 0, "this platform gives the game root certificates (" +
+                      std::to_string(roots) + " from " +
+                      (from.empty() ? "nowhere" : from) + ")");
+    }
 #if defined(_WIN32)
     // socket() fails outright on Windows until the process has done this, and
     // the failure is a silent -1 rather than anything that names the cause.

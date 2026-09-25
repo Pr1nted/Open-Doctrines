@@ -44,6 +44,19 @@ int connectAny(const addrinfo* list, int timeoutMs, const std::string& hostForEr
 
 }  // namespace odnet
 
+/**
+ * How many root certificates this machine gives the game, and where from.
+ *
+ * WHY IT IS PUBLIC. With no roots the game refuses every HTTPS connection --
+ * correctly, because it cannot verify anybody -- and the player reads that as
+ * "cannot reach the account service". Whether a platform HAS a store is
+ * therefore the first question to ask when sign-in fails there, and until this
+ * existed nothing could ask it without opening a socket to somewhere.
+ *
+ * `sourceOut` names the file, directory or API the roots came from.
+ */
+int tlsSystemRootCount(std::string& sourceOut);
+
 class TlsSocket {
 public:
     TlsSocket();
