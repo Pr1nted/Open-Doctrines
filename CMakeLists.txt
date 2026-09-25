@@ -992,6 +992,7 @@ set(GAME_SOURCES
     src/Config.cpp
     src/Gamepad.cpp
     src/Touch.cpp
+    src/TouchKeyboard.cpp
     src/OdFile.cpp
     src/UiScale.cpp
     src/Palette.cpp
@@ -1124,6 +1125,24 @@ if(OD_DEV_INPUT)
     target_compile_options(OpenDoctrines PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/DevInput.h>)
     target_compile_definitions(OpenDoctrines PRIVATE OD_DEV_INPUT=1)
+endif()
+
+# --- the on-screen keyboard, for platforms that have no other one ---------
+#
+# Same mechanism, same reason: the game asks for typed characters in seventy
+# places and none of them should have to know where the character came from.
+# See src/TouchInput.h and src/TouchKeyboard.h.
+#
+# ON for Android, which has no keyboard this game can reach -- which is why
+# every text field there, including the one an invite code goes in, could not
+# be used at all. Available elsewhere so it can be looked at and photographed
+# on a machine with a big screen; it still draws nothing unless
+# OD_TOUCH_KEYBOARD is set in the environment.
+option(OD_TOUCH_KEYBOARD "Draw an on-screen keyboard for text fields" OFF)
+if(PLATFORM STREQUAL "Android" OR OD_TOUCH_KEYBOARD)
+    target_compile_options(OpenDoctrines PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/TouchInput.h>)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_TOUCH_KEYBOARD=1)
 endif()
 
 # Let the linker drop code nothing reaches.
@@ -2127,6 +2146,17 @@ add_executable(NetTunnelTest EXCLUDE_FROM_ALL
     src/net/Tunnel.cpp
 )
 target_include_directories(NetTunnelTest PRIVATE src tests)
+
+# --- the on-screen keyboard's layout ---
+# No window: what is tested is where the keys are and what they type, which is
+# the half that can be wrong without anybody noticing until a player cannot
+# type an invite code. See tests/touch_keyboard_test.cpp.
+add_executable(TouchKeyboardTest EXCLUDE_FROM_ALL
+    tests/touch_keyboard_test.cpp
+    src/TouchKeyboard.cpp
+)
+target_include_directories(TouchKeyboardTest PRIVATE src tests ${raylib_SOURCE_DIR}/src)
+target_link_libraries(TouchKeyboardTest PRIVATE raylib)
 
 # --- sealing turn submissions ---
 # The store is a dumb bucket anyone can read and sometimes overwrite, so almost

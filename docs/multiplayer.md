@@ -229,6 +229,31 @@ does the same run unattended and exits non-zero if anything is wrong. Neither
 needs a second account or a real service. See
 [multiplayer-testing.md](multiplayer-testing.md).
 
+## On a phone
+
+Android has no keyboard this game can reach: raylib's NativeActivity backend
+delivers no soft keyboard and there is no IME, so every text field was
+unusable there -- including the invite code, which is the one piece of text a
+player has to type to join anything. That is why the APK shipped with
+multiplayer compiled out.
+
+The game now draws its own keyboard (`src/TouchKeyboard.h`). It appears while
+a field is reading text and goes away when nothing is, which it knows because
+asking for a character IS the signal -- no screen had to be changed, including
+the ones written years before it existed. Digits sit on the letters board
+rather than behind the symbols switch, because a code is letters *and* digits
+and switching boards halfway through typing one is the whole of the complaint.
+
+`tests/touch_keyboard_test.cpp` checks the layout without a window: that every
+character an invite code or a tunnel address can contain is reachable, that a
+tap lands on the key it looks like it landed on, and that nothing moves when
+shift is pressed. How it LOOKS is the screenshot tour's "keyboard" shot. How it
+feels under a thumb is a phone's answer, and nobody has given it one yet.
+
+It is on for Android and off everywhere else; `-DOD_TOUCH_KEYBOARD=ON` plus
+`OD_TOUCH_KEYBOARD=1` in the environment turns it on for a desktop build, which
+is how it is looked at.
+
 ## Not built yet
 
 The session, the orders, the lobby, the turn loop and the menu are all built —

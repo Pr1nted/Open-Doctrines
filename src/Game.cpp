@@ -5,6 +5,7 @@
 #include "mods/ModManager.h"
 #include "DevLink.h"
 #include "Game.h"
+#include "TouchKeyboard.h"
 
 #include "util/Async.h"
 // The shaped-Devanagari pipeline. Not reached through Game.h like the rest of
@@ -3275,6 +3276,12 @@ void Game::endFrame() {
     }
     if (devlink::focusRequested()) SetWindowFocused();
     devlink::publishFrame();
+
+    // LAST, over everything: it is a keyboard, and a keyboard is in front of
+    // the thing being typed into. It draws nothing unless a field asked for a
+    // character during this frame -- see TouchKeyboard.h.
+    osk::draw();
+    osk::endFrame();
 
     EndDrawing();
 

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "TouchKeyboard.h"
 #include <ctime>
 #include "Game_Gdtl.h"
 #include "GameInternals.h"
@@ -297,6 +298,9 @@ const Shot SHOTS[] = {
     // the income figures in every shot taken after it. One tax and one
     // subsidy, so the rows show what a rate does rather than dashes.
     {"economy-sectors", 20, true},
+    // The keyboard the game draws for itself, which on Android is the only one
+    // there is. Last, because it is switched on for the shot and stays on.
+    {"keyboard",      20, false},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
 
@@ -1192,6 +1196,20 @@ bool Game::tickScreenshotTour() {
             m_activeSidebarTab = 2;
             m_inEconomy = true;
             m_turnState = TURN_NORMAL;
+        } else if (name == "keyboard") {
+            // On the join screen, where the thing being typed is an invite
+            // code -- the one piece of text every multiplayer player has to
+            // enter, and the reason a phone needed a keyboard at all.
+            m_currentScreen = SCREEN_MENU;
+            m_inEconomy = m_inPolitics = m_inResearch = false;
+            m_mailOpen = m_reportOpen = m_devReportsOpen = false;
+            m_ratingPromptOpen = m_feedbackOpen = false;
+            if (m_dialogOpen) endDialogue();
+            openMultiplayerMenu();
+            m_mpPage = MpPage::Join;
+            m_mpFocus = 1;              // the invite code field, not the address
+            m_mpCodeField = "TEST-GA";
+            osk::forceForShot(true);
         } else if (name == "economy-sectors") {
             // Taken after the mail and admin shots, whose windows stay open.
             m_mailOpen = m_mailSettingsOpen = m_reportOpen = false;
