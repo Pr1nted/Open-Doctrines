@@ -155,13 +155,29 @@ things were added after each of them let a real bug through:
   when the machine cannot VERIFY a server it reached; "nothing answered" is
   treated as the runner's network, because a check that cries wolf is one
   nobody keeps.
-- **Android tests on an emulator** (`android-run`). Nothing built for Android
-  was ever executed: the platform's job compiled a library, checked it was a
-  NativeActivity, and packaged it. Android-only behaviour was therefore only
-  discovered by somebody holding a phone -- a swipe that could not pan the map,
-  a keyboard that did not exist, a transport that had not compiled since it was
-  written. The job runs the parts whose answers are the same everywhere and
-  were simply never asked there.
+**Android is still build-only, and here is what stopped that changing.**
+Nothing built for Android is ever executed in CI: the job compiles a library,
+checks it is a NativeActivity, and packages it. So Android-only behaviour is
+found by somebody holding a phone -- a swipe that could not pan the map, a
+keyboard that did not exist, a transport that had not compiled since it was
+written.
+
+An emulator job was written and then withdrawn after three runs. What was
+learned, so the next attempt starts further along:
+
+- The test binaries themselves are fine: `TouchGestureTest`, `TouchKeyboardTest`,
+  `NetProtocolTest` and `LfgTest` all build for Android and need no window.
+- **x86_64 cannot be built at all.** `odseal` is a closed component shipped as a
+  per-platform prebuilt and the only Android one in the tree is `arm64-v8a`.
+  A maintainer tree builds it from source and so does not notice; a runner
+  cannot. Adding `android-x86_64` to `.github/workflows/odseal-prebuilts.yml`
+  (one matrix entry, a dispatch, a PR to approve) is what unblocks the ordinary
+  route: a Linux runner with KVM.
+- **arm64 on a macOS runner does not boot.** The image installs and the AVD is
+  created, then the emulator starts and never comes up -- "timeout waiting for
+  emulator to boot" -- with `-gpu swiftshader_indirect` (a software renderer
+  for x86 hosts) and equally with `-gpu auto -no-snapshot` and a 15-minute
+  timeout. Whatever the cause, it is not something the logs name.
 
 Neither can judge how anything feels. An emulator does not have a thumb, and
 the live check says nothing about whether sign-in is usable once it connects.
