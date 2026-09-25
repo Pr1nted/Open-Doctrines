@@ -7,6 +7,15 @@
 // round-trip checks in tests/script_expr_test.cpp); without that guarantee,
 // opening this view would quietly rewrite the author's file.
 #include "MapEditor.h"
+// ── THE SAME INPUT EVERY OTHER SCREEN SEES ──
+//
+// Without this the editor read raylib directly, and on Android raylib's wheel
+// is hard-zero and its middle and right buttons never happen: every zoom, every
+// scroll and every button in here was dead on a phone, while the same controls
+// worked everywhere else in the game because everything else goes through this
+// header. It changes nothing on a desktop -- the shims fall through to raylib
+// when no finger and no pad are in play.
+#include "PadInput.h"
 
 #include "Audio.h"
 #include "ScriptEngine.h"
