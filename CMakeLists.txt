@@ -2646,6 +2646,30 @@ add_executable(ScriptExprTest EXCLUDE_FROM_ALL
     src/script/ScriptValue.cpp)
 target_include_directories(ScriptExprTest PRIVATE src)
 
+# --- the parsers, fed input nobody would write on purpose ---
+# The three places the game reads bytes it did not write: a multiplayer socket,
+# a map script, and a mod off the internet. tools/fuzz.py plays whole games;
+# this one breaks input on purpose. See the file's header.
+add_executable(FuzzParsersTest EXCLUDE_FROM_ALL
+    tests/fuzz_parsers_test.cpp
+    src/net/NetProtocol.cpp
+    src/net/WorldSync.cpp
+    src/net/NetUrl.cpp
+    src/net/WsCommon.cpp
+    src/net/WsUnavailable.cpp
+    src/util/Ed25519.cpp
+    src/script/Expr.cpp
+    src/script/Blocks.cpp
+    src/script/ScriptValue.cpp
+    src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(FuzzParsersTest PRIVATE src tests tools/map_generator)
+
 add_executable(ModelBlobTest EXCLUDE_FROM_ALL
     tests/model_blob_test.cpp
     src/ai/ModelBlob.cpp

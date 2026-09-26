@@ -68,7 +68,7 @@ GROUPS = [
         # qualify.sh plays ONE scripted game; this is the part that plays many
         # and does not know in advance what it is looking for. Refuses to start
         # while a bench is running -- each instance spikes ~2 GB at map load.
-        "fuzz.py",
+        "fuzz.py", "fuzz_parsers.sh",
     ]),
     ("Training the AI", [
         # Re-deflates the shipped model container with zopfli. Same format,

@@ -397,6 +397,20 @@ jobs:
       - name: Data race check
         run: tests/net_race_test.sh "${{ github.workspace }}/build-tsan"
 
+  fuzz:
+    name: parsers (asan + ubsan)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      # No CMake configure and no X11: the fuzz target links eleven sources and
+      # opens no window, so tools/fuzz_parsers.sh compiles them directly.
+      # Millions of cases, because the suite's own run is one fixed second and
+      # what finds a new bug is volume under a sanitiser -- which is how the
+      # expression evaluator's signed overflow was found.
+      - name: Fuzz the parsers
+        run: tools/fuzz_parsers.sh 6 1500000
+
   android:
     name: android (arm64-v8a)
     runs-on: ubuntu-22.04
