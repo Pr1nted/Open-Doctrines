@@ -33,7 +33,9 @@ struct Language {
     const char* code;      ///< "uk", "ja", ... and "en"
     const char* endonym;   ///< what its speakers call it, in it
     const char* english;   ///< what an English speaker calls it
-    const char* flagIso;   ///< ISO-3 of the flag drawn beside it
+    /// Names data/flags/<flagIso>.png -- usually a country's ISO-3, but not
+    /// always: Latin and Esperanto have flags without having countries.
+    const char* flagIso;
 };
 
 /// Every language the game offers, English first.

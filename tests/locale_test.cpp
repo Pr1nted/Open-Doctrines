@@ -14,6 +14,7 @@
 #include <unordered_set>
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 static int g_checks = 0, g_failed = 0;
@@ -66,6 +67,15 @@ int main(int argc, char** argv) {
         for (const auto& l : ls) {
             ok(std::string(l.code).size() == 2, std::string("two-letter code: ") + l.code);
             ok(std::string(l.flagIso).size() == 3, std::string("a flag for ") + l.code);
+            // AND A FILE BEHIND IT. Three letters was the whole of this check,
+            // so Latin and Esperanto passed it for months while the picker
+            // drew them a blank grey swatch: their codes named nothing on
+            // disk. The picker prefers the PNG (see Game::languageFlag), so
+            // either will do, but one of them has to exist.
+            const std::string base = dataDir + "flags/" + l.flagIso;
+            ok(std::filesystem::exists(base + ".png") ||
+                   std::filesystem::exists(base + ".svg"),
+               std::string("and a file for it: ") + l.flagIso);
             ok(l.endonym && l.endonym[0], std::string("an endonym for ") + l.code);
         }
     }

@@ -75,12 +75,13 @@ const std::vector<Language> kLanguages = {
     {"az", "Azərbaycan",   "Azerbaijani","AZE"},
     {"ro", "Română",       "Romanian",   "ROU"},
     {"sr", "Српски",       "Serbian",    "SRB"},
-    // No state writes Latin and none speaks Esperanto, so neither has a flag
-    // file. The picker draws a blank swatch for a flag it cannot find -- see
-    // the else in drawLanguageList -- and the code is still three letters
-    // because LocaleTest requires it of every row.
+    // No state writes Latin and none speaks Esperanto, so neither of the last
+    // two names a country: EPO is the Esperanto flag itself, and LAT is a
+    // vexillum drawn for this purpose. Both are in data/flags with the rest,
+    // because what this column names is a FILE, and the picker used to draw a
+    // blank swatch for these two rather than a flag.
     {"hu", "Magyar",       "Hungarian",  "HUN"},
-    {"la", "Latina",       "Latin",      "VAT"},
+    {"la", "Latina",       "Latin",      "LAT"},
     {"eo", "Esperanto",    "Esperanto",  "EPO"},
 };
 

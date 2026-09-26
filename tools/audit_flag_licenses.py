@@ -162,6 +162,17 @@ def audit(filenames):
     return records
 
 
+# Flags that were not downloaded from anywhere, because there was nothing to
+# download: neither Latin nor Esperanto has a country. They are drawn in this
+# repository and are under the project's own licence, and they are listed
+# because a provenance file that only lists what was fetched leaves a reader
+# wondering about the rest.
+AUTHORED = {
+    "EPO": ("EPO.svg", "the Esperanto flag, la verda stelo (1905)"),
+    "LAT": ("LAT.svg", "a vexillum, drawn for the language picker"),
+}
+
+
 def render_markdown(records):
     needs_attr = {
         iso: r for iso, r in records.items()
@@ -208,6 +219,21 @@ def render_markdown(records):
     for iso in sorted(free):
         r = free[iso]
         lines.append(f"| {iso} | {r['file']} | {r['license']} |")
+    lines.append("")
+
+    lines += [
+        "## Drawn for this game",
+        "",
+        "Not from Commons and not from anywhere: no state writes Latin and none",
+        "speaks Esperanto, so these two were authored here and are under the",
+        "project's own licence.",
+        "",
+        "| Name | File | What it is |",
+        "|---|---|---|",
+    ]
+    for iso in sorted(AUTHORED):
+        f, what = AUTHORED[iso]
+        lines.append(f"| {iso} | {f} | {what} |")
     lines.append("")
     return "\n".join(lines)
 

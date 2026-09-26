@@ -44,10 +44,19 @@ Texture2D Game::languageFlag(const char* iso) {
     auto it = m_langFlags.find(iso);
     if (it != m_langFlags.end()) return it->second;
 
-    // The national flag as shipped, not a generated one: these are the real
-    // countries and the file is already on disk for the map to use.
+    // The flag as shipped, not a generated one: the file is already on disk
+    // for the map to use.
+    //
+    // THE PNG FIRST. Every flag in data/flags was pre-rendered to PNG by the
+    // pipeline precisely because nanosvg, which is what reads the .svg here,
+    // cannot draw a clipPath or a negative viewBox -- and the flags that need
+    // one include the United Kingdom's, which is the flag beside English. The
+    // .svg is kept as the fallback for anything the pipeline has not rendered.
     FlagPattern fp;
-    fp.imagePath = std::string("flags/") + iso + ".svg";
+    const std::string png = std::string("flags/") + iso + ".png";
+    fp.imagePath = FileExists((m_dataDir + png).c_str())
+                       ? png
+                       : std::string("flags/") + iso + ".svg";
     Texture2D tex = FlagRenderer::render(fp, kFlagW * 2, kFlagH * 2, m_dataDir, nullptr);
     m_langFlags[iso] = tex;
     return tex;

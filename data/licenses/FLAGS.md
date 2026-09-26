@@ -270,3 +270,14 @@ No attribution obligation. Listed for provenance.
 | ZAF_1928 | Flag of South Africa (1928–1994, dark colors).svg | Public domain |
 | ZMB | Flag of Zambia.svg | Public domain |
 | ZWE | Flag of Zimbabwe.svg | Public domain |
+
+## Drawn for this game
+
+Not from Commons and not from anywhere: no state writes Latin and none
+speaks Esperanto, so these two were authored here and are under the
+project's own licence.
+
+| Name | File | What it is |
+|---|---|---|
+| EPO | EPO.svg | the Esperanto flag, la verda stelo (1905) |
+| LAT | LAT.svg | a vexillum, drawn for the language picker |
