@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <cctype>
 #include <ctime>
 
 #ifdef __EMSCRIPTEN__
@@ -30,15 +31,46 @@ namespace {
 const char* kShipped[] = {
     "STDmaps", "audio", "flags", "fonts", "icons", "symbols", "licenses", "ai",
     "tips.json", "credits.txt",
+    // Added to OD_SHIPPED_DATA later and not here, which cost far more than
+    // the "fatter .odstate" the comment above predicted: on the web this list
+    // decides what is re-compressed and pushed to IndexedDB every time the
+    // state is flushed, so seven megabytes of read-only content the build
+    // ships was being deflated at maximum effort once a minute, on the frame
+    // thread. tools/check_shipped_data.py now fails when the two disagree.
+    "comms", "lang", "dialog",
+    "policies.json", "district_laws.json", "parties.json", "menu_bg.png",
     // Not content, but not the player's either.
     "Icon", "MANAGED", "VERSION",
     "tools",        // downloaded cloudflared; refetched on demand
+    // The local advisor's runtime and model, which the game downloads for
+    // itself the same way (src/llm/Runner.h). Hundreds of megabytes and
+    // per-platform: 4.9 GB in this working tree, all of which an export was
+    // dutifully packing into a file the player would have had to download.
+    "llm",
 };
 
 bool isShipped(const std::string& topLevel) {
     for (const char* s : kShipped)
         if (topLevel == s) return true;
     return false;
+}
+
+/**
+ * Is this file's content already compressed?
+ *
+ * Deflating a .odsv is the worst work a computer can be asked to do: a save is
+ * itself a zip, so the search finds nothing and the output is the input plus a
+ * header -- while costing more CPU than any other file in data/, because the
+ * saves are also the biggest. data/saves is the bulk of a played install (195
+ * MB in this working tree), and at MZ_BEST_COMPRESSION that was minutes of a
+ * browser tab's main thread, once a minute. Stored instead.
+ */
+bool alreadyCompressed(const fs::path& p) {
+    std::string ext = p.extension().string();
+    for (char& c : ext) c = (char)std::tolower((unsigned char)c);
+    return ext == ".odsv" || ext == ".odmap" || ext == ".odmod" || ext == ".zip" ||
+           ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".ogg" ||
+           ext == ".mp3" || ext == ".gz";
 }
 
 bool endsWith(const std::string& s, const std::string& suffix) {
@@ -86,6 +118,39 @@ std::string readWhole(const fs::path& p, bool& ok) {
     std::fclose(f);
     ok = true;
     return data;
+}
+
+/**
+ * Every file under `root` that is the player's rather than the build's.
+ *
+ * ONE WALK, because there are now two callers and they must agree about what
+ * is in the state: fingerprint() deciding whether a write is needed and save()
+ * performing it. Two copies of this rule would eventually skip a write for a
+ * file the other one would have stored.
+ */
+template <typename F>
+void forEachStateFile(const fs::path& root, F&& fn) {
+    std::error_code ec;
+    for (const auto& top : fs::directory_iterator(root, ec)) {
+        std::string name = top.path().filename().string();
+        if (name == "." || name == ".." || name == ".DS_Store") continue;
+        if (isShipped(name)) continue;
+
+        if (fs::is_directory(top.path(), ec)) {
+            for (auto it = fs::recursive_directory_iterator(top.path(), ec);
+                 it != fs::recursive_directory_iterator(); ++it) {
+                if (!it->is_regular_file(ec)) continue;
+                if (it->path().filename() == ".DS_Store") continue;
+                if (isArchive(it->path())) continue;   // never nest exports
+                std::string rel = fs::relative(it->path(), root, ec).generic_string();
+                if (rel.empty()) continue;
+                fn(it->path(), rel);
+            }
+        } else if (fs::is_regular_file(top.path(), ec)) {
+            if (isArchive(top.path())) continue;       // never nest exports
+            fn(top.path(), name);
+        }
+    }
 }
 
 }  // namespace
@@ -146,6 +211,39 @@ int countMods(const std::string& archivePath) {
     return mods;
 }
 
+std::string fingerprint(const std::string& dataDir) {
+    std::error_code ec;
+    fs::path root(dataDir);
+    if (!fs::is_directory(root, ec)) return {};
+
+    // Name, size and mtime of every file the state holds, folded into one
+    // number. NOT the contents: reading them is most of what a write costs,
+    // and the point of this is to answer "has anything changed?" without
+    // paying that. A file rewritten with identical bytes reads as a change,
+    // which is the harmless direction.
+    //
+    // The walk is ordered by the directory iterator rather than sorted, which
+    // is stable enough for the comparison being made: consecutive walks of an
+    // unchanged tree in one process.
+    mz_ulong crc = MZ_CRC32_INIT;
+    size_t files = 0;
+    unsigned long long bytes = 0;
+    forEachStateFile(root, [&](const fs::path& path, const std::string& rel) {
+        const auto size = (unsigned long long)fs::file_size(path, ec);
+        const auto when = fs::last_write_time(path, ec).time_since_epoch().count();
+        char line[512];
+        const int n = std::snprintf(line, sizeof line, "%s|%llu|%lld\n", rel.c_str(),
+                                    size, (long long)when);
+        if (n > 0) crc = mz_crc32(crc, (const mz_uint8*)line, (size_t)n);
+        files++;
+        bytes += size;
+    });
+
+    char out[96];
+    std::snprintf(out, sizeof out, "%zu:%llu:%08lx", files, bytes, (unsigned long)crc);
+    return out;
+}
+
 bool save(const std::string& dataDir, const std::string& outPath,
           std::string& err, int* outCount) {
     std::error_code ec;
@@ -159,36 +257,15 @@ bool save(const std::string& dataDir, const std::string& outPath,
     }
 
     int stored = 0;
-    for (const auto& top : fs::directory_iterator(root, ec)) {
-        std::string name = top.path().filename().string();
-        if (name == "." || name == ".." || name == ".DS_Store") continue;
-        if (isShipped(name)) continue;
-
-        if (fs::is_directory(top.path(), ec)) {
-            for (auto it = fs::recursive_directory_iterator(top.path(), ec);
-                 it != fs::recursive_directory_iterator(); ++it) {
-                if (!it->is_regular_file(ec)) continue;
-                if (it->path().filename() == ".DS_Store") continue;
-                if (isArchive(it->path())) continue;   // never nest exports
-                bool ok = false;
-                std::string data = readWhole(it->path(), ok);
-                if (!ok) continue;   // vanished mid-walk; not worth failing over
-                std::string rel = fs::relative(it->path(), root, ec).generic_string();
-                if (rel.empty()) continue;
-                if (mz_zip_writer_add_mem(&zip, rel.c_str(), data.data(), data.size(),
-                                          MZ_BEST_COMPRESSION))
-                    stored++;
-            }
-        } else if (fs::is_regular_file(top.path(), ec)) {
-            if (isArchive(top.path())) continue;   // never nest exports
-            bool ok = false;
-            std::string data = readWhole(top.path(), ok);
-            if (!ok) continue;
-            if (mz_zip_writer_add_mem(&zip, name.c_str(), data.data(), data.size(),
-                                      MZ_BEST_COMPRESSION))
-                stored++;
-        }
-    }
+    forEachStateFile(root, [&](const fs::path& path, const std::string& rel) {
+        bool ok = false;
+        std::string data = readWhole(path, ok);
+        if (!ok) return;   // vanished mid-walk; not worth failing over
+        const mz_uint level = alreadyCompressed(path) ? (mz_uint)MZ_NO_COMPRESSION
+                                                      : (mz_uint)MZ_BEST_COMPRESSION;
+        if (mz_zip_writer_add_mem(&zip, rel.c_str(), data.data(), data.size(), level))
+            stored++;
+    });
 
     if (stored == 0) {
         // An empty archive would load back as "success" having restored nothing.

@@ -6227,6 +6227,7 @@ private:
     /// never.
     bool  m_ratingPromptOpen = false;
     float m_playedSeconds = 0.0f;   ///< the part of a minute not yet counted
+    int   m_playClockUnsaved = 0;   ///< minutes counted but not yet written out
 
     /**
      * Something just went well for the player, and the prompt may use it.

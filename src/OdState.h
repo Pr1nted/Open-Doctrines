@@ -28,6 +28,12 @@
 // world unpacks, projects/ from the map editor, and installed mods.
 namespace OdState {
 
+// A cheap summary of the state's files: their names, sizes and modification
+// times. Two calls that return the same string mean nothing under dataDir has
+// changed, which is how the web build avoids rewriting an identical archive --
+// see src/util/WebPersist.cpp. It reads no file contents, so it costs a walk.
+std::string fingerprint(const std::string& dataDir);
+
 // Writes `dataDir`'s player state to `outPath` as a zip. False on failure with
 // a reason in `err`. `outCount` receives the number of files stored.
 bool save(const std::string& dataDir, const std::string& outPath,

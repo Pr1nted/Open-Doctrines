@@ -32,6 +32,16 @@ def cmake_list():
     return set(m.group(1).split())
 
 
+def odstate_list():
+    """The names src/OdState.cpp treats as the build's rather than the player's."""
+    src = open(os.path.join(ROOT, "src", "OdState.cpp"), encoding="utf-8").read()
+    m = re.search(r"const char\* kShipped\[\] = \{(.*?)\};", src, re.S)
+    if not m:
+        sys.exit("src/OdState.cpp: no kShipped[]")
+    body = "\n".join(line.split("//", 1)[0] for line in m.group(1).splitlines())
+    return set(re.findall(r'"([^"]+)"', body))
+
+
 def main():
     fails = 0
     cmake = cmake_list()
@@ -42,6 +52,26 @@ def main():
     for name in sorted(py - cmake):
         print(f"FAIL  {name}: shipped by release.py (zips), not by CMake (web, Android, installers)")
         fails += 1
+
+    # THE THIRD LIST, and the one whose drift is not merely cosmetic.
+    #
+    # src/OdState.cpp decides what a .odstate holds -- everything under data/
+    # EXCEPT the shipped content. In the browser that archive is rebuilt and
+    # pushed to IndexedDB whenever the player's state changes, on the frame
+    # thread, so a shipped directory missing from kShipped[] is not a fatter
+    # file: it is megabytes of the build's own content re-compressed while the
+    # game is not drawing. lang/, dialog/ and comms/ were missing, which is
+    # 7 MB, and the freeze that followed was reported by a player.
+    #
+    # One direction only. kShipped[] legitimately holds names CMake does not
+    # (Icon, MANAGED, VERSION, tools), because they are not content either.
+    odstate = odstate_list()
+    for name in sorted(cmake):
+        top = name.split("/", 1)[0]
+        if top not in odstate:
+            print(f"FAIL  {top}: shipped by CMake, but src/OdState.cpp archives it "
+                  f"as the player's -- add it to kShipped[]")
+            fails += 1
 
     tracked = subprocess.run(["git", "ls-files", "data"], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout.split()
@@ -55,8 +85,8 @@ def main():
     if fails:
         print(f"\n{fails} problem(s). Ship it in BOTH lists, or add it to KNOWN_USER_DATA.")
         return 1
-    print(f"ok  {len(py)} shipped entries agree across CMake and release.py; "
-          f"{len(top)} tracked data/ entries are all classified")
+    print(f"ok  {len(py)} shipped entries agree across CMake, release.py and "
+          f"OdState.cpp; {len(top)} tracked data/ entries are all classified")
     return 0
 
 

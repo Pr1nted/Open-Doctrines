@@ -2902,6 +2902,19 @@ add_executable(SaveRoundTripTest EXCLUDE_FROM_ALL
 target_include_directories(SaveRoundTripTest PRIVATE src tests tools/map_generator)
 
 
+# The archive the web build writes on a timer. Built everywhere, because
+# OdState.cpp is: the archiving half is plain std::filesystem and miniz.
+add_executable(OdStateTest EXCLUDE_FROM_ALL
+    tests/odstate_test.cpp
+    src/OdState.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(OdStateTest PRIVATE src tests tools/map_generator)
+
+
 add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp

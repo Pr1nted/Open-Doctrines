@@ -27,6 +27,7 @@ const char* kArchive  = "/persist/state.odstate";
 bool  g_ready   = false;    // the mount exists and has been read back
 bool  g_dirty   = false;    // something changed since the last write
 double g_lastWrite = 0.0;
+std::string g_lastPrint;    // the state as it was when last written
 
 // Long enough that dragging a volume slider does not serialise the player's
 // saves on every frame, short enough that a tab closed without warning loses
@@ -173,12 +174,33 @@ void odPersistFlush(const std::string& dataDir) {
     g_dirty = false;
     g_lastWrite = GetTime();
 
+    // NOTHING CHANGED IS THE COMMON CASE, and it used to cost the same as a
+    // change. The game marks the state dirty whenever it writes the config,
+    // which it does on a timer, so a player sitting on one screen paid a full
+    // re-archive of every save they own -- read, deflate, and a push of the
+    // whole thing to IndexedDB -- for a file that already holds those bytes.
+    // On the frame thread, with nothing drawn and no input read until it
+    // finished, which is what a freeze IS.
+    const std::string print = OdState::fingerprint(dataDir);
+    if (!print.empty() && print == g_lastPrint) return;
+
+    const double began = GetTime();
     std::string err;
     int count = 0;
     if (!OdState::save(dataDir, kArchive, err, &count)) {
         LoadLog() << "[persist] could not write: " << err << std::endl;
         return;
     }
+    g_lastPrint = print;
+
+    // TIMED, AND SAID OUT LOUD. This is the most expensive thing the web build
+    // does on a timer and it reported nothing at all, so a player describing a
+    // freeze and a developer reading the console had no way to meet. A line
+    // per write is cheap; a write that took a visible amount of time says so.
+    const double ms = (GetTime() - began) * 1000.0;
+    if (ms >= 250.0)
+        LoadLog() << "[persist] wrote " << count << " file(s) in " << (int)ms
+                  << " ms -- the game was stopped for that long" << std::endl;
 
     // false = memory -> IndexedDB. NOT waited on: the archive is already
     // written into the mount, and the browser will finish the transfer while

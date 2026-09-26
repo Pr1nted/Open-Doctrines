@@ -698,11 +698,19 @@ constexpr int USAGE_ASK_MINUTES = 3;
 void Game::tickPlayClock(float dt) {
     if (m_feedbackOpen || m_paused || m_currentScreen != SCREEN_PLAYING) return;
     m_playedSeconds += dt;
-    if (m_playedSeconds >= 60.0f) {
-        m_config.minutesPlayed += (int)(m_playedSeconds / 60.0f);
-        m_playedSeconds = std::fmod(m_playedSeconds, 60.0f);
-        m_config.save(m_configPath);
-    }
+    if (m_playedSeconds < 60.0f) return;
+    m_config.minutesPlayed += (int)(m_playedSeconds / 60.0f);
+    m_playedSeconds = std::fmod(m_playedSeconds, 60.0f);
+
+    // NOT EVERY MINUTE. Writing the config is not free anywhere and is
+    // expensive in a browser, where it marks the whole of data/ as needing to
+    // go back to IndexedDB (src/util/WebPersist.cpp) -- so this counter, which
+    // exists to decide when to ask the player for a rating, was setting the
+    // pace of the most costly thing the web build does. What is at stake if a
+    // tab dies between writes is up to five minutes of a play-time statistic.
+    if (++m_playClockUnsaved < 5) return;
+    m_playClockUnsaved = 0;
+    m_config.save(m_configPath);
 }
 
 void Game::maybeOfferUsage(float dt) {
