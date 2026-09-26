@@ -24,7 +24,7 @@ TOOLS = os.path.join(ROOT, "tools")
 GROUPS = [
     ("Releasing", [
         "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_relay_limits.py", "build.py", "screenshots.sh",
-        "itch-cover.py", "banner.py", "package_android.sh",
+        "itch-cover.py", "banner.py", "steam-logo.py", "package_android.sh",
         # Builds the web version and puts it on Cloudflare Pages -- the hosting
         # a Discord Activity needs, and the thing that makes the web build
         # update itself for everybody. See docs/discord-activity.md.
@@ -97,6 +97,7 @@ GROUPS = [
         # and keeping that build's baked tables in step with this one.
         "templeos_map.py", "templeos_world.py", "templeos_data.py",
         "templeos_font.py", "templeos_sync.py", "templeos_release.sh",
+        "templeos_collage.py",
     ]),
     ("Building the world data", [
         "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",
