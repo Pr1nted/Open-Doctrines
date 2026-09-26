@@ -48,6 +48,39 @@ BLOCKS = [
     (0x25A0, 0x25FF),   # Geometric Shapes
 ]
 
+# ── AND EVERY LANGUAGE'S OWN NAME ──
+#
+# The picker writes each language in its own script, and the blocks above hold
+# none of 日本語, 中文, 한국어, العربية, हिन्दी, ქართული or Հայերեն -- so on the
+# web those rows were BLANK until the language was chosen, which is the one
+# moment the name is needed. (Vietnamese and Azerbaijani lost single letters
+# the same way: ế and ə are outside Latin Extended-A.)
+#
+# The full font arrives on demand and fixes it afterwards; what it cannot fix
+# is choosing. These are a few dozen glyphs, taken from the table itself so a
+# language added later brings its own, and they cost about 3 KB.
+LOCALE_SOURCE = "src/i18n/Locale.cpp"
+
+
+def endonym_codepoints(root):
+    """Every codepoint in the endonyms in src/i18n/Locale.cpp."""
+    import os
+    import re
+    path = os.path.join(root, LOCALE_SOURCE)
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        # Subsetting a font outside the tree: the blocks above still apply and
+        # the on-demand full font still covers the rest.
+        print("subset_font: no %s, so language names are not added" % LOCALE_SOURCE,
+              file=sys.stderr)
+        return []
+    out = set()
+    for row in re.finditer(r'\{\s*"[a-z]{2}"\s*,\s*"([^"]*)"', text):
+        for ch in row.group(1):
+            out.add(ord(ch))
+    return sorted(out)
+
 
 def main(argv):
     if len(argv) != 3:
@@ -65,6 +98,13 @@ def main(argv):
     unicodes = []
     for lo, hi in BLOCKS:
         unicodes.extend(range(lo, hi + 1))
+
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    names = endonym_codepoints(root)
+    unicodes.extend(names)
+    print("subset_font: %d block codepoints + %d from language names"
+          % (len(unicodes) - len(names), len(names)))
 
     options = subset.Options()
     # The game rasterises glyphs itself and never asks the font for shaping,

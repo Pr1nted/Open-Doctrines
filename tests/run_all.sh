@@ -390,6 +390,11 @@ check "shipped data lists agree, data/ classified" $PY "$root/tools/check_shippe
 # down twice, in two languages. See tools/check_relay_limits.py.
 check "the game knows what the relay will carry" $PY "$root/tools/check_relay_limits.py"
 
+# The web build preloads a subset of the font and fetches the rest on demand,
+# which cannot help the language picker: that list has to be readable BEFORE a
+# language is chosen. See tools/check_web_font.py.
+check "the web font draws every language name" $PY "$root/tools/check_web_font.py"
+
 # Offline: asserts every flag in download_flags_fast.py has a recorded licence
 # and that none of them is under terms the project has not accepted. Refresh
 # from Wikimedia with: python3 tools/audit_flag_licenses.py

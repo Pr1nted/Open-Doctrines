@@ -43,6 +43,21 @@ namespace odText { void setComplexArabic(bool) {} }
 int main(int argc, char** argv) {
     const std::string dataDir = (argc > 1) ? std::string(argv[1]) : std::string("data/");
 
+    section("every language the picker lists can actually be chosen");
+    {
+        // THE WHOLE TABLE, not a sample. A language reaches the picker by being
+        // in kLanguages; it becomes usable by having a file the loader can
+        // open. Nothing tied the two together, so a row added without its
+        // file -- or with a file that does not ship, or does not parse -- is a
+        // language a player can select and not get, which is what was reported
+        // for the ones added last.
+        for (const auto& l : od::i18n::languages()) {
+            ok(od::i18n::setLanguage(l.code, dataDir),
+               std::string("switches to ") + l.english + " (" + l.code + ")");
+        }
+        od::i18n::setLanguage("en", dataDir);
+    }
+
     section("the languages on offer");
     {
         const auto& ls = od::i18n::languages();
