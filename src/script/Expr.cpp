@@ -2,6 +2,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 
 namespace odscript {
 namespace {
@@ -114,6 +115,9 @@ int binPrec(const std::string& op) {
     return 0;
 }
 const int UNARY_PREC = 6;
+
+constexpr long long kIntMax = std::numeric_limits<long long>::max();
+constexpr long long kIntMin = std::numeric_limits<long long>::min();
 
 struct Parser {
     std::vector<Tok> toks;
@@ -237,6 +241,46 @@ NodePtr parse(const std::string& src, std::string& err) {
     return n;
 }
 
+/**
+ * Integer arithmetic that a map script cannot use to break the language.
+ *
+ * Signed overflow is undefined behaviour, not wrapping -- the compiler is
+ * entitled to assume it never happens and to optimise on that basis, which is
+ * how "it just wraps" turns into a branch that vanishes. A script is input
+ * from outside this program (a map, a mod), and `set x = x * 2` in a loop
+ * reaches the end of a long long in sixty-three turns. Found by
+ * tests/fuzz_parsers_test.cpp under UBSan.
+ *
+ * Reported rather than saturated, because the other two arithmetic failures
+ * here -- divide by zero and modulo by zero -- are reported, and a number that
+ * silently stops growing is harder for a map-maker to diagnose than a line
+ * that says what happened. Written by hand rather than with
+ * __builtin_*_overflow: MSVC has no such builtin and this has to be one
+ * implementation, not two.
+ */
+bool addChecked(long long a, long long b, long long& out) {
+    if ((b > 0 && a > kIntMax - b) || (b < 0 && a < kIntMin - b)) return false;
+    out = a + b;
+    return true;
+}
+
+bool subChecked(long long a, long long b, long long& out) {
+    if ((b < 0 && a > kIntMax + b) || (b > 0 && a < kIntMin + b)) return false;
+    out = a - b;
+    return true;
+}
+
+bool mulChecked(long long a, long long b, long long& out) {
+    if (a == 0 || b == 0) { out = 0; return true; }
+    if (a == -1 && b == kIntMin) return false;
+    if (b == -1 && a == kIntMin) return false;
+    if (a > 0 ? (b > 0 ? a > kIntMax / b : b < kIntMax / a * -1 - 1 && b < kIntMin / a)
+              : (b > 0 ? a < kIntMin / b : b < kIntMax / a))
+        return false;
+    out = a * b;
+    return true;
+}
+
 ScriptValue eval(const Node& n, const Resolver& resolve, std::string& err) {
     switch (n.kind) {
         case Node::LITERAL: return n.literal;
@@ -250,7 +294,9 @@ ScriptValue eval(const Node& n, const Resolver& resolve, std::string& err) {
             if (!err.empty()) return {};
             if (n.text == "not") return ScriptValue::makeBool(!a.asBool());
             if (a.type == ScriptValue::FLOAT) return ScriptValue::makeFloat(-a.asFloat());
-            return ScriptValue::makeInt(-a.asInt());
+            const long long v = a.asInt();
+            if (v == kIntMin) { err = "arithmetic overflow"; return {}; }
+            return ScriptValue::makeInt(-v);
         }
         case Node::CALL: {
             std::vector<ScriptValue> a;
@@ -340,8 +386,13 @@ ScriptValue eval(const Node& n, const Resolver& resolve, std::string& err) {
 
             const bool flt = a.type == ScriptValue::FLOAT || b.type == ScriptValue::FLOAT;
             if (op == "%") {
-                if (b.asInt() == 0) { err = "modulo by zero"; return {}; }
-                return ScriptValue::makeInt(a.asInt() % b.asInt());
+                const long long x = a.asInt(), y = b.asInt();
+                if (y == 0) { err = "modulo by zero"; return {}; }
+                // The one other undefined case: the quotient of kIntMin / -1
+                // does not exist, and the remainder operator is specified in
+                // terms of it. Mathematically the answer is zero.
+                if (y == -1) return ScriptValue::makeInt(0);
+                return ScriptValue::makeInt(x % y);
             }
             if (op == "/") {
                 // Always a float: integer division silently turning 3/2 into 1
@@ -349,12 +400,20 @@ ScriptValue eval(const Node& n, const Resolver& resolve, std::string& err) {
                 if (b.asFloat() == 0.0) { err = "divide by zero"; return {}; }
                 return ScriptValue::makeFloat(a.asFloat() / b.asFloat());
             }
-            if (op == "+") return flt ? ScriptValue::makeFloat(a.asFloat() + b.asFloat())
-                                      : ScriptValue::makeInt(a.asInt() + b.asInt());
-            if (op == "-") return flt ? ScriptValue::makeFloat(a.asFloat() - b.asFloat())
-                                      : ScriptValue::makeInt(a.asInt() - b.asInt());
-            if (op == "*") return flt ? ScriptValue::makeFloat(a.asFloat() * b.asFloat())
-                                      : ScriptValue::makeInt(a.asInt() * b.asInt());
+            if (op == "+" || op == "-" || op == "*") {
+                if (flt) {
+                    const double x = a.asFloat(), y = b.asFloat();
+                    return ScriptValue::makeFloat(op == "+" ? x + y
+                                                : op == "-" ? x - y : x * y);
+                }
+                const long long x = a.asInt(), y = b.asInt();
+                long long r = 0;
+                const bool okArith = op == "+" ? addChecked(x, y, r)
+                                   : op == "-" ? subChecked(x, y, r)
+                                               : mulChecked(x, y, r);
+                if (!okArith) { err = "arithmetic overflow"; return {}; }
+                return ScriptValue::makeInt(r);
+            }
             err = "unknown operator '" + op + "'";
             return {};
         }

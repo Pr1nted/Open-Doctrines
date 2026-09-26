@@ -91,6 +91,25 @@ int main() {
     expectInt("7 % 3", 1);
     expectInt("-var.gold + 150", 50);        // unary minus
 
+    printf("\n  -- arithmetic a script cannot use to break the language --\n");
+    // Signed overflow is undefined behaviour, and a script is input from
+    // outside this program: a map or a mod writes it. `set x = x * 2` in a
+    // loop reaches the end of a long long in sixty-three turns. Found by
+    // tests/fuzz_parsers_test.cpp running under UBSan; reported the way the
+    // other two arithmetic failures here are, rather than silently wrapping.
+    expectError("9223372036854775807 + 1");
+    expectError("-9223372036854775807 - 2");
+    expectError("9223372036854775807 * 2");
+    expectError("-(-9223372036854775807 - 1)");     // negating the smallest
+    expectInt("9223372036854775807 % -1", 0);       // the other undefined pair
+    expectInt("9223372036854775807 - 1", 9223372036854775806LL);
+    expectInt("4611686018427387903 * 2", 9223372036854775806LL);
+    // A double that does not fit in a long long is undefined to cast, and one
+    // multiplication of two ordinary-looking numbers gets there (the lexer has
+    // no exponent form, so this is how a script writes a big float). Clamped
+    // to the end it went past, so % has something to work with.
+    expectInt("1000000000.0 * 1000000000000000.0 % 7", 9223372036854775807LL % 7);
+
     printf("\n  -- comparison and boolean --\n");
     expectBool("var.gold > 50", true);
     expectBool("var.gold + 1 > 100", true);  // arithmetic binds tighter

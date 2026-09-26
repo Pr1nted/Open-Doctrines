@@ -6,7 +6,9 @@
 // standard library, and now say so.
 #include "../ScriptEngine.h"
 
+#include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 
 std::string ScriptValue::asString() const {
@@ -23,7 +25,18 @@ std::string ScriptValue::asString() const {
 long long ScriptValue::asInt() const {
     switch (type) {
         case INT: return intVal;
-        case FLOAT: return (long long)floatVal;
+        // CLAMPED, not cast. Converting a double that does not fit into a
+        // long long is undefined behaviour, and a map script can produce one
+        // with a single multiplication -- `set x = 1e300 % 2` was enough. A
+        // NaN is nothing, and anything past the ends is the end it went past.
+        case FLOAT: {
+            if (std::isnan(floatVal)) return 0;
+            constexpr double lo = -9223372036854775808.0;   // exactly LLONG_MIN
+            constexpr double hi =  9223372036854775808.0;   // LLONG_MAX + 1
+            if (floatVal <= lo) return std::numeric_limits<long long>::min();
+            if (floatVal >= hi) return std::numeric_limits<long long>::max();
+            return (long long)floatVal;
+        }
         case BOOL: return boolVal ? 1 : 0;
         case MOD:  return boolVal ? 1 : 0;
         case STRING: { try { return std::stoll(strVal); } catch (...) { return 0; } }
