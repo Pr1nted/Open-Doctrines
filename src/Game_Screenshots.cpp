@@ -305,6 +305,14 @@ const Shot SHOTS[] = {
     // half underneath the keyboard. The plain `find-country` shot above is the
     // desktop one; this is the same panel with the keyboard up. Needs a world.
     {"find-country-keyboard", 20, true},
+    // Monuments: the screen that decides which are switched on, the province
+    // tab that builds them, and the two the map draws -- flat, and standing up
+    // on the globe. Four shots because they are four different pictures and a
+    // layout test cannot see any of them.
+    {"monuments-panel",   20, true},
+    {"monuments-province", 20, true},
+    {"monuments-map",     20, true},
+    {"monuments-globe",   40, true},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
 
@@ -1215,6 +1223,68 @@ bool Game::tickScreenshotTour() {
             m_mpFocus = 1;              // the invite code field, not the address
             m_mpCodeField = "TEST-GA";
             osk::forceForShot(true);
+        } else if (std::string(name).rfind("monuments", 0) == 0) {
+            // A world with monuments in it, built here rather than played to:
+            // the tour has no turns to spend reaching a country that has three.
+            // Different kinds, different levels, and ONE SWITCHED OFF, because
+            // the off state is a state the picture has to show.
+            m_inEconomy = m_inPolitics = m_inResearch = false;
+            m_mailOpen = m_reportOpen = m_devReportsOpen = false;
+            if (m_dialogOpen) endDialogue();
+
+            const std::vector<int> mine = provincesOf(m_playerCountryId);
+            static const odmon::Kind kinds[] = {
+                odmon::Kind::University, odmon::Kind::FactoryConglomerate,
+                odmon::Kind::AirDefence, odmon::Kind::StrategicReserve,
+                odmon::Kind::MissileSilo,
+            };
+            m_monuments.clear();
+            for (size_t i = 0; i < mine.size() && i < 5; ++i) {
+                odmon::Holding h;
+                h.provinceId = mine[i];
+                h.kind = kinds[i];
+                h.level = 1 + (int)(i % 3);
+                h.active = (i != 2);
+                m_monuments[h.provinceId] = h;
+            }
+            rebuildMonumentEffects();
+
+            if (name == std::string("monuments-panel")) {
+                m_inMonuments = true;
+                m_activeSidebarTab = 5;
+            } else if (name == std::string("monuments-province")) {
+                m_inMonuments = false;
+                m_activeSidebarTab = 0;
+                m_activeViewTab = 9;
+                if (!mine.empty()) {
+                    // The one WITHOUT a monument, so the shot shows the list of
+                    // what could be built rather than a single row.
+                    const int empty = mine.size() > 5 ? mine[5] : mine.front();
+                    if (m_renderer) m_renderer->setSelectedProvince(empty);
+                    m_lastSelectedProvince = empty;
+                    buildCountryProvinceList(empty);
+                }
+            } else {
+                // The two MAP shots. Both look at a monument rather than at
+                // the world: an icon eleven pixels across on a world map is
+                // a picture of nothing, and the globe one has to be near
+                // enough that a figure standing on the ground reads as one.
+                m_inMonuments = false;
+                m_activeSidebarTab = 0;
+                m_activeViewTab = 9;
+                const bool globe = (name == std::string("monuments-globe"));
+                if (m_renderer) {
+                    m_renderer->setViewMode(globe ? MapRenderer::ViewMode::Globe
+                                                  : MapRenderer::ViewMode::Flat);
+                    if (!m_monuments.empty()) {
+                        auto cit = m_provinceCenters.find(m_monuments.begin()->first);
+                        if (cit != m_provinceCenters.end())
+                            m_renderer->flyTo(cit->second.x, cit->second.y,
+                                              m_renderer->getMinZoom() * (globe ? 9.0f : 7.0f),
+                                              1000.0f);
+                    }
+                }
+            }
         } else if (name == "find-country-keyboard") {
             // WITH THE KEYBOARD UP, because that is the case that was broken:
             // the panel is placed from the bottom of the screen and the rows

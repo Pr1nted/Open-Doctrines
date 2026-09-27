@@ -3403,6 +3403,97 @@ void Game::drawInner() {
     // where two circles OVERLAP, where a numeral now sits above the
     // neighbour's ring rather than under it -- and overlapping circles are
     // already unreadable, so that is the better of the two.
+    // ── MONUMENTS ON THE MAP ────────────────────────────────────────────
+    //
+    // FLAT: an icon in the province, sized by level, dimmed when it is
+    // switched off. GLOBE: the same thing standing UP -- a stepped silhouette
+    // drawn from the province outward, which is what "poking out of the
+    // province" means on a sphere. Both from the same projected point, so they
+    // cannot disagree about where the monument is.
+    //
+    // The globe figure leans with the ground: faceCosine() is 1 where the
+    // surface faces the camera and falls to 0 at the limb, so a monument near
+    // the edge is drawn short and flat rather than standing out sideways into
+    // space. That single number is what makes a 2D shape read as a 3D one.
+    if (m_activeViewTab == 9 && !m_monuments.empty() && !m_renderer->inTransition()) {
+        const bool onGlobe = m_renderer->viewMode() == MapRenderer::ViewMode::Globe;
+        const float zoom = m_renderer->getZoom();
+        for (const auto& [pid, h] : m_monuments) {
+            auto cit = m_provinceCenters.find(pid);
+            if (cit == m_provinceCenters.end()) continue;
+            const Vector2 sp = worldToScreen(cit->second);
+            if (sp.x < -60 || sp.x > m_screenW + 60 || sp.y < -60 || sp.y > m_screenH + 60)
+                continue;
+
+            const int owner = monumentOwnerOf(pid);
+            const Country* oc = m_countries.getCountry(owner);
+            Color col = oc ? oc->color : Color{200, 200, 210, 255};
+            // Switched off is DRAWN, not hidden: a monument you paid for and
+            // are not running is exactly the thing you want to see on the map.
+            if (!h.active) col = Color{(unsigned char)(col.r / 2), (unsigned char)(col.g / 2),
+                                       (unsigned char)(col.b / 2), 170};
+
+            // Big enough to find, small enough not to cover the province.
+            const float base = std::clamp(11.0f + 4.0f * (float)h.level, 11.0f, 26.0f) *
+                               std::clamp(zoom * 1.4f, 0.6f, 1.8f);
+            // LIGHTENED FOR THE FACE. A monument drawn in its owner's colour
+            // sits on a province of that same colour and disappears into it --
+            // which is what the first version did. The lit face is the colour
+            // walked towards white, the shaded one walked towards black, and
+            // the pair is what separates the figure from the ground under it.
+            auto lift = [](Color c, float t) {
+                return Color{(unsigned char)std::clamp(c.r + (255 - c.r) * t, 0.0f, 255.0f),
+                             (unsigned char)std::clamp(c.g + (255 - c.g) * t, 0.0f, 255.0f),
+                             (unsigned char)std::clamp(c.b + (255 - c.b) * t, 0.0f, 255.0f),
+                             c.a};
+            };
+            const Color lit = lift(col, 0.55f);
+            const Color shade = Color{(unsigned char)(col.r * 0.45f), (unsigned char)(col.g * 0.45f),
+                                      (unsigned char)(col.b * 0.45f), col.a};
+
+            if (!onGlobe) {
+                // A stepped plan view: three squares, narrowing.
+                for (int step = 0; step < 3; ++step) {
+                    const float w = base * (1.0f - 0.25f * (float)step);
+                    DrawRectangleRounded({sp.x - w / 2, sp.y - w / 2 - step * 2.0f, w, w},
+                                         0.25f, 4, step == 2 ? lit : ColorAlpha(shade, 0.9f));
+                }
+                DrawRectangleRoundedLines({sp.x - base / 2, sp.y - base / 2, base, base},
+                                          0.25f, 4, Color{15, 15, 20, 220});
+            } else {
+                // Standing up. The height is the level, foreshortened by how
+                // square-on the ground is -- at the limb it flattens to
+                // nothing rather than sticking out sideways.
+                const float face = std::clamp(
+                    m_renderer->faceCosine(cit->second.x, cit->second.y), 0.0f, 1.0f);
+                const float tall = base * (0.9f + 0.5f * (float)h.level) * face;
+                if (tall < 1.5f) continue;   // edge-on: nothing to draw
+                const float w0 = base * 0.9f;
+                // Three stacked steps, each narrower and shorter than the last.
+                float y = sp.y;
+                for (int step = 0; step < 3; ++step) {
+                    const float w = w0 * (1.0f - 0.28f * (float)step);
+                    const float hgt = tall * (0.45f - 0.12f * (float)step);
+                    // Outlined first, then filled: one dark rectangle a pixel
+                    // larger on each side, which is what stops the figure
+                    // dissolving into a province of its own colour.
+                    DrawRectangle((int)(sp.x - w / 2) - 1, (int)(y - hgt) - 1,
+                                  (int)w + 2, (int)hgt + 2, Color{12, 12, 16, 220});
+                    DrawRectangle((int)(sp.x - w / 2), (int)(y - hgt), (int)w, (int)hgt, lit);
+                    // A darker right face, so it reads as a solid rather than
+                    // a flat card: one rectangle, and it is what sells it.
+                    DrawRectangle((int)(sp.x + w / 2 - w * 0.28f), (int)(y - hgt),
+                                  (int)(w * 0.28f), (int)hgt, shade);
+                    y -= hgt;
+                }
+                // The shadow it casts on the ground, which is what fixes it to
+                // the province rather than floating above it.
+                DrawEllipse((int)sp.x, (int)sp.y, w0 * 0.55f, w0 * 0.22f,
+                            Color{0, 0, 0, (unsigned char)(90 * face)});
+            }
+        }
+    }
+
     if (m_activeViewTab == 2) {
         const Camera2D& cam = m_renderer->getCamera();
 
