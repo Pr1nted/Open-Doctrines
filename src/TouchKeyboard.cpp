@@ -186,7 +186,25 @@ bool keyPressed(int key) {
 
 bool visible() { return enabled() && g_wantedLastFrame && !g_dismissed; }
 
-float coverage() { return visible() ? 0.42f : 0.0f; }
+/** How much of the screen it takes when it is up. */
+constexpr float kCoverage = 0.42f;
+
+float coverage() { return visible() ? kCoverage : 0.0f; }
+
+float topFor(float screenHeight) {
+    // kCoverage rather than coverage(): this answers where the keyboard WOULD
+    // be, and coverage() is zero while it is down -- which would put the top
+    // edge at the bottom of the screen and make the band empty.
+    return screenHeight - screenHeight * kCoverage;
+}
+
+bool overKeyboard(float x, float y) {
+    if (!visible()) return false;
+    // Full width, so only the y matters; x is taken to keep the call reading
+    // like the point test it is.
+    (void)x;
+    return y >= topFor((float)GetScreenHeight());
+}
 
 void endFrame() {
     if (g_forShot) { g_wantedLastFrame = true; g_wantedThisFrame = false; return; }

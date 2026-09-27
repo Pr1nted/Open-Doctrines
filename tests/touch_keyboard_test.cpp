@@ -12,6 +12,7 @@
 
 #include "TouchKeyboard.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <set>
@@ -156,6 +157,38 @@ int main() {
         }
         check("nothing moves when shift is pressed", sameShape);
         check("but the letters change case", casesDiffer);
+    }
+
+    printf("\n== the band the keyboard occupies ==\n");
+    {
+        // WHY ANYTHING ASKS. The keyboard is drawn over the bottom of the
+        // screen, so a tap on a key is outside every panel on it -- and the
+        // country finder closed itself on an outside tap, which meant the
+        // first letter typed shut the thing being typed into. Overlays ask
+        // osk::overKeyboard instead; this is the arithmetic behind it, which
+        // is pure so it can be checked without a window.
+        const float h = 1000.0f;
+        const float top = osk::topFor(h);
+        // A HALF-SCREEN AT MOST, and enough to hold five rows of keys. Both
+        // ends matter: a band past half the screen leaves nothing to type
+        // into, and one too short cannot be hit with a thumb.
+        check("it takes between a quarter and half the screen",
+              h - top >= h * 0.25f && h - top <= h * 0.5f,
+              "band is " + std::to_string(h - top) + " of " + std::to_string(h));
+        // Proportional rather than a fixed number of pixels, or a short screen
+        // would be swallowed whole and a tall one would get a strip.
+        const float fraction = (h - top) / h;
+        check("and the same share of a screen twice the size",
+              std::abs((2000.0f - osk::topFor(2000.0f)) / 2000.0f - fraction) < 0.0001f);
+        // What a caller does with it -- osk::overKeyboard -- is `y >= top`
+        // and is not checked here: it reads the live screen size from raylib,
+        // and this test has no window. What CAN be pinned is the number it
+        // compares against, which is the half that was ever wrong.
+        // The one that would have been easy to get wrong: topFor says where
+        // the keyboard WOULD be, so a caller can lift a panel clear of it
+        // before it is up. Asking coverage() instead answers zero while it is
+        // down, which puts the top edge at the bottom of the screen.
+        check("a screen of no height is degenerate, not negative", osk::topFor(0.0f) == 0.0f);
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);

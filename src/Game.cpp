@@ -1977,6 +1977,16 @@ void Game::findGeometry(int& x, int& y, int& w, int& h) const {
     h = 92 + rows * 26;
     x = (m_screenW - w) / 2;
     y = (m_screenH - h) / 3;
+    // ── ABOVE THE KEYBOARD, WHEN THERE IS ONE ──
+    //
+    // On a phone the keyboard covers the bottom of the screen, and this panel
+    // is the one thing on the screen that is being typed into -- so the rows a
+    // player is trying to read were the rows underneath it. Lifted just clear,
+    // and never off the top.
+    if (osk::visible()) {
+        const int top = (int)osk::topFor((float)m_screenH);
+        if (y + h > top - 8) y = std::max(8, top - 8 - h);
+    }
 }
 
 // Which entry the list starts at. In two places -- the drawing and the hit
@@ -2046,8 +2056,13 @@ void Game::updateCountryFinder() {
             findChoose(first + i);
             return;
         }
+        // THE KEYBOARD IS NOT "OUTSIDE". It is drawn over the bottom of the
+        // screen, so every key is outside this panel -- and closing on an
+        // outside tap meant the first letter typed shut the thing being typed
+        // into. See osk::overKeyboard.
+        const bool onKeyboard = osk::overKeyboard(m.x, m.y);
         if (CheckCollisionPointRec(m, findBackRect()) ||
-            !CheckCollisionPointRec(m, panel)) {
+            (!CheckCollisionPointRec(m, panel) && !onKeyboard)) {
             m_findOpen = false;
             return;
         }

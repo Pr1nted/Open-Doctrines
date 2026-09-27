@@ -98,6 +98,23 @@ void draw();
 /** True while the keyboard is on screen, so callers can keep clear of it. */
 bool visible();
 
+/**
+ * The y of the keyboard's top edge on a screen this tall. Pure; no raylib, no
+ * state, so the arithmetic every caller depends on is testable without a
+ * window. Says where the keyboard WOULD be, whether or not it is up.
+ */
+float topFor(float screenHeight);
+
+/**
+ * Is this point on the keyboard right now?
+ *
+ * For the overlays that close when a tap lands OUTSIDE them. The keyboard is
+ * outside every one of them, so without this, typing into a panel closed it on
+ * the first key -- the country finder did exactly that. Takes floats rather
+ * than a Vector2 so this header stays free of raylib.
+ */
+bool overKeyboard(float x, float y);
+
 /** The fraction of the screen height the keyboard covers when it is up. */
 float coverage();
 

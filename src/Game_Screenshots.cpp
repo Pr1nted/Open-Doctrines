@@ -299,8 +299,13 @@ const Shot SHOTS[] = {
     // subsidy, so the rows show what a rate does rather than dashes.
     {"economy-sectors", 20, true},
     // The keyboard the game draws for itself, which on Android is the only one
-    // there is. Last, because it is switched on for the shot and stays on.
+    // there is. Last two, because it is switched on for the shot and stays on.
     {"keyboard",      20, false},
+    // ...and the one panel that has to share the screen with it: the country
+    // finder, which on a phone is typed into and tapped, and which used to sit
+    // half underneath the keyboard. The plain `find-country` shot above is the
+    // desktop one; this is the same panel with the keyboard up. Needs a world.
+    {"find-country-keyboard", 20, true},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
 
@@ -581,7 +586,8 @@ bool Game::tickScreenshotTour() {
         // Every shot starts from a clean slate, so an overlay left open by the
         // previous one cannot end up in this one's picture.
         m_inResearch = m_inEconomy = m_inPolitics = m_inClaims = false;
-        if (std::string(shot.name) != "find-country") m_findOpen = false;
+        // Both finder shots keep it open; everything else starts closed.
+        if (std::string(shot.name).rfind("find-country", 0) != 0) m_findOpen = false;
         m_activeSidebarTab = 0;
         m_inSettings = false;
 
@@ -1210,6 +1216,23 @@ bool Game::tickScreenshotTour() {
             m_mpFocus = 1;              // the invite code field, not the address
             m_mpCodeField = "TEST-GA";
             osk::forceForShot(true);
+        } else if (name == "find-country-keyboard") {
+            // WITH THE KEYBOARD UP, because that is the case that was broken:
+            // the panel is placed from the bottom of the screen and the rows
+            // at the bottom of it were under the keys. A tap on a row now
+            // picks that country, which is the only way to use this list on a
+            // machine with no arrow keys and no Enter.
+            m_inEconomy = m_inPolitics = m_inResearch = false;
+            m_mailOpen = m_reportOpen = m_devReportsOpen = false;
+            m_ratingPromptOpen = m_feedbackOpen = false;
+            if (m_dialogOpen) endDialogue();
+            osk::forceForShot(true);
+            m_activeSidebarTab = 0;
+            m_activeViewTab = 0;
+            m_findOpen = true;
+            m_findQuery = "b";     // a short query, so the list is full of rows
+            m_findIndex = 0;
+            rebuildFindMatches();
         } else if (name == "economy-sectors") {
             // Taken after the mail and admin shots, whose windows stay open.
             m_mailOpen = m_mailSettingsOpen = m_reportOpen = false;
