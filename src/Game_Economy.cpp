@@ -189,6 +189,16 @@ float Game::specTaxSwitchMul(int cid, const std::string& resource) const {
     return std::max(0.1f, 1.0f + kSpecTaxSwitchK * rate);
 }
 
+float Game::specTaxExtractMul(int cid, const std::string& resource) const {
+    if (resource.empty()) return 1.0f;
+    const int idx = specResourceIndex(resource);
+    if (idx < 0) return 1.0f;
+    // Minus, where the other two are plus: those raise a COST as the tax
+    // rises, this lowers a YIELD. Same rate, opposite direction, which is the
+    // whole of "you get money and the goods get scarcer".
+    return std::clamp(1.0f - kSpecTaxExtractK * specTaxRate(cid, idx), 0.2f, 2.0f);
+}
+
 // === provinceIndustryCapacity / provinceIndustryIncome ===
 //
 // See industryCapacity() in BuildCosts.h for the rule, the four terms and the
@@ -779,7 +789,14 @@ void Game::processProduction(int countryId) {
             people = m_provincePopArray[pid];
         if (people <= 0) continue;   // nobody to work the seam
         const ProvinceResources& r = res->second;
-        const float spec = 1.0f + specializationBoostPct(pid) / 100.0f;
+        // The specialisation raises what this province digs up; the tax on
+        // that specialisation lowers it. Both key on the same string, and a
+        // province with no specialisation is touched by neither.
+        std::string specName;
+        if (auto ind = m_provinceIndustry.find(pid); ind != m_provinceIndustry.end())
+            specName = ind->second.specialization;
+        const float spec = (1.0f + specializationBoostPct(pid) / 100.0f) *
+                           specTaxExtractMul(countryId, specName);
         const float amounts[RAW_COUNT] = {
             r.oil.amount, r.metal.amount, r.rubber.amount, r.gemstones.amount
         };

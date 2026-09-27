@@ -5259,6 +5259,17 @@ private:
     static constexpr float kSpecTaxUpkeepK  = 2.0f;
     static constexpr float kSpecTaxSwitchK  = 2.0f;
     static constexpr float kSpecTaxDrift    = 2.0f;   ///< points a turn the rate in force moves
+    /**
+     * How hard a tax bites the material, not the money.
+     *
+     * 0.5, so the ceiling -- a 60% tax, which needs a doctrine to reach -- costs
+     * 30% of the flow, and the ordinary 20% a player sets costs 10%. Chosen to
+     * be felt and not to be a cliff: a sector taxed to the limit still produces
+     * most of what it did, because the point is a trade the player weighs, not
+     * a punishment for touching the dial. Clamped so no combination can take a
+     * sector below a fifth of its output or above double it.
+     */
+    static constexpr float kSpecTaxExtractK = 0.5f;
     std::unordered_map<int, std::array<float, 5>> m_specTaxPct;   ///< cid -> TARGET percent per SPEC_RESOURCES
     std::unordered_map<int, std::array<float, 5>> m_specTaxNow;   ///< cid -> percent IN FORCE per SPEC_RESOURCES
     static int specResourceIndex(const std::string& resource);
@@ -5283,6 +5294,25 @@ private:
     float specTaxUpkeepMul(int cid) const;
     /** Multiplier on the price of specialising a province into `resource`. */
     float specTaxSwitchMul(int cid, const std::string& resource) const;
+    /**
+     * Multiplier on what a province specialised in `resource` DIGS UP.
+     *
+     * THE HALF THAT WAS MISSING. A player asked for taxes that make a sector's
+     * goods "more expensive to buy from", and until now a tax only moved the
+     * producer's costs -- upkeep and the price of specialising in -- while the
+     * material itself arrived in the same quantity. So a tax was money for
+     * nothing in any world where money was not the binding constraint.
+     *
+     * A tax takes its cut out of the FLOW: tax oil and less oil reaches the
+     * national pool, so the fuel made from it is scarcer, and scarcity in a
+     * goods world is exactly what "dearer" means -- it lands on living
+     * standards, on what an army can be given, and on what is left to sell.
+     * A subsidy runs the other way and buys material with money.
+     *
+     * Only bites with the goods economy on, because outside it nothing reads
+     * extraction: in the money economy this returns a number nobody multiplies.
+     */
+    float specTaxExtractMul(int cid, const std::string& resource) const;
 
     bool m_bulkPaint = false;
     /**

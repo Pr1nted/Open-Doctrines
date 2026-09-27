@@ -1444,6 +1444,71 @@ struct PolicyRules {
               "as an expense, beside the cheaper upkeep");
         check(sub.industryUpkeep < base.industryUpkeep, "and the subsidised sector is cheaper to run");
 
+        // ── WHAT THE TAX DOES TO THE MATERIAL, NOT THE MONEY ──
+        //
+        // The half a player asked for: "taxing them more would make them more
+        // expensive to buy from". A tax used to move only the producer's costs
+        // -- upkeep, and the price of specialising in -- so the same tonnage
+        // arrived and a tax was money for nothing wherever money was not the
+        // binding constraint. It now takes its cut out of the FLOW.
+        reset();
+        g.setSpecTaxPct(cid, oil, 30.0f);
+        settle();
+        const float taxedYield = g.specTaxExtractMul(cid, "Oil");
+        check(std::fabs(taxedYield - (1.0f - Game::kSpecTaxExtractK * 0.30f)) < 1e-4f,
+              "a 30% tax takes 15% of what that sector digs up");
+        check(g.specTaxExtractMul(cid, "Metal") == 1.0f,
+              "and nothing from a sector it does not name");
+        check(g.specTaxExtractMul(cid, "") == 1.0f,
+              "nor from a province specialised in nothing");
+
+        g.setSpecTaxPct(cid, oil, -20.0f);
+        for (int t = 0; t < 30; ++t) g.advanceSpecTaxes();
+        check(g.specTaxExtractMul(cid, "Oil") > 1.0f,
+              "a subsidy buys material rather than costing it");
+
+        // AND THE WIRING, which is the half that matters: the multiplier has
+        // to reach what the country actually digs up. Removing it from the
+        // extraction loop breaks nothing a rule test can see -- the arithmetic
+        // above still passes -- so this runs the real production step on the
+        // real map, twice, and compares the tonnage.
+        {
+            reset();
+            const bool hadGoods = g.m_goodsEconomy;
+            g.m_goodsEconomy = true;      // extraction is dead weight without it
+            // Extraction needs people and deposits, and this harness builds
+            // neither by default: loadGameDataStep1/2 fill m_provincePopulations
+            // but the lookups that processProduction reads are built separately.
+            g.buildPopulationLookups();
+
+            g.m_countryStockpiles.erase(cid);
+            g.processProduction(cid);
+            const float plain = g.m_countryProduction[cid].extracted[0];   // oil
+
+            g.setSpecTaxPct(cid, oil, 30.0f);
+            settle();
+            g.m_countryStockpiles.erase(cid);
+            g.processProduction(cid);
+            const float taxedFlow = g.m_countryProduction[cid].extracted[0];
+
+            check(plain > 0.0f, "the country digs up oil at all");
+            check(taxedFlow < plain,
+                  "and a 30% tax on oil means less of it reaches the pool");
+            g.m_goodsEconomy = hadGoods;
+            reset();
+        }
+
+        // THE CEILING IS A CLAMP, not a cliff: even a sector taxed as hard as
+        // any doctrine allows keeps most of its output, because this is a
+        // trade the player weighs and not a punishment for touching the dial.
+        reset();
+        g.m_activePolicies.push_back({"wealth_tax", cid, 0});   // 50% ceiling
+        g.setSpecTaxPct(cid, oil, 50.0f);
+        settle();
+        check(g.specTaxExtractMul(cid, "Oil") >= 0.5f,
+              "the hardest tax a doctrine allows still leaves half the flow");
+        reset();
+
         // THE COPY THAT PAYS. The treasury reads the per-turn batch
         // (refreshIncomeCache), which totals income a second time; it has to
         // charge what the snapshot above says, with a tax and a subsidy at once.
