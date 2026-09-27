@@ -275,13 +275,7 @@ public:
     // them. This counts the turnover the slot story predicts.
     void warLifeCensus();
     void seatTrace();           ///< OD_SEAT_TRACE, off by default. Journal 414.
-    /// Turn the bankruptcy cascade last zeroed a country's pacification, and
-    /// its value last turn. OD_PAC_COOLDOWN reads them. Journal 424.
-    std::unordered_map<int,int>   m_pacZeroedTurn;
-    std::unordered_map<int,float> m_prevPac;
     static void dumpWarLife();
-    static void dumpPacCooldown();
-    static std::atomic<long long> s_pacCooldownRefused;
     static std::map<std::pair<int,int>, int> s_warOpen;   ///< pair -> turn it opened
     static long long s_warsStarted, s_warsEnded, s_warLenSum, s_warOpenSum, s_warTurns;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port
