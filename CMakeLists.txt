@@ -2647,6 +2647,15 @@ add_executable(ScriptExprTest EXCLUDE_FROM_ALL
     src/script/ScriptValue.cpp)
 target_include_directories(ScriptExprTest PRIVATE src)
 
+# --- the monument catalogue and its arithmetic ---
+# Pure: no Game, no map, no window. The half that needs a world is tested with
+# the game layer. See src/Monuments.h.
+add_executable(MonumentsTest EXCLUDE_FROM_ALL
+    tests/monuments_test.cpp
+    src/Monuments.cpp
+)
+target_include_directories(MonumentsTest PRIVATE src tests)
+
 # --- the parsers, fed input nobody would write on purpose ---
 # The three places the game reads bytes it did not write: a multiplayer socket,
 # a map script, and a mod off the internet. tools/fuzz.py plays whole games;
