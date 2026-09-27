@@ -59,6 +59,16 @@ CONSTANTS = [
 # Views the TempleOS build deliberately does not have, with the reason. An
 # entry here is a decision on the record; an absence from both lists is a bug.
 SKIPPED = {
+    # A decision, not an oversight. The monuments view is the one that draws a
+    # figure standing in a province, and its whole point on the desktop is that
+    # the figure is a 3D shape on the globe. The TempleOS client draws a flat
+    # 640x480 map in sixteen colours and has no globe at all, so what it could
+    # show is a letter in a province -- which is what the province panel
+    # already says in words. The MECHANIC is in the port: game.odd carries the
+    # monument research nodes, so a TempleOS game can research them; what is
+    # absent is a map view whose content would be a duplicate.
+    "view.monuments": "no globe, and a flat 16-colour map has nothing to add "
+                      "to what the province panel already says",
 }
 
 # ── THE 39 ACTIONS ──

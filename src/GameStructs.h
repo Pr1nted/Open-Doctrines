@@ -910,6 +910,15 @@ struct CountryIncomeSnapshot {
     float industryUpkeep = 0;// what the factories cost to run; see industryUpkeep()
     float specTax = 0;    // sector taxes collected; part of `total`
     float specSubsidy = 0;// sector subsidies paid; part of `expenses`
+    /**
+     * What the monument SLOTS cost this turn; part of `expenses`.
+     *
+     * Not what the monuments cost to build -- that is paid once, out of the
+     * treasury. This is the rent on having them switched on, and it is the
+     * whole economy of monuments: 50 for the first, 75 for the second, 425 for
+     * the sixth. A country switches one off to afford a war. See odmon.
+     */
+    float monumentUpkeep = 0;
     int   industryLevels = 0;// total levels held, which is what sets the above
     float net = 0;        // gross + resource + pop - expenses = net income
     float total = 0;      // gross + resource + pop (pre-expenses)

@@ -934,6 +934,7 @@ set(GAME_SOURCES
     # Monuments: the game half. The rules are src/Monuments.cpp, which has no
     # world in it and is linked by its own test as well as here.
     src/Game_Monuments.cpp
+    src/Game_MonumentPanel.cpp
     src/Monuments.cpp
     src/Nationalisation.cpp
     src/WorldProvenance.cpp

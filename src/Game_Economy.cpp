@@ -269,6 +269,7 @@ std::vector<Game::ExpenseSlice> Game::expenseSlices(const CountryIncomeSnapshot&
         {s.minorityCosts,    Color{200, 140,  80, 255}, T("Minority")},
         {s.researchCost,     Color{ 80, 200,  80, 255}, T("Research")},
         {s.pacificationCost, Color{ 80, 180, 220, 255}, T("Pacification")},
+        {s.monumentUpkeep,   Color{200, 170, 100, 255}, T("Monuments")},
         {s.specSubsidy,      Color{150, 200, 120, 255}, T("Sector subsidies")},
     };
 }
@@ -1176,8 +1177,10 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
                                        getTotalEffect("industryUpkeepPct", countryId))
                       * odnat::upkeepMul(nationalisedIndustryShare(countryId))
                       * specTaxUpkeepMul(countryId);
+    cs.monumentUpkeep = monumentUpkeep(countryId);
     float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
-                         cs.minorityCosts + cs.industryUpkeep + cs.specSubsidy;
+                         cs.minorityCosts + cs.industryUpkeep + cs.specSubsidy +
+                         cs.monumentUpkeep;
     float affordable = std::max(0.0f, cs.total - baseExpenses);
     // Allocations are per-country: only the player pays the research slider
     // Each country pays for ITS OWN allocations: the player's come from the
@@ -1335,8 +1338,10 @@ void Game::refreshIncomeCache() {
         // added to one and not the other is the two of them playing different
         // games, which is the mistake the header of BuildCosts.h exists to
         // record.
+        cs.monumentUpkeep = monumentUpkeep(cid);
         float baseExpenses = cs.armyExpenses + cs.navyExpenses + cs.policyCosts +
-                             cs.minorityCosts + cs.industryUpkeep + cs.specSubsidy;
+                             cs.minorityCosts + cs.industryUpkeep + cs.specSubsidy +
+                             cs.monumentUpkeep;
         float affordable = std::max(0.0f, cs.total - baseExpenses);
         float rAlloc = m_researchAllocation;
         float pAlloc = m_pacificationAllocation;

@@ -2519,6 +2519,7 @@ public:
     Texture2D m_iconEconomy{};
     Texture2D m_iconClaims{};
     Texture2D m_iconResearch{};
+    Texture2D m_iconMonuments{};
     int m_activeSidebarTab = 0; // 0=none, 1=Policies, 2=Economy, 3=Claims, 4=Research
     bool m_inResearch = false;
     // Sidebar "needs attention" markers: set when something finishes for the
@@ -5413,6 +5414,9 @@ private:
     };
     std::unordered_map<int, MonumentEffects> m_monumentEffects;   ///< cid -> what it gets
     void  rebuildMonumentEffects();
+    /** The Monuments screen: which of them are switched on this turn. */
+    bool  m_inMonuments = false;
+    void  drawMonumentsPanel();
     /** `pid` and everything within `steps` of it, over the province graph. */
     std::vector<int> provincesWithin(int pid, int steps) const;
     int   monumentOwnerOf(int pid) const;

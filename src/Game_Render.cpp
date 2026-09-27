@@ -172,10 +172,12 @@ void Game::drawBottomPanel() {
     DrawRectangleGradientH(barX, barY, barW, barH, {0, 0, 0, 0}, {0, 0, 0, 180});
 
     Texture2D icons[] = {m_iconPopulation, m_iconIndustry, m_iconDefence, m_iconRelations,
-                          m_iconArmyNav, m_iconNavy, m_iconResources, m_iconCountryNames};
+                          m_iconArmyNav, m_iconNavy, m_iconResources, m_iconCountryNames,
+                          m_iconMonuments};
     const char* labels[] = {"Population", "Industry", "Defence", "Relations",
-                             "Army Navigation", "Navy", "Resources", "Country Names"};
-    const int count = 8;
+                             "Army Navigation", "Navy", "Resources", "Country Names",
+                             "Monuments"};
+    const int count = 9;
     const int iconSize = 32;
     const int fontSize = 12;
 
@@ -197,7 +199,8 @@ void Game::drawBottomPanel() {
         static const char* kViewName[] = {"view.population", "view.industry",
                                           "view.defence", "view.relations",
                                           "view.army", "view.navy",
-                                          "view.resources", "view.names"};
+                                          "view.resources", "view.names",
+                                          "view.monuments"};
         offerUiTarget(kViewName[i], btnRect);
         bool hovered = !m_paused && CheckCollisionPointRec(mouse, btnRect);
 
@@ -1661,6 +1664,103 @@ void Game::drawCountryPanel() {
         }
     }
 
+    // ─── Monuments (own province, monuments view only) ──────────────────
+    //
+    // WHERE A MONUMENT IS BUILT, because where it stands is most of what it
+    // does. The Monuments SCREEN is the other half of the decision -- which of
+    // the ones you have are switched on this turn -- and neither belongs in
+    // the other: this panel knows a province and that screen knows a budget.
+    if (cid == m_playerCountryId && m_activeViewTab == 9 && selPid > 0) {
+        const Province* pInfo = m_provinces.getProvinceById(selPid);
+        const bool isOwnProv = (pInfo && pInfo->countryId == m_playerCountryId);
+        double& treasury = m_countries.getAll()[m_playerCountryId].treasury;
+        const int btnW = (panelW - pad * 2 - 4) / 2;
+        const int btnH = 28, btnGap = 4;
+        int by = panelY + panelH - pad - btnH * 3 - btnGap * 2;
+
+        const int kindHere = monumentKindAt(selPid);
+        if (!isOwnProv) {
+            DrawText(T("Not your province."), panelX + pad, by + 8, 15,
+                     Color{170, 140, 140, 255});
+        } else if (kindHere >= 0) {
+            // ── WHAT STANDS HERE ──
+            const odmon::Kind k = (odmon::Kind)kindHere;
+            const int lv = monumentLevelAt(selPid);
+            const bool on = monumentActiveAt(selPid);
+            DrawText(TextFormat("%s  %s", T(odmon::kindName(k)), std::string(lv, 'I').c_str()),
+                     panelX + pad, panelY + 155, 18, on ? RAYWHITE : Color{150, 150, 165, 255});
+            odText::drawWrapped(T(odmon::kindBlurb(k)), panelX + pad, panelY + 178,
+                                panelW - pad * 2, 13, Color{150, 158, 175, 255});
+
+            // Upgrade, or say why not.
+            const odmon::Spec& sp = odmon::spec(k);
+            const bool topped = lv >= sp.maxLevel;
+            const float upCost = odmon::levelCost(k, lv);
+            const bool poor = treasury < upCost;
+            const char* why = topped ? T("It is already at its highest level.")
+                            : poor   ? T("You cannot afford it.") : nullptr;
+            const std::string upLabel = topped
+                ? std::string(T("Highest level"))
+                : std::string(TextFormat(T("Upgrade to %d ($%.0f)"), lv + 1, upCost));
+            if (drawActBtn(panelX + pad, by, btnW * 2 + btnGap, btnH, upLabel.c_str(),
+                           topped || poor, Color{20, 60, 30, 220}, Color{60, 180, 80, 200}, why)
+                && !topped && !poor) {
+                upgradeMonument(m_playerCountryId, selPid);
+            }
+            by += btnH + btnGap;
+
+            // On / off. The same switch as the Monuments screen, here because
+            // this is where a player is looking when they wonder what it does.
+            const std::string tog = on ? std::string(T("Switch off (frees a slot)"))
+                                       : std::string(TextFormat(T("Switch on (slot costs %.0f)"),
+                                                                monumentNextSlotCost(m_playerCountryId)));
+            if (drawActBtn(panelX + pad, by, btnW, btnH, tog.c_str(), false,
+                           on ? Color{56, 44, 20, 220} : Color{20, 56, 40, 220},
+                           Color{150, 150, 110, 200})) {
+                setMonumentActive(m_playerCountryId, selPid, !on);
+            }
+
+            // And away. Priced, because a decision you can unmake for free is
+            // not a decision.
+            const bool cannotPay = treasury < odmon::kDismantleCost;
+            if (drawActBtn(panelX + pad + btnW + btnGap, by, btnW, btnH,
+                           TextFormat(T("Dismantle ($%.0f)"), odmon::kDismantleCost),
+                           cannotPay, Color{60, 24, 24, 220}, Color{170, 80, 80, 200},
+                           cannotPay ? T("You cannot afford it.") : nullptr) && !cannotPay) {
+                dismantleMonument(m_playerCountryId, selPid);
+            }
+        } else {
+            // ── NOTHING HERE YET: everything researched, and why not ──
+            DrawText(T("No monument here."), panelX + pad, panelY + 155, 18, RAYWHITE);
+            DrawText(TextFormat(T("Slots in use: %d, next costs %.0f a turn"),
+                                monumentSlotsUsed(m_playerCountryId),
+                                monumentNextSlotCost(m_playerCountryId)),
+                     panelX + pad, panelY + 178, 13, Color{150, 158, 175, 255});
+
+            int listY = panelY + 200;
+            int shown = 0;
+            for (int i = 0; i < odmon::kKindCount && listY < by - 4; ++i) {
+                const odmon::Kind k = (odmon::Kind)i;
+                if (!hasResearched(odmon::unlockNode(k), m_playerCountryId)) continue;
+                std::string whyNot;
+                const bool can = canBuildMonument(m_playerCountryId, selPid, i, whyNot);
+                const std::string label =
+                    TextFormat("%s  ($%.0f)", T(odmon::kindName(k)), odmon::levelCost(k, 0));
+                if (drawActBtn(panelX + pad, listY, panelW - pad * 2, 26, label.c_str(),
+                               !can, Color{28, 44, 60, 220}, Color{90, 140, 190, 200},
+                               can ? nullptr : whyNot.c_str()) && can) {
+                    buildMonument(m_playerCountryId, selPid, i);
+                }
+                listY += 30;
+                ++shown;
+            }
+            if (shown == 0) {
+                DrawText(T("Research one in the Monuments tree first."),
+                         panelX + pad, listY, 14, Color{200, 160, 130, 255});
+            }
+        }
+    }
+
     // ─── Industry Action Buttons (own province, industry view only) ─────
     if (cid == m_playerCountryId && m_activeViewTab == 2) {
         Province* pInfo = m_provinces.getProvinceById(selPid);
@@ -2858,8 +2958,14 @@ void Game::drawSidebarButtons() {
         // business in it than in Politics or Claims, which have always been
         // greyed. It was the one that was missed.
         {{}, T("Research"), 4, isSpectator},
+        // MONUMENTS. Greyed for a spectator like the other three that spend
+        // money, and greyed again for a country that has not researched
+        // mon_basics -- there is nothing to show it, and a screen that opens
+        // on an empty list teaches nothing about how to fill it. The research
+        // node's own description is where that is explained.
+        {{}, T("Monuments"), 5, isSpectator || !hasResearched("mon_basics", m_playerCountryId)},
     };
-    static constexpr int BTN_COUNT = 4;
+    static constexpr int BTN_COUNT = 5;
 
     // ── THE MIDDLE STATE IS A VIEW, NOT A PANEL ──
     //
@@ -2903,7 +3009,7 @@ void Game::drawSidebarButtons() {
         // player reads and may be translated; the id is what the script
         // writes, so the name is built from the id and never from the words.
         static const char* kTabName[] = {"tab.map", "tab.politics", "tab.economy",
-                                         "tab.claims", "tab.research"};
+                                         "tab.claims", "tab.research", "tab.monuments"};
         if (btns[i].id >= 0 && btns[i].id < (int)(sizeof(kTabName) / sizeof(*kTabName)))
             offerUiTarget(kTabName[btns[i].id], r);
         Vector2 mouse = getMouse();
@@ -2943,7 +3049,8 @@ void Game::drawSidebarButtons() {
         int iconDrawSize = 48;
         int iconX = startX + (btnSize - iconDrawSize) / 2;
         int iconY2 = y + 4;
-        Texture2D iconTex = (i == 3) ? m_iconResearch : btns[i].tex;
+        Texture2D iconTex = (i == 3) ? m_iconResearch
+                  : (btns[i].id == 5) ? m_iconMonuments : btns[i].tex;
         DrawTextureEx(iconTex, {(float)iconX, (float)iconY2}, 0.0f, (float)iconDrawSize / 64.0f, iconCol);
 
         int labelW = MeasureText(btns[i].label, 13);
@@ -5432,13 +5539,15 @@ void Game::drawInner() {
         }
     }
     // ─── (TURN_PROCESSED removed — not used) ───
-    if (m_inPolitics || m_inEconomy || m_inClaims || m_inResearch) {
+    if (m_inPolitics || m_inEconomy || m_inClaims || m_inResearch || m_inMonuments) {
         if (m_activeSidebarTab == 1) {
             drawPoliciesTab();
         } else if (m_activeSidebarTab == 3) {
             drawClaimsTab();
         } else if (m_activeSidebarTab == 4) {
             drawResearchTab();
+        } else if (m_activeSidebarTab == 5) {
+            drawMonumentsPanel();
         } else {
             drawEconomy();
         }

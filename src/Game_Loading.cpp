@@ -1612,6 +1612,17 @@ void Game::generateIcons() {
         // Inner liquid level line
         ImageDrawRectangle(&img, 18, 42, 28, 3, WHITE);
     });
+    m_iconMonuments = makeIcon(64, 64, [](Image& img) {
+        // A ziggurat: three steps and a plinth. Reads as "a great work" at
+        // 32px, which is the size it is actually drawn at, and is the one
+        // shape that does not look like the industry cog or the research
+        // flask when the two sit next to it in the same bar.
+        ImageDrawRectangle(&img, 10, 50, 44, 6, WHITE);   // plinth
+        ImageDrawRectangle(&img, 14, 40, 36, 9, WHITE);   // bottom step
+        ImageDrawRectangle(&img, 20, 30, 24, 9, WHITE);   // middle step
+        ImageDrawRectangle(&img, 26, 20, 12, 9, WHITE);   // top step
+        ImageDrawRectangle(&img, 30, 10, 4, 9, WHITE);    // the spire on top
+    });
 }
 
 void Game::computeCountryLabels() {

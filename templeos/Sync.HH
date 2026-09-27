@@ -24,4 +24,5 @@
 #define SY_VIEW_NAVY         5
 #define SY_VIEW_RESOURCES    6
 #define SY_VIEW_NAMES        7
-#define SY_VIEW_COUNT        8
+#define SY_VIEW_MONUMENTS    8
+#define SY_VIEW_COUNT        9

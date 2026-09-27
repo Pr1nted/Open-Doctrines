@@ -314,6 +314,15 @@ void Game::update(float dt) {
         return;
     }
 
+    // ESC in the monuments panel, before the main handler gets it and opens
+    // the pause menu instead -- the same pre-check every other overlay needs.
+    if (m_inMonuments && IsKeyPressed(KEY_ESCAPE)) {
+        m_inMonuments = false;
+        m_activeSidebarTab = 0;
+        if (m_renderer) m_renderer->setPaused(false);
+        return;
+    }
+
     // Handle ESC in claims panel overlay (before main ESC handler)
     if (m_inClaims && IsKeyPressed(KEY_ESCAPE)) {
         m_inClaims = false;
@@ -464,7 +473,7 @@ void Game::update(float dt) {
     }
 
     // Research panel: block map interaction
-    if (m_inResearch) {
+    if (m_inResearch || m_inMonuments) {
         if (m_renderer) {
             m_renderer->setPaused(true);
             m_renderer->update(dt);
@@ -812,12 +821,14 @@ void Game::update(float dt) {
                         // Economy — open/close overlay (close claims first)
                         m_inClaims = false;
                         m_inPolitics = false;
+                        m_inMonuments = false;
                         m_inEconomy = !m_inEconomy;
                         m_activeSidebarTab = m_inEconomy ? 2 : 0;
                     } else if (tid == 1) {
                         // Politics — open/close policy overlay (close claims first)
                         m_inClaims = false;
                         m_inEconomy = false;
+                        m_inMonuments = false;
                         m_inPolitics = !m_inPolitics;
                         m_activeSidebarTab = m_inPolitics ? 1 : 0;
                         if (m_inPolitics) {
@@ -828,11 +839,24 @@ void Game::update(float dt) {
                             m_claimsEditToDrop.clear();
                             m_politicsAlert = false; // seen
                         }
+                    } else if (tid == 5) {
+                        // Monuments — open/close, like the rest. Pauses the
+                        // map for the same reason Research does: the panel
+                        // covers it and a map that kept scrolling under a full
+                        // screen panel is a map you come back to somewhere else.
+                        m_inClaims = false;
+                        m_inEconomy = false;
+                        m_inPolitics = false;
+                        m_inResearch = false;
+                        m_inMonuments = !m_inMonuments;
+                        m_activeSidebarTab = m_inMonuments ? 5 : 0;
+                        if (m_renderer) m_renderer->setPaused(m_inMonuments);
                     } else if (tid == 4) {
                         // Research — open/close (close other panels first)
                         m_inClaims = false;
                         m_inEconomy = false;
                         m_inPolitics = false;
+                        m_inMonuments = false;
                         m_inResearch = !m_inResearch;
                         m_activeSidebarTab = m_inResearch ? 4 : 0;
                         if (m_inResearch) m_researchAlert = false; // seen
