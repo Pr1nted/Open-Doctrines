@@ -2490,6 +2490,12 @@ public:
     /// that is drawn and the button that is clicked cannot drift apart.
     void findGeometry(int& x, int& y, int& w, int& h) const;
     Rectangle findBackRect() const;
+    /// Where the list starts, so the drawing and the hit test agree.
+    int       findFirstVisible() const;
+    /// The tappable rect of one VISIBLE row, 0 at the top of the list.
+    Rectangle findRowRect(int visibleRow) const;
+    /// Go to a country in the list, by its index into m_findMatches.
+    void      findChoose(int index);
     void drawCountryFinder();
     void rebuildFindMatches();
     int  largestProvinceOf(int countryId) const;

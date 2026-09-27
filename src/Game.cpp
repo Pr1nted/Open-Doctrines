@@ -1979,6 +1979,38 @@ void Game::findGeometry(int& x, int& y, int& w, int& h) const {
     y = (m_screenH - h) / 3;
 }
 
+// Which entry the list starts at. In two places -- the drawing and the hit
+// test -- and they have to agree or a tap lands on a different country than
+// the one under the finger.
+int Game::findFirstVisible() const {
+    const int rows = std::min((int)m_findMatches.size(), 8);
+    return m_findIndex >= rows ? m_findIndex - rows + 1 : 0;
+}
+
+Rectangle Game::findRowRect(int visibleRow) const {
+    int x, y, w, h;
+    findGeometry(x, y, w, h);
+    return {(float)(x + 12), (float)(y + 78 + visibleRow * 26 - 4), (float)(w - 24), 24.0f};
+}
+
+// Go to a country in the list. Shared by the Enter key and by a tap on the row,
+// which had no handler at all: on a phone, with no keyboard and no Enter, that
+// left the finder with nothing a player could do but close it.
+void Game::findChoose(int index) {
+    if (index < 0 || index >= (int)m_findMatches.size()) return;
+    const int cid = m_findMatches[index];
+    const int pid = largestProvinceOf(cid);
+    // Closed BEFORE the fly: update() returns early while it is open, and the
+    // camera animates in the ordinary update.
+    m_findOpen = false;
+    if (pid > 0) {
+        if (m_renderer) m_renderer->setSelectedProvince(pid);
+        m_lastSelectedProvince = pid;
+        buildCountryProvinceList(pid);
+        flyToProvince(pid);
+    }
+}
+
 Rectangle Game::findBackRect() const {
     int x, y, w, h;
     findGeometry(x, y, w, h);
@@ -2003,6 +2035,17 @@ void Game::updateCountryFinder() {
         int x, y, w, h;
         findGeometry(x, y, w, h);
         const Rectangle panel = {(float)x, (float)y, (float)w, (float)h};
+        // A ROW, WHICH IS HOW THIS IS USED WITHOUT A KEYBOARD. The list could
+        // only ever be driven by the arrow keys and Enter, so on a phone the
+        // panel opened, showed eight countries, and responded to nothing.
+        const int rows = std::min((int)m_findMatches.size(), 8);
+        const int first = findFirstVisible();
+        for (int i = 0; i < rows; ++i) {
+            if (first + i >= (int)m_findMatches.size()) break;
+            if (!CheckCollisionPointRec(m, findRowRect(i))) continue;
+            findChoose(first + i);
+            return;
+        }
         if (CheckCollisionPointRec(m, findBackRect()) ||
             !CheckCollisionPointRec(m, panel)) {
             m_findOpen = false;
@@ -2030,19 +2073,7 @@ void Game::updateCountryFinder() {
     if (n > 0) {
         if (IsKeyPressed(KEY_DOWN)) m_findIndex = (m_findIndex + 1) % n;
         if (IsKeyPressed(KEY_UP))   m_findIndex = (m_findIndex - 1 + n) % n;
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
-            const int cid = m_findMatches[m_findIndex];
-            const int pid = largestProvinceOf(cid);
-            // Closed BEFORE the fly: update() returns early while it is open,
-            // and the camera animates in the ordinary update.
-            m_findOpen = false;
-            if (pid > 0) {
-                if (m_renderer) m_renderer->setSelectedProvince(pid);
-                m_lastSelectedProvince = pid;
-                buildCountryProvinceList(pid);
-                flyToProvince(pid);
-            }
-        }
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) findChoose(m_findIndex);
     }
 }
 
@@ -2094,18 +2125,19 @@ void Game::drawCountryFinder() {
 
     // The highlighted row is kept in view rather than the list scrolled by the
     // mouse: the whole point is that the keyboard alone gets you there.
-    int first = 0;
-    if (m_findIndex >= rows) first = m_findIndex - rows + 1;
+    const int first = findFirstVisible();
+    const Vector2 mouse = getMouse();
     for (int i = 0; i < rows; ++i) {
         const int idx = first + i;
         if (idx >= (int)m_findMatches.size()) break;
         const Country* c = m_countries.getCountry(m_findMatches[idx]);
         if (!c) continue;
         const int ry = y + 78 + i * 26;
-        const bool sel = (idx == m_findIndex);
-        if (sel)
-            DrawRectangleRounded({(float)(x + 12), (float)(ry - 4), (float)(w - 24), 24}, 0.2f, 6,
-                                 Color{255, 255, 255, 20});
+        const Rectangle row = findRowRect(i);
+        // Hovered as well as selected, so a row looks like something to press
+        // rather than like a line of a report.
+        const bool sel = (idx == m_findIndex) || CheckCollisionPointRec(mouse, row);
+        if (sel) DrawRectangleRounded(row, 0.2f, 6, Color{255, 255, 255, 20});
         DrawText(od::i18n::properName(c->name).c_str(), x + 20, ry, 15,
                  sel ? WHITE : Color{190, 190, 205, 255});
     }
@@ -3453,7 +3485,11 @@ bool Game::updateVolumeSliders(int startY, int itemH, int centerX, int effScroll
     for (int i = 0; i < VOLUME_COUNT; ++i) {
         const float* v = volumeSettingPtr(m_config, AUDIO_TAB, i);
         if (!v) continue;
-        const Rectangle bar = sliderBarRect(startY + (i - effScroll) * itemH, centerX);
+        const int rowY = startY + (i - effScroll) * itemH;
+        // A drag already under way is allowed to finish if the row scrolls;
+        // only a new grab needs the row to be where the player can see it.
+        if (!settingsRowOnScreen(rowY, startY, m_screenH) && m_draggingVolume != i) continue;
+        const Rectangle bar = sliderBarRect(rowY, centerX);
         const Rectangle grab = { bar.x - 10.0f, bar.y - 16.0f,
                                  bar.width + 20.0f, bar.height + 32.0f };
         if (CheckCollisionPointRec(mouse, grab)) over = true;
@@ -3903,6 +3939,7 @@ void Game::drawPauseMenu() {
         for (int vi = 0; vi < visCount; ++vi) {
             int i = s_visible[vi];
             int y = startY + (vi - effScroll) * itemH;
+            if (!settingsRowOnScreen(y, startY, m_screenH)) continue;
             bool isHeader = (items[i].actionId < 0 && items[i].label[0] == '-' && items[i].label[1] == '-');
             std::string label;
             if (isHeader && m_settingsTab == 3) {
@@ -3951,7 +3988,7 @@ void Game::drawPauseMenu() {
         for (int vi = 0; vi < visCount; ++vi) {
             int i = s_visible[vi];
             int y = startY + (vi - effScroll) * itemH;
-            if (y + itemH < startY || y > m_screenH) continue;
+            if (!settingsRowOnScreen(y, startY, m_screenH)) continue;
 
             bool isHeader = (items[i].actionId < 0 && items[i].label[0] == '-' && items[i].label[1] == '-');
 
