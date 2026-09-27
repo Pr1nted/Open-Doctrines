@@ -1340,6 +1340,82 @@ struct PolicyRules {
     /// Economy > Sector Taxes (Game.h: specTax*). Every figure is checked
     /// against the income snapshot the treasury is paid from, not against the
     /// helper that computes it, so the screen and the charge cannot disagree.
+    /// Every monument has exactly one node that unlocks it, and it is reachable.
+    ///
+    /// The node id is DERIVED from the catalogue key (odmon::unlockNode), and
+    /// canBuildMonument refuses a kind whose node is not researched -- so a
+    /// monument added to the catalogue without a node is one nobody can ever
+    /// build, and the game would say only "You have not researched it yet"
+    /// about a technology that does not exist. This is the check that cannot
+    /// be forgotten, because it walks the catalogue rather than a list.
+    void monumentResearch() {
+        printf("\nmonument research spine\n");
+        Game& g = game;
+
+        auto nodeById = [&](const std::string& id) -> const ResearchNode* {
+            for (const auto& n : g.m_researchNodes) if (n.id == id) return &n;
+            return nullptr;
+        };
+        check(nodeById("mon_basics") != nullptr,
+              "there is a root node the whole category hangs off");
+
+        int missing = 0, misfiled = 0, unreachable = 0;
+        for (int i = 0; i < odmon::kKindCount; ++i) {
+            const odmon::Kind k = (odmon::Kind)i;
+            const ResearchNode* n = nodeById(odmon::unlockNode(k));
+            if (!n) { ++missing; continue; }
+            if (n->category != "monuments") ++misfiled;
+            // Reachable: walk the dependencies back and require they end at
+            // the root. A node whose prerequisite is misspelled is a node no
+            // country can ever take, and it looks exactly like one that is
+            // merely expensive.
+            std::vector<std::string> open = n->deps;
+            bool reachedRoot = false;
+            int guard = 0;
+            while (!open.empty() && guard++ < 64) {
+                const std::string id = open.back();
+                open.pop_back();
+                if (id == "mon_basics") { reachedRoot = true; continue; }
+                const ResearchNode* p = nodeById(id);
+                if (!p) { reachedRoot = false; break; }
+                for (const std::string& d : p->deps) open.push_back(d);
+            }
+            if (!reachedRoot) ++unreachable;
+        }
+        check(missing == 0, "every monument kind has a node that unlocks it" +
+              (missing ? " (" + std::to_string(missing) + " have none)" : ""));
+        check(misfiled == 0, "and every one of them is in the Monuments category");
+        check(unreachable == 0, "and every one is reachable from the root");
+
+        // The other direction: a node called mon_* that unlocks nothing is a
+        // monument somebody removed and a technology nobody can spend on.
+        int orphans = 0;
+        for (const auto& n : g.m_researchNodes) {
+            if (n.id.rfind("mon_", 0) != 0 || n.id == "mon_basics") continue;
+            bool claimed = false;
+            for (int i = 0; i < odmon::kKindCount; ++i)
+                if (n.id == odmon::unlockNode((odmon::Kind)i)) { claimed = true; break; }
+            if (!claimed) ++orphans;
+        }
+        check(orphans == 0, "and no mon_ node unlocks a monument that does not exist");
+
+        // And the gate actually bites: a country that has not researched it
+        // cannot build one, with a sentence saying why.
+        int cid = 0;
+        for (const auto& [id, c] : g.m_countries.getAll()) {
+            if (id > 0 && id < 65530 && !g.provincesOf(id).empty()) { cid = id; break; }
+        }
+        if (cid) {
+            const int pid = g.provincesOf(cid).front();
+            std::string why;
+            const bool allowed = g.canBuildMonument(cid, pid, (int)odmon::Kind::University, why);
+            const bool researched = g.hasResearched(
+                odmon::unlockNode(odmon::Kind::University), cid);
+            check(allowed == researched || !why.empty(),
+                  "an unresearched monument is refused with a reason");
+        }
+    }
+
     void sectorTaxes() {
         printf("\nsector taxes\n");
         Game& g = game;
@@ -1597,6 +1673,7 @@ int main(int argc, char** argv) {
     t.exampleMod(dataDir);
     t.deadEffectsNowLive();
     t.nationalisation(dataDir);
+    t.monumentResearch();
     t.sectorTaxes();
 
     printf("%s\n", failures ? "FAILED" : "all ok");

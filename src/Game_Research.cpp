@@ -614,6 +614,44 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
         "misc","misc",{"pop_bonus4"},150,300,480).popModPct=10;
     m_researchNodes.back().infinite=true;
 
+    // ─── Monuments ───────────────────────────────────────────────────────────
+    //
+    // ONE ROOT AND THREE COLUMNS. Every monument hangs off mon_basics, which is
+    // what the Monuments button and the first slot are gated on: a country that
+    // has not researched it has no monuments screen to be confused by.
+    //
+    // THE NODE IDS ARE odmon::unlockNode(), NOT TYPED OUT HERE. A monument is
+    // buildable when its node is researched, and the id is derived from the
+    // catalogue key -- so a new monument cannot be added with a node id that
+    // nothing checks, or checked against a node id that does not exist.
+    // tests/policy_rules_test.cpp asserts every kind has exactly one node.
+    auto mon = [&](odmon::Kind k, const std::string& subcat,
+                   std::vector<std::string> reqs, int cost, float x, float y) {
+        add(odmon::unlockNode(k), odmon::kindName(k), odmon::kindBlurb(k),
+            "monuments", subcat, std::move(reqs), cost, x, y);
+    };
+
+    add("mon_basics", "Monumental Architecture",
+        "Lets you build monuments at all, and opens the Monuments screen.",
+        "monuments", "civic", {}, 20, 100, 60);
+
+    // Civic: what a country builds for itself.
+    mon(odmon::Kind::University,              "civic", {"mon_basics"},        35, 100, 170);
+    mon(odmon::Kind::MinistryOfEnlightenment, "civic", {"mon_university"},    55, 100, 280);
+    mon(odmon::Kind::Megacity,                "civic", {"mon_university"},    70,  40, 390);
+    mon(odmon::Kind::FactoryConglomerate,     "civic", {"mon_megacity"},      90,  40, 500);
+
+    // Commerce: what it builds to trade and to hold.
+    mon(odmon::Kind::GrandExchange,    "commerce", {"mon_basics"},         40, 300, 170);
+    mon(odmon::Kind::StrategicReserve, "commerce", {"mon_grand_exchange"}, 60, 300, 280);
+    mon(odmon::Kind::AdmiraltyYard,    "commerce", {"mon_grand_exchange"}, 85, 380, 390);
+
+    // War: and the silo last, because it is the one that changes the map.
+    mon(odmon::Kind::AirDefence,         "war", {"mon_basics"},                 45, 560, 170);
+    mon(odmon::Kind::DefenceCorporation, "war", {"mon_air_defence"},            75, 560, 280);
+    mon(odmon::Kind::SignalsDirectorate, "war", {"mon_defence_corporation"},   100, 640, 390);
+    mon(odmon::Kind::MissileSilo,        "war", {"mon_defence_corporation"},   150, 480, 390);
+
     LoadLog() << "  Loaded " << m_researchNodes.size() << " research nodes" << std::endl;
 }
 
@@ -1118,6 +1156,7 @@ const char* categoryLabel(const std::string& id) {
     if (id == "army")       return "Army";
     if (id == "formations") return "Formations";
     if (id == "population") return "Population";
+    if (id == "monuments")  return "Monuments";
     if (id == "misc")       return "Misc";
     return id.c_str();
 }
@@ -1133,6 +1172,9 @@ const char* subcategoryLabel(const std::string& id) {
     if (id == "industry")       return T("Industry");
     if (id == "ports")          return T("Ports");
     if (id == "tourism")        return T("Tourism");
+    if (id == "civic")          return T("Civic");
+    if (id == "commerce")       return T("Commerce");
+    if (id == "war")            return T("War");
     if (id == "misc")           return T("Miscellaneous");
     return T(id);
 }
@@ -1162,10 +1204,10 @@ void Game::drawResearchTab() {
 
     // ─── Category tabs ───
     const char* catNames[] = {"Buildings", "Efficiency", "Army", "Formations",
-                              "Population", "Misc"};
+                              "Population", "Monuments", "Misc"};
     const char* catKeys[] = {"buildings", "efficiency", "army", "formations",
-                             "population", "misc"};
-    int catCount = 6;
+                             "population", "monuments", "misc"};
+    int catCount = 7;
     int catTabY = 8;
     int catTabH = 30;
     int catTabStartX = 16;

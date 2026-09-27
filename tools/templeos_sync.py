@@ -231,7 +231,14 @@ def main() -> int:
                 baked = _s.unpack("<H", blob[6:8])[0]
                 src = re.sub(r"//[^\n]*", "",
                              RESEARCH.read_text(errors="replace"))
-                want = len(re.findall(r'add\(\s*"', src))
+                # add() plus the monument helper. The eleven monuments go
+                # through `mon(odmon::Kind::X, ...)` so their ids come from the
+                # catalogue rather than being typed twice -- see
+                # buildResearchNodes. Counting only add() made the baked table
+                # look eleven nodes too FAT, which reads as a stale bake and is
+                # the opposite of the truth.
+                want = (len(re.findall(r'add\(\s*"', src)) +
+                        len(re.findall(r'mon\(\s*odmon::Kind::', src)))
                 if baked != want:
                     problems.append(
                         f"the research tree has {want} nodes and "

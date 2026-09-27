@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import os
 import re
 import struct
 import sys
@@ -121,6 +122,43 @@ def parse_research(src: str):
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
 
     nodes = []
+    # ── THE MONUMENT NODES GO THROUGH A HELPER, NOT THROUGH add() ──
+    #
+    # buildResearchNodes writes the eleven monuments as `mon(odmon::Kind::X,
+    # ...)`, because their ids and names come from the catalogue rather than
+    # being typed twice -- which is what stops a monument existing with a node
+    # id nothing checks. A parser that only knows add() sees one monument node
+    # instead of twelve, and templeos_sync then reports a count that is wrong
+    # in a way that looks like a missing node rather than a missing PARSER.
+    #
+    # So the two switches in src/Monuments.cpp are read for the key and the
+    # name, which is the same source the C++ derives them from.
+    mon_keys, mon_names = {}, {}
+    try:
+        mon_src = open(os.path.join(ROOT, "src", "Monuments.cpp"), encoding="utf-8").read()
+        # NOT `body`: that name holds the research source this whole function
+        # is parsing, and shadowing it here made every add() call afterwards
+        # run against Monuments.cpp instead -- "no research nodes parsed", from
+        # a loop variable.
+        for switch, table in ((mon_src.split("const char* kindKey")[1], mon_keys),
+                              (mon_src.split("const char* kindName")[1], mon_names)):
+            switch = switch.split("}")[0]
+            for kind, value in re.findall(r'case Kind::(\w+):\s*return "([^"]*)"', switch):
+                table[kind] = value
+    except (OSError, IndexError):
+        pass
+
+    for m in re.finditer(
+            r'mon\(\s*odmon::Kind::(\w+)\s*,\s*"([^"]*)"\s*,\s*\{([^}]*)\}\s*,\s*(\d+)',
+            body, re.S):
+        kind = m[1]
+        key = mon_keys.get(kind)
+        if not key:
+            continue          # a kind this parser cannot name is not invented
+        nodes.append({"id": "mon_" + key, "name": mon_names.get(kind, kind),
+                      "cat": "monuments", "sub": m[2],
+                      "deps": re.findall(r'"([^"]+)"', m[3]), "cost": int(m[4])})
+
     pat = re.compile(
         r'add\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"[^"]*"\s*,\s*'
         r'"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*\{([^}]*)\}\s*,\s*(\d+)', re.S)
