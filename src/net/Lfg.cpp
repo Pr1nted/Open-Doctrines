@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 
 #include "Announcements.h"   // looksLikeInviteCode: the game's one rule for a code
@@ -45,6 +46,39 @@ bool looksLikeLink(const std::string& text) {
     return false;
 }
 
+}  // namespace
+
+bool validAddress(const std::string& value) {
+    if (value.empty() || value.size() > Limits::kAddressChars) return false;
+
+    // A HOST, AND AT MOST A PORT. Anything that could carry a reader somewhere
+    // -- a scheme, a path, a query, a fragment, credentials -- is refused by
+    // shape, so nobody has to judge where a given address points. The game
+    // adds the scheme itself when it dials (see mpBeginJoin).
+    std::string host = value, port;
+    const size_t colon = value.rfind(':');
+    if (colon != std::string::npos) {
+        host = value.substr(0, colon);
+        port = value.substr(colon + 1);
+        if (port.empty() || port.size() > 5) return false;
+        for (char c : port) if (!std::isdigit((unsigned char)c)) return false;
+        const int n = std::atoi(port.c_str());
+        if (n < 1 || n > 65535) return false;
+    }
+    if (host.empty() || host.size() > Limits::kAddressChars) return false;
+    if (host.front() == '.' || host.front() == '-') return false;
+    if (host.back() == '.' || host.back() == '-') return false;
+    for (char c : host) {
+        const unsigned char u = (unsigned char)c;
+        if (!std::isalnum(u) && c != '.' && c != '-') return false;
+    }
+    // A bare word is a machine on somebody's own network, which is not
+    // something a stranger reading a public board can reach.
+    return host.find('.') != std::string::npos;
+}
+
+namespace {
+
 /** Letters, digits, spaces and light punctuation. No markup, no mentions. */
 bool plainText(const std::string& text) {
     for (unsigned char c : text) {
@@ -84,6 +118,12 @@ bool readListing(const std::string& json, Listing& out) {
     item.kind = kindFromName(httpJsonString(json, "kind", 16));
     item.mode = modeFromName(httpJsonString(json, "mode", 16));
     item.code = httpJsonString(json, "code", Limits::kCodeChars);
+    item.address = httpJsonString(json, "address", Limits::kAddressChars);
+    // Checked on the way IN, not only on the way out: the service enforces the
+    // same shape, and a document that got past it anyway is one this must not
+    // hand to the join field. Dropped rather than refused whole, which leaves
+    // a relayed-looking listing -- the failure a reader can act on.
+    if (!item.address.empty() && !validAddress(item.address)) item.address.clear();
     item.language = httpJsonString(json, "language", Limits::kLanguageChars);
     item.region = httpJsonString(json, "region", Limits::kRegionChars);
     item.note = httpJsonString(json, "note", Limits::kNoteChars);
@@ -223,6 +263,12 @@ std::string problemWith(const Draft& draft) {
         const std::string code = trimmed(draft.code);
         if (code.empty()) return "A hosting listing needs the invite code from your lobby.";
         if (!odnews::looksLikeInviteCode(code)) return "That invite code does not look right.";
+
+        const std::string address = trimmed(draft.address);
+        if (!address.empty() && !validAddress(address)) {
+            return "That address should be a hostname, optionally with a port -- "
+                   "not a link.";
+        }
         if (draft.slotsTotal < Limits::kSlotsMin || draft.slotsTotal > Limits::kSlotsMax) {
             return "Say how many players the game seats.";
         }
@@ -291,6 +337,9 @@ std::string postBody(const Draft& draft) {
     }
     if (draft.kind == Kind::Hosting) {
         out += ",\"code\":\"" + httpJsonEscape(clipped(trimmed(draft.code), Limits::kCodeChars)) + "\"";
+        const std::string address = trimmed(draft.address);
+        if (!address.empty())
+            out += ",\"address\":\"" + httpJsonEscape(clipped(address, Limits::kAddressChars)) + "\"";
         out += ",\"slotsTotal\":" + std::to_string(draft.slotsTotal);
         out += ",\"slotsTaken\":" + std::to_string(draft.slotsTaken);
     }

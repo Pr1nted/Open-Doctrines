@@ -44,6 +44,7 @@
 #include "net/Host.h"     // the lobby a listing is prefilled from
 #include "net/HttpClient.h"
 #include "net/Lfg.h"
+#include "net/Tunnel.h"  // the address a listening host publishes, if it has one
 #include "util/Async.h"
 #include "util/OpenLink.h"
 
@@ -182,6 +183,12 @@ void Game::lfgDraftFromLobby() {
     m_lfgDraft.kind = odlfg::Kind::Hosting;
     if (m_netHost) {
         m_lfgDraft.code = m_netHost->code();
+        // The only address that works from outside is the tunnel's: a LAN
+        // address or a bare port number is no use to a reader of a public
+        // board. A relayed game has no address at all, and needs none.
+        m_lfgDraft.address.clear();
+        if (!m_mpViaRelay && m_mpTunnel && m_mpTunnel->state() == Tunnel::State::Up)
+            m_lfgDraft.address = m_mpTunnel->address();
         m_lfgDraft.slotsTaken = (int)m_netHost->lobby().roster().size();
         m_lfgDraft.slotsTotal = std::clamp(m_mpMaxPlayers, odlfg::Limits::kSlotsMin,
                                            odlfg::Limits::kSlotsMax);
@@ -313,7 +320,12 @@ void Game::lfgJoin(const odlfg::Listing& listing) {
         return;
     }
     m_mpCodeField = listing.code;
-    m_mpAddressField.clear();
+    // PREFILLED, NOT DIALLED. A listing with an address puts it in the same
+    // field a player types one into, and the tickbox below it -- "the host
+    // will see your IP address" -- is cleared, so Join stays disabled until
+    // the player agrees to a direct connection. A stranger's listing can fill
+    // this box; only the player can act on it.
+    m_mpAddressField = listing.address;
     m_mpIpWarningAccepted = false;
     m_mpPage = MpPage::Join;
     m_mpFocus = -1;
@@ -492,6 +504,10 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
         if (!seats.empty()) line += "  ·  " + seats;
         if (!l.language.empty()) line += "  ·  " + l.language;
         if (!l.region.empty()) line += "  ·  " + l.region;
+        // Said before the Join button is pressed, because a direct connection
+        // shows the host your address and the player should know which kind of
+        // game this is while they are still deciding.
+        if (!l.address.empty()) line += "  ·  direct: " + l.address;
         DrawText(line.c_str(), (int)row.x + 14, (int)row.y + 38, 14, Color{150, 158, 175, 255});
 
         if (!l.note.empty()) {
@@ -672,7 +688,19 @@ void Game::drawMpPost(Vector2 mouse, bool click) {
             : "Invite code " + m_lfgDraft.code;
         DrawText(code.c_str(), left, y, 15,
                  m_lfgDraft.code.empty() ? Color{200, 160, 130, 255} : Color{140, 190, 150, 255});
-        y += 28;
+        y += 22;
+
+        // Prefilled from the tunnel when there is one, and typed when the host
+        // forwarded a port instead -- an address this game has no way to work
+        // out for itself.
+        DrawText(T("Where players reach you (optional)"),
+                 left, y, 14, Color{140, 148, 165, 255});
+        y += 19;
+        const Rectangle addrBox{(float)left, (float)y, (float)fieldW, 34.0f};
+        drawField(addrBox.x, addrBox.y, addrBox.width, addrBox.height, m_lfgDraft.address,
+                  "your-tunnel.trycloudflare.com", m_mpFocus == 9, 16);
+        if (click && CheckCollisionPointRec(mouse, addrBox)) m_mpFocus = 9;
+        y += 40;
     }
 
     // Note.

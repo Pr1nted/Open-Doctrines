@@ -57,6 +57,9 @@ function embedFor(listing: Listing, state?: string) {
             field("Players", seats),
             field("Language", listing.language),
             field("Region", listing.region),
+            // A direct game is reached by its address, not by its code, and a
+            // reader given only the code would try the relay and find nobody.
+            field("Address", listing.address ?? ""),
             field(state ? "Closed" : "Open until", state
                 ? state
                 : `<t:${listing.expiresAt}:R>`),
@@ -68,7 +71,14 @@ function embedFor(listing: Listing, state?: string) {
 function componentsFor(env: Env, listing: Listing) {
     const rows: unknown[] = [];
     const buttons: unknown[] = [];
-    if (listing.kind === "hosting" && listing.code) {
+    // ── THE BUTTON IS FOR GAMES THE BUTTON CAN ACTUALLY OPEN ──
+    //
+    // opendoctrines://join/<code> says one thing: join this code. A code alone
+    // reaches the relay, so for a host that LISTENS the button would open the
+    // game, fill in the code, and fail -- which reads as the game being
+    // broken rather than as a link that cannot express this listing. Those
+    // listings carry their address in the embed above instead.
+    if (listing.kind === "hosting" && listing.code && !listing.address) {
         buttons.push({
             type: 2, style: 5, label: "Join this game",
             url: `${env.ISSUER}/join/${encodeURIComponent(listing.code)}`,
@@ -274,6 +284,7 @@ export const LFG_COMMAND = {
             required: true, min_value: 1, max_value: LIMITS.turnSecondsMax,
         },
         { type: 3, name: "code", description: "Your lobby's invite code (hosting only)", required: false, max_length: 32 },
+        { type: 3, name: "address", description: "Your server's address, if you are not on the relay (hosting only)", required: false, max_length: 128 },
         { type: 4, name: "seats", description: "How many players the game seats (hosting only)", required: false, min_value: LIMITS.slotsMin, max_value: LIMITS.slotsMax },
         { type: 4, name: "taken", description: "How many are in already (hosting only)", required: false, min_value: 0, max_value: LIMITS.slotsMax },
         { type: 3, name: "language", description: "Language at the table", required: false, max_length: LIMITS.language },

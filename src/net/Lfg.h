@@ -21,8 +21,29 @@
 //
 // The one action a listing can cause is JOINING A GAME BY ITS INVITE CODE, and
 // the code goes through the same path as a code typed by hand -- including
-// signing in first. There is no address field, so a listing cannot point the
-// game at a machine of the poster's choosing.
+// signing in first.
+//
+// ── AND SINCE A CODE ALONE ONLY REACHES A RELAYED HOST, AN ADDRESS ──
+//
+// A code names a session at the account service. Joining with the code and
+// nothing else goes through that service's relay, which only works if the host
+// is on the relay. A host that LISTENS -- a forwarded port, a cloudflared
+// tunnel -- is reached by its address, and had no way to say so here: its
+// listing carried a code that led to a relay nobody was on. Every such listing
+// was unjoinable, which is most of what "the board does not work" meant.
+//
+// So a hosting listing may carry an address, and three rules keep it from
+// being the link field this deliberately is not:
+//
+//   1. It must be a HOST, optionally with a port. No scheme, no path, no
+//      query, no credentials: `play.example.com:27015`, never a URL. So it
+//      cannot carry a page to visit, which is what the promote-only rule is
+//      about.
+//   2. It is PREFILLED, NEVER DIALLED. Joining a listing puts the address in
+//      the same field a player types one into, and the same tickbox about the
+//      host seeing your IP has to be ticked before Join does anything. A
+//      listing still cannot make this game connect anywhere on its own.
+//   3. It is optional. A relayed game has no address and does not need one.
 
 #include <cstdint>
 #include <string>
@@ -43,6 +64,8 @@ struct Limits {
     static constexpr size_t kRegionChars = 24;
     static constexpr size_t kNickChars = 32;
     static constexpr size_t kCodeChars = 32;
+    /** A hostname and a port. Longer than any real one, shorter than a URL. */
+    static constexpr size_t kAddressChars = 128;
     static constexpr size_t kIdChars = 32;
     /** Listings kept from one reply. The service sends at most 40. */
     static constexpr size_t kItems = 40;
@@ -64,6 +87,12 @@ struct Listing {
     Kind kind = Kind::Hosting;
     std::string nick;
     std::string code;        ///< hosting only; empty otherwise
+    /**
+     * Where the host listens, `host` or `host:port`. Hosting only, and empty
+     * for a relayed game -- which has no address, by design, and does not need
+     * one because the code reaches it.
+     */
+    std::string address;
     std::string map;
     Mode mode = Mode::Rapid;
     int turnSeconds = 0;     ///< rapid only
@@ -90,6 +119,7 @@ struct Listing {
 struct Draft {
     Kind kind = Kind::Hosting;
     std::string code;
+    std::string address;
     std::string map;
     Mode mode = Mode::Rapid;
     int turnSeconds = 120;
@@ -120,6 +150,16 @@ std::vector<Listing> live(const std::vector<Listing>& all, long long now);
  * sentence the service would have sent back.
  */
 std::string problemWith(const Draft& draft);
+
+/**
+ * Is this a host and optional port, rather than a link?
+ *
+ * Letters, digits, dots, hyphens and one optional `:port`. Everything else --
+ * a scheme, a slash, a query, an `@` -- is refused, so the field cannot become
+ * somewhere to send a reader. Exposed because the service enforces the same
+ * rule and a player should be told while they are typing.
+ */
+bool validAddress(const std::string& value);
 
 /** The request body for posting a draft. Only called when problemWith() is empty. */
 std::string postBody(const Draft& draft);

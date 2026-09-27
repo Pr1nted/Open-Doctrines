@@ -98,6 +98,57 @@ describe("Open Doctrines games only", () => {
     });
 });
 
+describe("the address of a host that does not use the relay", () => {
+    // An invite code names a session and is joined THROUGH THE RELAY. A host
+    // that listens instead -- a forwarded port, a tunnel -- is reached by its
+    // address, and had no way to say so: its listing carried a code that led
+    // to a relay nobody was on, so nobody could join it. The field exists for
+    // that, and its shape is what keeps it from being the link field the
+    // promote-only rule refuses.
+    it("keeps a hostname", () => {
+        const result = check({ ...hosting, address: "tidy-otter-quiet.trycloudflare.com" });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.value.address).toBe("tidy-otter-quiet.trycloudflare.com");
+    });
+
+    it("keeps a hostname with a port", () => {
+        const result = check({ ...hosting, address: "play.example.com:27015" });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.value.address).toBe("play.example.com:27015");
+    });
+
+    it("leaves it absent when there is none, which is what a relayed game is", () => {
+        const result = check(hosting);
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.value.address).toBeUndefined();
+    });
+
+    for (const bad of [
+        "https://example.com",          // a scheme is a link
+        "example.com/join",             // so is a path
+        "example.com?ref=x",            // and a query
+        "user@example.com",             // and credentials
+        "localhost",                    // nobody outside can reach it
+        "example.com:0",                // not a port
+        "example.com:99999",            // nor is that
+        "exa mple.com",                 // not a hostname at all
+        "-example.com",
+        "x".repeat(200) + ".com",       // longer than any real name
+    ]) {
+        it(`refuses ${bad.slice(0, 40)}`, () => {
+            expect(check({ ...hosting, address: bad }).ok).toBe(false);
+        });
+    }
+
+    it("refuses one on a looking listing, which has no server", () => {
+        const result = check({
+            kind: "looking", map: "any", mode: "longform", turnHours: 24,
+            address: "play.example.com",
+        });
+        expect(result.ok).toBe(false);
+    });
+});
+
 describe("be respectful", () => {
     it("refuses a blocked word in the note", () => {
         expect(check({ ...hosting, note: "no badword allowed" }).ok).toBe(false);

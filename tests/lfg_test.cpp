@@ -187,6 +187,52 @@ int main() {
         ok(odlfg::problemWith(l).empty(), "looking, with no code and no seats");
     }
 
+    section("an address is a host, not a link");
+    {
+        for (const char* good : {"play.example.com", "play.example.com:27015",
+                                 "a-b.c.example.org:1", "1.2.3.4", "1.2.3.4:65535"}) {
+            ok(odlfg::validAddress(good), std::string("accepted: ") + good);
+        }
+        // Every one of these would make the field somewhere to send a reader,
+        // which is the thing the promote-only rule is about. Refused by SHAPE,
+        // so nobody has to judge where a given address points.
+        for (const char* bad : {"https://example.com", "example.com/path", "example.com?x=1",
+                                "user@example.com", "example.com:0", "example.com:70000",
+                                "example.com:", "localhost", "-example.com", "example.com.",
+                                "exa mple.com", ""}) {
+            ok(!odlfg::validAddress(bad), std::string("refused: ") + bad);
+        }
+
+        odlfg::Draft d = hostingDraft();
+        d.address = "https://example.com/join";
+        ok(!odlfg::problemWith(d).empty(), "and a draft carrying one is refused");
+
+        d = hostingDraft();
+        d.address = "tidy-otter-quiet.trycloudflare.com";
+        ok(odlfg::problemWith(d).empty(), "a real tunnel address is fine");
+    }
+
+    section("an address on a listing, and one that should never have arrived");
+    {
+        const std::string withAddr =
+            "{\"id\":\"a1\",\"kind\":\"hosting\",\"nick\":\"Vlad\",\"code\":\"ABCD-EFGH\","
+            "\"address\":\"play.example.com:27015\",\"map\":\"1914\",\"mode\":\"rapid\","
+            "\"turnSeconds\":120,\"slotsTotal\":6,\"createdAt\":1,\"expiresAt\":9000}";
+        std::vector<odlfg::Listing> got = odlfg::parseBoard(board(withAddr.c_str()), why);
+        ok(got.size() == 1 && got[0].address == "play.example.com:27015",
+           "the address is read");
+
+        // The service enforces the same shape. A document that got past it
+        // anyway must not reach the join field, so the address is dropped and
+        // the listing reads as relayed -- which a player can act on.
+        const std::string hostile =
+            "{\"id\":\"a2\",\"kind\":\"hosting\",\"nick\":\"Vlad\",\"code\":\"ABCD-EFGH\","
+            "\"address\":\"https://evil.example/x\",\"map\":\"1914\",\"mode\":\"rapid\","
+            "\"turnSeconds\":120,\"slotsTotal\":6,\"createdAt\":1,\"expiresAt\":9000}";
+        got = odlfg::parseBoard(board(hostile.c_str()), why);
+        ok(got.size() == 1 && got[0].address.empty(), "a link in the field is dropped");
+    }
+
     section("Open Doctrines games only");
     {
         for (const char* note : {"join us at https://example.com", "discord.gg/abcdef",

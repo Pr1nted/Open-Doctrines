@@ -18,13 +18,26 @@
 // them. The only free text is the note, and it is the only thing a moderator
 // ever has to read.
 //
-// ── WHY THERE IS NO "SERVER ADDRESS" FIELD ──
+// ── THE ADDRESS FIELD, AND WHY IT IS NOT A LINK FIELD ──
 //
-// An invite code names a session on an account service this project runs. An
-// address field would be a link by another name, and the rule about promoting
-// only Open Doctrines games would then have to be judged by a person on every
-// listing. With codes, a listing either points at a game on this service or it
-// does not exist.
+// There was none, on the reasoning that an invite code names a session on an
+// account service this project runs, while an address would be a link by
+// another name. The flaw was that a code alone only reaches a RELAYED host:
+// one that listens -- a forwarded port, a cloudflared tunnel -- has an address
+// and no way to say so, so its listing carried a code that led to a relay
+// nobody was on. Those listings could never be joined by anybody.
+//
+// So `address` exists, and the promote-only rule survives by SHAPE rather than
+// by judgement: it must be a host and at most a port, matched against ADDRESS
+// below. No scheme, no path, no query, no credentials -- so it cannot carry a
+// page to visit, which is the thing that rule is about. It must also contain a
+// dot, because a bare word is a machine on somebody's own network and no
+// reader of a public board can reach it.
+//
+// The game treats one as a typed address and nothing more: it is put in the
+// join field and the player has to accept the direct-connection warning before
+// anything dials it. A listing still cannot make a reader's game connect
+// anywhere by itself.
 
 import { isSessionCode } from "../lobby/session.js";
 import { canonicalize, normalize, type Blocklist } from "../accounts/nickname.js";
@@ -40,6 +53,8 @@ export const LIMITS = {
     note: 240,
     language: 24,
     region: 24,
+    /** A hostname and a port. Longer than any real one, shorter than a URL. */
+    address: 128,
     /** Listings a client is shown at once. */
     page: 40,
     /** Per account: one open listing, and this many posts a day. */
@@ -64,6 +79,13 @@ export interface Listing {
     nick: string;
     /** Invite code, for a hosting listing. A looking listing has none. */
     code?: string;
+    /**
+     * Where a listening host can be reached, `host` or `host:port`.
+     *
+     * Hosting listings only, and absent for a relayed game -- which has no
+     * address and does not need one, because the code reaches it.
+     */
+    address?: string;
     map: string;
     mode: Mode;
     /** Rapid games only. */
@@ -89,6 +111,7 @@ export interface Listing {
 export interface ListingInput {
     kind?: unknown;
     code?: unknown;
+    address?: unknown;
     map?: unknown;
     mode?: unknown;
     turnSeconds?: unknown;
@@ -105,6 +128,15 @@ export type Rejected = { ok: false; reason: string };
 export type Accepted = { ok: true; value: Listing };
 
 const URL_LIKE = /(https?:\/\/|www\.|discord\.gg\/|\b[a-z0-9-]+\.(com|net|org|io|gg|dev|xyz|ru|me)\b)/i;
+
+/**
+ * A host, and at most a port. Deliberately not a URL: see the header.
+ *
+ * Note that this is checked INSTEAD of URL_LIKE, not as well as it -- a real
+ * tunnel hostname ends in `.com` and would fail that test. What keeps the
+ * field from being a link is that nothing but a hostname fits the shape.
+ */
+const ADDRESS = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?$/i;
 
 /** Letters, digits, spaces and a few separators. No markup, no mentions. */
 const PLAIN = /^[\p{L}\p{N} .,!?'()\/+:;-]*$/u;
@@ -200,9 +232,37 @@ export function validate(
             return { ok: false, reason: `Say how many players the game seats, ${LIMITS.slotsMin}-${LIMITS.slotsMax}.` };
         }
         if (taken < 0 || taken > total) return { ok: false, reason: "Players in the game cannot exceed the seats." };
+        const address = short(input.address, LIMITS.address);
+        if (address) {
+            if (address.length > LIMITS.address) {
+                return { ok: false, reason: `An address is at most ${LIMITS.address} characters.` };
+            }
+            if (!ADDRESS.test(address)) {
+                return {
+                    ok: false,
+                    reason: "An address is a hostname, optionally with a port -- not a link.",
+                };
+            }
+            // `port &&` would have let :0 through, because 0 is falsy and the
+            // regex above only checks that the digits are digits. The test for
+            // it failed on the first run, which is what it is there for.
+            const [, portText] = address.split(":");
+            if (portText !== undefined) {
+                const port = Number(portText);
+                if (!Number.isInteger(port) || port < 1 || port > 65535) {
+                    return { ok: false, reason: "That port is not a port." };
+                }
+            }
+            listing.address = address;
+        }
         listing.code = code;
         listing.slotsTotal = total;
         listing.slotsTaken = taken;
+    } else if (input.address) {
+        return {
+            ok: false,
+            reason: "A looking-for-a-game listing has no server to give an address for.",
+        };
     } else if (input.code) {
         return { ok: false, reason: "A looking-for-a-game listing carries no invite code. Tag it as hosting instead." };
     }

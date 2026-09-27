@@ -210,6 +210,7 @@ async function lfgCommand(env: Env, interaction: any): Promise<Record<string, un
         turnSeconds: mode === "rapid" ? pace : undefined,
         turnHours: mode === "longform" ? pace : undefined,
         code: options.code,
+        address: options.address,
         slotsTotal: options.seats,
         slotsTaken: options.taken,
         language: options.language,

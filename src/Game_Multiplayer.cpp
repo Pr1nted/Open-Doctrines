@@ -990,6 +990,11 @@ void Game::updateMultiplayerMenu() {
             case 6: target = &m_lfgDraft.map;   limit = odlfg::Limits::kMapChars;  break;
             case 7: target = &m_lfgReportNote;  limit = 240; break;
             case 8: target = &m_lfgDraft.note;  limit = odlfg::Limits::kNoteChars; break;
+            // Where a listening host can be reached. Typed, because a host who
+            // forwarded a port has an address the game cannot work out for
+            // itself -- only a tunnel's address is known here.
+            case 9: target = &m_lfgDraft.address;
+                    limit = odlfg::Limits::kAddressChars; break;
             default: break;
         }
         if (target) {
@@ -1010,7 +1015,7 @@ void Game::updateMultiplayerMenu() {
             // which reads as the key doing nothing.
             if (IsKeyPressed(KEY_TAB)) {
                 if (m_mpPage == MpPage::Post) {
-                    m_mpFocus = (m_mpFocus == 6) ? 8 : 6;
+                    m_mpFocus = m_mpFocus == 6 ? 8 : (m_mpFocus == 8 ? 9 : 6);
                 } else if (m_mpPage == MpPage::Board) {
                     m_mpFocus = 7;
                 } else {
