@@ -220,7 +220,7 @@ int main() {
     {
         for (const char* good : {"play.example.com", "play.example.com:27015",
                                  "a-b.c.example.org:1", "1.2.3.4", "1.2.3.4:65535"}) {
-            ok(odlfg::validAddress(good), std::string("accepted: ") + good);
+            ok(netHostAddressValid(good), std::string("accepted: ") + good);
         }
         // Every one of these would make the field somewhere to send a reader,
         // which is the thing the promote-only rule is about. Refused by SHAPE,
@@ -229,7 +229,7 @@ int main() {
                                 "user@example.com", "example.com:0", "example.com:70000",
                                 "example.com:", "localhost", "-example.com", "example.com.",
                                 "exa mple.com", ""}) {
-            ok(!odlfg::validAddress(bad), std::string("refused: ") + bad);
+            ok(!netHostAddressValid(bad), std::string("refused: ") + bad);
         }
 
         odlfg::Draft d = hostingDraft();

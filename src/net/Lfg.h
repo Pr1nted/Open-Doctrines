@@ -35,7 +35,8 @@
 // So a hosting listing may carry an address, and three rules keep it from
 // being the link field this deliberately is not:
 //
-//   1. It must be a HOST, optionally with a port. No scheme, no path, no
+//   1. It must be a HOST, optionally with a port -- netHostAddressValid, the
+//      same rule the join link and the service apply. No scheme, no path, no
 //      query, no credentials: `play.example.com:27015`, never a URL. So it
 //      cannot carry a page to visit, which is what the promote-only rule is
 //      about.
@@ -52,6 +53,8 @@
 #include <string>
 #include <vector>
 
+#include "HostAddress.h"   // what an address may be; shared with the join link
+
 namespace odlfg {
 
 /** Which kind of listing this is. The channel calls these "tags". */
@@ -67,8 +70,8 @@ struct Limits {
     static constexpr size_t kRegionChars = 24;
     static constexpr size_t kNickChars = 32;
     static constexpr size_t kCodeChars = 32;
-    /** A hostname and a port. Longer than any real one, shorter than a URL. */
-    static constexpr size_t kAddressChars = 128;
+    /** A hostname and a port. See netHostAddressValid, which is the rule. */
+    static constexpr size_t kAddressChars = kNetHostAddressMax;
     static constexpr size_t kIdChars = 32;
     /** Listings kept from one reply. The service sends at most 40. */
     static constexpr size_t kItems = 40;
@@ -161,16 +164,6 @@ std::vector<Listing> live(const std::vector<Listing>& all, long long now);
  * sentence the service would have sent back.
  */
 std::string problemWith(const Draft& draft);
-
-/**
- * Is this a host and optional port, rather than a link?
- *
- * Letters, digits, dots, hyphens and one optional `:port`. Everything else --
- * a scheme, a slash, a query, an `@` -- is refused, so the field cannot become
- * somewhere to send a reader. Exposed because the service enforces the same
- * rule and a player should be told while they are typing.
- */
-bool validAddress(const std::string& value);
 
 /** The request body for posting a draft. Only called when problemWith() is empty. */
 std::string postBody(const Draft& draft);

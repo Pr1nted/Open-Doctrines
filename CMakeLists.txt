@@ -1023,6 +1023,7 @@ set(GAME_SOURCES
     src/net/Host.cpp
     src/net/Announcements.cpp
     src/net/Lfg.cpp
+    src/net/HostAddress.cpp
     src/net/ModDir.cpp
     src/net/HttpClient.cpp
     src/net/JoinTicket.cpp
@@ -2360,8 +2361,8 @@ if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
 endif()
 
 add_executable(LfgTest EXCLUDE_FROM_ALL tests/lfg_test.cpp
-               src/net/Lfg.cpp src/net/Announcements.cpp src/net/HttpClient.cpp
-               src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/Lfg.cpp src/net/HostAddress.cpp src/net/Announcements.cpp
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
 target_include_directories(LfgTest PRIVATE src tests)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_compile_definitions(LfgTest PRIVATE OD_ENABLE_NET=1)
