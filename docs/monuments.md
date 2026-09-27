@@ -65,6 +65,19 @@ The silo's range is measured over a **great circle**, so the edge of the map is
 not a wall, and its top level reaches further than half the planet's
 circumference — at level 3 the answer is simply yes.
 
+## Two things worth knowing
+
+**A monument goes with the land.** Take a province and you take what stands in
+it — and it starts costing you a slot rather than its old owner. Nothing is
+destroyed by a change of flag; only heavy ordnance destroys a monument, and
+only the two movable ones.
+
+**The AI does not build them yet.** Monuments are a player's decision today,
+the same way sector taxes are: every AI country leaves the screen alone, so
+nothing here changes how the computer plays. Teaching it to use them is a
+hand-written reflex rather than a retrain — see the note in `src/Monuments.h`
+about the four consumers.
+
 ## Researching them
 
 A **Monuments** category in the research tree, with a root (*Monumental
