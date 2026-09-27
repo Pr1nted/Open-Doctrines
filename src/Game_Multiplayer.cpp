@@ -2884,6 +2884,21 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
         const float pct = (it != m_specTaxPct.end()) ? it->second[(size_t)r] : 0.0f;
         j["specTax"].push_back({{"resource", SPEC_RESOURCES[r]}, {"pct", (int)std::lround(pct)}});
     }
+    // ── MONUMENTS ──
+    //
+    // The WHOLE SET this country holds, not a list of changes. A monument is
+    // built, upgraded, switched and dismantled straight away rather than
+    // queued, so there is no pending order to send -- and a diff would need
+    // the client to know what the host thinks it has, which is the thing that
+    // goes wrong first. The set is at most a few dozen entries of four small
+    // fields, and sending it whole means a client that reconnects is right
+    // again on its next turn rather than permanently out of step.
+    for (const auto& [pid, h] : m_monuments) {
+        if (!ownsProvince(pid)) continue;
+        j["monuments"].push_back({{"province", pid}, {"kind", odmon::kindKey(h.kind)},
+                                  {"level", h.level}, {"active", h.active}});
+    }
+
     for (auto& r : m_pendingRecruitments) if (ownsProvince(r.provinceId)) {
         j["pendingRecruitments"].push_back({{"provinceId", r.provinceId}, {"count", r.count},
                                             {"turnsRemaining", r.turnsRemaining},
@@ -3188,6 +3203,42 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         const int res = specResourceIndex(resource);
         if (res >= 0) setSpecTaxPct(countryId, res, (float)pct);
     });
+
+    // Monuments, re-checked on the host rather than believed.
+    //
+    // The client sends what it has; the host builds its own copy from that,
+    // through the same canBuildMonument that the panel uses -- so a client
+    // cannot place one in a province it does not own, one it has not
+    // researched, a second in the same province, or a port monument inland.
+    // The LEVEL is clamped to the catalogue for the same reason.
+    //
+    // Cleared first, because an absence is a decision: a monument the client
+    // dismantled is gone from the message, and a host that only ever added
+    // would keep charging its owner for a slot they no longer have.
+    {
+        std::vector<int> mine;
+        for (const auto& [pid, h] : m_monuments)
+            if (ownsProvince(pid)) mine.push_back(pid);
+        for (int pid : mine) m_monuments.erase(pid);
+    }
+    each("monuments", [&](const nlohmann::json& e) {
+        const int pid = (int)intIn(e, "province", 1, kMaxProvinceId, 0);
+        if (rejected || !ownsProvince(pid)) return;
+        const std::string key = textIn(e, "kind");
+        int kind = -1;
+        for (int k = 0; k < odmon::kKindCount; ++k)
+            if (key == odmon::kindKey((odmon::Kind)k)) { kind = k; break; }
+        if (kind < 0) return;
+        if (!hasResearched(odmon::unlockNode((odmon::Kind)kind), countryId)) return;
+        if (odmon::spec((odmon::Kind)kind).needsPort && !isProvinceCoastal(pid)) return;
+        odmon::Holding h;
+        h.provinceId = pid;
+        h.kind = (odmon::Kind)kind;
+        h.level = (int)intIn(e, "level", 1, odmon::spec(h.kind).maxLevel, 1);
+        h.active = e.contains("active") && e["active"].is_boolean() ? e["active"].get<bool>() : true;
+        m_monuments[pid] = h;
+    });
+    rebuildMonumentEffects();
 
     // Recruitment is charged here for the same reason builds are: the price,
     // (count / 10000) with a floor of 1, was only ever deducted in the panel

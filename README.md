@@ -92,6 +92,23 @@ Draw land and sea, cut provinces, place countries, populations, resources and
 claims, then export a `.odmap` anyone else can load. There is also a procedural
 generator for when you want a world rather than a specific one.
 
+## Monuments
+
+![Monuments](docs/img/monuments-globe.png)
+
+One great work per province -- a university, a megacity, a missile silo that
+reaches over the curve of the planet -- and a rent for having it switched on.
+Slots cost 50, 75, 125, 200, 300 a turn, so eleven monuments and money for four
+is a decision you make every turn rather than a shopping list you finish.
+
+On the globe they stand up out of the province. They are built from a
+province's own panel, because where one stands is most of what it does, and
+switched on and off from the Monuments screen, because that part is about a
+budget and not a place.
+
+Detail, including what each one does and how to reach them from a map script or
+a mod, in [docs/monuments.md](docs/monuments.md).
+
 ## Multiplayer
 
 ![Multiplayer](docs/img/multiplayer.png)

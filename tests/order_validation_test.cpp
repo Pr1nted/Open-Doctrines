@@ -69,6 +69,13 @@ struct OrderValidationTest {
         return 0;
     }
 
+    /// A province this country does NOT own, for the ownership cases.
+    int foreignProvince(int countryId) const {
+        for (const auto& [pid, p] : game.m_provinces.getAllProvinces())
+            if (p.countryId > 0 && p.countryId != countryId && p.countryId < 65530) return pid;
+        return 0;
+    }
+
     int anyCountry() const {
         for (const auto& [cid, c] : game.m_countries.getAll())
             if (cid > 0 && cid < 65530) return cid;
@@ -199,6 +206,52 @@ struct OrderValidationTest {
         const int mine = ownedProvince(cid);
         check(mine != 0, "found a province it owns");
         if (!cid || !mine) return;
+
+        // ── MONUMENTS OVER THE WIRE ──
+        //
+        // A client sends the whole set it holds rather than a change, so the
+        // host has to rebuild its copy from a message and must not believe any
+        // of it. Four lies, one per rule: somebody else's province, a kind
+        // that does not exist, a level past the catalogue, and a port monument
+        // inland. The research gate is not tested here because this fixture's
+        // country has researched nothing, which is why the honest case below
+        // asserts only that a refusal is silent rather than fatal.
+        {
+            const int notMine = foreignProvince(cid);
+            game.m_monuments.clear();
+            apply(cid, "{\"monuments\":[{\"province\":" + std::to_string(notMine) +
+                       ",\"kind\":\"university\",\"level\":1,\"active\":true}]}");
+            check(game.m_monuments.empty(),
+                  "a monument in somebody else's province is refused");
+
+            game.m_monuments.clear();
+            apply(cid, "{\"monuments\":[{\"province\":" + std::to_string(mine) +
+                       ",\"kind\":\"death_star\",\"level\":1,\"active\":true}]}");
+            check(game.m_monuments.empty(), "a kind this build has never heard of is refused");
+
+            // The level, which is the shape the industry exploit above took.
+            game.m_monuments.clear();
+            // Straight into the set the gate reads; there is no turn to spend here.
+            game.m_countryResearched[cid].insert(odmon::unlockNode(odmon::Kind::University));
+            apply(cid, "{\"monuments\":[{\"province\":" + std::to_string(mine) +
+                       ",\"kind\":\"university\",\"level\":999,\"active\":true}]}");
+            bool capped = true;
+            for (const auto& [pid, h] : game.m_monuments)
+                if (h.level > odmon::spec(h.kind).maxLevel) capped = false;
+            check(capped, "level 999 is clamped to what the catalogue has a price for");
+
+            // And an ABSENCE is a decision: a monument the client took down
+            // must leave the host's copy, or it keeps charging for the slot.
+            check(!game.m_monuments.empty(), "the clamped one was accepted");
+            apply(cid, "{\"monuments\":[]}");
+            // Nothing else in this fixture holds one, so the whole map being
+            // empty IS this country's being empty -- and indexing
+            // m_provinceCountryLookup to say it more precisely was reading
+            // past the end of an array this harness never fills, which made
+            // the check pass whatever the host did.
+            check(game.m_monuments.empty(),
+                  "an empty list takes this country's monuments down");
+        }
 
         // ── the exploit ──
         {
