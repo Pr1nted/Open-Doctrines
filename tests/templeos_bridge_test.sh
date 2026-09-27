@@ -25,6 +25,18 @@ turns=5
 [ -x "$build/OpenDoctrinesServer" ] || {
     echo "no $build/OpenDoctrinesServer -- build that target first"; exit 1; }
 
+# The bridge needs a FIFO: the door reopens the path every turn, and a FIFO's
+# open blocks until a writer appears, which is how a turn boundary exists at
+# all. Windows has none, so this is a SKIP and says so -- a test that quietly
+# returned success here would be claiming coverage of the one thing it checks.
+# Asked of the same interpreter the bridge runs under, so the two cannot
+# disagree about what the platform offers.
+if ! "$PY" -c "import os, sys; sys.exit(0 if hasattr(os, 'mkfifo') else 1)"; then
+    echo "skip: this platform has no FIFOs, so the bridge's turn boundary cannot exist here"
+    echo "      (the host half runs on macOS and Linux; the guest is TempleOS under QEMU either way)"
+    exit 0
+fi
+
 dir="$(mktemp -d)"
 trap 'rm -rf "$dir"' EXIT
 

@@ -145,6 +145,22 @@ def run(build: str, bridge_dir: str, seat: str, seed: int, turns: int,
     order_file.unlink(missing_ok=True)
 
     fifo = str(d / "agent.fifo")
+    # A FIFO, and it has to be one. The door opens this path fresh every turn
+    # and a FIFO's open BLOCKS until a writer appears -- that block is the turn
+    # boundary. A regular file cannot stand in: the open would return at once
+    # with whatever was lying there, which is the stale-order problem this
+    # protocol exists to refuse.
+    #
+    # Windows has no FIFOs. Making the bridge work there means a named pipe
+    # (CreateNamedPipeW through ctypes, then ConnectNamedPipe to block for the
+    # reader), which is a real piece of platform IPC and not a shim -- so this
+    # says so and stops, rather than failing later with a traceback about `os`
+    # having no attribute.
+    if not hasattr(os, "mkfifo"):
+        print("this platform has no FIFOs, so the bridge's turn boundary cannot exist here; "
+              "the host half runs on macOS and Linux (the guest is TempleOS under QEMU either "
+              "way)", file=sys.stderr)
+        return 2
     if os.path.exists(fifo):
         os.unlink(fifo)
     os.mkfifo(fifo)
