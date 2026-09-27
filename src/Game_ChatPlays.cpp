@@ -278,17 +278,23 @@ void Game::writeOverlayFeed() {
 // why the code cannot do this job itself.
 
 bool Game::handleJoinUrl(const std::string& url) {
-    const std::string code = joinlink::codeFrom(url);
-    if (code.empty()) return false;
+    const joinlink::Invite invite = joinlink::parse(url);
+    if (!invite.valid()) return false;
 
     // Straight to the join screen with the code filled in -- NOT joined
     // automatically. A link that drops somebody into a game the moment they
     // click it is a link that can be used to drag people into anything; the
     // last step stays theirs.
-    m_pendingJoinCode = code;
+    m_pendingJoinCode = invite.code;
     m_currentScreen = SCREEN_MULTIPLAYER;
     m_mpPage = MpPage::Join;
-    m_mpCodeField = code;
+    m_mpCodeField = invite.code;
+    // And where, for a host that is not on the relay -- the code alone reaches
+    // the relay and nothing else. Cleared with the tickbox below it, so the
+    // Join button stays dead until the player agrees to a direct connection.
+    // See joinlink::parse for what an address is allowed to be.
+    m_mpAddressField = invite.address;
+    m_mpIpWarningAccepted = false;
     return true;
 }
 

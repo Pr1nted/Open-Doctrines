@@ -281,7 +281,7 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // The page behind a Join button in Discord: a button can only open a URL,
     // and the game's own opendoctrines:// scheme is not one Discord accepts.
     const lfgJoinMatch = /^\/join\/([^/]+)$/.exec(path);
-    if (get && lfgJoinMatch) return joinPage(env, lfgJoinMatch[1]!);
+    if (get && lfgJoinMatch) return joinPage(env, lfgJoinMatch[1]!, url.searchParams.get("at"));
     if (post && path === "/admin/announcement") return adminAnnouncement(request, env);
 
     if (post && path === "/admin/badge") return adminBadge(request, env);

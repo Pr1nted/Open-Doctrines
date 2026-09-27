@@ -2383,7 +2383,7 @@ add_executable(PresenceTest EXCLUDE_FROM_ALL tests/presence_test.cpp
 target_include_directories(PresenceTest PRIVATE src tests)
 
 add_executable(JoinLinkTest EXCLUDE_FROM_ALL tests/join_link_test.cpp
-               src/stream/JoinLink.cpp)
+               src/stream/JoinLink.cpp src/net/HostAddress.cpp)
 target_include_directories(JoinLinkTest PRIVATE src tests)
 
 add_executable(OverlayFeedTest EXCLUDE_FROM_ALL tests/overlay_feed_test.cpp

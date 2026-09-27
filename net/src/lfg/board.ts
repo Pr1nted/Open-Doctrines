@@ -138,6 +138,24 @@ const URL_LIKE = /(https?:\/\/|www\.|discord\.gg\/|\b[a-z0-9-]+\.(com|net|org|io
  */
 const ADDRESS = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?$/i;
 
+/**
+ * THE WHOLE RULE, in one function, because the regex alone is not it.
+ *
+ * The port has to be a port as well as digits, and both times that check has
+ * lived somewhere other than here it has been forgotten: `:0` got past the
+ * validator first, and then past the join page, which used the regex on its
+ * own. Every caller asks this instead. The C++ side has exactly one of these
+ * too -- netHostAddressValid, src/net/HostAddress.h.
+ */
+export function isHostAddress(value: string): boolean {
+    if (!value || value.length > LIMITS.address) return false;
+    if (!ADDRESS.test(value)) return false;
+    const [, portText] = value.split(":");
+    if (portText === undefined) return true;
+    const port = Number(portText);
+    return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
 /** Letters, digits, spaces and a few separators. No markup, no mentions. */
 const PLAIN = /^[\p{L}\p{N} .,!?'()\/+:;-]*$/u;
 
@@ -234,24 +252,11 @@ export function validate(
         if (taken < 0 || taken > total) return { ok: false, reason: "Players in the game cannot exceed the seats." };
         const address = short(input.address, LIMITS.address);
         if (address) {
-            if (address.length > LIMITS.address) {
-                return { ok: false, reason: `An address is at most ${LIMITS.address} characters.` };
-            }
-            if (!ADDRESS.test(address)) {
+            if (!isHostAddress(address)) {
                 return {
                     ok: false,
                     reason: "An address is a hostname, optionally with a port -- not a link.",
                 };
-            }
-            // `port &&` would have let :0 through, because 0 is falsy and the
-            // regex above only checks that the digits are digits. The test for
-            // it failed on the first run, which is what it is there for.
-            const [, portText] = address.split(":");
-            if (portText !== undefined) {
-                const port = Number(portText);
-                if (!Number.isInteger(port) || port < 1 || port > 65535) {
-                    return { ok: false, reason: "That port is not a port." };
-                }
             }
             listing.address = address;
         }

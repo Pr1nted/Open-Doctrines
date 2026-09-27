@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import { LIMITS, validate, visible, type Listing } from "../src/lfg/board.js";
+import { joinPage } from "../src/lfg/routes.js";
 
 const blocklist = { terms: ["badword"], exceptions: new Set<string>() };
 const context = { id: "abc123", accountId: "acct_1", nick: "Vlad", now: 1_800_000_000, blocklist };
@@ -146,6 +147,45 @@ describe("the address of a host that does not use the relay", () => {
             address: "play.example.com",
         });
         expect(result.ok).toBe(false);
+    });
+});
+
+describe("the page behind the Join button", () => {
+    // A button in Discord can only open a URL, so it opens this page and the
+    // page redirects into the game's own scheme. A code alone is joined
+    // through the RELAY, so a listing for a host that listens has to get its
+    // address this far or the button opens the game and fails.
+    const env = { ISSUER: "https://issuer.example" } as never;
+
+    async function body(code: string, at?: string | null): Promise<string> {
+        return await joinPage(env, code, at).text();
+    }
+
+    it("redirects with just the code when there is no address", async () => {
+        const html = await body("ABCD-EFGH");
+        expect(html).toContain("opendoctrines://join/ABCD-EFGH");
+        expect(html).not.toContain("?at=");
+    });
+
+    it("carries an address into the deep link", async () => {
+        const html = await body("ABCD-EFGH", "play.example.com:27015");
+        expect(html).toContain("opendoctrines://join/ABCD-EFGH?at=play.example.com%3A27015");
+        // And says it in words, for somebody whose machine does not take the
+        // scheme and has to type it in.
+        expect(html).toContain("play.example.com:27015");
+    });
+
+    it("drops one that is not an address", async () => {
+        for (const bad of ["https://evil.example", "example.com/join", "localhost",
+                           "example.com:0"]) {
+            const html = await body("ABCD-EFGH", bad);
+            expect(html).toContain("opendoctrines://join/ABCD-EFGH");
+            expect(html).not.toContain("?at=");
+        }
+    });
+
+    it("still refuses something that is not an invite code", async () => {
+        expect(joinPage(env, "../etc/passwd", null).status).toBe(404);
     });
 });
 

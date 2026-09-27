@@ -71,17 +71,16 @@ function embedFor(listing: Listing, state?: string) {
 function componentsFor(env: Env, listing: Listing) {
     const rows: unknown[] = [];
     const buttons: unknown[] = [];
-    // ── THE BUTTON IS FOR GAMES THE BUTTON CAN ACTUALLY OPEN ──
-    //
-    // opendoctrines://join/<code> says one thing: join this code. A code alone
-    // reaches the relay, so for a host that LISTENS the button would open the
-    // game, fill in the code, and fail -- which reads as the game being
-    // broken rather than as a link that cannot express this listing. Those
-    // listings carry their address in the embed above instead.
-    if (listing.kind === "hosting" && listing.code && !listing.address) {
+    // The button opens /join/<code>, which redirects to the game's own scheme.
+    // A host that LISTENS is reached by an address rather than by the relay,
+    // so the address goes along: without it the button opened the game, filled
+    // in the code and failed, which reads as the game being broken.
+    if (listing.kind === "hosting" && listing.code) {
+        const at = listing.address
+            ? `?at=${encodeURIComponent(listing.address)}` : "";
         buttons.push({
             type: 2, style: 5, label: "Join this game",
-            url: `${env.ISSUER}/join/${encodeURIComponent(listing.code)}`,
+            url: `${env.ISSUER}/join/${encodeURIComponent(listing.code)}${at}`,
         });
     }
     buttons.push({ type: 2, style: 2, label: "Report", custom_id: `lfg:report:${listing.id}` });

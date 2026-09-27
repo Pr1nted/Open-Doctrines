@@ -10,7 +10,7 @@ import { fail, json, readJson, text, authenticate } from "../http.js";
 import { accountForIdentity, identSubHash, banInForce, type Account } from "../accounts/store.js";
 import { loadBlocklist } from "../accounts/nickname.js";
 import { isSessionCode } from "../lobby/session.js";
-import { LIMITS, forClients as listingForClients, validate, type Listing, type ListingInput } from "./board.js";
+import { isHostAddress, LIMITS, forClients as listingForClients, validate, type Listing, type ListingInput } from "./board.js";
 import {
     Interaction, Reply, LFG_COMMAND, ephemeral, optionsOf, reportToModerators, verifyInteraction,
 } from "./discord.js";
@@ -253,10 +253,18 @@ export function lfgCommandDefinition(): Response {
  * says what to do when nothing happens, which is what a person without the game
  * installed needs to read.
  */
-export function joinPage(env: Env, code: string): Response {
+export function joinPage(env: Env, code: string, address?: string | null): Response {
     if (!isSessionCode(code)) return fail(404, "not_found", "That is not an invite code.");
     const safe = code.replace(/[^A-Za-z0-9_-]/g, "");
-    const deep = `opendoctrines://join/${safe}`;
+    // WHERE, for a host that is not on the relay. A code alone is joined
+    // through the relay, so without this the button opened the game, filled in
+    // the code and failed. Checked against the same shape the board applies:
+    // anything else is dropped, and the player gets the relay attempt they
+    // would have got before.
+    const at = address && isHostAddress(address) ? address : "";
+    const deep = at
+        ? `opendoctrines://join/${safe}?at=${encodeURIComponent(at)}`
+        : `opendoctrines://join/${safe}`;
     return text(`<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Join an Open Doctrines game</title>
@@ -267,8 +275,9 @@ a.plain{color:#8fc7ff}</style>
 <main>
 <h1>Join this game</h1>
 <p>Invite code <code>${safe}</code></p>
+${at ? `<p>Server <code>${at}</code></p>` : ""}
 <a class="button" href="${deep}">Open Open Doctrines</a>
-<p>If nothing happens, open the game yourself, then <b>Multiplayer → Join a game</b> and paste the code above.</p>
+<p>If nothing happens, open the game yourself, then <b>Multiplayer → Join a game</b> and paste ${at ? "the code and the server address above" : "the code above"}.</p>
 <p><a class="plain" href="${env.DOCS_BASE ?? "https://opendoctrines.pages.dev"}">Don't have the game? It is free.</a></p>
 <script>location.replace(${JSON.stringify(deep)});</script>
 </main></html>`, 200, "text/html; charset=utf-8");
