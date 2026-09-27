@@ -134,6 +134,21 @@ void applyFpsTarget(int target);
 /// question once, here, is what keeps a new row from arriving broken.
 bool settingUsesArrows(int tab, int index);
 
+/// Whether a settings row whose top edge is at `y` lies inside the list area --
+/// below the tab bar and not past the bottom of the window -- and so is both
+/// drawn and clickable.
+///
+/// The draw loop culled with `y + itemH < startY`, which lets through the row
+/// ONE step above the list: at startY - itemH, which is exactly where the tab
+/// bar sits. Scrolling the Display tab down to Colourblind Colours therefore
+/// painted "Show Actual Flags: On" over the Audio and Keybinds tabs. The
+/// hit-tests culled nothing, so that row -- and any further up -- stayed
+/// clickable through the tabs. Every loop that places a settings row asks
+/// this, so what is drawn and what can be clicked cannot drift apart again.
+inline bool settingsRowOnScreen(int y, int startY, int screenH) {
+    return y >= startY && y <= screenH;
+}
+
 // ── Resource limiter (runtime panel, F10 / Ctrl+L) ──
 // The budget lives in a translation-unit global rather than being threaded
 // through applyFpsTarget's signature because the frame cap has to hold for the
