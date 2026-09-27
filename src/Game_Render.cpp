@@ -5255,9 +5255,9 @@ void Game::drawInner() {
                     bool isNb = false;
                     bool canShoot = false;
                     if (hoverPid > 0 && hoverPid != m_artillerySourceProvince) {
-                        auto nIt = m_provinceNeighbors.find(m_artillerySourceProvince);
-                        isNb = (nIt != m_provinceNeighbors.end()) &&
-                            std::find(nIt->second.begin(), nIt->second.end(), hoverPid) != nIt->second.end();
+                        // Adjacency, or a silo standing here. One answer, so
+                        // this preview and the order it previews agree.
+                        isNb = artilleryCanReach(m_artillerySourceProvince, hoverPid);
                         if (isNb) {
                             Province* dp = m_provinces.getProvinceById(hoverPid);
                             if (dp && dp->countryId == m_playerCountryId) {

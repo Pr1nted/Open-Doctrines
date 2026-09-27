@@ -1168,9 +1168,7 @@ void Game::update(float dt) {
                     m_renderer->screenToPixel(mp.x, mp.y, px, py);
                     const Province* hp = m_provinces.getProvince(px, py);
                     if (hp && hp->id != m_artillerySourceProvince && hp->id > 0) {
-                        auto nIt = m_provinceNeighbors.find(m_artillerySourceProvince);
-                        bool isNb = (nIt != m_provinceNeighbors.end()) &&
-                            std::find(nIt->second.begin(), nIt->second.end(), hp->id) != nIt->second.end();
+                        const bool isNb = artilleryCanReach(m_artillerySourceProvince, hp->id);
                         if (isNb) {
                             Province* _tgt = m_provinces.getProvinceById(hp->id);
                             bool canShoot = false;

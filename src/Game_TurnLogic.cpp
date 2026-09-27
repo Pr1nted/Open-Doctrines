@@ -299,6 +299,40 @@ void Game::processArtilleryOrders(int countryId) {
         if (!tgtP) { ++i; continue; }
         ArtyEffect eff = getEffect(ao.ammoType);
 
+        // ── AIR DEFENCE ──
+        //
+        // "would block any artillery on landing, on it, or some of it's
+        // surrounding provinces". The share it stops is its effect; a level 3
+        // over its own province stops most of what is aimed there. Rolled
+        // rather than scaled, because a shell either lands or it does not --
+        // halving a nuclear strike is a stranger outcome than stopping it.
+        //
+        // Against the TARGET's owner, because that is whose air defence it is.
+        const int shieldCid = tgtP->countryId;
+        const float shielded = monumentEffectAt(shieldCid, ao.targetProvince,
+                                                (int)odmon::Kind::AirDefence);
+        // simRand, not rand(): this runs on the turn thread and a bare rand()
+        // here is what the note at the top of this file exists about.
+        if (shielded > 0.0f && (float)(simRand() % 1000) / 1000.0f <
+                                   std::min(shielded, 0.95f)) {
+            if (countryId == m_playerCountryId || shieldCid == m_playerCountryId) {
+                addNotification(TextFormat(T("Air defence stopped a strike on %s."),
+                                           od::i18n::properName(tgtP->name).c_str()),
+                                Color{150, 200, 230, 255});
+            }
+            m_pendingArtilleryOrders.erase(m_pendingArtilleryOrders.begin() + i);
+            continue;
+        }
+
+        // ── AND WHAT A STRIKE DESTROYS BESIDES ──
+        //
+        // The two movable monuments do not survive being found by anything
+        // heavier than heavy artillery. Checked before the effects, so a
+        // Defence Corporation caught by a nuclear strike is gone for the
+        // combat that follows rather than after it.
+        if (eff.popKillPct >= 15.0f || eff.indDmg > 0)
+            destroyMonumentByOrdnance(ao.targetProvince);
+
         if (artyHeard < 3 && (countryId == m_playerCountryId ||
                               tgtP->countryId == m_playerCountryId)) {
             if (const char* sfx = artySfx(ao.ammoType)) {
@@ -309,11 +343,22 @@ void Game::processArtilleryOrders(int countryId) {
             }
         }
 
+        // ── SIGNALS DIRECTORATE ──
+        //
+        // "spoils their aim": a strike landing inside the reach of somebody
+        // else's directorate does less. Against the TARGET's owner, like the
+        // air defence above, and it MULTIPLIES what gets through rather than
+        // stopping the shell -- the two monuments answer the same threat in
+        // two different ways, which is why it is worth having both.
+        const float jam = 1.0f - std::min(0.6f,
+            monumentEffectAt(tgtP->countryId, ao.targetProvince,
+                             (int)odmon::Kind::SignalsDirectorate));
+
         // Kill troops in target province
         auto aIt = m_provinceArmies.find(ao.targetProvince);
         if (aIt != m_provinceArmies.end() && eff.troopKillPct > 0) {
             for (auto& u : aIt->second) {
-                int killed = (int)(u.count * eff.troopKillPct / 100.0f);
+                int killed = (int)(u.count * eff.troopKillPct * jam / 100.0f);
                 u.count = std::max(0, u.count - killed);
             }
         }
@@ -322,7 +367,7 @@ void Game::processArtilleryOrders(int countryId) {
         if (eff.popKillPct > 0) {
             auto pIt = m_provincePopulations.find(ao.targetProvince);
             if (pIt != m_provincePopulations.end()) {
-                long long killed = (long long)(pIt->second * eff.popKillPct / 100.0f);
+                long long killed = (long long)(pIt->second * eff.popKillPct * jam / 100.0f);
                 pIt->second = std::max(0LL, pIt->second - killed);
             }
         }
@@ -989,6 +1034,7 @@ void Game::processCountryTurn(int countryId) {
     // an opportunity nobody takes is indistinguishable from a rule that is not
     // there, and only counting tells them apart.
     if (!callableFriends(countryId).empty()) ++m_callableFriendTurns;
+    processMonumentTurn(countryId);
     auto pt1 = std::chrono::steady_clock::now();
     processArtilleryOrders(countryId);
     auto pt2 = std::chrono::steady_clock::now();
@@ -6653,6 +6699,14 @@ Game::AssaultPowers Game::weighAssault(int attackerCid, int pid, const ForceComp
     if (indIt != m_provinceIndustry.end()) fortDef = indIt->second.fortification * 10.0f;
     const double fortMul = 1.0 + fortDef / 100.0;
     w.atkMod = 1.0 + getTotalEffect("armyAtkPct", attackerCid) / 100.0;
+    // ── DEFENCE CORPORATION ──
+    //
+    // "would increase survivability of defending AND attacking troops in a
+    // specific area" -- so it lifts BOTH sides' power, and whichever of them
+    // owns one near this province gets it. That is what makes it worth moving
+    // to a front rather than parking at home: it is an area, not a side.
+    w.atkMod *= 1.0 + monumentEffectAt(attackerCid, pid,
+                                       (int)odmon::Kind::DefenceCorporation);
 
     auto armIt = m_provinceArmies.find(pid);
     static const std::vector<ArmyUnit> kNone;
@@ -6695,7 +6749,9 @@ Game::AssaultPowers Game::weighAssault(int attackerCid, int pid, const ForceComp
 
     for (const auto& u : dstArmies) {
         if (!isHostile(u)) continue;
-        const double defMod = 1.0 + getTotalEffect("armyDefPct", u.countryId) / 100.0;
+        const double defMod = (1.0 + getTotalEffect("armyDefPct", u.countryId) / 100.0) *
+                              (1.0 + monumentEffectAt(u.countryId, pid,
+                                                      (int)odmon::Kind::DefenceCorporation));
         const double defSupply = (double)supplyFactor(u.countryId, pid);
         ++m_supplyDefChecks;
         if (defSupply < 1.0f - 1e-6) ++m_supplyPenalisedDefender;
@@ -8168,7 +8224,19 @@ void Game::processPopulation() {
                 float dstUnrest = provinceUnrest.count(dstPid) ? provinceUnrest[dstPid] : 0;
                 // Unrest pull: minorities move toward contested zones to claim territory
                 float unrestPull = dstUnrest * 0.05f;
-                float score = (dstAttr - mg.attr) * 2.0f + chainBonus - dstUnrest * 0.01f + unrestPull;
+                // ── MEGACITY ──
+                //
+                // "will efficiently collect people in its province and
+                // provinces around it". A straight bonus to the destination's
+                // score, so people already on the move choose it -- it does not
+                // conjure anybody, it decides where those who were going
+                // somewhere end up.
+                const float mega = monumentEffectAt(
+                    (size_t)dstPid < m_provinceCountryLookup.size()
+                        ? m_provinceCountryLookup[dstPid] : 0,
+                    dstPid, (int)odmon::Kind::Megacity);
+                float score = (dstAttr - mg.attr) * 2.0f + chainBonus - dstUnrest * 0.01f
+                            + unrestPull + mega * 4.0f;
                 score += (simRand() % 100) * 0.01f;
                 if (score > bestScore) { bestScore = score; bestDst = dstPid; }
             }
@@ -8344,9 +8412,23 @@ void Game::processPopulation() {
 
                     // Unrest pull for cross-border: irredentist migration toward contested zones
                     float unrestPull = dstUnrest * 0.08f;
+                    // ── MEGACITY, ACROSS A BORDER ──
+                    //
+                    // "boost for people who emigrate into countries, to
+                    // emigrate specifically there, if the government is
+                    // friendly to that minority, and opposite, if they are
+                    // not." So the pull is SIGNED by how the destination's
+                    // government treats this minority: alignment above the
+                    // midpoint draws them, below it pushes them away, and a
+                    // megacity in a country hostile to them is a place they
+                    // avoid rather than a place they have not heard of.
+                    const float megaX = monumentEffectAt(cid2, dstPid,
+                                                         (int)odmon::Kind::Megacity);
+                    const float welcome = (getMinorityAlignment(cid2, mg.name) - 50.0f) / 50.0f;
                     float score = (dstAttr - provinceAttractiveness[srcPid]) * 3.0f
                                   + chainBonus + stepBonus + immigBoost + unrestPull
                                   - dstUnrest * 0.02f
+                                  + megaX * welcome * 5.0f
                                   + (simRand() % 100) * 0.01f;
 
                     if (score > bestScore) { bestScore = score; bestDst = dstPid; bestDstCid = cid2; }

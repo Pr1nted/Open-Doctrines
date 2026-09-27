@@ -42,7 +42,16 @@ float Game::provinceResourceIncome(int pid) const {
     // that comes and goes cannot compound into the saved number.
     return indIt->second.resourceIncome
          * (1.0f + specializationBoostPct(pid) / 100.0f)
-         * odnat::outputMul(provinceNationalisationRamp(pid));
+         * odnat::outputMul(provinceNationalisationRamp(pid))
+         // ── FACTORY CONGLOMERATE ──
+         //
+         // Here and next door, which is what its radius is for -- the one that
+         // stands in a country's industrial heart lifts the provinces around
+         // it too. Multiplied at the point of READING, like the two above, so
+         // the province's own stored figure never compounds and a monument
+         // that is switched off or dismantled takes its share with it.
+         * (1.0f + monumentEffectAt(monumentOwnerOf(pid), pid,
+                                    (int)odmon::Kind::FactoryConglomerate));
 }
 
 const char* Game::bestSpecializationFor(int pid) const {
@@ -878,8 +887,17 @@ void Game::processProduction(int countryId) {
             if (shortfall > 0.0f) {
                 prod.fuelBought = shortfall;
                 auto c = m_countries.getAll().find(countryId);
+                // ── GRAND EXCHANGE, on the buying side ──
+                //
+                // Buying under duress is the dearest transaction in the game
+                // and the one an exchange is for. Capped at four fifths off,
+                // so the premium never disappears entirely -- the point is
+                // that a shortage hurts less, not that it stops hurting.
+                const float discount = std::min(
+                    0.8f, monumentEffect(countryId, (int)odmon::Kind::GrandExchange));
                 if (c != m_countries.getAll().end())
-                    c->second.treasury -= (double)shortfall * FUEL_SHORTFALL_PRICE;
+                    c->second.treasury -=
+                        (double)shortfall * FUEL_SHORTFALL_PRICE * (1.0 - (double)discount);
             }
         }
     }
@@ -918,6 +936,8 @@ void Game::processProduction(int countryId) {
             pool.raw[i] -= sell;
             earned += sell * RAW_FLOOR_PRICE[i];
         }
+        // ...and the selling side of the same building.
+        earned *= 1.0f + monumentEffect(countryId, (int)odmon::Kind::GrandExchange);
         prod.rawSold = earned;
         auto c = m_countries.getAll().find(countryId);
         if (c != m_countries.getAll().end()) c->second.treasury += earned;
@@ -927,8 +947,17 @@ void Game::processProduction(int countryId) {
     // than it can use accumulates for the whole game and the number stops
     // meaning anything on the panel -- and at 3,000 turns it stops fitting in
     // a float's exact range too.
-    for (int i = 0; i < RAW_COUNT; ++i)  pool.raw[i]   = std::min(pool.raw[i],   STOCKPILE_CAP);
-    for (int i = 0; i < GOOD_COUNT; ++i) pool.goods[i] = std::min(pool.goods[i], STOCKPILE_CAP);
+    // ── STRATEGIC RESERVE ──
+    //
+    // Raises the ceiling rather than producing anything: what it buys is the
+    // ability to BANK a good year against a bad one, which is the whole of
+    // what a reserve is. A country with one can go into a war with more
+    // munitions than a turn's production.
+    const float reserve =
+        1.0f + monumentEffect(countryId, (int)odmon::Kind::StrategicReserve);
+    const float cap = STOCKPILE_CAP * reserve;
+    for (int i = 0; i < RAW_COUNT; ++i)  pool.raw[i]   = std::min(pool.raw[i],   cap);
+    for (int i = 0; i < GOOD_COUNT; ++i) pool.goods[i] = std::min(pool.goods[i], cap);
 
     m_countryProduction[countryId] = prod;
 }

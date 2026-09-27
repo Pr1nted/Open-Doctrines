@@ -1548,6 +1548,18 @@ float Game::getMinorityPolicyRate(int countryId, const std::string& minorityName
 float Game::minorityDriftPerTurn(int countryId, const std::string& minorityName) const {
     float rate = getMinorityPolicyRate(countryId, minorityName);
 
+    // ── MINISTRY OF ENLIGHTENMENT ──
+    //
+    // Minorities in reach come round faster -- and the other way when their
+    // kin are being fought, because a ministry preaching a common nation to
+    // people whose relatives are under your guns preaches to nobody. The
+    // national share is used rather than a per-province one because drift is
+    // per minority per country: a minority does not hold two opinions in two
+    // provinces. The war half is applied below, where the war is already
+    // known.
+    const float ministry = monumentEffect(countryId, (int)odmon::Kind::MinistryOfEnlightenment);
+    rate += ministry * 4.0f;
+
     // Holding conquered ground against an enemy you are still at war with.
     // Once per minority, not once per province: the resolver's `processed` set
     // already had that effect, but it landed on whichever province the map
@@ -1571,7 +1583,10 @@ float Game::minorityDriftPerTurn(int countryId, const std::string& minorityName)
         const Country* prev = m_countries.getCountry(prevIt->second);
         if (!prev) continue;
         auto dr = ar->second.find(prev->isoA3);
-        if (dr != ar->second.end() && dr->second.war) return rate - 5.0f;
+        // At war with the kin-state: the penalty, and the ministry's own
+        // contribution reversed on top of it. It is the same building doing
+        // the opposite thing, which is what was asked for.
+        if (dr != ar->second.end() && dr->second.war) return rate - 5.0f - ministry * 8.0f;
     }
     return rate;
 }

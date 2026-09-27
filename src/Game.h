@@ -5414,12 +5414,25 @@ private:
     };
     std::unordered_map<int, MonumentEffects> m_monumentEffects;   ///< cid -> what it gets
     void  rebuildMonumentEffects();
+    /** Once per country per turn: the effects that are a change, not a rate. */
+    void  processMonumentTurn(int countryId);
     /** The Monuments screen: which of them are switched on this turn. */
     bool  m_inMonuments = false;
     void  drawMonumentsPanel();
     /** `pid` and everything within `steps` of it, over the province graph. */
     std::vector<int> provincesWithin(int pid, int steps) const;
     int   monumentOwnerOf(int pid) const;
+    /** Great-circle kilometres between two provinces' centres. */
+    float provinceDistanceKm(int a, int b) const;
+    /**
+     * May a gun in `fromPid` hit `toPid`?
+     *
+     * Adjacency, or a switched-on missile silo standing in `fromPid` whose
+     * level reaches that far over the curve of the planet. ONE answer, because
+     * the preview line and the order that follows it must agree -- they were
+     * two copies of the neighbour test before this existed.
+     */
+    bool  artilleryCanReach(int fromPid, int toPid) const;
     /**
      * Answers for isProvinceCoastal, which the province panel asks every frame.
      *

@@ -1416,6 +1416,149 @@ struct PolicyRules {
         }
     }
 
+    /// Every monument reaches something, and the list is walked, not typed.
+    ///
+    /// A monument whose effect is wired nowhere is a building that costs a
+    /// slot and does nothing, and it looks exactly like one whose effect is
+    /// merely small. There is no way to assert "kind K changes system S"
+    /// generically -- each hooks into a different place -- so what is checked
+    /// here is the one property they all share and that ALL of them lose the
+    /// moment somebody adds a twelfth kind and forgets it: a country that
+    /// holds one, switched on, gets a non-zero answer from the accessor the
+    /// systems read, and zero when it is switched off.
+    void monumentEffectsReach(const std::string& dataDir) {
+        (void)dataDir;
+        printf("\nmonument effects\n");
+        Game& g = game;
+
+        int cid = 0;
+        for (const auto& [id, c] : g.m_countries.getAll())
+            if (id > 0 && id < 65530 && g.provincesOf(id).size() > 3) { cid = id; break; }
+        check(cid != 0, "a country with provinces to build in");
+        if (!cid) return;
+        const int pid = g.provincesOf(cid).front();
+
+        // ── THE HARNESS HAS NO RENDERER, SO IT HAS NO GEOMETRY ──
+        //
+        // m_provinceCenters is filled by MapRenderer::buildProvinceData and
+        // m_provinceNeighbors by computeCountryLabels, and this test loads
+        // neither. Both are given here, small and by hand: two provinces a
+        // known distance apart and a chain of three, which is enough to check
+        // a radius, a great circle and nothing else. Without them every
+        // "reaches" answer below would be a null this test would report as a
+        // pass of the wrong thing.
+        const std::vector<int>& owned = g.provincesOf(cid);
+        const int pidB = owned.size() > 1 ? owned[1] : pid;
+        const int pidC = owned.size() > 2 ? owned[2] : pid;
+        const int mapW = std::max(1, g.m_landSea.getWidth());
+        const int mapH = std::max(1, g.m_landSea.getHeight());
+        g.m_provinceCenters[pid]  = {mapW * 0.10f, mapH * 0.50f};
+        g.m_provinceCenters[pidB] = {mapW * 0.12f, mapH * 0.50f};
+        // Most of the way round the world, which is what a silo is for.
+        g.m_provinceCenters[pidC] = {mapW * 0.85f, mapH * 0.45f};
+        g.m_provinceNeighbors[pid]  = {pidB};
+        g.m_provinceNeighbors[pidB] = {pid};
+        g.m_provinceNeighbors[pidC] = {};
+
+        int reached = 0, silent = 0;
+        std::string missing;
+        for (int i = 0; i < odmon::kKindCount; ++i) {
+            const odmon::Kind k = (odmon::Kind)i;
+            g.m_monuments.clear();
+            odmon::Holding h;
+            h.provinceId = pid;
+            h.kind = k;
+            h.level = odmon::spec(k).maxLevel;
+            h.active = true;
+            g.m_monuments[pid] = h;
+            g.rebuildMonumentEffects();
+
+            // The silo is the one whose effect is NOT a number on this scale:
+            // its reach is kilometres, so it is checked by what it can hit.
+            if (k == odmon::Kind::MissileSilo) {
+                // Its reach is kilometres, not a share of anything, so it is
+                // checked by what it can hit: a province far enough away that
+                // no adjacency could explain it.
+                const float far = g.provinceDistanceKm(pid, pidC);
+                const bool reaches = far > 3000.0f && g.artilleryCanReach(pid, pidC);
+                if (reaches) ++reached;
+                else { ++silent; missing += " silo(" + std::to_string((int)far) + "km)"; }
+                continue;
+            }
+
+            const float national = g.monumentEffect(cid, i);
+            const float here = g.monumentEffectAt(cid, pid, i);
+            if (national > 0.0f && here > 0.0f) ++reached;
+            else { ++silent; missing += " " + std::string(odmon::kindKey(k)); }
+
+            // And nothing at all when it is switched off, which is what the
+            // whole slot economy rests on.
+            g.m_monuments[pid].active = false;
+            g.rebuildMonumentEffects();
+            if (g.monumentEffect(cid, i) != 0.0f || g.monumentEffectAt(cid, pid, i) != 0.0f) {
+                ++silent;
+                missing += " " + std::string(odmon::kindKey(k)) + "(off)";
+            }
+        }
+        check(silent == 0, "every monument gives something switched on and nothing off" +
+              (missing.empty() ? std::string() : " -- missing:" + missing));
+        check(reached == odmon::kKindCount, "all " + std::to_string(odmon::kKindCount) +
+              " kinds reach something (" + std::to_string(reached) + ")");
+
+        // THE RADIUS IS REAL: a monument with reach is felt next door, and one
+        // without is not. Checked on a kind of each, because "radius" being
+        // silently zero everywhere would pass every check above.
+        g.m_monuments.clear();
+        odmon::Holding wide;
+        wide.provinceId = pid;
+        wide.kind = odmon::Kind::AirDefence;   // baseRadius 1
+        wide.level = 2;
+        wide.active = true;
+        g.m_monuments[pid] = wide;
+        g.rebuildMonumentEffects();
+        check(g.monumentEffectAt(cid, pidB, (int)odmon::Kind::AirDefence) > 0.0f,
+              "a monument with a radius is felt in the next province");
+        g.m_monuments.clear();
+        odmon::Holding narrow;
+        narrow.provinceId = pid;
+        narrow.kind = odmon::Kind::University;  // baseRadius 0: national, not local
+        narrow.level = 1;
+        narrow.active = true;
+        g.m_monuments[pid] = narrow;
+        g.rebuildMonumentEffects();
+        check(g.monumentEffectAt(cid, pidB, (int)odmon::Kind::University) == 0.0f,
+              "and one without a radius is not");
+
+        // THE STACK DECAYS ON A REAL MAP, not only in the arithmetic: four
+        // universities are worth less than four times one.
+        g.m_monuments.clear();
+        const std::vector<int>& mine = g.provincesOf(cid);
+        for (size_t i = 0; i < mine.size() && i < 4; ++i) {
+            odmon::Holding u;
+            u.provinceId = mine[i];
+            u.kind = odmon::Kind::University;
+            u.level = 1;
+            u.active = true;
+            g.m_monuments[u.provinceId] = u;
+        }
+        g.rebuildMonumentEffects();
+        const float four = g.monumentEffect(cid, (int)odmon::Kind::University);
+        g.m_monuments.clear();
+        odmon::Holding one;
+        one.provinceId = mine.front();
+        one.kind = odmon::Kind::University;
+        one.level = 1;
+        one.active = true;
+        g.m_monuments[one.provinceId] = one;
+        g.rebuildMonumentEffects();
+        const float single = g.monumentEffect(cid, (int)odmon::Kind::University);
+        check(four > single && four < single * 3.0f,
+              "four universities are worth more than one and less than three");
+
+        g.m_monuments.clear();
+        g.rebuildMonumentEffects();
+    }
+
     void sectorTaxes() {
         printf("\nsector taxes\n");
         Game& g = game;
@@ -1674,6 +1817,7 @@ int main(int argc, char** argv) {
     t.deadEffectsNowLive();
     t.nationalisation(dataDir);
     t.monumentResearch();
+    t.monumentEffectsReach(dataDir);
     t.sectorTaxes();
 
     printf("%s\n", failures ? "FAILED" : "all ok");

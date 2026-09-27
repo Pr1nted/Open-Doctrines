@@ -29,7 +29,9 @@
 #include "GameInternals.h"
 
 #include <algorithm>
+#include <cmath>
 #include <queue>
+#include <unordered_set>
 
 // ── What is where ───────────────────────────────────────────────────────────
 
@@ -315,6 +317,88 @@ std::vector<int> Game::provincesWithin(int pid, int steps) const {
         }
     }
     return out;
+}
+
+// ── The silo, which is the one measured in kilometres ───────────────────────
+
+float Game::provinceDistanceKm(int a, int b) const {
+    auto ca = m_provinceCenters.find(a), cb = m_provinceCenters.find(b);
+    if (ca == m_provinceCenters.end() || cb == m_provinceCenters.end()) return 1e9f;
+    float lon1 = 0, lat1 = 0, lon2 = 0, lat2 = 0;
+    m_landSea.pixelToLonLat((int)ca->second.x, (int)ca->second.y, lon1, lat1);
+    m_landSea.pixelToLonLat((int)cb->second.x, (int)cb->second.y, lon2, lat2);
+    // Haversine. OVER THE SPHERE, not across the picture: the map is a
+    // rectangle and two provinces either side of the date line are next to
+    // each other on the planet and a world apart on the image. "it should
+    // account for it being a round planet" is the requirement, and this is it.
+    constexpr float kR = 6371.0f;                 // mean Earth radius, km
+    constexpr float kDeg = 3.14159265358979f / 180.0f;
+    const float dLat = (lat2 - lat1) * kDeg;
+    const float dLon = (lon2 - lon1) * kDeg;
+    const float s1 = std::sin(dLat * 0.5f), s2 = std::sin(dLon * 0.5f);
+    const float h = s1 * s1 + std::cos(lat1 * kDeg) * std::cos(lat2 * kDeg) * s2 * s2;
+    return 2.0f * kR * std::asin(std::min(1.0f, std::sqrt(std::max(0.0f, h))));
+}
+
+bool Game::artilleryCanReach(int fromPid, int toPid) const {
+    if (fromPid <= 0 || toPid <= 0 || fromPid == toPid) return false;
+    // The ordinary rule: a gun shoots over the border it is standing on.
+    auto nIt = m_provinceNeighbors.find(fromPid);
+    if (nIt != m_provinceNeighbors.end() &&
+        std::find(nIt->second.begin(), nIt->second.end(), toPid) != nIt->second.end())
+        return true;
+    // ── AND THE SILO ──
+    //
+    // A silo in THIS province, switched on, fires anything its owner has
+    // researched as far as its level allows. Level 3's range is longer than
+    // half the planet's circumference, so at the top it reaches anywhere -- and
+    // the distance is a great circle, so the date line is not a wall.
+    if (monumentKindAt(fromPid) != (int)odmon::Kind::MissileSilo) return false;
+    if (!monumentActiveAt(fromPid)) return false;
+    return provinceDistanceKm(fromPid, toPid) <= odmon::siloRangeKm(monumentLevelAt(fromPid));
+}
+
+// ── What the monuments do at the start of a country's turn ──────────────────
+//
+// The effects that are a CHANGE rather than a multiplier live here: a
+// multiplier is applied wherever the number is read, and a change has to
+// happen once, in a known order, on a known turn.
+void Game::processMonumentTurn(int countryId) {
+    if (countryId <= 0 || m_monuments.empty()) return;
+
+    // ── ADMIRALTY YARD ──
+    //
+    // Repairs what is in range, every turn. The range is province steps from
+    // the yard, and a ship is "in range" if the province nearest it is -- which
+    // is the same question the port code already answers, so the ships are
+    // matched to provinces by their anchor rather than by a second distance
+    // rule of this file's own.
+    const float yard = monumentEffect(countryId, (int)odmon::Kind::AdmiraltyYard);
+    if (yard > 0.0f) {
+        std::unordered_set<int> inRange;
+        for (const auto& [pid, h] : m_monuments) {
+            if (h.kind != odmon::Kind::AdmiraltyYard || !h.active) continue;
+            if (monumentOwnerOf(pid) != countryId) continue;
+            for (int p : provincesWithin(pid, odmon::radius(h.kind, h.level)))
+                inRange.insert(p);
+        }
+        if (!inRange.empty()) {
+            // Up to a fifth of a hull a turn at the top, which is a ship back
+            // in the line in five turns rather than a ship replaced.
+            const int heal = std::max(1, (int)(yard * 40.0f));
+            for (NavyShip& ship : m_ships) {
+                if (ship.countryId != countryId || ship.health >= 100) continue;
+                int px = 0, py = 0;
+                m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, px, py);
+                const Province* p = m_provinces.getProvince(px, py);
+                // A ship at sea has no province under it; the nearest port
+                // province it is sitting off does, which is what being in a
+                // yard's reach means.
+                if (!p || !inRange.count(p->id)) continue;
+                ship.health = std::min(100, ship.health + heal);
+            }
+        }
+    }
 }
 
 float Game::monumentEffect(int countryId, int kindIndex) const {

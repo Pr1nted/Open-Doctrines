@@ -902,7 +902,16 @@ void Game::addResearchPoints(int countryId) {
     auto cs = computeCountryIncome(countryId);
     float allocAmount = cs.researchCost; // already capped with pacification
     // Logarithmic: base 1 + sqrt(alloc) for diminishing returns
-    int rp = 1 + (int)(sqrtf(allocAmount * 0.5f));
+    float rpf = 1.0f + sqrtf(allocAmount * 0.5f);
+    // ── UNIVERSITIES ──
+    //
+    // A share ON TOP of what the budget bought, so a university is worth more
+    // to a country that is already spending than to one that is not -- which
+    // is what a university is. The stacking decay is inside the effect: five
+    // of them are worth about 2.28 of one, which is the answer to "ridiculous
+    // amounts of RP". See src/Monuments.h.
+    rpf *= 1.0f + monumentEffect(countryId, (int)odmon::Kind::University);
+    int rp = (int)rpf;
     m_researchPoints += rp;
     // Clamp points
     if (m_researchPoints > 10000) m_researchPoints = 10000;
