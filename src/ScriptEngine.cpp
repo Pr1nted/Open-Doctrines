@@ -771,6 +771,14 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 vars["province.troops"] = ScriptValue::makeInt(men);
                 vars["province.district"] = resolveRef("province." + std::to_string(pid) + ".district",
                                                        localVars);
+                // The same three the resolver answers, so a foreach body reads
+                // the same way whether it says province.monument or
+                // province.<id>.monument.
+                const int monKind = m_game->monumentKindAt(pid);
+                vars["province.monument"] = ScriptValue::makeStr(
+                    monKind < 0 ? "" : odmon::kindKey((odmon::Kind)monKind));
+                vars["province.monument_level"] = ScriptValue::makeInt(m_game->monumentLevelAt(pid));
+                vars["province.monument_active"] = ScriptValue::makeBool(m_game->monumentActiveAt(pid));
                 // Execute the block body
                 int subIdx = blockStart;
                 executeBlock(lines, subIdx, scriptName, localVars);
@@ -786,6 +794,9 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             vars.erase("province.owner");
             vars.erase("province.troops");
             vars.erase("province.district");
+            vars.erase("province.monument");
+            vars.erase("province.monument_level");
+            vars.erase("province.monument_active");
             lineIdx = blockEnd + 1;
             continue;
         }
@@ -1652,6 +1663,21 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             auto it = m_game->m_provinceIndustry.find(pid);
             return ScriptValue::makeInt(it != m_game->m_provinceIndustry.end() ? it->second.fortification : 0);
         }
+        // ── Monuments ──
+        //
+        // The KEY, not the number: "university", "missile_silo". A script that
+        // compared against 2 would mean a different monument the day the
+        // catalogue gains an entry, and the catalogue is designed to be
+        // appended to. Empty when the province has none, so
+        // `if province.42.monument == ""` is how a script asks.
+        if (prop == "monument") {
+            const int k = m_game->monumentKindAt(pid);
+            return ScriptValue::makeStr(k < 0 ? "" : odmon::kindKey((odmon::Kind)k));
+        }
+        if (prop == "monument_level")
+            return ScriptValue::makeInt(m_game->monumentLevelAt(pid));
+        if (prop == "monument_active")
+            return ScriptValue::makeBool(m_game->monumentActiveAt(pid));
         // province.ID.troops[.TYPE] -- everyone standing here, or one kind.
         if (prop == "troops") {
             const int wantType = (dots.size() >= 4) ? troopTypeIndexFromId(dots[3]) : -1;

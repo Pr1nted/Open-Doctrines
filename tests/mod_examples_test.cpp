@@ -86,6 +86,12 @@ public:
     }
     long long provincePopulation(uint32_t) override { return 999; }
     uint32_t provinceOwner(uint32_t) override { return 11; }
+    // One monument in the fake world, so an example mod that reads one gets a
+    // province that HAS one rather than only the empty answer: a stub that
+    // always says "none" tests the null branch and nothing else.
+    int32_t  provinceMonument(uint32_t pid) override { return pid == 3 ? 0 : -1; }
+    int32_t  provinceMonumentLevel(uint32_t pid) override { return pid == 3 ? 2 : 0; }
+    bool     provinceMonumentActive(uint32_t pid) override { return pid == 3; }
 
     // A tiny three-province map: 101 - 102 - 103 in a line, the middle one sea.
     // Small enough to assert on exactly, and asymmetric enough that a binding

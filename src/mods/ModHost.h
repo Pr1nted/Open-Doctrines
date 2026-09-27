@@ -240,6 +240,21 @@ struct ModGameAccess {
     virtual uint32_t countryProvinceCount(uint32_t cid) = 0;
     virtual long long provincePopulation(uint32_t pid) = 0;
     virtual uint32_t provinceOwner(uint32_t pid) = 0;
+    /**
+     * Monuments, by their catalogue INDEX rather than their key.
+     *
+     * The index because this is a numeric ABI and a string would cost a buffer
+     * and a length on every call; the enum's names are in sdk/abi.json under
+     * "monument_kind" so a mod can turn one into a word without guessing. -1
+     * (as an i32) means the province has none.
+     *
+     * A map script gets the KEY instead -- province.<id>.monument -- because a
+     * script is text and comparing against "university" is what a script author
+     * would write.
+     */
+    virtual int32_t  provinceMonument(uint32_t pid) = 0;
+    virtual int32_t  provinceMonumentLevel(uint32_t pid) = 0;
+    virtual bool     provinceMonumentActive(uint32_t pid) = 0;
 
     // Map capability. Geometry only; every one of these is a lookup into data
     // the game already computed at load.

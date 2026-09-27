@@ -137,6 +137,32 @@ int64_t gearbox_province_population(gearbox_province province);
 GEARBOX_IMPORT("gamestate.read", "province_owner")
 gearbox_country gearbox_province_owner(gearbox_province province);
 
+/* Which monument stands in a province, as a monument_kind, or -1 for none.
+ * One per province is the rule. A map script gets the key instead
+ * (province.<id>.monument), because a script is text.
+ * gearbox:gamestate.read "province_monument"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("gamestate.read", "province_monument")
+uint32_t gearbox_province_monument(uint32_t province);
+
+/* The level of the monument in a province, 1 upwards, or 0 when there is
+ * none.
+ * gearbox:gamestate.read "province_monument_level"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("gamestate.read", "province_monument_level")
+uint32_t gearbox_province_monument_level(uint32_t province);
+
+/* 1 when the monument is switched on and so taking one of the country's
+ * paid slots, 0 when it is off or absent. An inactive monument has no
+ * effect at all.
+ * gearbox:gamestate.read "province_monument_active"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("gamestate.read", "province_monument_active")
+uint32_t gearbox_province_monument_active(uint32_t province);
+
 /* Register a panel and return its handle. Returns 0 (invalid) when
  * headless or when you already hold 8 panels. NOT when UI is revoked: a
  * module that imports gearbox:ui is refused at instantiation, so a mod

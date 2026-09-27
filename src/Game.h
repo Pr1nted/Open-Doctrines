@@ -1,4 +1,5 @@
 #pragma once
+#include "Monuments.h"
 #include "Nationalisation.h"
 #include "WorldProvenance.h"
 #include "ModContent.h"
@@ -1556,6 +1557,12 @@ public:
     int         modCountryProvinceCount(int cid) const;
     long long   modProvincePopulation(int pid) const;
     int         modProvinceOwner(int pid) const;
+    // Monuments, for the same reason and through the same door: the mod layer
+    // never sees a game header, so these forward to the accessors in
+    // src/Game_Monuments.cpp rather than exposing m_monuments.
+    int         modProvinceMonument(int pid) const;
+    int         modProvinceMonumentLevel(int pid) const;
+    bool        modProvinceMonumentActive(int pid) const;
 
     // Backing for the Map capability. Geometry only, and read-only: adjacency
     // and centres are already computed at load (m_provinceNeighbors,
@@ -5348,6 +5355,67 @@ private:
     std::vector<PendingShipDisembark> m_pendingShipDisembarks;
 
     bool isProvinceCoastal(int pid) const;
+
+    // ── Monuments ───────────────────────────────────────────────────────────
+    //
+    // One great work per province. The RULES -- the catalogue, the slot series,
+    // what one gives and how the tenth is worth less than the first -- are in
+    // src/Monuments.h and have no world in them. Everything below needs a map
+    // and lives in src/Game_Monuments.cpp.
+    //
+    // THESE ACCESSORS ARE THE INTERFACE, and there are four callers with the
+    // same right to an answer: the panel, a map script (province.<id>.monument
+    // and friends), a mod through the Gearbox ABI, and the AI. None of them may
+    // work an effect out from the catalogue itself; see Monuments.h.
+    std::unordered_map<int, odmon::Holding> m_monuments;   ///< provinceId -> what stands there
+
+    /** The kind in a province, or -1 for none. */
+    int   monumentKindAt(int pid) const;
+    /** Its level, or 0 for none. */
+    int   monumentLevelAt(int pid) const;
+    /** Whether it is switched on, and so taking a slot. */
+    bool  monumentActiveAt(int pid) const;
+    /** Everything `countryId` holds, by province id. */
+    std::vector<odmon::Holding> monumentsOf(int countryId) const;
+    /** How many of them are switched on, which is how many slots are charged. */
+    int   monumentSlotsUsed(int countryId) const;
+    /** What those slots cost per turn, all summed. */
+    float monumentUpkeep(int countryId) const;
+    /** What switching on one more would add, so the panel can say so first. */
+    float monumentNextSlotCost(int countryId) const;
+
+    /** Why a monument cannot go here, in a sentence a player can act on. */
+    bool  canBuildMonument(int countryId, int pid, int kindIndex, std::string& whyNot) const;
+    bool  buildMonument(int countryId, int pid, int kindIndex);
+    bool  upgradeMonument(int countryId, int pid);
+    bool  dismantleMonument(int countryId, int pid);
+    bool  setMonumentActive(int countryId, int pid, bool active);
+    /** The two movable kinds, to any land the country holds. */
+    bool  moveMonument(int countryId, int fromPid, int toPid);
+    /** Ordnance heavier than heavy artillery, on a fragile one. True if it went. */
+    bool  destroyMonumentByOrdnance(int pid);
+
+    /** The whole country's share of `kind`, after radius and stacking. */
+    float monumentEffect(int countryId, int kindIndex) const;
+    /** What province `pid` feels of `kind`, after radius and stacking. */
+    float monumentEffectAt(int countryId, int pid, int kindIndex) const;
+
+    /**
+     * What every province feels, built once instead of per question.
+     *
+     * Rebuilt when a monument changes and at the start of a turn. See the note
+     * in Game_Monuments.cpp about why it is built outward from the monuments
+     * rather than answered per province.
+     */
+    struct MonumentEffects {
+        std::array<std::unordered_map<int, float>, odmon::kKindCount> byProvince;
+        std::array<float, odmon::kKindCount> national{};
+    };
+    std::unordered_map<int, MonumentEffects> m_monumentEffects;   ///< cid -> what it gets
+    void  rebuildMonumentEffects();
+    /** `pid` and everything within `steps` of it, over the province graph. */
+    std::vector<int> provincesWithin(int pid, int steps) const;
+    int   monumentOwnerOf(int pid) const;
     /**
      * Answers for isProvinceCoastal, which the province panel asks every frame.
      *

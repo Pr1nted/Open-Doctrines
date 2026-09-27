@@ -53,6 +53,18 @@ public:
         int o = m_game->modProvinceOwner((int)pid);
         return o <= 0 ? 0xFFFFFFFFu : (uint32_t)o;
     }
+    // Straight through to the one place that answers, like every other read
+    // here: a mod, a map script, the panel and the AI must agree about what
+    // stands in a province. See src/Game_Monuments.cpp.
+    int32_t provinceMonument(uint32_t pid) override {
+        return (int32_t)m_game->modProvinceMonument((int)pid);
+    }
+    int32_t provinceMonumentLevel(uint32_t pid) override {
+        return (int32_t)m_game->modProvinceMonumentLevel((int)pid);
+    }
+    bool provinceMonumentActive(uint32_t pid) override {
+        return m_game->modProvinceMonumentActive((int)pid);
+    }
 
 private:
     Game* m_game;
@@ -409,6 +421,12 @@ int Game::modProvinceOwner(int pid) const {
     if (pid < 0 || (size_t)pid >= m_provinceCountryLookup.size()) return 0;
     return m_provinceCountryLookup[pid];
 }
+
+// Monuments. One line each, because the answer lives in exactly one place and
+// this is the door the mod layer is allowed through -- see Game_Monuments.cpp.
+int  Game::modProvinceMonument(int pid) const      { return monumentKindAt(pid); }
+int  Game::modProvinceMonumentLevel(int pid) const { return monumentLevelAt(pid); }
+bool Game::modProvinceMonumentActive(int pid) const { return monumentActiveAt(pid); }
 
 // ---------------------------------------------------------------- Map -----
 //

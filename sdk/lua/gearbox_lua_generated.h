@@ -615,7 +615,7 @@ static int gbxlua_set_province_industry_level(lua_State *L) {
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (10) ---- */
+/* ---- GameState.Read (13) ---- */
 #if GBX_WITH_GAMESTATE_READ
 
 /* gearbox:gamestate.read "turn_number" */
@@ -711,6 +711,41 @@ static int gbxlua_province_owner(lua_State *L) {
     uint32_t h = gearbox_province_owner((uint32_t)(a1));
     if (h == GEARBOX_INVALID) lua_pushnil(L);
     else lua_pushinteger(L, (lua_Integer)h);
+    return 1;
+}
+
+/* gearbox:gamestate.read "province_monument" */
+/* Which monument stands in a province, as a monument_kind, or -1 for none. */
+/* One per province is the rule. A map script gets the key instead */
+/* (province.<id>.monument), because a script is text. */
+/* gearbox:gamestate.read "province_monument" */
+/* `(i)i` */
+static int gbxlua_province_monument(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, (lua_Integer)gearbox_province_monument((uint32_t)(a1)));
+    return 1;
+}
+
+/* gearbox:gamestate.read "province_monument_level" */
+/* The level of the monument in a province, 1 upwards, or 0 when there is */
+/* none. */
+/* gearbox:gamestate.read "province_monument_level" */
+/* `(i)i` */
+static int gbxlua_province_monument_level(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, (lua_Integer)gearbox_province_monument_level((uint32_t)(a1)));
+    return 1;
+}
+
+/* gearbox:gamestate.read "province_monument_active" */
+/* 1 when the monument is switched on and so taking one of the country's */
+/* paid slots, 0 when it is off or absent. An inactive monument has no */
+/* effect at all. */
+/* gearbox:gamestate.read "province_monument_active" */
+/* `(i)i` */
+static int gbxlua_province_monument_active(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, (lua_Integer)gearbox_province_monument_active((uint32_t)(a1)));
     return 1;
 }
 

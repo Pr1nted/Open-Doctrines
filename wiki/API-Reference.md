@@ -13,7 +13,7 @@ into your memory after a call returns.
 ## Index
 
 - **Core** (`gearbox:core`): [log](#log), [env](#env), [abort](#abort), [fuel_budget](#fuel-budget)
-- **GameState.Read** (`gearbox:gamestate.read`): [turn_number](#turn-number), [country_count](#country-count), [country_at](#country-at), [country_name](#country-name), [country_treasury](#country-treasury), [country_province_count](#country-province-count), [province_population](#province-population), [province_owner](#province-owner), [country_exists](#country-exists), [province_exists](#province-exists)
+- **GameState.Read** (`gearbox:gamestate.read`): [turn_number](#turn-number), [country_count](#country-count), [country_at](#country-at), [country_name](#country-name), [country_treasury](#country-treasury), [country_province_count](#country-province-count), [province_population](#province-population), [province_owner](#province-owner), [province_monument](#province-monument), [province_monument_level](#province-monument-level), [province_monument_active](#province-monument-active), [country_exists](#country-exists), [province_exists](#province-exists)
 - **UI** (`gearbox:ui`): [panel_register](#panel-register), [draw_rect](#draw-rect), [draw_text](#draw-text), [button](#button), [draw_line](#draw-line), [draw_circle](#draw-circle), [draw_image](#draw-image), [draw_text_sized](#draw-text-sized), [measure_text](#measure-text), [panel_width](#panel-width), [panel_height](#panel-height), [panel_set_visible](#panel-set-visible), [mouse_x](#mouse-x), [mouse_y](#mouse-y), [mouse_inside](#mouse-inside), [theme_accent](#theme-accent), [set_theme_accent](#set-theme-accent)
 - **Assets** (`gearbox:assets`): [size](#size), [read](#read)
 - **Audio** (`gearbox:audio`): [play](#play), [stop](#stop), [set_volume](#set-volume), [is_playing](#is-playing)
@@ -208,6 +208,48 @@ Population of a province. 0 for an unknown province.
 **Returns:** `i32`
 
 Owning country, or GEARBOX_INVALID if unowned or unknown.
+
+### province_monument
+
+```wat
+(import "gearbox:gamestate.read" "province_monument" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Which monument stands in a province, as a monument_kind, or -1 for none. One per province is the rule. A map script gets the key instead (province.<id>.monument), because a script is text.
+
+### province_monument_level
+
+```wat
+(import "gearbox:gamestate.read" "province_monument_level" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+The level of the monument in a province, 1 upwards, or 0 when there is none.
+
+### province_monument_active
+
+```wat
+(import "gearbox:gamestate.read" "province_monument_active" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+1 when the monument is switched on and so taking one of the country's paid slots, 0 when it is off or absent. An inactive monument has no effect at all.
 
 ### country_exists
 
@@ -4134,3 +4176,5 @@ that many bytes, so an older mod is safe against a newer host.
 **`content_kind`** — `doctrine`=0, `research`=1, `troop`=2, `artillery`=3, `district_law`=4
 
 **`content_mode`** — `hollow`=0, `persist`=1
+
+**`monument_kind`** — `$comment`=Appended to, never reordered: a save and this ABI both store the index., `university`=0, `megacity`=1, `missile_silo`=2, `defence_corporation`=3, `factory_conglomerate`=4, `air_defence`=5, `strategic_reserve`=6, `grand_exchange`=7, `admiralty_yard`=8, `ministry_of_enlightenment`=9, `signals_directorate`=10

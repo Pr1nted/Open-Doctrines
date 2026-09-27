@@ -90,6 +90,29 @@ export declare function _provincePopulation(province: u32): i64;
 @external("gearbox:gamestate.read", "province_owner")
 export declare function _provinceOwner(province: u32): u32;
 
+// Which monument stands in a province, as a monument_kind, or -1 for none.
+// One per province is the rule. A map script gets the key instead
+// (province.<id>.monument), because a script is text.
+// gearbox:gamestate.read "province_monument"
+// `(i)i`
+@external("gearbox:gamestate.read", "province_monument")
+export declare function _provinceMonument(province: u32): u32;
+
+// The level of the monument in a province, 1 upwards, or 0 when there is
+// none.
+// gearbox:gamestate.read "province_monument_level"
+// `(i)i`
+@external("gearbox:gamestate.read", "province_monument_level")
+export declare function _provinceMonumentLevel(province: u32): u32;
+
+// 1 when the monument is switched on and so taking one of the country's
+// paid slots, 0 when it is off or absent. An inactive monument has no
+// effect at all.
+// gearbox:gamestate.read "province_monument_active"
+// `(i)i`
+@external("gearbox:gamestate.read", "province_monument_active")
+export declare function _provinceMonumentActive(province: u32): u32;
+
 // Register a panel and return its handle. Returns 0 (invalid) when
 // headless or when you already hold 8 panels. NOT when UI is revoked: a
 // module that imports gearbox:ui is refused at instantiation, so a mod

@@ -2704,6 +2704,48 @@ void Game::loadStateJsonBody(const std::string& json) {
         }
     }
 
+    // ── Monuments ──
+    //
+    // Written whole rather than as a delta, because there are at most a few
+    // dozen in a world and each is four small fields. The KIND IS A STRING,
+    // not the enum's number: the catalogue is appended to over time, and a save
+    // that stored 7 would mean a different monument the day something is
+    // inserted. See odmon::kindKey.
+    for (const auto& [pid, h] : m_monuments) {
+        nlohmann::json m;
+        m["province"] = pid;
+        m["kind"] = odmon::kindKey(h.kind);
+        m["level"] = h.level;
+        m["active"] = h.active;
+        j["monuments"].push_back(m);
+    }
+
+    // Monuments, by the key rather than by the number: see the write above.
+    m_monuments.clear();
+    if (j.contains("monuments") && j["monuments"].is_array()) {
+        for (const auto& m : j["monuments"]) {
+            if (!m.is_object() || !m.contains("province") || !m.contains("kind")) continue;
+            const std::string key = m["kind"].is_string() ? m["kind"].get<std::string>() : "";
+            int kind = -1;
+            for (int k = 0; k < odmon::kKindCount; ++k)
+                if (key == odmon::kindKey((odmon::Kind)k)) { kind = k; break; }
+            // A monument this build has never heard of is DROPPED, not guessed
+            // at: it came from a newer game or a mod that is no longer
+            // installed, and inventing one would put an effect on the map that
+            // nothing can explain or remove.
+            if (kind < 0) continue;
+            odmon::Holding h;
+            h.provinceId = m["province"].get<int>();
+            h.kind = (odmon::Kind)kind;
+            // Clamped, so an edited save cannot hand out a level the catalogue
+            // has no price or effect for.
+            h.level = std::clamp(m.value("level", 1), 1, odmon::spec(h.kind).maxLevel);
+            h.active = m.value("active", true);
+            if (h.provinceId > 0) m_monuments[h.provinceId] = h;
+        }
+    }
+    rebuildMonumentEffects();
+
     // Sector tax rates. Clamped to the widest ceiling any doctrines can give,
     // so an edited save cannot set one beyond it; the country's own ceiling is
     // applied whenever the rate is read.

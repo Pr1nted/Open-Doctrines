@@ -159,6 +159,11 @@ int main(int argc, char** argv) {
         uint32_t countryProvinceCount(uint32_t) override { return 0; }
         long long provincePopulation(uint32_t) override { return 0; }
         uint32_t provinceOwner(uint32_t) override { return 0xFFFFFFFFu; }
+        // No monuments in the fixture world: -1 is "none", which is the
+        // answer every read below is checked against.
+        int32_t  provinceMonument(uint32_t) override { return -1; }
+        int32_t  provinceMonumentLevel(uint32_t) override { return 0; }
+        bool     provinceMonumentActive(uint32_t) override { return false; }
         uint32_t mapWidth() override { return 0; }
         uint32_t mapHeight() override { return 0; }
         uint32_t provinceCount() override { return 0; }

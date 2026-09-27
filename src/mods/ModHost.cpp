@@ -269,6 +269,22 @@ uint32_t gs_province_owner(ExecEnv e, uint32_t pid) {
     return g_modGame ? g_modGame->provinceOwner(pid) : kInvalid;
 }
 
+// Monuments. The index, not the key: see ModGameAccess::provinceMonument.
+int32_t gs_province_monument(ExecEnv e, uint32_t pid) {
+    (void)e;
+    return g_modGame ? g_modGame->provinceMonument(pid) : -1;
+}
+
+int32_t gs_province_monument_level(ExecEnv e, uint32_t pid) {
+    (void)e;
+    return g_modGame ? g_modGame->provinceMonumentLevel(pid) : 0;
+}
+
+uint32_t gs_province_monument_active(ExecEnv e, uint32_t pid) {
+    (void)e;
+    return (g_modGame && g_modGame->provinceMonumentActive(pid)) ? 1u : 0u;
+}
+
 // ---------------------------------------------------------------- Assets --
 //
 // Reads come straight out of the mod's own archive, which is never unpacked to
@@ -1875,6 +1891,9 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:gamestate.read", "country_province_count","(i)i",   (void*)gs_country_province_count,MODULE_GAMESTATE_READ},
     {"gearbox:gamestate.read", "province_population",   "(i)I",   (void*)gs_province_population,   MODULE_GAMESTATE_READ},
     {"gearbox:gamestate.read", "province_owner",        "(i)i",   (void*)gs_province_owner,        MODULE_GAMESTATE_READ},
+    {"gearbox:gamestate.read", "province_monument",     "(i)i",   (void*)gs_province_monument,     MODULE_GAMESTATE_READ},
+    {"gearbox:gamestate.read", "province_monument_level", "(i)i", (void*)gs_province_monument_level, MODULE_GAMESTATE_READ},
+    {"gearbox:gamestate.read", "province_monument_active", "(i)i", (void*)gs_province_monument_active, MODULE_GAMESTATE_READ},
 
     {"gearbox:neural", "feature_count", "()i",     (void*)neural_feature_count, MODULE_NEURAL},
     {"gearbox:neural", "features",      "(iii)i",  (void*)neural_features,      MODULE_NEURAL},

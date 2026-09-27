@@ -646,7 +646,7 @@ static PyObject *gbxpy_set_province_industry_level(PyObject *self, PyObject *arg
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
-/* ---- GameState.Read (10) ---- */
+/* ---- GameState.Read (13) ---- */
 #if GBX_WITH_GAMESTATE_READ
 
 /* gearbox:gamestate.read "turn_number" */
@@ -749,6 +749,44 @@ static PyObject *gbxpy_province_owner(PyObject *self, PyObject *args) {
     uint32_t h = gearbox_province_owner((uint32_t)a0);
     if (h == GEARBOX_INVALID) Py_RETURN_NONE;
     return PyLong_FromUnsignedLong(h);
+}
+
+/* gearbox:gamestate.read "province_monument" */
+/* Which monument stands in a province, as a monument_kind, or -1 for none. */
+/* One per province is the rule. A map script gets the key instead */
+/* (province.<id>.monument), because a script is text. */
+/* gearbox:gamestate.read "province_monument" */
+/* `(i)i` */
+static PyObject *gbxpy_province_monument(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_province_monument((uint32_t)a0));
+}
+
+/* gearbox:gamestate.read "province_monument_level" */
+/* The level of the monument in a province, 1 upwards, or 0 when there is */
+/* none. */
+/* gearbox:gamestate.read "province_monument_level" */
+/* `(i)i` */
+static PyObject *gbxpy_province_monument_level(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_province_monument_level((uint32_t)a0));
+}
+
+/* gearbox:gamestate.read "province_monument_active" */
+/* 1 when the monument is switched on and so taking one of the country's */
+/* paid slots, 0 when it is off or absent. An inactive monument has no */
+/* effect at all. */
+/* gearbox:gamestate.read "province_monument_active" */
+/* `(i)i` */
+static PyObject *gbxpy_province_monument_active(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_province_monument_active((uint32_t)a0));
 }
 
 /* gearbox:gamestate.read "country_exists" */
