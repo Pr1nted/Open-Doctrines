@@ -45,6 +45,9 @@ odlfg::Draft hostingDraft() {
     d.turnSeconds = 120;
     d.slotsTaken = 2;
     d.slotsTotal = 6;
+    // Relayed, which is the arrangement a code alone can be joined from. A
+    // listening host needs an address instead; see the section on it.
+    d.relayed = true;
     return d;
 }
 
@@ -187,6 +190,32 @@ int main() {
         ok(odlfg::problemWith(l).empty(), "looking, with no code and no seats");
     }
 
+    section("a listing nobody could join is not a listing");
+    {
+        // A code alone reaches the account service's RELAY. A host that
+        // listens instead is reached by an address -- and with neither, the
+        // listing is an invitation to a door that does not open. Every such
+        // listing on the board was unjoinable, and the people who tried them
+        // concluded multiplayer was broken.
+        odlfg::Draft d = hostingDraft();
+        d.relayed = false;
+        ok(!odlfg::problemWith(d).empty(), "not relayed, and no address");
+
+        d.address = "tidy-otter-quiet.trycloudflare.com";
+        ok(odlfg::problemWith(d).empty(), "not relayed, but reachable at an address");
+
+        d = hostingDraft();
+        d.address = "play.example.com:27015";
+        ok(odlfg::problemWith(d).empty(), "relayed AND addressed is fine too");
+
+        odlfg::Draft l;
+        l.kind = odlfg::Kind::Looking;
+        l.map = "any";
+        l.mode = odlfg::Mode::Longform;
+        l.turnHours = 24;
+        ok(odlfg::problemWith(l).empty(), "a looking listing needs neither");
+    }
+
     section("an address is a host, not a link");
     {
         for (const char* good : {"play.example.com", "play.example.com:27015",
@@ -206,10 +235,6 @@ int main() {
         odlfg::Draft d = hostingDraft();
         d.address = "https://example.com/join";
         ok(!odlfg::problemWith(d).empty(), "and a draft carrying one is refused");
-
-        d = hostingDraft();
-        d.address = "tidy-otter-quiet.trycloudflare.com";
-        ok(odlfg::problemWith(d).empty(), "a real tunnel address is fine");
     }
 
     section("an address on a listing, and one that should never have arrived");

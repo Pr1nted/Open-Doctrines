@@ -264,7 +264,18 @@ std::string problemWith(const Draft& draft) {
         if (code.empty()) return "A hosting listing needs the invite code from your lobby.";
         if (!odnews::looksLikeInviteCode(code)) return "That invite code does not look right.";
 
+        // ── CAN A STRANGER ACTUALLY GET IN? ──
+        //
+        // A code alone reaches a RELAYED host and nothing else. A listening
+        // host is reached by its address. With neither, the listing is an
+        // invitation to a door that does not open -- and every person who
+        // tries it spends a minute finding that out and concludes the game's
+        // multiplayer is broken.
         const std::string address = trimmed(draft.address);
+        if (!draft.relayed && address.empty()) {
+            return "Nobody could join this. Host through the relay, or open a "
+                   "tunnel so the listing can carry an address.";
+        }
         if (!address.empty() && !validAddress(address)) {
             return "That address should be a hostname, optionally with a port -- "
                    "not a link.";

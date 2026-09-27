@@ -183,9 +183,14 @@ void Game::lfgDraftFromLobby() {
     m_lfgDraft.kind = odlfg::Kind::Hosting;
     if (m_netHost) {
         m_lfgDraft.code = m_netHost->code();
-        // The only address that works from outside is the tunnel's: a LAN
-        // address or a bare port number is no use to a reader of a public
-        // board. A relayed game has no address at all, and needs none.
+        // ── HOW A STRANGER WOULD ACTUALLY GET IN ──
+        //
+        // A relayed game is reached by its code and has no address. A
+        // listening one is reached by an address, and the only address that
+        // works from outside is the tunnel's -- a LAN address or a port number
+        // is no use to a reader of a public board. With neither, the listing
+        // cannot be posted at all; see odlfg::problemWith.
+        m_lfgDraft.relayed = m_mpViaRelay;
         m_lfgDraft.address.clear();
         if (!m_mpViaRelay && m_mpTunnel && m_mpTunnel->state() == Tunnel::State::Up)
             m_lfgDraft.address = m_mpTunnel->address();
@@ -690,17 +695,27 @@ void Game::drawMpPost(Vector2 mouse, bool click) {
                  m_lfgDraft.code.empty() ? Color{200, 160, 130, 255} : Color{140, 190, 150, 255});
         y += 22;
 
-        // Prefilled from the tunnel when there is one, and typed when the host
-        // forwarded a port instead -- an address this game has no way to work
-        // out for itself.
-        DrawText(T("Where players reach you (optional)"),
-                 left, y, 14, Color{140, 148, 165, 255});
-        y += 19;
-        const Rectangle addrBox{(float)left, (float)y, (float)fieldW, 34.0f};
-        drawField(addrBox.x, addrBox.y, addrBox.width, addrBox.height, m_lfgDraft.address,
-                  "your-tunnel.trycloudflare.com", m_mpFocus == 9, 16);
-        if (click && CheckCollisionPointRec(mouse, addrBox)) m_mpFocus = 9;
-        y += 40;
+        // ── WHICH ROUTE THIS LISTING OFFERS ──
+        //
+        // A relayed game is joined by its code and has nothing else to say. A
+        // listening one is joined by its address, so the address is asked for
+        // -- prefilled from the tunnel when there is one, and typed when the
+        // host forwarded a port instead, which is an address this game has no
+        // way to work out for itself.
+        if (m_lfgDraft.relayed) {
+            DrawText(T("Through the relay -- the code is the whole invite."),
+                     left, y, 14, Color{140, 190, 150, 255});
+            y += 28;
+        } else {
+            DrawText(T("Where players reach you (you are not on the relay)"),
+                     left, y, 14, Color{140, 148, 165, 255});
+            y += 19;
+            const Rectangle box{(float)left, (float)y, (float)fieldW, 34.0f};
+            drawField(box.x, box.y, box.width, box.height, m_lfgDraft.address,
+                      "your-tunnel.trycloudflare.com", m_mpFocus == 9, 16);
+            if (click && CheckCollisionPointRec(mouse, box)) m_mpFocus = 9;
+            y += 40;
+        }
     }
 
     // Note.

@@ -43,7 +43,10 @@
 //      the same field a player types one into, and the same tickbox about the
 //      host seeing your IP has to be ticked before Join does anything. A
 //      listing still cannot make this game connect anywhere on its own.
-//   3. It is optional. A relayed game has no address and does not need one.
+//   3. A listing that is neither relayed nor addressed CANNOT BE POSTED. See
+//      problemWith(): advertising a game nobody can reach wastes the time of
+//      everyone who tries it, and is indistinguishable, from the outside, from
+//      the game being broken.
 
 #include <cstdint>
 #include <string>
@@ -120,6 +123,14 @@ struct Draft {
     Kind kind = Kind::Hosting;
     std::string code;
     std::string address;
+    /**
+     * Is this game on the relay?
+     *
+     * Not posted -- the service cannot check it and would only be repeating
+     * what the host said. It is here because it is half of "can a stranger
+     * join this at all", which is what problemWith() refuses a listing over.
+     */
+    bool relayed = false;
     std::string map;
     Mode mode = Mode::Rapid;
     int turnSeconds = 120;
