@@ -188,9 +188,8 @@ const Shot SHOTS[] = {
     {"orders-zoom",   20, true},
     {"policies",      20, true},
     // The same screen with industry in state hands. A separate shot because
-    // the panel only exists when OD_NATIONALISATION is on, and because what it
-    // has to show is a RAMP part-way up -- a row at 0% and a row at 100% are
-    // the two states that photograph as if there were no ramp at all.
+    // what it has to show is a RAMP part-way up -- a row at 0% and a row at
+    // 100% are the two states that photograph as if there were no ramp at all.
     {"state-industry", 20, true},
     {"economy",       20, true},
     {"economy-local", 20, true},

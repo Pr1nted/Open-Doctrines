@@ -4,11 +4,30 @@
 // What lives here is everything that needs a map: which province a holding
 // touches, where the compass comes from, and the one-per-turn step.
 //
-// OFF BY DEFAULT. It moves build costs, upkeep, resource income and unrest --
-// four numbers the AI reads on almost every decision it makes -- so it changes
-// play and every bench baseline. With OD_NATIONALISATION unset m_nationalised
-// is never written, every multiplier below returns 1.0 and the extra unrest is
-// 0, which is what makes the decision hash identical with it off.
+// ON SINCE 2026-09-27, on the user's decision and with a bench behind it.
+//
+// It was off because it moves build costs, upkeep, resource income and unrest
+// -- four numbers the AI reads on almost every decision it makes -- so it
+// changes play and every bench baseline, and nobody had measured by how much.
+// Measured now, six seats, two seed sets, the reflex live in both arms:
+//
+//     off, fixed seeds  208     on, fixed seeds  201
+//     off, fresh seeds  196     on, fresh seeds  212
+//
+// Opposite signs on the two sets and both differences inside what this
+// instrument resolves -- within one arm 1914:FRA alone runs 8.5 to 16.2 over
+// its three seeds. Survival is 87 in all four arms and the worst seat is
+// 1939:NOR at 23 in all four. So: no measurable effect on the bench.
+//
+// And a REAL null rather than an inert one, which is the check worth naming:
+// with the flag on, 163 specialities were taken across one 120-turn game; with
+// it off, zero. A mechanic nothing ever used would have produced the same
+// table.
+//
+// The switch survives, inverted: OD_NATIONALISATION=0 turns it off, which is
+// how an AI baseline from before this date is reproduced. With it off,
+// m_nationalised is never written, every multiplier below returns 1.0 and the
+// extra unrest is 0 -- the decision hash is what it was.
 
 #include "Game.h"
 
@@ -16,8 +35,14 @@
 #include <cstdlib>
 
 bool Game::nationalisationOn() {
-    static const bool on = std::getenv("OD_NATIONALISATION") &&
-                           atoi(std::getenv("OD_NATIONALISATION")) != 0;
+    // Default ON. An unset variable and an empty one both mean "on", so only
+    // somebody who deliberately writes OD_NATIONALISATION=0 gets the old
+    // world -- an env var that is easy to set by accident is a feature that
+    // goes missing for one person and nobody can reproduce it.
+    static const bool on = [] {
+        const char* e = std::getenv("OD_NATIONALISATION");
+        return !e || !*e || atoi(e) != 0;
+    }();
     return on;
 }
 

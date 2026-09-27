@@ -254,7 +254,7 @@ public:
      *  OD_DOCTRINE_REFLEX, off by default; counters printed at exit. */
     void doctrineReflex(int cid);
     /** Take one resource speciality into state hands, when there is room under
-     *  the compass cap. Behind OD_NATIONALISATION, like the mechanic itself:
+     *  the compass cap. On by default with the mechanic since 2026-09-27:
      *  without it the AI never touches nationalisation and a bench of the
      *  mechanic measures a mechanic nobody uses. Counter printed at exit. */
     void nationalisationReflex(int cid);
@@ -275,7 +275,13 @@ public:
     // them. This counts the turnover the slot story predicts.
     void warLifeCensus();
     void seatTrace();           ///< OD_SEAT_TRACE, off by default. Journal 414.
+    /// Turn the bankruptcy cascade last zeroed a country's pacification, and
+    /// its value last turn. OD_PAC_COOLDOWN reads them. Journal 424.
+    std::unordered_map<int,int>   m_pacZeroedTurn;
+    std::unordered_map<int,float> m_prevPac;
     static void dumpWarLife();
+    static void dumpPacCooldown();
+    static std::atomic<long long> s_pacCooldownRefused;
     static std::map<std::pair<int,int>, int> s_warOpen;   ///< pair -> turn it opened
     static long long s_warsStarted, s_warsEnded, s_warLenSum, s_warOpenSum, s_warTurns;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port

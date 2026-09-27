@@ -192,9 +192,12 @@ OD_INDOCTRINATION=1 run "assimilation"  "$bin/PolicyRulesTest" "$root/data/"
 # off arm above already proved they are inert; this proves they arrive.
 OD_PACIFICATION_REBATE=1 OD_AI_RECRUIT_CAP=1 \
   run "dead effects, flags on"  "$bin/PolicyRulesTest" "$root/data/"
-# Industry in state hands, wired into a real map. The off arm above already
-# proved it inert; this proves the ramp reaches income, upkeep and unrest.
-OD_NATIONALISATION=1 run "nationalisation"  "$bin/PolicyRulesTest" "$root/data/"
+# Industry in state hands, wired into a real map. ON IS NOW THE DEFAULT, so the
+# plain run above is the on arm and this is the OFF one -- which still has to
+# exist, because OD_NATIONALISATION=0 is how an AI baseline from before the
+# mechanic shipped is reproduced, and a switch nobody exercises is a switch
+# that quietly stops working.
+OD_NATIONALISATION=0 run "nationalisation, off"  "$bin/PolicyRulesTest" "$root/data/"
 # Where a factory may stand: the capacity rule's shape, its pinned constants,
 # and the cos(latitude) area walk the loader runs. Pure arithmetic, no data dir.
 run "industry capacity" "$bin/IndustryCapacityTest"
