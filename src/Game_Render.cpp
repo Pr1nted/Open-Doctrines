@@ -2311,10 +2311,27 @@ void Game::drawCountryPanel() {
                             break;
                         }
                     if (kh) {
-                        // What choosing it costs, in the terms that differ.
+                        // WHAT IT COSTS AND WHAT IT DOES. The cost half was
+                        // here and the fighting half was not -- attack and
+                        // defence are the columns that decide whether a type is
+                        // worth its price, and they were the two a player could
+                        // not see anywhere in the game.
+                        //
+                        // Frontage is quoted as how many FIT rather than as the
+                        // raw multiplier, because the raw one is backwards: 0.6
+                        // is better than 1.0, and a hint that has to be read
+                        // upside down is worse than no hint.
                         const TroopCost& tc = TROOP_TYPES[(int)t];
-                        m_uiHint = TextFormat(T("%s: %.2gx men, %.2gx cost, %.2gx frontage"),
-                                              T(tc.name), tc.manpower, tc.money, tc.frontage);
+                        // ONE SOURCE LINE, however long. tools/i18n_extract.py
+                        // reads a T() literal off a single line: split across
+                        // two, only the first half reaches en.json and --check
+                        // still reports ok, so the string ships half
+                        // translatable and nothing says so. It did exactly that
+                        // to this line before it was joined back up.
+                        m_uiHint = TextFormat(
+                            T("%s: %.2gx men, %.2gx cost, %.2gx fuel  -  %.2gx attack, %.2gx defence, %.2gx fit on the front"),
+                            T(tc.name), tc.manpower, tc.money, tc.fuel,
+                            tc.atk, tc.def, tc.frontage > 0.0f ? 1.0f / tc.frontage : 1.0f);
                         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                             m_recruitType = t;
                             Audio::get().playSfx("click_soft");
