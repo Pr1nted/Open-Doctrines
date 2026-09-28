@@ -4713,62 +4713,74 @@ void Game::mpManualApplyPasted() {
     std::string what;
     uint32_t turn = 0;
     std::vector<uint8_t> payload;
-    if (!turnStoreDecodeText(m_mpManualIn, what, turn, payload)) {
-        mpNote("That is not an OpenDoctrines turn block. Copy the whole thing, "
-               "including the --- lines.", true);
-        return;
-    }
+    const bool decoded = turnStoreDecodeText(m_mpManualIn, what, turn, payload);
 
-    if (what == "turn") {
-        if (mpIsHost()) {
+    // WHO the block is from, needed before the routing can say whether we know
+    // them. Empty for anything that is not an orders block, which classifyPaste
+    // never asks about.
+    const std::string psid = pasteOrdersPsid(what);
+    const LobbyMember* from =
+        (!psid.empty() && mpIsHost() && m_netHost) ? m_netHost->lobby().findByPsid(psid)
+                                                   : nullptr;
+
+    // The routing lives in TurnStore.h, where a test can reach it without a
+    // lobby or a window. Everything below is the part that needs them.
+    switch (classifyPaste(decoded, what, turn, mpIsHost(),
+                          (uint32_t)m_turnNumber, from != nullptr)) {
+        case PasteAction::NotABlock:
+            mpNote("That is not an OpenDoctrines turn block. Copy the whole thing, "
+                   "including the --- lines.", true);
+            return;
+
+        case PasteAction::TurnIsForPlayers:
             mpNote("That is a turn block. The host produces those; paste a "
                    "player's orders here instead.", true);
             return;
-        }
-        if (turn != (uint32_t)m_turnNumber + 1) {
+
+        case PasteAction::TurnNotNext:
             // The single most likely mistake, and invisible without this: last
             // week's block pasted again, which would otherwise silently do
             // nothing or replay a turn already played.
             mpNote("That is turn " + std::to_string(turn) + ", and this game is "
                    "waiting for turn " + std::to_string(m_turnNumber + 1) + ".", true);
             return;
-        }
-        mpApplyDelta(turn, payload);
-        m_mpManualIn.clear();
-        mpNote("Turn " + std::to_string(turn) + " applied.");
-        return;
-    }
 
-    if (what.rfind("orders ", 0) == 0) {
-        if (!mpIsHost()) {
+        case PasteAction::ApplyTurn:
+            mpApplyDelta(turn, payload);
+            m_mpManualIn.clear();
+            mpNote("Turn " + std::to_string(turn) + " applied.");
+            return;
+
+        case PasteAction::OrdersAreForHost:
             mpNote("Those are somebody's orders. Only the host applies those.", true);
             return;
-        }
-        const std::string psid = what.substr(7);
-        const LobbyMember* m = m_netHost->lobby().findByPsid(psid);
-        if (!m) {
+
+        case PasteAction::OrdersFromStranger:
             mpNote("Those orders are from somebody who is not in this game.", true);
             return;
-        }
 
-        // Opened here, and a failure is NO SUBMISSION -- never half-applied,
-        // and the reason is not reported: which check failed is an oracle, and
-        // a player told "wrong turn" versus "wrong key" learns something they
-        // should not.
-        std::vector<uint8_t> orders;
-        if (!turnOpen(m_mpSealKey, turn, psid, payload, orders)) {
-            mpNote("Those orders could not be read, so they do not count. The "
-                   "player should send them again.", true);
+        case PasteAction::OpenOrders: {
+            // Opened here, and a failure is NO SUBMISSION -- never half-applied,
+            // and the reason is not reported: which check failed is an oracle,
+            // and a player told "wrong turn" versus "wrong key" learns something
+            // they should not.
+            std::vector<uint8_t> orders;
+            if (!turnOpen(m_mpSealKey, turn, psid, payload, orders)) {
+                mpNote("Those orders could not be read, so they do not count. The "
+                       "player should send them again.", true);
+                return;
+            }
+            m_netHost->lobby().submitOrders(from->peerId, turn, orders);
+            m_netHost->broadcastLobby();
+            m_mpManualIn.clear();
+            mpNote(std::string("Orders from ") + from->name + " accepted for turn " +
+                   std::to_string(turn) + ".");
             return;
         }
-        m_netHost->lobby().submitOrders(m->peerId, turn, orders);
-        m_netHost->broadcastLobby();
-        m_mpManualIn.clear();
-        mpNote(std::string("Orders from ") + m->name + " accepted for turn " +
-               std::to_string(turn) + ".");
-        return;
-    }
 
+        case PasteAction::Unknown:
+            break;
+    }
     mpNote("That block is not something this game knows how to apply.", true);
 }
 

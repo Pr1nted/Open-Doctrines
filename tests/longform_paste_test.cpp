@@ -172,6 +172,109 @@ int main() {
            "however long its turns are");
     }
 
+    section("what a pasted block is routed to");
+    {
+        // Manual mode is the one where a PERSON is holding the bytes, so nearly
+        // every outcome is a mistake somebody is about to make. Each wants a
+        // different sentence, and the ORDER of the checks decides whether they
+        // get a useful one.
+        const bool HOST = true, PLAYER = false, KNOWN = true, STRANGER = false;
+
+        ok(classifyPaste(false, "", 0, PLAYER, 4, KNOWN) == PasteAction::NotABlock,
+           "something that did not decode is not a block");
+
+        // The player's ordinary Monday.
+        ok(classifyPaste(true, "turn", 5, PLAYER, 4, KNOWN) == PasteAction::ApplyTurn,
+           "the turn after ours is the one we apply");
+        ok(classifyPaste(true, "turn", 4, PLAYER, 4, KNOWN) == PasteAction::TurnNotNext,
+           "the turn we already played is refused");
+        ok(classifyPaste(true, "turn", 9, PLAYER, 4, KNOWN) == PasteAction::TurnNotNext,
+           "and so is one from the future");
+
+        // WHO BEFORE WHICH. A host pasting its own block back wants to be told
+        // that, not that the number is wrong -- the number IS wrong, for a
+        // reason that would only confuse them, because the host is always a
+        // turn ahead of the block it just produced.
+        ok(classifyPaste(true, "turn", 5, HOST, 4, KNOWN) == PasteAction::TurnIsForPlayers,
+           "a host pasting its own turn block is told whose it is");
+        ok(classifyPaste(true, "turn", 4, HOST, 4, KNOWN) == PasteAction::TurnIsForPlayers,
+           "and told the same thing whatever the number");
+
+        // Orders, which only ever go one way.
+        ok(classifyPaste(true, "orders p_1", 5, HOST, 4, KNOWN) == PasteAction::OpenOrders,
+           "orders from somebody in the game are opened");
+        ok(classifyPaste(true, "orders p_1", 5, HOST, 4, STRANGER) ==
+               PasteAction::OrdersFromStranger,
+           "orders from a pseudonym we do not know are refused");
+        ok(classifyPaste(true, "orders p_1", 5, PLAYER, 4, KNOWN) ==
+               PasteAction::OrdersAreForHost,
+           "a player pasting somebody's orders is told only the host does that");
+
+        // A host is not stopped from taking orders for a turn other than the
+        // one in progress, and does not need to be: the seal binds them to
+        // their turn, and the lobby counts a submission only when
+        // submittedTurn == turnNumber. Pinned because it looks like a missing
+        // check and is not one.
+        ok(classifyPaste(true, "orders p_1", 2, HOST, 9, KNOWN) == PasteAction::OpenOrders,
+           "stale orders reach the seal rather than being guessed at here");
+
+        ok(classifyPaste(true, "greetings", 5, HOST, 4, KNOWN) == PasteAction::Unknown,
+           "a block this build does not know is refused");
+
+        ok(pasteOrdersPsid("orders p_7f3a91") == "p_7f3a91", "the sender is read off");
+        ok(pasteOrdersPsid("turn").empty(), "and a turn block has no sender");
+    }
+
+    section("a campaign, played entirely by pasting");
+    {
+        // Two turns, both directions, through the real codec and the real seal:
+        // the host publishes, the player applies and answers, the host opens.
+        // Nothing here is a mock -- what is missing is only the lobby and the
+        // window, and those decide nothing.
+        if (!turnSealAvailable()) {
+            printf("  skip  sealing is unavailable in this build\n");
+        } else {
+            TurnSealKey key{};
+            turnSealKeyGenerate(key);
+            const std::string psid = "p_a10c44";
+            int playerTurn = 0;          // where the player's game has got to
+            bool wholeCampaign = true;
+
+            for (uint32_t t = 1; t <= 2; ++t) {
+                // the host resolves turn t and shows a block
+                const std::vector<uint8_t> delta = somePayload(300 + t);
+                const std::string block = turnStoreEncodeText("turn", t, delta);
+
+                // the player pastes it -- through a mail client, as ever
+                std::string what; uint32_t bt = 0; std::vector<uint8_t> got;
+                const bool dec = turnStoreDecodeText(toCRLF(block), what, bt, got);
+                if (classifyPaste(dec, what, bt, false, (uint32_t)playerTurn,
+                                  false) != PasteAction::ApplyTurn ||
+                    got != delta) { wholeCampaign = false; break; }
+                playerTurn = (int)bt;
+
+                // the player answers with orders for that turn
+                const std::vector<uint8_t> orders = somePayload(60 + t);
+                std::vector<uint8_t> sealed;
+                if (!turnSeal(key, t, psid, orders, sealed)) { wholeCampaign = false; break; }
+                const std::string reply =
+                    turnStoreEncodeText(("orders " + psid).c_str(), t, sealed);
+
+                // and the host reads them
+                std::string w2; uint32_t t2 = 0; std::vector<uint8_t> carried;
+                const bool dec2 = turnStoreDecodeText(toCRLF(reply), w2, t2, carried);
+                if (classifyPaste(dec2, w2, t2, true, t, true) !=
+                    PasteAction::OpenOrders) { wholeCampaign = false; break; }
+                std::vector<uint8_t> opened;
+                if (!turnOpen(key, t2, pasteOrdersPsid(w2), carried, opened) ||
+                    opened != orders) { wholeCampaign = false; break; }
+            }
+            ok(wholeCampaign, "two turns, host to player and back, by paste alone");
+            ok(playerTurn == 2, "and the player's game advanced both times",
+               std::to_string(playerTurn));
+        }
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }

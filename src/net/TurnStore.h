@@ -205,3 +205,54 @@ std::string turnStoreEncodeText(const char* what, uint32_t turnNumber,
 /** Reads what turnStoreEncodeText produced. False on anything malformed. */
 bool turnStoreDecodeText(const std::string& text, std::string& whatOut,
                          uint32_t& turnOut, std::vector<uint8_t>& payloadOut);
+
+/**
+ * WHAT A PASTED BLOCK SHOULD CAUSE, decided before any key is touched.
+ *
+ * Manual mode is the one where a person is holding the bytes, so nearly every
+ * outcome here is a mistake somebody is about to make: pasting the host's own
+ * turn block back into the host, pasting last week's block, pasting a player's
+ * orders into another player. Each wants a different sentence, and getting the
+ * ORDER of the checks wrong is how a player ends up told the wrong thing --
+ * "that is turn 4 and we want 5" is useless to somebody who has in fact pasted
+ * orders into a player's game.
+ *
+ * Separated from the game so the routing can be tested without a lobby, a
+ * window or a network. What the caller still does is the part that needs those:
+ * apply the delta, open the seal, submit to the lobby.
+ */
+enum class PasteAction {
+    NotABlock,           ///< it did not decode at all
+    ApplyTurn,           ///< a turn, and the one this game is waiting for
+    TurnNotNext,         ///< a turn, but not that one
+    TurnIsForPlayers,    ///< a turn block, pasted into the host that wrote it
+    OpenOrders,          ///< orders, from somebody in this game
+    OrdersAreForHost,    ///< orders, pasted into a player's game
+    OrdersFromStranger,  ///< orders from a pseudonym this game does not know
+    Unknown,             ///< decoded, but nothing this build handles
+};
+
+/** The pseudonym an "orders <psid>" block is addressed from, or empty. */
+inline std::string pasteOrdersPsid(const std::string& what) {
+    return (what.rfind("orders ", 0) == 0) ? what.substr(7) : std::string();
+}
+
+inline PasteAction classifyPaste(bool decoded, const std::string& what,
+                                 uint32_t blockTurn, bool weAreHost,
+                                 uint32_t currentTurn, bool psidKnown) {
+    if (!decoded) return PasteAction::NotABlock;
+    if (what == "turn") {
+        // WHO IT IS FOR, BEFORE WHICH TURN IT IS. A host pasting its own block
+        // back wants to be told that, not that the number is wrong -- the
+        // number is wrong for a reason that would only confuse them.
+        if (weAreHost) return PasteAction::TurnIsForPlayers;
+        if (blockTurn != currentTurn + 1) return PasteAction::TurnNotNext;
+        return PasteAction::ApplyTurn;
+    }
+    if (what.rfind("orders ", 0) == 0) {
+        if (!weAreHost) return PasteAction::OrdersAreForHost;
+        if (!psidKnown) return PasteAction::OrdersFromStranger;
+        return PasteAction::OpenOrders;
+    }
+    return PasteAction::Unknown;
+}
