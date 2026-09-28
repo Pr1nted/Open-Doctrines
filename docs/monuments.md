@@ -78,6 +78,21 @@ nothing here changes how the computer plays. Teaching it to use them is a
 hand-written reflex rather than a retrain — see the note in `src/Monuments.h`
 about the four consumers.
 
+## What they look like
+
+![The eleven monument icons](img/monument-icons.png)
+
+One silhouette per monument, built from a handful of flat parts in
+`odmon::silhouette()` and drawn the same way on the flat map and on the globe.
+The rule that keeps them legible is that the whole figure gets **one** light:
+outline, fill, then a single shaded edge on the widest part standing on the
+ground. Shading each part separately gave a university eight light sources and
+made every building look like it had come apart.
+
+They are checked by a test rather than by eye — every kind has a shape, every
+shape stands on the ground and stays inside its box, no two kinds are the same
+building, and any opening is cut into something solid.
+
 ## Researching them
 
 A **Monuments** category in the research tree, with a root (*Monumental
