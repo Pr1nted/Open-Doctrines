@@ -224,6 +224,74 @@ int main() {
            "a country with none of them is not a special case");
     }
 
+    section("eleven monuments, eleven silhouettes");
+    {
+        // THE POINT OF THE WHOLE THING: a university and a missile silo have
+        // to be different buildings on the map. They were the same stepped
+        // block once, which is a placeholder wearing eleven names, and nothing
+        // but this check would notice it happening again.
+        std::set<std::string> shapes;
+        int grounded = 0, inside = 0;
+        for (int i = 0; i < odmon::kKindCount; ++i) {
+            const odmon::Kind k = (odmon::Kind)i;
+            const std::vector<odmon::Part> parts = odmon::silhouette(k);
+            ok(!parts.empty(), std::string("a shape for ") + odmon::kindKey(k));
+
+            // Something has to stand on the ground, or the building floats.
+            bool onGround = false, allInside = true;
+            std::string fingerprint;
+            for (const odmon::Part& p : parts) {
+                if (p.base <= 0.0001f) onGround = true;
+                if (p.x < -0.001f || p.x + p.w > 1.001f) allInside = false;
+                if (p.base < -0.001f || p.base + p.h > 1.001f) allInside = false;
+                if (p.w <= 0.0f || p.h <= 0.0f) allInside = false;
+                fingerprint += std::to_string((int)p.shape) + ":" +
+                               std::to_string((int)(p.x * 100)) + "," +
+                               std::to_string((int)(p.w * 100)) + "," +
+                               std::to_string((int)(p.base * 100)) + "," +
+                               std::to_string((int)(p.h * 100)) + ";";
+            }
+            grounded += onGround;
+            inside += allInside;
+            shapes.insert(fingerprint);
+        }
+        ok(grounded == odmon::kKindCount, "every one of them stands on the ground");
+        ok(inside == odmon::kKindCount, "and every part is inside its own box");
+        ok((int)shapes.size() == odmon::kKindCount,
+           "and no two kinds are the same building",
+           std::to_string(shapes.size()) + " distinct of " +
+               std::to_string(odmon::kKindCount));
+
+        // A SLOT IS A HOLE, so it has to be cut in something. The renderer
+        // draws one in the outline's own colour, which on a solid part reads
+        // as a doorway or an embrasure and on empty ground reads as a black
+        // rectangle lying next to the building.
+        int slots = 0, seated = 0;
+        for (int i = 0; i < odmon::kKindCount; ++i) {
+            const std::vector<odmon::Part> parts = odmon::silhouette((odmon::Kind)i);
+            for (const odmon::Part& s : parts) {
+                if (s.shape != odmon::PartShape::Slot) continue;
+                ++slots;
+                for (const odmon::Part& m : parts) {
+                    if (m.shape == odmon::PartShape::Slot) continue;
+                    // Wholly within the solid part, in both directions.
+                    if (s.x >= m.x - 0.001f && s.x + s.w <= m.x + m.w + 0.001f &&
+                        s.base >= m.base - 0.001f &&
+                        s.base + s.h <= m.base + m.h + 0.001f) { ++seated; break; }
+                }
+            }
+        }
+        ok(slots > 0, "some of them have an opening cut into them",
+           std::to_string(slots) + " slots");
+        ok(seated == slots, "and every opening is cut into something solid",
+           std::to_string(seated) + " of " + std::to_string(slots));
+
+        // An unknown kind draws SOMETHING. A monument from a newer save that
+        // draws nothing is one a player cannot click on to find out what it is.
+        ok(!odmon::silhouette((odmon::Kind)99).empty(),
+           "a kind this build does not know still draws a block");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed ? 1 : 0;
 }

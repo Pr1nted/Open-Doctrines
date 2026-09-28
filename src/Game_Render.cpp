@@ -3451,45 +3451,126 @@ void Game::drawInner() {
             const Color shade = Color{(unsigned char)(col.r * 0.45f), (unsigned char)(col.g * 0.45f),
                                       (unsigned char)(col.b * 0.45f), col.a};
 
-            if (!onGlobe) {
-                // A stepped plan view: three squares, narrowing.
-                for (int step = 0; step < 3; ++step) {
-                    const float w = base * (1.0f - 0.25f * (float)step);
-                    DrawRectangleRounded({sp.x - w / 2, sp.y - w / 2 - step * 2.0f, w, w},
-                                         0.25f, 4, step == 2 ? lit : ColorAlpha(shade, 0.9f));
-                }
-                DrawRectangleRoundedLines({sp.x - base / 2, sp.y - base / 2, base, base},
-                                          0.25f, 4, Color{15, 15, 20, 220});
-            } else {
-                // Standing up. The height is the level, foreshortened by how
-                // square-on the ground is -- at the limb it flattens to
-                // nothing rather than sticking out sideways.
-                const float face = std::clamp(
-                    m_renderer->faceCosine(cit->second.x, cit->second.y), 0.0f, 1.0f);
-                const float tall = base * (0.9f + 0.5f * (float)h.level) * face;
-                if (tall < 1.5f) continue;   // edge-on: nothing to draw
-                const float w0 = base * 0.9f;
-                // Three stacked steps, each narrower and shorter than the last.
-                float y = sp.y;
-                for (int step = 0; step < 3; ++step) {
-                    const float w = w0 * (1.0f - 0.28f * (float)step);
-                    const float hgt = tall * (0.45f - 0.12f * (float)step);
-                    // Outlined first, then filled: one dark rectangle a pixel
-                    // larger on each side, which is what stops the figure
-                    // dissolving into a province of its own colour.
-                    DrawRectangle((int)(sp.x - w / 2) - 1, (int)(y - hgt) - 1,
-                                  (int)w + 2, (int)hgt + 2, Color{12, 12, 16, 220});
-                    DrawRectangle((int)(sp.x - w / 2), (int)(y - hgt), (int)w, (int)hgt, lit);
-                    // A darker right face, so it reads as a solid rather than
-                    // a flat card: one rectangle, and it is what sells it.
-                    DrawRectangle((int)(sp.x + w / 2 - w * 0.28f), (int)(y - hgt),
-                                  (int)(w * 0.28f), (int)hgt, shade);
-                    y -= hgt;
-                }
-                // The shadow it casts on the ground, which is what fixes it to
-                // the province rather than floating above it.
-                DrawEllipse((int)sp.x, (int)sp.y, w0 * 0.55f, w0 * 0.22f,
+            // ── ONE SILHOUETTE, TWO RENDERINGS ──
+            //
+            // The shape comes from odmon::silhouette, so the icon on the flat
+            // map and the solid on the globe are the same building. Drawing
+            // them separately per kind would be twenty-two chances for a
+            // university to be a different building in two views.
+            const std::vector<odmon::Part> parts = odmon::silhouette(h.kind);
+            const float face = onGlobe
+                ? std::clamp(m_renderer->faceCosine(cit->second.x, cit->second.y), 0.0f, 1.0f)
+                : 1.0f;
+            // Standing up on the globe, laid flat on the map. A figure at the
+            // limb flattens to nothing rather than sticking out sideways into
+            // space, which is what faceCosine is for.
+            const float tall = onGlobe ? base * (1.1f + 0.45f * (float)h.level) * face
+                                       : base * 1.15f;
+            if (onGlobe && tall < 2.0f) continue;
+            const float wide = base * (onGlobe ? 1.0f : 1.15f);
+            const float x0 = sp.x - wide * 0.5f;
+            const float y0 = sp.y;    // the ground line, for both views
+
+            if (onGlobe) {
+                // The shadow first, so everything else sits on top of it. It
+                // is what fixes the figure to the province instead of leaving
+                // it floating over one.
+                DrawEllipse((int)sp.x, (int)sp.y, wide * 0.55f, wide * 0.22f,
                             Color{0, 0, 0, (unsigned char)(90 * face)});
+            }
+
+            // ── ONE SILHOUETTE, ONE LIGHT ──
+            //
+            // Drawn in three passes rather than part by part. Shading each
+            // part's right edge -- which the first version did -- gave a
+            // university eight separate light sources and made every building
+            // look like it had come apart. The outline goes down first for the
+            // whole figure, then the fill, then ONE shaded edge on the widest
+            // part standing on the ground.
+            auto placed = [&](const odmon::Part& part, float grow) {
+                const float px = x0 + part.x * wide - grow;
+                const float pw = std::max(1.0f, part.w * wide) + grow * 2.0f;
+                const float ph = std::max(1.0f, part.h * tall) + grow * 2.0f;
+                const float py = (onGlobe ? y0 - (part.base * tall) - ph
+                                          : y0 - tall * 0.5f +
+                                                (1.0f - part.base - part.h) * tall) - grow;
+                return Rectangle{px, py, pw, ph};
+            };
+            auto drawPart = [&](const odmon::Part& part, Color c, float grow) {
+                const Rectangle r = placed(part, grow);
+                switch (part.shape) {
+                    case odmon::PartShape::Pediment:
+                        DrawTriangle({r.x, r.y + r.height}, {r.x + r.width, r.y + r.height},
+                                     {r.x + r.width * 0.5f, r.y}, c);
+                        break;
+                    case odmon::PartShape::Dome:
+                        // The TOP half of an ellipse, sitting on its base line.
+                        // A whole one dipped through whatever it stood on,
+                        // which is why the tanks read as thumbs.
+                        DrawCircleSector({r.x + r.width * 0.5f, r.y + r.height},
+                                         r.width * 0.5f, 180.0f, 360.0f, 12, c);
+                        break;
+                    case odmon::PartShape::Needle:
+                        DrawTriangle({r.x, r.y + r.height}, {r.x + r.width, r.y + r.height},
+                                     {r.x + r.width * 0.5f, r.y}, c);
+                        break;
+                    case odmon::PartShape::Dish:
+                        // A trapezoid opening upward. Cutting a bowl out of an
+                        // ellipse gave a crescent moon.
+                        DrawTriangle({r.x, r.y}, {r.x + r.width * 0.30f, r.y + r.height},
+                                     {r.x + r.width * 0.70f, r.y + r.height}, c);
+                        DrawTriangle({r.x, r.y}, {r.x + r.width * 0.70f, r.y + r.height},
+                                     {r.x + r.width, r.y}, c);
+                        break;
+                    case odmon::PartShape::Bevel:
+                        // Narrowing upward: a revetment, a blast lip.
+                        DrawTriangle({r.x, r.y + r.height},
+                                     {r.x + r.width * 0.18f, r.y},
+                                     {r.x + r.width * 0.82f, r.y}, c);
+                        DrawTriangle({r.x, r.y + r.height},
+                                     {r.x + r.width * 0.82f, r.y},
+                                     {r.x + r.width, r.y + r.height}, c);
+                        break;
+                    case odmon::PartShape::Panel:
+                        // A flat face, LEANING RIGHT -- the only tilted thing
+                        // in the set, which is what makes the radar read as a
+                        // radar and not as a goblet.
+                        DrawTriangle({r.x, r.y + r.height * 0.75f},
+                                     {r.x + r.width * 0.45f, r.y + r.height},
+                                     {r.x + r.width, r.y + r.height * 0.25f}, c);
+                        DrawTriangle({r.x, r.y + r.height * 0.75f},
+                                     {r.x + r.width, r.y + r.height * 0.25f},
+                                     {r.x + r.width * 0.55f, r.y}, c);
+                        break;
+                    case odmon::PartShape::Slot:
+                    case odmon::PartShape::Jib:
+                    case odmon::PartShape::Box:
+                    default:
+                        DrawRectangleRec(r, c);
+                        break;
+                }
+            };
+
+            const Color ink{12, 12, 16, 220};
+            // 1. the outline, as the whole figure grown by a pixel. A Slot is
+            //    a hole in the figure, so it takes no outline of its own.
+            for (const odmon::Part& part : parts)
+                if (part.shape != odmon::PartShape::Slot) drawPart(part, ink, 1.0f);
+            // 2. the fill -- and the slots, in the outline's own colour, which
+            //    is what makes them read as openings rather than as panels.
+            for (const odmon::Part& part : parts)
+                drawPart(part, part.shape == odmon::PartShape::Slot ? ink : lit, 0.0f);
+            // 3. and one shaded edge, on the widest part standing on the ground
+            const odmon::Part* mass = nullptr;
+            for (const odmon::Part& part : parts) {
+                if (part.base > 0.001f || part.shape == odmon::PartShape::Slot) continue;
+                if (!mass || part.w > mass->w) mass = &part;
+            }
+            if (mass) {
+                const Rectangle r = placed(*mass, 0.0f);
+                if (r.width > 4.0f)
+                    DrawRectangleRec({r.x + r.width * 0.74f, r.y, r.width * 0.26f, r.height},
+                                     shade);
             }
         }
     }

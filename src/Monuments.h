@@ -213,6 +213,64 @@ int radius(Kind kind, int level);
  */
 float siloRangeKm(int level);
 
+// ── What one LOOKS like ─────────────────────────────────────────────────────
+//
+// ONE SILHOUETTE PER KIND, AND TWO RENDERINGS OF IT. A university and a missile
+// silo have to be told apart on the map, and the first version drew every kind
+// as the same stepped block -- which is a placeholder wearing eleven names.
+//
+// The shape is DATA rather than eleven drawing functions, because it is drawn
+// twice: flat, as an icon standing in the province, and on the globe, as a
+// solid extruded out of the ground with a lit face and a shaded one. Two
+// hand-written drawing routines per kind would be twenty-two chances for the
+// icon and the model to stop being the same building.
+//
+// Coordinates are FRACTIONS of the figure's own box: x and w across it with
+// 0.5 the centre line, base and h up it with 0 the ground. So the same
+// description works at 12 pixels on a world map and at 60 on a close globe.
+
+enum class PartShape : uint8_t {
+    Box = 0,   ///< a wall, a hall, a tower
+    Pediment,  ///< a triangle sitting on its slot: a classical roof, a gable
+    Dome,      ///< the TOP HALF of an ellipse, sitting on its base line
+    Needle,    ///< a spike: a missile, a spire, an antenna
+    Dish,      ///< a trapezoid opening upward: a radar face on its mount
+    Jib,       ///< a horizontal arm off a mast: a crane
+    Bevel,     ///< a trapezoid narrowing upward: a bunker, a revetment
+    Panel,     ///< a parallelogram leaning right: a radar face, a solar array
+    Slot,      ///< a DARK recess cut into the mass: an embrasure, a doorway
+};
+
+/**
+ * HOW A FIGURE IS SHADED, which is a property of the FIGURE and not of a part.
+ *
+ * The first version shaded the right-hand fifth of every box, including
+ * columns and chimneys, so a university came out as eight separate blocks with
+ * eight separate light sources -- "broken parts" is exactly what that looks
+ * like. One light, one silhouette: the renderer outlines the whole figure,
+ * fills it, and darkens the right edge of its WIDEST ground-standing part
+ * only. Everything else is flat, which is what makes the mass read as one
+ * building.
+ */
+
+struct Part {
+    PartShape shape = PartShape::Box;
+    float x = 0.0f;     ///< left edge, 0..1 across the figure
+    float w = 1.0f;     ///< width, as a fraction of the figure
+    float base = 0.0f;  ///< bottom, 0..1 up the figure; 0 is the ground
+    float h = 1.0f;     ///< height, as a fraction of the figure
+};
+
+/**
+ * The parts of one kind, in DRAWING ORDER -- back to front, bottom to top.
+ *
+ * Every kind has at least one part standing on the ground (base == 0), or the
+ * figure floats; tests/monuments_test.cpp asserts that, that every part is
+ * inside the box, and -- the point of the whole thing -- that no two kinds
+ * share a silhouette.
+ */
+std::vector<Part> silhouette(Kind k);
+
 /**
  * Everything the caller must be able to ask without knowing the catalogue.
  *

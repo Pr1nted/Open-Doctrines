@@ -124,6 +124,153 @@ const Spec& spec(Kind k) {
     return valid(k) ? kSpecs[(int)k] : fallback;
 }
 
+// ── What one looks like ─────────────────────────────────────────────────────
+
+std::vector<Part> silhouette(Kind k) {
+    using S = PartShape;
+    switch (k) {
+        // A colonnade under a pediment: the one building everybody draws when
+        // they mean "a place of learning".
+        case Kind::University:
+            return {{S::Box,      0.06f, 0.88f, 0.00f, 0.14f},   // stylobate
+                    {S::Box,      0.14f, 0.09f, 0.14f, 0.46f},   // columns
+                    {S::Box,      0.31f, 0.09f, 0.14f, 0.46f},
+                    {S::Box,      0.48f, 0.09f, 0.14f, 0.46f},
+                    {S::Box,      0.65f, 0.09f, 0.14f, 0.46f},
+                    {S::Box,      0.10f, 0.80f, 0.60f, 0.10f},   // architrave
+                    {S::Pediment, 0.06f, 0.88f, 0.70f, 0.30f}};
+
+        // A skyline: three towers, none the same height. Read as a city and
+        // not as a factory because nothing on it is horizontal.
+        case Kind::Megacity:
+            return {{S::Box, 0.04f, 0.26f, 0.00f, 0.62f},
+                    {S::Box, 0.36f, 0.28f, 0.00f, 0.88f},
+                    {S::Box, 0.70f, 0.26f, 0.00f, 0.78f},
+                    // The mast is inside the box like everything else: the
+                    // tallest tower gives up its last 12% to make room, rather
+                    // than the figure growing a part that sticks out of its
+                    // own bounds and gets clipped by whatever draws it.
+                    {S::Needle, 0.48f, 0.04f, 0.88f, 0.12f}};
+
+        // A hardened cap with the nose of the thing itself showing.
+        case Kind::MissileSilo:
+            // The GROUND WORKS are most of it, with the missile coming out --
+            // a big rocket on a small mound is a launch pad, which is a
+            // different building.
+            return {{S::Box,    0.00f, 1.00f, 0.00f, 0.26f},      // apron
+                    {S::Box,    0.10f, 0.34f, 0.26f, 0.16f},      // the rolled-back lid
+                    {S::Slot,   0.52f, 0.34f, 0.17f, 0.09f},      // the open mouth
+                    {S::Box,    0.61f, 0.16f, 0.26f, 0.43f},      // the missile, out of it
+                    {S::Needle, 0.61f, 0.16f, 0.69f, 0.16f}};
+
+        // A casemate: a wide sloped revetment with a low turret on it. The
+        // first version put a PEDIMENT on a box, which is a house -- the one
+        // silhouette a bunker must not have.
+        case Kind::DefenceCorporation:
+            // FLAT AND SQUARE, with the embrasure cut into it. A bevel that
+            // wide read as a hill; what makes a bunker a bunker is that it is
+            // a slab with a slot in it.
+            return {{S::Box,   0.00f, 1.00f, 0.00f, 0.34f},       // the slab
+                    {S::Slot,  0.14f, 0.50f, 0.14f, 0.09f},       // the embrasure
+                    {S::Bevel, 0.10f, 0.60f, 0.34f, 0.14f},       // the sloped roof
+                    {S::Box,   0.38f, 0.18f, 0.48f, 0.10f},       // a cupola
+                    {S::Dome,  0.38f, 0.18f, 0.58f, 0.07f}};
+
+        // Sheds and chimneys. The two chimneys are what say "industry" at
+        // twelve pixels; the saw-tooth roof is the detail that survives zoom.
+        case Kind::FactoryConglomerate:
+            return {{S::Box,      0.02f, 0.96f, 0.00f, 0.44f},
+                    {S::Pediment, 0.06f, 0.30f, 0.44f, 0.18f},
+                    {S::Pediment, 0.38f, 0.30f, 0.44f, 0.18f},
+                    {S::Box,      0.72f, 0.10f, 0.44f, 0.52f},    // chimney
+                    {S::Box,      0.86f, 0.10f, 0.44f, 0.40f}};   // and a shorter one
+
+        // A dish on a mast: a trapezoid opening upward, which reads as a dish
+        // at twelve pixels. Cutting a bowl out of an ellipse gave a crescent
+        // moon, which is what it looked like and not what it was.
+        case Kind::AirDefence:
+            return {{S::Box,   0.12f, 0.60f, 0.00f, 0.16f},       // the vehicle
+                    // The mount sits under the panel's LOW CORNER, which a
+                    // leaning shape puts at 0.45 of its width, not at its
+                    // left edge -- so a centred mount leaves the dish hanging
+                    // in the air beside it.
+                    {S::Box,   0.44f, 0.16f, 0.16f, 0.28f},       // the mount
+                    // A PANEL, LEANING. The trapezoid version came out as a
+                    // wine glass: wide bowl, thin stem, foot. A tilted flat
+                    // face on a stubby mount is what a radar looks like from
+                    // any distance, and it is the only leaning thing here.
+                    {S::Panel, 0.26f, 0.68f, 0.40f, 0.50f}};
+
+        // Tanks: squat cylinders with domed caps and a gap between them, plus
+        // the pipe gantry that says "storage" rather than "towers". They were
+        // tall and touching before, which read as two thumbs.
+        case Kind::StrategicReserve:
+            // TWO SEPARATE TANKS AND NO PIPE. The pipe joined their tops and
+            // the pair came out as an arch -- the one shape that says
+            // "bridge". Squat, because a tall cylinder is a tower.
+            // WIDER THAN TALL, with a shallow cap and a LADDER up one side.
+            // Tanks as tall as they were wide came out as headstones; a seam
+            // drawn the full width across them came out as a pair of burgers.
+            // A vertical mark says cylinder, a horizontal one says stack.
+            return {{S::Box,  0.00f, 1.00f, 0.00f, 0.10f},        // hardstanding
+                    {S::Box,  0.02f, 0.44f, 0.10f, 0.26f},        // tank
+                    {S::Dome, 0.02f, 0.44f, 0.36f, 0.07f},
+                    {S::Slot, 0.07f, 0.05f, 0.12f, 0.22f},        // its side ladder
+                    {S::Box,  0.54f, 0.44f, 0.10f, 0.38f},        // and a fuller one
+                    {S::Dome, 0.54f, 0.44f, 0.48f, 0.07f},
+                    {S::Slot, 0.59f, 0.05f, 0.12f, 0.34f}};
+
+        // A rotunda: one dome on a broad hall, which is what an exchange has
+        // looked like since the eighteenth century.
+        case Kind::GrandExchange:
+            return {{S::Box,      0.02f, 0.96f, 0.00f, 0.34f},
+                    {S::Box,      0.14f, 0.72f, 0.34f, 0.16f},
+                    {S::Dome,     0.22f, 0.56f, 0.50f, 0.38f},
+                    {S::Needle,   0.48f, 0.04f, 0.88f, 0.12f}};
+
+        // A gantry crane over a slipway. The jib is the whole identity.
+        case Kind::AdmiraltyYard:
+            return {{S::Box, 0.02f, 0.96f, 0.00f, 0.16f},         // quay
+                    {S::Box, 0.14f, 0.12f, 0.16f, 0.68f},         // mast
+                    {S::Jib, 0.14f, 0.76f, 0.76f, 0.09f},         // the arm
+                    {S::Box, 0.66f, 0.05f, 0.40f, 0.36f},         // the hoist line
+                    {S::Box, 0.60f, 0.17f, 0.30f, 0.10f}};        // and its load
+
+        // A tower with a lantern: a beacon, which is the oldest picture there
+        // is of a state telling people things.
+        case Kind::MinistryOfEnlightenment:
+            // A HALL WITH A BELL TOWER OFF TO ONE SIDE. A tower with a dome
+            // on it, centred, came out as a fire hydrant -- and symmetry is
+            // what did it, so this one is deliberately lopsided.
+            return {{S::Box,      0.00f, 0.62f, 0.00f, 0.40f},    // the hall
+                    {S::Slot,     0.22f, 0.16f, 0.00f, 0.22f},    // its door
+                    {S::Pediment, 0.00f, 0.62f, 0.40f, 0.16f},    // its roof
+                    {S::Box,      0.62f, 0.26f, 0.00f, 0.74f},    // the tower
+                    {S::Box,      0.56f, 0.38f, 0.74f, 0.08f},    // its gallery
+                    {S::Pediment, 0.60f, 0.30f, 0.82f, 0.18f}};   // and its spire
+
+        // A mast with arms hung ALTERNATELY off each side. Two symmetrical
+        // arms made a crucifix; three centred ones made a Christmas tree.
+        case Kind::SignalsDirectorate:
+            return {{S::Box,    0.34f, 0.32f, 0.00f, 0.08f},      // the pad
+                    {S::Box,    0.44f, 0.12f, 0.08f, 0.76f},      // the mast
+                    // ALTERNATING, not centred. Arms of falling length on a
+                    // vertical make a fir tree; the same arms hung off one
+                    // side and then the other make a transmission mast.
+                    {S::Jib,    0.14f, 0.48f, 0.30f, 0.06f},
+                    {S::Jib,    0.40f, 0.46f, 0.46f, 0.05f},
+                    {S::Jib,    0.20f, 0.38f, 0.60f, 0.05f},
+                    {S::Jib,    0.44f, 0.34f, 0.72f, 0.05f},
+                    {S::Needle, 0.44f, 0.12f, 0.84f, 0.16f}};
+
+        default:
+            // A kind with no drawing is a plain block rather than nothing at
+            // all: a monument that is invisible on the map is worse than one
+            // that is unrecognisable, because the second can be clicked.
+            return {{S::Box, 0.15f, 0.70f, 0.00f, 0.70f}};
+    }
+}
+
 // ── Money ───────────────────────────────────────────────────────────────────
 
 float slotCost(int n) {
