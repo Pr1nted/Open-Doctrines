@@ -128,6 +128,41 @@ def is_identifier(s):
     return any(p.match(s) for p in _ID_PATTERNS)
 
 
+def join_wrapped_literals(text):
+    """Source lines with C++ adjacent string literals joined onto the first.
+
+    Yields exactly as many entries as the file has lines, so a caller's
+    enumerate() still reports the line a literal STARTS on. Continuation lines
+    are blanked rather than removed, for the same reason.
+    """
+    lines = text.split("\n")
+    out = list(lines)
+    i = 0
+    while i < len(out):
+        # Does this line end inside nothing, with a closing quote as its last
+        # non-space character? Then a next line starting with a quote is a
+        # continuation of the same literal.
+        j = i + 1
+        while j < len(out):
+            # Past the lines already folded into this one, or a three-line
+            # literal stops after two -- which is what the first version of
+            # this did, because it looked at the blank it had just written.
+            if not out[j].strip():
+                j += 1
+                continue
+            cur = out[i].rstrip()
+            nxt = out[j].lstrip()
+            if not cur.endswith('"') or not nxt.startswith('"'):
+                break
+            if cur.endswith('\\"'):      # an escaped quote, not a terminator
+                break
+            out[i] = cur[:-1] + nxt[1:]   # drop the two inner quotes
+            out[j] = ""                   # keep the line count, and the numbers
+            j += 1
+        i += 1
+    return out
+
+
 def is_prose(s):
     if len(s.strip()) < 2:
         return False
@@ -294,9 +329,22 @@ def collect():
             rel = os.path.relpath(path, ROOT)
             text = open(path, encoding="utf-8", errors="replace").read()
 
-            # Drawing calls, line by line: enough, because a call that spans
-            # lines still has its literal on one of them.
-            for n, line in enumerate(text.split("\n"), 1):
+            # Drawing calls, line by line -- but a C++ literal can itself span
+            # lines, because adjacent string literals concatenate:
+            #
+            #     T("the first half "
+            #       "and the second")
+            #
+            # is ONE string. Reading this line by line took the first half and
+            # dropped the rest, and --check still said ok, so the string shipped
+            # half translatable and nothing reported it. A long format string is
+            # exactly the kind a programmer wraps, which is to say the longest
+            # and most valuable ones are the ones that were silently truncated.
+            #
+            # So joined first, reporting the line the literal STARTS on. Only a
+            # quote-to-quote break is joined: `"a",\n "b"` has a comma between
+            # them and stays two separate arguments, which is what it is.
+            for n, line in enumerate(join_wrapped_literals(text), 1):
                 # Comments explain the code and sometimes quote it. A doc
                 # comment showing `T("New World")` as an example is not a
                 # string the game draws, and putting it in front of a
