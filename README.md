@@ -14,9 +14,10 @@ them.
 [Discord](https://discord.gg/wqS65jzVv5)
 
 A grand strategy game about running a country: its industry, its armies, its
-research, its politics and its neighbours. Six historical scenarios on a
-1641-province world map, a map editor for building your own, multiplayer that
-needs no port forwarding, and a mod SDK for thirteen languages.
+research, its politics and its neighbours. Ten scenarios — six historical,
+three alternate histories and a flooded Mars — on a 1,642-province world map, a
+map editor for building your own, multiplayer that needs no port forwarding,
+and a mod SDK for thirteen languages.
 
 Alpha. [Status](#status) says what that means here, and which platforms
 anyone has actually sat down and played it on.
@@ -43,8 +44,8 @@ programme, a political compass, claims on their neighbours and opinions about
 each other.
 
 **Provinces and countries.** Industry levels and specialisations, forts,
-garrisons, ports and navies. Eight map modes: population, industry, defence,
-relations, army navigation, navy, resources, country names.
+garrisons, ports and navies. Nine map modes: population, industry, defence,
+relations, army navigation, navy, resources, country names, monuments.
 
 A province can only take so much industry. The ceiling comes from its
 population, how tightly that population lives, how big it is and what is in
@@ -63,6 +64,24 @@ you can see who is actually winning.
 
 ![Economy](docs/img/economy.png)
 
+**Sector taxes.** A rate per resource speciality — oil, metal, rubber, gold,
+gems — positive a tax on what those provinces earn, negative a subsidy paid out
+of the treasury. The price runs the other way: a taxed sector is dearer to run
+and dearer to specialise into, so it is money now against a weaker sector
+later. A rate is a target rather than a switch — it moves two points a turn, so
+a sector cannot be taxed for one turn and relieved the next — and how far
+either way you may go is a ceiling your doctrines set.
+
+**Nationalisation.** Take a speciality into state hands and every province
+specialised in it is dearer to build, dearer to run and produces more, all
+three from one ramp that climbs over twenty turns and decays at the same rate.
+That is what stops the obvious trick of building cheap, collecting high and
+privatising before the bill: by the time the output is high the upkeep is too,
+and releasing loses the output over the same twenty turns it took to gain. How
+many specialities you may hold at once comes off the economic axis of your
+compass — five at the far left, none at the far right — so a country that
+drifts right has to let one go.
+
 **Doctrines.** Policies along a left/right and authoritarian/libertarian
 compass, with implementation times, ethnic policy, and the unrest that follows a
 bad one.
@@ -75,6 +94,9 @@ provinces, money, and claims you agree to drop.
 
 ### Scenarios
 
+Six of them happened. Three are the same world with one thing decided the
+other way. One is not this planet.
+
 | Scenario | Year | |
 |---|------|---|
 | Modern Day | 2000    | 185 countries. Population from World Bank totals, deposits from USGS surveys. |
@@ -83,6 +105,13 @@ provinces, money, and claims you agree to drop.
 | The Gathering Storm | 1939 | Europe on the morning the Wehrmacht crossed the Polish border. |
 | Year Zero | 1945 | The war is over and nothing has been settled. |
 | The Missile Crisis | 1962 | Two blocs, one ocean between them, and missiles in Cuba. |
+| **Mitteleuropa** | 1936 | The Entente lost. Germany holds central Europe through a ring of client kingdoms whose borders it wrote, Austria-Hungary survived its own succession — and in the steppe and the forests there are people who never stopped shooting at it. |
+| **The Long Occupation** | 1962 | Twenty years under an occupation meant to be permanent. You are not it: you are a government that got out, a command that never surrendered, or a partisan republic holding a stretch of mountain. |
+| **The Three Superstates** | 1984 | Three powers divide the world and none can conquer another. The war is permanent and fought over the belt of contested countries between them, for their labour and because a war that cannot be won need never end. After Orwell. |
+| **Mars** | — | Real Martian topography with the basins flooded. Every sea is a named basin — Hellas, Utopia, Chryse, Argyre — and every state stands on the highlands between them. |
+
+There is also a **tutorial** map: two islands, three small countries and
+nothing at stake.
 
 ### Map editor
 
@@ -553,6 +582,12 @@ Alpha, and the honest version of that word:
   waits as a draft until somebody has read the notes. Its optional windowed
   mode is built as a check and not shipped, and the Android build is
   unfinished.
+- **Three systems are the player's alone.** Monuments and sector taxes are
+  built, tested and reachable from a map script and a mod, and no AI country
+  touches either: every rate stays at zero and no computer player builds a
+  monument, so neither changes how the game plays against you. Nationalisation
+  is the exception of the three — the AI has a reflex for it and uses it.
+  Teaching it the other two is a hand-written reflex rather than a retrain.
 - The **tutorial is young**. There is one, with a map built for it, and it has
   not yet been watched over the shoulder of a first-time player.
 - **Long-form (play-by-paste) turns are built but not yet played.** The whole
