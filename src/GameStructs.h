@@ -1328,6 +1328,51 @@ struct Battle {
     double openingDefPower = 0.0;
 };
 
+/**
+ * HOW A STANDING BATTLE IS ACTUALLY GOING.
+ *
+ * Over the whole fight, never over one round -- see the note on
+ * Battle::totalAtkLosses. "We lost this round and did not win the exchange"
+ * describes almost every round of a battle that is being won by persistence,
+ * and a withdraw reflex written on that signal measured 7 to 38 rating points
+ * WORSE than never withdrawing at all. The province 824 trace is four repulses
+ * in a row and the fourth carries.
+ *
+ * So the question is the one the record was built to answer: is the defence
+ * weakening, and is the exchange in our favour?
+ *
+ *   openingDefPower vs lastDefPower   -- has the defence been worn down
+ *   totalDefLosses  vs totalAtkLosses -- who is paying more for it
+ *
+ * Both -> a grind that is working. Neither -> a wall. One -> too early to say,
+ * which is an answer and not a hedge: it is exactly when withdrawing is the
+ * expensive mistake.
+ *
+ * THE AI ASKS THE SAME TWO QUESTIONS, in its withdraw reflex (AISystem.cpp,
+ * `grindWorking` / `exchangeOurs`). That is not a duplicate to be merged: the
+ * reflex carries a tuned threshold that its benchmark was run against, and
+ * pulling it through this function would change how the AI plays as a side
+ * effect of a UI fix. What matters is that the player and the computer now
+ * read a fight the same WAY -- the panel used to read it off one round, and
+ * told a player their winning sieges were lost.
+ */
+enum class BattleTrend { TooEarly, Grinding, Stalled, Failing };
+
+inline BattleTrend battleTrend(const Battle& b) {
+    if (b.rounds <= 0) return BattleTrend::TooEarly;
+    // Has the defence been worn down since the first round? A defence that has
+    // lost a tenth of its power is being ground away; one that has lost nothing
+    // is a wall whatever this round cost.
+    const bool defenceWeakening =
+        b.openingDefPower > 0.0 && b.lastDefPower < b.openingDefPower * 0.90;
+    // And who is paying for it, over the whole fight rather than this round.
+    const bool exchangeOurs = b.totalDefLosses >= b.totalAtkLosses;
+    if (defenceWeakening && exchangeOurs) return BattleTrend::Grinding;
+    if (!defenceWeakening && !exchangeOurs) return BattleTrend::Failing;
+    if (b.rounds < 3) return BattleTrend::TooEarly;
+    return BattleTrend::Stalled;
+}
+
 struct PendingArtilleryOrder {
     int fromProvince = 0;
     int targetProvince = 0;

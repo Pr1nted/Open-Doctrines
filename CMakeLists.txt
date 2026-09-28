@@ -2861,7 +2861,12 @@ add_executable(SupplyRulesTest EXCLUDE_FROM_ALL tests/supply_rules_test.cpp)
 target_include_directories(SupplyRulesTest PRIVATE src)
 
 add_executable(BattleRulesTest EXCLUDE_FROM_ALL tests/battle_rules_test.cpp)
-target_include_directories(BattleRulesTest PRIVATE src)
+# raylib's headers, because the test now includes GameStructs.h for the real
+# Battle record and battleTrend rather than replicating them. Same reason as
+# GoodsRecipeTest below: a rule tested against a copy of the struct is a rule
+# tested against nothing.
+target_include_directories(BattleRulesTest PRIVATE src
+    $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 
 add_executable(CombatDepthTest EXCLUDE_FROM_ALL tests/combat_depth_test.cpp)
 target_include_directories(CombatDepthTest PRIVATE src)

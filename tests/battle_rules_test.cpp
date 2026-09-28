@@ -21,6 +21,8 @@
 // a Game, a map and a world. If the rule changes, change it here in the same
 // commit -- that is what makes this test worth having.
 
+#include "GameStructs.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <string>
@@ -167,6 +169,67 @@ int main() {
         ok(w.battleAt(2, 7)->men == 70000, "and it is 70,000 strong");
         ok(w.countryTroops(7) == before, "reinforcing creates nobody");
         ok(w.battleAt(2, 7)->rounds == 2, "and does not reset how long it has run");
+    }
+
+    // ── WHICH WAY IS IT GOING, over the whole fight ──
+    //
+    // The panel used to answer this from ONE round -- lastDefPower >
+    // lastAtkPower -- and coloured its headline red whenever that was true.
+    // The record's own note says that is true of almost every round of a
+    // battle being won by persistence: the province 824 trace is four repulses
+    // in a row and the fourth carries, and a withdraw reflex written on that
+    // signal measured 7 to 38 rating points WORSE than never withdrawing.
+    // So the panel was telling a player their winning sieges were lost.
+    {
+        auto fight = [](int rounds, double openDef, double lastDef,
+                        long long atkLost, long long defLost) {
+            Battle b;
+            b.rounds          = rounds;
+            b.openingDefPower = openDef;
+            b.lastDefPower    = lastDef;
+            b.totalAtkLosses  = atkLost;
+            b.totalDefLosses  = defLost;
+            // The single-round signal the old rule read, set so that every case
+            // below LOOKS like a round we lost. That is the whole point.
+            b.lastAtkPower = 100.0;
+            b.lastDefPower = lastDef;
+            return b;
+        };
+
+        // The 824 case: four repulses, the defence worn to half, the exchange
+        // ours. Persistence is winning this and the old rule called it losing.
+        ok(battleTrend(fight(4, 1000.0, 500.0, 8000, 9000)) == BattleTrend::Grinding,
+           "a grind that is wearing the defence down reads as winning");
+
+        // A wall: the defence is exactly as strong as it was and we are paying
+        // more than they are. This is the one worth leaving.
+        ok(battleTrend(fight(5, 1000.0, 1000.0, 9000, 4000)) == BattleTrend::Failing,
+           "a defence that has not moved while we bleed reads as failing");
+
+        // Mixed, and early: the expensive mistake is withdrawing here.
+        ok(battleTrend(fight(1, 1000.0, 1000.0, 5000, 9000)) == BattleTrend::TooEarly,
+           "one round of mixed signals is too early to call");
+
+        // Mixed and no longer early.
+        ok(battleTrend(fight(6, 1000.0, 1000.0, 5000, 9000)) == BattleTrend::Stalled,
+           "the same signals after six rounds are a stalemate");
+
+        // Nothing has happened yet.
+        ok(battleTrend(fight(0, 0.0, 0.0, 0, 0)) == BattleTrend::TooEarly,
+           "a battle that has not fought a round says so");
+
+        // A defence worn down but an exchange going against us is NOT a win:
+        // taking the province is not worth the army if the army is gone.
+        ok(battleTrend(fight(4, 1000.0, 400.0, 20000, 3000)) != BattleTrend::Grinding,
+           "wearing them down while losing the exchange is not winning");
+
+        // AND THE PROPERTY THAT MATTERS: the verdict must not be readable off
+        // the last round alone, which is what it was.
+        const Battle won  = fight(4, 1000.0, 500.0, 8000, 9000);
+        const Battle lost = fight(5, 1000.0, 1000.0, 9000, 4000);
+        ok(won.lastDefPower > 0 && lost.lastDefPower > 0 &&
+               battleTrend(won) != battleTrend(lost),
+           "two fights whose last round looks identical are told apart");
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failed);

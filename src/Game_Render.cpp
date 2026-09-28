@@ -2589,11 +2589,28 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
         // which is the half that was never possible at all.
         if (const Battle* pb = battleAt(selPid, m_playerCountryId)) {
             const int bY = disbandBtnY + btnH + btnGap;
-            const bool losing = pb->lastDefPower > pb->lastAtkPower;
+            // THE WHOLE FIGHT, NOT THE LAST ROUND. This read
+            // `lastDefPower > lastAtkPower` and coloured the headline red on
+            // it -- which, per the note on Battle::totalAtkLosses, is true of
+            // almost every round of a battle being won by persistence. It was
+            // telling a player their winning sieges were going badly.
+            const BattleTrend trend = battleTrend(*pb);
+            const Color tcol = (trend == BattleTrend::Grinding) ? Color{150, 215, 160, 255}
+                             : (trend == BattleTrend::Failing)  ? Color{230, 140, 140, 255}
+                             : (trend == BattleTrend::Stalled)  ? Color{228, 190, 100, 255}
+                                                                : Color{195, 200, 215, 255};
             DrawText(TextFormat(T("Battle: %s of ours, round %d"),
                                 formatPop(pb->attackers() / 100).c_str(), pb->rounds),
-                     panelX + pad, bY - 16, 13,
-                     losing ? Color{230, 140, 140, 255} : Color{180, 220, 180, 255});
+                     panelX + pad, bY - 16, 13, tcol);
+            // Said in words, because the colour alone does not distinguish
+            // "too early to tell" from "going nowhere", and those are opposite
+            // decisions.
+            const char* verdict =
+                  (trend == BattleTrend::Grinding) ? T("Their defence is wearing down")
+                : (trend == BattleTrend::Failing)  ? T("They are holding and we are paying for it")
+                : (trend == BattleTrend::Stalled)  ? T("Neither side is giving way")
+                                                   : T("Too early to tell");
+            DrawText(verdict, panelX + pad, bY - 4, 11, tcol);
             // Which way it is going, in the resolver's own terms rather than a
             // troop count -- the count does not include the frontage, the fort,
             // supply, depth or either side's research, and those are what
@@ -3535,6 +3552,70 @@ void Game::drawInner() {
     // surface faces the camera and falls to 0 at the limb, so a monument near
     // the edge is drawn short and flat rather than standing out sideways into
     // space. That single number is what makes a 2D shape read as a 3D one.
+    // ─── CONTESTED GROUND ──────────────────────────────────────────────────
+    //
+    // A standing battle is the one piece of the war that exists between turns:
+    // a province held by neither side while a fight goes on in it. The rules
+    // for it were complete -- it fights a round a turn, it can be fed by an
+    // ordinary move order and abandoned with the panel's button -- and it was
+    // drawn NOWHERE. The only way to find out that a province was contested was
+    // to click on it, which means a player with a war on three fronts could not
+    // see their own war.
+    //
+    // WHAT IT SHOWS IS THE TREND, NOT THE ROUND. See battleTrend: a battle
+    // being won by persistence loses most of its rounds, and a marker that went
+    // red every time one was lost would tell a player to withdraw from exactly
+    // the fights that are working.
+    if (m_activeViewTab == 5 && !m_battles.empty() && !m_renderer->inTransition()) {
+        const float zoom = m_renderer->getZoom();
+        for (const Battle& b : m_battles) {
+            // Ours to see: we are in it, or it is being fought on our ground.
+            const Province* bp = m_provinces.getProvinceById(b.provinceId);
+            const bool oursAttacking = (b.attackerCid == m_playerCountryId);
+            const bool oursDefending = (bp && bp->countryId == m_playerCountryId);
+            if (!oursAttacking && !oursDefending) continue;
+            auto cit = m_provinceCenters.find(b.provinceId);
+            if (cit == m_provinceCenters.end()) continue;
+            const Vector2 sp = worldToScreen(cit->second);
+            if (sp.x < -40 || sp.x > m_screenW + 40 || sp.y < -40 || sp.y > m_screenH + 40)
+                continue;
+
+            const float r = std::clamp(9.0f + 3.0f * zoom, 9.0f, 20.0f);
+            // The two sides, as a ring split between their colours -- which is
+            // what "neither of us holds this" looks like.
+            const Country* ac = m_countries.getCountry(b.attackerCid);
+            const Country* dc = bp ? m_countries.getCountry(bp->countryId) : nullptr;
+            const Color acol = ac ? ac->color : Color{200, 200, 200, 255};
+            const Color dcol = dc ? dc->color : Color{140, 140, 140, 255};
+            DrawCircle((int)sp.x, (int)sp.y, r + 2.0f, Color{12, 12, 16, 210});
+            DrawCircleSector(sp, r, 180.0f, 360.0f, 16, acol);
+            DrawCircleSector(sp, r,   0.0f, 180.0f, 16, dcol);
+
+            // And how it is going, FOR US -- the same trend read from the other
+            // side when the fight is on our ground.
+            BattleTrend t = battleTrend(b);
+            if (oursDefending && !oursAttacking) {
+                if (t == BattleTrend::Grinding)     t = BattleTrend::Failing;
+                else if (t == BattleTrend::Failing) t = BattleTrend::Grinding;
+            }
+            const Color edge = (t == BattleTrend::Grinding) ? Color{120, 210, 130, 255}
+                             : (t == BattleTrend::Failing)  ? Color{230, 120, 120, 255}
+                             : (t == BattleTrend::Stalled)  ? Color{225, 185, 90, 255}
+                                                            : Color{190, 195, 210, 255};
+            DrawCircleLines((int)sp.x, (int)sp.y, r + 2.0f, edge);
+            DrawCircleLines((int)sp.x, (int)sp.y, r + 3.0f, edge);
+
+            // The round count, because a fight in its ninth round is a
+            // different decision from one in its first.
+            if (zoom > 0.45f) {
+                const std::string n = std::to_string(b.rounds);
+                const int fs = (r > 14.0f) ? 12 : 10;
+                DrawText(n.c_str(), (int)(sp.x - MeasureText(n.c_str(), fs) / 2.0f),
+                         (int)(sp.y - fs / 2.0f), fs, Color{18, 18, 24, 255});
+            }
+        }
+    }
+
     if (m_activeViewTab == 9 && !m_monuments.empty() && !m_renderer->inTransition()) {
         const bool onGlobe = m_renderer->viewMode() == MapRenderer::ViewMode::Globe;
         const float zoom = m_renderer->getZoom();
