@@ -410,7 +410,7 @@ void Game::mpOpenHost() {
     //
     // Kept out of the `.odhost` sidecar deliberately. See TurnSeal.h: that file
     // sits beside a save people share, and this is the one secret here.
-    if (cfg.turnSeconds == 0 && cfg.store != TurnStoreKind::Manual) {
+    if (longFormNeedsSealKey(cfg.turnSeconds, cfg.store)) {
         TurnSealKey key;
         if (!turnSealKeyLoad(m_currentSavePath, key)) {
             if (!turnSealKeyGenerate(key)) {

@@ -143,6 +143,35 @@ int main() {
         }
     }
 
+    section("every long-form game gets a key, including the pasted one");
+    {
+        // THE BUG THIS EXISTS TO STOP COMING BACK. The host minted the order
+        // key only when the store was NOT Manual -- and the same branch was
+        // where it recorded which store it had chosen. So picking "paste" left
+        // the host believing it was on the default store: it never showed a
+        // block to copy, the player could not seal orders without a key, and
+        // the host could not have opened them if they had. The mode did not
+        // work in either direction, and nothing said so.
+        //
+        // Manual changes how the bytes are CARRIED, not what they are: they go
+        // through the same seal as every other store, and a block pasted into a
+        // chat window has a larger audience than a bucket with a URL, not a
+        // smaller one.
+        ok(longFormNeedsSealKey(0, TurnStoreKind::Manual),
+           "a paste game needs a key, exactly like every other long-form game");
+        ok(longFormNeedsSealKey(0, TurnStoreKind::DurableObject),
+           "so does the default store");
+        ok(longFormNeedsSealKey(0, TurnStoreKind::JsonBlob), "and jsonblob");
+        ok(longFormNeedsSealKey(0, TurnStoreKind::R2), "and R2");
+
+        // A timed game does not: the orders go down a live connection that is
+        // already encrypted, to a host that is sitting there.
+        ok(!longFormNeedsSealKey(120, TurnStoreKind::Manual),
+           "a timed game needs none");
+        ok(!longFormNeedsSealKey(86400, TurnStoreKind::DurableObject),
+           "however long its turns are");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }

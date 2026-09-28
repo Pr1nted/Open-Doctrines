@@ -52,6 +52,30 @@ enum class TurnStoreKind : uint8_t {
 const char* turnStoreName(TurnStoreKind k);
 
 /**
+ * Does a game with these settings need a key to seal orders with?
+ *
+ * EVERY long-form game does, INCLUDING the manual one, and that is the whole
+ * reason this is a named function instead of a condition at the call site.
+ * The host used to skip minting a key when the store was Manual -- and the
+ * same branch was where it recorded which store it had chosen, so picking
+ * "paste" left the host believing it was using the default store. The result
+ * was a mode that could not work in either direction: the host never showed a
+ * block to copy, the player could not seal orders without a key, and the host
+ * could not have opened them if they had.
+ *
+ * Manual changes how the bytes are CARRIED, not what they are. They go through
+ * the same turnSeal/turnOpen as every other store, because the block gets
+ * pasted into chat windows and forwarded mail, which is not a smaller audience
+ * than a bucket with a URL -- it is a larger one.
+ *
+ * A timed game needs no key: orders go down a live connection that is already
+ * encrypted, and the host is there to receive them.
+ */
+inline bool longFormNeedsSealKey(int turnSeconds, TurnStoreKind /*store*/) {
+    return turnSeconds == 0;
+}
+
+/**
  * A store kind that arrived over the network.
  *
  * False when this build has never heard of it. That is a host newer than this
