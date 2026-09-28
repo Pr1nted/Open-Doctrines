@@ -312,7 +312,12 @@ const Shot SHOTS[] = {
     {"monuments-panel",   20, true},
     {"monuments-province", 20, true},
     {"monuments-map",     20, true},
-    {"monuments-globe",   40, true},
+    // 90, NOT 40. The flat-to-globe morph is 0.70s -- about 42 frames -- and
+    // every map overlay is suppressed while it runs, because the projection is
+    // ambiguous mid-morph. Settling 40 frames captured the globe two frames
+    // before it became one: the shot came out with no monuments on it at all,
+    // and looked exactly like a working globe with nothing built.
+    {"monuments-globe",   90, true},
 };
 const int SHOT_COUNT = (int)(sizeof(SHOTS) / sizeof(SHOTS[0]));
 
@@ -1233,18 +1238,25 @@ bool Game::tickScreenshotTour() {
             if (m_dialogOpen) endDialogue();
 
             const std::vector<int> mine = provincesOf(m_playerCountryId);
-            static const odmon::Kind kinds[] = {
-                odmon::Kind::University, odmon::Kind::FactoryConglomerate,
-                odmon::Kind::AirDefence, odmon::Kind::StrategicReserve,
-                odmon::Kind::MissileSilo,
-            };
+            // RESEARCHED, or the province tab photographs its empty state:
+            // "Research one in the Monuments tree first" is the correct thing
+            // for it to say and a picture of nothing. The tour has no turns to
+            // spend on a research tree, so the nodes are granted here.
+            for (int k = 0; k < odmon::kKindCount; ++k)
+                m_countryResearched[m_playerCountryId].insert(
+                    odmon::unlockNode((odmon::Kind)k));
+            m_countryResearched[m_playerCountryId].insert("mon_basics");
+
+            // ALL ELEVEN, one per province: eleven buildings that are meant
+            // to be distinguishable can only be checked side by side, and the
+            // map shots are the only check there is on how they look.
             m_monuments.clear();
-            for (size_t i = 0; i < mine.size() && i < 5; ++i) {
+            for (size_t i = 0; i < mine.size() && i < (size_t)odmon::kKindCount; ++i) {
                 odmon::Holding h;
                 h.provinceId = mine[i];
-                h.kind = kinds[i];
+                h.kind = (odmon::Kind)i;
                 h.level = 1 + (int)(i % 3);
-                h.active = (i != 2);
+                h.active = (i != 2);          // one switched off, which is a state too
                 m_monuments[h.provinceId] = h;
             }
             rebuildMonumentEffects();
@@ -1258,11 +1270,16 @@ bool Game::tickScreenshotTour() {
                 m_activeViewTab = 9;
                 if (!mine.empty()) {
                     // The one WITHOUT a monument, so the shot shows the list of
-                    // what could be built rather than a single row.
+                    // what could be built rather than a single row -- and near
+                    // enough that the province it is about is on screen.
                     const int empty = mine.size() > 5 ? mine[5] : mine.front();
                     if (m_renderer) m_renderer->setSelectedProvince(empty);
                     m_lastSelectedProvince = empty;
                     buildCountryProvinceList(empty);
+                    auto cit = m_provinceCenters.find(empty);
+                    if (m_renderer && cit != m_provinceCenters.end())
+                        m_renderer->flyTo(cit->second.x, cit->second.y,
+                                          m_renderer->getMinZoom() * 5.0f, 1000.0f);
                 }
             } else {
                 // The two MAP shots. Both look at a monument rather than at

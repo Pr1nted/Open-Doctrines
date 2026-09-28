@@ -5560,6 +5560,48 @@ private:
 
     /** Take back every move order leaving this province. */
     void cancelArmyMovesFrom(int fromPid);
+    // ─── WHAT HAPPENED, AFTER YOU COMMITTED TO IT ──────────────────────────
+    //
+    // The map will now tell a player what a fight WOULD be (see the forecast
+    // drawn on an attack drag). The other half was missing: once the turn
+    // resolved, an army had simply moved or simply not, and nothing said
+    // whether it was repulsed, how close it was, or how much of it came back.
+    // A forecast you cannot check against an outcome teaches nobody anything.
+    //
+    // The SAME numbers as the forecast, so the two can be compared directly --
+    // that is the whole point of keeping them rather than a prose summary.
+    //
+    // NOT SAVED, and that is deliberate: it is a view of the turn just
+    // resolved, it is rebuilt every turn, and keeping it out of the save means
+    // no format change, nothing for an older build to choke on and nothing for
+    // the multiplayer host to validate.
+    //
+    // ONLY FIGHTS THE PLAYER WAS IN. A record of two neighbours fighting each
+    // other is information the player has no way to observe, and putting it on
+    // the map would be a fog-of-war hole dressed as a feature.
+    struct BattleRecord {
+        int  turn = 0;
+        int  provinceId = 0;
+        int  attackerCid = 0;
+        int  defenderCid = 0;
+        long long sent = 0;        ///< men who marched
+        long long engaged = 0;     ///< how many of them the ground allowed on
+        long long defenders = 0;
+        long long width = 0;
+        long long survivors = 0;
+        double atkPower = 0.0;
+        double defPower = 0.0;
+        bool captured = false;
+        bool walkIn = false;       ///< nobody was home
+    };
+    std::vector<BattleRecord> m_lastTurnBattles;
+    /** The record for a province, or nullptr. */
+    const BattleRecord* battleAt(int pid) const {
+        for (const auto& b : m_lastTurnBattles)
+            if (b.provinceId == pid) return &b;
+        return nullptr;
+    }
+
     /** The share a NEW move order from this province would take. */
     int plannedMovePct(int fromPid, int type) const;
     /** The men such an order would send -- `type` < 0 is the whole garrison. */

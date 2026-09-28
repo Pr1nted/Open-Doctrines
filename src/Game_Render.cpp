@@ -1209,8 +1209,18 @@ void Game::drawCountryPanel() {
         // short panel adding it unconditionally would walk the list into the
         // buttons. Below that, the frontage is the thing to drop: a garrison
         // you cannot read is worse than a frontage you cannot see.
+        // ONE BUDGET FOR BOTH EXTRAS. The frontage bar and the battle report
+        // each push the garrison list down, and the list's height is clamped to
+        // where the buttons begin -- so adding them unconditionally walks the
+        // list into the buttons on a short panel. Below the budget the frontage
+        // goes first: what happened last turn is news, and the frontage is
+        // still readable from the map.
+        const BattleRecord* lastFight = battleAt(selPid);
         const int btnTopForFront = panelY + panelH - 56 - 3 * (28 + 4) - 8 - 30;
-        const int frontH = (btnTopForFront - (rY + 24) > 100) ? 34 : 0;
+        const int room = btnTopForFront - (rY + 24);
+        const int reportWant = lastFight ? (lastFight->walkIn ? 18 : 44) : 0;
+        const int reportH = (room - reportWant > 60) ? reportWant : 0;
+        const int frontH = (room - reportH > 100) ? 34 : 0;
         if (frontH > 0) {
             ForceComposition ours;
             if (armyIt != m_provinceArmies.end())
@@ -1250,6 +1260,40 @@ void Game::drawCountryPanel() {
             DrawRectangleRoundedLines(bar, 0.5f, 4, Color{58, 62, 80, 200});
         }
 
+        // ── AND WHAT HAPPENED HERE LAST TURN ──
+        //
+        // The same figures the forecast quoted before the order was given, so a
+        // player can hold the two side by side and learn what the frontage and
+        // the forts were actually worth. That comparison is the only way any of
+        // this becomes skill rather than superstition.
+        if (const BattleRecord* b = (reportH > 0) ? lastFight : nullptr) {
+            const bool attacking = (b->attackerCid == m_playerCountryId);
+            const bool won = b->walkIn || (b->atkPower > b->defPower);
+            // "Won" from the reader's side, not the attacker's.
+            const bool good = attacking ? won : !won;
+            const int by2 = rY + 20 + frontH;
+            const char* headline =
+                b->walkIn      ? (attacking ? T("Walked in unopposed") : T("Lost without a fight"))
+                : attacking    ? (won ? T("Your assault carried") : T("Your assault was repulsed"))
+                               : (won ? T("You were driven out")   : T("You held"));
+            DrawText(headline, rX, by2, 13,
+                     good ? Color{150, 210, 160, 255} : Color{224, 150, 150, 255});
+            if (!b->walkIn) {
+                // Losses, which is the number a player actually feels, and the
+                // engaged share, which is usually the reason for them.
+                const long long lost = std::max(0LL, b->sent - b->survivors);
+                DrawText(TextFormat(T("%s sent, %s lost, against %s"),
+                                    formatTroops(b->sent).c_str(),
+                                    formatTroops(lost).c_str(),
+                                    formatTroops(b->defenders).c_str()),
+                         rX, by2 + 15, 11, Color{170, 178, 198, 255});
+                if (b->sent > 0 && b->engaged < b->sent)
+                    DrawText(TextFormat(T("only %s of them could reach the line"),
+                                        formatTroops(b->engaged).c_str()),
+                             rX, by2 + 28, 11, Color{200, 175, 120, 255});
+            }
+        }
+
         m_armyRowHits.clear();
         struct Row { std::string label; long long men; Color col; int type; bool ours; };
         std::vector<Row> rows;
@@ -1286,7 +1330,7 @@ void Game::drawCountryPanel() {
         const int rowH = 18;
         // Sized to what is in it, capped where the buttons begin. A box of empty
         // space is a worse readout than the lines it replaced.
-        const int listY = rY + 24 + frontH;
+        const int listY = rY + 24 + frontH + reportH;
         const int btnTop = panelY + panelH - 56 - 3 * (28 + 4) - 8 - 30;
         const int listH = std::clamp((int)rows.size() * rowH + 8, 26,
                                      std::max(26, btnTop - listY));

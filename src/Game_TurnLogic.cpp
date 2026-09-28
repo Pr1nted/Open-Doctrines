@@ -445,6 +445,9 @@ const std::vector<int>& Game::provincesOf(int cid) const {
 long long g_navRouteCalls = 0, g_navRouteFails = 0;
 
 void Game::processTurn() {
+    // Last turn's fights stop being last turn's the moment this one starts.
+    m_lastTurnBattles.clear();
+
     // ── OD_SEED_KINDS=1: PUT THE OTHER KINDS INTO A WORLD THAT CANNOT RAISE
     //    THEM YET ──
     //
@@ -7057,6 +7060,10 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
     };
     const bool mayTake = mayTakeProvince(attackerCid, pid);
     bool captured = false;
+    // WHOSE PROVINCE THIS WAS, read before anything is decided: a carried
+    // assault zeroes the garrison and may change the owner, so asking
+    // afterwards gets the attacker's own id back.
+    const int defenderCidForRecord = dst->countryId;
 
     // OD_ECON_TRACE=<cid>: every assault that country makes or receives.
     {
@@ -7148,6 +7155,35 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
             }
         }
         if (m_ai) m_ai->noteAssaultRepulsed(attackerCid, (int)w.engagedAtk);
+    }
+
+    // ── THE RECORD, for the player to read next turn ──
+    //
+    // Written here, after everything is decided, because this is the one place
+    // that knows all of it: the forecast's numbers AND what they came to.
+    // Only fights the player was in -- see BattleRecord.
+    // NOT EVERY ARRIVAL IS A BATTLE. Walking into your OWN empty province is
+    // an ordinary move, and recording it made the panel announce "Walked in
+    // unopposed" over every routine reinforcement -- measured at 3,608 records
+    // in twelve turns, the great majority of them exactly that.
+    const bool wasAFight = (w.defTroops > 0) || (defenderCidForRecord != attackerCid);
+    if (wasAFight &&
+        (attackerCid == m_playerCountryId || defenderCidForRecord == m_playerCountryId)) {
+        BattleRecord r;
+        r.turn        = m_turnNumber;
+        r.provinceId  = pid;
+        r.attackerCid = attackerCid;
+        r.defenderCid = defenderCidForRecord;
+        r.sent        = attackerCount;
+        r.engaged     = w.engagedAtk;
+        r.defenders   = w.defTroops;
+        r.width       = w.width;
+        r.survivors   = survivors;
+        r.atkPower    = w.atkPower;
+        r.defPower    = w.defPower;
+        r.captured    = captured;
+        r.walkIn      = (w.defTroops <= 0);
+        m_lastTurnBattles.push_back(r);
     }
 
     if (survivors > 0) addTroopsTo(pid, attackerCid, survivors);
