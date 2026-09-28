@@ -5560,6 +5560,10 @@ private:
 
     /** Take back every move order leaving this province. */
     void cancelArmyMovesFrom(int fromPid);
+    /** The share a NEW move order from this province would take. */
+    int plannedMovePct(int fromPid, int type) const;
+    /** The men such an order would send -- `type` < 0 is the whole garrison. */
+    ForceComposition garrisonForce(int pid, int cid, int type, int pct) const;
     int m_armyMovePctSliderFrom = 0;  // from province of order whose slider is being dragged
     int m_armyMovePctSliderTo = 0;      // to province of order whose slider is being dragged
 

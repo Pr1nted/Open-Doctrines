@@ -5280,6 +5280,88 @@ void Game::drawInner() {
                             DrawCircleLines((int)hov.x, (int)hov.y, hr, lineCol);
                             drawOrderLine(src, hov, arrowSz * 0.6f, lineCol,
                                           m_armyMoveDragValidDest);
+
+                            // ── WHAT THE FIGHT WOULD LOOK LIKE ──
+                            //
+                            // weighAssault decides every assault in the game
+                            // and had NO caller outside the turn logic, so a
+                            // player committed an army knowing their own
+                            // headcount and nothing else: not what was waiting,
+                            // not how much of either side the ground lets fight
+                            // at once, not what the forts are worth. The whole
+                            // troop-type choice was a guess made blind.
+                            //
+                            // It is const and cheap, so the forecast IS the
+                            // resolver -- not a second model of it that can
+                            // drift. The force is the one plannedMovePct and
+                            // garrisonForce would actually send, so the numbers
+                            // here are the numbers of the order about to exist.
+                            const int hostileTo = m_armyMoveDragHoverPid;
+                            const Province* hp = m_provinces.getProvinceById(hostileTo);
+                            const bool hostile =
+                                m_armyMoveDragValidDest && hp &&
+                                hp->countryId != m_playerCountryId &&
+                                hp->countryId != UNC_CID && hp->countryId != BLC_CID &&
+                                !alliedCids(m_playerCountryId, hp->countryId);
+                            if (hostile) {
+                                const int pct = plannedMovePct(aimSrc, m_armyTypeFilter);
+                                const ForceComposition atk =
+                                    garrisonForce(aimSrc, m_playerCountryId,
+                                                  m_armyTypeFilter, pct);
+                                if (!atk.empty()) {
+                                    const AssaultPowers w =
+                                        weighAssault(m_playerCountryId, hostileTo, atk, false);
+                                    const double tot = w.atkPower + w.defPower;
+                                    const double edge = (tot > 0.0) ? w.atkPower / tot : 0.5;
+
+                                    const int bw = 226, bh = 76;
+                                    int bx = (int)hov.x + 18, by = (int)hov.y - bh / 2;
+                                    if (bx + bw > m_screenW - 8) bx = (int)hov.x - 18 - bw;
+                                    by = std::clamp(by, 8, m_screenH - bh - 8);
+                                    const Rectangle box{(float)bx, (float)by, (float)bw, (float)bh};
+                                    DrawRectangleRounded(box, 0.1f, 6, Color{14, 16, 22, 232});
+                                    DrawRectangleRoundedLines(box, 0.1f, 6, Color{70, 76, 96, 210});
+
+                                    DrawText(TextFormat(T("Send %s  -  %d%% of the garrison"),
+                                                        formatTroops(atk.total()).c_str(), pct),
+                                             bx + 8, by + 6, 12, Color{205, 212, 228, 255});
+                                    DrawText(TextFormat(T("They hold %s"),
+                                                        formatTroops(w.defTroops).c_str()),
+                                             bx + 8, by + 21, 12, Color{224, 176, 176, 255});
+                                    // The frontage, which is why numbers alone
+                                    // do not decide this.
+                                    DrawText(TextFormat(T("%.0f%% of yours can fight at once"),
+                                                        w.atkEngagedFrac * 100.0),
+                                             bx + 8, by + 36, 11, Color{170, 178, 198, 255});
+
+                                    // One bar, both sides. A ratio is the only
+                                    // honest summary: the absolute powers mean
+                                    // nothing without each other.
+                                    const Rectangle bar{(float)(bx + 8), (float)(by + 56),
+                                                        (float)(bw - 16), 8.0f};
+                                    DrawRectangleRounded(bar, 0.5f, 4, Color{92, 46, 46, 255});
+                                    Rectangle mine = bar;
+                                    mine.width = (float)(bar.width * std::clamp(edge, 0.0, 1.0));
+                                    DrawRectangleRounded(mine, 0.5f, 4, Color{86, 140, 96, 255});
+                                    DrawRectangleRoundedLines(bar, 0.5f, 4, Color{58, 62, 80, 200});
+                                    // THE THRESHOLD, marked. The assault is
+                                    // decided by atkPower > defPower
+                                    // (Game_TurnLogic.cpp), so the midpoint of
+                                    // this bar is the whole rule -- and a ratio
+                                    // drawn without its decision point tells a
+                                    // player everything except the thing they
+                                    // are trying to work out.
+                                    const float midX = bar.x + bar.width * 0.5f;
+                                    DrawRectangle((int)midX - 1, (int)bar.y - 3, 2,
+                                                  (int)bar.height + 6, Color{235, 235, 245, 225});
+                                    const char* verdict = (edge > 0.5) ? T("would carry")
+                                                                       : T("would be repulsed");
+                                    DrawText(verdict, bx + bw - 8 - MeasureText(verdict, 11),
+                                             by + 36, 11,
+                                             (edge > 0.5) ? Color{150, 210, 160, 255}
+                                                          : Color{224, 150, 150, 255});
+                                }
+                            }
                         }
                     } else {
                         DrawLineEx(src, mse, arrowSz * 0.5f, Color{100, 200, 255, 120});

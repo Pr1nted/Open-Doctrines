@@ -85,14 +85,36 @@ void Game::queueArmyMove(int fromPid, int toPid) {
     // one province are shares of the same army -- and of the same KIND, since
     // that is what the executor takes its share of, so an order for the militia
     // is not limited by one already given for the line infantry.
+    m_pendingMoveOrders.push_back({fromPid, toPid, plannedMovePct(fromPid, type),
+                                   m_playerCountryId, type});
+}
+
+int Game::plannedMovePct(int fromPid, int type) const {
+    // ONE RULE, TWO READERS. The order-giving path above and the forecast the
+    // map draws while you are still deciding both have to mean the same thing
+    // by "half the garrison" -- a preview that quotes a different number from
+    // the order it previews is worse than no preview.
     int sumOthers = 0;
     for (const auto& om : m_pendingMoveOrders)
         if (om.fromProvince == fromPid && om.troopType == type) sumOthers += om.pct;
-    int maxPct = 100 - sumOthers;
-    if (maxPct < 1) maxPct = 1;
-    int newPct = std::min(50, maxPct);
+    const int maxPct = std::max(1, 100 - sumOthers);
+    return std::min(50, maxPct);
+}
 
-    m_pendingMoveOrders.push_back({fromPid, toPid, newPct, m_playerCountryId, type});
+ForceComposition Game::garrisonForce(int pid, int cid, int type, int pct) const {
+    // The men an order would actually send: the stacks of the kind it names,
+    // each at the same share. `type` < 0 is the whole garrison, which is what
+    // the executor means by it too.
+    ForceComposition f;
+    auto it = m_provinceArmies.find(pid);
+    if (it == m_provinceArmies.end()) return f;
+    const long long p = (long long)std::clamp(pct, 0, 100);
+    for (const auto& u : it->second) {
+        if (u.count <= 0 || u.countryId != cid) continue;
+        if (type >= 0 && (int)u.type != type) continue;
+        f.add(u.type, u.count * p / 100);
+    }
+    return f;
 }
 
 void Game::cancelArmyMovesFrom(int fromPid) {
