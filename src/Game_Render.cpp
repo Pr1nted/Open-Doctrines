@@ -1191,6 +1191,65 @@ void Game::drawCountryPanel() {
         const int rY = panelY + 200;
         DrawText(T("Garrison"), rX, rY, 18, WHITE);
 
+        // ── HOW WIDE THE FRONT IS, AND HOW MUCH OF IT YOU FILL ──
+        //
+        // The single most important number in a battle here, and until now it
+        // was invisible. Past a province's frontage, more men do not make a
+        // stronger attack -- they are a reserve, they feed the attrition and
+        // nothing else. A player who cannot see the frontage cannot tell the
+        // difference between an army that is too small and one that is merely
+        // badly composed, so the whole troop-type choice was guesswork.
+        //
+        // THE RESOLVER'S OWN NUMBERS, not a second copy: combatWidth() and
+        // ForceComposition::frontageNeeded() are what weighAssault uses. A
+        // panel that re-derives them is a panel that eventually disagrees with
+        // the battle it is describing.
+        // ROOM FIRST. This block pushes the garrison list 34px down, and the
+        // list's own height is clamped to where the buttons begin -- so on a
+        // short panel adding it unconditionally would walk the list into the
+        // buttons. Below that, the frontage is the thing to drop: a garrison
+        // you cannot read is worse than a frontage you cannot see.
+        const int btnTopForFront = panelY + panelH - 56 - 3 * (28 + 4) - 8 - 30;
+        const int frontH = (btnTopForFront - (rY + 24) > 100) ? 34 : 0;
+        if (frontH > 0) {
+            ForceComposition ours;
+            if (armyIt != m_provinceArmies.end())
+                for (const auto& u : armyIt->second)
+                    if (u.countryId == m_playerCountryId && u.count > 0)
+                        ours.add(u.type, u.count);
+
+            const long long width = combatWidth(selPid);
+            const double needed = ours.frontageNeeded();
+            const double frac = (width > 0) ? std::min(1.0, needed / (double)width) : 0.0;
+            const bool full = needed >= (double)width && needed > 0.0;
+            const int fy = rY + 20;
+
+            DrawText(TextFormat(T("Front %s wide"), formatTroops(width).c_str()),
+                     rX, fy, 13, Color{170, 178, 198, 255});
+            // What the number MEANS, which is the half a bare figure leaves out.
+            const std::string right =
+                (needed <= 0.0)
+                    ? std::string(T("nobody on it"))
+                    : full ? TextFormat(T("full - %s in reserve"),
+                                        formatTroops((long long)(needed - (double)width)).c_str())
+                           : TextFormat(T("%.0f%% filled"), frac * 100.0);
+            const int rw = MeasureText(right.c_str(), 13);
+            DrawText(right.c_str(), rX + panelW - pad * 2 - rw, fy, 13,
+                     full ? Color{150, 210, 160, 255} : Color{215, 190, 130, 255});
+
+            const Rectangle bar{(float)rX, (float)(fy + 17),
+                                (float)(panelW - pad * 2), 7.0f};
+            DrawRectangleRounded(bar, 0.5f, 4, Color{26, 28, 38, 220});
+            if (frac > 0.0) {
+                Rectangle fill = bar;
+                fill.width = (float)(bar.width * frac);
+                DrawRectangleRounded(fill, 0.5f, 4,
+                                     full ? Color{88, 150, 100, 255}
+                                          : Color{170, 140, 80, 255});
+            }
+            DrawRectangleRoundedLines(bar, 0.5f, 4, Color{58, 62, 80, 200});
+        }
+
         m_armyRowHits.clear();
         struct Row { std::string label; long long men; Color col; int type; bool ours; };
         std::vector<Row> rows;
@@ -1227,7 +1286,7 @@ void Game::drawCountryPanel() {
         const int rowH = 18;
         // Sized to what is in it, capped where the buttons begin. A box of empty
         // space is a worse readout than the lines it replaced.
-        const int listY = rY + 24;
+        const int listY = rY + 24 + frontH;
         const int btnTop = panelY + panelH - 56 - 3 * (28 + 4) - 8 - 30;
         const int listH = std::clamp((int)rows.size() * rowH + 8, 26,
                                      std::max(26, btnTop - listY));
