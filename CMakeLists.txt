@@ -2177,6 +2177,27 @@ if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_link_libraries(NetSealTest PRIVATE MbedTLS::mbedcrypto)
 endif()
 
+add_executable(LongformPasteTest EXCLUDE_FROM_ALL
+    tests/longform_paste_test.cpp
+    src/net/TurnStore.cpp
+    src/net/TurnSeal.cpp
+    # TurnStore.cpp also holds the three NETWORK-backed stores, which need an
+    # HTTP client. The paste path this test exercises uses none of it -- the
+    # whole point of manual mode is that it works with no infrastructure -- but
+    # the translation unit is one file, so the linker wants it anyway.
+    src/net/HttpClient.cpp
+    src/net/NetUrl.cpp
+    src/net/TlsSocket.cpp
+)
+target_include_directories(LongformPasteTest PRIVATE src tests)
+target_compile_definitions(LongformPasteTest PRIVATE OD_ENABLE_NET=1)
+find_package(Threads REQUIRED)
+target_link_libraries(LongformPasteTest PRIVATE Threads::Threads)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(LongformPasteTest PRIVATE
+        MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+
 # --- connectivity, end to end ---
 # A real NetHost and a real NetSession over loopback, against a stand-in
 # account service (tests/mock_issuer.mjs). This is the only test of the SEAM

@@ -220,7 +220,16 @@ bool turnStoreDecodeText(const std::string& text, std::string& whatOut,
                          uint32_t& turnOut, std::vector<uint8_t>& payloadOut) {
     const size_t head = text.find("--- OpenDoctrines ");
     if (head == std::string::npos) return false;
-    const size_t headEnd = text.find(" ---\n", head);
+    // THE LINE ENDING IS NOT OURS TO CHOOSE. This looked for " ---\n" and so
+    // required exactly the bytes it had written itself -- but the whole point
+    // of manual mode is that the block is carried by hand, through a mail
+    // client, a chat window or a browser, any of which may hand back CRLF. A
+    // player on Windows pasting a turn from a Mac host got "that is not an
+    // OpenDoctrines turn block" and no way at all to take their turn.
+    //
+    // The body decoder has always skipped \r as "pasted text"; the header did
+    // not, and that asymmetry was the bug.
+    const size_t headEnd = text.find(" ---", head);
     if (headEnd == std::string::npos) return false;
 
     const std::string header = text.substr(head + 18, headEnd - head - 18);
@@ -229,7 +238,10 @@ bool turnStoreDecodeText(const std::string& text, std::string& whatOut,
     whatOut = header.substr(0, turnAt);
     turnOut = static_cast<uint32_t>(strtoul(header.c_str() + turnAt + 6, nullptr, 10));
 
-    const size_t bodyStart = headEnd + 5;
+    size_t bodyStart = headEnd + 4;                  // past " ---"
+    if (bodyStart < text.size() && text[bodyStart] == '\r') ++bodyStart;
+    if (bodyStart >= text.size() || text[bodyStart] != '\n') return false;
+    ++bodyStart;
     const size_t tail = text.find("--- end ---", bodyStart);
     if (tail == std::string::npos) return false;
 

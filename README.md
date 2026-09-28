@@ -480,11 +480,30 @@ instead of going quietly out of date.
 
 Alpha, and the honest version of that word:
 
-- **Platforms.** macOS (arm64) is the one the test suite has been run on end to
-  end. Windows, Linux and web are built by CI and are targeted, not yet
-  qualified — the four-platform matrix in `.github/workflows/release-game.yml`
-  compiles them, and "it compiled" is not "somebody played it". Qualifying them
-  means `tests/run_all.sh` and `tools/playtest.sh --verify` passing on each.
+- **Platforms.** This used to say that Windows, Linux and web were "targeted,
+  not yet qualified", because "it compiled" is not "somebody played it". That
+  gap has since been closed by `tools/qualify.sh`, which runs on every push:
+  install the dependencies, build the game and every test target, run the whole
+  suite, run the four-player multiplayer check headless, then **load a shipped
+  scenario, resolve turns and write a save**. The last step is the one CI cannot
+  fake — a build that passes unit tests and cannot load a map is a build that
+  does not run.
+
+  | | verdict on every push |
+  |---|---|
+  | **Linux (x64)** | qualified — built, tested, and played a game |
+  | **Windows (x64)** | qualified — built, tested, and played a game |
+  | **macOS (arm64, x64)** | qualified *with one gap*: playing a real game is unproven |
+
+  The macOS gap is the hosted runner and not the build: GitHub's macOS images
+  have no usable display, so the game cannot open a window there and the play
+  step skips itself rather than pretending. It is also the platform this is
+  developed and played on daily, which is evidence of a different kind and
+  should be read as exactly that. `OD_QUALIFY_REQUIRE_PLAY=1` turns the skip
+  into a failure for anyone running it on a Mac with a screen.
+
+  The **web** build compiles, boots and passes its own checks in CI; it does not
+  go through `qualify.sh`, which needs a window and a filesystem.
   [TempleOS](#templeos) is a separate build and a separate promise: it has been
   played in QEMU, it will not run on real hardware, and it has no multiplayer.
 - **The AI plays a whole game now, and is still not a match for a good
