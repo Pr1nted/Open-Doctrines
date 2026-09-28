@@ -500,6 +500,125 @@ inline GoodRecipe goodInputs(int good) {
  * machinery, fuel and munitions out of the same factories.
  */
 inline constexpr float GOOD_OUTPUT_SCALE  = 1.6f;
+
+/**
+ * HOW MANY OF A COUNTRY'S UNDIRECTED FACTORIES MAKE EACH GOOD.
+ *
+ * ── THE BUG THIS EXISTS TO STOP HAPPENING A THIRD TIME ──
+ *
+ * The allocator ranked goods by the FRACTION of their need that was unmet, to
+ * fix an earlier version where consumer goods were the only thing anyone ever
+ * made. The fraction was clamped to 1, and every FULLY unmet good therefore
+ * scored exactly 1.0 -- so the rank could not separate "bread, 100% short" from
+ * "shells, 100% short", the tie fell to the lowest good id, and consumer goods
+ * were once again the only thing anyone ever made. Consumer demand grows with
+ * population and is chronically unmet, so that tie was the normal state of the
+ * world, not an edge case. Measured on 1914:FRA over 120 turns: consumer
+ * produced 30.24 a turn, machinery, fuel and munitions 0.00 each against real
+ * demand, under every autosell setting.
+ *
+ * The lesson is the one about saturating numbers: a rule built on a quantity
+ * that pins at its maximum stops being a rule exactly when it is needed most.
+ *
+ * ── THE RULE ──
+ *
+ * The unmet fraction decides WHICH goods are starved. The absolute shortfall
+ * then decides HOW MUCH capacity each starved good gets. A country short of
+ * everything makes mostly food and some shells, in proportion to how much of
+ * each it is short of -- rather than all food and no shells.
+ *
+ * Deterministic: largest remainder, ties by good id, so the same world
+ * allocates the same way twice.
+ *
+ * @param need      what the country wants of each good this turn
+ * @param stock     what it is holding
+ * @param feasible  whether its raw materials can make the good at all
+ * @param factories how many undirected factories there are to share out
+ * @param out       factories assigned to each good; sums to `factories`
+ */
+inline void planOutputs(const float need[GOOD_COUNT], const float stock[GOOD_COUNT],
+                        const bool feasible[GOOD_COUNT], int factories,
+                        int out[GOOD_COUNT]) {
+    for (int g = 0; g < GOOD_COUNT; ++g) out[g] = 0;
+    if (factories <= 0) return;
+
+    // 1. the worst unmet fraction among the goods this country can actually make
+    float worst = -1e9f;
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        if (!feasible[g] || need[g] <= 0.0001f) continue;
+        const float frac = (need[g] - stock[g]) / need[g];
+        if (frac > worst) worst = frac;
+    }
+    // -1.0f is the floor the per-province rule used, and it means the same
+    // thing here: a country whose shelves are all more than twice as full as
+    // anyone wants directs nothing, rather than topping up the least-full one.
+    if (worst < -1.0f) return;
+
+    // 2. everything within a hair of it is equally starved, and shares the
+    //    capacity in proportion to HOW MUCH it is short of -- the term the
+    //    fraction threw away.
+    float shortTotal = 0.0f;
+    float shortfall[GOOD_COUNT] = {0.0f};
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        if (!feasible[g] || need[g] <= 0.0001f) continue;
+        const float frac = (need[g] - stock[g]) / need[g];
+        if (frac < worst - 0.02f) continue;
+        shortfall[g] = need[g] - stock[g];
+        if (shortfall[g] < 0.0f) shortfall[g] = 0.0f;
+        shortTotal += shortfall[g];
+    }
+    if (shortTotal <= 0.0f) {
+        // Tied at the top and nothing actually short: give them all to the
+        // lowest feasible id rather than to nothing.
+        for (int g = 0; g < GOOD_COUNT; ++g)
+            if (shortfall[g] >= 0.0f && feasible[g] && need[g] > 0.0001f) {
+                out[g] = factories; return;
+            }
+        return;
+    }
+
+    // 3. ONE FACTORY EACH, FIRST. Proportional shares alone never reach a good
+    //    whose need is small beside food: a country needing 37.18 consumer and
+    //    0.10 munitions gives munitions 0.045 of a factory, and would need
+    //    about 370 of them before largest remainder ever rounded that up. The
+    //    difference between making no shells and making a few is the
+    //    difference between being able to fight and not, so it is not a
+    //    rounding question. Biggest shortfall first, so a country with fewer
+    //    factories than starved goods feeds itself before it arms.
+    int given = 0;
+    float rem[GOOD_COUNT] = {0.0f};
+    {
+        int order[GOOD_COUNT];
+        int n = 0;
+        for (int g = 0; g < GOOD_COUNT; ++g)
+            if (shortfall[g] > 0.0f) order[n++] = g;
+        for (int a = 0; a < n; ++a)           // insertion sort, n <= GOOD_COUNT
+            for (int b = a + 1; b < n; ++b)
+                if (shortfall[order[b]] > shortfall[order[a]]) {
+                    const int t = order[a]; order[a] = order[b]; order[b] = t;
+                }
+        for (int i = 0; i < n && given < factories; ++i) { out[order[i]] = 1; ++given; }
+    }
+
+    // 4. and the rest by largest remainder, in proportion to the shortfall.
+    const int spare = factories - given;
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        if (shortfall[g] <= 0.0f) continue;
+        const float exact = (float)spare * shortfall[g] / shortTotal;
+        out[g] += (int)exact;
+        rem[g] = exact - (float)(int)exact;
+        given += (int)exact;
+    }
+    while (given < factories) {
+        int best = -1;
+        for (int g = 0; g < GOOD_COUNT; ++g) {
+            if (shortfall[g] <= 0.0f) continue;
+            if (best < 0 || rem[g] > rem[best] + 1e-6f) best = g;
+        }
+        if (best < 0) break;
+        ++out[best]; ++given; rem[best] = -1.0f;
+    }
+}
 /**
  * What a province with a MAXIMAL deposit yields per unit of its own population,
  * in the same denominator as demand and production.

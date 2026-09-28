@@ -696,73 +696,77 @@ void Game::autoAssignOutputs(int countryId, const CountryStockpile& pool) {
     auto prevIt = m_countryProduction.find(countryId);
     const CountryProduction* lastDemand =
         (prevIt != m_countryProduction.end()) ? &prevIt->second : nullptr;
+
+    // WHAT IT CAN MAKE, not just what is wanted. Assigning a factory to a good
+    // whose materials the country does not hold is how 93% of the world's
+    // factories ended up idle on the first run of this.
+    float need[GOOD_COUNT], stock[GOOD_COUNT];
+    bool feasible[GOOD_COUNT];
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        need[g]     = (g == GOOD_CONSUMER) ? consumerDemand
+                                           : (lastDemand ? lastDemand->demand[g] : 0.0f);
+        stock[g]    = pool.goods[g];
+        feasible[g] = (recipeFeasible(pool, g) > 0.0f);
+    }
+
+    // A factory its government has taken charge of is not the economy's to
+    // reallocate. Undirected ones are, every turn -- that is what makes a
+    // market a market and a plan a plan.
+    std::vector<int> undirected;
     for (int pid : provincesOf(countryId)) {
         auto ind = m_provinceIndustry.find(pid);
         if (ind == m_provinceIndustry.end()) continue;
-        // A factory its government has taken charge of is not the economy's to
-        // reallocate. Undirected ones are, every turn -- that is what makes a
-        // market a market and a plan a plan.
         if (ind->second.level <= 0 || ind->second.directed) continue;
+        undirected.push_back(pid);
+    }
+    if (undirected.empty()) return;
 
-        // WHAT IT CAN MAKE, not just what is wanted. Assigning a factory to a
-        // good whose materials the country does not hold is how 93% of the
-        // world's factories ended up idle on the first run of this: the
-        // allocator chose by need alone, every country chose consumer goods,
-        // and the ones with no suitable deposits starved with full ore piles.
-        // ── THE WORST-SUPPLIED SHELF, MEASURED IN PROPORTION ──
-        //
-        // "Feed people first, then fill the emptiest shelf" was an ALL-OR-
-        // NOTHING rule, and it starved the war economy completely. Consumer
-        // demand is chronically a little short in almost every country, so the
-        // first branch always won: measured at turn 40, consumer goods were the
-        // ONLY thing produced anywhere in the world -- machinery, fuel and
-        // munitions all at 0.0 against real demand -- so armies bought every
-        // drop of fuel at the penalty price and could not be reinforced at all.
-        //
-        // A country does not stop making shells because bread is 10% short. So
-        // the four goods are ranked together by the FRACTION of their need that
-        // is unmet, not the absolute gap: a small need that is entirely unmet
-        // outranks a large one that is nearly covered, which fills the cheap
-        // shortages quickly and then puts everything back into food.
-        //
-        // Proportional rather than absolute is what makes goods with very
-        // different scales comparable at all -- consumer demand is hundreds and
-        // fuel is single digits, so an absolute gap would rank consumer first
-        // for ever and reproduce the bug in a subtler form.
-        int want = -1;
-        float worstFrac = -1.0f;
+    // THE RULE IS IN planOutputs, NOT HERE. It used to be this loop, and it was
+    // wrong twice in the same direction -- consumer goods the only thing anyone
+    // made -- because a per-province "pick the worst shelf" cannot see that it
+    // is the hundredth factory in a row to pick the same one. The country-wide
+    // split is the thing worth getting right, so it lives where a test can
+    // reach it. See planOutputs in GameStructs.h.
+    // ONE BINARY, TWO ARMS. The old per-province rule is kept behind a switch
+    // so a bench can run both without two builds -- a stored result that
+    // tests the patch AND the build tests neither.
+    static const bool usePlan = !std::getenv("OD_ALLOC_PLAN") ||
+                                atoi(std::getenv("OD_ALLOC_PLAN")) != 0;
+    int quota[GOOD_COUNT] = {0, 0, 0, 0};
+    if (usePlan) {
+        planOutputs(need, stock, feasible, (int)undirected.size(), quota);
+    } else {
+        // The rule as it was: every factory independently picks the worst
+        // unmet fraction, ties to the lowest good id.
+        // -1.0f, NOT -1e9f. The original's initialiser is load bearing: a good
+        // more than 1x oversupplied scores below it and is not chosen, so a
+        // country with full shelves directs nothing rather than topping up the
+        // least-full one. A twin that gets this wrong is not a control.
+        int want = -1; float worstFrac = -1.0f;
         for (int g = 0; g < GOOD_COUNT; ++g) {
-            if (recipeFeasible(pool, g) <= 0.0f) continue;
-            const float need = (g == GOOD_CONSUMER)
-                                   ? consumerDemand
-                                   : (lastDemand ? lastDemand->demand[g] : 0.0f);
-            // NOT CLAMPED AT ZERO, and that is what stops a satisfied country
-            // dumping every factory into one good for ever. Left clamped, every
-            // met need scored 0, the tie fell to the lowest id, and consumer
-            // goods piled up to seven times what anyone wanted (stock 8,121
-            // against demand 1,147 at turn 120) while machinery sat at twice
-            // its reserve. Letting the fraction go NEGATIVE ranks "three times
-            // over-supplied" below "just barely covered", so surplus capacity
-            // spreads across the shelves instead of drowning one.
-            //
-            // A good nothing wants at all ranks last outright rather than at
-            // zero -- otherwise it would outrank every over-supplied good and
-            // a country with no army would make munitions in preference to
-            // anything it actually uses.
+            if (!feasible[g]) continue;
             float frac = -1e9f;
-            if (need > 0.0001f)
-                frac = std::min(1.0f, (need - pool.goods[g]) / need);
-            // Strictly greater, so ties fall to the lower good id and the same
-            // world allocates the same way twice. See the determinism note.
+            if (need[g] > 0.0001f)
+                frac = std::min(1.0f, (need[g] - stock[g]) / need[g]);
             if (frac > worstFrac) { worstFrac = frac; want = g; }
         }
-        // Nothing is makeable from what this country holds. Left undirected on
-        // purpose rather than parked on a good: the moment a trade or a
-        // conquest brings materials in, it is allocated on the next turn
-        // instead of sitting on a choice made when the cupboard was bare.
-        if (want < 0) continue;
-        ind->second.output = want;
+        if (want >= 0) quota[want] = (int)undirected.size();
     }
+
+    // Provinces are visited in the ordered index, so which factory gets which
+    // good is decided the same way every run -- see the determinism note above.
+    size_t i = 0;
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        for (int n = 0; n < quota[g] && i < undirected.size(); ++n, ++i) {
+            auto ind = m_provinceIndustry.find(undirected[i]);
+            if (ind != m_provinceIndustry.end()) ind->second.output = g;
+        }
+    }
+    // Anything planOutputs could not place -- nothing makeable from what this
+    // country holds -- is left undirected on purpose rather than parked on a
+    // good: the moment a trade or a conquest brings materials in, it is
+    // allocated on the next turn instead of sitting on a choice made when the
+    // cupboard was bare.
 }
 
 void Game::processProduction(int countryId) {

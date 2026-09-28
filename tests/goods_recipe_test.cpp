@@ -26,6 +26,8 @@
 
 #include "GameStructs.h"
 
+#include <array>
+
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -39,6 +41,9 @@ static void ok(bool cond, const std::string& what) {
     printf("  FAIL  %s\n", what.c_str());
 }
 
+static void ok(bool cond, const std::string& what, const std::string& detail) {
+    ok(cond, what + "  [" + detail + "]");
+}
 static void section(const char* name) { printf("\n== %s ==\n", name); }
 
 // Mirrors Game::recipeFeasible. Kept in step by the checks below rather than by
@@ -172,6 +177,80 @@ int main() {
         // factories. At or below 1.0 the other three goods could never be made.
         ok(base > 1.0, "a fully industrialised province feeds more than its own people");
         ok(base < 3.0, "but not so much that industrialising once solves the game");
+    }
+
+    section("who makes what, when everything is short");
+    {
+        // THE BUG THIS EXISTS TO STOP HAPPENING A THIRD TIME. The allocator
+        // ranked goods by the fraction of their need that was unmet and
+        // clamped it to 1, so EVERY fully unmet good scored exactly 1.0, the
+        // tie fell to the lowest good id, and consumer goods were the only
+        // thing a starving country ever made -- which is the very bug the
+        // fraction had been introduced to fix. Measured on 1914:FRA: consumer
+        // 30.24 a turn, machinery, fuel and munitions 0.00 each against real
+        // demand.
+        auto all = [](float c, float m, float f, float mu) {
+            std::array<float, GOOD_COUNT> a{};
+            a[GOOD_CONSUMER] = c; a[GOOD_MACHINERY] = m;
+            a[GOOD_FUEL] = f; a[GOOD_MUNITIONS] = mu;
+            return a;
+        };
+        const bool yes[GOOD_COUNT] = {true, true, true, true};
+        int out[GOOD_COUNT];
+
+        // A country at war, short of everything, with 20 factories. The
+        // numbers are 1914:FRA's own, measured.
+        auto need  = all(37.18f, 7.00f, 0.01f, 0.10f);
+        auto stock = all(0.0f, 0.0f, 0.0f, 0.0f);
+        planOutputs(need.data(), stock.data(), yes, 20, out);
+        ok(out[GOOD_CONSUMER] + out[GOOD_MACHINERY] + out[GOOD_FUEL] +
+               out[GOOD_MUNITIONS] == 20,
+           "every factory is given something to make");
+        ok(out[GOOD_CONSUMER] < 20,
+           "a country short of everything does not put every factory into food",
+           std::to_string(out[GOOD_CONSUMER]) + " of 20");
+        ok(out[GOOD_MACHINERY] > 0, "some of it makes machinery");
+        ok(out[GOOD_CONSUMER] > out[GOOD_MACHINERY],
+           "but food still gets the most, because that is what it is shortest of");
+
+        // A need of 0.10 against 37.18 is a rounding error in proportion, and
+        // it still has to get a factory -- a country that cannot make ONE
+        // shell cannot fight at all. This is what largest remainder buys.
+        ok(out[GOOD_MUNITIONS] > 0, "and a tiny munitions need still gets a plant");
+
+        // FED, and the shelves are the other way round. Nothing about the
+        // first case should make a well-fed country keep building food.
+        stock = all(60.0f, 0.0f, 0.0f, 0.0f);
+        planOutputs(need.data(), stock.data(), yes, 20, out);
+        ok(out[GOOD_CONSUMER] == 0,
+           "a country with full larders stops making food");
+
+        // Feasibility still wins over need: no oil, no fuel, however badly it
+        // is wanted. That scarcity is the point of the strategic goods.
+        const bool noFuel[GOOD_COUNT] = {true, true, false, true};
+        need  = all(1.0f, 1.0f, 100.0f, 1.0f);
+        stock = all(0.0f, 0.0f, 0.0f, 0.0f);
+        planOutputs(need.data(), stock.data(), noFuel, 9, out);
+        ok(out[GOOD_FUEL] == 0, "a country with no oil is given no fuel to make");
+        ok(out[GOOD_CONSUMER] + out[GOOD_MACHINERY] + out[GOOD_MUNITIONS] == 9,
+           "and its factories go to what it can actually make");
+
+        // Oversupplied in everything: direct nothing, rather than topping up
+        // the least-full shelf. This is the -1.0 floor, and it is load bearing
+        // -- it is the one behaviour a careless rewrite of this loses.
+        need  = all(1.0f, 1.0f, 1.0f, 1.0f);
+        stock = all(50.0f, 50.0f, 50.0f, 50.0f);
+        planOutputs(need.data(), stock.data(), yes, 20, out);
+        ok(out[GOOD_CONSUMER] + out[GOOD_MACHINERY] + out[GOOD_FUEL] +
+               out[GOOD_MUNITIONS] == 0,
+           "a country with everything overflowing directs nothing");
+
+        // Nobody wants anything: the same.
+        need = all(0.0f, 0.0f, 0.0f, 0.0f);
+        planOutputs(need.data(), stock.data(), yes, 20, out);
+        ok(out[GOOD_CONSUMER] + out[GOOD_MACHINERY] + out[GOOD_FUEL] +
+               out[GOOD_MUNITIONS] == 0,
+           "and so does one nobody wants anything from");
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
