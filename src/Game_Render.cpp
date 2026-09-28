@@ -3433,9 +3433,6 @@ void Game::drawInner() {
             if (!h.active) col = Color{(unsigned char)(col.r / 2), (unsigned char)(col.g / 2),
                                        (unsigned char)(col.b / 2), 170};
 
-            // Big enough to find, small enough not to cover the province.
-            const float base = std::clamp(11.0f + 4.0f * (float)h.level, 11.0f, 26.0f) *
-                               std::clamp(zoom * 1.4f, 0.6f, 1.8f);
             // LIGHTENED FOR THE FACE. A monument drawn in its owner's colour
             // sits on a province of that same colour and disappears into it --
             // which is what the first version did. The lit face is the colour
@@ -3463,11 +3460,11 @@ void Game::drawInner() {
                 : 1.0f;
             // Standing up on the globe, laid flat on the map. A figure at the
             // limb flattens to nothing rather than sticking out sideways into
-            // space, which is what faceCosine is for.
-            const float tall = onGlobe ? base * (1.1f + 0.45f * (float)h.level) * face
-                                       : base * 1.15f;
+            // space, which is what faceCosine is for. The sizing itself lives
+            // in odmon::figureBox, where a test can reach it.
+            const odmon::FigureBox box = odmon::figureBox(h.level, zoom, onGlobe, face);
+            const float tall = box.tall, wide = box.wide;
             if (onGlobe && tall < 2.0f) continue;
-            const float wide = base * (onGlobe ? 1.0f : 1.15f);
             const float x0 = sp.x - wide * 0.5f;
             const float y0 = sp.y;    // the ground line, for both views
 

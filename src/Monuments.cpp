@@ -126,6 +126,18 @@ const Spec& spec(Kind k) {
 
 // ── What one looks like ─────────────────────────────────────────────────────
 
+FigureBox figureBox(int level, float zoom, bool onGlobe, float face) {
+    const float lv = (float)std::clamp(level, 1, 99);
+    // Big enough to find, small enough not to cover the province. Level is in
+    // HERE, once, and must not be applied again by the caller.
+    const float base = std::clamp(11.0f + 4.0f * lv, 11.0f, 26.0f) *
+                       std::clamp(zoom * 1.4f, 0.6f, 1.8f);
+    if (!onGlobe) return {base * 1.15f, base * 1.15f};
+    // Standing up, and a little taller than wide because it is standing. `face`
+    // is the only thing that may change the proportion.
+    return {base, base * 1.35f * std::clamp(face, 0.0f, 1.0f)};
+}
+
 std::vector<Part> silhouette(Kind k) {
     using S = PartShape;
     switch (k) {

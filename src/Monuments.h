@@ -272,6 +272,26 @@ struct Part {
 std::vector<Part> silhouette(Kind k);
 
 /**
+ * How big a monument's figure is drawn, in pixels.
+ *
+ * THIS IS HERE, AND NOT IN THE RENDERER, BECAUSE IT WAS WRONG THERE AND
+ * NOTHING NOTICED. `level` grows the figure, and it was being applied twice on
+ * the globe -- once through the base size and again through the height alone.
+ * A level 2 monument came out twice as tall as it was wide, and the
+ * silhouettes are laid out in a SQUARE box, so every pediment turned into a
+ * spire and every dome into a spike. It looked deliberate.
+ *
+ * A bigger monument is BIGGER. The only thing that may stretch the box is
+ * `face`, which is foreshortening: a figure near the limb of the globe is seen
+ * nearly edge-on and squashes towards its shadow.
+ */
+struct FigureBox {
+    float wide = 0.0f;
+    float tall = 0.0f;
+};
+FigureBox figureBox(int level, float zoom, bool onGlobe, float face);
+
+/**
  * Everything the caller must be able to ask without knowing the catalogue.
  *
  * A monument the player has: where it is, what it is, how big, and whether it

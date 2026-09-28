@@ -286,6 +286,40 @@ int main() {
         ok(seated == slots, "and every opening is cut into something solid",
            std::to_string(seated) + " of " + std::to_string(slots));
 
+        // ── HOW BIG IT IS DRAWN ──
+        //
+        // The silhouettes are laid out in a SQUARE box, so a box that is not
+        // roughly square distorts every one of them -- and it distorts them
+        // PLAUSIBLY, into spires and spikes, which is why the renderer drew a
+        // level 2 monument twice as tall as it was wide for as long as it did
+        // without anyone calling it a bug. These checks are the thing that
+        // would have called it.
+        bool grows = true, proportion = true, flatIsSquare = true;
+        for (int lv = 1; lv <= 5; ++lv) {
+            for (float zoom : {0.3f, 1.0f, 3.0f}) {
+                const odmon::FigureBox g = odmon::figureBox(lv, zoom, true, 1.0f);
+                const odmon::FigureBox f = odmon::figureBox(lv, zoom, false, 1.0f);
+                // Facing the camera, a figure is near enough square.
+                if (g.tall < g.wide || g.tall > g.wide * 1.5f) proportion = false;
+                if (std::abs(f.tall - f.wide) > 0.001f) flatIsSquare = false;
+                // And a bigger monument is bigger in BOTH directions.
+                if (lv > 1) {
+                    const odmon::FigureBox p = odmon::figureBox(lv - 1, zoom, true, 1.0f);
+                    if (g.wide < p.wide - 0.001f || g.tall < p.tall - 0.001f) grows = false;
+                }
+            }
+        }
+        ok(proportion, "a monument facing the camera is about as tall as it is wide");
+        ok(flatIsSquare, "and on the flat map the box is square");
+        ok(grows, "a higher level is bigger in both directions, never just taller");
+
+        // Foreshortening is the ONE thing allowed to squash the box: a figure
+        // at the limb is seen edge-on and flattens towards its own shadow.
+        const odmon::FigureBox near = odmon::figureBox(2, 1.0f, true, 1.0f);
+        const odmon::FigureBox limb = odmon::figureBox(2, 1.0f, true, 0.1f);
+        ok(limb.tall < near.tall * 0.2f && limb.wide == near.wide,
+           "turning away from the camera flattens it without narrowing it");
+
         // An unknown kind draws SOMETHING. A monument from a newer save that
         // draws nothing is one a player cannot click on to find out what it is.
         ok(!odmon::silhouette((odmon::Kind)99).empty(),
