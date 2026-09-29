@@ -93,9 +93,16 @@ cfg = {
                     "IconCustom": False,
                     "Notes": "Built by tools/windows_vm_create.sh. "
                              "Login odtest / odtest. Disposable: rebuild rather than repair."},
+    # NativeResolution renders at the Mac's real pixel density, and Linear
+    # upscaling stops a small guest framebuffer looking like a mosaic --
+    # "Nearest" is UTM's default and is why a fresh VM looks far worse than it
+    # needs to. Neither helps the guest CHOOSE a bigger mode: an ARM64 Windows
+    # guest has no display driver (SPICE guest tools are x86/x64 only), so the
+    # framebuffer size is whatever the UEFI firmware set before boot. Raise it
+    # in the firmware menu, not in Windows.
     "Display": [{"DownscalingFilter": "Linear", "DynamicResolution": True,
-                 "Hardware": "virtio-ramfb-gl", "NativeResolution": False,
-                 "UpscalingFilter": "Nearest"}],
+                 "Hardware": "virtio-ramfb-gl", "NativeResolution": True,
+                 "UpscalingFilter": "Linear"}],
     "Drive": [
         {"Identifier": str(uuid.uuid4()).upper(), "ImageName": "disk.qcow2",
          "ImageType": "Disk", "Interface": "NVMe", "InterfaceVersion": 1, "ReadOnly": False},
