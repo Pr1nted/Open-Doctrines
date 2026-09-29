@@ -64,6 +64,12 @@ GROUPS = [
         # Drives the UTM VM from macOS through utmctl; the guest half is
         # windows_installer_test.ps1, which .ps1 files are not indexed here.
         "windows_installer_test.sh",
+        # Builds that VM from nothing, unattended. The one before it was
+        # hand-made in 2024 and rotted invisibly -- an expired evaluation build
+        # whose signature checking had broken badly enough that UAC refused
+        # mmc.exe. A VM that rebuilds in one command can be thrown away the
+        # moment it misbehaves, which is the only real defence against that.
+        "windows_vm_create.sh",
         "gen_server_raylib_stubs.py",
         # Serves the web build and collects the phone's console over the
         # network, because Safari's inspector needs a cable and the failure
