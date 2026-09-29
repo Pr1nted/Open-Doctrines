@@ -56,6 +56,17 @@ cp "$root/tools/autounattend.xml" "$work/" || die "tools/autounattend.xml is mis
 # Carried along so they are already inside the guest when it first boots, with
 # no file sharing needed to get them there.
 cp "$root/tools/windows_installer_test.ps1" "$work/" 2>/dev/null || true
+cp "$root/tools/windows_first_logon.ps1" "$work/" || die "tools/windows_first_logon.ps1 is missing"
+# The guest tools, so first logon can install them without a network. Optional:
+# fetched by tools/windows_installer_test.sh's setup notes if absent.
+if [ -f "$root/../spice-guest-tools.exe" ]; then
+    cp "$root/../spice-guest-tools.exe" "$work/"
+elif [ -f "$HOME/VMs/spice-guest-tools.exe" ]; then
+    cp "$HOME/VMs/spice-guest-tools.exe" "$work/"
+else
+    note "spice-guest-tools.exe not found; clipboard and the guest agent will be skipped"
+    note "  put it in ~/VMs/ and rebuild to include it"
+fi
 answer_iso="$docs/$name-answers.iso"
 hdiutil makehybrid -iso -joliet -o "$answer_iso" "$work" -quiet
 note "$answer_iso ($(du -h "$answer_iso" | cut -f1))"
@@ -122,8 +133,16 @@ cfg = {
          "ImageType": "CD", "Interface": "USB", "InterfaceVersion": 1, "ReadOnly": True},
     ],
     "Input": {"MaximumUsbShare": 3, "UsbBusSupport": "3.0", "UsbSharing": True},
+    # SHARED NETWORKING IS NAT: the guest reaches the world and the host cannot
+    # reach the guest. One forward is what makes `ssh -p 2222 odtest@127.0.0.1`
+    # work, and SSH is how this VM is driven -- the QEMU guest agent is an
+    # x86/x64 build and may not run on an ARM64 guest at all, whereas OpenSSH
+    # Server is an inbox ARM64 component. First logon turns it on.
     "Network": [{"Hardware": "virtio-net-pci", "IsolateFromHost": False,
-                 "MacAddress": mac, "Mode": "Shared", "PortForward": []}],
+                 "MacAddress": mac, "Mode": "Shared",
+                 "PortForward": [{"Protocol": "TCP",
+                                  "HostAddress": "127.0.0.1", "HostPort": 2222,
+                                  "GuestAddress": "", "GuestPort": 22}]}],
     # TPMDevice and UEFIBoot are both required by Windows 11; the answer file
     # bypasses the checks that a VM cannot satisfy, not these.
     "QEMU": {"AdditionalArguments": [], "BalloonDevice": False, "DebugLog": False,
@@ -144,6 +163,7 @@ PY
 
 step "done"
 note "UTM should now list '$name'. Start it and the install runs unattended."
-note "It logs in as odtest / odtest."
+note "It logs in as odtest / odtest, turns on SSH and installs the guest tools."
+note "When it settles:  ssh -p 2222 odtest@127.0.0.1"
 note ""
 note "  /Applications/UTM.app/Contents/MacOS/utmctl start $name"

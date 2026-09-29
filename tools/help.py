@@ -70,6 +70,11 @@ GROUPS = [
         # mmc.exe. A VM that rebuilds in one command can be thrown away the
         # moment it misbehaves, which is the only real defence against that.
         "windows_vm_create.sh",
+        # Runs INSIDE the guest at its first logon, off the answer disc: turns
+        # on OpenSSH Server and installs the SPICE guest tools, then writes a
+        # report to the desktop so the outcome is readable from a screenshot
+        # while nobody can log in yet.
+        "windows_first_logon.ps1",
         "gen_server_raylib_stubs.py",
         # Serves the web build and collects the phone's console over the
         # network, because Safari's inspector needs a cable and the failure

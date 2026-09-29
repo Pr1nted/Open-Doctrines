@@ -125,6 +125,30 @@
         <Password><Value>odtest</Value><PlainText>true</PlainText></Password>
       </AutoLogon>
       <TimeZone>UTC</TimeZone>
+
+      <!-- EVERYTHING ELSE, ONCE, WITHOUT ANYBODY WATCHING. Enabling SSH and
+           running the guest tools both need a real desktop session, so neither
+           can happen earlier than this. windows_first_logon.ps1 rides on the
+           same answer disc and writes what it did to C:\od-setup-report.txt
+           and to the public desktop, which is readable from a screenshot while
+           nobody can log in yet.
+
+           The drive letter of the answer disc is not knowable in advance, so
+           this walks the likely ones. The command is deliberately free of
+           ampersands and angle brackets: an answer file is XML, and a
+           CommandLine carrying a redirect needs escaping that is easy to get
+           wrong and fails at install time, where nobody is watching.
+
+           (Note for the next editor: an XML comment may not contain two
+           hyphens in a row. That is what broke this file twice while it was
+           being written.) -->
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <Order>1</Order>
+          <Description>OpenDoctrines VM setup</Description>
+          <CommandLine>cmd /c for %i in (D E F G H) do @if exist %i:\windows_first_logon.ps1 powershell.exe -ExecutionPolicy Bypass -File %i:\windows_first_logon.ps1</CommandLine>
+        </SynchronousCommand>
+      </FirstLogonCommands>
     </component>
   </settings>
 
