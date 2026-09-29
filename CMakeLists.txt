@@ -2955,6 +2955,22 @@ target_include_directories(SaveDeltaTest PRIVATE src tests tools/map_generator)
 # SaveManager.cpp alone -- no window, no GL, no map -- which is what lets it
 # run on every platform in CI and, through --emit/--verify, lets one
 # platform's save be read by all the others.
+# --- a save survives an evening of play ---
+# SaveRoundTripTest writes one archive and reads it back. This one does what a
+# player does to it over hours: append, Save, append, Save, and check after
+# every step that the turn history is still there AND still counted. See the
+# header of the test for the report that prompted it.
+add_executable(SaveDurabilityTest EXCLUDE_FROM_ALL
+    tests/save_durability_test.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveDurabilityTest PRIVATE src tests tools/map_generator)
+
 add_executable(SaveRoundTripTest EXCLUDE_FROM_ALL
     tests/save_roundtrip_test.cpp
     src/SaveManager.cpp

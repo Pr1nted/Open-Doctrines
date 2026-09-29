@@ -778,7 +778,29 @@ void Game::processTurn() {
         // game was reported as freezing on Process Turn. Whatever the save
         // costs, it says so now.
         const auto ts0 = std::chrono::steady_clock::now();
-        SaveManager::appendTurn(m_currentSavePath, delta, &stateJson, &rebelFiles);
+        // ── A SAVE THAT FAILS HAS TO SAY SO ──
+        //
+        // This return value was discarded. appendTurn refuses for real reasons
+        // -- the archive will not open, the map entry is gone, the rewrite
+        // cannot be renamed into place -- and each one meant the turn was not
+        // recorded. The game carried on regardless, so a player whose saves
+        // were failing found out only when they next loaded the world: it came
+        // back at day one, with its research and politics intact, because those
+        // live in state.json and the world is rebuilt by replaying turns that
+        // were never written.
+        //
+        // That is a lost evening delivered with no warning at all. It is said
+        // out loud now, every turn it happens, and the note is deliberately not
+        // a transient one-liner: losing a turn is worth interrupting for.
+        if (!SaveManager::appendTurn(m_currentSavePath, delta, &stateJson, &rebelFiles)) {
+            m_saveFeedback = "Turn " + std::to_string(turnNum) +
+                             " could NOT be saved. This world will not remember it.";
+            m_saveFeedbackTimer = 12.0f;
+            LoadLog() << "  appendTurn FAILED for " << m_currentSavePath
+                      << " (turn " << turnNum << ")" << std::endl;
+            fprintf(stderr, "[SAVE] appendTurn failed: %s (turn %d)\n",
+                    m_currentSavePath.c_str(), turnNum);
+        }
         m_lastSaveMs = (float)(std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - ts0).count() * 1000.0);
         if (m_config.aiDebug)

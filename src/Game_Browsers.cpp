@@ -68,7 +68,17 @@ bool Game::trySaveGame() {
         // Persist the rebel countries themselves, not just their flags —
         // otherwise their provinces reload as ownerless limbo.
         { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
-        SaveManager::writeState(m_currentSavePath, saveStateJson(), rebelFiles);
+        // Checked, for the reason written over the appendTurn call in
+        // Game_TurnLogic.cpp: state.json is the research, the claims, the
+        // active policies and the pending orders, and reporting "Game saved
+        // successfully!" over a write that did not happen is worse than
+        // reporting nothing.
+        if (!SaveManager::writeState(m_currentSavePath, saveStateJson(), rebelFiles)) {
+            m_saveFeedback = "Failed to save game!";
+            m_saveFeedbackTimer = 4.0f;
+            LoadLog() << "Save FAILED (state): " << m_currentSavePath << std::endl;
+            return false;
+        }
     }
 
     m_unsavedChanges = false;
