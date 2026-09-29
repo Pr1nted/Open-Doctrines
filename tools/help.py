@@ -57,6 +57,13 @@ GROUPS = [
         # tried, or it crashed. Its own file so tests/qualify_play_gate_test.sh
         # can feed it the real logs from the day a segfault was read as a skip.
         "qualify_play_gate.sh",
+        # The one surface qualify.sh cannot reach. It proves the Windows BUILD
+        # runs, on GitHub's runner through software OpenGL; the NSIS INSTALLER
+        # -- Start-menu shortcut, Add-or-remove-programs entry, uninstaller --
+        # is a different artifact and no automated check had ever touched it.
+        # Drives the UTM VM from macOS through utmctl; the guest half is
+        # windows_installer_test.ps1, which .ps1 files are not indexed here.
+        "windows_installer_test.sh",
         "gen_server_raylib_stubs.py",
         # Serves the web build and collects the phone's console over the
         # network, because Safari's inspector needs a cable and the failure
