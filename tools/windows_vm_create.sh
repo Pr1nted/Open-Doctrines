@@ -98,8 +98,18 @@ cfg = {
     # "Nearest" is UTM's default and is why a fresh VM looks far worse than it
     # needs to. Neither helps the guest CHOOSE a bigger mode: an ARM64 Windows
     # guest has no display driver (SPICE guest tools are x86/x64 only), so the
-    # framebuffer size is whatever the UEFI firmware set before boot. Raise it
-    # in the firmware menu, not in Windows.
+    # framebuffer size is whatever the UEFI firmware set before boot.
+    #
+    # AND IT IS CAPPED AT 1024x768. The firmware's resolution menu filters what
+    # it offers "against the video RAM size", and ramfb's buffer only reaches
+    # 1024x768 -- so the firmware route raises nothing here either.
+    #
+    # DO NOT SWAP THIS FOR virtio-gpu-pci TO GET ROUND THAT. Tried 2026-09-29:
+    # the firmware drives it, but Windows does not -- ARM64 has no virtio-gpu
+    # driver -- and the guest hangs after "starting Windows Boot Manager" with
+    # a black screen and never reaches the desktop. Reverting the Hardware
+    # field fixes it; nothing on the disk is harmed. 1024x768 is enough to
+    # watch an installer wizard, which is all this VM is for.
     "Display": [{"DownscalingFilter": "Linear", "DynamicResolution": True,
                  "Hardware": "virtio-ramfb-gl", "NativeResolution": True,
                  "UpscalingFilter": "Linear"}],
