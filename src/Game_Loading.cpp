@@ -3403,6 +3403,50 @@ bool Game::replaySaveTurns(const std::string& savePath) {
         applyTurnDelta(delta);
     }
 
+    // ── TURNS THE COUNT DOES NOT ADMIT TO ──
+    //
+    // The replay walks 1..metadata.turn_count. That number and the turns/
+    // entries are maintained separately, by five different rewrite paths, and
+    // if they ever disagree the LOW one wins silently: a save holding two
+    // hundred turns and claiming none opens as a brand new world, reports
+    // "replayed successfully", and says nothing.
+    //
+    // That is a player's report, reproduced exactly: "returning resets the
+    // world to how it was on the first day, undoing all in-game progress --
+    // however, the politics and research tabs are not reset". Politics and
+    // research come from state.json, which is written whole and restored
+    // whatever the count says; the WORLD is these deltas. A timelapse of that
+    // world is a static GIF for the same reason -- there is no history left to
+    // animate.
+    //
+    // So the turns are looked for rather than taken on trust. The bytes are
+    // still in the archive; only the number was lost, and a game that throws
+    // away a recoverable evening because a counter disagrees with the data is
+    // not defensible. Capped, so a damaged archive cannot spin here.
+    {
+        int recovered = 0;
+        for (int t = turnCount + 1; t <= turnCount + 100000; ++t) {
+            char name[32];
+            snprintf(name, sizeof(name), "turns/t_%05d.dat", t);
+            if (!reader.hasEntry(name)) break;
+            TurnDelta delta = reader.readTurn(t);
+            if (delta.turnNumber != t) break;
+            applyTurnDelta(delta);
+            ++recovered;
+        }
+        if (recovered > 0) {
+            m_turnCount = turnCount + recovered;
+            LoadLog() << "  RECOVERED " << recovered << " turn(s) this save did not "
+                      << "count (metadata said " << turnCount << ", the archive holds "
+                      << m_turnCount << ")" << std::endl;
+            fprintf(stderr, "[SAVE] recovered %d uncounted turn(s) from %s\n",
+                    recovered, savePath.c_str());
+            m_saveFeedback = "This save had lost count of " + std::to_string(recovered) +
+                             " turn(s). They were recovered.";
+            m_saveFeedbackTimer = 12.0f;
+        }
+    }
+
     // Safety net for saves that predate rebel persistence (or any gap): a
     // province may now be owned by a rebel cid that restoreRebels() couldn't
     // load, because the save has no rebels.json. Without a country for that

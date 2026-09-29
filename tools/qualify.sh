@@ -18,9 +18,16 @@
 #   3. tests/run_all.sh -- the whole suite
 #   4. the four-player multiplayer check, headless
 #   5. a real game: load a shipped scenario, resolve turns, write a save
+#   6. that save, opened again: the turns it claims are the turns it replays
 #
 # Step 5 is the one CI cannot fake. A build that passes unit tests and cannot
 # load a map is a build that does not run, and nothing before step 5 notices.
+#
+# Step 6 exists because a player reported losing an evening to a world that
+# reopened at day one. Writing a save and reading one are different claims, and
+# this script only ever made the first. It reads with the DEDICATED SERVER,
+# which needs no window -- but it can only read what step 5 wrote, so it skips
+# wherever step 5 did.
 #
 # HEADLESS
 #
@@ -356,6 +363,82 @@ PY
     fi
     ;;
 esac
+
+# ------------------------------------------------- 6. load it back again ---
+#
+# WRITING A SAVE AND READING ONE ARE DIFFERENT CLAIMS, and until a player
+# reported otherwise this script only ever made the first. It played five turns,
+# counted the turns/ entries in the file, and stopped -- so a save that was
+# written perfectly and could not be READ passed every check here.
+#
+# The report: "when a world is saved and exited, returning resets the world to
+# how it was on the first day, undoing all in-game progress -- however, the
+# politics and research tabs are not reset". Those are one symptom. The world is
+# rebuilt by REPLAYING turn deltas; politics and research come from state.json,
+# which is written whole. A save that loses COUNT of its turns reopens at day
+# one with its research intact -- and the count is a separate number from the
+# entries, maintained by five different rewrite paths.
+#
+# So: the count must agree with the entries, and the save must actually replay.
+#
+# THE DEDICATED SERVER DOES THE LOADING, not the game, and that is what makes
+# this step worth having on every runner: it has no window and no GL, so it
+# runs where "play a real game" skips -- which today is both macOS runners, the
+# platform this is developed on.
+srv=""
+for candidate in "$build/OpenDoctrinesServer" \
+                 "$build/Release/OpenDoctrinesServer.exe" \
+                 "$build/OpenDoctrinesServer.exe" \
+                 "$build/Release/OpenDoctrinesServer"; do
+    [ -x "$candidate" ] && { srv="$candidate"; break; }
+done
+
+step "load a save back"
+if [ -z "$srv" ]; then
+    bad "load a save back (no server binary was built)"
+elif [ ! -f "$sim_out/saves/Qualify.odsv" ]; then
+    # Step 5 skipped or failed, so this run wrote nothing to read back. There
+    # is no shipped save to fall back on either -- `git ls-files data/saves`
+    # is empty, they are all generated -- so this says so rather than
+    # pretending, which is the rule the play gate above exists to enforce.
+    note "SKIPPED -- step 5 wrote no save, so there is nothing to reopen."
+    n_skipped=$((n_skipped + 1))
+    skipped_steps+=("load a save back")
+else
+    # THE INVARIANT FIRST, because it says WHY if the load then disagrees.
+    counts=$(python3 - "$sim_out/saves/Qualify.odsv" <<'PYEOF'
+import sys, zipfile, json
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+    entries = len([n for n in z.namelist() if n.startswith("turns/t_")])
+    meta = json.loads(z.read("metadata.json"))
+    print(f"{meta.get('turn_count', -1)} {entries}")
+except Exception as e:
+    print(f"-1 -1 {e}")
+PYEOF
+)
+    claimed=$(printf '%s' "$counts" | cut -d' ' -f1)
+    present=$(printf '%s' "$counts" | cut -d' ' -f2)
+    if [ "$claimed" != "$present" ]; then
+        bad "load a save back (metadata says $claimed turns, the archive holds $present)"
+    else
+        cp "$sim_out/saves/Qualify.odsv" "$root/data/saves/Qualify.odsv" 2>/dev/null || true
+        load_log="$build/qualify-load.log"
+        if "$srv" --data "$root/data" --load "Qualify.odsv" --check > "$load_log" 2>&1 &&
+           grep -q "replayed successfully" "$load_log"; then
+            replayed=$(grep -oE 'Save has [0-9]+ turn' "$load_log" | grep -oE '[0-9]+' | head -1)
+            if [ "${replayed:-0}" = "$claimed" ]; then
+                note "ok -- written with $claimed turns, reopened with $replayed"
+            else
+                bad "load a save back (wrote $claimed turns, reopened with ${replayed:-0})"
+            fi
+        else
+            bad "load a save back (the save this run wrote would not reopen)"
+            tail -20 "$load_log" | sed 's/^/  /'
+        fi
+        rm -f "$root/data/saves/Qualify.odsv"
+    fi
+fi
 
 # ----------------------------------------------------------------- verdict ---
 printf '\n'

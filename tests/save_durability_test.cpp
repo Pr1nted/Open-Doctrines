@@ -194,6 +194,41 @@ int main() {
            "and so does writing state into one");
     }
 
+    section("a save that has lost count of itself");
+    {
+        // THE REPORTED FAILURE, BUILT ON PURPOSE. metadata.turn_count and the
+        // turns/ entries are separate numbers. When they disagree the LOW one
+        // used to win in silence: a save holding 12 turns and claiming 0
+        // opened as a brand new world, said "replayed successfully", and kept
+        // its research -- because state.json is written whole and restored
+        // whatever the count says. Reproduced against a real 120-turn save:
+        // "Save has 0 turn(s) to replay", exit 0, no warning.
+        //
+        // Game::replaySaveTurns now looks past the count and replays what is
+        // actually there. That recovery is only possible because the bytes
+        // survive a count that forgot them, which is what this pins -- the
+        // recovery itself needs a whole Game and is proved by loading a
+        // count-zeroed save with the dedicated server.
+        const std::string p = makeSave(dir + "lostcount.odsv");
+        for (int t = 1; t <= 12; ++t) SaveManager::appendTurn(p, aTurn(t));
+        ok(historyAgrees(p, 12, why), "twelve turns, correctly counted", why);
+
+        // Whatever the count says, the entries answer for themselves.
+        for (int t = 1; t <= 12; ++t) {
+            if (SaveManager::readTurn(p, t).turnNumber != t) {
+                ok(false, "turn " + std::to_string(t) + " is readable without the count");
+                break;
+            }
+        }
+        ok(true, "every turn is readable by NUMBER, not by the count");
+
+        // And the archive stops where it stops: recovery walks forward until a
+        // turn is missing, so turn 13 must read as absent or it would not
+        // terminate.
+        ok(SaveManager::readTurn(p, 13).turnNumber == 0,
+           "and the turn after the last one reads as absent, so a scan can stop");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }
