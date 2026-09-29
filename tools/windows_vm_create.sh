@@ -83,8 +83,14 @@ mac = "C2:" + ":".join(f"{random.randint(0,255):02X}" for _ in range(5))
 cfg = {
     "Backend": "QEMU",
     "ConfigurationVersion": 4,
+    # Icon AND IconCustom are NOT decoration. UTM skips a bundle whose
+    # Information block lacks them: the VM sits in the documents directory,
+    # utmctl never lists it, and restarting UTM changes nothing. Found by
+    # diffing this against a bundle UTM did accept.
     "Information": {"Name": bundle.split("/")[-1].removesuffix(".utm"),
                     "UUID": str(uuid.uuid4()).upper(),
+                    "Icon": "windows",
+                    "IconCustom": False,
                     "Notes": "Built by tools/windows_vm_create.sh. "
                              "Login odtest / odtest. Disposable: rebuild rather than repair."},
     "Display": [{"DownscalingFilter": "Linear", "DynamicResolution": True,
