@@ -11,6 +11,19 @@
 #   tools/windows_installer_test.sh path/to/OpenDoctrines-x.y.z-win64.exe
 #   tools/windows_installer_test.sh --release v1.2.2a     # fetch it first
 #
+# ── READ THIS BEFORE USING IT: CI IS THE PRIMARY ROUTE ──
+#
+# The same guest-side script now runs in .github/workflows/release-game.yml, on
+# the Windows runner, immediately after cpack builds the installer. That needs
+# no VM and no setup: a GitHub Windows runner is real x64 Windows with
+# administrator rights, which is all a silent install and uninstall require. It
+# was assumed this needed borrowed hardware; it did not.
+#
+# So this script is for what CI genuinely cannot do -- looking at the installer
+# WHILE IT RUNS, with a person watching: the wizard's pages, the shortcut in a
+# real Start menu, what "Add or remove programs" actually displays. Reach for
+# CI first and this second.
+#
 # ── THE ONE-TIME SETUP, AND WHY IT CANNOT BE AUTOMATED ──
 #
 # Everything here goes through utmctl, which talks to the QEMU GUEST AGENT

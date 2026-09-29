@@ -272,6 +272,31 @@ jobs:
           cpack --config build/CPackConfig.cmake -B dist/installer
           ls -lh dist/installer/*.exe dist/installer/*.dmg 2>/dev/null || true
 
+      # DOES THE INSTALLER INSTALL? Nothing ever asked, on any machine.
+      # qualify.sh proves the BUILD runs -- this runner plays a real game
+      # through software OpenGL -- but the NSIS package is a different
+      # artifact: a Start-menu shortcut aimed where the binary used to live is
+      # a working build and a broken install, and no check could tell them
+      # apart.
+      #
+      # It was assumed this needed borrowed hardware. It does not: a GitHub
+      # Windows runner is real x64 Windows with administrator rights, which is
+      # everything a silent install and uninstall needs. Only INTERACTIVE
+      # clicking is out of reach, and that is not what is being checked.
+      #
+      # Here rather than in test.yml because this is where the installer
+      # already exists -- cpack ran in the step above -- and because this is
+      # the moment it matters: before the file goes to players.
+      - name: Does the installer install, appear and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem dist/installer -Filter *.exe | Select-Object -First 1).FullName
+          if (-not $exe) { Write-Error "cpack produced no .exe to test"; exit 1 }
+          Write-Host "testing $exe"
+          & tools/windows_installer_test.ps1 -Installer $exe
+          exit $LASTEXITCODE
+
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows' || runner.os == 'macOS'
         with:
