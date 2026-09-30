@@ -205,6 +205,10 @@ GROUPS = [
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",
         "sync_map_symbols.py",
         "generate_icons.py", "generate_web_favicon.py", "make_watermark.py",
+        # The one-colour mark, outlined from the icon's own face so the two read
+        # as one identity. Paths rather than a text element, because a logo that
+        # changes shape with the viewer's font list is not a logo.
+        "make_logo_svg.py",
         "subset_font.py", "optimize_flag_svgs.py",
         # The lossless re-encode for the audio: the same packets in fuller
         # Ogg pages, and OptiVorbis over the bitstream.

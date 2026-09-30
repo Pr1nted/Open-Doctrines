@@ -1,0 +1,4 @@
+# Krita documents are zip archives of PNG and XML. Git's heuristics would treat
+# some of them as text, try to merge them line by line, and produce a file
+# Krita cannot open -- so they are declared binary rather than discovered to be.
+*.kra binary
