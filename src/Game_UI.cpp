@@ -2,6 +2,8 @@
 #include <set>
 #include "PoliticalIdentity.h"
 #include "TextInput.h"
+#include <cctype>
+#include <cstring>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif

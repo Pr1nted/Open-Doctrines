@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "util/LoadLog.h"
 #include "TextInput.h"
+#include <cstring>
 #include "Audio.h"
 #include "SaveManager.h"
 #include "GameInternals.h"
@@ -716,14 +717,19 @@ void Game::updateWorldBrowser() {
             Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_renameWorldNewName.size() < 64) {
                 // Sanitize: disallow path separators
-                if (c != '/' && c != '\\' && c != ':')
+                if (std::strchr(OD_FILENAME_FORBIDDEN, c) == nullptr)
                     m_renameWorldNewName += (char)c;
             }
             c = GetCharPressed();
         }
-        odTextEditKeys(m_renameWorldNewName, 64, "/\\:");
+        odTextEditKeys(m_renameWorldNewName, 64, OD_FILENAME_FORBIDDEN);
 
         if (IsKeyPressed(KEY_ENTER) && !m_renameWorldNewName.empty()) {
+            // The name becomes a filename, so it has to be one. See
+            // odSafeFileName(): the field filter cannot stop "CON" or a
+            // trailing dot, and both are names Windows does not store where
+            // it was asked to.
+            m_renameWorldNewName = odSafeFileName(m_renameWorldNewName);
             // Handle duplicate names by appending (1), (2), etc.
             std::string baseName = m_renameWorldNewName;
             std::string savePath = m_dataDir + "saves/" + m_renameWorldNewName + ".odsv";
@@ -783,6 +789,8 @@ void Game::updateWorldBrowser() {
             Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
             if (CheckCollisionPointRec(mouse, confBtn) && !m_renameWorldNewName.empty()) {
                 Audio::get().playSfx("confirm");
+                // Same as the Enter path above.
+                m_renameWorldNewName = odSafeFileName(m_renameWorldNewName);
                 // Handle duplicate names by appending (1), (2), etc.
                 std::string baseName = m_renameWorldNewName;
                 std::string savePath = m_dataDir + "saves/" + m_renameWorldNewName + ".odsv";
@@ -974,6 +982,9 @@ static std::string uniqueDirName(const std::string& baseDir, const std::string& 
 
 // ─── Map import ──────────────────────────────────────────
 void Game::executeMapImport() {
+    // The import name becomes a DIRECTORY name, so the same rule applies --
+    // and a directory called CON or PRN is refused just as a file is.
+    m_importName = odSafeFileName(m_importName);
     std::string destDir = uniqueDirName(m_dataDir + "custom_maps/", m_importName);
 #ifdef _WIN32
     _mkdir(destDir.c_str());
@@ -2260,14 +2271,19 @@ void Game::updateMapBrowser() {
             Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_newWorldName.size() < 64) {
                 // Sanitize: disallow path separators
-                if (c != '/' && c != '\\' && c != ':')
+                if (std::strchr(OD_FILENAME_FORBIDDEN, c) == nullptr)
                     m_newWorldName += (char)c;
             }
             c = GetCharPressed();
         }
-        odTextEditKeys(m_newWorldName, 64, "/\\:");
+        odTextEditKeys(m_newWorldName, 64, OD_FILENAME_FORBIDDEN);
 
         if (IsKeyPressed(KEY_ENTER) && !m_newWorldName.empty()) {
+            // The name becomes a filename, so it has to be one. See
+            // odSafeFileName(): the field filter cannot stop "CON" or a
+            // trailing dot, and both are names Windows does not store where
+            // it was asked to.
+            m_newWorldName = odSafeFileName(m_newWorldName);
             // Handle duplicate names by appending (1), (2), etc.
             std::string baseName = m_newWorldName;
             std::string savePath = m_dataDir + "saves/" + m_newWorldName + ".odsv";
@@ -2300,6 +2316,8 @@ void Game::updateMapBrowser() {
             Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
             if (CheckCollisionPointRec(mouse, confBtn) && !m_newWorldName.empty()) {
                 Audio::get().playSfx("confirm");
+                // Same as the Enter path above.
+                m_newWorldName = odSafeFileName(m_newWorldName);
                 // Handle duplicate names by appending (1), (2), etc.
                 std::string baseName = m_newWorldName;
                 std::string savePath = m_dataDir + "saves/" + m_newWorldName + ".odsv";
@@ -2336,12 +2354,12 @@ void Game::updateMapBrowser() {
             Audio::get().playSfx("key_type", 0.12f);
             if (c >= 32 && c < 127 && m_importName.size() < 64) {
                 // Sanitize: disallow path separators
-                if (c != '/' && c != '\\' && c != ':')
+                if (std::strchr(OD_FILENAME_FORBIDDEN, c) == nullptr)
                     m_importName += (char)c;
             }
             c = GetCharPressed();
         }
-        odTextEditKeys(m_importName, 64, "/\\:");
+        odTextEditKeys(m_importName, 64, OD_FILENAME_FORBIDDEN);
 
         if (IsKeyPressed(KEY_ENTER) && !m_importName.empty()) {
             executeMapImport();

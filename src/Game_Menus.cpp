@@ -4,6 +4,7 @@
 #include "Palette.h"
 #include "ai/AISystem.h"   // s_scriptedControl, for startBenchSeat
 #include "TextInput.h"
+#include <cstring>
 #include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
@@ -1671,17 +1672,21 @@ void Game::updateOdStatePrompt() {
         while (c > 0) {
             // A filename, not a path. A separator typed here would write
             // somewhere other than the directory the player was just shown.
-            if (c >= 32 && c <= 126 && c != '/' && c != '\\' && c != ':' &&
+            if (c >= 32 && c <= 126 &&
+                std::strchr(OD_FILENAME_FORBIDDEN, c) == nullptr &&
                 m_odStateName.size() < 64) {
                 Audio::get().playSfx("key_type", 0.12f);
                 m_odStateName += (char)c;
             }
             c = GetCharPressed();
         }
-        odTextEditKeys(m_odStateName, 64, "/\\:");
+        odTextEditKeys(m_odStateName, 64, OD_FILENAME_FORBIDDEN);
 
         if (IsKeyPressed(KEY_ENTER)) {
-            std::string name = m_odStateName;
+            // A filename, so it has to be one on every platform. See
+            // odSafeFileName(): typing cannot stop "CON" or a trailing dot,
+            // and Windows stores neither where it was asked to.
+            std::string name = odSafeFileName(m_odStateName);
             if (name.empty()) name = OdState::suggestedFilename();
             const std::string ext = ".odstate";
             if (name.size() < ext.size() ||

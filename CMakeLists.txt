@@ -2960,6 +2960,9 @@ target_include_directories(SaveDeltaTest PRIVATE src tests tools/map_generator)
 # player does to it over hours: append, Save, append, Save, and check after
 # every step that the turn history is still there AND still counted. See the
 # header of the test for the report that prompted it.
+add_executable(SafeFileNameTest EXCLUDE_FROM_ALL tests/safe_filename_test.cpp)
+target_include_directories(SafeFileNameTest PRIVATE src tests)
+
 add_executable(SaveDurabilityTest EXCLUDE_FROM_ALL
     tests/save_durability_test.cpp
     src/SaveManager.cpp
