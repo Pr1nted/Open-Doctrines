@@ -1040,6 +1040,23 @@ struct BgParticle {
     float lifetime;
 };
 
+/**
+ * Something falling past the menu on four days of the year.
+ *
+ * SCREEN SPACE, not the texture space BgParticle uses. BgParticle is an
+ * explosion pinned to a point on the land silhouette and scrolls with it;
+ * these fall down the window and do not care what is behind them. Sharing one
+ * struct would mean every field meaning two things depending on a flag.
+ */
+struct FallParticle {
+    float x, y;        // window pixels
+    float vx, vy;      // pixels per second
+    float size;
+    float spin, spinRate;
+    unsigned char r, g, b;
+    float life, age;   // seconds
+};
+
 // ─── Economy ────────────────────────────────────────────────
 struct CountryIncomeSnapshot {
     float gross = 0;      // income (base industry)

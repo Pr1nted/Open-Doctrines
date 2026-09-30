@@ -8,6 +8,7 @@
 #include "CountryFields.h"
 #include "Parties.h"
 #include "GameStructs.h"
+#include "Splash.h"
 #include "ReleaseRules.h"
 #include "net/Announcements.h"
 #include "net/Lfg.h"
@@ -3524,6 +3525,21 @@ public:
     int m_menuBgTexH = 0;
     float m_menuBgScroll = 0.0f;
     std::vector<BgParticle> m_menuParticles;
+
+    // ── The line beside the title, and the weather ──
+    //
+    // See src/Splash.h for the date rules and data/splashes.json for the lines.
+    // Loaded once; the line is chosen once per launch and then held, because a
+    // splash that re-rolled every frame would strobe.
+    odsplash::Splashes m_splashes;
+    std::string m_splashLine;      // "" when there is nothing to say
+    std::string m_splashFall;      // "snow" | "confetti" | "bats" | ""
+    std::vector<FallParticle> m_fallParticles;
+    bool m_fallPrimed = false;     // the sky starts full, not filling
+    void loadSplashes();
+    void updateFallingParticles();
+    void spawnFallParticle();
+    void drawFallingParticles();
     float m_menuParticleTimer = 0.0f;
     std::vector<bool> m_menuBgLandPixels; // 1D bool array of land mask at rendered size
     std::vector<std::pair<int,int>> m_menuBgLandCoords; // list of (x,y) land pixels for fast spawning

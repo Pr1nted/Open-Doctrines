@@ -1477,6 +1477,10 @@ bool Game::init(int screenW, int screenH, const char* title) {
     reloadFonts();
 
     loadCredits();
+    // The line beside the title, and whether anything falls past it today.
+    // Beside loadCredits() because both are menu furniture read once from the
+    // data directory, and both must be harmless if the file is missing.
+    loadSplashes();
 
     // Reaches the browser console too: emscripten routes stdout to console.log,
     // which is why none of these need an emscripten_run_script of their own.
@@ -1836,7 +1840,7 @@ void Game::shutdown() {
         if (tex.id > 0) UnloadTexture(tex);
     }
     m_thumbCache.clear();
-    m_iconPopulation = m_iconIndustry = m_iconDefence = m_iconRelations = m_iconArmyNav = m_iconNavy = m_iconResources = m_iconCountryNames = m_iconPolicies = m_iconEconomy = m_iconClaims = m_iconResearch = {};
+    m_iconPopulation = m_iconIndustry = m_iconDefence = m_iconRelations = m_iconArmyNav = m_iconNavy = m_iconResources = m_iconCountryNames = m_iconPolicies = m_iconEconomy = m_iconClaims = m_iconResearch = m_iconMonuments = {};
     if (m_renderer) { delete m_renderer; m_renderer = nullptr; }
     if (m_gameFont.texture.id > 0) UnloadFont(m_gameFont);
     m_gameFont = {};
@@ -3500,7 +3504,11 @@ bool Game::updateVolumeSliders(int startY, int itemH, int centerX, int effScroll
     for (int i = 0; i < VOLUME_COUNT; ++i) {
         const float* v = volumeSettingPtr(m_config, AUDIO_TAB, i);
         if (!v) continue;
-        const Rectangle bar = sliderBarRect(startY + (i - effScroll) * itemH, centerX);
+        const int rowY = startY + (i - effScroll) * itemH;
+        // A drag already under way is allowed to finish if the row scrolls;
+        // only a new grab needs the row to be where the player can see it.
+        if (!settingsRowOnScreen(rowY, startY, m_screenH) && m_draggingVolume != i) continue;
+        const Rectangle bar = sliderBarRect(rowY, centerX);
         const Rectangle grab = { bar.x - 10.0f, bar.y - 16.0f,
                                  bar.width + 20.0f, bar.height + 32.0f };
         if (CheckCollisionPointRec(mouse, grab)) over = true;
@@ -3950,6 +3958,7 @@ void Game::drawPauseMenu() {
         for (int vi = 0; vi < visCount; ++vi) {
             int i = s_visible[vi];
             int y = startY + (vi - effScroll) * itemH;
+            if (!settingsRowOnScreen(y, startY, m_screenH)) continue;
             bool isHeader = (items[i].actionId < 0 && items[i].label[0] == '-' && items[i].label[1] == '-');
             std::string label;
             if (isHeader && m_settingsTab == 3) {
@@ -3998,7 +4007,7 @@ void Game::drawPauseMenu() {
         for (int vi = 0; vi < visCount; ++vi) {
             int i = s_visible[vi];
             int y = startY + (vi - effScroll) * itemH;
-            if (y + itemH < startY || y > m_screenH) continue;
+            if (!settingsRowOnScreen(y, startY, m_screenH)) continue;
 
             bool isHeader = (items[i].actionId < 0 && items[i].label[0] == '-' && items[i].label[1] == '-');
 

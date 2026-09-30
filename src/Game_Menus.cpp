@@ -291,8 +291,202 @@ void Game::drawMenuBackground(bool dimmed) {
             }
         }
 
+        // In front of the land and its explosions, behind the dimming: on a
+        // dimmed menu the weather should dim with everything else rather than
+        // floating over the top of a modal.
+        drawFallingParticles();
+
         if (dimmed) {
             DrawRectangle(0, 0, m_screenW, m_screenH, {0, 0, 0, 180});
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// loadSplashes / the falling weather
+// ────────────────────────────────────────────────────────────────────────────
+
+void Game::loadSplashes() {
+    m_splashes = {};
+    m_splashLine.clear();
+    m_splashFall.clear();
+
+    std::ifstream f(m_dataDir + "splashes.json");
+    if (f) {
+        try {
+            nlohmann::json j; f >> j;
+            for (auto& l : j.value("any", nlohmann::json::array()))
+                if (l.is_string()) m_splashes.any.push_back(l.get<std::string>());
+            for (auto& o : j.value("occasions", nlohmann::json::array())) {
+                odsplash::Occasion oc;
+                oc.id   = o.value("id", "");
+                oc.fall = o.value("fall", "");
+                // "MM-DD", the only shape the file uses. A malformed one is
+                // skipped rather than becoming 00-00, which would match nothing
+                // and look like the occasion simply never fired.
+                auto md = [](const std::string& v, int& M, int& D) {
+                    if (v.size() != 5 || v[2] != '-') return false;
+                    M = atoi(v.substr(0, 2).c_str());
+                    D = atoi(v.substr(3, 2).c_str());
+                    return M >= 1 && M <= 12 && D >= 1 && D <= 31;
+                };
+                if (!md(o.value("from", ""), oc.fromMonth, oc.fromDay)) continue;
+                if (!md(o.value("to", ""),   oc.toMonth,   oc.toDay))   continue;
+                for (auto& l : o.value("lines", nlohmann::json::array()))
+                    if (l.is_string()) oc.lines.push_back(l.get<std::string>());
+                m_splashes.occasions.push_back(std::move(oc));
+            }
+        } catch (...) {
+            // A splash is decoration. A broken file costs the joke and nothing
+            // else -- it must never be a reason the menu does not open.
+            m_splashes = {};
+        }
+    }
+
+    // TODAY, unless something says otherwise. OD_SPLASH_DATE=MM-DD forces a
+    // date so the occasions can be SEEN without waiting for October -- which
+    // is how the screenshots of them are taken, and how anyone editing the
+    // file checks their line before shipping it.
+    int month = 1, day = 1;
+    if (const char* forced = std::getenv("OD_SPLASH_DATE");
+        forced && strlen(forced) == 5 && forced[2] == '-') {
+        month = atoi(std::string(forced).substr(0, 2).c_str());
+        day   = atoi(std::string(forced).substr(3, 2).c_str());
+    } else {
+        std::time_t now = std::time(nullptr);
+        if (std::tm* t = std::localtime(&now)) {
+            month = t->tm_mon + 1;
+            day   = t->tm_mday;
+        }
+    }
+
+    // Seeded from the clock once, so the line holds for the whole launch.
+    const uint32_t seed = (uint32_t)std::time(nullptr);
+    m_splashLine = odsplash::pick(m_splashes, month, day, seed);
+    m_splashFall = odsplash::fallFor(m_splashes, month, day);
+}
+
+void Game::updateFallingParticles() {
+    if (m_splashFall.empty()) return;
+    const float dt = GetFrameTime();
+
+    // ── ALREADY FALLING WHEN THE MENU OPENS ──
+    //
+    // Spawning only from the top means the first two seconds of every visit
+    // are an empty sky filling up, which reads as the effect starting rather
+    // than as weather. So the first update seeds a screenful at random
+    // heights and lets them continue from there.
+    //
+    // It is also what makes the effect photographable: the screenshot tour
+    // captures at frame 30, about half a second in, by which time nothing
+    // spawned from the top has travelled anywhere.
+    if (!m_fallPrimed) {
+        m_fallPrimed = true;
+        for (int i = 0; i < 70; ++i) {
+            spawnFallParticle();
+            if (!m_fallParticles.empty()) {
+                FallParticle& p = m_fallParticles.back();
+                p.y = (float)(rand() % std::max(1, m_screenH));
+                // Aged in proportion to how far down it already is, so the
+                // fade-in does not restart for particles that are halfway home.
+                p.age = 1.0f + (p.y / std::max(1, m_screenH)) * 4.0f;
+            }
+        }
+    }
+
+    for (auto it = m_fallParticles.begin(); it != m_fallParticles.end(); ) {
+        it->age += dt;
+        it->x += it->vx * dt;
+        it->y += it->vy * dt;
+        it->spin += it->spinRate * dt;
+        // Off the bottom, or spent. Not wrapped: a wrapped particle drifts
+        // into a column over time and the fall stops looking random.
+        if (it->age > it->life || it->y > (float)m_screenH + 20.0f)
+            it = m_fallParticles.erase(it);
+        else ++it;
+    }
+
+    // A ceiling, because this runs on the menu of a machine that may also be
+    // running four virtual machines.
+    const size_t cap = 140;
+    const float rate = (m_splashFall == "confetti") ? 34.0f : 22.0f;
+    static float carry = 0.0f;
+    carry += rate * dt;
+    while (carry >= 1.0f && m_fallParticles.size() < cap) {
+        carry -= 1.0f;
+        spawnFallParticle();
+    }
+}
+
+void Game::spawnFallParticle() {
+    {
+        FallParticle p{};
+        p.x = (float)(rand() % std::max(1, m_screenW));
+        p.y = -12.0f - (float)(rand() % 40);
+        p.age = 0.0f;
+        p.life = 14.0f;
+        p.spin = (float)(rand() % 628) / 100.0f;
+        if (m_splashFall == "snow") {
+            p.vx = -14.0f + (float)(rand() % 28);
+            p.vy = 26.0f + (float)(rand() % 34);
+            p.size = 1.6f + (float)(rand() % 22) / 10.0f;
+            p.spinRate = 0.0f;
+            p.r = 235; p.g = 243; p.b = 255;
+        } else if (m_splashFall == "confetti") {
+            // The accent colour and two neighbours, so it belongs to the game
+            // rather than looking like a stock party effect.
+            static const unsigned char pal[5][3] = {
+                {236, 199,  72}, {214,  92,  76}, { 92, 166, 214},
+                {126, 196, 122}, {232, 232, 232}};
+            const int k = rand() % 5;
+            p.vx = -34.0f + (float)(rand() % 68);
+            p.vy = 58.0f + (float)(rand() % 60);
+            p.size = 3.0f + (float)(rand() % 30) / 10.0f;
+            p.spinRate = -3.4f + (float)(rand() % 68) / 10.0f;
+            p.r = pal[k][0]; p.g = pal[k][1]; p.b = pal[k][2];
+        } else {                                    // bats
+            p.vx = -26.0f + (float)(rand() % 52);
+            p.vy = 34.0f + (float)(rand() % 40);
+            p.size = 4.0f + (float)(rand() % 26) / 10.0f;
+            p.spinRate = 0.0f;
+            // A DUSK SILHOUETTE, NOT A BLACK ONE. The first version was
+            // {24,20,32} -- the colour a bat actually is -- against a menu
+            // that is nearly black, and the screenshot showed an empty sky.
+            // Right instinct, wrong background.
+            p.r = 178; p.g = 152; p.b = 205;
+        }
+        m_fallParticles.push_back(p);
+    }
+}
+
+void Game::drawFallingParticles() {
+    if (m_splashFall.empty()) return;
+    for (const FallParticle& p : m_fallParticles) {
+        // Fade in over the first second and out over the last two, so nothing
+        // pops into or out of existence mid-screen.
+        float a = 1.0f;
+        if (p.age < 1.0f) a = p.age;
+        else if (p.life - p.age < 2.0f) a = std::max(0.0f, (p.life - p.age) / 2.0f);
+        const unsigned char alpha = (unsigned char)(a * 215.0f);
+        const Color c{p.r, p.g, p.b, alpha};
+
+        if (m_splashFall == "snow") {
+            DrawCircleV({p.x, p.y}, p.size, c);
+        } else if (m_splashFall == "confetti") {
+            // A spinning rectangle, which reads as a tumbling paper square and
+            // costs one draw call.
+            Rectangle r{p.x, p.y, p.size * 2.2f, p.size};
+            DrawRectanglePro(r, {r.width * 0.5f, r.height * 0.5f},
+                             p.spin * 57.2958f, c);
+        } else {
+            // A bat: two arcs and a body. Wings beat with age rather than with
+            // a global clock, so they are not all in step.
+            const float beat = sinf(p.age * 7.0f + p.spin);
+            const float w = p.size * 1.9f;
+            const float h = p.size * (0.42f + 0.34f * beat);
+            DrawTriangle({p.x, p.y}, {p.x - w, p.y - h}, {p.x - w * 0.45f, p.y + h * 0.5f}, c);
+            DrawTriangle({p.x, p.y}, {p.x + w * 0.45f, p.y + h * 0.5f}, {p.x + w, p.y - h}, c);
+            DrawCircleV({p.x, p.y}, p.size * 0.42f, c);
         }
     }
 }
@@ -304,6 +498,8 @@ void Game::updateMenuBackground() {
     // ── Background scrolling ──
     float dt = GetFrameTime();
     m_menuBgScroll += dt * 30.0f; // scroll speed: 30 px/s
+
+    updateFallingParticles();
 
     // ── Particle system ──
     for (auto it = m_menuParticles.begin(); it != m_menuParticles.end(); ) {
@@ -757,6 +953,48 @@ void Game::drawMainMenu() {
     const char* title = "OpenDoctrines";
     int titleW = MeasureText(title, titleSize);
     DrawText(title, centerX - titleW / 2 + titleDX, titleY, titleSize, fade(hexToColor(m_config.accent())));
+
+    // ── The splash, in the Minecraft tradition ──
+    //
+    // Off the end of the title, tilted, pulsing. Drawn from the same slide-in
+    // offset and group alpha as the title so it arrives WITH it rather than
+    // sitting still while the title moves.
+    //
+    // It is allowed to be clipped away rather than shrink indefinitely: on a
+    // narrow window the title itself is already down to its floor, and a
+    // splash competing with it for the last forty pixels makes both unreadable.
+    if (!m_splashLine.empty()) {
+        // ── IT HAS TO FIT, AND ROTATED TEXT IS WIDER THAN ITS MEASURE ──
+        //
+        // The first guard allowed sw * 0.9, on the reasoning that tilting the
+        // line brings its far end back. It does the opposite: rotating about
+        // the left edge swings the end out, so the width needed is
+        // w*cos(t) + h*sin(t) -- wider than w, for any tilt. A forty-character
+        // Halloween line ran clean off the edge of the screen.
+        //
+        // Measured at the size the PULSE reaches, not the base size, or it
+        // would fit for half of every second. Shrunk rather than clipped, and
+        // below the floor not drawn at all: on a window that narrow the title
+        // is already at its own floor and a joke beside it helps nobody.
+        const float rad = 16.0f * 3.14159265f / 180.0f;
+        const float px = (float)(centerX + titleW / 2 + 18 + titleDX);
+        auto fits = [&](int sz) {
+            const float w = (float)MeasureText(m_splashLine.c_str(), sz);
+            return px + w * cosf(rad) + (float)sz * sinf(rad) < (float)m_screenW - 10;
+        };
+        int splashSize = std::max(10, titleSize / 4);
+        while (splashSize > 9 && !fits((int)(splashSize * 1.08f))) --splashSize;
+        const float py = (float)(titleY + titleSize - splashSize);
+        if (fits((int)(splashSize * 1.08f))) {
+            // 2 Hz, between 1.0 and about 1.08 -- enough to catch the eye and
+            // not enough to be motion anybody has to look away from.
+            const float pulse = 1.0f + 0.08f * fabsf(sinf((float)GetTime() * 3.2f));
+            DrawTextPro(GetFontDefault(), m_splashLine.c_str(), {px, py}, {0, 0},
+                        -16.0f, (float)splashSize * pulse,
+                        (float)splashSize * pulse / 10.0f,
+                        fade({236, 199, 72, 255}));
+        }
+    }
 
     if (showSub) {
         const char* subtitle = T("A Grand Strategy Game");
@@ -2609,6 +2847,13 @@ bool Game::stepDisplayValueRow(int index, int dir) {
         // by dereferencing it -- the same crash Game_History.cpp records
         // hitting from the other direction.
         if (m_renderer) generatePoliticalTexture();
+        // ...and the Relations view keeps its own overlay, rebuilt only when
+        // the country under the cursor changes. Measured in game: after
+        // switching to deuteranopia the legend changed and the map did not --
+        // alliance still (54,205,64), the ordinary green -- until the view was
+        // closed and reopened. -1 is the "stale" value every other invalidation
+        // of it uses, so the next frame in that view repaints it.
+        m_lastRelationsCountryId = -1;
     } else {
         return false;
     }
@@ -2626,6 +2871,7 @@ bool Game::resetDisplayValueRow(int index) {
         m_config.colourBlindMode = 0;
         odPalette::setMode(0);
         if (m_renderer) generatePoliticalTexture();
+        m_lastRelationsCountryId = -1;   // see stepDisplayValueRow
     } else {
         return false;
     }
@@ -2847,6 +3093,7 @@ void Game::updateSettingsFromMenu() {
     for (int vi = 0; vi < mmVisCount; ++vi) {
         int i = mmVisIdx[vi];
         int y = startY + (vi - mmEffScroll) * itemH;
+        if (!settingsRowOnScreen(y, startY, m_screenH)) continue;
         std::string label = makeSettingLabel(m_settingsTab, i, m_config);
         int tw = MeasureText(label.c_str(), 30);
         if (CheckCollisionPointRec(mouse, { (float)(centerX - tw/2 - 20), (float)(y - 5), (float)(tw + 40), (float)(itemH - 10) }))
@@ -2980,9 +3227,10 @@ void Game::updateSettingsFromMenu() {
 
     // FPS slider drag -- the same control the volume rows use, so grabbing,
     // stepping and letting go sound and behave identically on both.
-    if (m_settingsTab == 0) {
-        const Rectangle bar = sliderBarRect(startY + (5 - m_settingsScroll) * itemH,
-                                            centerX);
+    const int fpsRowY = startY + (5 - m_settingsScroll) * itemH;
+    if (m_settingsTab == 0 &&
+        (settingsRowOnScreen(fpsRowY, startY, m_screenH) || m_draggingFpsSlider)) {
+        const Rectangle bar = sliderBarRect(fpsRowY, centerX);
         float t = (float)fpsTargetToIndex(m_config.fpsTarget) / (float)(FPS_STEPS - 1);
         if (sliderInteract(bar, FPS_STEPS, t, m_draggingFpsSlider)) {
             m_config.fpsTarget =
