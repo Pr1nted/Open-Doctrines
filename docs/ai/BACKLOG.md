@@ -59,39 +59,66 @@ any subset. **Cloning is closed.**
 
 ## TARGET (user, 2026-09-04): rating 300 minimum, 400 wanted
 
-Best measured is 157 under the corrected seat score (journal 32c; earlier
-figures quoted as 162/206 are ~5 high). The arithmetic says where the remaining
-points are, and it
-is NOT where the last few iterations were looking:
+**`1939:NOR:hood` RETIRED FROM THIS TABLE by the user, 2026-09-30** (item 109,
+journal 439; it was retired from LOOP.md's reject rule the same day). It is
+still measured. It no longer ranks anything and the target no longer asks
+anything of it, because journal 411 established that the seat is decided inside
+40 turns and nothing an AI change does afterwards reaches it.
 
-    seat              par   held   score   held for 300   held for 400
-    1914:FRA rung     6.7   16.5     246           20.1           26.8
-    1914:SWE rung     1.0    2.8     280            3.0            4.0
-    1939:USA rung     5.6   12.1     216           16.8           22.4
-    modern:CHN rung   2.5    7.9     316            7.5           10.0
-    1914:FRA rush     6.7    9.6     143           20.1           26.8
-    1939:NOR hood     1.3    0.4      31            3.9            5.2
+**READ THIS BEFORE QUOTING A NUMBER BELOW.** Retiring hood from the *ranking*
+does not change the bench: `od_bench` still computes the headline over SIX
+seats, and every one of the ~1,030 stored rows is a six-seat number. Changing
+that denominator would void the archive — LOOP.md hard rule 5, and this table's
+own closing warning. So both figures are given, and they are not
+interchangeable:
 
-**Three seats already clear 300. The rating is being held down by the two
-SURVIVAL seats** — `1914:FRA rush` (2.1x needed) and `1939:NOR hood` (9.8x).
+    six seats (what od_bench prints, comparable with the archive)   308.1
+    five ranking seats (what the target now asks)                   363.1
 
-So from here the target and the robustness guard point the SAME way: every
-remaining point comes from not dying. Growth work is finished — CHN and SWE are
-already above what 300 asks of them, and pushing them further is capped at 500
-anyway.
+Current position, measured 400 turns, `train-parent-setC`, seed set C, shipped
+model. These are HEADLINE figures and biased upward (item 87); no per-seed
+values were stored for that run.
 
-**Priority order is now fixed by this:**
-1. `1939:NOR hood` — a small country with one relentless neighbour. Worth 45
-   rating points on its own if it reaches 300, and it is the worst seat in every
-   model measured (7, 62, 49, 31).
-2. `1914:FRA rush` — a great power in a world where everyone attacks.
-3. Everything else is already sufficient.
+    seat              par   held    score   at 5x par   note
+    1914:FRA rung     6.7   27.6%   411.4     33.5%     1.22x from the cap
+    1914:SWE rung     1.0   13.0%   500.0      5.0%     CAPPED
+    1939:USA rung     5.6   21.8%   388.7     28.0%     1.29x from the cap
+    modern:CHN rung   2.5   18.1%   500.0     12.5%     CAPPED
+    1914:FRA rush     6.7    1.0%    15.4     33.5%     the only live survival seat
+    ---- not ranked ----
+    1939:NOR hood     1.3    0.4%    33.3       —       fixed by turn 40 (journal 411)
 
-400 needs all six at 4x par including Norway holding 5.2% under permanent
-attack. Report honestly if that proves out of reach rather than chasing it with
-seat-set changes, which would void every stored score.
+**THE CONCLUSION HAS CHANGED, AND IT IS THE OPPOSITE OF WHAT THIS TABLE SAID
+FOR TWENTY-SIX DAYS.** The 2026-09-04 version read "every remaining point comes
+from not dying. Growth work is finished." That was arithmetic over six seats
+against a best-measured 157. Over the five seats that now rank, at 363:
 
-## Standing direction (from the user, 2026-09-04)
+  - **400 is reachable with the rush seat left exactly where it is.** Four
+    ranking rung seats at the 5x cap total 2000, which is a five-seat mean of
+    400 with rush contributing nothing. Two of those four are already capped;
+    the other two are **1.22x and 1.29x** away — France holding 33.5% of the
+    world instead of 27.6%, the USA 28.0% instead of 21.8%.
+  - Via rush instead, the same 400 needs rush at score 199.9 — holding 13.4% of
+    the world against 1.0% now, **13x**. That is the same order of impossibility
+    the retired hood row carried, and rush is additionally a coin flip needing
+    ~128 seeds per arm to measure (item 19).
+
+So growth is NOT finished; it is now the cheaper of the two routes to 400, and
+survival is the expensive one. **Two cautions against acting on that too
+hard:** two of five ranking seats are already constants at the cap, so the
+instrument is compressed and a change that helps everywhere reads as nothing
+(memory seat-score-is-a-share); and this is one seed set's biased headline, so
+the 1.22x and 1.29x are directions, not distances.
+
+**Priority order, replacing the old one:**
+1. `1914:FRA rung` and `1939:USA rung` — the only two ranking seats that are
+   both live and uncapped. 400 is 1.22x and 1.29x away on them.
+2. `1914:FRA rush` — the only live survival seat, and the guard rule now rests
+   on it alone. Worth work for robustness rather than for the target.
+3. `1914:SWE rung`, `modern:CHN rung` — capped, measure nothing, ignore.
+
+Do not chase the target with seat-set changes, which would void every stored
+score. If it proves out of reach, report that instead.
 
 **The complaint is that the AI is a diplomatic pushover** — it accepts
 ceasefires, pacts, guarantees and calls to arms it should refuse. Items 1–3
@@ -1283,6 +1310,20 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
+130. ~~**Sweep the recruit order's treasury share.**~~ **DONE journal 438: A NULL, and
+   it corrects how item 111's money story should be read.** `OD_RECRUIT_SHARE` (default
+   0.20, inert) sweeps the constant behind **58.5% of every AI no-op**. At 0.50 the
+   mechanism moves -- hash, decision count, refusal share -- and nothing follows: rush
+   collapse **15/32 vs 15/32, Fisher p 1.0000** (exactly equal, not merely inside a
+   floor), rung -16.4 against a 37.6 floor. **The correction:** with a 0.20 share the
+   refusal fires when the treasury is under **$0.50**, so what binds is an EMPTY
+   TREASURY, not the share; raising the share made refusals MORE frequent (42.3% ->
+   48.7%) because a bigger order drains a near-empty treasury faster. Do not re-sweep
+   this, and do not read "58.5% too poor" as a sizing problem. The cash question is
+   items 120 and 123 (pacification, 20.4% of gross, 99.8% wasted), both the user's.
+   Also confirmed free: the rung control replicates to the digit across two binaries,
+   446.3 (se 12.3), matching journal 436.
+
 129. ~~**The monument reflex builds and then switches off what it built.**~~ **FIXED
    journal 436, SHIPPED ON journal 437 (ParrotZero 8.5.0). The rung control is now
    446.3, not 422.5 -- anything measured against the old number after 2026-09-30 is
@@ -1436,7 +1477,17 @@ opponent is not a league.
    they were the same kind of seat; they are not**, and a rule aimed at one cannot be
    expected to reach the other. Successor: 111.
 
-109. **1939:NOR:hood is a dead instrument, and LOOP.md leans on it twice.**
+109. ~~**1939:NOR:hood is a dead instrument, and LOOP.md leans on it twice.**~~
+   **DECIDED by the user 2026-09-30: option (b), RETIRED FROM THE REJECT RULE.
+   DONE journal 439.** LOOP.md edited in five places, not one -- the rush-guard
+   paragraph, the KEEP row, the "hood half works as written" claim (which was
+   backwards: it is graded and narrow because it is nearly a CONSTANT), the
+   survival note that counted it as a live small-par seat, and the seats-won
+   narrative. **The seat is still measured; it just ranks nobody.** Left alone
+   deliberately, and still open: the TARGET table at the top of this file still
+   names hood as priority 1, "worth 45 rating points on its own if it reaches
+   300", which points the loop at a seat fixed by turn 40. The user retired it
+   from the reject rule only. ORIGINAL:
    **DIAGNOSED, journal 411 (option a, done): the seat is decided before turn 40 and
    the country is then bankrupt.** Norway falls 17 provinces -> ~4 inside 40 turns and
    moves by at most one province over the next 360; it spends **0.01 on army** all

@@ -275,13 +275,25 @@ on a bistable seat is three coin flips (journal 292). Set `OD_BENCH_TURNS=400`
 in the same breath — the file's default is 120.
 
 **Read seats won, not only the rating.** A change that lifts the rating by
-winning two great-power seats while losing `1914:FRA:rush` and `1939:NOR:hood`
-is the exact trade this project has already made once and rolled back: it buys
-skill at running a large country and pays in survival, and survival is the case
-the AI actually loses.
+winning two great-power seats while losing `1914:FRA:rush` (and, as it was then
+read, `1939:NOR:hood`) is the exact trade this project has already made once
+and rolled back: it buys skill at running a large country and pays in survival,
+and survival is the case the AI actually loses.
 
 **Rush guard.** REJECT any change that gives up more than 5 points on
-`1914:FRA:rush` or `1939:NOR:hood`, whatever it does to the mean.
+`1914:FRA:rush`, whatever it does to the mean.
+
+> **`1939:NOR:hood` WAS RETIRED FROM THIS RULE by the user, 2026-09-30**
+> (backlog item 109, option b; journal 439). It ranked nobody and it could not:
+> nine 32-seed arms ever recorded for that seat span means 0.388 to 0.422 — a
+> spread of 0.034 land share across two models, a rule on and off, a training
+> candidate, and the world change that moved `1914:SWE` by 6.75. Journal 411
+> says why: Norway falls 17 provinces to ~4 inside **40 turns**, then moves by
+> at most one province over the remaining 360, spends 0.01 on army all game and
+> is under $8 for 98.8% of turns. The rump is unattacked rather than defended,
+> so nothing an AI change does after turn 40 can reach it. A guard that cannot
+> fail is not a guard — it is a line that makes every verdict look checked.
+> The seat is still MEASURED; it just does not reject anything.
 
 > **The rush half of this is not well-formed (journal 291).** `1914:FRA:rush`
 > has two regimes and nothing between: ~197 and ~3 in score space, a step of
@@ -289,10 +301,13 @@ the AI actually loses.
 > values 190 apart is not a threshold — every reading is 0 or a catastrophic
 > violation, decided by which side of the knife-edge that world fell. It is a
 > COLLAPSE RATE question and needs ~128 seeds per arm to resolve a difference
-> of 0.12. **The hood half works as written** (graded, narrow, a −4 means
-> something). Until this is restated, no candidate can be described as
-> "cleared past the rush guard" — the honest phrasing is "rush unresolved".
-> Backlog item 19 is the decision.
+> of 0.12. ~~**The hood half works as written** (graded, narrow, a −4 means
+> something).~~ **WRONG, and retired 2026-09-30 — see the note above.** It is
+> graded and narrow because it is very nearly a CONSTANT, which is the opposite
+> of the property claimed for it here: a −4 on that seat has never been observed
+> under any condition. Until the rush half is restated, no candidate can be
+> described as "cleared past the rush guard" — the honest phrasing is "rush
+> unresolved". Backlog item 19 is the decision.
 
 > **Caution on WORST SEAT (journal 287).** On the three rung seats the worst
 > seat is usually `modern:CHN`, whose par is 2.5 against a 5x cap — it scores
@@ -321,7 +336,9 @@ wins. Treat it as a REJECT unless the growth is the thing being tested.
 > seats` — read that line before quoting the number. Survival means something
 > on the small-par seats (`1914:SWE` par 1.0, `1939:NOR:hood` par 1.3), which
 > are the seats excluded for being bistable; that tension is backlog item 70
-> and is not resolved.
+> and is not resolved. **And only `1914:SWE` of those two carries information**
+> — hood is a constant (retired from the reject rule 2026-09-30), so survival
+> computed over a set including it is diluted by a seat that never varies.
 
 **Re-baseline** — re-run the bench on `model.loop-base.bin` under the *new*
 binary, and compare against that instead — whenever the diff touches anything
@@ -391,7 +408,7 @@ on concentration counters, not the rating.
 
 | | |
 |---|---|
-| **KEEP** | rating up, **survival not down**, and no rush/hood seat down more than 5 |
+| **KEEP** | rating up, **survival not down**, and `1914:FRA:rush` not down more than 5 (hood retired 2026-09-30) |
 | **REJECT** | otherwise — revert the paths listed in step 4, immediately |
 | **PARK** | interesting but unmeasurable with the current instruments; write the missing instrument as a backlog item |
 

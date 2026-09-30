@@ -6522,8 +6522,18 @@ std::string AISystem::execWar(int cid, int action) {
             long long maxRecruit = g.recruitCap(pop, pid, cid);
             // Spend at most 20% of treasury on this order. Clamp BEFORE the
             // cast: a runaway treasury times 10000 overflows long long (UB).
+            // ── OD_RECRUIT_SHARE: the share of the treasury one order may spend ──
+            //
+            // 0.20 since the executor was written, never examined, and it is the
+            // constraint that BINDS: `recruit: too poor/small` is 58.5% of every
+            // no-op the AI makes (memory ai-recruitment-is-money-bound), while
+            // raising the MANPOWER ceiling is a null because nobody reaches it.
+            // Journal 438 sweeps it. Default 0.20 keeps every stored measurement
+            // describing the code.
+            static const double kRecruitShare = std::getenv("OD_RECRUIT_SHARE")
+                                              ? atof(std::getenv("OD_RECRUIT_SHARE")) : 0.20;
             long long budgetCount = (long long)std::min((double)INT32_MAX,
-                                                        c.treasury * 0.20 * 10000.0);
+                                                        c.treasury * kRecruitShare * 10000.0);
             int count = (int)std::min((long long)INT32_MAX,
                                       std::min(maxRecruit, budgetCount));
             if (count < 1000) return didNothing("recruit: too poor/small");

@@ -32850,3 +32850,174 @@ about, and which this project has already paid for once (three models measured u
 different binaries).
 
 PENDING COMMIT -- unchanged from 436 plus AIVersion.h, and AISystem.cpp/.h still go in one commit.
+
+## 438 — iteration: sweep the recruit order's treasury share (the constant behind 58.5% of all no-ops)
+
+PRE-REGISTERED, before implementing. The user asked for improvement by any route, so the item is chosen on expected
+value rather than on backlog order, and the reasoning is written down because three of the obvious routes are already
+closed and a later reader should not reopen them:
+
+  - **The budget is not the lever.** Research 41% of gross, the whole military 0.8% ([[where-the-ai-money-goes]]), and
+    moving research money to industry was measured and LOST (OD_RESEARCH_BAR 0.35 -> 262, 0.25 -> 202, against 435).
+  - **Freeing money at war is not the lever.** austerityReflex's own comment records the experiment: trimming minority
+    settlements while at war did exactly what it was designed to -- minorities 25.58 -> 17.42, war spend 2.26 -> 2.90,
+    turns with cash in hand 13.1% -> 19.3% -- and land against the blitzer moved 29.4% -> 29.5% while the ORDINARY game
+    fell 60.6% -> 54.5%. The deciding gap there is GROSS, 112 against 321.
+  - **The hood seat is not reachable at all.** Item 109: decided before turn 40, under $8 for 98.8% of turns, 0.01
+    spent on army all game. Which leaves rush as the only survival seat a rule can touch, and four rung seats at 4-6x
+    par with two of them capped.
+
+THE CONSTANT: `execWar` case 1 sizes a recruit order as `c.treasury * 0.20 * 10000` men, capped by manpower, refused
+under 1000. Memory ai-recruitment-is-money-bound established that **budgetCount is what binds** -- `recruit: too
+poor/small` is 14,431 no-ops, **58.5% of all of them** -- and that raising the MANPOWER ceiling is a null, because a
+ceiling nobody reaches is not a constraint. The 0.20 has never been examined. Memory sweep-the-defaults says this is
+the cheapest expected value in the tree and that the largest single gain this project has measured came from exactly
+this: a constant that arrived as part of a rule rather than as a claim about one.
+
+Worth stating precisely, because it changes what the sweep can do: `count < 1000` with a share of 0.20 means the
+refusal fires when **treasury < $0.50**. So the refusal is not the share being stingy, it is the treasury being empty,
+and raising the share mostly makes the order BIGGER on the turns money exists rather than making refusals rarer.
+
+HYPOTHESIS: if the share rises, the AI converts income into men sooner, and on 1914:FRA:rush -- where it holds 1.03%
+of the world against 6.7 par, and where collapsed worlds peak the army at turn 49 / 11.2M against held worlds' turn
+254 / 26.3M (item 111's untested lead) -- the collapse rate falls.
+
+PREDICTION, committed: **the mechanism moves and the rating does not.** Two reasons to expect a null, and they are
+the reasons this is worth measuring rather than assuming: [[width-makes-numbers-irrelevant]] says power is constant
+above the frontage, so extra men buy nothing where the stacks are already deep; and the econ head already withholds
+industry for want of cash on 90.4% of the turns it wants it, so money moved into men is money taken from compounding.
+**A rung loss would be the informative outcome** -- it would price what the 0.20 is actually buying.
+
+STEP 1 IS A MECHANISM CHECK, NOT A BENCH -- item 117's habit, two minutes against two hours: one seat, OD_ACT_HIST,
+read the refusal share and the army size at 0.20 / 0.50 / 0.80 and confirm the decision hash moves at all. Benching a
+knob whose firings nobody counted is how this loop has wasted whole days.
+
+PATHS TOUCHED (for a mechanical revert): src/ai/AISystem.cpp.
+
+MECHANISM CHECK, one rush seed (13579), 400 turns, before the bench:
+
+  share   seat   "recruit: too poor/small"   decisions
+  0.20     0.4        42.3%                   257,604      <- shipped
+  0.50    23.6        48.7%                   240,484
+  0.80    22.4        44.3%                   240,048
+
+The mechanism is live: the hash moves and the decision count moves with it. **The seat number is one coin flip and I
+am not reading it as an effect** -- memory bistable-seats-need-many-seeds, and LOOP.md's own note that this seat
+returns one of two values 190 apart in score space. 0.4 -> 23.6 is one world landing the other side of the knife edge.
+The prediction above STANDS as written; changing it now because one seed looked good is the whole reason it was
+committed first.
+
+Worth keeping: the refusal share went UP, 42.3% -> 48.7%, which is the right direction for the mechanism as analysed
+-- a bigger order empties the treasury faster, so more turns start under the $0.50 the refusal tests. The share does
+not make refusals rarer; it converts money into men faster on the turns money exists.
+
+THE BENCH: 0.20 against 0.50, 32 rush seeds and 32 rung seeds, pinned binary f56104e9. Statistic pre-registered as the
+rush COLLAPSE RATE by Fisher (LOOP.md: this seat is a rate question, not a score question) and the rung per-seed rating
+against its floor.
+
+RESULT, all four arms clean:
+
+                  rush collapsed   land    rung
+  0.20 (shipped)      15/32        10.92   446.3 (se 12.3)
+  0.50                15/32        10.30   429.9 (se 14.7)
+  rung -16.4, floor 37.6 -> WITHIN FLOOR       rush Fisher p 1.0000
+
+**BOTH HALVES OF THE PREDICTION HELD.** The mechanism moved -- hash, decision count and refusal share all shifted --
+and nothing measurable followed. The rush collapse rate is not merely inside a floor, it is **exactly equal**, 15 and
+15 on the same 32 seeds. The one seed that read 0.4 against 23.6 was one coin flip, as registered before the run.
+
+A CONTROL THAT REPLICATES TO THE DIGIT, worth recording because it is the second time today: this arm's rung control
+is **446.3 (se 12.3)**, identical to journal 436's on-arm on the same seeds -- measured on a DIFFERENT binary, the one
+carrying this iteration's knob. So the knob is inert at its default and the 446.3 control is reproducible across
+builds. That is the cheapest possible check that a new gate did not leak, and it came free.
+
+VERDICT: **PARK, a null.** The knob stays, defaulting to 0.20, which is what every stored measurement describes. It
+stays rather than being reverted for the same reason OD_RESEARCH_BAR does: the answer is now recorded in the tree, so
+the next reader who notices an unexamined 0.20 does not spend two hours finding out.
+
+WHAT THIS CORRECTS, and it is the useful part. Memory ai-recruitment-is-money-bound says budgetCount is what binds and
+that `recruit: too poor/small` is 58.5% of every no-op. True, and it reads as "the order is sized too stingily". It is
+not: with a share of 0.20 the refusal fires when **treasury < $0.50**, so what binds is the treasury being EMPTY, not
+the fraction of it the order may spend. Raising the share made refusals MORE frequent, 42.3% -> 48.7%, because a bigger
+order empties a near-empty treasury faster. **The refusal is a symptom of a country with no cash, and the cure is not
+on this line.** Where the cash goes is items 120 and 123, both of which are the user's to decide -- pacification at
+20.4% of gross with 99.8% of it wasted.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (OD_RECRUIT_SHARE, default 0.20 = inert), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md.
+
+PENDING COMMIT: the knob alone is worth keeping; it is inert and it documents a closed question. Everything from
+journals 435-437 is already committed as e8f7bf9.
+
+## 439 — the hood seat stops ranking things (user's call, item 109 option b)
+
+The user's decision on journal 411's diagnosis: `1939:NOR:hood` is retired from LOOP.md's reject rule.
+
+WHY IT WAS NEVER A GUARD. Nine 32-seed arms have been recorded for that seat across two models, a rule on and off, a
+training candidate and the world change that moved `1914:SWE` by 6.75. Their means span **0.388 to 0.422** — 0.034 of
+land share, total. Journal 411 found the reason: Norway falls 17 provinces to ~4 inside **40 turns**, then moves by at
+most one province over the remaining 360, spends 0.01 on army all game, and sits under $8 for 98.8% of turns. One of
+its three neighbours blitzes, takes what it can reach, and stops — so the rump survives by being ignored, not by being
+defended, and no AI decision after turn 40 can touch it.
+
+A guard that cannot fail is worse than no guard, because every verdict passes it and therefore looks checked.
+
+FIVE EDITS, NOT ONE, and the count is the point — a rule retired in one place and left standing in four is how
+[[nothing-routes-findings-back-to-the-protocol]] happens:
+  1. the rush-guard paragraph — hood removed, with the diagnosis recorded inline rather than as a pointer;
+  2. the KEEP row in the verdict table, which named "rush/hood";
+  3. the blockquote claiming **"the hood half works as written (graded, narrow, a −4 means something)"** — which was
+     exactly backwards. It is graded and narrow because it is nearly a CONSTANT, and a −4 has never been observed on
+     that seat under any condition;
+  4. the survival note listing it beside `1914:SWE` as a small-par seat where survival means something — only SWE of
+     the two carries information, so survival over a set including hood is diluted by a seat that never varies;
+  5. the seats-won narrative, which described losing hood as half of a trade the project once made.
+
+DELIBERATELY NOT TOUCHED: the TARGET table at the top of BACKLOG.md still names hood priority 1, "worth 45 rating
+points on its own if it reaches 300". The user retired it from the REJECT RULE, which is what this entry did. The table
+is a separate claim and a separate decision, and it still points the loop at a seat fixed by turn 40 — flagged for the
+user rather than quietly rewritten, because the table is where the target itself lives.
+
+CONSEQUENCE, worth stating plainly: with hood retired the reject rule rests on `1914:FRA:rush` alone, and LOOP.md's own
+blockquote says that half is **not well-formed** either — it is a collapse-rate question needing ~128 seeds per arm
+(backlog item 19, still the user's). So the loop currently has one guard seat, and it is one whose threshold nobody can
+evaluate at the sample sizes an iteration can afford. That is a smaller claim than the protocol used to make, and a
+true one.
+
+PATHS TOUCHED: docs/ai/LOOP.md, docs/ai/BACKLOG.md, docs/ai/LOOP_JOURNAL.md.
+PENDING COMMIT: the protocol edits above, plus journal 438's inert OD_RECRUIT_SHARE knob.
+
+## 439b — and out of the target table (user's call, same day)
+
+The other half of item 109's option (b). The table was rewritten rather than having a row deleted, because deleting
+the row silently changes what the target means.
+
+WHAT THE ARITHMETIC NOW SAYS, and it REVERSES the conclusion this table carried for twenty-six days. The 2026-09-04
+version read *"every remaining point comes from not dying. Growth work is finished."* That was six seats against a
+best-measured 157. Over the five seats that now rank, on the shipped model at 400 turns (`train-parent-setC`):
+
+    six seats, what od_bench prints, comparable with the archive   308.1
+    five ranking seats, what the target now asks                   363.1
+
+  - **400 is reachable with the rush seat left exactly where it is.** Four ranking rung seats at the 5x cap total
+    2000 = a five-seat mean of 400, with rush contributing nothing. Two are already capped; `1914:FRA:rung` is
+    **1.22x** from its cap (27.6% -> 33.5% of the world) and `1939:USA:rung` **1.29x** (21.8% -> 28.0%).
+  - Through rush instead, 400 needs that seat at score 199.9 — 13.4% of the world against 1.0% now, **13x**, the same
+    order of impossibility the retired hood row carried, and on a seat that is a coin flip needing ~128 seeds an arm.
+
+So growth is not finished; it is now the CHEAPER of the two routes, and survival is the dear one. That is a real
+change of direction and it came out of an accounting decision rather than a measurement, which is worth flagging: the
+old priority list was not wrong about the numbers, it was reading them over a denominator containing a constant.
+
+TWO CAUTIONS WRITTEN INTO THE TABLE, because the direction is easy to over-trust: two of the five ranking seats are
+already pinned at the cap, so the instrument is compressed and a change helping every country reads as nothing
+([[seat-score-is-a-share]]); and these are one seed set's HEADLINE figures, biased upward (item 87), with no per-seed
+values stored — so 1.22x and 1.29x are directions, not distances.
+
+WHAT WAS DELIBERATELY NOT CHANGED: **the bench still computes its headline over SIX seats.** Retiring hood from the
+ranking and changing the rating's denominator are different acts; the second voids ~1,030 stored rows and is LOOP.md
+hard rule 5's explicit ask-first case. Both numbers are printed in the table, labelled, with a note that they are not
+interchangeable.
+
+PATHS TOUCHED: docs/ai/BACKLOG.md, docs/ai/LOOP_JOURNAL.md.
+PENDING COMMIT: journals 438-439b — the inert OD_RECRUIT_SHARE knob, LOOP.md's five edits, the rewritten target table.
