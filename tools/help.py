@@ -32,6 +32,11 @@ GROUPS = [
         # they build on the machine that built them, which is the condition a
         # packaging bug hides in; this is where one gets installed and started.
         "linux_vm_create.sh",
+        # And what to do with that guest: build the packages in it, install one
+        # where none of its libraries are, run it, remove it, and check it took
+        # nothing of the player's with it. CI cannot ask any of that -- it runs
+        # on the machine that built the game.
+        "linux_vm_test.sh",
         # The Flatpak manifest and its AppStream metainfo pin a published URL
         # and a changelog entry by hand, nothing builds from them, and so both
         # sat two releases stale. This says so, every suite run.
