@@ -133,11 +133,32 @@ cfg = {
          "ImageType": "CD", "Interface": "USB", "InterfaceVersion": 1, "ReadOnly": True},
     ],
     "Input": {"MaximumUsbShare": 3, "UsbBusSupport": "3.0", "UsbSharing": True},
-    # SHARED NETWORKING IS NAT: the guest reaches the world and the host cannot
-    # reach the guest. One forward is what makes `ssh -p 2222 odtest@127.0.0.1`
-    # work, and SSH is how this VM is driven -- the QEMU guest agent is an
-    # x86/x64 build and may not run on an ARM64 guest at all, whereas OpenSSH
-    # Server is an inbox ARM64 component. First logon turns it on.
+    # THIS GUEST HAS NO NETWORK, AND THE PortForward BELOW DOES NOTHING.
+    # Both were established the hard way on 2026-09-30; read this before
+    # spending an evening on either.
+    #
+    #   1. Windows on ARM has no inbox virtio-net driver, so virtio-net-pci
+    #      gives the guest an adapter it cannot use. `ipconfig` prints its
+    #      header and nothing else. No DHCP, no address, no route in or out.
+    #      Same root cause as the display: Windows/ARM64 ships no virtio
+    #      drivers, and they are kernel mode so nothing emulates them.
+    #
+    #   2. UTM launches this VM with `-netdev vmnet-shared`, and hostfwd works
+    #      only with QEMU's slirp (`-netdev user`). PortForward entries in the
+    #      config are accepted and silently ignored. Checking that the host
+    #      port is OPEN does not verify this -- another VM on the machine had
+    #      bound 2222 for itself, and an hour went into authenticating against
+    #      somebody else's Solaris guest. `ssh -v` names the server, and
+    #      Windows always answers OpenSSH_for_Windows_x.x.
+    #
+    # So there is no SSH into this VM and no utmctl exec either. Files reach it
+    # on an ISO, which works well: see how the key disc was built in this
+    # session's history, or just hand the installer over the same way. That is
+    # enough for what this VM is for -- watching an installer wizard -- and the
+    # check that gates releases runs on CI's x64 Windows runner regardless.
+    #
+    # The forward is left in place because it costs nothing and becomes real if
+    # the network is ever fixed (ARM64 virtio-net drivers from virtio-win).
     "Network": [{"Hardware": "virtio-net-pci", "IsolateFromHost": False,
                  "MacAddress": mac, "Mode": "Shared",
                  "PortForward": [{"Protocol": "TCP",
