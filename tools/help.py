@@ -28,6 +28,10 @@ GROUPS = [
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
         "make_linux_packages.sh",
+        # A disposable Linux guest to install those packages INTO. CI proves
+        # they build on the machine that built them, which is the condition a
+        # packaging bug hides in; this is where one gets installed and started.
+        "linux_vm_create.sh",
         # The Flatpak manifest and its AppStream metainfo pin a published URL
         # and a changelog entry by hand, nothing builds from them, and so both
         # sat two releases stale. This says so, every suite run.

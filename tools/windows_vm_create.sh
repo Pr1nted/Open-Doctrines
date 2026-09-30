@@ -216,7 +216,10 @@ print(f"  config written: {cores} cores, {ram} MB, aarch64/virt, TPM + UEFI")
 PY
 
 step "done"
-note "UTM should now list '$name'. Start it and the install runs unattended."
+note "RESTART UTM FIRST: it keeps a registry of VMs rather than scanning its"
+note "Documents directory, so a bundle written behind its back is invisible"
+note "until UTM next launches -- utmctl answers 'Virtual machine not found'."
+note "Then UTM lists '$name'. Start it and the install runs unattended."
 note "It logs in as odtest / odtest, turns on SSH and installs the guest tools."
 note "When it settles:  ssh -p 2222 odtest@127.0.0.1"
 note ""
