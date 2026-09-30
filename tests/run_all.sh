@@ -359,6 +359,12 @@ check "sdk bindings vs abi.json" $PY "$root/tools/check_bindings.py"
 # that can catch a generated call with the wrong arity.
 check "generated script bindings compile" bash "$root/tools/check_script_bindings.sh"
 
+# A tool the model is OFFERED but nothing ANSWERS costs it a round of its budget
+# and teaches it the question cannot be asked. Nothing at compile time catches
+# that -- the catalogue and the answers are in different files and neither
+# refers to the other -- so it is checked here. See tools/check_llm_tools.py.
+check "every llm tool offered is answered" $PY "$root/tools/check_llm_tools.py"
+
 # THE COMPATIBILITY GATE, and a different question from the two checks above.
 #
 # ModAbiTest asks "does abi.json describe the host this build has?" -- both

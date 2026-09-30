@@ -30371,3 +30371,2482 @@ PENDING COMMIT — the census, still uncommitted:
     Built for backlog 103 and it answers half of it -- under the doctrine
     reflex wars are 4.2 turns shorter across eight worlds, and the modern
     map starts and ends 106 more of them at unchanged concurrency.
+
+## 406 — iteration: does the doctrine reflex's +52 survive the 2026-09-20 build? (backlog item 104)
+
+PRE-REGISTERED, written before any run.
+
+FIRST, A SHA MAP, because main was rewritten on 2026-09-21 (message-only, trees byte-identical: old fbd11ef and new
+3e95626 share tree e2c32dc). Every SHA this journal cites from 9470c70 onward now has a new one on main; the old ones still
+resolve on GitHub. The ones journals 394-405 cite:
+
+    9a0ff43 -> 412d123   a744106 -> 43b68e9   d435926 -> d828051   eafc3ab -> d0d5a61   df3b3e5 -> b6d9b22
+    7790730 -> 8cc4eba   b830e95 -> b0788af   d40292e -> e88fec6   846c57f -> 0915223   764f5e5 -> ff9f9ae
+    976d457 -> 1de1b89
+
+(Mapped by subject line against the new origin/main; every one matched exactly once.) Note b6d9b22, formerly df3b3e5, is
+where journal 405's census and its journal entry were committed, under a message about state industry.
+
+THE QUESTION. Journal 405 found the reference decision count up 12.2% on the 2026-09-20 build -- 81,340 -> 91,296 on
+1914:FRA seed 13579. Every measurement of OD_DOCTRINE_REFLEX=3 (journals 399-403) predates that. Nothing says the gain is
+gone, but the ship decision should not rest on a world that has since changed by an eighth of its decisions. Several of the
+commits in between reach exactly what the reflex spends: the pacification rebate and the AI manpower ceiling (ff9f9ae), a
+state-industry reflex (b6d9b22), and the reflex's own money gates read the same treasuries those commits change.
+
+DESIGN: **journal 402's seeds, both arms, on the current build.** Same 48 rung seeds (build/loop402/j402_rung_seeds.txt)
+and same 32 SWE seeds, so that the ONLY thing different from journal 402 is the binary. Journal 402 got +51.8 (floor
+26.2) on these seeds; the difference between that and today's number is the build's effect on the rule, not the seeds'.
+This deliberately does NOT use fresh seeds -- the question is not "is the effect real" (402 settled that on fresh seeds)
+but "did the world change it", and reusing the seeds is what makes that answerable.
+
+Build: HEAD export of local 11759c7 (tree-identical to the rewritten main plus the user's three unpushed commits -- map
+painting on the GPU, menu memory, a connect-timeout test; none in the AI or turn path). Gates on 1914:FRA seed 13579:
+reflex off and =3 recorded against the 2026-09-20 references 2904055102330604147/91296 and 742276098712025459/130092. A
+mismatch dates the world again and is a FINDING; the only stop is off == =3.
+
+STATISTIC AND VERDICT RULE, unchanged from journal 402. Per-seed rating over the three rung seats, floor
+1.96*sqrt(se_on^2 + se_off^2), per-seat land by permutation, SWE annihilation by Fisher, SWE land by permutation.
+**GAIN HOLDS** if the rung difference is positive and clears its floor AND SWE is not significantly worse.
+**GAIN LOST** if it does not clear. **HARM** if SWE is significantly worse. And, separately, the build's effect on the
+rule: **today's difference minus 402's +51.8**, with a floor from both runs' se's, recorded as "moved" or "not resolvable".
+
+PREDICTION, committed, with its width stated honestly: **the gain holds and clears, somewhere between +30 and +70.**
+Reason for the width: three money-side commits could push either way -- a solvent AI passes the reflex's cash and budget
+gates more often (more firing, bigger gain) while a better-funded world may also defend better against an armed neighbour
+(smaller gain). I cannot sign that in advance and am not pretending to. Firing counts on the gate seed are recorded so
+that a moved gain can be read against a moved firing rate.
+
+RESULT (journal 406). The pre-registration above was written before any run.
+
+Build f5887bae (HEAD export of local 11759c7, since rebased and pushed as 2945c90 -- same tree), 19:09 -> 23:08, no seeds
+lost, model.bin unchanged. (The chain's printout says "48 NEW seeds"; that label is inherited from journal 402's script.
+They are journal 402's seeds, on purpose.)
+Gates, 1914:FRA seed 13579: off 2904055102330604147/91296 and =3 742276098712025459/130092 -- **both match the 2026-09-20
+references**, so nothing since ff9f9ae moved a decision on that seat. Firing on that seed: **14 against 10** on journal
+402's build. One doctrine appears that no earlier sample bought, continental_army_doctrine (+12 atk / +10 def); it has
+been in data/policies.json since 2026-08-30 and is not mod content.
+
+    THE RULE, current build, journal 402's 48 rung seeds, both arms:
+        OFF   320.8 (se 12.0)
+        =3    407.1 (se 13.1)     **+86.3, floor 34.8, CLEARS**
+        land  1914:FRA   19.65 -> 27.05   (+7.41, p 0.000)
+              1939:USA   24.53 -> 30.85   (+6.31, p 0.004)
+              modern:CHN  9.78 -> 16.17   (+6.39, p 0.002)
+    1914:SWE, journal 402's 32 seeds:   annihilated 3/32 -> 7/32, Fisher p 0.302;  land 13.83 -> 9.51, perm p 0.110
+
+VERDICT, by the rule fixed before the run: **GAIN HOLDS.** Positive and clears on the current build, every rung seat's
+land up at p <= 0.004, and SWE not significantly worse.
+**The build's effect on the rule: +86.3 against journal 402's +51.8 on the same seeds = +34.5, floor 43.6 -- NOT
+RESOLVABLE.** The gain did not shrink; whether it grew cannot be said.
+
+**MY PREDICTION MISSED HIGH AGAIN.** I registered +30 to +70; it is +86.3. That is the fourth favourable miss on this rule
+in a row (401, 402, 403, 406), and a run of misses in one direction is a calibration fact about me, not about the rule:
+**I have been systematically underestimating this reflex**, apparently from carrying the loop's earlier experience of
+effects shrinking into a case where the mechanism was argued in advance.
+
+**THE LARGER FINDING IS NOT ABOUT THE RULE -- IT IS WHAT THE BUILD DID TO THE BASELINE.** Same model, same 48 seeds, same
+arm, two binaries:
+
+    rule OFF   journal 402's build 391.6 -> current 320.8    **-70.8, floor 31.1, CLEARS**
+               land FRA 22.60 -> 19.65 (p 0.067)  USA 26.66 -> 24.53 (p 0.259)  **CHN 15.07 -> 9.78 (p 0.004)**
+    rule =3    443.4 -> 407.1                                 -36.3, floor 30.5, CLEARS
+    1914:SWE, rule OFF: annihilated **11/32 -> 3/32**, land **7.08 -> 13.83 (p 0.012)**
+
+No AI code changed between those arms that the OFF arm runs (the reflex is off; the census and the per-country counter do
+not move decisions -- journals 404 and 405 proved both). **The world changed**, and the direction is a transfer: the
+great-power seats lost share, China most, while Sweden -- the small exposed seat -- went from dying a third of the time to
+dying a tenth. The seat score is a share (memory seat-score-is-a-share), so this is not by itself "the AI got worse":
+a world where small states survive is a world where big ones hold less of it. But it is a 71-point move on the release
+build's own bench, and the release build is what players run.
+
+**WHERE IT HAPPENED, narrowed for free by the gate hashes.** FRA seed 13579 held the old reference on journal 403's build
+(e88fec6, formerly d40292e) and journal 404's (0915223, formerly 846c57f), and first moved on journal 405's (ff9f9ae,
+formerly 764f5e5); it has not moved since. So the decision change on that seat lies in 0915223..ff9f9ae -- five commits:
+d828051 (content .add, AI invited), b321f0d (an example mod that adds doctrines), 19819db (dev view), 1de1b89 (the
+effects block), ff9f9ae (pacification rebate, AI manpower ceiling). One seat and seed is a sample, so this narrows the
+first candidate and does not clear the later commits for other seats. Filed as item 106: a hash bisect over those five is
+five one-seat runs and ~10 minutes.
+
+**THE SWEDEN DIRECTION, stated plainly because it bears on shipping.** Under the rule, Sweden dies more often on both
+builds: 11 -> 13 on journal 402's, 3 -> 7 on this one. Pooled over the 64 paired observations: **14/64 -> 20/64, Fisher
+p 0.317**; land 10.46 -> 8.22, p 0.211. Neither is significant and the resolution at 64 is ~0.25, so the harm check is
+passed by the rule as registered. It is also true that two runs out of two point the same way. A reader deciding to ship
+should see both halves of that sentence.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j406-*), build/loop406/ (ignored).
+No source change. Out of band this session, at the user's instruction: the three local commits rebased onto the rewritten
+origin/main (tree-identical rebuild, verified per commit) and pushed, 3e95626..2945c90.
+
+PENDING COMMIT: docs only.
+
+    Re-measure the doctrine reflex on the current build
+
+    Journal 402's seeds, both arms: +86.3 (floor 34.8) against +51.8 on
+    the old build, a difference not resolvable. The same seeds with the
+    rule off fell 391.6 -> 320.8 across the build change -- great-power
+    seats lost share, 1914 Sweden went from 11/32 dead to 3/32.
+
+## 407 — iteration: which commit moved the world by 71 points (backlog item 106)
+
+PRE-REGISTERED, written before any run.
+
+**A CORRECTION TO ITEM 106 BEFORE IT COSTS ANYTHING.** The item says the window between journal 404's build (0915223) and
+journal 405's (ff9f9ae) is five commits and names them. It is **eighteen**, and two of the SHAs I listed -- b321f0d and
+19819db -- were pre-rewrite values I carried across the SHA map by mistake; the real ones are 41fd869 and 1e40e82. The
+window in full is 0915223..ff9f9ae, and it contains at least three commits whose subject lines touch what the AI spends:
+87f12fb ("Advanced Shipbuilding did nothing"), **7ae074e ("The last three dead levers: 17 of 17 advertised effects are now
+spent")**, 1de1b89 ("Half the effects block was never audited") and ff9f9ae (the pacification rebate and the manpower
+ceiling). Item 106 is corrected in place.
+
+THE QUESTION. Journal 406 measured N24 losing **70.8 rating** on the three rung seats with the reflex off, same model,
+same 48 seeds, across a build change -- and 1914:SWE going from 11/32 annihilated to 3/32. Which commit did that, and is
+the world still moving? Today's HEAD is 69 commits past ff9f9ae and includes **96a2464 "Make policies do something, and
+charge for the army they raise"**, which by its own subject changes what a policy does.
+
+THE INSTRUMENT IS THE ONE ALREADY BUILT: OD_DECISION_HASH on 1914:FRA seed 13579 with the reflex OFF. It costs one
+export, one ccache build and one 400-turn seat run per probe, about three minutes, and it needs no bench.
+
+    known: 0915223 -> 2684914276584272262/81340   (journal 404)
+           ff9f9ae -> 2904055102330604147/91296   (journals 405, 406)
+
+PLAN. Binary search the 18-commit window for the FIRST commit whose hash differs from the old value, then confirm the
+boundary by probing its parent directly. Then one extra probe at **today's HEAD**, to date the current world for the
+ship decision.
+**The search assumes the property is monotone** -- that once the hash moves it stays moved. It need not be: two commits
+could move it and a third move it back, or a later one could coincide. The boundary this finds is therefore "a commit
+that moved it, with its parent not moved", which is what it will be called; later movers are NOT excluded and the HEAD
+probe is what will show whether more happened.
+
+PREDICTION, committed: **7ae074e is the mover** -- "17 of 17 advertised effects are now spent" means levers that
+previously did nothing now do something, which changes every country's arithmetic, and it is the only commit in the
+window that says so in its own subject. Second guess ff9f9ae. **And HEAD will differ from ff9f9ae**, because 96a2464
+makes policies act. If instead the boundary is a mod/SDK commit (d828051, db1517d, 41fd869), that would mean content
+plumbing reached the live catalogue, which would be worth its own item.
+
+## 408 — the doctrine reflex ships on by default (user decision, 2026-09-25)
+
+NOT AN EXPERIMENT. The user decided; this records the change and proves it does what it says.
+
+THE CHANGE, one line plus a comment, in src/ai/AISystem.cpp: the unset default of OD_DOCTRINE_REFLEX goes **0 -> 3**.
+OD_DOCTRINE_REFLEX=0 still turns it off -- every A/B in journals 399-406 was run that way and stays runnable -- and 1 and
+2 are kept so journals 399 and 400 remain reproducible. The comment above the gate now carries the measurement and both
+caveats rather than only the good half.
+
+PROVED, on a build of HEAD 6c2c8b6 plus this change (binary 9c99338f), 1914:FRA seed 13579:
+
+    default (no env)        742276098712025459/130092   <- identical to =3, and to the value journals 403-406 stored
+    OD_DOCTRINE_REFLEX=3    742276098712025459/130092
+    OD_DOCTRINE_REFLEX=0   2904055102330604147/91296    <- identical to the OFF reference of journals 405-406
+
+The default reproduces mode 3 decision for decision, and the off switch reproduces the old baseline. The reflex fires 14
+times with no environment set, buying for ARG, BOL, ETH, GBR, RUS, USA and FRA (the seat, once).
+
+**TWO TOOLING FAILURES ON THE WAY, both mine, both recorded because one of them nearly shipped a false pass.**
+1. The first attempt ran the binary straight out of its build directory. The server resolves data/ as <bindir>/../data,
+   which did not exist there, so all three runs died with "no data directory". Earlier chains worked because they copy the
+   binary next to a data symlink.
+2. **The check then printed "IDENTICAL -- the default is mode 3" from comparing two EMPTY strings.** A test that cannot
+   fail when the thing under test never ran is not a test (memories a-skip-is-not-a-pass, failures-after-the-useful-work).
+   The script now refuses to compare until each run has produced a hash.
+
+A SIDE READING, one seat and one seed, so weak evidence: the =0 arm on HEAD 6c2c8b6 matches the reference taken on
+ff9f9ae, which is **70+ commits back and includes 96a2464 "Make policies do something, and charge for the army they
+raise"**. On this seat, nothing since 2026-09-20 has moved a decision. That falsifies the HEAD half of journal 407's
+prediction in advance of its own probe, and journal 407 will say so with a wider sample.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (pre-edit copy scratchpad/pre408-AISystem.cpp), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md, build/loop408/ (ignored). model.bin unchanged.
+
+PENDING COMMIT:
+
+    Arm the doctrine reflex by default
+
+    The politics head refuses to enact an attack doctrine at probability
+    zero; this reflex takes one for any country above the median army
+    that is fighting a peer. Three runs on three binaries and two
+    disjoint seed sets give the rung seats +52.1, +51.8 and +86.3, each
+    clearing its floor, with 1914:FRA:rush unharmed at 64 seeds.
+    OD_DOCTRINE_REFLEX=0 turns it off; 1 and 2 keep the older arms.
+
+RESULT (journal 407). The pre-registration above was written before any run.
+
+**THE MOVER IS 7ae074e, "The last three dead levers: 17 of 17 advertised effects are now spent"** (2026-09-19 22:53).
+
+    87f12fb (parent)  2684914276584272262/81340   OLD
+    7ae074e           2904055102330604147/91296   MOVED
+    every later probe -- 887ea8c, d828051, dcfac41, 18af95c, ff9f9ae -- and today's HEAD 0351738: the same new value.
+
+The boundary is confirmed against its own parent. Decisions rise 81,340 -> 91,296 on that one commit, and on this seat
+and seed **nothing before or after it moved a decision at all** -- not the pacification rebate (ff9f9ae), not the effects
+audit (1de1b89), and not 96a2464 "Make policies do something, and charge for the army they raise". A commit whose hash
+does not move is behaviourally inert on this seed, because a changed outcome would change later decisions. So 7ae074e is
+the only candidate for journal 406's **-70.8**, and it is a commit whose subject says it makes dead levers live -- the
+world's arithmetic changed, exactly as advertised.
+
+PREDICTION: **the mover half is RIGHT** (I named 7ae074e, for the reason that turned out to be the reason). The HEAD half
+is **WRONG**: I predicted HEAD would differ because of 96a2464, and it does not. That breaks the run of four favourable
+misses with one correct call and one wrong one.
+
+**THE FIRST RUN OF THIS BISECT NAMED THE WRONG COMMIT, AND IS RETRACTED.** It reported cbc31f4 ("A world records what it
+was last loaded with"). That was a measurement artefact of my own making: all probes shared ONE CMake build directory,
+and **`git archive` stamps exported files with the COMMIT's timestamp**, so exporting an older commit over a newer one
+left the sources older than the object files and make skipped the rebuild. Three of four probes read a stale or partly
+stale binary. Memory restoring-a-file-does-not-rebuild-it says exactly this and I did not apply it. The fix: **a build
+directory per commit, and `touch` every exported file**. What caught it was re-testing the accused commit's own claim on a
+clean build (journal 407b): at 40 turns AND at 400, cbc31f4 is identical to its parent. **cbc31f4 is inert and its commit
+message's "the sim is untouched" was correct.** (Its message quotes 6524120150418122026 over 7484 decisions at 40 turns
+where my harness reads 5562350236063405264/7348 -- a different invocation, not a contradiction, and not chased.)
+
+**TWO SPANS OF HISTORY DO NOT BUILD, found by trying to build them.** For the user, because CI evidently checks tips and
+not commits:
+  1. **f67b864, 580b7d9, 36c1c28, fe0e7f3** -- four consecutive commits whose CMakeLists lists `src/DevLink.cpp` before
+     that file exists (it arrives in dcfac41). Configure fails.
+  2. **d828051 through d0d5a61 (formerly eafc3ab), about a day** -- AISystem.cpp uses s_doctrineReflexByCountry and the
+     header does not declare it, the half-commit journal 405 reported. Compile fails. Journal 405 built through this span
+     only because it copied the working tree's header into the export, so the breakage never surfaced there.
+  The bisect skips (1) and repairs (2) by re-applying the one declaration, which journal 404 proved inert under both
+  gates. Neither span can be bisected by anyone else without doing the same.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop407/ (ignored), scratchpad/j407_bisect.py.
+No source change. model.bin unchanged.
+
+WHAT IS NOT ESTABLISHED: that 7ae074e carries the whole -70.8. The hash says it is the only commit that changed a
+decision on this seed; the rating change was measured over 48 seeds and three seats. The confirm is one OFF-arm bench
+pair, 87f12fb against 7ae074e, 48 seeds, ~2.6 h. Filed as item 107.
+
+PENDING COMMIT: docs only.
+
+## 409 — iteration: does 7ae074e carry the whole -70.8? (backlog item 107)
+
+PRE-REGISTERED, written before any run.
+
+THE QUESTION. Journal 406 measured N24 losing **70.8 rating** on the three rung seats, rule off, same model, same 48
+seeds, across a build change. Journal 407 named **7ae074e** ("The last three dead levers: 17 of 17 advertised effects are
+now spent") as the only commit in that span that changed a decision on 1914:FRA seed 13579. That argument is one seat and
+one seed; the rating was 48 seeds over three seats. This measures the commit directly.
+
+DESIGN. Two binaries built from history -- **87f12fb (parent)** and **7ae074e (mover)** -- each in its own build
+directory with every exported file touched (journal 407's retraction: git archive keeps commit mtimes and a shared build
+directory serves stale binaries). Neither commit needs the header repair; both predate d828051. The reflex does not exist
+in either, and OD_DOCTRINE_REFLEX=0 is set anyway so the arms are named honestly.
+Both arms run journal 402's 48 rung seeds on the three rung seats, and journal 402's 32 SWE seeds on 1914:SWE -- the same
+seeds as journals 402 and 406, so the numbers line up with both.
+
+STATISTIC, unchanged: per-seed rating over the three rung seats, floor 1.96*sqrt(se_a^2 + se_b^2); per-seat land by
+permutation; 1914:SWE annihilation by Fisher exact.
+
+VERDICT RULE, fixed now.
+  **CARRIES IT** if the parent -> mover rung difference is negative and clears its floor, AND the difference is within
+  the floor of journal 406's -70.8 (i.e. the two are not distinguishable).
+  **CARRIES PART OF IT** if negative and clearing, but distinguishably smaller than -70.8.
+  **DOES NOT CARRY IT** if the difference does not clear its floor. That outcome matters more than the others: it would
+  mean something changed the bench without changing a decision on the probed seed, and journal 407's seat-and-seed
+  argument would need widening before it is used again.
+
+PREDICTION, committed: **it carries essentially all of it** -- between -50 and -85, clearing. And **1914:SWE improves**
+under the mover (annihilation down from journal 402's 11/32 toward journal 406's 3/32), because the same commit is the
+only candidate for that shift too. If the rung drop appears but Sweden does not move, the two effects have different
+causes and item 107 splits.
+
+RESULT (journal 409). The pre-registration above was written before any run.
+
+**7ae074e CARRIES THE WHOLE -70.8.** Built from history, parent bbf2abc5 and mover b4ff4b01, gates reproducing journal
+407's two hashes exactly. 01:03 -> 03:39.
+
+    RUNG, 48 seeds, rule off:  87f12fb **391.6** (se 10.4)  ->  7ae074e **320.8** (se 12.0)
+                               **-70.8, floor 31.1, CLEARS**
+        land  1914:FRA   22.60 -> 19.65  (-2.96, p 0.066)
+              1939:USA   26.66 -> 24.53  (-2.13, p 0.262)
+              modern:CHN 15.07 ->  9.78  (**-5.29, p 0.004**)
+    1914:SWE, 32 seeds:        annihilated **11/32 -> 3/32 (Fisher p 0.032)**;  land 7.08 -> 13.83 (**p 0.011**)
+
+Against journal 406's -70.8: the difference is **+0.0** against a floor of 44.0 -- not distinguishable, because it is the
+same number.
+
+**AND IT IS THE SAME NUMBER FOR A REASON WORTH MORE THAN THE VERDICT.** Every statistic here reproduces journals 402 and
+406 to the digit, so I checked the raw per-seed arrays rather than the means:
+
+    87f12fb  vs journal 402's build (b830e95-era, 09-17): **ELEMENTWISE IDENTICAL**, all 176 observations
+    7ae074e  vs journal 406's build (11759c7-era, 09-21): **ELEMENTWISE IDENTICAL**, all 176 observations
+
+So the bench does not merely agree on the average -- **every seed of every seat returns the identical land share.** That
+promotes journal 407's one-seat, one-seed hash argument to something far stronger: across 48 rung seeds, 32 Sweden seeds
+and three seats, **every commit from b830e95 to 87f12fb is behaviourally inert, and so is every commit from 7ae074e to
+11759c7** -- which includes the parties commit, the grievance change, the content plumbing, the effects audit (1de1b89)
+and the pacification rebate and manpower ceiling (ff9f9ae). Four days of work moved nothing this bench can see. One
+commit moved all of it.
+
+PREDICTION: **both halves right**, for the first time in this sequence. I registered -50 to -85 and got -70.8, and I
+registered that Sweden would improve under the mover, which it does (11/32 -> 3/32, p 0.032).
+
+WHAT 7ae074e DID, in the terms this bench reads: it made three dormant levers live, completing "17 of 17 advertised
+effects are now spent". The result is a transfer -- the great powers hold less (China most, -5.29 land at p 0.004) and
+the small exposed seat stops dying (Sweden's annihilation rate falls by two thirds). Whether that is the world the game
+wants is a design question and belongs to the user, not the loop. What the loop can say is that **it is not a regression
+in the AI**: the model and every AI rule were identical in both arms.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop409/ (ignored). No source change this iteration.
+Out of band, at the user's instruction: fa32ef1, "Arm the doctrine reflex by default" (journal 408's one-line flip,
+src/ai/AISystem.cpp only; the index was verified clean afterwards and the user's own uncommitted work untouched).
+
+TOOLING, recorded because it cost a run: the first attempt stopped with empty gate hashes -- the binaries live in
+build/loop409/bld-<sha>/ and the server resolves data/ as <bindir>/../data, which did not exist there. Same cause as
+journal 408. The guard journal 408 added is what stopped it instead of comparing two blanks. Now a memory
+(server-finds-data-beside-itself).
+
+PENDING COMMIT: docs only.
+
+## 410 — iteration: the guard seats on the world 7ae074e left behind
+
+PRE-REGISTERED, written before any run.
+
+WHY THIS ONE. Two facts collided. Journal 403 cleared 1914:FRA:rush and 1939:NOR:hood for the doctrine reflex -- on a
+build from 2026-09-17, **before 7ae074e**. Journal 409 then showed 7ae074e transfers land from great powers to small
+states and cuts 1914:SWE's annihilation rate by two thirds. The guard seats are the two smallest, most pressured seats on
+this bench, and the rule now ships ON (fa32ef1). **The guard check that justified shipping was run on a world that no
+longer exists.** That is the top unblocked item by any reading, ahead of 105 (which its own entry calls optional) and 86
+(parked on the user's approval for nine hours).
+
+TWO QUESTIONS, one run, two arms on one current binary:
+  **Q1. Does the shipped rule harm the guard seats on the CURRENT world?** Default (mode 3, as shipped) against
+  OD_DOCTRINE_REFLEX=0, same seeds, same binary.
+  **Q2. What did 7ae074e do to the guard seats?** The OFF arm here against journal 403's OFF arm, which ran the same 64
+  rush seeds and 32 hood seeds on the pre-7ae074e world. Journal 409 showed such cross-build OFF comparisons are exact --
+  its arms were elementwise identical to the earlier builds -- so this is a clean two-point comparison, not an estimate.
+
+RUNS. Current HEAD export. 1914:FRA:rush on journal 403's 64 seeds; 1939:NOR:hood on journal 380's 32. Both arms.
+192 runs, about 1.5 hours.
+
+STATISTICS, as journal 403 fixed them and for the same reasons: rush is a COLLAPSE RATE (land < 1.5), Fisher exact, land
+mean second; hood is a graded mean, permutation test. At 64 seeds the rush rate resolves ~0.25, so a null is "no large
+harm detectable", never "no harm".
+
+VERDICT RULE. **GUARD HOLDS** if neither seat is significantly worse under the shipped default (rush Fisher p >= 0.05,
+hood permutation p >= 0.05). **GUARD FAILS** if either is, and then the ship decision needs revisiting with the user,
+since it was taken on journal 403's pre-7ae074e evidence.
+
+PREDICTIONS, committed, both halves.
+  **Q1: the guard holds** -- rush within 6 collapses of the OFF arm either way, hood unmoved. Reason: journal 404 showed
+  1939:NOR never qualifies for the rule at all, and journal 403 measured rush at 31/64 against 33/64.
+  **Q2: 7ae074e improves both guard seats** -- rush collapses fall by 5 or more of 64, hood land rises. Reason: it is the
+  same mechanism that took Sweden from 11/32 to 3/32, and these are the two seats most like Sweden on this bench. If hood
+  does NOT move, that is worth knowing on its own: 1939:NOR is the seat this loop has never been able to move with
+  anything, and a world change that lifts Sweden but not Norway says the two die of different causes.
+
+RESULT (journal 410). The pre-registration above was written before any run.
+
+Build 9c99338f from HEAD 9b03896, both gates reproducing their stored values (default 742276098712025459/130092, =0
+2904055102330604147/91296). 03:44 -> 04:56.
+
+**Q1. THE GUARD HOLDS, and on this world the rule does better than hold.**
+
+    1914:FRA:rush, 64 seeds:  collapsed  OFF **37/64**  ->  SHIPPED **26/64**   Fisher p 0.077
+                              land       OFF  4.06      ->  SHIPPED  7.16      perm **p 0.005**
+    1939:NOR:hood, 32 seeds:  land       OFF  0.41      ->  SHIPPED  0.40      perm p 0.836
+
+Journal 403 measured the same seat on the pre-7ae074e world at 31/64 against 33/64, land p 0.135 -- favourable but
+nothing to quote. Here the land difference is **+3.10 at p 0.005**, and the collapse rate moves 11 of 64 the right way.
+LOOP.md's rush guard says REJECT if a change gives up more than 5 points on this seat; the shipped rule **gains**. Two
+worlds, two runs, both favourable, one now significant.
+
+**Q2. 7ae074e DID NOTHING FOR EITHER GUARD SEAT, and my prediction is falsified.**
+
+    rule off both sides:  1914:FRA:rush  collapsed 33/64 (pre) -> 37/64 (now), p 0.594;  land 5.14 -> 4.06, p 0.268
+                          1939:NOR:hood  land 0.41 -> 0.41, d -0.00, **p 1.000**
+    against, for scale:   1914:SWE       annihilated 11/32 -> 3/32 (journal 409)
+
+I predicted rush collapses would fall by 5 or more and hood land would rise, because the same commit took Sweden from
+11/32 to 3/32 and these are the two seats most like Sweden here. Rush moved slightly the OTHER way (not significant) and
+hood did not move at all. **So the world change that saved Sweden does not reach a seat under a blitz.** Sweden's rung
+world is the ordinary 1914 world; rush and hood are worlds where everyone, or the one neighbour, attacks from the start.
+Whatever 7ae074e gives a small state -- and journal 409 shows it is a lot -- it is worth nothing once the attack is
+already coming. **Sweden and Norway die of different causes**, which is exactly what the pre-registration said this
+outcome would mean.
+
+**AND THE HOOD SEAT HAS NEVER MOVED, UNDER ANYTHING.** Pulling every 32-seed arm this project has recorded for
+1939:NOR:hood:
+
+    0.388  0.397  0.403  0.406  0.409  0.409  0.413  0.413  0.422
+
+Nine arms, spanning **0.034 of land share**. Those nine cover two different models, a rule switched on and off, a
+training candidate, and the world change that moved Sweden by 6.75. LOOP.md names this seat in its one unconditional
+REJECT rule and the target table names it as the seat holding the rating down (score 31). **It is neither: it cannot
+fail, so it rejects nothing, and nothing the loop has tried reaches it.** Journal 404 already showed the doctrine reflex
+can never fire there; this is the wider statement. Filed as item 109, and it is a question about the protocol, not about
+a rule.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop410/ (ignored). No source change. model.bin
+unchanged.
+
+PENDING COMMIT: docs only.
+
+## 411 — iteration: what 1939:NOR:hood is actually measuring (backlog item 109a)
+
+PRE-REGISTERED, written before any run. Two facts below come from stored data and cost nothing.
+
+**FROM THE ARCHIVE, no run needed.** Pooling every 32-seed arm ever recorded for this seat -- 288 observations across
+nine arms, two models, a rule on and off, a training candidate and the 7ae074e world change:
+
+    values ever observed:  0.3, 0.4, 0.5, 0.6, 0.7   (five values, nothing else)
+    annihilated (0):       **0 of 288**
+    above 1.0:             **0 of 288**
+
+**FROM THE MAP.** Norway starts the 1939 scenario holding **17 of 1298 provinces = 1.31%**, and the seat's par is 1.3.
+So par means "hold what you started with", one province is 0.077% of the map, and the five observed values are
+**4 to 9 provinces**.
+
+Putting those together: **Norway loses roughly two thirds of itself in every game ever recorded, never dies, and never
+recovers.** The seat is not a survival seat and not a growth seat. It scores 31 because a rump of about five provinces
+survives, every time, under every condition this project has tried.
+
+THE QUESTION THIS LEAVES: is the rump a map fact or a play fact? If the blitzing neighbour simply cannot reach the last
+few provinces -- across water, or up a long thin country -- then no AI change can ever move this seat and item 109's
+option (b), retiring it from LOOP.md's reject rule and target table, is the honest answer. If instead Norway is still
+losing ground late, or holds a contiguous defensible rump, then the seat is live and the loop has been failing to move
+it for some other reason.
+
+THE TEST, and it needs no new instrument: **run the same hood seed to four horizons -- 40, 100, 200 and 400 turns -- and
+read the seat's land share at each.** Two seeds, eight runs, about ten minutes. A trajectory that falls early and then
+flattens says the outcome is settled long before the horizon; one that keeps falling says the opposite.
+
+PREDICTION, committed: **the share is already at its final value by turn 100 and flat thereafter** -- specifically,
+within one province (0.077) of the 400-turn value at turn 100 on both seeds. Reason: every arm ever run lands in the same
+five-value band, which is what a structural floor looks like rather than a contested one. If instead the share is still
+falling between 200 and 400, the seat is live and slow, and this diagnosis is wrong.
+
+RESULT (journal 411). The pre-registration above was written before any run. Eight runs, 05:00 -> 05:02.
+
+    seed 13579        40 turns 0.3   100 turns 0.3   200 turns 0.3   400 turns 0.3
+    seed 1149194796   40 turns 0.3   100 turns 0.3   200 turns 0.3   400 turns 0.4
+
+**THE SEAT IS DECIDED BEFORE TURN 40 AND THEN FROZEN.** Norway is down from 17 provinces to about four within the first
+40 turns, and 360 further turns move it by at most one province. The prediction -- flat by turn 100, within one province
+of the 400-turn value -- **holds on both seeds**.
+
+**AND THE 400-TURN RUN SAYS WHY NOTHING ELSE HAPPENS.** From the same log:
+
+    [BENCH] seat NOR  score 0.3   (3 provinces of a starting 17)
+    [EVAL] model treasury 1.1  gross 19.26  standing bill 16.99  |  **98.8% of turns under $8**
+    [EVAL] model army 0.01  navy 0.03  industry 0.10  research 1.90  |  expenses 98.8% of gross
+
+Norway spends **0.01 on army** across the whole game and is under $8 for 98.8% of it. The rump is not defended, it is
+merely not attacked further: `[BENCH] rushing neighbours: 1 of 3 that border the seat`, so one neighbour blitzes, takes
+what it can reach, and stops. **The seat measures a country that is economically dead by turn 40 and then sits still for
+360 turns.** Memories ai-treasuries-run-at-zero and ai-recruitment-is-money-bound describe exactly this state: a country
+with no money has no actions, so no AI change can reach it.
+
+**WHAT THIS SETTLES FOR THE PROTOCOL.** LOOP.md uses 1939:NOR:hood twice, and both uses are unsound as written:
+  1. as half of the one unconditional REJECT rule -- it cannot fail, so it has never rejected anything and never will;
+  2. in the target table as a seat "holding the rating down", needing 0.4 -> 5.2 land for a 300 rating -- that asks the
+     loop to multiply by 13 a number that is fixed by turn 40 in a bankrupt country.
+Neither is a small correction, and changing LOOP.md is the user's call, not the loop's (item 109 option b). A third
+option this run makes visible: **if the seat is kept, measure it at 40 turns**, which costs a tenth as much and carries
+the same information.
+
+WHAT WOULD MOVE IT, if anything: a lever that acts in the opening, before the money runs out -- and the loop has already
+recorded that its opening levers are where the remaining points are (LOOP.md's own target note). This is not a null
+result about Norway; it is a boundary on where any Norway-shaped gain can come from.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop411/ (ignored). No source change, no bench rows.
+
+PENDING COMMIT: docs only.
+
+## 412 — iteration: when is 1914:FRA:rush decided? (new item 110)
+
+PRE-REGISTERED, written before any run.
+
+WHY THIS ONE. The backlog's remaining entries are all the user's (109b changes LOOP.md, 108 is broken history, 86 is the
+nine-hour run parked on their approval) or optional by their own text (105). Meanwhile journal 411 established something
+with an obvious successor: **1939:NOR:hood is decided before turn 40**, after which the seat is bankrupt and unreachable.
+The other guard seat, 1914:FRA:rush, is the one that DOES move -- journal 410 measured the shipped rule taking it from
+37/64 collapses to 26/64, land 4.06 -> 7.16 at p 0.005 -- and LOOP.md's target table says the last points live on exactly
+these two seats. **If rush is also settled early, then every future rule aimed at it has to act in the opening**, and that
+is worth knowing before another rule is designed for it. Filed as item 110.
+
+THE TEST, the same instrument as journal 411 and no new code: run 1914:FRA:rush to four horizons -- 40, 100, 200, 400
+turns -- on six seeds, **both arms** (shipped default and OD_DOCTRINE_REFLEX=0), and ask at which horizon each seed's
+400-turn collapse state (land < 1.5) is already fixed. 48 runs; the short horizons are cheap, so about half an hour.
+
+WHY BOTH ARMS. The shipped rule changes this seat's outcome on roughly a sixth of seeds, so "when is it decided" has two
+answers and they need not agree. If the rule's effect appears late, it is acting after the collapse; if early, it is
+changing whether the collapse happens at all.
+
+STATISTIC: per seed and arm, the land share at each horizon, and the earliest horizon whose collapse state matches the
+400-turn one. Reported as counts, never as a rate without them.
+
+PREDICTION, committed: **rush is decided later than hood but still early -- on at least 5 of 6 seeds per arm, the
+400-turn collapse state is already fixed at turn 100.** And **the two arms agree about WHEN** (no seed where the rule
+changes the decision point by more than one horizon step). Reason: journal 291 recorded this seat as bistable with two
+regimes ~190 points apart, and a knife-edge that tips does so when the rusher's first offensive lands, not at leisure.
+If instead seeds keep flipping between 200 and 400, the seat is slow and contested, and a late-acting rule could still
+matter -- which would make the reflex's +3.10 land a late effect rather than an opening one.
+
+RESULT (journal 412). The pre-registration above was written before any run. 48 runs, 05:05 -> 05:13.
+
+    arm OFF                  40     100     200     400    final       settled
+      13579                 8.10   10.30    0.20    0.20   COLLAPSED   turn 200
+      1149194796           10.40   12.80    8.90    0.30   COLLAPSED   turn 400
+      1383750554           10.70    9.30   11.20    9.30   held        turn 40
+      58722078              7.10    8.20   10.10   11.30   held        turn 40
+      548326348            10.20    8.70    2.10    0.20   COLLAPSED   turn 400
+      886869249            10.00   10.10   11.40    1.00   COLLAPSED   turn 400
+      settled by turn 100: **2 of 6**
+
+    arm ON (shipped)         40     100     200     400    final       settled
+      13579                 8.60    7.40    0.20    0.20   COLLAPSED   turn 200
+      1149194796            8.30   14.60   10.90   13.70   held        turn 40
+      1383750554           10.40   11.00   10.50   15.30   held        turn 40
+      58722078             10.30   12.70   14.50   16.40   held        turn 40
+      548326348            10.10   11.60   12.50   11.90   held        turn 40
+      886869249             8.50    6.30    0.20    0.20   COLLAPSED   turn 200
+      settled by turn 100: **4 of 6**
+
+**BOTH HALVES OF MY PREDICTION ARE FALSE, and the first one is false in the direction that matters.** I predicted at
+least 5 of 6 seeds settled by turn 100; the OFF arm settles 2 of 6, and three of its four collapses happen **between
+turn 200 and turn 400**. I also predicted the arms would agree about WHEN; on two seeds they disagree by three horizon
+steps, because the rule changes the outcome rather than its timing.
+
+**THIS SEAT DIES LATE, AND IT DIES FROM A WINNING POSITION.** Look at the OFF arm's collapsing seeds: 12.80 at turn 100
+then 0.30 at 400; 10.10 at turn 200 then 1.00 at 400; 8.70 at 100, 2.10 at 200, 0.20 at 400. France is holding **8-13% of
+the world** -- comfortably above its 6.7 par -- and is then annihilated. This is not a rush that overruns the opening.
+**It is a country that wins the first two hundred turns and is destroyed in the last two.**
+
+That reverses the reading journal 411 produced for the other guard seat. 1939:NOR:hood is fixed before turn 40 and
+unreachable afterwards; **1914:FRA:rush is decided in the SECOND half of the game**, and a rule acting late can still
+change it. Which is what the shipped reflex does: on seeds 1149194796 and 548326348 it turns a 400-turn collapse into a
+held seat, and journal 410's +3.10 land at p 0.005 is that effect, not an opening one. The two "survival seats" LOOP.md
+names in one breath have **opposite time constants**, and no rule can be aimed at both.
+
+WHAT KILLS IT IS NOW THE QUESTION, and it is wide open: something destroys a country holding 8-13% of the world, between
+turns 200 and 400, on roughly half of rushed worlds. Candidates this project already has instruments for: bankruptcy and
+the unrest cascade that follows (memory chn-dies-to-rebellion is exactly this shape), a coalition forming late
+(coalitions-feed-the-leader), or the one-war cap holding it in a stalled war while a second enemy arrives
+(stalled-wars-lock-the-war-slot). Filed as **item 111**, and it is the most promising lead this loop has had on the
+survival seats since the doctrine reflex.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop412/ (ignored). No source change, no bench rows.
+
+PENDING COMMIT: docs only.
+
+## 413 — iteration: what kills France late on a rushed world (backlog item 111)
+
+PRE-REGISTERED, written before any diff and before any run.
+
+WHAT IS ALREADY KNOWN, from journal 412's logs (event kinds only, no diffs read yet): a collapsing 400-turn run records
+1478 [WAR] lines and 1456 [CLAIM] lines, and France's own lines include **rebellion wars** -- `FRA vs R06`, `R82`, `R00`,
+`R55`, `R100`, `R111` -- interleaved with ordinary declarations (THA, CHN, ITA, JPN) and one coalition event,
+`JPN calls its ally GBR to arms against FRA`.
+
+THE DIAGNOSIS COSTS NOTHING FIRST. Journal 412 already produced, for each of six seeds, logs at 40 / 100 / 200 / 400
+turns in both arms. The collapse windows are therefore bracketed on disk:
+  * **seed 13579, rule off**: 10.30 at turn 100 -> 0.20 at turn 200. Diff the event lists of those two logs and the
+    collapse is inside the difference.
+  * **seed 1149194796**: rule off collapses by 400 (12.80 at 100 -> 0.30), rule on holds (13.70). Diff the two 400-turn
+    logs and the difference contains whatever the shipped rule prevented.
+Only if those two diffs are inconclusive does this iteration spend runs, and then it is a bracketing sweep at 120 / 140 /
+160 / 180 turns on seed 13579, eight minutes.
+
+PREDICTION, committed before looking. **Rebellion is the killer, not conquest.** Specifically: in seed 13579's
+100->200 window France acquires **three or more new rebellion wars** (`FRA vs R##`) and the province losses are to rebel
+states rather than to the rusher; and in the 1149194796 contrast the held arm carries **fewer** rebellion wars than the
+collapsed one. Reason: memory chn-dies-to-rebellion records exactly this chain -- bankruptcy, then minority cuts, then
+unrest, then rebellion -- for the other big seat, and journal 412 showed France dying from 8-13% of the world, which
+conquest by one rusher does not do in 200 turns.
+**If instead the losses are to JPN/GBR after the ally call**, the cause is the coalition and the memory that applies is
+coalitions-feed-the-leader; **if France simply stops fielding an army** (the 1939:NOR pattern from journal 411, army
+spend near zero), it is money and the answer is the same as for Norway. These three are distinguishable in the diff and
+I am naming which evidence picks which before reading it.
+
+RESULT (journal 413). The pre-registration above was written before any diff. No runs were needed: journal 412's twelve
+400-turn logs contain the answer, and the whole iteration cost four greps.
+
+**MY PREDICTION IS FALSIFIED, AND IT IS FALSIFIED BACKWARDS.** I predicted rebellion kills France. Across the twelve
+runs, rebellion wars go the OTHER way:
+
+    mean rebellion wars    collapsed (n=6)  **10.67**     held (n=6)  **28.00**
+    mean own declarations  collapsed  5.67              held  6.00
+    seed 1149194796        off collapsed 0.30, 16 rebellions  |  on held 13.70, **26 rebellions**
+
+A France that dies fights FEWER rebellions than one that lives. The reading that fits is that rebellion count is a proxy
+for **land held** -- more provinces, more minorities, more rebellions -- so it is a consequence of surviving, not a cause
+of dying. Memory true-about-the-adjacent-thing is exactly this failure, and I walked into it by naming a statistic that
+rises with the thing it was supposed to explain.
+
+**AND THE COLLAPSE ITSELF IS NOT AN EVENT AT ALL.** Seed 13579, rule off, between turn 100 (10.30 land) and turn 200
+(0.20): **France's war list is byte-identical.** Same six rebellion wars, same seven declarations, nobody new declares on
+it. It was already at war with JPN, GBR (called in as JPN's ally), ITA, CHN and THA at turn 100 while holding 10.3% of
+the world, and it simply loses all of it inside that existing set. Nothing in the log marks the moment.
+
+TWO WEAK SIGNALS, reported with their counts and with the number of things I looked at, because that is the honest form:
+
+    allies refused France's call to arms   collapsed **2 of 6**   held **0 of 6**
+    somebody declared war on France        collapsed **3 of 6**   held **1 of 6**
+
+In the clearest case (1149194796, off) France calls RUS, GBR and BEL against ESP, **all three refuse, and all three
+alliances end** -- memory pacts-have-no-teeth, seen from the other side: the model's diplomacy is worth nothing when it
+needs it. **I looked at six statistics on six-versus-six runs, so a 2-of-6-against-0-of-6 split is what looking produces**
+(memory count-the-groupings-you-looked-at). These are leads, not findings, and they need pre-registering on fresh seeds.
+Filed as item 113.
+
+**THE REAL OBSTACLE IS THAT NOTHING RECORDS THE COLLAPSE.** There is no log line for a province changing hands, no
+per-turn land share, no per-turn treasury. Journal 412 had to bracket the collapse by running the same seed to four
+horizons -- four full games to learn one trajectory. A per-turn trace of the bench seat (land share, treasury, wars,
+army) would make item 111 answerable in one run instead of four, and would show whether the fall is a cliff or a slide.
+Filed as item 112, and it is the cheap instrument that should come before any more bracketing.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. No runs, no source change, no bench rows.
+
+PENDING COMMIT: docs only.
+
+## 414 — iteration: a per-turn seat trace (backlog item 112)
+
+PRE-REGISTERED, written before any run.
+
+THE CHANGE, ~30 lines behind OD_SEAT_TRACE, off by default. Once a turn, in beginTurn after updateWorld has rebuilt the
+world, print the bench seat's **raw** province count, army, treasury, foreign wars and rebellion wars. It runs only when
+a bench seat is set and only when the variable is on.
+
+**RAW COUNTS, DELIBERATELY.** The bench's own seat share divides by the two cohorts' provinces
+(Game_AITrain.cpp:2482) and this code does not have that denominator. Inventing a second one is how two numbers that
+should agree drift apart (memory expose-the-resolvers-numbers), so the trace prints provinces and lets anything that
+wants a share compute it from the [BENCH] line.
+
+WHY IT IS WORTH AN ITERATION. Journal 412 spent four full games to learn one seat's trajectory, and journal 413 then
+found the collapse leaves **no event in the log at all** -- France's war list is byte-identical at turn 100 (10.3% of the
+world) and turn 200 (0.2%). Items 111 and 113 both need to see inside that window, and neither can be answered by more
+bracketing at four games per trajectory.
+
+INERTNESS, three gates, each to the digit or the patch is reverted (paths: src/ai/AISystem.cpp, src/ai/AISystem.h;
+pre-edit copies scratchpad/pre414-AISystem.{cpp,h}):
+  1. trace off, reflex default     -> 742276098712025459/130092
+  2. trace off, OD_DOCTRINE_REFLEX=0 -> 2904055102330604147/91296
+  3. **trace ON, reflex default    -> 742276098712025459/130092**, the gate that matters, since only a running trace
+     could perturb anything.
+Journal 405's lesson stands behind this: if all three disagree with the stored values TOGETHER, the build moved and the
+patch is still inert -- the proof is then a twin build without the patch, not a retraction.
+
+THEN, IN THE SAME RUN, THE FIRST TRACE: seed 13579 rushed, rule off -- the seed journal 412 watched fall from 10.30 at
+turn 100 to 0.20 at turn 200 -- traced across all 400 turns.
+
+PREDICTION, committed: **the fall is a cliff, not a slide.** France loses more than half its provinces inside a
+20-turn window, and its treasury is already near zero before the province count moves. Reason: journal 411 found the
+other guard seat bankrupt and frozen, and journal 413 found no war event at the collapse -- a country that still has
+money and armies does not lose 10% of the world quietly, so the money should go first. If instead provinces bleed
+steadily from turn 100, the cause is attrition inside the existing wars and "collapse" is the wrong word for it.
+
+RESULT (journal 414). The pre-registration above was written before any run. Build 8e15c041, 05:21 -> 05:26.
+
+**INERTNESS: all three gates.** Trace off with the shipped default 742276098712025459/130092 and with =0
+2904055102330604147/91296, both matching their stored values; and **trace ON gives the identical hash to trace off** over
+400 printed rows. The instrument does not move a decision.
+
+**THE FIRST TRACE, seed 13579 rushed, rule off -- and the prediction is half right in the half that matters.**
+
+    turn   1  prov  83  army  3,844,695  treasury **582.0**  wars 0
+    turn  20  prov  89  army  6,450,861  treasury **842.9**  wars 1
+    turn  22  prov  89  army 13,502,244  treasury **94.5**   wars 1
+    turn  23  prov  89  army 13,554,683  treasury **1.3**    wars 1
+    turn  50  prov  94  army 14,081,202  treasury 0.8
+    turn 100  prov 112  army  9,780,953  treasury 0.6
+    turn 150  prov  71  army  2,639,259  treasury 0.9
+    turn 200  prov   3  army    260,336  treasury 0.0
+    turn 400  prov   3  army    171,836  treasury 0.0
+
+**The treasury dies at turn 23, one hundred and thirty turns before the land does.** First turn under $1: **24**. The
+province count is still RISING then, and peaks at 118 around turn 110. First turn below half the peak: **157**.
+
+**But it is a slide, not a cliff**, which is the half I got wrong. The largest single-turn loss in the whole game is
+**six provinces**; 112 -> 3 takes a hundred turns of steady bleeding. And the army tells the same story in advance:
+14.1M at turn 50, 9.8M at 100, 2.6M at 150, 0.26M at 200. France is not overrun. **It runs out of money, then slowly
+runs out of soldiers, and the provinces follow the soldiers.**
+
+**WHERE THE 582 WENT, from the same trace: one recruitment spree.** Turns 18-23 read 1252.8, 945.9, 842.9, 570.1, 94.5,
+1.3 -- while the army goes 6.45M -> 8.95M -> 13.50M. The country converts its entire treasury into troops in about five
+turns and is then at zero for the remaining 376. The whole-game ledger agrees: research 116.88, industry 102.18,
+pacification 84.39, **army 2.59** -- army spending is negligible over the game precisely because there is nothing left to
+spend after turn 24, and 82.8% of turns are under $8.
+
+VERDICT ON THE INSTRUMENT: **KEEP.** Inert on three gates, off by default, and it answered in one run what journal 412
+needed four games to approximate -- and answered a question those four games could not reach at all, since the money was
+never in the log.
+
+WHAT IT OPENS, and it is the most concrete lever this loop has seen on a survival seat: **a country that spends to zero
+by turn 24 cannot replace losses for the rest of the game** (memories ai-recruitment-is-money-bound,
+ai-treasuries-run-at-zero). A reserve floor on recruitment is a small hand-written rule of exactly the kind this project's
+only shipped wins have been. Filed as item 114 with the test already shaped: rush seeds, rule gated, collapse rate as the
+statistic.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (pre-edit copies scratchpad/pre414-AISystem.{cpp,h}),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop414/ (ignored). model.bin unchanged.
+
+**COMMITTED as c6b9ee2** at the user's instruction (2026-09-25), src/ai/AISystem.cpp and src/ai/AISystem.h only --
+the working tree was reduced to HEAD-plus-the-trace before staging, so journal 424's pacification cooldown (still
+undecided, bench running) was NOT swept in, and the full working state was restored immediately afterwards. The docs
+remain pending. The message committed was:
+
+    Trace the bench seat once a turn
+
+    Nothing recorded a seat between map load and the final score, so
+    journal 412 spent four games learning one trajectory and journal 413
+    found the collapse leaves no event at all. OD_SEAT_TRACE, off by
+    default, prints raw provinces, army, treasury and war counts per
+    turn. First reading: on a rushed world France is bankrupt at turn 23
+    and loses its land from turn 110 to 200, a slide and not a cliff.
+
+## 415 — iteration: a recruitment reserve floor, screened before it is benched (backlog item 114)
+
+PRE-REGISTERED, written before any run.
+
+THE MECHANISM, measured in journal 414 and not assumed: 1914:FRA on a rushed world holds 1252.8 at turn 18 and 1.3 at
+turn 23, then spends 376 turns at zero while the army it bought decays 13.5M -> 0.26M and the provinces follow, 118 at
+turn 110 down to 3 at turn 200. Reading the executor shows why the existing guard does not stop this: the 20% clamp on
+recruitment bounds **one order**, not a turn and not a campaign.
+
+THE CHANGE, gated OD_RECRUIT_RESERVE=K, off by default: only the treasury standing above **K turns of the standing bill**
+is spendable on recruitment. The bill is read from projectIncome -- the same snapshot the doctrine reflex and the
+recruitment mask already price against -- rather than a second estimate (memory expose-the-resolvers-numbers).
+
+**THIS ITERATION IS A SCREEN, NOT A VERDICT, and that is deliberate.** K is a free parameter and this project's biggest
+recorded gain came from an unexamined constant (memory sweep-the-defaults), so benching one arbitrary K would measure the
+guess rather than the rule. The screen: **K in {2, 5, 10}, four rushed seeds, against the OFF arm**, reading the seat
+trace -- final provinces, and whether the treasury stays off the floor. Thirteen runs, about fifteen minutes. No bench
+rows, no rating claimed.
+
+WHAT ADVANCES TO A BENCH, fixed now: a K that **improves final provinces on at least 3 of 4 seeds AND keeps the tail
+treasury above zero**. If none does, the rule is rejected here for the cost of fifteen minutes rather than three hours.
+If more than one does, the larger K goes forward, because the mechanism says reserve size is the point.
+
+INERTNESS: with the gate unset the arithmetic is `spendable = c.treasury`, byte-identical to the old expression, so the
+OFF arm must reproduce **2904055102330604147/91296** on 1914:FRA seed 13579. Checked before the screen; a mismatch
+reverts the patch (paths: src/ai/AISystem.cpp, pre-edit copy scratchpad/pre415-AISystem.cpp).
+
+PREDICTIONS, committed, and the second one is the one I expect to be wrong about.
+  1. **K=5 and K=10 keep the treasury off the floor** -- tail treasury above zero on at least 3 of 4 seeds.
+  2. **Final provinces improve on at least 3 of 4 seeds for at least one K.** I am genuinely unsure: a reserve buys
+     replacement capacity later but fields fewer troops in the opening, and journal 412 showed the rush seat is decided
+     LATE, which favours the reserve. Against that, memory caution-trades-growth says caution rules pay on the seats they
+     do not help, and the rung seats are not in this screen at all -- if a K advances, the bench must carry them.
+
+RESULT (journal 415). The pre-registration above was written before any run. Build 4aba877b, 05:28 -> 05:36.
+
+Gate off reproduces 2904055102330604147/91296 -- **with the gate unset the floor is byte-identical arithmetic and moves
+no decision.**
+
+    seed          OFF final/peak  land   K=2 final  land   K=5 final  land   K=10 final  land
+    13579              3 / 118    0.20     3 /  90  0.20    **117** / 118  11.80     2 / 108  0.10
+    1149194796         3 / 141    0.30    **80** / 103  8.20     2 / 101  0.10     3 / 109  0.20
+    548326348          3 / 125    0.20    **17** /  92  1.50    **69** /  96   6.60   **70** /  98   7.30
+    886869249         17 / 125    1.00    **20** /  92  2.30     3 / 103  0.20   **95** / 102  10.50
+
+    mean land     OFF **0.42**    K=2 **3.05**    K=5 **4.67**    K=10 **4.53**
+    tail treasury above zero:     K=2 4/4         K=5 4/4         K=10 2/4
+
+**BY THE RULE FIXED BEFORE THE RUN, K=2 ADVANCES** (better on 3 of 4 seeds, tail cash 4 of 4) and K=5 and K=10 do not
+(2 of 4 each). **I am reporting that and then saying plainly that the criterion was the wrong shape.** This seat is
+bistable -- every number above is either a collapse (0.1-0.3) or a hold (6-12), nothing between -- so "better on N of 4
+seeds" is a collapse RATE measured on four coins, and 3-of-4 against 2-of-4 is noise (memories
+bistable-seats-need-many-seeds, rates-need-counts). The ranking among K values is **not resolvable here** and I will not
+pretend the screen chose one.
+
+**WHAT THE SCREEN DOES SETTLE, and it is what a screen is for:** every K tried lifts the mean land from **0.42 to
+3.05-4.67**, converting collapses into holds on a seat where OFF collapses 3 of 4 times, and the treasury tail confirms
+the mechanism does what it was designed to do -- 790.9 and 1570.6 in the clearest cases against 0.0-0.8 under OFF.
+**The rule is worth a bench. Which K is worth a bench is an open question the bench must answer**, so the next iteration
+carries at least two of them.
+
+PREDICTIONS: the first is **half right** -- K=5 keeps the treasury off the floor on 4 of 4, K=10 only on 2 of 4, which I
+did not expect and which suggests a large reserve starves the recruitment that would have defended the income. The
+second is **right by the letter** (K=2 improves 3 of 4) and I have just argued it was measured on the wrong instrument.
+
+NEXT, and it is the expensive one this loop has been deferring: 1914:FRA:rush at 64 seeds, arms OFF / K=2 / K=5, plus
+the three rung seats at 48 seeds to price what the caution costs where it does not help (memory caution-trades-growth).
+About four hours. Filed as item 115.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (pre-edit copy scratchpad/pre415-AISystem.cpp), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md, build/loop415/ (ignored). model.bin unchanged.
+
+PENDING COMMIT: held until the bench decides. The patch stays in the working tree, gated off.
+
+## 416 — iteration: bench the recruitment reserve floor (backlog item 115)
+
+PRE-REGISTERED, written before any run.
+
+THE CONTROL IS THE SHIPPED CONFIGURATION. Journal 415's screen ran every arm with OD_DOCTRINE_REFLEX=0 to isolate the new
+rule; that was right for a screen and wrong for a decision. The reflex ships on as of fa32ef1, so all three arms here run
+the **shipped default** and differ only in the reserve (memory siege-reflex-split: compare arms against the right
+control).
+
+    arm A  reserve off            (the shipped game today)
+    arm B  OD_RECRUIT_RESERVE=2
+    arm C  OD_RECRUIT_RESERVE=5
+
+RUNS. **1914:FRA:rush, 64 seeds** (journal 403's set, the same seats journals 403 and 410 used) -- the seat the rule was
+built for. **The three rung seats, 48 seeds** (journal 402's set) -- to price what a caution rule costs where it does not
+help. 624 runs, about four and a half hours.
+
+STATISTICS, each on the instrument that seat needs. Rush is a COLLAPSE RATE (land < 1.5): Fisher exact, counts always
+printed, and at 64 seeds it resolves about 0.25 so a null is "no large change". The rung seats are the per-seed rating
+with floor 1.96*sqrt(se_a^2+se_b^2), plus per-seat land by permutation.
+
+**THE TRADE, REGISTERED BEFORE THE NUMBERS EXIST, because this is a caution rule and that is the whole question:**
+  * **SHIPPABLE** if a K improves the rush collapse rate (Fisher p < 0.05) AND the rung rating does not fall by more than
+    its floor. Both halves required.
+  * **A MEASURED TRADE, decided by the user and not by me**, if a K improves rush significantly AND costs rung
+    significantly. The loop reports both numbers and makes no recommendation: that is a question about what the game is
+    for, which memory bench-cannot-measure-leader-mechanics says this bench cannot settle.
+  * **REJECTED** if no K improves rush, whatever it does to the rung seats. The rule exists for the collapse; a caution
+    rule that does not stop the collapse has no case.
+
+PREDICTIONS, committed.
+  1. **At least one K improves the rush collapse rate, and it clears** -- the screen moved mean land 0.42 -> 3.05-4.67 on
+     four seeds, which at 64 should show as a rate change of 0.15-0.30.
+  2. **The rung seats LOSE, and by more than their floor.** Reason: memory caution-trades-growth, and the mechanism is a
+     direct one -- a great power at par spends its reserve on conquest, and holding it back is money not turned into
+     land. I expect this to land in the TRADE branch, not the SHIPPABLE one.
+  3. **K=5 beats K=2 on rush and loses more on rung**, because reserve size is the dial and both effects scale with it.
+
+RESULT (journal 416). The pre-registration above was written before any run. 624 runs, 05:42 -> 12:32.
+
+Gate: the control reproduces 742276098712025459/130092, the shipped configuration.
+
+    CONTROL (shipped)   rush collapsed **26/64**, land 7.16;   rung **407.1** (se 13.1)
+
+    K=2   rush collapsed **28/64** (Fisher p 0.858);  land 7.16 -> **4.08** (perm p 0.002)
+          rung 407.1 -> **173.3**,  diff **-233.8**, floor 26.8
+          land FRA 27.05 -> 10.46 (p 0.000)   USA 30.85 -> 12.50 (p 0.000)   CHN 16.17 -> 3.51 (p 0.000)
+    K=5   rush collapsed **38/64** (Fisher p 0.051);  land 7.16 -> **3.10** (perm p 0.000)
+          rung 407.1 -> **160.9**,  diff **-246.2**, floor 26.8
+          land FRA 27.05 ->  9.85 (p 0.000)   USA 30.85 -> 11.21 (p 0.000)   CHN 16.17 -> 3.39 (p 0.000)
+
+**VERDICT: REJECTED, on the branch the pre-registration said would reject it -- the rush seat is not improved.** It is
+made WORSE: the land it was built to protect falls by half at p 0.002, and K=5's collapse rate is worse at p 0.051. The
+rung seats lose **233 and 246 rating points** against a floor of 26.8, with every seat's land down 12-20 points at
+p 0.000. This is the largest cost this loop has ever measured for a rule. **The patch is reverted** (src/ai/AISystem.cpp
+restored from scratchpad/pre415-AISystem.cpp; journal 414's seat trace stays, and is now the only uncommitted change).
+
+**ALL THREE PREDICTIONS WRONG, and the middle one right for the wrong reason.** I predicted a K would improve rush
+(false, both worsen it), that the rung seats would lose by more than their floor (true, but I expected a trade worth
+arguing about, not -234), and that K=5 would beat K=2 on rush (false, it is worse).
+
+**WHY THE SCREEN INVERTED, and this is the lesson worth more than the rule.** Journal 415 ran every screen arm with
+**OD_DOCTRINE_REFLEX=0** and found mean land 0.42 -> 3.05-4.67. This bench runs the shipped configuration, where the
+reflex is ON and the control already collapses only 26 of 64. **The reserve floor was substituting for something the
+shipped game already does**, and against the real control it does not add protection -- it removes an army. I flagged
+the control mismatch in this entry's own pre-registration and still did not expect a sign flip; the honest statement is
+that **a screen against the wrong control is not a weak measurement, it is a different question**, and four seeds on a
+bistable seat could not have caught it either (memories siege-reflex-split, bistable-seats-need-many-seeds).
+
+**AND IT RETIRES JOURNAL 414'S READING OF THE BANKRUPTCY.** That trace showed France at zero from turn 23 and losing its
+land from turn 110, and I read the first as the cause of the second. Holding money back **costs 234 rating points**, so
+converting the treasury into an army early is not the mistake -- it is close to the best thing the AI does. The turn-23
+bankruptcy is a symptom of a sound policy, not the disease. What kills the seat late (item 111) is still unexplained, and
+the candidate I was most confident about is now excluded by measurement rather than by argument.
+
+ONE INSTRUMENT NOTE, because it cost five minutes and has now cost three chains something: **[DECHASH] is written to
+STDERR.** A gate that pipes stdout and discards stderr reads an empty hash. Every working chain in this journal writes
+both streams to a log and greps the file; the one that did not, stopped on its own guard.
+
+READ THE GRADED COUNTS: control 68/144 (76 pinned, mostly at the 5x CAP), K=2 143/144, K=5 139/144. The arms are in
+different regimes -- the control's seats are capped high, the reserve arms sit far below -- so the -234 is if anything an
+UNDERSTATEMENT of the gap, since the control cannot score above the cap.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (edited, then reverted), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md,
+build/od_bench_results.json (j416-*), build/loop416/ (ignored). model.bin unchanged.
+
+PENDING COMMIT: journal 414's seat trace and the docs. The reserve floor is gone and should not be revived without a
+different mechanism -- this one is measured and dead.
+
+## 417 — iteration: what separates a collapse from a hold, on the shipped game (item 111)
+
+PRE-REGISTERED, written before any run.
+
+WHERE ITEM 111 STANDS. Journal 414 traced the late collapse and found the treasury dead at turn 23, the army decaying
+14.1M -> 0.26M, and the provinces following it down. I read money as the cause; **journal 416 measured that reading and
+killed it** -- holding cash back costs 234 rating points, so spending the treasury into an army early is near-optimal.
+What remains unexplained is the army decay itself: on one foreign war, France loses 98% of its troops between turns 50
+and 200.
+
+**AND THE QUESTION MUST BE ASKED ON THE SHIPPED GAME.** Journal 414's trace ran with OD_DOCTRINE_REFLEX=0, where the
+seat collapses 3 times in 4. The shipped control collapses **26 of 64**, so under the configuration that actually ships,
+a collapse and a hold both happen often -- which makes the useful comparison a within-arm one. That is the correction
+journal 416 paid four hours to learn, applied immediately rather than filed.
+
+THE RUN: **12 rush seeds from journal 403's set, shipped configuration, seat trace on.** Classify each by its final land
+(< 1.5 = collapsed) and compare the trajectories of the two groups. Twelve runs, about fifteen minutes. No new code --
+journal 414's instrument already prints what this needs.
+
+STATISTICS, fixed now: for each run, (a) the peak army and the turn it peaks, (b) the mean number of concurrent FOREIGN
+wars over turns 50-150, (c) the mean rebellion wars over the same window, (d) the turn the province count peaks. Compare
+the collapsed and held groups by permutation on each, and report the group sizes with every number (memory
+rates-need-counts). With ~6 per group this resolves only large differences, and a null will be written as "not
+resolvable at 12 seeds".
+
+PREDICTION, committed: **the collapsed runs carry more concurrent foreign wars in turns 50-150** -- mean above 1.5
+against below 1.2 for the held runs. Reason: AI_MAX_CONCURRENT_WARS is 1 for the AI's own declarations, but nothing stops
+a second country declaring on France, and memory stalled-wars-lock-the-war-slot says a country already committed cannot
+answer the second front. **If instead the war counts match and only the army differs**, the cause is attrition inside a
+single war -- the AI is losing battles it keeps fighting -- and the next place to look is the combat resolver, not
+diplomacy.
+
+RESULT (journal 417). The pre-registration above was written before any run. Twelve runs, 12:35 -> 12:41.
+
+    seed        land   army peak (M)  peaks at turn   prov peaks   wars 50-150   max wars   rebels
+    246810      0.00        9.9            63             64          0.98          1        0.03
+    31415926    0.00       10.1            48            109          1.95          4        0.63
+    1618033     0.10        8.4            37             75          1.00          1        0.92
+    13579       0.20       14.6            57             68          1.82          2        0.68
+    555555      0.20       13.2            40             37          1.00          1        0.00
+    777777      4.90       15.7            32             31          1.00          1        0.00
+    271828      8.90       14.6           270             65          0.99          1        0.35
+    2468135     9.50       52.1           334            366          0.92          1        0.35
+    11111      11.10       30.6           303              7          0.00          0        0.00
+    987654     11.20       23.1           399             70          0.91          1        0.05
+    3141592    11.30       14.5            37            231          1.00          1        0.18
+    8080808    12.20       33.5           400            132          1.00          1        0.39
+
+    collapsed n=5, held n=7
+      concurrent foreign wars 50-150   collapsed **1.35**  held **0.83**   perm p 0.037
+      army peak                        collapsed **11.2M** held **26.3M**  perm p 0.023
+      turn the army peaks              collapsed **49**    held **254**    perm p 0.047
+      max concurrent wars              collapsed  1.80     held  0.86      perm p 0.104
+      rebellion wars                   collapsed  0.45     held  0.19      perm p 0.158
+      turn the provinces peak          collapsed  70.6     held  128.9     perm p 0.404
+
+**THE PREDICTION IS DIRECTIONALLY RIGHT AND NUMERICALLY WRONG.** I registered "collapsed above 1.5 concurrent wars,
+held below 1.2". The direction holds at p 0.037, but collapsed sits at **1.35**, under my threshold. By the letter the
+prediction fails; by the mechanism it is the first of my predictions in this sequence to name the right variable.
+
+**AND I AM NOT CALLING ANY OF THESE FINDINGS.** Six statistics were computed on five-versus-seven runs, three of them
+landed under p 0.05, and the Bonferroni cut for six looks is 0.0083 -- **none survives it**. The expected number of
+false positives at p<0.05 from six looks is 0.3, and I got three; that is more than chance would usually give, which is
+why the pattern is worth pursuing, but memory count-the-groupings-you-looked-at is explicit that a p attached to a
+pattern found by looking is not a p. These are leads.
+
+**THE COHERENT PICTURE THEY MAKE**, which is what makes them worth a confirming run rather than a shrug: the collapsed
+runs peak their army **early and small** (turn 49, 11.2M) and decline for the rest of the game; the held runs peak
+**late and large** (turn 254, 26.3M) and are still growing at the horizon. The collapsed runs also carry more
+simultaneous foreign wars in the middle game. Nothing here separates cause from effect -- a second war may destroy the
+army, or a small army may invite the second war -- and the trace cannot tell those apart.
+
+WHAT IT RULES OUT: the province peak turn is the one statistic that does NOT separate the groups (70.6 against 128.9,
+p 0.404). Whatever distinguishes a collapse is visible in the ARMY long before it is visible in the land, which is
+consistent with journal 414's single trace and now measured across twelve.
+
+NEXT, and it is the shape this loop keeps having to learn: **one statistic, pre-registered, on seeds that did not raise
+it.** Mean concurrent foreign wars over turns 50-150, 24 fresh rush seeds, shipped configuration, permutation test
+between the collapsed and held groups. About thirty minutes. Filed as item 116.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop417/ (ignored). No source change, no bench rows.
+
+PENDING COMMIT: journal 414's seat trace and the docs, unchanged from journal 416.
+
+## 418 — iteration: confirm the war-count lead on held-out seeds (backlog item 116)
+
+PRE-REGISTERED, written before any run.
+
+THE ONE STATISTIC, chosen before the data and named here so it cannot be swapped afterwards:
+
+    mean number of concurrent FOREIGN wars the seat is in, averaged over turns 50-150,
+    compared between the runs that end collapsed (land < 1.5) and the runs that end held.
+
+Journal 417 measured 1.35 against 0.83 at perm p 0.037 -- one of six statistics it looked at, none of which survives the
+Bonferroni cut for six looks. This is the hold-out. **Five of the six are not tested here and are not being tested by
+proxy**; if the war count confirms, the others remain untested leads.
+
+WHY THIS ONE OF THE SIX. It is the only one a rule could act on. "The army peaks early and small" describes the
+collapse; "the seat is in two wars at once" is something the war head and the ceasefire rules already have machinery for
+(AI_MAX_CONCURRENT_WARS, OD_CEASEFIRE_STALL, memory stalled-wars-lock-the-war-slot).
+
+THE SEEDS ARE A PROPER HOLD-OUT: journal 403's rush set, **entries 13 through 36**, none of which has had this statistic
+computed on it. 24 runs, shipped configuration, seat trace on, about twenty-five minutes.
+
+DECISION RULE, fixed now. **CONFIRMED** if the collapsed group's mean exceeds the held group's AND the permutation p is
+below 0.05. **NOT CONFIRMED** otherwise, and then the lead is written down as not replicating and item 116 closes
+against it -- a lead that fails its own hold-out is worth more as a closed door than as an open one.
+
+PREDICTION, committed: **confirmed, but with a smaller gap** -- collapsed near 1.2, held near 0.9, p between 0.01 and
+0.10, and I expect it to land closer to 0.05 than to 0.01. Reason: journal 417's split was selected by looking, so the
+effect should regress; and this loop has twice watched a p-value effect shrink on seeds that did not raise it
+(memory decide-on-fresh-seeds). **If the gap instead holds at 1.35 against 0.83 or widens, that is stronger evidence
+than the original run**, because nothing here was chosen after seeing these seeds.
+
+RESULT (journal 418). The pre-registration above was written before any run. 24 runs, 12:43 -> 12:52.
+
+    hold-out, journal 403 seeds 13-36, shipped configuration:
+        collapsed  n=11  mean concurrent foreign wars 50-150  **1.02**
+        held       n=13                                       **0.68**
+        permutation p **0.085**
+
+**VERDICT BY THE RULE FIXED BEFORE THE RUN: NOT CONFIRMED.** The rule asked for p < 0.05 and got 0.085, so the lead does
+not replicate at this scale and item 116 closes against it.
+
+**MY PREDICTION WAS ACCURATE AND THE VERDICT IS STILL NEGATIVE, which is the point of fixing the rule first.** I
+registered "collapsed near 1.2, held near 0.9, p between 0.01 and 0.10, closer to 0.05" and got 1.02, 0.68 and 0.085 --
+every number inside the range I named. Had I not written the threshold down beforehand, p 0.085 with the predicted
+direction and magnitude is exactly the result a person talks themselves into calling a confirmation.
+
+WHAT IS TRUE, SEPARATED FROM WHAT IS SHOWN. The direction replicated: collapsed runs carry more concurrent wars in both
+samples (1.35 vs 0.83, then 1.02 vs 0.68), and the gap shrank as journal 417's selection predicted it would. Pooled over
+both samples the difference is 1.12 against 0.73 at p 0.012 -- **and that number is descriptive only, not a verdict**,
+because pooling was not pre-specified and the first sample is where the statistic was chosen from six.
+
+**WHAT IT WOULD COST TO SETTLE, priced rather than guessed:** pooled sd 0.45, Cohen's d 0.86, so ~21 runs per group for
+80% power at 0.05 -- at the observed 46% collapse rate, **about 46 seeds, roughly 19 hours**. That is the honest price of
+turning this lead into a finding, and it is the user's call whether the war count is worth nineteen hours when the rule
+it would justify is still hypothetical. Recorded in item 116; the loop is not spending it unasked.
+
+WHERE THAT LEAVES ITEM 111. Three candidate causes have now been examined: bankruptcy (**excluded by measurement**,
+journal 416 -- holding money costs 234 rating), rebellion (**excluded**, journal 413 -- dying runs have FEWER rebellions),
+and concurrent wars (**not confirmed at this scale**, this entry). The army-shape observation from journal 417 -- peak at
+turn 49 and 11.2M against turn 254 and 26.3M -- remains untested and is now the strongest surviving description, though
+it describes the collapse rather than explaining it.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop418/ (ignored). No source change, no bench rows.
+
+PENDING COMMIT: journal 414's seat trace and the docs, unchanged.
+
+## 419 — iteration: rule C on the rush seat, where it was never measured
+
+PRE-REGISTERED, written before any run.
+
+WHY THIS, AND WHAT IT IS NOT. Journal 418 closed the war-count lead as not confirmed, so **this experiment is not
+justified by a proven mechanism and is not being sold as one.** What it is: OD_CEASEFIRE_STALL (rule C, built in journal
+388, ends a war neither side is winning) is machinery that already exists, gated off, and it has only ever been measured
+on the RUNG seats -- journals 390-392, where it gave N24 +13.3 on fresh seeds against a floor of 30.4 and was left off.
+**It has never been run on 1914:FRA:rush**, which is the seat that collapses, and the collapse involves wars the seat
+cannot finish. That is a cheap gap, not a theory.
+
+STAGED, so the expensive half only happens if the cheap half earns it:
+  * **THIS ITERATION: rush only.** 1914:FRA:rush, journal 403's 64 seeds, shipped configuration, arms
+    OD_CEASEFIRE_STALL unset against =50. 128 runs, about an hour.
+  * **NEXT ITERATION, only if rush improves:** the three rung seats at 48 seeds to price what it costs elsewhere. If
+    rush does not improve, that hour is never spent.
+
+STATISTIC: the collapse rate (land < 1.5), Fisher exact with counts, which is the instrument this seat needs (journal
+291); land mean by permutation, quoted second. At 64 seeds a rate difference under ~0.25 will not resolve and a null
+will be written as "no large change", not "no change".
+
+VERDICT RULE. **WORTH PRICING** if the collapse rate improves at Fisher p < 0.05 -- then the rung cost run follows.
+**NOT WORTH PRICING** otherwise, and rule C stays off with one more seat measured against it, which is itself worth the
+hour since journal 392 left it explicitly unresolved.
+
+PREDICTION, committed: **no large change, Fisher p above 0.05, and the collapse rate within 5 of 64 either way.**
+Reason: journal 417's traces show the collapsing runs sit at 1.0-1.8 concurrent wars, not in a single stalled war that a
+ceasefire would end, and journal 418 declined to confirm even that. I am running it because it is an hour and the gap is
+real, not because I expect it to work -- and registering that expectation is what stops a null from being rewritten
+afterwards as "we always knew".
+
+RESULT (journal 419). The pre-registration above was written before any run. 128 runs, 12:57 -> 13:43.
+
+    1914:FRA:rush, 64 seeds, shipped configuration:
+        rule C off   collapsed **26/64**   land **7.16**
+        rule C =50   collapsed **26/64**   land **7.16**   Fisher p 1.000, land perm p 1.000
+        **elementwise identical on all 64 seeds** -- 0 of 64 differ
+
+VERDICT: **NOT WORTH PRICING**, so the rung cost run is never spent. But the identical arrays made the number suspicious
+rather than conclusive, and the follow-up is the whole value of this entry.
+
+**RULE C NEVER FIRES IN A RUSHED WORLD. THIS IS A BLANK, NOT A NULL.**
+
+    rung world (the gate run that DID change the hash):  [CFSTALL] ceasefires accepted by the stall rule: **27**
+                                                          ceasefire events in the log: **150**
+    rush world, same binary, same rule:                   [CFSTALL] firings: **0**
+                                                          ceasefire events in the log: **3**
+
+A rushed world runs 400 turns with **three** ceasefire events against a hundred and fifty in the ordinary one. Every
+country is SCRIPT_BLITZ there, and scripted aggressors do not negotiate -- so the diplomatic channel the rule acts
+through is effectively absent. The gate proves the rule is live in the binary (the hash moves, 27 firings); it simply
+has nothing to act on in this scenario.
+
+**WHAT THAT RETIRES, and it is bigger than rule C.** No ceasefire-shaped rule can ever move 1914:FRA:rush -- not this
+one, not a better-tuned one, not the diplomacy head. That closes a whole family of candidates for one of the two seats
+LOOP.md says the remaining rating points live on, and it does so structurally rather than statistically: there is no
+sample size that changes it. It is the same shape as journal 404's finding that the doctrine reflex can never fire for
+1939:NOR, and together they say something uncomfortable about the survival seats: **the levers this project keeps
+reaching for are the ones those seats cannot feel.**
+
+MY PREDICTION was right on the number and wrong on the reason. I registered "no large change, p above 0.05, within 5 of
+64" and got exact equality -- but I expected the rule to fire and not help. It never fired. The pre-registration did not
+name this branch, and a prediction that is accidentally right is worth recording as such (memory
+measurements-replicate-explanations-dont).
+
+FOR THE NEXT RULE AIMED AT THIS SEAT, the test to run first is one line: **does the mechanism exist in a rushed world at
+all?** Three ceasefires and twenty-seven-to-zero firings would have said no in two minutes, before an hour of bench.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j419-*), build/loop419/
+(ignored). No source change. model.bin unchanged.
+
+PENDING COMMIT: journal 414's seat trace and the docs, unchanged.
+
+## 420 — iteration: what the rush seat actually does, action by action
+
+PRE-REGISTERED, written before any run.
+
+WHY. Journals 404 and 419 each found a lever that **cannot act** on a survival seat: the doctrine reflex never fires for
+1939:NOR (below the median army), and no ceasefire rule can reach 1914:FRA:rush (a rushed world logs 3 ceasefire events
+against 150). Both were discovered by benching first and counting firings afterwards. The habit that follows is item
+117's: **count first.** This iteration does that for the whole action space rather than one rule.
+
+THE RUN, using the instrument this project already has (OD_ACT_HIST with OD_ACT_HIST_CID, memory act-hist-instrument):
+the seat's own picked-versus-offered histogram, **1914:FRA in a rushed world against 1914:FRA in the ordinary world**,
+same seed, same binary, shipped configuration. Two runs, about four minutes.
+
+WHAT IT ANSWERS: which actions the seat is OFFERED in a rushed world, which it PICKS, and which the executor then
+REFUSES. Journal 398 found "enact doctrine" offered 201-250 times and picked zero -- a whole head unreachable -- and the
+doctrine reflex came out of that reading. This asks the same question for every action class on the seat that holds the
+rating down.
+
+PREDICTION, committed: **at least one action class is offered 50+ times in the rushed world and picked zero times**, as
+the doctrine action was on the rung seats. And separately: **the refusal profile differs between the two worlds** -- the
+rushed seat's refusals concentrate in money ("too poor/small") because journal 414 traced it bankrupt from turn 23,
+while the ordinary seat's do not. If instead the two profiles match, the seat's problem is not WHICH actions it takes,
+and the next place to look is the resolver -- how the same actions resolve differently when everyone is attacking.
+
+RESULT (journal 420). The pre-registration above was written before any run. Two runs, about five minutes.
+
+**A TOOLING SLIP FIRST, because it read as success.** The first attempt looped over both worlds with the variant flag in
+a shell variable, and the two runs returned the IDENTICAL seat score (25.9). The Bash tool's shell is **zsh, which does
+not word-split an unquoted variable**, so `--vs-exploit 3` arrived as one argument and was ignored -- the "rush" run was
+an ordinary run. Memory zsh-does-not-word-split records this exact failure and I walked into it. Rerun with the flag
+written out, the rushed seat scores 0.2, matching journal 412.
+
+**DEAD ACTIONS -- offered 50 or more times and taken zero times:**
+
+    rushed world     **13 of 48 slots**, **6,047** wasted offers
+    ordinary world   **14 of 48 slots**, **15,297** wasted offers
+
+    the largest, with both worlds side by side (played/offered):
+      NAVY     a5                                    rush    0/2792    ordinary   0/296
+      WAR      a6  offer ceasefire to the strongest enemy  rush 0/578   ordinary   0/0
+      POLITICS a10 repress a minority                 rush    0/563     ordinary   0/691
+      POLITICS a3  pacification down                  rush    0/469     ordinary   0/561
+      POLITICS a4  cancel policy                      rush    0/331     ordinary   0/691
+      POLITICS a1  enact policy (journal 398's)       rush    0/145     ordinary   0/280
+
+**THE FINDING THAT CLOSES A LOOP WITH JOURNAL 419.** That entry showed the rushed world runs on 3 ceasefire events
+against 150, and rule C -- which ACCEPTS a ceasefire in a stalled war -- never fires there. This entry shows the other
+half from inside the seat: **WAR a6, "offer ceasefire (white peace) to the strongest enemy", is offered to the model 578
+times in a rushed world and taken zero times.** The mechanism is dead at both ends. Nobody offers the seat a ceasefire,
+and the seat never offers one. Item 117 stands strengthened: this is not a tuning problem.
+
+**PREDICTION 1 CONFIRMED, several times over** -- I registered "at least one action class offered 50+ and picked zero"
+and there are thirteen. **Prediction 2 is not answerable from this instrument**: I wrote that the REFUSAL profile would
+differ, and OD_ACT_HIST records picked-versus-offered, not the executor's refusals. That was a mis-specification in the
+pre-registration, not a result. What the instrument does show is that the two worlds' PLAY rates differ enormously --
+ECON a1 taken 91.7% of offers in the rushed world against 14.2% in the ordinary one, WAR a3 48.4% against 8.0%, ECON a8
+41.1% against 1.5% -- so the seat is not merely doing the same things worse.
+
+**WHAT IS WORTH TAKING FROM THIS.** Journal 398 found ONE dead action (enact doctrine, offered 201-250, picked zero),
+and the rule built on it is now shipped and worth +52 to +86 rating. This entry finds **thirteen** in the rushed world
+and fourteen in the ordinary one, listed above with their counts. That is a queue of candidates of the same shape as the
+one success this loop has had, and each is cheap to test for reachability first (item 117's habit) before any bench.
+Filed as item 118.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop420/ (ignored). No source change, no bench rows.
+
+PENDING COMMIT: journal 414's seat trace and the docs, unchanged.
+
+## 421 — iteration: triaging journal 420's queue, mostly from the archive (item 118)
+
+NO RUNS. This iteration cost two greps and some arithmetic, and it stops the loop from re-benching things it has already
+measured. There is no pre-registration because nothing was measured; the disposition of each candidate is below with the
+evidence that settles it.
+
+**THE CEILING ARITHMETIC FIRST, on the seat's own ledger in a rushed world** ([EVAL] model line, journal 420's log):
+
+    gross 277.67, expenses 263.77 (95.0%)
+    research 85.87 (30.9%)   industry 80.74 (29.1%)   **pacification 55.82 (20.1%)**
+    minorities 22.58 (8.1%)  policies 9.60 (3.5%)     navy 5.81 (2.1%)   **army 3.34 (1.2%)**
+
+The seat spends **16.7 times more on pacification than on its army**, and the resolver's own counter says **91.1% of
+that pacification buys nothing** (97.9% in the ordinary world).
+
+**TRIAGE OF JOURNAL 420'S THIRTEEN DEAD SLOTS:**
+
+    NAVY a5  scrap an unused ship        0/2792   **EXCLUDED BY ARITHMETIC.** The entire navy line is 2.1% of gross;
+                                                  perfect play here cannot reach a fifth of what one bench point costs.
+    WAR a6   offer ceasefire             0/578    **EXCLUDED, item 117.** A rushed world logs 3 ceasefire events; nobody
+                                                  would accept.
+    POLITICS a3  pacification down       0/469    **ALREADY BENCHED, TWICE: -97 and -85** (journal 256's map, re-read at
+                                                  journal 316). The trim direction is a measured loss, so the head's
+                                                  refusal is CORRECT PLAY, not a gap -- the same shape as refusing NAPs.
+    POLITICS a10 repress a minority      0/563    **ALREADY MAPPED** (journal 309: split credit, cost in POLITICS and
+                                                  money in ECONOMY) and offered on 30,471 of 30,471 decisions.
+    POLITICS a4  cancel policy           0/331    **ALREADY MAPPED**, 22,210 offers at 0.00% in the same survey.
+    POLITICS a1  enact policy            0/145    **ALREADY ACTED ON** -- this is journal 398's finding, it produced the
+                                                  doctrine reflex, and that reflex now ships (+52 to +86).
+
+**SO ITEM 118 WAS LARGELY A RE-DISCOVERY, and I should have checked before filing it as a queue.** The politics half was
+surveyed in full at journal ~316 -- "SIX OF TWELVE ARE EXACTLY ZERO, on tens of thousands of offers each" -- and memory
+half-the-politics-head-is-unreachable records it. Journal 420's genuine additions are the RUSHED-world counts and the
+navy slot; the navy slot is killed by arithmetic above. **Net new candidates from that queue: none.**
+
+**THE LESSON, and it is about the loop rather than the game.** A zero in an action histogram means one of three things
+and they look identical: an unreachable opportunity (a1, which paid +52), a measured-correct refusal (a3, benched at
+-97/-85), or an action whose ceiling is too small to matter (a5, 2.1% of gross). **Journal 420 treated all thirteen as
+the first kind.** The check that separates them is cheap and comes in this order: search the journal for the action's
+name, then compute its ceiling from the ledger, and only then build anything. Memory
+nothing-routes-findings-back-to-the-protocol is exactly this failure and it has now cost this loop an iteration --
+though a cheap one, which is the argument for doing the check first rather than the argument against filing candidates.
+
+WHAT SURVIVES AS A REAL TARGET, from the arithmetic rather than the histogram: **pacification is 20.1% of the seat's
+gross and 91.1% of it buys nothing**, while the army that defends the seat gets 1.2%. The obvious lever -- spend less on
+pacification -- is measured and costs 90 points. That is not a contradiction to resolve by a better trim; it means the
+waste is load-bearing in a way nobody has explained, and the explanation is worth more than another trim. **Filed as
+item 119**, and it is a diagnosis, not a rule: the pacification counter already exists, so the question is what happens
+in the province-turns where the overshoot is spent -- is it insurance against a spike the mean cannot see (memory
+waste-can-be-insurance), or is the "needed" figure itself wrong?
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. No runs, no source change.
+
+## 422 — iteration: why the pacification waste is structural (item 119)
+
+PRE-REGISTERED, written before the run. Two facts below come from reading the source and cost nothing.
+
+**FACT 1: PACIFICATION IS ONE COUNTRY-WIDE DIAL.** Game_Policies.cpp:1323 computes a province's suppression as
+`pac * 50 * pacificationFactor(countryId, provinceId)`, where `pac` is `m_countryPacification[countryId]` -- a single
+per-country allocation -- and pacificationFactor scales it by the province's DISTRICT share.
+
+**FACT 2: THE AI NEVER TOUCHES DISTRICTS.** `sharePct` appears **zero times** in src/ai/AISystem.cpp, and nothing in the
+AI creates, reconciles or weights a district. Districts are set by loading, the map editor, scripts, mods and the player
+UI. **So the AI's only pacification instrument is a scalar applied uniformly to every province it owns.**
+
+Those two together predict the 91.1% waste without any further measurement: a country holding ninety provinces of which a
+handful are actually restive pays the same suppression rate in all ninety. **And they explain why BOTH slider directions
+are measured losses** (-97/-85 trimming, -54 raising): the dial cannot separate the provinces that need suppression from
+the ones that do not, so lowering it starves the hotspots and raising it feeds the quiet. The benches were not measuring
+"how much pacification is right"; they were measuring the only instrument the AI has, and it is the wrong shape.
+
+THE RUN, to confirm rather than assume: one rushed game with **OD_UNREST_TRACE=6** (the seat's cid) and OD_ACT_HIST,
+reading the per-province-turn unrest terms and the suppression applied. About three minutes.
+
+PREDICTION, committed: **the waste is concentrated in quiet provinces.** Specifically, of the province-turns the trace
+records, **more than 70% of the applied suppression lands where pre-suppression unrest is below 5**, and the suppression
+rate in those provinces is indistinguishable from the rate in provinces above 20 -- because the same scalar produces
+both. If instead the rate VARIES a lot between quiet and hot provinces, then pacificationFactor is already doing
+targeting work through districts the map supplies, and the waste has a different cause that this reading would have got
+wrong.
+
+RESULT (journal 422). The pre-registration above was written before the run. One run, 55,924 province-turns traced.
+
+    suppression was applied in 44,740 of 55,924 province-turns (80.0%)
+
+    **82.5%** of all suppression applied landed where pre-suppression unrest was **below 5**  (33,754 province-turns)
+     **0.3%** landed where unrest was **above 20**                                            (132 province-turns)
+
+    mean suppression rate   quiet **32.25**   hot **31.61**     <- the same dial, as predicted
+    mean unrest             quiet  **1.56**   hot **26.18**
+
+    only **173 of 55,924** province-turns (0.3%) ever exceed 20 unrest; the highest seen is 743.9
+
+**PREDICTION CONFIRMED on both halves.** I registered ">70% of applied suppression lands where unrest is below 5" and
+"the rate in quiet provinces is indistinguishable from the rate in hot ones". It is 82.5%, and the rates are 32.25
+against 31.61 -- a difference of 2%, on provinces whose unrest differs by a factor of **seventeen**.
+
+**THIS IS THE EXPLANATION ITEM 119 ASKED FOR, and it is structural.** The AI pours about 32 points of suppression into a
+province carrying 1.56 unrest and the same 32 into one carrying 26. It cannot do otherwise: `pac` is one scalar per
+country, and the only thing that can vary it per province is the DISTRICT share, which **the AI never sets** -- sharePct
+appears zero times in AISystem.cpp. The waste is not a tuning error and not insurance; **it is the shape of the only
+instrument the AI has.**
+
+**AND IT RETIRES THE "BOTH DIRECTIONS LOSE" PUZZLE.** Trimming the dial was benched at -97 and -85, raising it at -54,
+and journal 256 concluded pacification was "a local optimum, BOTH directions measured". It is not a local optimum in the
+quantity that matters. Moving a uniform dial down starves the 0.3% of province-turns that need it while barely touching
+the 82.5% that do not; moving it up feeds the 82.5%. **Nobody has ever measured the third direction, which is the same
+money spent where the unrest is.**
+
+THE PRIZE, priced from the ledger: pacification is **20.1% of the seat's gross** and 82.5% of it lands on quiet ground.
+The army that defends the seat gets **1.2%**. Recovering even half the misplaced spend would be several times the entire
+army budget -- and journals 412-414 traced the seat's death to an army that decays because nothing replaces it.
+
+**WHAT IT WOULD TAKE, and why it is the user's call.** Targeting needs the AI to create and weight districts, which is a
+game system it currently does not touch at all -- not a reflex on an existing decision like the doctrine one, but the AI
+learning to use a player-only mechanism. That is a feature, and its design (how many districts, redrawn how often, at
+what administrative cost) is a game-design question rather than a tuning one. Filed as **item 120** with the numbers
+above, for the user to decide; the loop will not start building a game system unasked.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop422/ (ignored). No source change.
+
+## 423 — iteration: the army does not evaporate, and the pacification budget ratchets (item 111 / 119)
+
+NO NEW RUNS. Source reading plus a re-analysis of journal 422's trace. Nothing was pre-registered because nothing was
+measured; each claim below names where it comes from.
+
+**FIRST, A MECHANISM RULED OUT.** Journals 412-417 all end at "the army decays" without establishing how, and troops
+dying in battle needs a different rule from troops evaporating for want of upkeep. `applyBankruptcyPenalties`
+(Game_TurnLogic.cpp:3033) answers it: the cascade cuts **discretionary budgets first**, then repeals doctrines, then cuts
+minority policies -- and disbanding is deliberately LAST, with the reason in the source: *"Disbanding a field army
+mid-war loses the country THIS turn; unrest is slow and survivable. Do not reorder this."* **So the army is not
+auto-disbanded.** It decays from combat losses that nothing replaces, exactly as journal 414's trace showed and as
+journal 416 proved cannot be fixed by hoarding cash.
+
+**SECOND, THE RATCHET, from journal 422's trace re-read per distinct province:**
+
+    turn    provinces   mean suppression   mean unrest
+       5        86            0.00             1.68
+      25        87           18.98             1.03
+     100        86           18.38             4.05
+     150        51           18.14             7.62
+     175        18            0.00             6.87     <- bankruptcy cascade zeroed the budget
+     190         3           38.00             0.93
+     400         3           38.00             0.93
+
+    turns spent at zero pacification: **57 of 400**
+    transitions from zero back to spending: **32**
+
+**The bankruptcy cascade zeroes the pacification allocation, and the politics head raises it again -- thirty-two times
+over one game.** Step 1 of the cascade exists precisely because "the budget has to actually come down, not just go
+unpaid", and the head undoes it within a turn or two, every time. The head takes "pacify UP" on 21.35% of offers and
+"pacify DOWN" on **0 of 18,251** (journal ~316's survey), so the dial only ever goes one way except when insolvency
+forces it.
+
+**AND THE END STATE IS ABSURD IN A WAY THAT SHOULD NOT SURVIVE REVIEW:** a rump of **three provinces** carrying **0.93**
+unrest is assessed **38.00** points of suppression per province -- **forty times** what the unrest is -- for the last two
+hundred turns of the game, by a country too poor to replace a single division.
+
+**WHAT THIS ADDS TO ITEM 120.** The uniform dial (journal 422) explains the waste across space; this explains it across
+time. The two together say the pacification bill is not a considered allocation at all -- it is a ratchet the head winds
+up, insolvency resets, and the head winds up again. **And it names a rule that has NOT been benched:** every prior
+measurement trimmed or raised the dial globally (-97/-85 and -54). Nobody has tried **a cooldown -- after the cascade
+zeroes the budget, refuse to raise it again for N turns** -- which binds only on a country that has just proven it
+cannot afford what it was buying. That is narrower than a trim, it is gated, and it is the same shape as the one rule
+this loop has shipped. Filed as **item 121**.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. No runs, no source change.
+
+## 424 — iteration: a pacification cooldown after insolvency (backlog item 121)
+
+PRE-REGISTERED, written before any run.
+
+THE CHANGE, gated OD_PAC_COOLDOWN=<turns>, off by default. Two pieces, both inside AISystem so nothing in Game moves:
+  1. once a turn, record for every living country the turn its pacification allocation **dropped to zero from above**
+     -- which is the bankruptcy cascade's step 1 (Game_TurnLogic.cpp:3044, *"the budget has to actually come down, not
+     just go unpaid"*);
+  2. in execPolitics case 2 (pacify UP), refuse the raise while fewer than N turns have passed since that drop, counting
+     the refusals as [PACCOOL].
+
+**WHAT IT IS NOT.** It does not trim the dial. Trimming was benched twice at **-97 and -85**, raising it at **-54**
+(journals 40, 256, 293). This refuses only to RE-RAISE, and only for a country that has just been made insolvent by the
+budget it is re-raising. Journal 423 measured that happening **32 times in one game**, with 57 of 400 turns at zero.
+
+INERTNESS: with the variable unset, case 2 is the original two lines and the per-turn recorder writes to a map nothing
+reads. The gate check is 1914:FRA seed 13579 reproducing **742276098712025459/130092** (shipped configuration).
+A mismatch reverts the patch; pre-edit copies are scratchpad/pre424-AISystem.{cpp,h}.
+
+**THE SCREEN, and it applies journal 416's lesson rather than filing it.** That entry's rule looked good on a 4-seed
+screen run with the doctrine reflex OFF and then inverted its sign against the shipped control. So: **the shipped
+configuration in every arm, and 16 rush seeds rather than 4** -- enough that a collapse-rate difference of the size
+journal 410 saw (26/64 against 37/64) would show, while still costing about twenty minutes.
+
+    arms: cooldown off (shipped), OD_PAC_COOLDOWN=10, OD_PAC_COOLDOWN=25
+
+WHAT ADVANCES TO A BENCH, fixed now: a cooldown value whose collapse count on the 16 screen seeds is **lower than the
+control's and whose [PACCOOL] counter is non-zero** -- the second half because journal 419 spent an hour benching a rule
+that never fired, and the counter answers that in one run.
+
+PREDICTIONS, committed.
+  1. **The counter fires, 20-200 times per game.** If it fires zero times the rule is unreachable and the screen ends
+     there.
+  2. **The collapse count does not improve.** I expect the pacification bill to be a symptom rather than the cause, on
+     the evidence that journal 416 already killed the money story once: holding cash back cost 234 rating. This rule
+     spends less rather than hoarding, which is a different mechanism -- but I am registering the negative because the
+     last two money-shaped rules both failed and the base rate matters more than my enthusiasm.
+  3. If it DOES improve, **the rung seats will pay for it**, because pacification suppresses rebellion on the big
+     multi-minority seats where the doctrine reflex earns its +52 (memory caution-trades-growth).
+
+RESULT (journal 424). The pre-registration above was written before any run. Build 56eb03ef, 14:06 -> 14:33.
+
+Gate with the variable unset: **742276098712025459/130092**, the shipped configuration -- inert.
+
+    16 rush seeds, shipped configuration in every arm:
+
+        collapsed (land < 1.5)   off **8/16**    cooldown10 **6/16**    cooldown25 **4/16**
+        mean land                off **5.17**    cooldown10 **6.11**    cooldown25 **6.70**
+        [PACCOOL] refusals/game               cooldown10 **681.6**   cooldown25 **843.8**
+
+**BOTH ARMS ADVANCE by the rule fixed before the run** (fewer collapses, counter non-zero).
+
+**MY PREDICTION 2 IS FALSIFIED.** I registered "the collapse count does not improve", on the grounds that two
+money-shaped rules had already failed. It improves, and monotonically in the cooldown length: 8 -> 6 -> 4. Prediction 1
+was right in direction and wrong in size -- I said the counter would fire 20-200 times and it fires **682-844**, which
+is itself informative: the head tries to re-raise this budget on the order of twice per turn.
+
+**AND THE SCREEN IS NOT A RESULT, which the registered rule already said.** Fisher on the collapse counts gives
+**p 0.723** for cooldown10 and **p 0.28** for cooldown25 against the control. At sixteen seeds on a seat this project has
+repeatedly recorded as bistable, 8 against 4 is not a finding -- and the per-seed table shows arms flipping both ways
+(seed 8080808 goes 12.20 -> 0.20 under cooldown10; seed 1618033 goes 0.10 -> 17.80). What the screen establishes is that
+the rule **fires, is reachable, and points the right way** -- which is what earns it a bench and nothing more.
+
+NEXT: the bench, and it must carry the cost side. 1914:FRA:rush at 64 seeds for the collapse rate with Fisher, and the
+three rung seats at 48 seeds for what a caution rule costs where it does not help -- prediction 3 above says the rung
+seats will pay, and that is the half that decides whether this ships. About four and a half hours. Filed as item 122.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (pre-edit copies scratchpad/pre424-AISystem.{cpp,h}),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop424/ (ignored). model.bin unchanged.
+
+PENDING COMMIT: held until the bench decides, as journal 415's was. The patch stays gated off in the tree alongside
+journal 414's seat trace.
+
+## 425 — iteration: bench the pacification cooldown (backlog item 122)
+
+PRE-REGISTERED, written before any run.
+
+ARMS, all on journal 424's binary (56eb03ef) and all in the shipped configuration, differing only in the cooldown:
+
+    A  cooldown off  (the shipped game today)
+    B  OD_PAC_COOLDOWN=10
+    C  OD_PAC_COOLDOWN=25
+
+RUNS: **1914:FRA:rush at 64 seeds** (journal 403's set) -- the seat the rule targets, where journal 424's screen read
+8/16 collapses against 6 and 4 -- and **the three rung seats at 48 seeds** (journal 402's set), which is the half that
+decides this. 624 runs, about four and a half hours.
+
+STATISTICS: rush as a COLLAPSE RATE (land < 1.5) by Fisher exact with counts, land mean second; the rung seats as the
+per-seed rating with floor 1.96*sqrt(se_a^2+se_b^2), plus per-seat land by permutation.
+
+**THE TRADE, fixed before the numbers exist**, and it is the same rule journal 416 used on the reserve floor:
+  * **SHIPPABLE** if a cooldown improves the rush collapse rate at Fisher p < 0.05 AND the rung rating does not fall by
+    more than its floor.
+  * **A MEASURED TRADE for the user** if rush improves significantly AND rung falls significantly. The loop reports both
+    and recommends nothing: what the game should optimise for is not something this bench can settle.
+  * **REJECTED** if rush does not improve. The rule exists for the collapse.
+
+PREDICTIONS, committed, and the middle one is the one I expect to decide it.
+  1. **Rush improves and clears** -- the screen's monotone 8 -> 6 -> 4 at p 0.273 should resolve at four times the seeds
+     if it is real. I put cooldown25 ahead of cooldown10.
+  2. **The rung seats pay, and by more than their floor.** Pacification suppresses rebellion on exactly the big
+     multi-minority seats the rung measures, and journal 416's reserve floor cost 234 points there. I expect a smaller
+     loss than that -- this rule spends less rather than hoarding, and only after insolvency -- but a real one.
+  3. **If both hold, this lands in the TRADE branch**, and the honest output is two numbers and no recommendation.
+     I am writing that down now so that a good rush number later does not turn into a ship recommendation by momentum.
+
+AMENDMENT to journal 425's pre-registration, recorded 2026-09-25 while the bench was still running and before any
+number existed. **The user has authorised shipping the cooldown IF THE BENCH CLEARS.** Writing down exactly what that
+licence covers, because the tempting failure is to widen it after seeing a good rush number:
+
+  * **"Clears" means the SHIPPABLE branch as already defined**: the rush collapse rate improves at Fisher p < 0.05 AND
+    the rung rating does not fall by more than its floor. Both halves.
+  * **The TRADE branch is NOT covered.** If rush improves and the rung seats pay for it significantly, that is the case
+    I pre-registered as the user's to decide, and a conditional "ship if it clears" is not a decision about a trade the
+    user has not yet seen. In that branch the loop reports both numbers and asks.
+  * **If both cooldown values clear**, the one that ships is the one with the better rush improvement; on a tie, the
+    SHORTER cooldown, because it is the smaller intervention on a mechanism this project has twice measured as
+    load-bearing in ways it did not expect.
+  * **Shipping means the default flip in AISystem.cpp plus the hash verification** that the default reproduces the arm
+    that was benched and that =0 still reproduces the shipped-today control -- the same proof journal 408 ran. The
+    commit stays for the user's word, as it did then.
+
+RESULT (journal 425). The pre-registration and its amendment were both written before any number existed.
+624 runs, 14:36 -> 20:55. Gate: the control reproduces 742276098712025459/130092, the shipped configuration.
+
+    CONTROL (shipped)   1914:FRA:rush collapsed **26/64**, land 7.16;   rung **407.1** (se 13.1)
+
+    cooldown 10   rush collapsed **9/64**  Fisher **p 0.0013**;  land 7.16 -> 8.28 (perm p 0.287)
+                  rung 407.1 -> **277.9**,  diff **-129.2**, floor 30.0
+                  land FRA 27.05 -> 15.83 (p 0.000)  USA 30.85 -> 12.39 (p 0.000)  CHN 16.17 -> 10.22 (p 0.000)
+    cooldown 25   rush collapsed **8/64**  Fisher **p 0.0005**;  land 7.16 -> 7.71 (perm p 0.579)
+                  rung 407.1 -> **254.4**,  diff **-152.7**, floor 28.9
+                  land FRA 27.05 -> 14.57 (p 0.000)  USA 30.85 -> 11.49 (p 0.000)  CHN 16.17 ->  8.84 (p 0.000)
+
+**VERDICT: A MEASURED TRADE, both values, by the rule fixed before the run. NOT SHIPPED.** The user authorised shipping
+"if the bench clears", and the amendment written while the bench was still running defines clearing as rush improving
+AND the rung staying within its floor. The rung does not stay within its floor: it loses **129 and 153 rating points**
+against floors of 30 and 29. That is the branch the amendment explicitly excluded from the licence, so the rule stays
+gated off and the decision goes to the user with both numbers.
+
+**ALL THREE PREDICTIONS HELD** -- the first time in this sequence. I registered that rush would improve and clear, that
+the rung seats would pay by more than their floor, and that it would therefore land in the trade branch where the loop
+recommends nothing. The reason for writing the third one down in advance was precisely this situation: **p 0.0013 on the
+seat the rule targets is the number that turns into a ship recommendation by momentum**, and the rung column is what
+stops it.
+
+**WHAT THE TRADE ACTUALLY IS, in plain terms.** Turning the cooldown on cuts catastrophic collapses on the rushed seat
+from **41% of worlds to 14%** -- a bigger effect on that seat than the shipped doctrine reflex produced (37/64 -> 26/64).
+It pays for that with about **a third of the rung rating**, and every rung seat's land falls 6-19 points at p 0.000.
+Note also that rush LAND barely moves (7.16 -> 8.28, p 0.287, and 7.71 at cooldown25): **the rule converts catastrophes
+into mediocre survivals, not into strong positions.** A reader deciding this should hold all three facts at once.
+
+It is the mirror image of the trade LOOP.md records the project making once and rolling back. That one bought skill at
+running a large country and paid in survival; this one buys survival and pays in growth. Which is right is a question
+about what the game is for, and the bench cannot answer it -- memory bench-cannot-measure-leader-mechanics.
+
+NOT REVERTED, and deliberately: the verdict is not REJECT. OD_PAC_COOLDOWN is off by default and the gate proves the
+default path is byte-identical, so the patch is inert in the shipped game and waits on the user.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j425-*), build/loop425/.
+model.bin unchanged. src/ai/AISystem.cpp and .h carry the gated cooldown, uncommitted.
+
+## 426 — iteration: narrow the cooldown to countries that are losing (from journal 425's trade)
+
+PRE-REGISTERED, written before any run.
+
+WHY. Journal 425 measured the cooldown as a trade the loop will not choose for the user: 1914:FRA:rush collapses
+**26/64 -> 8/64** (p 0.0005) and the three rung seats lose **153 rating**. That is the same shape as the doctrine
+reflex's first measurement -- a large gain on the seat it targets and a large cost elsewhere -- and that sequence was
+rescued by narrowing (journals 399-401: unnarrowed +72 with Sweden dying, then a peer-war condition that kept +52 and
+returned Sweden to baseline). **This tries the analogous narrowing rather than asking the user to accept the trade as it
+stands.**
+
+THE CONDITION, and it reuses a predicate rather than inventing one: `losingGround(cid)`, which the doctrine and
+austerity reflexes already use to mean "this country has lost ground recently". The rung seats are large, solvent-ish
+and NOT dying; the rushed seat is. **OD_PAC_COOL_LOSING=1 applies the cooldown only while the country is losing
+ground**; unset, the rule is exactly journal 425's.
+
+THE SCREEN, both sides at once, because journal 425's lesson was that the cost half decides: 16 rush seeds AND 16 rung
+seeds (the three rung seats), three arms, shipped configuration throughout.
+
+    A  cooldown off                                  (shipped today)
+    B  OD_PAC_COOLDOWN=25                            (journal 425's arm: rush 8/64, rung -152.7)
+    C  OD_PAC_COOLDOWN=25 OD_PAC_COOL_LOSING=1       (the narrowing)
+
+192 runs, about ninety minutes.
+
+WHAT ADVANCES, fixed now: arm C is worth a full bench only if it **keeps most of the rush gain** (collapses closer to
+B's than to A's) AND **recovers most of the rung loss** (rung rating closer to A's than to B's). Half of each is not
+enough -- that is just a weaker version of the same trade, and the user can already choose that by picking cooldown10
+over cooldown25.
+
+PREDICTION, committed: **the narrowing recovers most of the rung loss and keeps LESS than half the rush gain.** Reason:
+journal 414's trace shows the rushed seat is bankrupt from turn 23 while its province count is still RISING to turn 110
+-- so for the first ninety turns of the collapse it is insolvent but NOT yet losing ground, and losingGround() would not
+fire. The condition I am testing may gate out exactly the window where the rule does its work. I am running it because
+the alternative is asking the user to accept a 153-point trade without trying the obvious narrowing, and because
+memory conditions-are-expensive says the first condition costs about a third of an effect -- this one may cost more.
+
+RESULT (journal 426). The pre-registration above was written before any run. 192 runs, 20:59 -> 22:58.
+
+    off (shipped)              rush collapsed **8/16**   land 5.17   rung **379.7**
+    cooldown25                 rush collapsed **4/16**   land 6.70   rung **267.2**
+    cooldown25 + losing-only   rush collapsed **8/16**   land 5.17   rung **379.7**
+
+**ARM C IS IDENTICAL TO THE CONTROL IN EVERY FIGURE.** Not close -- identical, to the digit, on both seats. That is the
+signature journal 419 taught this loop to chase rather than accept, and the cause is in the source:
+
+    static int lossFreezeTurns() {
+        static const int v = std::getenv("OD_LOSS_FREEZE") ? atoi(...) : 0;   // OFF by default
+    }
+    bool AISystem::losingGround(int cid) const { if (lossFreezeTurns() <= 0) return false; ... }
+
+**`losingGround()` returns false unconditionally unless OD_LOSS_FREEZE is set, and it is off by default** -- measured
+neutral long ago and left off because it blocks conciliation. So my narrowing did not narrow the rule; **it switched it
+off**, which is exactly what the numbers say. The screen is a BLANK, not a null: the condition was never true, so the
+experiment tested nothing about targeting.
+
+**MY PREDICTION WAS RIGHT FOR THE WRONG REASON, and the distinction matters.** I predicted the narrowing would keep less
+than half the rush gain, reasoning that the rushed seat is insolvent from turn 23 while still gaining provinces to turn
+110, so `losingGround` would not fire in the window where the rule works. It kept **zero** of the gain -- but not
+because the timing argument was right. It kept zero because the predicate is dead in every window. The right answer for
+the wrong reason is still a wrong model, and memory measurements-replicate-explanations-dont covers precisely this.
+
+**THE WIDER FINDING, and it reaches a shipped rule.** `losingGround()` has six call sites, and one of them is inside
+the doctrine reflex that this loop shipped on 2026-09-25 (AISystem.cpp:14471, `if (losingGround(cid)) return;`). **That
+condition has never once fired.** The reflex's comment presents it as one of the rule's safety conditions; by default it
+is dead code. The same is true of the enact-doctrine gate at line 807 and the calm-headroom terms at 6001 and 6084.
+None of this changes any measurement -- every bench in this journal ran with the predicate equally dead in both arms --
+but four documented conditions do not do what they appear to do, and journal 401's description of the shipped rule
+should be read with that in mind. Filed as **item 124**.
+
+THE NARROWING IS REVERTED (src/ai/AISystem.cpp restored from scratchpad/pre426-AISystem.cpp). Journal 424's cooldown
+stays in the tree, gated off, still waiting on the user's decision in item 123 -- **which this entry does not change**:
+the trade is still 26/64 -> 8/64 on the rushed seat against -153 rung rating, and the obvious narrowing turns out not to
+exist yet. A real one would need a live predicate for "this country is in trouble", and OD_LOSS_FREEZE is one that was
+measured neutral and switched off rather than deleted.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (edited, then reverted), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md,
+build/od_bench_results.json (j426-*), build/loop426/. model.bin unchanged.
+
+## 427 — iteration: what the dead predicate would cost if it were alive (backlog item 124)
+
+PRE-REGISTERED, written before any run.
+
+THE QUESTION. Journal 426 found `losingGround()` returns false unconditionally by default -- OD_LOSS_FREEZE is off, its
+window AI_LOSS_FREEZE_TURNS = 8, and the source records why: *"measured neutral (211 vs 209) and it blocks
+conciliation"*. **That measurement is old, single, and predates everything this loop has shipped.** It predates the
+doctrine reflex in particular, whose body contains `if (losingGround(cid)) return;` -- so **turning the predicate on
+switches the shipped reflex OFF for any country that has lost ground in the last eight turns**, which in a contested
+world is most of them, most of the time.
+
+So this is not a re-test of a neutral knob. It asks what a live predicate does to a game that now has rules built on
+top of it, and it is the precondition for any narrowing of the kind journal 426 attempted and could not run.
+
+RUNS: 16 rush seeds and 16 rung seeds, shipped configuration, two arms, on a build of current HEAD.
+
+    A  OD_LOSS_FREEZE unset  (the shipped game: the predicate is dead)
+    B  OD_LOSS_FREEZE=8      (its documented default window)
+
+128 runs, about an hour. A screen, not a verdict: it decides whether item 124's second option -- revive the predicate --
+is worth a bench, or whether the honest repair is to delete four dead conditions and correct their comments.
+
+STATISTICS: rush as a collapse rate (Fisher, counts); the rung seats as the per-seed rating against its floor.
+
+PREDICTIONS, committed.
+  1. **The rung seats LOSE by more than their floor**, because arm B disables the shipped doctrine reflex for exactly
+     the countries a contested world keeps hitting, and that reflex is worth +52 to +86 there.
+  2. **The rush seat loses or is unchanged**, for the same reason. I do not expect the conciliation-blocking effect the
+     old comment worried about to matter against a rule worth fifty points.
+  3. If both hold, **the repair is to delete the dead conditions rather than revive the predicate**, and their four
+     comments need correcting: a condition that would cost fifty rating points if enabled is not a safety check, it is
+     a disabled feature that reads like one.
+
+RESULT (journal 427). The pre-registration above was written before any run. 128 runs, 23:03 -> 00:07.
+
+    gate A, predicate dead   742276098712025459/130092
+    gate B, OD_LOSS_FREEZE=8  **10808766107559739580/111540**
+
+The predicate is live when set, and not marginally so: **the decision count falls 130,092 -> 111,540, down 14%.** A knob
+recorded in the source as "measured neutral" removes one decision in seven.
+
+    predicate dead (shipped)   rush collapsed **8/16**  land 5.17   rung **379.7** (se 27.1)
+    OD_LOSS_FREEZE=8           rush collapsed **4/16**  land 9.82   rung **314.8** (se 23.4)
+
+    rung diff **-64.9**, floor **70.1** -> **within floor, NOT RESOLVABLE at 16 seeds**
+    rush collapse 8/16 -> 4/16, Fisher p 0.273
+
+**VERDICT: not resolvable, and both of my testable predictions were wrong.** I predicted the rung seats would lose by
+more than their floor -- the point estimate is a loss of 65 but it does not clear 70, so the honest word is unresolved,
+not "costs". And I predicted the rush seat would lose or be unchanged, on the reasoning that arm B disables the shipped
+doctrine reflex for countries that have lost ground; instead rush IMPROVES on both statistics (collapses halved, land
+5.17 -> 9.82). Whatever the reflex loses there, something else gains more.
+
+**THE PATTERN WORTH MORE THAN THIS SCREEN.** Two independent levers have now been measured on the same pair of seats:
+
+    pacification cooldown (journal 425)   rush 26/64 -> 8/64 (p 0.0005)   rung -152.7 (clears)
+    loss-freeze predicate (here)          rush  8/16 -> 4/16 (p 0.273)    rung  -64.9 (within floor)
+
+**Both help the seat that dies and cost the seats that grow**, and they act through completely different mechanisms --
+one withholds a budget after insolvency, the other freezes a country's own decisions for eight turns after it loses
+ground. That the trade survives a change of mechanism suggests it is **structural to this bench**: caution helps a
+country being killed and costs a country that is winning, and the rung seats are winning (they sit above par, several
+pinned at the 5x cap). It is the same trade as item 123 and should be decided once, as a question about what the AI is
+for, rather than rule by rule.
+
+WHAT ITEM 124 SHOULD SAY NOW, corrected: the repair is **not** obviously "delete the dead conditions". Reviving the
+predicate is not a measured loss -- it is unmeasured, with a point estimate that would be a large loss if it held and a
+rush improvement that would be a large gain if it held. Either resolving it (more seeds) or deleting it is defensible;
+what is not defensible is the present state, where four comments describe conditions that never execute.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j427-*), build/loop427/.
+No source change -- this screen needed none, the predicate ships with its own switch.
+
+## 428 — iteration: resolve the loss-freeze predicate (backlog item 124)
+
+PRE-REGISTERED, written before any run.
+
+WHY. Journal 427 left the question open in the worst way: the rung point estimate is **-64.9** against a floor of
+**70.1**, so the answer is "unresolved" and the two defensible repairs -- delete four dead conditions, or revive the
+predicate -- both hinge on a number nobody has. Doubling the seeds should settle it: at 32 seeds the floor falls to
+roughly 49, so an effect of the size estimated would clear, and a true null would show as a much smaller difference
+rather than a wide interval.
+
+RUNS: **32 rush seeds and 32 rung seeds** (journal 403's and 402's sets, entries 1-32), shipped configuration, two arms
+on one build of current HEAD:
+
+    A  OD_LOSS_FREEZE unset  (shipped: the predicate is dead, four conditions never execute)
+    B  OD_LOSS_FREEZE=8      (its documented window)
+
+256 runs, about two and a half hours.
+
+STATISTICS, unchanged from journal 427 so the two are poolable if needed: rush as a collapse rate (Fisher, counts); the
+rung seats as the per-seed rating with floor 1.96*sqrt(se_a^2+se_b^2); per-seat land by permutation.
+
+VERDICT RULE, fixed now.
+  * **COSTS** if the rung difference is negative and clears its floor -- then the repair is to DELETE the dead
+    conditions, and journal 401's description of the shipped reflex is corrected to say so.
+  * **GAINS** if positive and clears -- then reviving the predicate is a candidate rule in its own right and goes to a
+    full bench.
+  * **NULL** if it does not clear at 32 seeds -- and then the repair is deletion anyway, on the ground that a condition
+    which cannot be shown to matter should not sit in the source describing behaviour it does not produce.
+  The rush seat is reported alongside but does NOT decide this: journal 427 measured it improving, and item 125 already
+  records that rush-versus-rung is one structural trade for the user rather than a per-rule question.
+
+PREDICTION, committed, and calibrated against a bad run: my last four predictions on this mechanism were wrong in
+direction twice and wrong in reason once. So: **the rung difference lands between -80 and -20 and does NOT clear even
+at 32 seeds** -- i.e. NULL by the rule above -- because journal 427's estimate came from arms whose se was 27 and 23,
+which is wide enough that regression to a smaller effect is the base case. If it does clear negative, the deletion
+repair is settled; if it clears positive, I have been wrong about this predicate twice over and it becomes a rule
+candidate.
+
+RESULT (journal 428). The pre-registration above was written before any run.
+
+**THE RUN WAS INTERRUPTED AND RESUMED.** The previous session ended mid-bench and **the scratchpad was wiped** -- every
+chain script and log gone, the same /tmp cleanup that destroyed a run earlier in this journal. What survived is what
+lives under build/: the binary (67b34216), both gate logs, the seed files, and the two RUSH arms' rows in
+od_bench_results.json. The rung arms were lost. They were re-run on the same binary and the same 32 seeds rather than
+re-registering a smaller experiment.
+
+    gate A, predicate dead    742276098712025459/130092
+    gate B, OD_LOSS_FREEZE=8  10808766107559739580/111540   (one decision in seven removed)
+
+    predicate dead (shipped)   rush **14/32** collapsed  land 6.55   rung **399.9** (se 15.8)
+    OD_LOSS_FREEZE=8           rush **15/32** collapsed  land 7.03   rung **328.2** (se 16.6)
+
+    rung diff **-71.7**, floor **45.0** -> **CLEARS**
+    rush Fisher **p 1.000**
+
+**VERDICT: COSTS. Reviving the predicate is worth about seventy rating points, negative.**
+
+**AND JOURNAL 427'S RUSH RESULT WAS NOISE.** At 16 seeds it read 8/16 -> 4/16 and I wrote that it "improves on both
+statistics"; at 32 seeds it is 14/32 -> 15/32 at p 1.000. The improvement did not survive doubling the sample. That is
+the third time in this sequence a 16-seed reading on this bistable seat has pointed somewhere the larger sample did not
+(memory bistable-seats-need-many-seeds), and it is worth stating plainly: **journal 427's headline about the rush seat
+is retracted.**
+
+MY PREDICTION was half right in a way that does not help: I named the magnitude range (-80 to -20; it is -71.7) and got
+the resolution wrong, predicting NULL where the answer is COSTS. Doubling the seeds halved the floor from 70.1 to 45.0
+and the effect did not shrink -- which is what a real effect looks like, and I had assumed regression.
+
+**WHAT IT SETTLES, which is item 124.** Four conditions in the source -- the enact-doctrine gate at line 807, the
+doctrine reflex's own early return at 14471, and the two calm-headroom terms at 6001 and 6084 -- read a predicate that
+is false by construction. They are written as safety checks. They are **disabled features that would cost seventy
+rating points if switched on**, and the note that kept them dead said "measured neutral". **The stale claim is now
+corrected in the source** (src/ai/AISystem.cpp, lossFreezeTurns): the comment carries the measurement, its date, the
+seeds, and the fact that the four conditions never execute. **Comment-only, verified by diff against the pre-edit copy
+-- no code changed**, so the shipped behaviour is untouched and no re-bench is needed.
+
+I did NOT delete the four conditions. Deleting them is defensible and so is keeping a documented, measured switch; what
+was indefensible was the source asserting a neutrality that a 32-seed bench contradicts. The deletion is a separate
+judgement about code hygiene and belongs to whoever owns that file.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (comment only; pre-edit copy scratchpad/pre428-AISystem.cpp), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md, build/od_bench_results.json (j428-*), build/loop428/. model.bin unchanged.
+
+PENDING COMMIT (src/ai/AISystem.cpp, comment only, plus the docs):
+
+    Correct what the loss-freeze knob is worth
+
+    The source said the predicate was measured neutral. Re-run against
+    the shipped game on 32 rung seeds it costs 71.7 rating (floor 45.0)
+    and changes nothing on the rush seat. The four conditions that read
+    it never execute, which is now written where they are.
+
+## 429 — iteration: the alliance-refusal lead, on seeds that did not raise it (backlog item 113)
+
+PRE-REGISTERED, written before any run.
+
+THE STATISTIC, named before the data and not swappable afterwards:
+
+    per run, a BINARY: did at least one ally refuse France's call to arms?
+    ("refuses FRA's call to arms" in the log)
+    compared between the runs that end collapsed (land < 1.5) and the runs that end held.
+
+Journal 413 read this at **2 of 6 collapsed against 0 of 6 held**, one of six statistics it looked at on twelve runs, and
+filed it as a lead rather than a finding. Item 113 asked for exactly one of those leads to be pre-registered on fresh
+seeds. This is it. **The other lead -- "somebody declared war on France", 3 of 6 against 1 of 6 -- is NOT tested here and
+is not being tested by proxy.**
+
+THE SEEDS ARE A HOLD-OUT: journal 403's rush set, **entries 33 through 64**, which no analysis in this journal has
+touched. 32 runs, shipped configuration, the seat trace on, about forty minutes.
+
+DECISION RULE, fixed now. **CONFIRMED** if the refusal rate is higher among collapsed runs at Fisher p < 0.05.
+**NOT CONFIRMED** otherwise, and then item 113 closes against the lead and the loop stops mining journal 413's twelve
+runs -- five of its six statistics will then be untested and should stay that way unless something else raises them,
+because a list of leads nobody resolves is worse than no list.
+
+PREDICTION, committed, and the base rate is what drives it: **not confirmed.** The stronger of journal 413's leads -- the
+concurrent-war count at 1.35 against 0.83 -- failed its own hold-out at p 0.085 (journal 418), and this one came from a
+smaller split on the same twelve runs. Journal 428 has just retracted a 16-seed reading on this very seat for the same
+reason. **If it DOES confirm, the interesting part is not the p-value but the mechanism**: an ally refusing a call to
+arms is memory pacts-have-no-teeth seen from the other side, and it would be the first evidence that the diplomacy the
+AI cannot rely on actually costs it a seat.
+
+RESULT (journal 429). The pre-registration above was written before any run. 32 hold-out runs, 16:33 -> 17:0x.
+
+    THE REGISTERED STATISTIC -- at least one ally refused France's call to arms:
+
+        collapsed **4 of 12**      held **0 of 20**      Fisher **p 0.014**
+        (journal 413 read 2 of 6 against 0 of 6 on the twelve runs that raised it)
+
+**VERDICT: CONFIRMED**, on seeds that played no part in raising it, with the statistic named before the data.
+
+**MY PREDICTION IS WRONG, and the reasoning that produced it is worth keeping anyway.** I predicted "not confirmed",
+because the STRONGER of journal 413's two leads -- the concurrent-war count, 1.35 against 0.83 -- had already failed its
+own hold-out at p 0.085 (journal 418), and because journal 428 had just retracted a 16-seed reading on this seat. The
+base rate was right and the inference from it was wrong: **screen strength did not predict replication.** The lead that
+looked weaker in the screen (2/6 against 0/6, two events) replicated; the one that looked stronger did not. Worth
+remembering the next time a screen is used to rank candidates rather than to filter them.
+
+**AND THE OTHER LEAD SHOWS NOTHING**, printed with no p-value because it was not pre-registered: "somebody declared war
+on France" is 2 of 12 collapsed against 3 of 20 held -- if anything the wrong way round. Item 113's remaining four
+statistics stay untested, as the pre-registration said they would.
+
+**WHAT IS AND IS NOT ESTABLISHED.** Established: in a rushed world, an ally refusing a call to arms occurs in a third of
+the runs that end in collapse and in **none** of the twenty that hold. **Not established: which way it runs.** An ally
+may refuse because France is already visibly losing -- allies deserting a doomed side is at least as plausible as
+desertion causing the doom, and this instrument cannot separate them. The event count is also small (four), so the
+p-value rests on a clean separation rather than on volume.
+
+**WHY IT MATTERS EVEN SO.** Memory pacts-have-no-teeth records that refusing a pact is correct play for this AI, because
+a pact costs a turn and buys nothing mechanical. This is the first measurement of what that costs on the other side: the
+seat that expects help and does not get it is the seat that dies. If the direction turns out to be causal, the lever is
+not a new AI rule at all -- it is the game's alliance mechanics, which is where journal 33's "give pacts teeth" decision
+already sits, unresolved, as a question for the user.
+
+THE DIRECTION TEST, and it is cheap: the [WAR] lines carry no turn number, so nothing currently says whether the refusal
+precedes the province decline or follows it. One line added to the war log would answer it against the seat trace this
+loop already has. Filed as item 126.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop429/ (ignored). No source change, no bench rows.
+
+PENDING COMMIT: journal 428's comment correction and the docs, unchanged.
+
+## 430 — iteration: does the alliance refusal come before the collapse? (backlog item 126)
+
+PRE-REGISTERED, written before any run.
+
+THE QUESTION. Journal 429 confirmed, on a hold-out and with the statistic named in advance, that an ally refusing
+France's call to arms happens in **4 of 12** collapsed rushed runs and **0 of 20** that hold (Fisher p 0.014). It could
+not say which way it runs. Allies deserting a side that is visibly losing is at least as plausible as the desertion
+causing the loss, and nothing in the log could separate them because **the [WAR] lines carry no turn number**.
+
+THE CHANGE, log text only: `[WAR] turn %d %s refuses %s's call to arms` in Game_TurnLogic.cpp:5689. One field added to
+one printf. That file has no concurrent edits in the working tree (checked before touching it, since another editor works
+here). Behaviour-inert by construction; proved anyway with a gate run, because "obviously inert" is how this journal has
+been wrong before.
+
+THE TEST: 16 rushed seeds (journal 403's entries 1-16), shipped configuration, OD_SEAT_TRACE on. For each run that
+records a refusal, compare **the turn of the first refusal** against **the turn the seat's province count peaks** -- the
+trace already prints provinces every turn, so the comparison needs no further instrument.
+
+    refusal BEFORE the province peak  -> the refusal is upstream of the decline
+    refusal AFTER  the province peak  -> the refusal is a symptom of a country already shrinking
+
+DECISION RULE, fixed now: **UPSTREAM** if refusals precede the peak on a majority of the runs that have one;
+**SYMPTOM** if they follow it on a majority; **MIXED** if it splits evenly, and then this instrument cannot answer the
+question and item 126 says so rather than picking a story.
+
+PREDICTION, committed: **SYMPTOM.** Journal 412 traced the rushed seat peaking around turn 110 and collapsing between
+110 and 200; an ally weighing whether to join a war should read a shrinking country as a bad bet, and the AI's diplomacy
+head prices exactly that. I also expect **few runs to qualify** -- journal 429 found refusals in 4 of 32 runs, so 16
+seeds may yield only one or two, in which case the honest verdict is that the sample is too small and the entry says so
+instead of reading two data points as a direction.
+
+RESULT (journal 430). The pre-registration above was written before any run. 16 runs, 16:13 -> 16:21.
+
+Gate: **742276098712025459/130092** -- the log change is inert, as expected and now measured.
+
+    seed        land   prov peak   first refusal   relation
+    31415926    0.00       109         108         before, by ONE turn
+    1414213     0.10        65         101         after
+    1618033     0.10        75         170         after
+    555555      0.20        37         194         after
+    5772156     0.20       123         307         after
+    777777      4.90        31         220         after
+    271828      8.90        65          72         after
+    (nine runs recorded no refusal: 246810, 13579, 6180339, 2468135, 11111, 987654, 3141592, 8080808, 9090909)
+
+    runs with both a refusal and a peak: **7 of 16**   before **1**   after **6**
+
+**VERDICT: SYMPTOM**, and the one exception argues the same way -- seed 31415926's refusal lands at turn 108 against a
+peak at 109, which is simultaneity rather than precedence. **Allies desert a country that is already shrinking.**
+
+MY PREDICTION WAS RIGHT, for the reason given: the seat peaks around turn 110 and declines afterwards, and a diplomacy
+head weighing whether to join someone's war reads a shrinking country as a bad bet. This is the second prediction in a
+row that held (journal 428's magnitude, this one's direction) after a long run of misses.
+
+**WHAT IT DOES TO JOURNAL 429'S FINDING.** The correlation stands exactly as measured -- refusals in 4 of 12 collapsing
+runs and 0 of 20 surviving ones, p 0.014, and here again refusals appear only in runs ending at 9.50 land or below, never
+in the six runs above 11. **What changes is its status: it is a MARKER of decline, not a cause of it.** So the alliance
+mechanics are NOT a lever for the survival seats on this evidence, and journal 33's unresolved "give pacts teeth"
+question should not be pulled forward on the strength of journal 429. That is worth saying plainly, because a confirmed
+p-value pointing at an appealing mechanism is exactly the kind of result that gets promoted to a cause by retelling.
+
+**AND IT CLOSES THE LINE OF INVESTIGATION THAT STARTED AT JOURNAL 411.** Five candidate explanations for the rushed
+seat's late collapse have now been examined: bankruptcy (**excluded**, journal 416 -- hoarding costs 234), rebellion
+(**excluded**, journal 413 -- dying runs have fewer), concurrent wars (**not confirmed**, journal 418), the loss-freeze
+predicate (**costs 71.7**, journal 428), and alliance refusal (**confirmed as a symptom**, here). What remains
+unexplained is the army decay itself, and the one intervention measured to prevent collapses -- the pacification
+cooldown -- costs the rung seats 129-153 points, which is the trade sitting with the user as item 123.
+
+VERDICT ON THE CHANGE: **KEEP.** One field in one printf, inert by hash, and it is what made the direction answerable at
+all. Any future study of a diplomatic event against the seat trace needs it.
+
+PATHS TOUCHED: src/Game_TurnLogic.cpp (log text only; pre-edit copy scratchpad/pre430-Game_TurnLogic.cpp),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop430/ (ignored). model.bin unchanged.
+
+PENDING COMMIT (src/Game_TurnLogic.cpp, plus the docs):
+
+    Stamp the turn on a broken alliance
+
+    An ally refusing a call to arms separates the rushed seat's
+    collapses from its survivals (4 of 12 against 0 of 20, p 0.014) and
+    the log could not say whether it came before or after the decline.
+    With the turn printed: six of seven refusals follow the province
+    peak, so it is a marker of decline rather than a cause.
+
+## 431 — iteration: price the nationalisation reflex, now that it ships
+
+PRE-REGISTERED, written before any run.
+
+WHAT CHANGED UNDER THE LOOP. **Nationalisation shipped ON by default in e8d9861**, on the user's decision, so the AI's
+`nationalisationReflex` -- until now dead code behind an off switch -- is live in the shipped game. It has never been
+priced. A peer session benched the SYSTEM on against off and found a null (208/201 on fixed seeds, 196/212 on fresh,
+opposite signs, both inside resolution, 163 specialities taken per game with it on and 0 with it off). **Those arms
+cannot separate the mechanic from the rule**, because the reflex had no ablation guard: AISystem.cpp:4040 called it
+unconditionally while eleven other reflexes sit behind reflexAblated("<name>").
+
+THE CHANGE, two lines: `if (!reflexAblated("nationalisation")) nationalisationReflex(cid);`. With OD_ABLATE unset --
+every non-bench run -- reflexAblated returns false on its first branch and the play path is unchanged. Only the ablation
+guard is added, not the llmSuppressesReflex companion the other eleven carry, because LLM hooks are invisible to this
+bench (memory llm-hooks-invisible-to-bench) and adding an untested second condition to price a rule would be one change
+too many.
+
+TWO GATES, and the second is worth as much as the experiment:
+  1. defaults now (nationalisation ON) -- recorded as the NEW reference triple for 1914:FRA seed 13579; the old
+     742276098712025459/130092 was measured in a world without it.
+  2. **OD_NATIONALISATION=0 must reproduce 742276098712025459/130092 exactly.** The peer states that =0 restores the old
+     world; if it does, every measurement in journals 403-430 stays comparable under that flag, and if it does not, a
+     large part of this journal has just become un-reproducible and that needs saying loudly.
+
+THE RUNS: 16 rush seeds and 16 rung seeds, **nationalisation ON in both arms** (the shipped world), differing only in
+the rule:
+
+    A  shipped                      (reflex live)
+    B  OD_ABLATE=nationalisation    (mechanic live, rule off)
+
+128 runs, about an hour.
+
+PREDICTION, committed: **a null** -- |rung difference| inside its floor, and the rush collapse counts within 3 of 16.
+Reason: the peer's system-level arms were a null with opposite signs on two seed sets, and the reflex takes exactly one
+speciality at a time by highest resource income with one cap condition, which is a small lever inside a mechanic that
+already measured neutral. **The reflex will be reachable, not blank** -- 163 firings a game says so -- which makes this a
+real null if it lands that way, the distinction journal 419 had to learn the hard way.
+
+RESULT (journal 431). The pre-registration above was written before any run. 128 runs, 20:17 -> 21:16.
+
+**GATE 1, the new reference:** nationalisation ON, 1914:FRA seed 13579 -> **12046907326433970777/86748**. The old
+reference was 742276098712025459/130092, so **the shipped feature removes a third of the AI's decisions** (130,092 ->
+86,748) and the reflex takes 548 specialities on that one seat.
+
+**GATE 2, and it is good news for this journal:** `OD_NATIONALISATION=0` reproduces **742276098712025459/130092
+exactly**. The peer's switch is clean, so every measurement in journals 403-430 stays reproducible under that flag.
+
+    shipped (reflex live)       rush collapsed **13/16**  land 2.99   rung **404.9** (se 20.3)
+    OD_ABLATE=nationalisation   rush collapsed  **8/16**  land 5.17   rung **379.7** (se 27.1)
+
+    ablating the rule: rung **-25.2**, floor 66.3 -> within floor;  rush 13/16 -> 8/16, Fisher **p 0.135**
+
+**VERDICT: NULL on the registered statistic, as predicted.** The rung difference does not clear, and the reflex is
+reachable rather than blank (548 firings), so this is a real null and not a blank one.
+
+**BUT THE ABLATED ARM IS ELEMENTWISE IDENTICAL TO THE PRE-NATIONALISATION WORLD, AND THAT IS THE FINDING.** Every rush
+seed and every rung seat of arm B matches journal 426's control -- taken before e8d9861, with nationalisation absent
+entirely -- to the digit, 0 of 16 differing on rush and all three rung seats identical. Meanwhile arm A differs from that
+control on **13 of 16** rush seeds. So:
+
+  * **the mechanic alone changes nothing this bench can see.** With the AI's rule switched off, a world with
+    nationalisation is bit-for-bit the world without it.
+  * **everything nationalisation does on these seats, it does through the AI's reflex** -- including the third of the
+    decision count that vanished.
+
+**AND THE REFLEX'S POINT ESTIMATE ON THE RUSH SEAT IS HARM: 13 of 16 collapses with it against 8 of 16 without**, land
+2.99 against 5.17, at p 0.135. Not resolved -- 16 seeds on a bistable seat resolves about a quarter and this is a
+difference of a third -- but it is the wrong direction for a rule that now ships ON by default, and the peer's
+system-level arms could not have seen it because they reported the rung rating, where both they and I measure a null.
+
+**WHAT I AM NOT DOING: recommending anything.** The shipping decision was the user's and was taken on a rung-rating null
+that still stands. What has changed is that there is now a rush-seat number pointing the other way, unresolved, and the
+honest next step is to resolve it rather than to argue from it: 64 rush seeds, both arms, ~1.5 h, which would resolve a
+difference this size. Filed as item 127.
+
+VERDICT ON THE CHANGE: **KEEP the ablation guard.** Two lines, inert with OD_ABLATE unset, and without it none of the
+above could be measured at all -- the mechanic and the rule were inseparable.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (ablation guard; pre-edit copy scratchpad/pre431-AISystem.cpp),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j431-*), build/loop431/.
+model.bin unchanged.
+
+PENDING COMMIT, and it must go in ONE commit with its header -- the peer has twice split a header from its .cpp in this
+tree and left main unbuildable:
+
+    Let the nationalisation reflex be ablated, like the other eleven
+
+    Nationalisation ships on by default now, so the AI's only rule for
+    using it is live and could not be priced: OD_ABLATE had no name for
+    it. With the guard, ablating the rule reproduces the whole
+    pre-nationalisation world elementwise -- so the mechanic does
+    nothing this bench sees except through the reflex -- and the reflex's
+    own effect on 1914:FRA:rush is 13 of 16 collapses against 8, p 0.135,
+    unresolved and pointing the wrong way.
+
+## 432 — iteration: resolve whether the nationalisation reflex harms the rush seat (item 127, user asked)
+
+PRE-REGISTERED, written before any run.
+
+THE QUESTION, at the user's instruction. Journal 431 measured the shipped reflex at **13 of 16** collapses on
+1914:FRA:rush against **8 of 16** with it ablated (land 2.99 against 5.17, Fisher p 0.135) -- unresolved, and pointing
+the wrong way for a rule that ships ON by default. Sixteen seeds on this seat resolves about a quarter; the observed
+difference is a third, so 64 seeds should settle it either way.
+
+THE RUNS: **1914:FRA:rush, all 64 of journal 403's seeds**, nationalisation live in both arms, on journal 431's binary
+(8e165e27, which carries the ablation guard) so nothing about the build changes between the screen and this.
+
+    A  shipped                      (reflex live)
+    B  OD_ABLATE=nationalisation    (mechanic live, rule off)
+
+128 runs, about ninety minutes. The rung seats are NOT re-run: they were a null at 16 seeds (-25.2 against a floor of
+66.3) and the question the user asked is about the rush seat. If the rush result confirms harm, the rung side needs its
+own 48-seed run before any recommendation, and this entry will say so rather than pretend one arm decides both.
+
+STATISTIC: the collapse rate (land < 1.5) by Fisher exact with counts printed; land mean by permutation, second.
+
+VERDICT RULE, fixed now.
+  * **HARMFUL** if collapses are higher with the reflex at Fisher p < 0.05. Then the rule is a measured cost on a
+    survival seat, shipping ON, and that goes to the user with the rung null stated beside it.
+  * **NULL** if it does not clear at 64 seeds -- and then journal 431's 13-against-8 was noise, which is the outcome my
+    own recent history makes most likely (journal 428 retracted a 16-seed rush reading for exactly this reason).
+  * **BENEFICIAL** if collapses are LOWER with the reflex at p < 0.05, which would mean the screen's sign was inverted
+    and 16 seeds misled in the other direction.
+
+PREDICTION, committed: **HARMFUL, and it clears** -- collapses higher with the reflex by 8 to 16 of 64, p under 0.05.
+Reasoning: the 16-seed gap was 5 of 16 (0.31), and at 64 seeds a true difference of even 0.19 resolves. Against that,
+journal 429's lesson is that screen strength does not predict replication, and journal 428 retracted a rush reading of
+exactly this shape -- so I hold this prediction loosely and have written the NULL branch as the likelier alternative in
+the rule above, which is the honest way to hold both.
+
+RESULT (journal 432). The pre-registration above was written before any run. 128 runs, 21:52 -> 22:37.
+
+Gate: **12046907326433970777/86748**, the shipped nationalisation world.
+
+    shipped (reflex live)       collapsed **37/64**   land **5.14**
+    OD_ABLATE=nationalisation   collapsed **26/64**   land **7.16**
+    Fisher **p 0.0767**, land perm p 0.100
+
+**VERDICT BY THE RULE FIXED BEFORE THE RUN: NULL at 64 seeds.** It does not clear 0.05.
+
+**BUT THE CHAIN'S ONE-LINE VERDICT -- "the 16-seed reading was noise" -- IS TOO STRONG, AND I AM CORRECTING IT HERE
+RATHER THAN LETTING IT STAND.** Noise means the direction does not survive. It survived:
+
+    16 seeds (journal 431)   13/16 against  8/16   p 0.135
+    64 seeds (this entry)    37/64 against 26/64   p 0.0767
+
+Same sign, and the absolute gap grew from 0.31 to 0.17 of the seeds while the p-value moved toward significance rather
+than away. That is what an unresolved real effect looks like as well as what a coin looks like, and the difference from
+journal 428 is exactly this: there the rush direction REVERSED at 32 seeds (8/16 -> 4/16 became 14/32 vs 15/32) and
+retraction was right. Here nothing reversed. **The honest statement is "not resolved at 64 seeds, direction replicated
+in both samples", not "noise".**
+
+DESCRIPTIVE, not a verdict, because pooling was not pre-registered: the two samples together are **50/80 against 34/80,
+Fisher p 0.0173**.
+
+**PRICED, so the decision is informed rather than open-ended:** the observed rates are 0.58 against 0.41, which needs
+**~132 seeds per arm -- 264 runs, about 3.1 hours** -- to resolve at 80% power. That is the cost of turning this into a
+finding.
+
+CONSISTENCY, checked: the ablated arm here is **elementwise identical** to journal 425's pre-nationalisation control,
+which is the third independent confirmation of journal 431's structural point -- with the AI's rule off, a world with
+nationalisation is bit-for-bit a world without it.
+
+**WHERE THIS LEAVES THE USER.** A rule that ships ON by default has, on the one seat where nationalisation has any
+measurable effect at all:
+    * a rung rating null (-25.2 against a floor of 66.3, journal 431);
+    * a rush collapse rate that is worse with it in two independent samples, unresolved at p 0.0767, pooling to p 0.017;
+    * and no other measurable footprint -- ablating it reproduces the pre-feature world exactly.
+Three hours of machine time would settle it. I am not spending them unasked, and I am not recommending a revert on
+p 0.0767 -- but the shipping decision was taken on a rung null, and the rush number was not on the table when it was
+taken. Item 127 stays open with the price attached.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j432-*), build/loop432/.
+No source change this iteration. model.bin unchanged.
+
+PENDING COMMIT: unchanged -- the ablation guard (journal 431, with its header), journal 428's comment correction, journal
+430's turn stamp, and the docs.
+
+## 433 — iteration: the powered test of the nationalisation reflex (item 127, user asked)
+
+PRE-REGISTERED, written before any run.
+
+THE QUESTION, at the user's instruction: does the shipped nationalisation reflex make 1914:FRA:rush collapse more often?
+Two samples say the same thing without resolving it -- 13/16 against 8/16 at p 0.135 (journal 431), 37/64 against 26/64
+at p 0.0767 (journal 432) -- and the power calculation from those rates asked for ~132 seeds per arm.
+
+**132 FRESH SEEDS, not the old 64 extended.** Generated for this entry and verified disjoint from every seed file this
+loop has ever used (overlap 0). The earlier 64 raised the effect and re-using them would fold selection into the very
+measurement meant to settle it (memory decide-on-fresh-seeds). They stay as prior evidence, reported beside the new
+number and never pooled into the verdict.
+
+    A  shipped                      (reflex live, nationalisation on)
+    B  OD_ABLATE=nationalisation    (mechanic live, rule off)
+
+264 runs on journal 431's binary (8e165e27), which is what journals 431 and 432 both used, so nothing about the build
+moves between the three samples. About an hour and a half.
+
+STATISTIC: the collapse rate (land < 1.5) by Fisher exact, counts printed; land mean by permutation, second.
+
+VERDICT RULE, fixed now, and this sample is powered so all three branches mean something:
+  * **HARMFUL** if collapses are higher with the reflex at Fisher p < 0.05 -- a measured cost, on a rule shipping ON,
+    and it goes to the user with the rung null beside it.
+  * **NULL** if it does not clear -- and at 132 seeds per arm that is a real answer rather than an absence of one: it
+    would mean the true difference is smaller than the 0.17 the last two samples suggested, and the loop stops here.
+  * **BENEFICIAL** if lower at p < 0.05.
+
+PREDICTION, committed: **HARMFUL, clearing at p between 0.005 and 0.05, with collapses higher by 15 to 30 of 132.**
+The direction has now survived two independent samples at 16 and 64 seeds and the gap did not shrink between them; at
+this sample size a difference of 0.17 resolves comfortably. **The branch I would be least surprised to be wrong about is
+NULL with a smaller true effect**, because both prior samples are small and the pooled p of 0.017 is the kind of number
+that regresses -- journal 418 and journal 428 are both in this journal for that reason.
+
+RESULT (journal 433). The pre-registration above was written before any run. 264 runs, 22:50 -> 00:21.
+
+Gate: 12046907326433970777/86748, the shipped world. Graded 129/132 and 125/132 -- the same instrument in both arms.
+
+    PRIMARY, 132 FRESH seeds:
+        shipped (reflex live)       collapsed **77/132 (0.58)**   land 4.81
+        OD_ABLATE=nationalisation   collapsed **72/132 (0.55)**   land 5.25
+        Fisher **p 0.620**,  land perm p 0.575
+
+**VERDICT: NULL, at a sample size chosen to resolve the effect. Item 127 closes: the nationalisation reflex does not
+measurably harm 1914:FRA:rush.** My prediction of HARM is wrong, and the branch I named as the one I would least be
+surprised to be wrong about -- null with a smaller true effect -- is what happened.
+
+**WHERE THE EFFECT WENT, and it is the most instructive number in this entry.** Split by arm across the two seed sets:
+
+    shipped arm   37/64 = **0.58**   ->   77/132 = **0.58**     unchanged
+    ablated arm   26/64 = **0.41**   ->   72/132 = **0.55**     moved
+    the gap       **0.17**           ->   **0.03**
+
+The arm with the rule is stable to two decimal places across 196 seeds. **The apparent harm was the ABLATED arm doing
+unusually well on journal 403's particular 64 seeds** -- a property of that seed set, not of the rule. Memory
+seed-sets-carry-difficulty says exactly this and was written in this journal about 1914:SWE; here it is again, worth 11
+collapses and two entries of suspicion about a shipped feature.
+
+**AND IT VINDICATES THE PROCEDURE OVER THE INTUITION.** Two independent samples agreed on direction (p 0.135, then
+0.0767, pooling to 0.017) and I wrote in journal 432 that this "is not the noise pattern journal 428 retracted". That
+was the right distinction to draw and the wrong conclusion to draw from it: direction replicating across two small
+samples drawn from **the same seed set** is not evidence of an effect, because both inherit that set's character. The
+fresh-seed rule caught what the direction argument did not. Had the user asked for a revert on the strength of journal
+432, three hours of machine time is what stood between a correct decision and an incorrect one.
+
+**WHAT NOW STANDS ABOUT NATIONALISATION**, all of it measured in this journal:
+  * the rung rating is a null with the rule on or off (-25.2 against a floor of 66.3, journal 431);
+  * the rush collapse rate is a null at 132 seeds per arm (this entry);
+  * ablating the rule reproduces the pre-feature world **elementwise**, on three separate occasions (journals 431, 432);
+  * and the feature removes a third of the AI's decisions on the gate seat (130,092 -> 86,748) while taking 548
+    specialities.
+So: a large behavioural change with no measured effect on any seat this bench scores, in either direction. That is a
+coherent and slightly uncomfortable finding, and it is the honest state of the evidence for 1.3.0b.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/od_bench_results.json (j433-*), build/loop433/.
+No source change. model.bin unchanged.
+
+PENDING COMMIT: unchanged -- journal 431's ablation guard (with its header), journal 428's comment correction, journal
+430's turn stamp, and the docs.
+
+## 434 — iteration: the goods handicap is not what it looked like (peer brief, item 128)
+
+PRE-REGISTERED after a source reading and before any measurement of the change. The reading is recorded because it
+redirected the work.
+
+**THE PROPOSED FIX WAS REDUNDANT, AND READING THE SOURCE SAID SO BEFORE ANY CODE WAS WRITTEN.** A peer session measured
+that with OD_GOODS=1, **8.1% of all AI decisions** are refused "recruit: no munitions" -- the largest single refusal
+reason -- and proposed a production reflex: when a country is short of a good, point a factory at it. But
+`Game::autoAssignOutputs` (Game_Economy.cpp:689) **already does exactly that**, every turn, for every undirected
+province of every country: *"feed people first, then fill the emptiest shelf"*, deterministic, ties by good id. Its own
+comment says the network's business is whether to direct an economy at all, not which good a shed makes. A reflex that
+points factories at scarce goods would have duplicated a resolver heuristic that is already running.
+
+**AND THE STOCKPILE IS NOT EMPTY.** One 120-turn goods run, 1914:FRA seed 31337, reading the [GOODS] lines:
+
+    cid=6 good=munitions  produced 0.00  consumed 0.00  demand 52.16  **stock 55.05**
+    cid=6 good=fuel       produced 84.69 consumed 34.95 demand 34.95  stock 49.75
+    only **1 of 40** countries produces any munitions at all
+
+France holds more munitions than it demands and recruits nothing. So the handicap is neither allocation nor supply.
+
+**WHAT IT ACTUALLY IS.** `payWarMaterials` is a plain stock check, and `recruitPrice` scales munitions linearly with the
+order size. The AI's executor sizes a recruit order by **money and manpower only** -- `budgetCount = treasury * 0.20 *
+10000`, clamped by `recruitCap` -- then prices that order in munitions and, if the stockpile cannot cover the whole
+thing, **refuses the whole thing**. Meanwhile the validity mask offers the action only when the SMALLEST order (1,000
+men) is affordable in materials. **The mask says "some recruit is possible" and the executor attempts the largest one
+and gives up**, which is the two halves disagreeing -- the same defect shape as journal 398's enact-doctrine, where the
+mask and the executor asked different questions.
+
+THE CHANGE, in the AI's own file: scale the order down to what the stockpile covers and re-price through
+`recruitPrice`, rather than re-deriving its formula (memory expose-the-resolvers-numbers). **Inert without the goods
+economy** -- recruitPrice returns munitions 0 and the branch never runs -- so it cannot touch the shipped game.
+OD_RECRUIT_MUN_CLAMP=0 disables it for the A/B; a [MUNCLAMP] counter reports how often it fires.
+
+THE MEASUREMENT, two runs of 120 turns, OD_GOODS=1, the peer's own instrument:
+
+    arm A  OD_RECRUIT_MUN_CLAMP=0   (today's behaviour)
+    arm B  default                   (the clamp)
+
+PREDICTION, committed: **the munitions refusal share collapses from 8.1% to under 1%**, the clamp fires hundreds of
+times, and "recruit: too poor/small" rises as the binding constraint moves back to money. I am NOT predicting a seat
+score change: 120 turns on one seed is a mechanism check, not a bench, and the seat number is reported only to show the
+run happened.
+
+RESULT (journal 434). The pre-registration above was written before the measurement.
+
+**THE GATE MOVED AND THE PATCH IS STILL INERT -- proved, not argued.** The stored reference (12046907326433970777/86748)
+failed, and HEAD had advanced several commits since journal 431. A twin build of the same HEAD **without** the clamp gives
+**9222272411289998977/74628**, identical to the patched build's. So the clamp moves nothing in the shipped world, and the
+build moved the world again: the gate seat's decision count is now 86,748 -> **74,628**. Memory
+prove-inertness-against-a-twin-build is what turned a failed gate into a two-minute answer instead of a retraction.
+
+    OD_GOODS=1, 120 turns, 1914:FRA seed 31337:
+
+    arm A  clamp off   [NOOP] **1293  6.9%  recruit: no munitions**
+                       [NOOP]   44   0.2%  recruit: too poor/small
+                       munitions demand 45.53, stock 45.78;  seat 10.6
+    arm B  clamp on    [NOOP]  528   3.0%  recruit: too poor/small
+                       **no munitions refusals at all**
+                       munitions demand 12.80, stock 36.10;  seat 10.5
+                       [MUNCLAMP] orders scaled to the munitions held: **46**
+
+**PREDICTION CONFIRMED, both halves.** The munitions refusal share goes from **6.9% to zero** -- not "under 1%", gone --
+and "too poor/small" rises from 0.2% to 3.0% as the binding constraint moves back to money, which is exactly the
+displacement I registered. The clamp fired 46 times, so it is reachable and doing the work rather than passing through.
+
+**AND THE COUNTRY NOW SPENDS ITS MUNITIONS INSTEAD OF HOARDING THEM**: demand falls 45.53 -> 12.80 while stock falls
+45.78 -> 36.10. Under the old behaviour the demand was a queue of orders that could never be paid for; under the clamp
+the orders are sized to what exists, so they go through and the queue drains.
+
+**THE SEAT SCORE IS UNCHANGED (10.6 against 10.5) AND I PREDICTED THAT TOO.** One seed at 120 turns is a mechanism
+check. Whether recruiting in a goods world is WORTH anything is a bench question and this is not a bench -- the honest
+claim is that the AI can now act in a goods world, not that it plays it well.
+
+WHAT THIS LEAVES FOR THE GOODS RELEASE. The peer's blocker was "the AI cannot respond to a munitions shortage". It could
+not, and the cause was not the one any of us assumed: not allocation (autoAssignOutputs already targets the emptiest
+shelf), not supply (France held more munitions than it demanded), but an order sized in one currency and paid in
+another. **Three lines in the AI's executor, inert without goods, remove the largest refusal reason in a goods game
+entirely.** Whether goods should ship remains the user's call and this does not bear on it except by removing one
+argument against.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (pre-edit copy scratchpad/pre434-AISystem.cpp),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md, build/loop434/. model.bin unchanged.
+
+VERDICT: **KEEP**, and it is the one change in this sequence that fixes a defect rather than tuning a number.
+
+PENDING COMMIT (src/ai/AISystem.cpp and src/ai/AISystem.h TOGETHER -- this tree has twice had a header split from its
+.cpp and left main unbuildable):
+
+    Size a recruit order by the munitions it needs
+
+    In a goods world the order is sized by money and manpower and then
+    paid for in munitions as well, so a country that could not cover the
+    whole order was refused the whole order -- 6.9% of every AI decision,
+    the largest single refusal reason, while holding more munitions than
+    it demanded. The validity mask already offers the action only when
+    the smallest order is affordable in materials; this scales the order
+    to what the stockpile covers and re-prices it through recruitPrice.
+    Inert without the goods economy. Munitions refusals go to zero.
+
+## 435 — iteration: ParrotZero learns monuments (user asked, for 1.3.0b)
+
+PRE-REGISTERED, written before the bench. The reachability work below came first and is recorded because it decided
+the design.
+
+**THE FEATURE THE AI COULD NOT SEE.** Monuments ship on by default; `monument` appeared **zero** times in AISystem, and
+nothing in src/ai built, activated or paid for one. A peer session's brief put the same problem on three economy
+systems; the user's order puts monuments first.
+
+**REACHABILITY, CHECKED BEFORE BUILDING ANYTHING** -- item 117's habit, and it nearly redirected the work twice. The
+research executor takes the cheapest node in a FOCUSED branch, and the focus actions name only buildings, army and navy;
+monuments are a fourth category no focus action can name, reachable only through the "cheapest anywhere" fallback. Read
+from the source that looked fatal. Measured, it is not: a new [RESEARCHPICK] counter (gated on OD_ACT_HIST) over one
+400-turn world gives **army 81.0%, buildings 10.1%, monuments 3.8% (99 picks), population 3.0%, efficiency 1.1%,
+formations 1.0%**. Countries do unlock monuments, so a build reflex is reachable rather than blank.
+
+THE REFLEX, gated OD_MONUMENT_REFLEX, off by default, ablatable as "monument":
+  1. **The dial first, and unconditional.** If the country is squeezed -- treasury under 1, or committed costs at or
+     above projected income -- switch off the dearest active monument, one a turn, and build nothing that turn. The
+     dearest is the last in odmon::chargeOrder, which is the resolver's own ordering rather than a second guess at it.
+  2. **Build only with the next slot's standing cost covered.** slotCost(activeNow) is what the next active one costs
+     per turn; the country's projected net must cover it. Memories ai-treasuries-run-at-zero and fund-a-bill-not-a-mood
+     both say to gate on the standing bill rather than the lump sum, and journal 414 traced a country that signed bills
+     it could not service and then could not replace its army.
+  3. Cheapest researched kind it can afford, in its most populous eligible province, ties by province id. It calls
+     canBuildMonument/buildMonument/setMonumentActive -- the same entry points the player's buttons call -- so it can
+     only do what a player could.
+
+INERTNESS, proved rather than asserted: with the gate unset the seat hashes **9222272411289998977/74628**, byte-identical
+to journal 434's twin build of pure HEAD. With it on, 14356075439263441276/102044 and [MONUMENT] reports 55 built and 54
+switched off across the world.
+
+THE BENCH: 32 rung seeds and 32 rush seeds, arms off and on. Statistics as ever -- per-seed rung rating against its
+floor, rush as a collapse rate by Fisher.
+
+PREDICTION, committed: **a null on both.** 55 monuments across a whole world in 400 turns is a small intervention, and
+this loop's base rate for rules that spend money is poor -- the recruitment reserve floor cost 234 rung points and the
+pacification cooldown bought a rush gain at 129-153. **The number I will watch is the build/idle ratio: 55 built against
+54 idled looks like thrash**, and a rule that builds a thing in order to switch it off next turn is buying nothing and
+paying the build cost for it. If the bench is a null and the ratio stays near 1:1, the honest recommendation is to keep
+it gated off until the dial is smarter, not to ship it because it is new.
+
+RESULT.
+
+  rush   collapsed 18/32 -> 13/32   Fisher p 0.317        land mean 5.82 -> 10.87
+  rung   422.5 (se 13.7) -> 415.9 (se 16.7)   -6.6, floor 42.3   WITHIN FLOOR
+
+**NULL on both, exactly as predicted.** The rush median moves 0.20 -> 9.45 and that is NOT independent evidence: at
+18/32 collapsed the median seed IS a collapsed one and at 13/32 it is not, so the median jump is arithmetic on the same
+five seeds the Fisher test already declined to call.
+
+THE RUN WAS THROWN AWAY AND REDONE, and this is the part worth keeping. od_bench stamps every label with
+`binary_md5_start`, `binary_md5` and `binary_changed_mid_run`. Both rung arms came back with
+**`binary_changed_mid_run: true`**: `5257ff54 -> 4977a8d3` at 20:09, because the peer session that shares this tree
+rebuilt `build/OpenDoctrinesServer` while a two-hour bench was reading it. The rush arms had finished by 20:09 and were
+clean. My summary script pulled `spread` out of that same JSON and never looked at the flag sitting beside it -- the
+mirror of journal 281's hand-rolled harness, which never COMPUTED the warning; here it was computed and not read.
+
+Redone against `build/loop435/srv_pin`, a private copy no rebuild can touch. The clean arms returned **422.5/13.7 and
+415.9/16.7 -- identical to the digit**, so the peer's change was decision-inert on all three rung seats, which the
+DECHASH had already suggested on one. The first run was sound. It was not KNOWN to be sound, and that is the difference
+worth two hours. New memory: [[pin-the-benchmark-binary]].
+
+WHY IT IS A NULL -- a per-event trace (OD_MONUMENT_REFLEX=2) answers the question the pre-registration flagged, and the
+answer is not the one I guessed. 55 built against 54 idled is **not thrash**:
+
+  builds 55 over 55 DISTINCT provinces -- no province is ever built twice
+  idles  54 over 54 distinct provinces, 54 of them provinces this reflex itself built
+  turns active before being switched off:  mean 17.7   MEDIAN 4   min 1   max 193
+  switched off within five turns of being built: 30 of 54
+  still active when the 400-turn game ends: ONE
+
+It is a **ratchet, not an oscillation**. The reflex pays a permanent construction cost and holds the thing it bought for
+a median of four turns. Of 55 monuments, one survives to the end. A rule that buys an asset and switches it off four
+turns later is buying nothing, and a bench that cannot tell it apart from doing nothing is reporting correctly.
+
+The asymmetry is mine, in the two tests: BUILD needs a projected margin, `inc.total - committed >= slotCost`, which a
+country can show for a single turn; IDLE fires on `treasury < 1.0`, and [[ai-treasuries-run-at-zero]] says AI treasuries
+are at zero essentially always. So the build gate is a snapshot and the idle gate is a near-permanent condition. I wrote
+both in the same sitting and did not notice they were measured against different things.
+
+VERDICT: **REJECT as a default. The code stays, gated off.** OD_MONUMENT_REFLEX unset is proved inert against journal
+434's pure-HEAD twin -- hash 9222272411289998977/74628 on two independently built binaries -- so it carries no release
+risk, and ParrotZero can now see monuments at all, which it could not before. It should not be switched on until the
+dial stops selling what it just bought. Design for a v2 is item 129; it is a small change and it is NOT this iteration's
+to make.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (monumentReflex, monumentTrace, [RESEARCHPICK] counter), src/ai/AISystem.h,
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+PENDING COMMIT -- AISystem.cpp and AISystem.h must go in the SAME commit:
+  - monument reflex + per-event trace, gated OD_MONUMENT_REFLEX, default OFF, ablatable as "monument"
+  - [RESEARCHPICK] category counter (gated OD_ACT_HIST)
+  - munitions clamp on recruitment (journal 434), nationalisation ablation guard, loss-freeze comment correction
+  - turn stamp on the [WAR] alliance-refusal log (src/Game_TurnLogic.cpp)
+  - pacification cooldown -- still UNDECIDED, item 123, do not ship without the user's call
+VERSIONING: a knob defaulting to off is a PATCH under docs/ai/VERSIONING.md -- ParrotZero 8.4.0 -> 8.4.1. If item 129
+lands and the reflex is defaulted ON, that is a RULES bump to 8.5.0.
+
+## 436 — the monument reflex stops selling what it just bought (item 129)
+
+PRE-REGISTERED, before the bench. The user asked the plain question -- "can the AI build and use monuments?" -- and
+journal 435's answer was "build, yes; use, no". This fixes the second half.
+
+THE FAULT, from 435: BUILD tested a one-turn projected margin, IDLE tested `treasury < 1.0`. Memory
+ai-treasuries-run-at-zero says the second is nearly always true for an AI country, so the gates were measured against
+different things and the reflex bought 55 monuments and switched 54 off after a MEDIAN OF FOUR TURNS.
+
+THE FIX, both sides needing the condition to PERSIST, plus room to spare rather than room exactly:
+  - `kPatience` (OD_MONUMENT_PATIENCE, default 5) consecutive turns. Lean for five before idling one; flush for five
+    before building one. Per-country counters, per-run rather than static, so two seats in one process cannot share a dial.
+  - `kBuffer` (OD_MONUMENT_BUFFER, default 3.0) on both money tests: the projected margin must cover the next slot
+    three times over, and the treasury must cover three times the build cost.
+Both swept-able, because memory sweep-the-defaults says the largest gain this project ever measured was an unexamined
+constant.
+
+MECHANISM, one seat, 400 turns, before the bench -- the ratchet is gone:
+
+                       v1 (j.435)   v2
+  built                      55      25
+  switched off               54      15
+  STILL ACTIVE AT TURN 400    1      10
+  median turns held           4      53
+  idled within five turns  30/54    0/15
+
+Inert unset: 9222272411289998977/74628, still equal to journal 434's pure-HEAD twin.
+
+THE BENCH: 32 rush seeds and 32 rung seeds, off vs on, against a PINNED private binary -- journal 435 lost a two-hour
+run to the peer rebuilding the shared one ([[pin-the-benchmark-binary]]), and the analysis reads
+`binary_changed_mid_run` this time.
+
+PREDICTION, committed: **a null on the rung seats again, and no rush effect.** Monuments pay in research, factory
+output, supply and alignment, so unlike v1 this rule is at least holding an asset that does something -- but it picks
+the CHEAPEST researched kind rather than the most useful one, and the slot series (50, 75, 125, 200, 300, 425, 575...)
+means a country's second and third are dear. Every money-spending rule this loop has measured has cost rung points.
+What would change my mind: a rung gain clearing the floor would say the effects are worth more than the slot bill, and
+that would make the CHOICE of kind the next thing worth fixing rather than the dial.
+
+RESULT, all four arms clean (`binary_changed_mid_run` false everywhere -- the pinning worked):
+
+           rush collapsed   land    rung
+  off          18/32        5.82   422.5 (se 13.7)
+  on           15/32       10.92   446.3 (se 12.3)
+  rung +23.8, floor 36.1 -> WITHIN FLOOR        rush Fisher p 0.617
+
+**NULL on both, as predicted.** What is worth recording is the DIRECTION: v1 was -6.6 and v2 is +23.8 on the same
+seeds, same seats, same model. Two-thirds of the floor is not a measurement and I am not claiming it as one -- memory
+bench-resolution-limit and decide-on-fresh-seeds both apply, and a sub-floor number that agrees with the mechanism I
+just changed is exactly the shape of result this loop has been wrong about before. Resolving +23.8 needs roughly three
+times the seeds, about four hours.
+
+WHAT IS MEASURED, and it is not the rating: the reflex now HOLDS what it buys. Median 4 turns -> 53, one monument
+surviving to turn 400 -> ten, and 30-of-54 idled within five turns -> 0 of 15. That was the defect, and it is gone.
+
+VERDICT: **the mechanism is fixed and the bench cannot tell it from off.** Whether to default it on is a question about
+what the AI should DO, not about rating: monuments ship on in 1.3.0b, a player sees them, and an AI that never raises
+one is a visible asymmetry. The bench's contribution is that it costs nothing measurable to fix that. Left OFF and left
+to the user, as the pacification cooldown was (item 123). Item 129 updated.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h, src/llm/Advisor.cpp, src/Game_Llm.cpp, src/Game_Server.cpp,
+tests/advisor_test.cpp, docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+── AND A BUG THAT HAS NOTHING TO DO WITH MONUMENTS, FOUND ON THE WAY ──
+
+The user asked for the LLM side too, so three tools went in -- `our_economy`, `our_stockpiles`, `our_research` -- and
+the monument reflex was wired to `llmSuppressesReflex`, with "monument"/"great work" added to kReflexWords so a letter
+can actually reach it (tests/advisor_test.cpp, proved to fail when the words are removed).
+
+Then, because `answerAdvisorTool` had NO runtime coverage anywhere, OD_LLM_TOOLS was hung off `--check` to print every
+answer once against a loaded world. The first run said this, for all ten argument-less tools:
+
+  our_territory: There is no country by that name in this world.
+  our_forces:    There is no country by that name in this world.
+  our_monuments: There is no country by that name in this world.   ... and so on
+
+`answerAdvisorTool` opened with an unconditional `if (them == 0 || them == me) return "There is no country by that
+name..."`, sitting ABOVE a careful per-tool guard that only wanted to reject tools which name a country -- making that
+guard dead code. The precompute calls every argument-less tool with an empty argument ON PURPOSE, because our_territory
+is about us and has nobody to name. So the whole self-knowledge half of the advisor has been telling the model its own
+country does not exist.
+
+It hid because `tools/check_llm_tools.py` PASSES: it proves every declared tool has an arm, which is wiring, not
+execution -- and the failure returned a plausible sentence, so a transcript looked like a sensible reply to a bad
+argument rather than an error. Fixed; all ten now answer. New memory: [[wiring-checks-are-not-execution]].
+
+PENDING COMMIT -- AISystem.cpp and AISystem.h in the SAME commit, as always:
+  - monument reflex v2 (hysteresis), still OD_MONUMENT_REFLEX, still OFF by default
+  - the advisor tools, the monument lean, the OD_LLM_TOOLS smoke door, and the answerAdvisorTool fix
+  - everything still pending from journals 434-435 (munitions clamp, [RESEARCHPICK], nationalisation ablation guard,
+    loss-freeze comment, [WAR] turn stamp, and the undecided pacification cooldown)
+VERSIONING: knob still defaults off, so PATCH -- ParrotZero 8.4.0 -> 8.4.1. Defaulting it on is RULES, 8.5.0.
+
+## 437 — the monument reflex ships on (user's call)
+
+The user's decision, on journal 436's evidence: the bench cannot tell the reflex from off, the mechanism is fixed, and
+an AI that never raises a monument in a release where monuments ship on is a visible asymmetry. Shipping it is a
+fidelity decision, not a rating one, and 436 is what makes it a cheap one.
+
+THE CHANGE, three lines and a version:
+  - `OD_MONUMENT_REFLEX` unset now means ON. `=0` restores the old world.
+  - **ParrotZero 8.4.0 -> 8.5.0.** RULES, not PATCH: docs/ai/VERSIONING.md says a default is behaviour a bench can see.
+  - The [MONUMENT] counter now registers its atexit only under OD_ACT_HIST or the trace. It used to register whenever
+    the reflex was live, which was fine while "live" meant "somebody asked for it" and would otherwise have put a line
+    on the stderr of every session that ever ends.
+
+PROVED, on the shipped binary, and both directions matter:
+  unset                  14336312219319526770/109360   == journal 436's benched ON arm, to the digit
+  OD_MONUMENT_REFLEX=0    9222272411289998977/74628    == journal 434's pure-HEAD twin, to the digit
+So the flip is EXACTLY the flip: the new default is the thing that was measured, and the old world is recoverable by
+one variable rather than by a rebuild.
+
+**CONSEQUENCE FOR EVERY FUTURE MEASUREMENT, and this is the part that will bite somebody:** the rung control is no
+longer 422.5. A default-off bench run from here measures **446.3 (se 12.3)** on the j402 seeds at 400 turns, because
+that is now what the binary does with no variables set. Anything compared against 422.5 after today is comparing
+against a world the code no longer describes -- which is the exact failure VERSIONING.md's RULES row exists to warn
+about, and which this project has already paid for once (three models measured up against baselines from three
+different binaries).
+
+PENDING COMMIT -- unchanged from 436 plus AIVersion.h, and AISystem.cpp/.h still go in one commit.

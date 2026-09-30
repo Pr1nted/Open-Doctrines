@@ -91,7 +91,7 @@ namespace ai {
 
 inline constexpr const char* NAME        = "ParrotZero";
 inline constexpr int         ARCH        = 8;   // == the model file format byte
-inline constexpr int         RULES       = 4;
+inline constexpr int         RULES       = 5;   // 8.5.0: the monument reflex ships on (journal 437)
 inline constexpr int         PATCH       = 0;
 
 /// "ParrotZero 8.1.0"

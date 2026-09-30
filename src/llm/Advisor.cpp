@@ -789,7 +789,7 @@ std::string jsonEscape(const std::string& in) { return esc(in); }
 }  // namespace
 
 std::string chatRequestBody(const std::vector<Turn>& turns, const std::string& model,
-                            int maxTokens) {
+                            int maxTokens, bool localRunner) {
     std::ostringstream b;
     b << "{\"model\":\"" << esc(model) << "\",\"messages\":[";
     for (size_t i = 0; i < turns.size(); ++i) {
@@ -809,7 +809,14 @@ std::string chatRequestBody(const std::vector<Turn>& turns, const std::string& m
     b << "],\"max_tokens\":" << maxTokens
       // Warm rather than wild. A diplomat who is too predictable is a template
       // and one who is too random stops tracking the conversation.
-      << ",\"temperature\":0.85,\"stream\":false}";
+      << ",\"temperature\":0.85";
+    // LET A LOCAL MODEL GO WHEN IT IS DONE. See LOCAL_KEEP_ALIVE. Verified
+    // against a running Ollama that the field parses rather than 400s: a
+    // request carrying it and one without it return the identical error for a
+    // missing model. Placed BEFORE "stream", because chatRequestBodyWithTools
+    // splices onto the exact tail `,"stream":false}`.
+    if (localRunner) b << ",\"keep_alive\":\"" << LOCAL_KEEP_ALIVE << "\"";
+    b << ",\"stream\":false}";
     return b.str();
 }
 
@@ -910,6 +917,24 @@ constexpr Tool kTools[] = {
      nullptr, nullptr},
     {"our_claims",
      "The land your own country claims but does not hold, and who holds it.",
+     nullptr, nullptr},
+    {"our_monuments",
+     "The great works your country has raised -- what they are, where they "
+     "stand, and which of them you are currently paying to keep running.",
+     nullptr, nullptr},
+    {"our_economy",
+     "What your treasury holds, whether the country is living within its means, "
+     "and what the largest standing bill is. Ask before promising anything that "
+     "costs money.",
+     nullptr, nullptr},
+    {"our_stockpiles",
+     "What your country has in store -- the raw materials it digs and the goods "
+     "its factories turn them into -- and whether the armies are short of "
+     "anything.",
+     nullptr, nullptr},
+    {"our_research",
+     "What your institutes are working on now, and how much of the country's "
+     "income is going to them.",
      nullptr, nullptr},
     {"incoming_requests",
      "What other countries have asked of you and is still waiting on your "
@@ -1018,6 +1043,10 @@ const ReflexWord kReflexWords[] = {
     {"campaign",     "campaign"},  {"offensive",  "campaign"},
     {"pacification", "pacification"},
     {"withdraw",     "withdraw"},  {"retreat",    "withdraw"},
+    // The great works, so an advisor can be listened to about the one standing
+    // bill that is purely discretionary. "monument" and the plain-English
+    // phrase, because a minister writes the second.
+    {"monument",     "monument"},  {"great work", "monument"},
 };
 
 }  // namespace
@@ -1099,8 +1128,9 @@ std::string toolsJson(bool (*keep)(const std::string&)) {
 }
 
 std::string chatRequestBodyWithTools(const std::vector<Turn>& turns,
-                                     const std::string& model, int maxTokens) {
-    std::string body = chatRequestBody(turns, model, maxTokens);
+                                     const std::string& model, int maxTokens,
+                                     bool localRunner) {
+    std::string body = chatRequestBody(turns, model, maxTokens, localRunner);
     // Spliced in rather than rebuilt: chatRequestBody is what the plain path
     // uses and is tested, and two builders would drift.
     const std::string tail = ",\"stream\":false}";

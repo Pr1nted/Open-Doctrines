@@ -578,6 +578,31 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
                      " provinces, " + std::to_string(m_countries.getAll().size()) + " countries");
         console.info("config and content are good. Not opening a session (--check).");
 
+        // ── OD_LLM_TOOLS=<iso|cid>: run every advisor tool once, and print it ──
+        //
+        // answerAdvisorTool() had no runtime coverage at all: check_llm_tools.py
+        // proves every declared tool has an `if (tool == ...)` arm, which is
+        // wiring, not execution, and tests/advisor_test.cpp links Advisor.cpp
+        // without a Game. So three answers added in journal 436 compiled, passed
+        // the checker, and had never once run -- memory a-skip-is-not-a-pass.
+        // Hung off --check rather than a new flag so the argument parser, which
+        // another session is building against, is not touched.
+        if (const char* who = std::getenv("OD_LLM_TOOLS")) {
+            int cid = atoi(who);
+            if (cid == 0) cid = cidForIso(who);
+            const Country* c = m_countries.getCountry(cid);
+            console.info(std::string("advisor tools for ") +
+                         (c ? c->name : std::string("cid ") + std::to_string(cid)) + ":");
+            int count = 0;
+            const llm::Tool* tools = llm::tools(&count);
+            for (int i = 0; i < count; ++i) {
+                if (tools[i].records) continue;      // those record, they do not answer
+                const std::string ans = answerAdvisorTool(cid, tools[i].name, "");
+                console.info(std::string("  ") + tools[i].name + ": " +
+                             (ans.empty() ? "(empty)" : ans));
+            }
+        }
+
         // ── AND LEAVE NOTHING BEHIND, WHICH IT DID NOT ──
         //
         // Loading a map auto-creates the save the world will be played in, and

@@ -17,6 +17,7 @@
 
 #include "Game.h"
 #include "GameInternals.h"
+#include "Monuments.h"
 #include "llm/Advisor.h"
 #include "llm/Runner.h"
 #include "net/HttpClient.h"
@@ -95,6 +96,18 @@ bool g_installDone = false;
  * counted rather than dropped silently, so "and four others" still tells the
  * model there is more map than it was shown.
  */
+// Money the way a minister says it aloud. The ledger keeps 1237.44; nobody
+// reports it that way, and a letter full of two-decimal figures reads like a
+// spreadsheet talking.
+static std::string roundedMoney(double v) {
+    const double a = std::fabs(v);
+    char buf[64];
+    if (a >= 1000.0)     snprintf(buf, sizeof buf, "%.1f thousand", v / 1000.0);
+    else if (a >= 10.0)  snprintf(buf, sizeof buf, "%.0f", v);
+    else                 snprintf(buf, sizeof buf, "%.1f", v);
+    return buf;
+}
+
 static std::string joinNames(const std::vector<std::string>& names, size_t cap) {
     if (names.empty()) return "";
     const size_t shown = std::min(names.size(), cap);
@@ -396,8 +409,11 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         const size_t b = v.find_last_not_of(" \t\r\n.\"'");
         return v.substr(a, b - a + 1);
     };
+    // Computed out here and captured by value: the worker deliberately does not
+    // hold `this`, and the endpoint is configuration rather than per-request state.
+    const bool localRunner = llm::isLocal(m_config.llmEndpoint);
     odasync::run([fromCountry, toCountry, groupId, url, key, me, model, turns, lookups, normArg,
-                 timeout = 45000]() mutable {
+                 localRunner, timeout = 45000]() mutable {
         std::string reply;
         int disposition = 0;
         std::string goal;
@@ -412,9 +428,11 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         // be answered with prose.
         for (int round = 0; round <= llm::kMaxToolRounds; ++round) {
             const bool offerTools = (round < llm::kMaxToolRounds);
+            // The residency hint goes only to a runner on this machine: see
+            // llm::LOCAL_KEEP_ALIVE. A remote API is not holding the player's RAM.
             const std::string body = offerTools
-                                   ? llm::chatRequestBodyWithTools(turns, model)
-                                   : llm::chatRequestBody(turns, model);
+                                   ? llm::chatRequestBodyWithTools(turns, model, 220, localRunner)
+                                   : llm::chatRequestBody(turns, model, 220, localRunner);
             HttpRequest req;
             req.method = "POST";
             req.url = url;
@@ -844,7 +862,8 @@ void Game::testLlmRunner() {
         {"system", "Answer with the single word: ready"},
         {"user", "ready?"},
     };
-    const std::string payload = llm::chatRequestBody(turns, m_config.llmModel, 16);
+    const std::string payload = llm::chatRequestBody(turns, m_config.llmModel, 16,
+                                                    llm::isLocal(m_config.llmEndpoint));
 
     std::string url = m_config.llmEndpoint;
     while (!url.empty() && url.back() == '/') url.pop_back();
@@ -1195,27 +1214,37 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
             if (have == want) { them = cid; break; }
         }
     }
-    if (them == 0 || them == me) {
-        return "There is no country by that name in this world.";
-    }
-    std::string name;
-    if (const Country* c = m_countries.getCountry(them)) name = c->name;
-
-    // A tool that names a country cannot be answered without one. The
-    // precompute only ever passes names that resolve, but a model may call a
-    // tool with a country that is not in this world, or -- commoner -- omit the
-    // argument altogether. Both arrive here as `them == 0`, and without this
-    // the answers below would talk about a country called "".
+    // ── ONLY THE TOOLS THAT NAME A COUNTRY (fixed journal 436) ──
+    //
+    // This used to be an unconditional `if (them == 0 || them == me) return
+    // "There is no country by that name in this world.";` sitting above the
+    // per-tool guard below, which made that guard dead code -- and every
+    // argument-LESS tool is called with an empty argument by the precompute at
+    // the top of this file, on purpose, because our_territory is about us and
+    // has nobody to name. So `them` was 0 for all of them and the whole our_*
+    // half of the advisor's self-knowledge -- territory, forces, doctrines,
+    // districts, claims, monuments, incoming requests -- answered the model
+    // "There is no country by that name in this world."
+    //
+    // It failed silently in both directions a bug can: the model was told its
+    // own country did not exist, and the answer READ like a legitimate reply to
+    // a bad argument, so nothing in a transcript looked wrong.
+    //
+    // Found by running the tools rather than by reading them: OD_LLM_TOOLS in
+    // Game_Server.cpp prints every answer once under --check. check_llm_tools.py
+    // proves each tool HAS an arm, which is wiring, not execution.
     {
         int toolCount = 0;
         const llm::Tool* list = llm::tools(&toolCount);
         for (int i = 0; i < toolCount; ++i) {
             if (tool != list[i].name) continue;
-            if (list[i].argName && them <= 0)
+            if (list[i].argName && (them == 0 || them == me))
                 return "There is no country by that name in this world.";
             break;
         }
     }
+    std::string name;
+    if (const Country* c = m_countries.getCountry(them)) name = c->name;
 
     if (tool == "standing_with") {
         llm::Situation s;
@@ -1312,6 +1341,10 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
         std::map<std::string, long long> facing;
         long long interior = 0;
         std::set<std::string> kinds;
+        // Weighted by MEN, not by unit: a minister's judgement should follow
+        // where the army actually is, and one huge line-infantry stack should
+        // not be outvoted by a single battalion of something exotic.
+        double atkMen = 0.0, defMen = 0.0, ratedMen = 0.0;
         for (int pid : provincesOf(me)) {
             const Province* pr = m_provinces.getProvinceById(pid);
             if (!pr || pr->countryId != me) continue;
@@ -1321,7 +1354,11 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
             for (const ArmyUnit& u : ar->second) {
                 if (u.countryId != me || u.count <= 0) continue;
                 here += u.count;
-                kinds.insert(troopCost(u.type).name);
+                const TroopCost& tc = troopCost(u.type);
+                kinds.insert(tc.name);
+                atkMen   += (double)tc.atk * (double)u.count;
+                defMen   += (double)tc.def * (double)u.count;
+                ratedMen += (double)u.count;
             }
             if (here <= 0) continue;
             total += here;
@@ -1356,6 +1393,19 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
             out += "You have ";
             out += joinNames(std::vector<std::string>(kinds.begin(), kinds.end()), 4);
             out += " under arms.";
+            // WHAT THEY FIGHT LIKE, not only what they are called. The hover hint
+            // gained attack and defence in e5cb026 for the same reason: naming a
+            // type says nothing about whether it is worth its price, and an
+            // advisor arguing for a war ought to know whether the army it is
+            // arguing with hits or holds. Said in words -- a minister does not
+            // quote multipliers, and the tools in this module never return raw
+            // numbers where a judgement will do.
+            if (ratedMen > 0.0) {
+                const double a = atkMen / ratedMen, d = defMen / ratedMen;
+                if (a > d * 1.15)      out += " They are built to attack.";
+                else if (d > a * 1.15) out += " They are built to hold ground.";
+                else                   out += " They are as good in attack as in defence.";
+            }
         }
         return out;
     }
@@ -1379,6 +1429,115 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
         std::string out;
         if (!active.empty()) out += "Your government runs " + joinNames(active, 8) + ". ";
         if (!coming.empty()) out += "You are still bringing in " + joinNames(coming, 6) + ".";
+        return out;
+    }
+
+    if (tool == "our_economy") {
+        // THE GAP THIS CLOSES: the advisor could see the great works, the
+        // doctrines and the districts -- every standing bill the country runs --
+        // and could not see the money any of them are paid out of. Memory
+        // fund-a-bill-not-a-mood is about the AI's own rules, but it applies to
+        // a minister writing letters just as well: an opinion about spending is
+        // worth nothing without the quoted expense beside it.
+        const Country* c = m_countries.getCountry(me);
+        if (!c) return "";
+        const CountryIncomeSnapshot inc = computeCountryIncome(me);
+        const float net = inc.total - inc.expenses;
+        std::string out = "The treasury holds about " + roundedMoney(c->treasury) + ". ";
+        if (net > inc.total * 0.10f)       out += "You are putting money by each turn";
+        else if (net > 0.0f)               out += "You are a little ahead each turn";
+        else if (net > -inc.total * 0.05f) out += "You are spending very near what you take in";
+        else                               out += "You are spending more than you take in";
+        out += ", on about " + roundedMoney(inc.total) + " a turn. ";
+
+        // The largest standing bill, named. One table, one reader -- the same
+        // fields the economy panel prints, so the advisor cannot describe a
+        // country the player is not looking at.
+        const std::pair<const char*, float> bills[] = {
+            {"the army",          inc.armyExpenses},
+            {"the fleet",         inc.navyExpenses},
+            {"your doctrines",    inc.policyCosts},
+            {"the minorities",    inc.minorityCosts},
+            {"the institutes",    inc.researchCost},
+            {"pacification",      inc.pacificationCost},
+            {"the factories",     inc.industryUpkeep},
+            {"the great works",   inc.monumentUpkeep},
+        };
+        const char* worstName = nullptr; float worst = 0.0f;
+        for (const auto& [name, amt] : bills)
+            if (amt > worst) { worst = amt; worstName = name; }
+        if (worstName && inc.expenses > 0.0f)
+            out += std::string("The heaviest of it is ") + worstName + ", at about "
+                 + roundedMoney(worst) + " a turn.";
+        return out;
+    }
+
+    if (tool == "our_stockpiles") {
+        // Inert world, honest answer: without the goods economy nothing keeps
+        // separate books for materiel, and an advisor told "you have none"
+        // would reason about a shortage that does not exist in this world.
+        // Memory sentinel-defaults-break-emptiness is exactly this trap.
+        if (!m_goodsEconomy)
+            return "Your ministries keep no separate books for materiel in this "
+                   "world; supply is not counted apart from money.";
+        auto it = m_countryStockpiles.find(me);
+        if (it == m_countryStockpiles.end())
+            return "Your storehouses are empty.";
+        const CountryStockpile& sp = it->second;
+        std::vector<std::string> plenty, scarce;
+        for (int g = 0; g < GOOD_COUNT; ++g) {
+            const std::string n = goodKey(g);
+            if (sp.goods[g] < 5.0f)       scarce.push_back(n);
+            else if (sp.goods[g] > 50.0f) plenty.push_back(n);
+        }
+        std::string out;
+        if (!plenty.empty()) out += "You have " + joinNames(plenty, 4) + " in quantity. ";
+        if (!scarce.empty()) out += "You are short of " + joinNames(scarce, 4) + ". ";
+        if (out.empty())     out = "Your storehouses hold a little of everything and much of nothing. ";
+        if (sp.goods[GOOD_MUNITIONS] < 5.0f)
+            out += "The armies cannot be brought up to strength until the munitions come in.";
+        return out;
+    }
+
+    if (tool == "our_research") {
+        auto ai = m_countryResearchActive.find(me);
+        const int node = (ai == m_countryResearchActive.end()) ? -1 : ai->second;
+        auto al = m_countryResearchAllocation.find(me);
+        const float share = (al == m_countryResearchAllocation.end()) ? 0.0f : al->second;
+        std::string out;
+        if (node >= 0 && node < (int)m_researchNodes.size())
+            out = "Your institutes are working on " + m_researchNodes[node].name + ". ";
+        else
+            out = "Your institutes are working on nothing in particular. ";
+        if (share > 0.30f)      out += "They take a large share of what the country earns.";
+        else if (share > 0.10f) out += "They take a fair share of what the country earns.";
+        else if (share > 0.0f)  out += "They are given very little.";
+        else                    out += "They are given nothing at all.";
+        return out;
+    }
+
+    if (tool == "our_monuments") {
+        // A MINISTER'S ANSWER, not an inventory. The panel already lists these
+        // with their levels and costs; what an advisor needs is what the country
+        // has built and what it is choosing to keep running -- the slot dial is
+        // the decision, so the inactive ones are named as a separate thought
+        // rather than folded into a count.
+        std::vector<odmon::Holding> held = monumentsOf(me);
+        if (held.empty())
+            return "Your country has raised no great works.";
+        std::vector<std::string> running, idle;
+        for (const odmon::Holding& h : held) {
+            std::string where = odmon::kindName(h.kind);
+            const Province* p = m_provinces.getProvinceById(h.provinceId);
+            if (p && !p->name.empty()) where += " at " + p->name;
+            (h.active ? running : idle).push_back(where);
+        }
+        std::string out;
+        if (!running.empty())
+            out += "You keep " + joinNames(running, 6) + " running. ";
+        if (!idle.empty())
+            out += (running.empty() ? "You have raised " : "You have also raised ")
+                 + joinNames(idle, 6) + ", standing idle at present. ";
         return out;
     }
 

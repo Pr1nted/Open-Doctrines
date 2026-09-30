@@ -383,6 +383,23 @@ int main() {
         };
         const std::string body = chatRequestBody(turns, "llama3.1:8b");
         ok(body.find("\"model\":\"llama3.1:8b\"") != std::string::npos, "the model is named");
+        // A REMOTE endpoint is never told how long to hold a model: it is not
+        // the player's RAM, and an unasked-for vendor field is how a request
+        // starts getting refused by an API that validates strictly.
+        ok(body.find("keep_alive") == std::string::npos,
+           "and no residency hint is sent by default");
+        const std::string local = chatRequestBody(turns, "llama3.1:8b", 220, true);
+        ok(local.find("\"keep_alive\":\"") != std::string::npos,
+           "while a local runner is told to let the model go");
+        // The tools builder splices onto the exact tail, so the hint must not
+        // be the last field. This is the assertion that catches it if it moves.
+        ok(local.size() >= 16 &&
+           local.compare(local.size() - 16, 16, ",\"stream\":false}") == 0,
+           "and the body still ends with the tail the tools builder splices onto");
+        const std::string localTools = chatRequestBodyWithTools(turns, "m", 220, true);
+        ok(localTools.find("\"tools\"") != std::string::npos &&
+           localTools.find("keep_alive") != std::string::npos,
+           "so the tools path carries both");
         ok(body.find("\\\"Britain\\\"") != std::string::npos, "quotes in content are escaped");
         ok(body.find("\\n") != std::string::npos, "and newlines");
         ok(body.find('\n') == std::string::npos, "leaving no raw control byte in the body");
@@ -733,6 +750,19 @@ int main() {
             if (!models[i].licence || !*models[i].licence) allLabelled = false;
         }
         ok(allLabelled, "and every one names its size and its licence");
+    }
+
+    // ── The great works are a lean an advisor can actually pull (j.436) ──
+    // Journal 435 gave ParrotZero a monument reflex. Without a word in
+    // kReflexWords no letter could ever reach it, and that is memory
+    // documented-instruments-that-do-not-exist waiting to happen.
+    {
+        const Lean less = parseLean("fewer great works");
+        ok(less.ok && less.reflex && std::string(less.reflex) == "monument" &&
+           less.direction < 0.0f, "an advisor can ask for fewer great works");
+        const Lean more = parseLean("more monuments");
+        ok(more.ok && more.reflex && std::string(more.reflex) == "monument" &&
+           more.direction > 0.0f, "and for more of them");
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_fails);

@@ -292,7 +292,8 @@ Turn toolResultTurn(const ToolCall& call, const std::string& answer);
 
 /// The request body with tools offered. Otherwise identical to chatRequestBody.
 std::string chatRequestBodyWithTools(const std::vector<Turn>& turns,
-                                     const std::string& model, int maxTokens = 220);
+                                     const std::string& model, int maxTokens = 220,
+                                     bool localRunner = false);
 
 /// The `tools` array, keeping only those `keep` accepts. Null keeps all.
 std::string toolsJson(bool (*keep)(const std::string&));
@@ -402,9 +403,30 @@ struct Endpoint {
 /// True when this endpoint is on the machine the game is running on.
 bool isLocal(const std::string& baseUrl);
 
-/// The JSON body for a chat completion. Separated out so it can be tested.
+/**
+ * How long a LOCAL runner should keep the model resident after answering.
+ *
+ * Ollama holds a model in RAM for five minutes after each request by default.
+ * That is right for a chatbot being typed at and wrong for a strategy game,
+ * where an advisor writes one letter and is then silent for as long as the
+ * player takes over their turn -- several gigabytes held for nothing.
+ *
+ * Sent only to a LOCAL endpoint. A remote API has no such field, the machine
+ * holding that model is not the player's, and this game does not send a vendor
+ * fields it did not ask for. "60s" keeps the model up across a burst of letters
+ * in one turn and lets it go before the next.
+ */
+inline constexpr const char* LOCAL_KEEP_ALIVE = "60s";
+
+/**
+ * The JSON body for a chat completion. Separated out so it can be tested.
+ *
+ * `localRunner` adds the residency hint above. It is a parameter rather than a
+ * global because the same build talks to both kinds of endpoint, and the hint
+ * is only correct for one of them.
+ */
 std::string chatRequestBody(const std::vector<Turn>& turns, const std::string& model,
-                            int maxTokens = 220);
+                            int maxTokens = 220, bool localRunner = false);
 
 /**
  * Pull the reply out of a chat completion response.

@@ -275,7 +275,24 @@ public:
     // them. This counts the turnover the slot story predicts.
     void warLifeCensus();
     void seatTrace();           ///< OD_SEAT_TRACE, off by default. Journal 414.
+    /// Turn the bankruptcy cascade last zeroed a country's pacification, and
+    /// its value last turn. OD_PAC_COOLDOWN reads them. Journal 424.
+    std::unordered_map<int,int>   m_pacZeroedTurn;
+    std::unordered_map<int,float> m_prevPac;
     static void dumpWarLife();
+    static void dumpPacCooldown();
+    static void dumpMunClamp();
+    static void dumpResearchPicks();
+    void monumentReflex(int cid);   ///< OD_MONUMENT_REFLEX, off by default.
+    /// Consecutive lean / flush turns per country -- the hysteresis journal 436
+    /// added so the reflex stops selling what it just bought. Per-run, not
+    /// static: two seats in one process must not share a dial.
+    std::unordered_map<int,int> m_monLeanTurns, m_monFlushTurns;
+    static void dumpMonuments();
+    static std::atomic<long long> s_monumentsBuilt, s_monumentsIdled;
+    static std::map<std::string, long long> s_researchPickBy;
+    static std::atomic<long long> s_recruitMunClamped;
+    static std::atomic<long long> s_pacCooldownRefused;
     static std::map<std::pair<int,int>, int> s_warOpen;   ///< pair -> turn it opened
     static long long s_warsStarted, s_warsEnded, s_warLenSum, s_warOpenSum, s_warTurns;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port

@@ -1664,6 +1664,22 @@ void AISystem::beginTurn() {
     updateTrends();
     warLifeCensus();   // reads m_warWith; writes nothing the game can see
     seatTrace();       // reads m_stats and m_warWith; writes nothing the game can see
+    // ── WHEN DID INSOLVENCY LAST ZERO THIS COUNTRY'S PACIFICATION? ──
+    // applyBankruptcyPenalties (Game_TurnLogic.cpp) cuts the discretionary
+    // budgets first, and its own comment says the budget "has to actually come
+    // down, not just go unpaid". Journal 423 measured the head winding it back
+    // up 32 times in one game. Recording the drop here keeps the rule entirely
+    // inside the AI: nothing in Game changes, and with the gate off nothing
+    // reads this map.
+    for (const auto& [ocid, st] : m_stats) {
+        if (ocid <= 0 || ocid >= Game::REBEL_CID_MIN) continue;
+        auto pit = m_g->m_countryPacification.find(ocid);
+        const float now = (pit == m_g->m_countryPacification.end()) ? 0.0f : pit->second;
+        auto prev = m_prevPac.find(ocid);
+        if (prev != m_prevPac.end() && prev->second > 0.0f && now <= 0.0f)
+            m_pacZeroedTurn[ocid] = m_turn;
+        m_prevPac[ocid] = now;
+    }
 
     // This map's frozen opponent, drawn once the world exists.
     //
@@ -4021,7 +4037,15 @@ void AISystem::takeTurn(int cid) {
         siegeReflex(cid);
     researchAusterityReflex(cid);
     doctrineReflex(cid);
-    nationalisationReflex(cid);
+    // Ablatable, so a rule that now ships ON can be priced the way a candidate
+    // is. Nationalisation became a default-on feature in e8d9861 and this
+    // reflex is the AI's only use of it; until this guard existed OD_ABLATE
+    // could not switch it off, so a nationalisation on/off bench measured the
+    // mechanic and the rule together with no way to separate them. Journal 431.
+    if (!reflexAblated("nationalisation"))
+        nationalisationReflex(cid);
+    if (!reflexAblated("monument") && !m_g->llmSuppressesReflex(cid, "monument"))
+        monumentReflex(cid);
     industryReflex(cid);
     navalReflex(cid);
     if (!reflexAblated("campaign") && !m_g->llmSuppressesReflex(cid, "campaign"))
@@ -5749,6 +5773,18 @@ std::string AISystem::execEconomy(int cid, int action) {
                 return didNothing(TextFormat("research: nothing left (%s)", want));
             }
             statsFor(cid).researchArmed++;
+            // WHICH BRANCH THE WORLD ACTUALLY RESEARCHES (OD_ACT_HIST).
+            // The focus actions name buildings, army and navy; the tree has
+            // other categories, and a category no focus action can name is
+            // reachable only through the "cheapest anywhere" fallback, which
+            // fires when the focused branch is exhausted. Whether that ever
+            // happens is a question about a 400-turn game, not about the code,
+            // so it is counted rather than argued.
+            if (std::getenv("OD_ACT_HIST")) {
+                s_researchPickBy[g.m_researchNodes[pick].category]++;
+                static const bool reg = (atexit(&AISystem::dumpResearchPicks), true);
+                (void)reg;
+            }
             g.m_countryResearchActive[cid] = pick;
             g.m_countryResearchInvested[cid] = 0;
             // Funding must be flowing or the node never completes
@@ -5784,6 +5820,30 @@ std::string AISystem::execPolitics(int cid, int action) {
             return "enact policy " + pid;
         }
         case 2: {
+            // ── COOLDOWN AFTER INSOLVENCY (OD_PAC_COOLDOWN, off by default) ──
+            //
+            // Journal 423: the bankruptcy cascade zeroes this budget and the
+            // head raises it again -- 32 times in one game, 57 of 400 turns
+            // spent at zero -- and pacify-DOWN is taken on 0 of 18,251 offers,
+            // so the dial only ever moves one way unless insolvency moves it.
+            // Journal 422: 82.5% of the resulting suppression lands where
+            // unrest is under 5, because the dial is one scalar per country.
+            //
+            // This does NOT trim the dial. Trimming was benched twice at -97
+            // and -85; raising it cost -54. It refuses to RE-raise for N turns
+            // after insolvency zeroed it -- a rule that binds only on a country
+            // which has just proved it could not afford what it was buying.
+            static const int coolTurns = std::getenv("OD_PAC_COOLDOWN")
+                                       ? atoi(std::getenv("OD_PAC_COOLDOWN")) : 0;
+            if (coolTurns > 0) {
+                auto zit = m_pacZeroedTurn.find(cid);
+                if (zit != m_pacZeroedTurn.end() && (m_turn - zit->second) < coolTurns) {
+                    ++s_pacCooldownRefused;
+                    static const bool reg = (atexit(&AISystem::dumpPacCooldown), true);
+                    (void)reg;
+                    return didNothing("pacification: cooling down after insolvency");
+                }
+            }
             float& pac = g.m_countryPacification[cid];
             pac = std::min(1.0f, pac + 0.125f);
             return TextFormat("pacification up to %.0f%%", pac * 100);
@@ -6474,7 +6534,39 @@ std::string AISystem::execWar(int cid, int action) {
             // would have been a third place to get it right. Game::recruitPrice
             // carries the modifier, the $1 floor and the materials together.
             const TroopType kind = chooseTroopType(cid);
-            const Game::WarPrice price = g.recruitPrice(count, cid, kind);
+            Game::WarPrice price = g.recruitPrice(count, cid, kind);
+            // ── SIZE THE ORDER BY MUNITIONS TOO (OD_RECRUIT_MUN_CLAMP=0 to disable) ──
+            //
+            // The order above is sized by MONEY and MANPOWER. In a goods world it
+            // is then paid for in munitions as well, and a country that cannot
+            // cover the whole order was refused the whole order -- 8.1% of every
+            // AI decision in a goods game, the largest single refusal reason,
+            // measured by a peer session and confirmed here: 1914:FRA holds 55.05
+            // munitions against a demand of 52.16 and still recruits nothing,
+            // because a treasury-sized order costs more munitions than that.
+            //
+            // The mask already offers this action only when the SMALLEST order
+            // (1,000 men) is affordable in materials, so refusing the largest one
+            // outright contradicts the mask rather than agreeing with it. This
+            // scales the order down to what the stockpile covers, and re-prices
+            // through recruitPrice rather than re-deriving its formula (memory
+            // expose-the-resolvers-numbers). Inert without the goods economy:
+            // recruitPrice returns munitions 0 and the branch never runs.
+            static const bool munClamp = !std::getenv("OD_RECRUIT_MUN_CLAMP") ||
+                                         atoi(std::getenv("OD_RECRUIT_MUN_CLAMP")) != 0;
+            if (munClamp && price.munitions > 0.0f) {
+                auto sit = g.m_countryStockpiles.find(cid);
+                const float have = (sit == g.m_countryStockpiles.end())
+                                 ? 0.0f : sit->second.goods[GOOD_MUNITIONS];
+                if (have < price.munitions) {
+                    count = (int)((double)count * (double)have / (double)price.munitions);
+                    if (count < 1000) return didNothing("recruit: too poor/small");
+                    price = g.recruitPrice(count, cid, kind);
+                    ++s_recruitMunClamped;
+                    static const bool reg = (atexit(&AISystem::dumpMunClamp), true);
+                    (void)reg;
+                }
+            }
             if (!g.payWarMaterials(cid, price))
                 return didNothing("recruit: no munitions");
             c.treasury -= price.money;
@@ -7427,8 +7519,25 @@ void AISystem::fortifyReflex(int cid) {
 // OD_CRASH_CUTS (default AI_AUSTERITY_MAX_CUTS; 1 = one cut a turn, as before)
 // exist so the two rules can be benched separately on one binary.
 static int lossFreezeTurns() {
+    // OFF by default, and the reason recorded here was stale for a long time.
+    //
+    // The old note said "measured neutral (211 vs 209) and it blocks
+    // conciliation". That measurement predates every rule this project has
+    // since shipped, and journal 428 re-ran it against the shipped game:
+    // 32 rung seeds, two arms on one binary, OD_LOSS_FREEZE=8 against unset.
+    //
+    //     rung rating 399.9 -> 328.2,  -71.7 against a floor of 45.0, CLEARS
+    //     1914:FRA:rush      14/32 collapsed -> 15/32, Fisher p 1.000
+    //     decisions on the gate seat 130,092 -> 111,540, one in seven removed
+    //
+    // So it is not neutral: enabling it costs about seventy rating points and
+    // buys nothing measurable. It stays off, and the four conditions that read
+    // it -- the enact-doctrine gate, the doctrine reflex's own early return,
+    // and the two calm-headroom terms -- therefore NEVER EXECUTE. They are
+    // written as safety checks and they are disabled features; journal 426
+    // found that out by trying to narrow a rule with one of them.
     static const int v = std::getenv("OD_LOSS_FREEZE") ? atoi(std::getenv("OD_LOSS_FREEZE"))
-                                                       : 0;   // OFF by default: measured neutral (211 vs 209) and it blocks conciliation
+                                                       : 0;
     return v;
 }
 // OD_AUSTERITY_RESEARCH_LAST=1 moves the research cut from FIRST to LAST.
@@ -13773,6 +13882,18 @@ std::atomic<long long> AISystem::s_nationalisedFired{0};
 std::map<std::string, long long> AISystem::s_doctrineReflexBy;
 std::map<std::string, long long> AISystem::s_doctrineReflexByCountry;
 std::map<std::pair<int,int>, int> AISystem::s_warOpen;
+std::atomic<long long> AISystem::s_pacCooldownRefused{0};
+std::atomic<long long> AISystem::s_recruitMunClamped{0};
+std::map<std::string, long long> AISystem::s_researchPickBy;
+// OD_MONUMENT_REFLEX=2 adds a per-event trace -- journal 435 needed to know
+// whether build and idle were touching the SAME province turn after turn.
+static bool monumentTrace() {
+    static const bool on = std::getenv("OD_MONUMENT_REFLEX") &&
+                           atoi(std::getenv("OD_MONUMENT_REFLEX")) >= 2;
+    return on;
+}
+std::atomic<long long> AISystem::s_monumentsBuilt{0};
+std::atomic<long long> AISystem::s_monumentsIdled{0};
 long long AISystem::s_warsStarted = 0, AISystem::s_warsEnded = 0,
           AISystem::s_warLenSum = 0, AISystem::s_warOpenSum = 0,
           AISystem::s_warTurns = 0;
@@ -14529,6 +14650,34 @@ void AISystem::seatTrace() {
             c ? c->treasury : 0.0, foreign, rebel);
 }
 
+void AISystem::dumpResearchPicks() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    long long total = 0;
+    for (const auto& [cat, n] : s_researchPickBy) total += n;
+    for (const auto& [cat, n] : s_researchPickBy)
+        fprintf(stderr, "[RESEARCHPICK] %-12s %8lld  %5.1f%%\n", cat.c_str(), n,
+                total ? 100.0 * (double)n / (double)total : 0.0);
+    fprintf(stderr, "[RESEARCHPICK] total %lld\n", total);
+}
+
+void AISystem::dumpMunClamp() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[MUNCLAMP] recruit orders scaled to the munitions held: %lld\n",
+            s_recruitMunClamped.load());
+}
+
+void AISystem::dumpPacCooldown() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[PACCOOL] pacification raises refused while cooling down: %lld\n",
+            s_pacCooldownRefused.load());
+}
+
 void AISystem::dumpWarLife() {
     static bool done = false;
     if (done) return;
@@ -14541,6 +14690,141 @@ void AISystem::dumpWarLife() {
             s_warsEnded ? (double)s_warLenSum / (double)s_warsEnded : 0.0,
             s_warTurns ? (double)s_warOpenSum / (double)s_warTurns : 0.0,
             s_warTurns);
+}
+
+// ── MONUMENT REFLEX (OD_MONUMENT_REFLEX, off by default) ──
+//
+// Monuments shipped on by default in 1.3.0b and the AI had no contact with
+// them at all: `monument` appeared nowhere in this file, nothing in src/ai
+// built one, activated one or paid for one. A feature the player uses and the
+// AI cannot see is a feature that only works in one direction.
+//
+// WHY A REFLEX AND NOT AN ACTION. Adding an action bumps ARCH, which refuses
+// every existing model file; and the politics and economy heads already decline
+// most of the actions they have (13 slots offered 50+ times and taken zero).
+// This reads the resolver directly and calls the same entry points the player's
+// buttons call, so it can only do what a player could.
+//
+// THE SLOT IS THE DECISION. Building is cheap; RUNNING costs 50, 75, 125, 200,
+// 300, 425 a turn as they stack. Memories ai-treasuries-run-at-zero and
+// fund-a-bill-not-a-mood both say the same thing about this shape: an AI that
+// signs a standing bill it cannot service goes bankrupt and then cannot replace
+// its army (journal 414 traced exactly that). So the dial comes FIRST and is
+// unconditional, and building is gated on being able to pay the next slot.
+void AISystem::monumentReflex(int cid) {
+    // SHIPPED ON (journal 437). OD_MONUMENT_REFLEX=0 restores the world in
+    // which the AI never touches a monument, which is what every measurement
+    // before ParrotZero 8.5.0 was taken in.
+    static const bool on = !std::getenv("OD_MONUMENT_REFLEX") ||
+                           atoi(std::getenv("OD_MONUMENT_REFLEX")) != 0;
+    if (!on) return;
+    // The counter is an instrument, and instruments print under OD_ACT_HIST --
+    // now that the reflex runs on every ordinary game, an unconditional atexit
+    // would put a line on the stderr of every session that ever ends.
+    static const bool reg = (std::getenv("OD_ACT_HIST") || monumentTrace())
+                          ? (atexit(&AISystem::dumpMonuments), true) : false;
+    (void)reg;
+    Game& g = *m_g;
+    const Country* c = g.m_countries.getCountry(cid);
+    if (!c) return;
+
+    std::vector<odmon::Holding> held = g.monumentsOf(cid);
+
+    // ── 1. THE DIAL: stop paying for what cannot be paid for ──
+    // projectIncome is the snapshot the doctrine reflex and the recruitment
+    // mask already price against; a second estimate of "can this country
+    // afford things" would drift from it.
+    const CountryIncomeSnapshot inc = g.projectIncome(cid, planHorizon());
+    const float committed = inc.policyCosts + inc.minorityCosts + inc.pacificationCost;
+    const bool squeezed = (c->treasury < 1.0) || (committed >= inc.total);
+
+    // ── HYSTERESIS (journal 436, fixing journal 435's ratchet) ──
+    // v1 tested BUILD against a one-turn projected margin and IDLE against
+    // `treasury < 1.0`, which memory ai-treasuries-run-at-zero says is nearly
+    // always true. The two gates were measured against different things, so the
+    // reflex bought 55 monuments and switched 54 of them off again after a
+    // MEDIAN OF FOUR TURNS. One survived to turn 400.
+    //
+    // So both sides now need the condition to PERSIST, and building needs room
+    // to spare rather than room exactly. Defaults are swept-able because memory
+    // sweep-the-defaults says the largest gain this project ever measured was an
+    // unexamined constant.
+    static const int   kPatience = std::getenv("OD_MONUMENT_PATIENCE")
+                                 ? atoi(std::getenv("OD_MONUMENT_PATIENCE")) : 5;
+    static const float kBuffer   = std::getenv("OD_MONUMENT_BUFFER")
+                                 ? (float)atof(std::getenv("OD_MONUMENT_BUFFER")) : 3.0f;
+    int& lean  = m_monLeanTurns[cid];
+    int& flush = m_monFlushTurns[cid];
+    if (squeezed) { ++lean; flush = 0; } else { ++flush; lean = 0; }
+
+    if (squeezed) {
+        // Not on the first lean turn. A country that dips under a coin for one
+        // turn and recovers has not stopped being able to afford its great
+        // works, and switching one off there is what produced the ratchet.
+        if (lean < kPatience) return;
+        // The dearest slot is the last one charged -- see odmon::chargeOrder.
+        const std::vector<odmon::Holding> order = odmon::chargeOrder(held);
+        for (auto it = order.rbegin(); it != order.rend(); ++it) {
+            if (!it->active) continue;
+            if (g.setMonumentActive(cid, it->provinceId, false)) {
+                ++s_monumentsIdled;
+                if (monumentTrace()) fprintf(stderr, "[MONTRACE] turn %d cid %d IDLE prov %d\n",
+                                             g.m_turnNumber, cid, it->provinceId);
+            }
+            break;                       // one a turn: this is a dial, not a purge
+        }
+        return;                          // and never build in the same breath
+    }
+
+    // ── 2. BUILD, only with the next slot's standing cost covered ──
+    // slotCost(n) is what the NEXT active one costs per turn. Requiring the
+    // country's net to cover it is the "quoted expense" memory
+    // fund-a-bill-not-a-mood asks for, rather than gating on the lump sum.
+    const int activeNow = odmon::activeCount(held);
+    const float nextSlot = odmon::slotCost(activeNow);
+    // Room to SPARE, and room that has lasted. `>= nextSlot` was satisfiable by
+    // a single good turn, which is how v1 talked itself into 55 purchases it
+    // could not keep.
+    if (flush < kPatience) return;
+    if ((float)inc.total - committed < nextSlot * kBuffer) return;
+
+    // Cheapest researched kind it can put down: the dearest is not obviously
+    // better and the cheap one leaves money for the army, which this project
+    // has measured as the thing that actually holds ground.
+    int bestKind = -1; float bestCost = 0.0f;
+    for (int k = 0; k < odmon::kKindCount; ++k) {
+        const odmon::Spec& sp = odmon::spec((odmon::Kind)k);
+        if (!g.hasResearched(odmon::unlockNode((odmon::Kind)k), cid)) continue;
+        if ((float)c->treasury < sp.buildCost * kBuffer) continue;
+        if (bestKind < 0 || sp.buildCost < bestCost) { bestKind = k; bestCost = sp.buildCost; }
+    }
+    if (bestKind < 0) return;
+
+    // The most populous province that can take it. Ties by province id, so the
+    // same world builds in the same place twice -- map iteration order is not
+    // a decision (memory obviously-equivalent-is-not-equivalent).
+    int bestPid = -1; long long bestPop = -1;
+    std::string whyNot;
+    for (int pid : g.provincesOf(cid)) {
+        if (!g.canBuildMonument(cid, pid, bestKind, whyNot)) continue;
+        auto pp = g.m_provincePopulations.find(pid);
+        const long long pop = (pp == g.m_provincePopulations.end()) ? 0 : (long long)pp->second;
+        if (pop > bestPop || (pop == bestPop && pid < bestPid)) { bestPop = pop; bestPid = pid; }
+    }
+    if (bestPid < 0) return;
+    if (g.buildMonument(cid, bestPid, bestKind)) {
+        ++s_monumentsBuilt;
+        if (monumentTrace()) fprintf(stderr, "[MONTRACE] turn %d cid %d BUILD prov %d kind %d\n",
+                                     g.m_turnNumber, cid, bestPid, bestKind);
+    }
+}
+
+void AISystem::dumpMonuments() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+    fprintf(stderr, "[MONUMENT] built by the reflex: %lld   switched off to pay the bill: %lld\n",
+            s_monumentsBuilt.load(), s_monumentsIdled.load());
 }
 
 void AISystem::researchAusterityReflex(int cid) {
