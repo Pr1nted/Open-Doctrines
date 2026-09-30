@@ -1,9 +1,15 @@
 # Does the Windows installer install, appear, and uninstall cleanly?
 #
-# THE ONE SURFACE CI CANNOT REACH. tools/qualify.sh proves the Windows BUILD
-# runs -- it plays a game on the GitHub runner through software OpenGL. What
-# no automated check has ever touched is the thing most Windows players
-# actually use: the NSIS installer. Whether it lands in Program Files, whether
+# THE SURFACE NO CHECK USED TO TOUCH. tools/qualify.sh proves the Windows
+# BUILD runs -- it plays a game on the GitHub runner through software OpenGL.
+# What nothing asked about was the thing most Windows players actually use:
+# the NSIS installer.
+#
+# This runs in CI now, on every tag: release-game.yml calls it on the
+# windows-2022 runner right after cpack, and a failure blocks the release. A
+# GitHub Windows runner is real x64 Windows with administrator rights, which
+# is all a silent install and uninstall need. Only INTERACTIVE clicking is out
+# of reach, and that is not what is checked here. Whether it lands in Program Files, whether
 # the Start-menu shortcut points at a file that exists, whether "Add or remove
 # programs" lists it, and whether uninstalling takes it all away again.
 #
@@ -16,8 +22,9 @@
 #   powershell -ExecutionPolicy Bypass -File windows_installer_test.ps1 `
 #              -Installer C:\od\OpenDoctrines-1.2.2-win64.exe
 #
-# It is driven from macOS by tools/windows_installer_test.sh, which pushes this
-# and the installer into the VM with utmctl and reads the result back.
+# It is also driven from macOS by tools/windows_installer_test.sh against the
+# UTM guest, which is how it gets run against a RELEASED installer rather than
+# a freshly built one -- see tools/windows_vm_create.sh.
 #
 # IT UNINSTALLS WHAT IT INSTALLS. The last thing it does is put the machine
 # back, so the VM does not accumulate a copy per run and the uninstall path is
