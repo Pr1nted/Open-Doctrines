@@ -502,6 +502,30 @@ Alpha, and the honest version of that word:
   should be read as exactly that. `OD_QUALIFY_REQUIRE_PLAY=1` turns the skip
   into a failure for anyone running it on a Mac with a screen.
 
+  **And the installer, which is a different artifact from the build.**
+  `qualify.sh` proves the Windows *build* runs; the NSIS package most Windows
+  players actually download is packaged separately, and until September 2026
+  nothing had ever installed it anywhere. A shortcut pointing at
+  `$INSTDIR\OpenDoctrines.exe` after the binary moved into a subdirectory is a
+  working build and a broken install, and no build test can tell those apart.
+
+  It now runs on every tag — `release-game.yml`, on the `windows-2022` runner,
+  straight after `cpack`, and a failure blocks the release. It has also been run
+  by hand against the **released 1.2.2a installer on a real Windows 11
+  machine**: installs silently, appears in *Add or remove programs* with its
+  version, puts `OpenDoctrines.exe` and all eleven `.odmap` files where the
+  Start-menu shortcut actually points, and uninstalls leaving nothing behind —
+  14 checks, and the shipped `SaveRoundTripTest.exe` passes its own 68 there
+  as well.
+
+  What that machine deliberately does **not** show is the game being played.
+  It has no GPU driver, so there is no OpenGL 3.3 and the game refuses to start
+  — with a dialog naming the cause, which is the behaviour that was verified
+  there rather than a gap in it. Playing on Windows is proved by CI, above, not
+  by that machine; and since it runs the x64 installer under emulation, it
+  attests to the packaging, the registry and the shortcuts rather than to the
+  binary on x64 hardware.
+
   The **web** build compiles, boots and passes its own checks in CI; it does not
   go through `qualify.sh`, which needs a window and a filesystem.
   [TempleOS](#templeos) is a separate build and a separate promise: it has been
