@@ -28,6 +28,8 @@
 #include "miniz_zip.h"
 
 #include <cstdio>
+#include <filesystem>
+#include <system_error>
 #include <string>
 #include <vector>
 #include <cstring>
@@ -135,8 +137,31 @@ static std::string makeSave(const std::string& path) {
 }
 
 int main() {
-    const std::string dir = "/tmp/od-save-durability/";
-    system(("rm -rf " + dir + " && mkdir -p " + dir).c_str());
+    // A TEMP DIRECTORY THE WAY C++ MAKES ONE, not the way a shell does.
+    //
+    // This was `system("rm -rf /tmp/od-save-durability && mkdir -p ...")`, which
+    // is three separate things Windows does not have: /tmp is not a path, rm
+    // and mkdir -p are not commands, and system() hands the line to cmd.exe,
+    // which answered "The syntax of the command is incorrect." and carried on.
+    //
+    // The directory was therefore never created, every save write failed, and
+    // every turn_count read back 0 -- so the suite reported twenty confident
+    // failures about turn history on Windows and none of them was about turn
+    // history. The assertions were right; the harness had never run. Caught by
+    // CI on windows-x64, not here, because this file was only ever run on a Mac.
+    std::error_code ec;
+    const std::filesystem::path base =
+        std::filesystem::temp_directory_path(ec) / "od-save-durability";
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(base, ec);
+    if (ec) {
+        printf("could not make a temp directory at %s: %s\n",
+               base.string().c_str(), ec.message().c_str());
+        return 1;
+    }
+    // Trailing separator, because every path below is built by concatenation.
+    const std::string dir =
+        base.string() + (char)std::filesystem::path::preferred_separator;
     std::string why;
 
     section("an evening of play");
