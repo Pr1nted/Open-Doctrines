@@ -526,6 +526,27 @@ Alpha, and the honest version of that word:
   attests to the packaging, the registry and the shortcuts rather than to the
   binary on x64 hardware.
 
+  **FreeBSD and OpenBSD are being worked on, and they will not be equal.**
+  The mod runtime is WebAssembly Micro Runtime, and WAMR ships platform support
+  for `freebsd` and none for `openbsd` — checked against its own
+  `core/shared/platform` directory, which lists sixteen platforms and not that
+  one. So:
+
+  | | the game | mods and the Gearbox SDK |
+  |---|---|---|
+  | **FreeBSD** | intended | intended |
+  | **OpenBSD** | intended | **not available** |
+
+  An OpenBSD build will ship with modding disabled rather than shipping a
+  runtime that loads nothing, and the `.odmod` menu will say so rather than
+  failing quietly. Porting WAMR to OpenBSD is a real piece of work and belongs
+  to its own project, not to a release of this one; if it lands, the platform
+  gains mods without anything else changing.
+
+  Neither BSD has a GitHub-hosted runner, so when they arrive their binaries
+  will be built locally in UTM rather than in CI — which is the same machinery
+  the Linux packages are tested on.
+
   The **web** build compiles, boots and passes its own checks in CI; it does not
   go through `qualify.sh`, which needs a window and a filesystem.
   [TempleOS](#templeos) is a separate build and a separate promise: it has been

@@ -1,0 +1,99 @@
+{
+  "_comment": [
+    "Splash lines for the main menu, in the Minecraft tradition: one short",
+    "line beside the title, picked per launch.",
+    "",
+    "DATA, NOT SOURCE, AND DELIBERATELY SO. A string literal in a .cpp gets",
+    "picked up by tools/i18n_extract.py and then wants translating into all",
+    "forty-four languages the game ships. Jokes are the worst possible thing to",
+    "put through that: they do not survive translation, a translator has no way",
+    "to know which are jokes, and every one added later would block a release",
+    "on translation work. Here they are English, they are optional, and a",
+    "translator who WANTS to localise them can ship their own file.",
+    "",
+    "Keep them short: this is drawn beside the title and shrinks with it.",
+    "",
+    "occasions: from/to are MM-DD inclusive and may wrap the year (see the new",
+    "year entry). 'fall' names the particle the menu rains on those days.",
+    "'lines' are used INSTEAD of the everyday ones while the window is open."
+  ],
+
+  "any": [
+    "Now with 44 languages!",
+    "Doctrine is just vibes with paperwork",
+    "The AI has feelings about your borders",
+    "Historically inaccurate on purpose",
+    "One more turn",
+    "Your economy is a suggestion",
+    "Try not to annex Belgium",
+    "Made of provinces and regret",
+    "Zero-sum, mostly",
+    "The map is not the territory. The map is a PNG.",
+    "Rebels have opinions too",
+    "Compass points left. And right. And up.",
+    "Every war is a supply problem wearing a hat",
+    "Tested on real Windows machines",
+    "Somebody's army is walking into the sea",
+    "Peace was never an option (it was)",
+    "Now with fewer kernel panics",
+    "Turn 1 of 400",
+    "Balanced, probably",
+    "The treasury remembers",
+    "Minorities are people, not modifiers",
+    "Ships cannot climb mountains. We checked.",
+    "Save early, save often, save anyway",
+    "Your doctrine cannot save you now",
+    "Built by one person and several machines",
+    "Feeding people is an economy too",
+    "Borders drawn by flood fill",
+    "The AI plays a whole game now",
+    "No microtransactions, ever",
+    "Free to play, modify and share",
+    "Mods are a first-class citizen",
+    "It runs on TempleOS. Genuinely.",
+    "Press 2 for industry",
+    "Grand strategy, small file",
+    "Someone is always at war somewhere"
+  ],
+
+  "occasions": [
+    {
+      "id": "halloween",
+      "from": "10-29",
+      "to": "11-01",
+      "fall": "bats",
+      "lines": [
+        "Spooky doctrines",
+        "The rebels rise. Literally.",
+        "Your treasury is haunted",
+        "Trick or annex",
+        "Something stirs in the unclaimed provinces"
+      ]
+    },
+    {
+      "id": "newyear",
+      "from": "12-30",
+      "to": "01-02",
+      "fall": "snow",
+      "lines": [
+        "Happy new turn!",
+        "New year, same borders",
+        "Resolution: fewer wars",
+        "One more year",
+        "Winter offensive"
+      ]
+    },
+    {
+      "id": "firstlight",
+      "from": "08-02",
+      "to": "08-02",
+      "fall": "confetti",
+      "lines": [
+        "It first went live today",
+        "Happy birthday, Open Doctrines",
+        "Another year on the map",
+        "Thank you for playing"
+      ]
+    }
+  ]
+}
