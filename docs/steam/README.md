@@ -244,9 +244,14 @@ Each command writes two files — `banner-<size>.png` with the wordmark and
 `-plain.png` without. Use the titled one everywhere except the library hero,
 which sits *behind* the separate logo and must not have a second wordmark on it.
 
-For the **231×87 small capsule**, check it at actual size before uploading. A
-world map at that scale is a blue-grey smudge; if the wordmark does not read,
-crop tighter rather than shipping something illegible.
+For the **231×87 small capsule**, check it at actual size before uploading.
+The wordmark used to be the illegible part rather than the map: it is a pixel
+font lifted from the menu, and the 42%-of-width rule gave it eleven pixels of
+height for thirteen glyphs, at which point the strokes fall between output
+pixels and no resampling filter can save them. `banner.py` now floors the mark
+at 22 pixels tall, which moves the small and vertical capsules and leaves
+every larger one identical. If it still does not read, crop tighter rather
+than shipping something illegible.
 
 For the **library logo**, run `python3 tools/steam-logo.py`. It imports
 `tools/itch-cover.py`, which lifts the wordmark pixel-for-pixel out of the

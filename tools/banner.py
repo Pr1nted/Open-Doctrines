@@ -373,7 +373,23 @@ def build(scenario: str, region_name: str, size_name: str, titled: bool,
 
     art = darken_for_text(base, 0.62).convert("RGBA")
     mark = _wordmark_fn()()
+    # ── A FRACTION OF THE WIDTH, WITH A FLOOR IN PIXELS ──
+    #
+    # 0.42 alone is wrong for the small capsule. Legibility is an ABSOLUTE
+    # height -- the wordmark is a pixel font lifted from the menu, and below
+    # about twenty pixels tall its strokes land between output pixels and the
+    # resample turns them to haze whatever the filter is. At 231x87 the
+    # fraction gave 97x11 for thirteen glyphs, seven pixels each, and the
+    # result read as a yellow smudge.
+    #
+    # So the fraction sets the size and MIN_MARK_H raises it when the capsule
+    # is small, capped so the mark never runs the full width. Only the two
+    # smallest capsules move: the header, main, library, hero and page
+    # background are all already above the floor and come out byte-identical.
+    MIN_MARK_H, MAX_FRAC = 22, 0.80
     w = int(size[0] * 0.42)
+    if mark.height * (w / mark.width) < MIN_MARK_H:
+        w = min(int(MIN_MARK_H * mark.width / mark.height), int(size[0] * MAX_FRAC))
     h = int(mark.height * (w / mark.width))
     mark = mark.resize((w, h), Image.LANCZOS)
 
