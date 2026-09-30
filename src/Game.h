@@ -2670,7 +2670,7 @@ public:
     /**
      * Consumer supply over consumer demand, 0..1+. 1 means fed.
      *
-     * Read by getProvinceRebellionChance and by population growth, and -- only
+     * Read by getProvinceRebellionChance and by growCountryPopulation, and -- only
      * when OD_WELLFED_ROOM is set -- by wellFedRoom. See the note there: two
      * visible consequences, and no third hidden multiplier, because an economy
      * with one of those stops being explainable to the person playing it.
@@ -3343,6 +3343,8 @@ public:
     float wellFedRoom(const CountryIncomeSnapshot& inc, int countryId) const;
     /// Whether living standards buy political room at all.
     bool wellFedRoomOn() const;
+    /** Whether a consumer shortfall slows population growth. On by default. */
+    bool hungerGrowthOn() const;
     /// Unspent political room this country has banked. 0 unless the rule is on.
     float politicalCapital(int countryId) const;
     /// One turn's arithmetic on the bank. Pure, so it can be tested directly.

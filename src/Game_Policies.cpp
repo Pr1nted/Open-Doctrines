@@ -861,9 +861,50 @@ long long Game::provinceCarryingCapacity(int pid) const {
     return (long long)std::min((double)MAX_PROVINCE_POP, std::max(1.0, cap));
 }
 
+bool Game::hungerGrowthOn() const {
+    // ON by default, unlike wellFedRoomOn above, and the asymmetry is the
+    // point: that one ADDS a reward the design never promised, this one
+    // restores a consequence Game.h has claimed for livingStandards all along.
+    // The knob exists so the rate sweep can run an arm without it, not because
+    // the effect is optional.
+    static const bool on = !std::getenv("OD_HUNGER_GROWTH") ||
+                           atoi(std::getenv("OD_HUNGER_GROWTH")) != 0;
+    return on;
+}
+
 void Game::growCountryPopulation(int countryId) {
     const float mod = 1.0f + getTotalEffect("popGrowthPct", countryId) / 100.0f;
-    const float baseRate = BASE_POP_GROWTH_PCT * mod;
+
+    // HUNGER SLOWS GROWTH -- the second of livingStandards' two consequences.
+    //
+    // Game.h has named both since before either was wired, and was wrong about
+    // this one for as long: getProvinceRebellionChance read it, growth never
+    // did. So a country that could not feed itself was restless and grew at
+    // exactly the rate of one that could, and the only thing famine cost was
+    // order. The economy had one visible consequence pretending to be two.
+    //
+    // A SCALE, NOT A THRESHOLD, to match the unrest rule it pairs with: half
+    // fed is half the trouble there and half the growth here, so the two move
+    // together and a player reading "62%" can predict both.
+    //
+    // NOTHING ABOVE FED. livingStandards is `ate / wantC` and a country cannot
+    // eat more than it wants, so it is bounded at 1 by construction -- there is
+    // no surplus case, and inventing a reward for one would be the third hidden
+    // multiplier Game.h refuses to have.
+    //
+    // It scales the BASE rate only. District law multiplies what comes out of
+    // here and ethnic policy is added after, so a starving province under a
+    // settlement grant still grows a little: those are separate instruments
+    // acting on the same population, not corrections to this one.
+    //
+    // Exactly 1.0f without the goods economy, where livingStandards has no
+    // meaning -- so every world that has not opted in grows bit-for-bit as it
+    // did before.
+    float fedScale = 1.0f;
+    if (m_goodsEconomy && hungerGrowthOn())
+        fedScale = std::clamp(livingStandards(countryId), 0.0f, 1.0f);
+
+    const float baseRate = BASE_POP_GROWTH_PCT * mod * fedScale;
 
     for (int pid : provincesOf(countryId)) {
         auto popIt = m_provincePopulations.find(pid);
