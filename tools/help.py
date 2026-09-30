@@ -28,6 +28,10 @@ GROUPS = [
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
         "make_linux_packages.sh",
+        # The Flatpak manifest and its AppStream metainfo pin a published URL
+        # and a changelog entry by hand, nothing builds from them, and so both
+        # sat two releases stale. This says so, every suite run.
+        "update_flatpak_release.py",
         "itch-cover.py", "banner.py", "steam-logo.py", "package_android.sh",
         # Builds the web version and puts it on Cloudflare Pages -- the hosting
         # a Discord Activity needs, and the thing that makes the web build

@@ -127,6 +127,13 @@ run "qualify play gate" "$root/tests/qualify_play_gate_test.sh"
 # also decides, on every update, what is the release's to refresh and what is
 # the player's to leave alone -- and both halves of that fail silently.
 run "linux launcher"   "$root/tests/linux_launcher_test.sh"
+
+# Flathub builds from the manifest in this repository, not from our artifacts,
+# so its url:, sha256: and <release> entry are hand-maintained -- and were two
+# releases stale before anything looked. Reports rather than fails: nobody has
+# submitted to Flathub yet, and a downstream that does not exist should not
+# block a release.
+check "flatpak release pins" $PY "$root/tools/update_flatpak_release.py" --check
 run "mod sides + attestation" "$bin/NetAttestTest"
 run "net protocol"     "$bin/NetProtocolTest"
 run "account client"   "$bin/NetAccountTest"

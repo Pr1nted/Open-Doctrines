@@ -493,6 +493,81 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # ── THE FLATPAK ──
+  #
+  # Built from the artifact this run produced, NOT from the url: in the checked
+  # in manifest -- the same rule as the .deb and the .rpm. Two reasons, and the
+  # second one is decisive: a package must not differ from the archive it claims
+  # to contain, and at the moment this runs nothing is published yet, so that
+  # URL does not resolve. The pins in the manifest are for FLATHUB, which builds
+  # from the repository and cannot see our artifacts;
+  # tools/update_flatpak_release.py keeps them honest.
+  #
+  # x86_64 only. The aarch64 runtime exists, but a second Flatpak doubles a job
+  # that already spends most of its time pulling a 1 GB runtime, and the Arm
+  # audience this would serve is the same one the arm64 tarball and AppImage
+  # already reach.
+  flatpak:
+    name: Flatpak (x86_64)
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: OpenDoctrines-linux-x64
+          path: incoming
+
+      - name: Flatpak and the runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder appstream
+          sudo flatpak remote-add --if-not-exists flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y --noninteractive flathub \
+            org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+      - name: Point the manifest at what we just built
+        run: |
+          python3 - <<'EOF'
+          import re, pathlib, glob
+          src = pathlib.Path("packaging/linux/io.github.Pr1nted.OpenDoctrines.yml")
+          m = src.read_text(encoding="utf-8")
+          zip_path = sorted(glob.glob("incoming/*.zip"))[0]
+          # Swap the published-URL source for the local archive. path: is
+          # relative to the manifest, so it is resolved to an absolute one.
+          m = re.sub(r"      - type: archive\n        url: \S+\n        sha256: \S+\n",
+                     f"      - type: archive\n        path: {pathlib.Path(zip_path).resolve()}\n",
+                     m, count=1)
+          assert "path: " in m, "the archive source was not rewritten"
+          pathlib.Path("build-manifest.yml").write_text(m, encoding="utf-8")
+          print(m.split("sources:")[1])
+          EOF
+
+      - name: Build it
+        run: |
+          flatpak-builder --force-clean --disable-rofiles-fuse \
+            --repo=fp-repo fp-build build-manifest.yml
+          mkdir -p dist/linux
+          flatpak build-bundle fp-repo \
+            "dist/linux/OpenDoctrines-${GITHUB_REF_NAME#v}-x86_64.flatpak" \
+            io.github.Pr1nted.OpenDoctrines
+
+      - name: The metadata Flathub will check
+        # appstreamcli and desktop-file-validate are what Flathub runs. Failing
+        # here costs a minute; failing there costs a review round trip.
+        run: |
+          appstreamcli validate --no-net \
+            packaging/linux/io.github.Pr1nted.OpenDoctrines.metainfo.xml
+          echo "  metainfo ok"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDoctrines-flatpak
+          path: dist/linux/*.flatpak
+          retention-days: 14
+          if-no-files-found: error
+
   test:
     name: Test
     uses: ./.github/workflows/test.yml
@@ -500,7 +575,7 @@ jobs:
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web, linux-packages]
+    needs: [build, test, web, linux-packages, flatpak]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.
@@ -566,6 +641,7 @@ jobs:
             artifacts/**/*.AppImage
             artifacts/**/*.deb
             artifacts/**/*.rpm
+            artifacts/**/*.flatpak
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}
