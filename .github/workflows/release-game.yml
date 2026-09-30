@@ -64,6 +64,15 @@ jobs:
           - name: linux-x64
             os: ubuntu-22.04
             artifact: OpenDoctrines-linux-x64
+          # ARM LINUX IS A HOSTED RUNNER NOW. This used to be a job whose whole
+          # content was a warning that GitHub had no Arm Linux runner and that
+          # this release therefore shipped three platforms while the notes
+          # claimed four. GitHub added ubuntu-*-arm as public runners, free for
+          # public repositories, so the warning outlived the thing it warned
+          # about. Raspberry Pi, Asahi and every Arm cloud desktop get a build.
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            artifact: OpenDoctrines-linux-arm64
 
     steps:
       - uses: actions/checkout@v5
@@ -389,26 +398,109 @@ jobs:
   # is the right way round -- asking someone to play-test a build a machine
   # already knows is broken wastes the one reviewer the project has. The human
   # gate is for judging what a machine cannot, not for catching what it can.
+  # ── THE PACKAGES, BUILT FROM THE TARBALL THAT WAS ALREADY TESTED ──
+  #
+  # Not a second compile. These repackage the exact tree the build job produced
+  # and the test job signed off on, so a package cannot differ from the archive
+  # it claims to contain -- which is how v1.0.4a shipped a binary nothing had
+  # run (see "The packaged copy carries the account service" above).
+  #
+  # What each one is FOR, since four Linux downloads needs a reason each:
+  #
+  #   tarball    what exists today. Needs glibc 2.35, because it is built on
+  #              Ubuntu 22.04, which is why the next two exist.
+  #   AppImage   one file, no install, carries enough of a runtime to run on
+  #              the distributions README.md currently tells to build from
+  #              source: Ubuntu 20.04, Debian 11, RHEL 9.
+  #   .deb/.rpm  for people who want their package manager to own it, and to
+  #              put the game in the applications menu. They do NOT fix glibc.
+  #
+  # None of these can enter Debian or Fedora proper: the licence is free to
+  # play, modify and share non-commercially, which is not OSI-approved, so the
+  # official archives are closed to this project. They are downloads.
+  linux-packages:
+    name: Package ${{ matrix.arch }} Linux
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64 }
+          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: incoming
+
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential rpm file desktop-file-utils
+          sudo gem install --no-document fpm
+          # appimagetool ships as an AppImage, which needs FUSE to self-extract.
+          # --appimage-extract-and-run avoids installing FUSE on a runner that
+          # may not allow it, and works the same.
+          case "${{ matrix.arch }}" in
+            amd64) AT_ARCH=x86_64 ;;
+            arm64) AT_ARCH=aarch64 ;;
+          esac
+          curl -sSL -o /tmp/appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$AT_ARCH.AppImage"
+          chmod +x /tmp/appimagetool
+          printf '#!/bin/sh\nexec /tmp/appimagetool --appimage-extract-and-run "$@"\n' \
+            | sudo tee /usr/local/bin/appimagetool >/dev/null
+          sudo chmod +x /usr/local/bin/appimagetool
+
+      - name: Build the packages
+        run: |
+          set -eu
+          # The build job uploads a zip; unwrap it to the tree package.py made.
+          cd incoming && unzip -q -o ./*.zip && cd ..
+          tree=$(find incoming -maxdepth 2 -name OpenDoctrines -type f -exec dirname {} \; | head -1)
+          [ -n "$tree" ] || { echo "no game tree in the artifact"; ls -R incoming | head -40; exit 1; }
+          version="${GITHUB_REF_NAME#v}"
+          tools/make_linux_packages.sh "$tree" "$version" "${{ matrix.arch }}" dist/linux
+
+      - name: The packages carry the MANAGED marker
+        # A package whose updater still self-updates desynchronises the package
+        # database from the disk. Checked on the built artifact rather than
+        # trusted from the script, because that is the failure this marker
+        # exists to prevent. See GameUpdates::managedInstall().
+        run: |
+          set -eu
+          deb=$(ls dist/linux/*.deb)
+          dpkg-deb -c "$deb" | grep -q 'usr/lib/opendoctrines/MANAGED' \
+            && echo "  deb: MANAGED present" \
+            || { echo "  deb: MANAGED MISSING"; exit 1; }
+          rpm -qlp dist/linux/*.rpm 2>/dev/null | grep -q '/usr/lib/opendoctrines/MANAGED' \
+            && echo "  rpm: MANAGED present" \
+            || { echo "  rpm: MANAGED MISSING"; exit 1; }
+
+      - name: The desktop entry and metainfo are valid
+        # Flathub and the freedesktop validators run these anyway; failing here
+        # is a minute, failing there is a round trip.
+        run: |
+          desktop-file-validate packaging/linux/io.github.Pr1nted.OpenDoctrines.desktop
+          echo "  desktop entry ok"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDoctrines-linux-packages-${{ matrix.arch }}
+          path: dist/linux/*
+          retention-days: 14
+          if-no-files-found: error
+
   test:
     name: Test
     uses: ./.github/workflows/test.yml
 
-  # Arm Linux has no GitHub-hosted runner. Saying so out loud beats quietly
-  # shipping three platforms when the release notes claim four.
-  note-arm-linux:
-    name: Note - Linux Arm not built
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "::warning title=Linux Arm not built::GitHub hosts no Arm Linux \
-          runner. This release does not include a Linux Arm build. Add a \
-          self-hosted Arm runner, or accept that Arm Linux users build from \
-          source."
-
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web]
+    needs: [build, test, web, linux-packages]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.
@@ -471,6 +563,9 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.apk
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}

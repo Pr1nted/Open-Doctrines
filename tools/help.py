@@ -24,6 +24,10 @@ TOOLS = os.path.join(ROOT, "tools")
 GROUPS = [
     ("Releasing", [
         "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
+        # The AppImage, the .deb and the .rpm, repackaged from the tarball the
+        # build already produced rather than compiled again -- so a package
+        # cannot differ from the archive it claims to contain.
+        "make_linux_packages.sh",
         "itch-cover.py", "banner.py", "steam-logo.py", "package_android.sh",
         # Builds the web version and puts it on Cloudflare Pages -- the hosting
         # a Discord Activity needs, and the thing that makes the web build

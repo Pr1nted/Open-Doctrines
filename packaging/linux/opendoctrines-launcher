@@ -2,18 +2,44 @@
 # Seed a writable data directory, then run the game against it.
 #
 # The game treats its data directory as read-write: config.json, saves/ and the
-# AI model all live inside it (Game.cpp, m_configPath = m_dataDir + ...). Inside
-# a Flatpak /app is read-only, so running against the installed tree would fail
-# on the first setting change -- and would fail quietly, because a config that
-# cannot be written looks exactly like one that has nothing in it.
+# AI model all live inside it (Game.cpp, m_configPath = m_dataDir + ...). Every
+# packaged install puts the shipped tree somewhere read-only, so running against
+# it would fail on the first setting change -- and would fail quietly, because a
+# config that cannot be written looks exactly like one that has nothing in it.
 #
 # So: copy once into XDG_DATA_HOME, and point OD_DATA_DIR there.
+#
+# ── ONE LAUNCHER, FOUR PACKAGES ──
+#
+# This used to hard-code /app, which is the Flatpak's prefix and nobody else's.
+# The .deb and .rpm install under /usr and an AppImage mounts at $APPDIR, so a
+# hard-coded prefix meant either three more copies of this file or three
+# packages that start and immediately cannot save. Copies drift; this project
+# has the scars (two rename handlers, two flag renderers, five metadata
+# writers), so the prefix is DERIVED instead.
+#
+# The layout every package shares is <prefix>/bin/opendoctrines beside
+# <prefix>/lib/opendoctrines, so the root is two directories up from this
+# script and back down into lib. That resolves to /app on Flatpak, /usr on a
+# .deb or .rpm, and $APPDIR/usr inside an AppImage, with nothing to configure.
 set -eu
 
-src=/app/lib/opendoctrines/data
+# readlink -f so a symlinked /usr/bin/opendoctrines still finds its own prefix.
+# Busybox and coreutils both have it; macOS does not, and does not run this.
+self=$(readlink -f "$0" 2>/dev/null || echo "$0")
+prefix=$(dirname "$(dirname "$self")")
+root="$prefix/lib/opendoctrines"
+
+if [ ! -x "$root/OpenDoctrines" ]; then
+    echo "opendoctrines: no game at $root -- this launcher expects" >&2
+    echo "  <prefix>/bin/opendoctrines beside <prefix>/lib/opendoctrines" >&2
+    exit 1
+fi
+
+src="$root/data"
 dest="${XDG_DATA_HOME:-$HOME/.local/share}/opendoctrines/data"
 stamp="$dest/.installed-version"
-version=$(cat /app/lib/opendoctrines/VERSION 2>/dev/null || echo unknown)
+version=$(cat "$root/VERSION" 2>/dev/null || echo unknown)
 
 if [ ! -d "$dest" ]; then
     mkdir -p "$(dirname "$dest")"
@@ -22,7 +48,7 @@ if [ ! -d "$dest" ]; then
 elif [ "$(cat "$stamp" 2>/dev/null || echo none)" != "$version" ]; then
     # An update shipped new maps, languages or audio. Refresh the shipped tree
     # WITHOUT touching anything the player made: saves, the config and any
-    # installed mods are theirs and are never overwritten from /app.
+    # installed mods are theirs and are never overwritten from the package.
     for item in "$src"/*; do
         name=$(basename "$item")
         case "$name" in
@@ -35,4 +61,4 @@ elif [ "$(cat "$stamp" 2>/dev/null || echo none)" != "$version" ]; then
 fi
 
 export OD_DATA_DIR="$dest"
-exec /app/lib/opendoctrines/OpenDoctrines "$@"
+exec "$root/OpenDoctrines" "$@"
