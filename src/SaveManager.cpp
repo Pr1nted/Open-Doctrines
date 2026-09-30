@@ -474,6 +474,24 @@ bool SaveManager::createSave(const std::string& odsvPath,
     // archive that still opens and holds a truncated state.json, which is the
     // file behind "close the app while it autosaves, reopen, load, crash".
     // See the note over Game::loadStateJson.
+    // CREATE MEANS CREATE. This writes a NEW archive -- the map, the metadata
+    // and an empty index -- and carries nothing across. Called on a path that
+    // already holds a played world, it therefore deletes every turn delta and
+    // state.json with them, leaving metadata.json still claiming the turns.
+    // The loader then walks 1..turn_count, misses every entry, applies nothing
+    // and reports nothing: the world opens at day one, silently.
+    //
+    // That is not hypothetical. Renaming a world did exactly this, in two
+    // copies of the same handler, and a 120-turn save came back as an empty
+    // one. Refusing here is what makes it a caught mistake rather than a lost
+    // evening -- a rename wants updateLastPlayed(), which rewrites the
+    // metadata and keeps everything else.
+    if (highestTurnInBuffer(readFile(odsvPath)) > 0) {
+        fprintf(stderr, "[SAVE] refusing to create over a save that holds turns: %s\n",
+                odsvPath.c_str());
+        return false;
+    }
+
     const std::string tmpPath = odsvPath + ".part";
     mz_zip_archive zip{};
     if (!mz_zip_writer_init_file(&zip, tmpPath.c_str(), 0))

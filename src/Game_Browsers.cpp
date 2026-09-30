@@ -738,14 +738,24 @@ void Game::updateWorldBrowser() {
             // Rename the file
             std::string oldPath = m_dataDir + "saves/" + m_worldInfos[m_renameWorldIndex].filename;
             if (std::rename(oldPath.c_str(), savePath.c_str()) == 0) {
-                // Update metadata with new name
+                // RENAMING A WORLD MUST NOT END IT.
+                //
+                // This called createSave(), which does what its name says: it
+                // writes a NEW archive, holding the map, the metadata and an
+                // empty index. Renaming a 120-turn world therefore left the
+                // map and threw away all 120 turn deltas AND state.json --
+                // the research, the politics, the claims, the pending orders,
+                // the rebels and their flags. metadata.json kept saying 120,
+                // so the loader walked 1..120, missed every one, applied
+                // nothing and reported nothing: the world came back at day
+                // one, in silence.
+                //
+                // updateLastPlayed() rewrites metadata.json and carries every
+                // other entry across byte for byte, which is all a rename
+                // needs.
                 auto meta = SaveManager::readMetadata(savePath);
                 meta.saveName = m_renameWorldNewName;
-                // Rebuild archive with updated metadata
-                std::vector<uint8_t> odmData = SaveManager::extractODM(savePath);
-                if (!odmData.empty()) {
-                    SaveManager::createSave(savePath, std::string(odmData.begin(), odmData.end()), meta);
-                }
+                SaveManager::updateLastPlayed(savePath, &meta);
                 // Update world info
                 m_worldInfos[m_renameWorldIndex].worldName = m_renameWorldNewName;
                 m_worldInfos[m_renameWorldIndex].filename = m_renameWorldNewName + ".odsv";
@@ -787,14 +797,12 @@ void Game::updateWorldBrowser() {
                 // Rename the file
                 std::string oldPath = m_dataDir + "saves/" + m_worldInfos[m_renameWorldIndex].filename;
                 if (std::rename(oldPath.c_str(), savePath.c_str()) == 0) {
-                    // Update metadata with new name
+                    // The same rename as the Enter-key path above, and the
+                    // same reason it must not call createSave(). Two copies of
+                    // this is how it survived being wrong.
                     auto meta = SaveManager::readMetadata(savePath);
                     meta.saveName = m_renameWorldNewName;
-                    // Rebuild archive with updated metadata
-                    std::vector<uint8_t> odmData = SaveManager::extractODM(savePath);
-                    if (!odmData.empty()) {
-                        SaveManager::createSave(savePath, std::string(odmData.begin(), odmData.end()), meta);
-                    }
+                    SaveManager::updateLastPlayed(savePath, &meta);
                     // Update world info
                     m_worldInfos[m_renameWorldIndex].worldName = m_renameWorldNewName;
                     m_worldInfos[m_renameWorldIndex].filename = m_renameWorldNewName + ".odsv";

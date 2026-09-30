@@ -339,6 +339,39 @@ int main() {
            "and metadata.json is still readable JSON");
     }
 
+    section("renaming a world");
+    {
+        // THE TRIGGER. The rename handler read the metadata, changed the name
+        // and called createSave() to write it back -- and createSave writes a
+        // NEW archive: map, metadata, empty index, nothing else. A played
+        // world lost every turn delta and state.json, while metadata.json went
+        // on claiming the turns, so the loader missed all of them and applied
+        // nothing. Day one, no error, and the research and politics back in
+        // place as soon as the next save wrote state.json from memory.
+        const std::string p = makeSave(dir + "rename.odsv");
+        for (int t = 1; t <= 20; ++t) SaveManager::appendTurn(p, aTurn(t));
+        SaveManager::writeState(p, "{\"research\":\"ind6\",\"politics\":\"enacted\"}", {});
+
+        SaveMetadata meta = SaveManager::readMetadata(p);
+        meta.saveName = "A New Name";
+        ok(SaveManager::updateLastPlayed(p, &meta), "a world is renamed");
+
+        std::string why;
+        ok(SaveManager::readMetadata(p).saveName == "A New Name", "the new name is stored");
+        ok(historyAgrees(p, 20, why), "and all twenty turns are still there", why);
+        ok(SaveManager::readState(p) == "{\"research\":\"ind6\",\"politics\":\"enacted\"}",
+           "and so is the state that holds the research and politics");
+
+        // And the call that used to be made here is refused outright, so a
+        // sixth caller reaching for createSave() on a played world fails
+        // loudly instead of emptying it.
+        const std::vector<uint8_t> odm = SaveManager::extractODM(p);
+        ok(!odm.empty(), "the map can still be read out of it");
+        ok(!SaveManager::createSave(p, std::string(odm.begin(), odm.end()), meta),
+           "creating a save over a played world is refused");
+        ok(historyAgrees(p, 20, why), "and the refusal left the world untouched", why);
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }
