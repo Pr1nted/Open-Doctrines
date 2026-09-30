@@ -57,6 +57,39 @@ cp "$root/tools/autounattend.xml" "$work/" || die "tools/autounattend.xml is mis
 # no file sharing needed to get them there.
 cp "$root/tools/windows_installer_test.ps1" "$work/" 2>/dev/null || true
 cp "$root/tools/windows_first_logon.ps1" "$work/" || die "tools/windows_first_logon.ps1 is missing"
+
+# THE DRIVERS WINDOWS ON ARM DOES NOT SHIP. Without NetKVM this guest has no
+# network at all -- ipconfig prints its header and stops. Staged from the
+# virtio-win ISO by hand because there is no ARM64 installer in it:
+#
+#   hdiutil attach ~/VMs/virtio-win.iso
+#   for d in NetKVM vioserial; do mkdir -p ~/VMs/virtio-arm64/$d
+#       cp -R /Volumes/virtio-win-*/$d/w11/ARM64/ ~/VMs/virtio-arm64/$d/; done
+#
+# COPY THE WHOLE DIRECTORY, not *.{inf,cat,sys}. netkvm.inf has
+# "CopyFiles = kvmnet6.CopyFiles, netkvmp.CopyFiles", so it needs netkvmp.exe
+# beside it; stage only the three obvious extensions and pnputil exits 2 with
+# nothing installed. That failure is silent in the worst way -- no network
+# means first logon cannot reach Windows Update either, so OpenSSH never
+# installs and the guest is unreachable, which reads as an SSH problem.
+#
+# NOT viogpudo. It is the display driver, it binds a virtio GPU this VM does
+# not have, and installing it black-screened the guest past booting or
+# networking. The 1024x768 ceiling is not worth the machine.
+if [ -d "$HOME/VMs/virtio-arm64" ]; then
+    mkdir -p "$work/virtio"
+    cp -R "$HOME/VMs/virtio-arm64/"* "$work/virtio/"
+    note "virtio ARM64 drivers included: $(ls "$work/virtio" | tr '\n' ' ')"
+else
+    note "no ~/VMs/virtio-arm64 -- the guest will have NO NETWORK (see above)"
+fi
+
+# The Mac's public key, so first logon can authorise it without anybody typing
+# a 68-character string into a guest with no clipboard.
+if [ -f "$HOME/.ssh/od_winvm.pub" ]; then
+    cp "$HOME/.ssh/od_winvm.pub" "$work/od_key.pub"
+    note "ssh key included: $(cut -d" " -f3 "$HOME/.ssh/od_winvm.pub")"
+fi
 # The guest tools, so first logon can install them without a network. Optional:
 # fetched by tools/windows_installer_test.sh's setup notes if absent.
 if [ -f "$root/../spice-guest-tools.exe" ]; then

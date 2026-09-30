@@ -20,6 +20,56 @@ Say "OpenDoctrines VM first-logon setup -- $(Get-Date -Format 'yyyy-MM-dd HH:mm'
 Say "arch: $env:PROCESSOR_ARCHITECTURE"
 Say ""
 
+# ── THE DRIVERS WINDOWS ON ARM DOES NOT SHIP ──
+#
+# Windows/ARM64 carries no virtio drivers at all, so a guest given
+# virtio-net-pci sees an adapter it cannot use: ipconfig prints its header and
+# nothing else, and there is no network in or out. These are the real ARM64
+# builds out of virtio-win. There is no ARM64 MSI, so each .inf goes in
+# directly.
+#
+# TWO DRIVERS, AND NOT ONE MORE. NetKVM is the network; vioserial is the
+# channel the QEMU guest agent talks over. viogpudo -- the DISPLAY driver -- is
+# deliberately absent: it binds the virtio GPU, this VM runs virtio-ramfb, and
+# installing it black-screened the guest so hard it would not boot or reach the
+# network. Fixing the resolution is not worth the machine.
+Say "== virtio drivers (ARM64) =="
+foreach ($d in @("NetKVM", "vioserial")) {
+    $inf = $null
+    foreach ($drive in (Get-PSDrive -PSProvider FileSystem)) {
+        $c = Join-Path $drive.Root "virtio\$d"
+        if (Test-Path $c) { $inf = $c; break }
+    }
+    if (-not $inf) { Say "  $d : not on any disc"; continue }
+    try {
+        $r = & pnputil /add-driver "$inf\*.inf" /install 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0) { Say "  $d : installed" }
+        else { Say "  $d : pnputil exit $LASTEXITCODE" }
+    } catch { Say "  $d : FAILED $($_.Exception.Message)" }
+}
+Say ""
+
+# ── the Mac's key, so it can drive this VM without a password ──
+Say "== SSH key =="
+$pub = $null
+foreach ($drive in (Get-PSDrive -PSProvider FileSystem)) {
+    $c = Join-Path $drive.Root "od_key.pub"
+    if (Test-Path $c) { $pub = $c; break }
+}
+if ($pub) {
+    try {
+        if (-not (Test-Path C:\ProgramData\ssh)) { New-Item -ItemType Directory C:\ProgramData\ssh | Out-Null }
+        Copy-Item $pub C:\ProgramData\ssh\administrators_authorized_keys -Force
+        # sshd IGNORES this file, silently, if anyone beyond Administrators and
+        # SYSTEM can write it -- which looks exactly like a wrong key.
+        & icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F" | Out-Null
+        Say "  installed and locked down"
+    } catch { Say "  FAILED: $($_.Exception.Message)" }
+} else {
+    Say "  od_key.pub not on any disc"
+}
+Say ""
+
 # ── SSH, which is how the Mac gets in ──
 #
 # The INBOX capability, not winget's package: this is an ARM64 component

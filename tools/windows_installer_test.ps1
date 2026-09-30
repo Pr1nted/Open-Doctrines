@@ -60,7 +60,16 @@ $uninstallKeys = @(
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\OpenDoctrines"
 )
 function Get-UninstallEntry {
-    foreach ($k in $uninstallKeys) { if (Test-Path $k) { return Get-ItemProperty $k } }
+    # Test-Path then Get-ItemProperty is a race during an uninstall: the key
+    # can be marked for deletion between the two, and Get-ItemProperty then
+    # throws "Illegal operation attempted on a registry key that has been
+    # marked for deletion" instead of returning nothing. A key being deleted
+    # is exactly the state this function is polled in, so treat the throw as
+    # what it means -- no entry -- rather than letting it print and unwind.
+    foreach ($k in $uninstallKeys) {
+        try { if (Test-Path $k) { return Get-ItemProperty $k -ErrorAction Stop } }
+        catch { continue }
+    }
     return $null
 }
 
@@ -121,12 +130,30 @@ foreach ($s in $shortcuts) {
 
 Section "uninstalling"
 if ($entry -and $entry.UninstallString) {
-    # NSIS uninstallers copy themselves to run; _?= keeps it in place so /S
-    # returns only when it is actually finished.
+    # RUN IT THE WAY WINDOWS DOES. "Add or remove programs" executes
+    # UninstallString verbatim, so that is what gets tested here -- no _?=.
+    #
+    # _?= was the obvious thing to reach for, because it makes /S block until
+    # the uninstall is finished instead of forking. It also guarantees a
+    # failure: _?= tells NSIS to run in place rather than re-exec from %TEMP%,
+    # and a running executable cannot delete itself, so Uninstall.exe and its
+    # directory are always left behind. The first run of this test duly
+    # reported "1 file(s)" left -- a defect that existed only because the test
+    # asked for it. Uninstalling the real way leaves nothing.
+    #
+    # The cost is that the first process returns immediately after handing off
+    # to its %TEMP% copy, so its exit code says nothing and there is nothing to
+    # wait on. Poll for the outcome instead, which is the claim worth making
+    # anyway: after uninstalling, the machine is back.
     $un = $entry.UninstallString -replace '"', ''
-    $p2 = Start-Process -FilePath $un -ArgumentList "/S", "_?=$installDir" -Wait -PassThru
-    Check ($p2.ExitCode -eq 0) "the uninstaller exits 0" "exit $($p2.ExitCode)"
-    Start-Sleep -Seconds 3
+    Start-Process -FilePath $un -ArgumentList "/S"
+
+    $gone = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 2
+        if ($null -eq (Get-UninstallEntry) -and -not (Test-Path $installDir)) { $gone = $true; break }
+    }
+    Check $gone "the uninstall finishes" $(if ($gone) { "~$($i * 2)s" } else { "still not done after 120s" })
 
     Check ($null -eq (Get-UninstallEntry)) "and Add or remove programs forgets it"
 
