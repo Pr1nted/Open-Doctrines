@@ -51,6 +51,60 @@ static uint32_t popSaturated(long long pop) {
 
 // ─── Pack one turn delta to binary ───────────────────────
 
+// ── A NUMBER JSON CAN ACTUALLY HOLD ──
+//
+// std::to_string(NaN) is the bare token "nan", and infinity is "inf". Neither
+// is JSON, and a parser does not skip the number it cannot read -- it abandons
+// the WHOLE document. metadata.json carries one treasury per country and two
+// compass axes per country, so a single non-finite value among two hundred
+// would make turn_count unreadable and take the save's entire history with it.
+//
+// No save in data/saves/ (439 of them) contains one, so this is a guard and
+// not a cure: it exists so that a number going bad upstream costs a wrong
+// number rather than a lost world. If it ever fires, the save survives to say
+// so.
+static std::string jnum(double v) {
+    if (!std::isfinite(v)) return "0";
+    return std::to_string(v);
+}
+
+// ── THE ARCHIVE IS THE TRUTH; turn_count IS A CACHE OF IT ──
+//
+// The turns are in the file. turn_count is a separate number, written by five
+// rewrite paths, and when the two disagree the LOW one used to win in silence:
+// the replay walks 1..turn_count, so a count that reads short does not report
+// a damaged save, it reports a shorter game. Every turn after it is still in
+// the archive, and the world simply comes back younger -- with state.json, and
+// so the politics and research, entirely intact, because those are extracted
+// raw and never pass through this counter.
+//
+// That is the shape of the "saving resets my world" report. Deriving the
+// count from the entries makes it unrepresentable rather than merely unlikely,
+// and it repairs a save already in that state the next time one is read.
+static int highestTurnInBuffer(const std::vector<uint8_t>& zipData);
+
+static int highestTurnIn(mz_zip_archive& zip) {
+    int highest = 0;
+    const int fc = (int)mz_zip_reader_get_num_files(&zip);
+    for (int i = 0; i < fc; ++i) {
+        mz_zip_archive_file_stat st{};
+        if (!mz_zip_reader_file_stat(&zip, i, &st)) continue;
+        int n = 0;
+        if (std::sscanf(st.m_filename, "turns/t_%d.dat", &n) == 1 && n > highest)
+            highest = n;
+    }
+    return highest;
+}
+
+static int highestTurnInBuffer(const std::vector<uint8_t>& zipData) {
+    if (zipData.empty()) return 0;
+    mz_zip_archive zip{};
+    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return 0;
+    const int n = highestTurnIn(zip);
+    mz_zip_reader_end(&zip);
+    return n;
+}
+
 std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
     std::vector<uint8_t> buf;
     // Header
@@ -449,7 +503,7 @@ bool SaveManager::createSave(const std::string& odsvPath,
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + std::to_string(pc.economic) + ", \"social\": " + std::to_string(pc.social) + " }";
+        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
     }
     metaJson += "\n  },\n";
     metaJson += "  \"country_treasuries\": {\n";
@@ -457,7 +511,7 @@ bool SaveManager::createSave(const std::string& odsvPath,
     for (auto& [cid, tr] : meta.countryTreasuries) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + std::to_string(tr);
+        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
     }
     metaJson += "\n  }\n";
     metaJson += "}\n";
@@ -559,6 +613,12 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     };
 
     meta.turnCount++;
+    // ...and never below what the archive already holds, nor below the turn
+    // being written. See highestTurnIn(): the count is a cache of the entries,
+    // so a stale cache must lose to them, not the other way round.
+    const int heldTurns = highestTurnIn(srcZip);
+    if (heldTurns > meta.turnCount)        meta.turnCount = heldTurns;
+    if (delta.turnNumber > meta.turnCount) meta.turnCount = delta.turnNumber;
     std::string cr = meta.created.empty() ? "unknown" : meta.created;
     std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
     std::string ver = meta.version.empty() ? "unknown" : meta.version;
@@ -577,7 +637,7 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + std::to_string(pc.economic) + ", \"social\": " + std::to_string(pc.social) + " }";
+        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
     }
     metaJson += "\n  },\n";
     metaJson += "  \"country_treasuries\": {\n";
@@ -585,7 +645,7 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     for (auto& [cid, tr] : meta.countryTreasuries) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + std::to_string(tr);
+        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
     }
     metaJson += "\n  }\n";
     metaJson += "}\n";
@@ -697,6 +757,14 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     auto zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
+    // A REWRITE NEVER CLAIMS FEWER TURNS THAN IT CARRIES ACROSS. The metadata
+    // here can come from the caller (trySaveGame builds it) or from a parse
+    // that failed; either way a short count used to be copied onto the file
+    // verbatim, and the turns below were carried over regardless -- a save
+    // holding a full game and claiming an empty one.
+    if (const int heldTurns = highestTurnInBuffer(zipData); heldTurns > meta.turnCount)
+        meta.turnCount = heldTurns;
+
     std::vector<uint8_t> odmData;
     {
         mz_zip_archive tmpZip{};
@@ -740,7 +808,7 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + std::to_string(pc.economic) + ", \"social\": " + std::to_string(pc.social) + " }";
+        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
     }
     metaJson += "\n  },\n";
     metaJson += "  \"country_treasuries\": {\n";
@@ -748,7 +816,7 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     for (auto& [cid, tr] : meta.countryTreasuries) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + std::to_string(tr);
+        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
     }
     metaJson += "\n  }\n";
     metaJson += "}\n";
@@ -857,16 +925,26 @@ static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
     mz_zip_archive zip{};
     if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return {};
     const std::string js = extractEntry(zip, "metadata.json");
+    SaveMetadata meta = parseMetadataJson(js);
+    const int held = highestTurnIn(zip);
+    if (held > meta.turnCount) meta.turnCount = held;
     mz_zip_reader_end(&zip);
-    return parseMetadataJson(js);
+    return meta;
 }
 
 SaveMetadata SaveManager::readMetadata(const std::string& odsvPath) {
     mz_zip_archive zip{};
     if (!openSaveFile(zip, odsvPath)) return {};
     const std::string js = extractEntry(zip, "metadata.json");
+    SaveMetadata meta = parseMetadataJson(js);
+    // Every caller of this gets the repair, including the two that go on to
+    // WRITE the number back -- trySaveGame through updateLastPlayed, and
+    // appendTurn. Putting it here rather than at those call sites is the
+    // point: a sixth rewrite path cannot forget it.
+    const int held = highestTurnIn(zip);
+    if (held > meta.turnCount) meta.turnCount = held;
     mz_zip_reader_end(&zip);
-    return parseMetadataJson(js);
+    return meta;
 }
 
 // ─── Read a specific turn ────────────────────────────────
@@ -1039,6 +1117,14 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     auto zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
+    // A REWRITE NEVER CLAIMS FEWER TURNS THAN IT CARRIES ACROSS. The metadata
+    // here can come from the caller (trySaveGame builds it) or from a parse
+    // that failed; either way a short count used to be copied onto the file
+    // verbatim, and the turns below were carried over regardless -- a save
+    // holding a full game and claiming an empty one.
+    if (const int heldTurns = highestTurnInBuffer(zipData); heldTurns > meta.turnCount)
+        meta.turnCount = heldTurns;
+
     std::vector<uint8_t> odmData;
     {
         mz_zip_archive tmpZip{};
@@ -1081,7 +1167,7 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + std::to_string(pc.economic) + ", \"social\": " + std::to_string(pc.social) + " }";
+        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
     }
     metaJson += "\n  },\n";
     metaJson += "  \"country_treasuries\": {\n";
@@ -1089,7 +1175,7 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     for (auto& [cid, tr] : meta.countryTreasuries) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + std::to_string(tr);
+        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
     }
     metaJson += "\n  }\n";
     metaJson += "}\n";
@@ -1129,6 +1215,9 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     auto zipData = readFile(odsvPath);
     if (zipData.empty()) return false;
 
+    // turn_count here comes from parseMetadataFromZip() below, which already
+    // reconciles it against the turns/ entries -- so there is no clamp in this
+    // function. See highestTurnIn().
     std::vector<uint8_t> odmData;
     SaveMetadata meta;
     std::vector<std::pair<std::string, std::vector<uint8_t>>> existingExtra;
@@ -1209,7 +1298,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     for (auto& [cid, pc] : meta.countryCompasses) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + std::to_string(pc.economic) + ", \"social\": " + std::to_string(pc.social) + " }";
+        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
     }
     metaJson += "\n  },\n";
     metaJson += "  \"country_treasuries\": {\n";
@@ -1217,7 +1306,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     for (auto& [cid, tr] : meta.countryTreasuries) {
         if (!first) metaJson += ",\n";
         first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + std::to_string(tr);
+        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
     }
     metaJson += "\n  }\n";
     metaJson += "}\n";

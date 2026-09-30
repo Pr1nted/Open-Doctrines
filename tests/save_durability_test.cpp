@@ -24,10 +24,14 @@
 // agree, and every turn the count claims can actually be read back.
 
 #include "SaveManager.h"
+#include "miniz.h"
+#include "miniz_zip.h"
 
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <cstring>
+#include <limits>
 
 static int g_checks = 0, g_failed = 0;
 static void ok(bool cond, const std::string& what, const std::string& detail = "") {
@@ -78,6 +82,45 @@ static bool historyAgrees(const std::string& path, int expected, std::string& wh
         return false;
     }
     return true;
+}
+
+
+/**
+ * Put a save into the state the player reported, from the outside.
+ *
+ * Nothing in SaveManager can produce this any more, which is the point -- so
+ * the only way to test the repair is to damage metadata.json directly and hand
+ * the result back. Every other entry is carried across byte for byte, so the
+ * turns really are still in there: the file holds a full game and says what
+ * `newMeta` tells it to say.
+ */
+static bool forceMetadata(const std::string& path, const std::string& newMeta) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::fseek(f, 0, SEEK_END);
+    std::vector<uint8_t> buf((size_t)std::ftell(f));
+    std::fseek(f, 0, SEEK_SET);
+    if (std::fread(buf.data(), 1, buf.size(), f) != buf.size()) { std::fclose(f); return false; }
+    std::fclose(f);
+
+    mz_zip_archive src{};
+    if (!mz_zip_reader_init_mem(&src, buf.data(), buf.size(), 0)) return false;
+    const std::string tmp = path + ".rewrite";
+    mz_zip_archive out{};
+    if (!mz_zip_writer_init_file(&out, tmp.c_str(), 0)) { mz_zip_reader_end(&src); return false; }
+    const int fc = (int)mz_zip_reader_get_num_files(&src);
+    for (int i = 0; i < fc; ++i) {
+        mz_zip_archive_file_stat st{};
+        if (!mz_zip_reader_file_stat(&src, i, &st)) continue;
+        if (std::strcmp(st.m_filename, "metadata.json") == 0) continue;
+        mz_zip_writer_add_from_zip_reader(&out, &src, (mz_uint)i);
+    }
+    mz_zip_writer_add_mem(&out, "metadata.json", newMeta.data(), newMeta.size(), MZ_BEST_COMPRESSION);
+    mz_zip_writer_finalize_archive(&out);
+    mz_zip_writer_end(&out);
+    mz_zip_reader_end(&src);
+    std::remove(path.c_str());
+    return std::rename(tmp.c_str(), path.c_str()) == 0;
 }
 
 static std::string makeSave(const std::string& path) {
@@ -227,6 +270,73 @@ int main() {
         // terminate.
         ok(SaveManager::readTurn(p, 13).turnNumber == 0,
            "and the turn after the last one reads as absent, so a scan can stop");
+    }
+
+    section("the reported world, repaired");
+    {
+        // A save holding twelve turns whose metadata says none. This is the
+        // player's world: the history is all there, the counter disagrees, and
+        // the replay walks 1..0 and applies nothing -- day one, with the
+        // research and politics from state.json still in place.
+        const std::string p = makeSave(dir + "lostcount.odsv");
+        for (int t = 1; t <= 12; ++t) SaveManager::appendTurn(p, aTurn(t));
+        SaveManager::writeState(p, "{\"research\":\"ind4\"}", {});
+
+        ok(forceMetadata(p, "{\n  \"save_name\": \"Durability\",\n"
+                            "  \"turn_count\": 0,\n  \"province_count\": 3\n}\n"),
+           "a save is forced to claim it has no turns");
+
+        ok(SaveManager::readMetadata(p).turnCount == 12,
+           "reading it back reports the twelve turns it actually holds",
+           "turn_count read as " + std::to_string(SaveManager::readMetadata(p).turnCount));
+
+        // The repair has to survive the next write, or Save puts it straight
+        // back. trySaveGame hands its own metadata to updateLastPlayed, so
+        // this passes a zeroed one deliberately.
+        SaveMetadata zeroed = SaveManager::readMetadata(p);
+        zeroed.turnCount = 0;
+        SaveManager::updateLastPlayed(p, &zeroed);
+        std::string why;
+        ok(historyAgrees(p, 12, why), "and saving over it does not lose them again", why);
+
+        SaveManager::writeState(p, "{\"research\":\"ind5\"}", {});
+        ok(historyAgrees(p, 12, why), "nor does writing state over it", why);
+
+        for (int t = 13; t <= 15; ++t) SaveManager::appendTurn(p, aTurn(t));
+        ok(historyAgrees(p, 15, why), "and play continues from turn 13, not turn 1", why);
+    }
+
+    section("metadata that cannot be read at all");
+    {
+        // The counter is not merely wrong, it is unreachable. A save must
+        // still come back with its history rather than as a new world.
+        const std::string p = makeSave(dir + "unparseable.odsv");
+        for (int t = 1; t <= 9; ++t) SaveManager::appendTurn(p, aTurn(t));
+        ok(forceMetadata(p, "{ this is not json at all "), "metadata is made unparseable");
+        ok(SaveManager::readMetadata(p).turnCount == 9,
+           "the turns are still counted, from the entries themselves",
+           "turn_count read as " + std::to_string(SaveManager::readMetadata(p).turnCount));
+    }
+
+    section("a number JSON cannot hold");
+    {
+        // What would have happened if a treasury ever went non-finite:
+        // std::to_string gives the bare token "nan", the whole document stops
+        // parsing, and turn_count goes with it. No save in data/saves/ has one
+        // -- this proves the guard, not the disease.
+        const std::string p = makeSave(dir + "nonfinite.odsv");
+        for (int t = 1; t <= 6; ++t) SaveManager::appendTurn(p, aTurn(t));
+
+        SaveMetadata m = SaveManager::readMetadata(p);
+        m.countryTreasuries[3] = std::numeric_limits<double>::quiet_NaN();
+        m.countryTreasuries[4] = std::numeric_limits<double>::infinity();
+        m.countryCompasses[5]  = { std::numeric_limits<float>::quiet_NaN(), 0.0f };
+        SaveManager::updateLastPlayed(p, &m);
+
+        std::string why;
+        ok(historyAgrees(p, 6, why), "a non-finite treasury does not cost the history", why);
+        ok(SaveManager::readMetadata(p).saveName == "Durability",
+           "and metadata.json is still readable JSON");
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
