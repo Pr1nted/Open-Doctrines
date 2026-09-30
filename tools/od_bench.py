@@ -229,7 +229,8 @@ def goods_summary():
     per_good = {}
     for r in GOODS_RUNS:
         for k, g in r["goods"].items():
-            a = per_good.setdefault(k, {"produced": 0.0, "consumed": 0.0, "demand": 0.0})
+            a = per_good.setdefault(k, {"produced": 0.0, "consumed": 0.0,
+                                        "demand": 0.0, "stock": 0.0})
             for f in a: a[f] += g[f]
     n = len(GOODS_RUNS)
     # EACH GOOD OVER THE RUNS THAT HAD IT. Dividing every good by n understates
@@ -257,10 +258,48 @@ def print_goods():
     _ln = "" if _lr == g["runs"] else f" (over {_lr} of them)"
     print(f"  goods economy ({g['runs']} runs): living standards {ls}{_ln}, "
           f"factories idle {idle}")
+    # ── "% OF DEMAND MET" MEANT TWO DIFFERENT THINGS, AND WAS WRONG IN BOTH ──
+    #
+    # It printed consumed / demand for every good. Neither term is comparable
+    # across goods:
+    #
+    #   `consumed` is only ever recorded for consumer goods and fuel. The
+    #   population eating and the army burning are written into
+    #   CountryProduction; machinery spent on a build and munitions spent on a
+    #   recruit are deducted straight from the stockpile and never counted. So
+    #   machinery and munitions read "0% of demand met" ALWAYS -- in a world
+    #   where they were being made and spent perfectly well.
+    #
+    #   `demand` is a per-turn FLOW for consumer and fuel, and a standing
+    #   STOCK RESERVE for machinery and munitions (levels x
+    #   MACHINERY_RESERVE_PER_LEVEL). Dividing a turn's production by a reserve
+    #   is a category error, and it reads as catastrophe whatever the truth.
+    #
+    # Both together cost a real diagnosis on 2026-09-30: machinery "produced
+    # 13.6 against demand 262.3" was read as 5% of what the world needed and
+    # called a starvation, and when a fix filled the reserves the falling
+    # production rate -- the SUCCESS signal, nothing more being needed -- was
+    # read as a regression. The stock column, already parsed and thrown away,
+    # said 0.12 of a 2.25 reserve before and 3.56 of 2.85 after.
+    #
+    # So: say which question each good can answer, and answer that one. A good
+    # whose consumption is recorded is measured on what got eaten; a good whose
+    # is not is measured on whether its reserve is held. Chosen from the data
+    # rather than by good name, so a fifth good needs no change here -- and so
+    # that recording consumption in C++ later flips it to the better readout on
+    # its own.
     for k, a in sorted(g["goods"].items()):
-        met = 100.0 * a["consumed"] / a["demand"] if a["demand"] else 0.0
-        print(f"    {k:<10} produced {a['produced']:8.1f}  consumed {a['consumed']:8.1f}  "
-              f"demand {a['demand']:8.1f}  ({met:.0f}% of demand met)")
+        held = a["stock"]
+        if a["consumed"] > 0.0:
+            pct = 100.0 * a["consumed"] / a["demand"] if a["demand"] else 0.0
+            eaten, label = f"{a['consumed']:8.1f}", f"({pct:.0f}% of demand eaten)"
+        else:
+            # Nothing recorded as consumed: `demand` is this good's reserve, and
+            # the honest question is whether the country is holding it.
+            pct = 100.0 * held / a["demand"] if a["demand"] else 0.0
+            eaten, label = "      --", f"({pct:.0f}% of reserve held)"
+        print(f"    {k:<10} produced {a['produced']:8.1f}  eaten {eaten}  "
+              f"demand {a['demand']:8.1f}  stock {held:8.1f}  {label}")
 
 
 def note_capacity(out):
