@@ -130,7 +130,7 @@ step "the cloud-init seed"
 # whole of the unattended setup -- no preseed, no installer, no answer file
 # scanning every drive the way Windows setup does.
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+trap 'rm -rf "$work" "$(dirname "$work")/$(basename "$work")-seed.iso"' EXIT
 pub=$(cat "$key")
 
 cat > "$work/meta-data" <<EOF
@@ -140,10 +140,13 @@ EOF
 
 # FreeBSD has no "sudo" group -- its wheel group is the equivalent, and asking
 # for a group that does not exist makes cloud-init fail the whole user.
+# FreeBSD has wheel where Linux has sudo, and has NEITHER audio NOR video --
+# cloud-init fails the whole user when a listed group does not exist, which is
+# why the first FreeBSD guest came up with no odtest at all and no way in.
 case "$distro" in
-    freebsd*) admin_group=wheel
+    freebsd*) groups="[wheel]"
               pkg_list="  - bash"$'\n'"  - unzip"$'\n'"  - git" ;;
-    *)        admin_group=sudo
+    *)        groups="[sudo, audio, video]"
               pkg_list="  - file"$'\n'"  - unzip"$'\n'"  - rpm"$'\n'"  - fuse3" ;;
 esac
 
@@ -151,7 +154,7 @@ cat > "$work/user-data" <<EOF
 #cloud-config
 users:
   - name: odtest
-    groups: [${admin_group}, audio, video]
+    groups: ${groups}
     shell: /bin/bash
     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     lock_passwd: false
@@ -178,8 +181,35 @@ runcmd:
 final_message: "od linux vm ready after \$UPTIME seconds"
 EOF
 
-seed="$work/seed.iso"
-hdiutil makehybrid -iso -joliet -default-volume-name cidata -o "$seed" "$work" -quiet
+# OUTSIDE $work. Written inside it, the file is created empty, makehybrid then
+# packs the directory, and every seed carries a zero-byte copy of itself.
+seed="$(dirname "$work")/$(basename "$work")-seed.iso"
+
+# ── ISO9660 FOR LINUX, FAT FOR FREEBSD ──
+#
+# cloud-init's NoCloud datasource finds its seed by FILESYSTEM LABEL, and
+# ISO9660 stores volume identifiers uppercased. Linux cloud-init matches
+# "cidata" case-insensitively and does not care. FreeBSD's exposes the disc as
+# /dev/iso9660/CIDATA and did not match, so the guest booted with no user at
+# all: no odtest, no key, and no way in but the console.
+#
+# A FAT image keeps the label as written, which is what FreeBSD's datasource
+# looks for. Same two files either way.
+case "$distro" in
+    freebsd*)
+        rm -f "$seed"
+        hdiutil create -size 4m -fs "MS-DOS FAT12" -volname CIDATA \
+                -layout NONE -ov -quiet "${seed%.iso}" >/dev/null
+        mv "${seed%.iso}.dmg" "$seed" 2>/dev/null || true
+        mnt=$(hdiutil attach -nobrowse "$seed" | awk '{print $NF}' | tail -1)
+        cp "$work/user-data" "$work/meta-data" "$mnt/"
+        hdiutil detach "$mnt" -quiet
+        ;;
+    *)
+        hdiutil makehybrid -iso -joliet -default-volume-name cidata \
+                -o "$seed" "$work" -quiet
+        ;;
+esac
 note "seed: $(du -h "$seed" | cut -f1) (user odtest, key $(basename "$key"))"
 
 step "the virtual machine"
@@ -255,7 +285,12 @@ cfg = {
              "Hypervisor": native, "PS2Controller": False, "RNGDevice": True,
              "RTCLocalTime": False, "TPMDevice": False, "TSO": False,
              "UEFIBoot": True},
-    "Serial": [],
+    # A SERIAL CONSOLE, so a guest that never comes up can be READ. Without
+    # one, a cloud-init failure is invisible: the VM boots, nothing answers
+    # ssh, and there is nothing to look at but a framebuffer. That is how an
+    # hour went into a FreeBSD guest whose user-data asked for a group FreeBSD
+    # does not have. `utmctl attach <name>` opens it.
+    "Serial": [{"Mode": "Ptty", "Target": "Auto"}],
     # SHARING IS NOT OPTIONAL, in the same way Icon is not. A bundle without a
     # top-level Sharing block is written, is valid plist, and is IGNORED: it
     # never appears in UTM and `utmctl start` answers "Virtual machine not
