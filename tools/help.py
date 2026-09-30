@@ -53,6 +53,12 @@ GROUPS = [
         # green local suite. A test that is run but not built reports as
         # passing, which is worse than one that is missing.
         "check_suite_targets.py",
+        # Every tool an advisor is OFFERED must be one the game can ANSWER. A
+        # tool in src/llm/Advisor.cpp's catalogue with no answer in
+        # Game_Llm.cpp is offered to the model, called, and answered with
+        # nothing -- the same shape as a validity mask offering an action the
+        # executor refuses, and just as invisible at compile time.
+        "check_llm_tools.py",
         # The verdict qualify.sh's 5-turn game gets: it played, it could not be
         # tried, or it crashed. Its own file so tests/qualify_play_gate_test.sh
         # can feed it the real logs from the day a segfault was read as a skip.
