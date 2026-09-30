@@ -37,6 +37,11 @@ GROUPS = [
         # nothing of the player's with it. CI cannot ask any of that -- it runs
         # on the machine that built the game.
         "linux_vm_test.sh",
+        # Which multiplayer sessions actually have to be run. Proving every
+        # ordered host/client pair is thirty sessions on six platforms; proving
+        # each platform hosts once, with the Mac joining free, is seven. This
+        # solves that covering problem against the RAM available.
+        "preflight_plan.py",
         # The Flatpak manifest and its AppStream metainfo pin a published URL
         # and a changelog entry by hand, nothing builds from them, and so both
         # sat two releases stale. This says so, every suite run.

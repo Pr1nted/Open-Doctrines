@@ -86,7 +86,15 @@ case "$distro" in
         u_arch=$([ "$qarch" = arm64 ] && echo arm64 || echo amd64)
         url="https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-${u_arch}.img"
         user=ubuntu ;;
-    *) die "distro must be debian12, debian11 or ubuntu2204" ;;
+    # FreeBSD publishes a BASIC-CLOUDINIT image, which is the whole reason this
+    # script extends to it without a second mechanism: same NoCloud seed, same
+    # unattended path, no installer. The plain (non-CLOUDINIT) image would need
+    # one. It arrives xz-compressed, so it is decompressed after download.
+    freebsd14)
+        [ "$qarch" = arm64 ] || die "only the arm64 FreeBSD image is wired up here"
+        url="https://download.freebsd.org/releases/VM-IMAGES/14.5-RELEASE/aarch64/Latest/FreeBSD-14.5-RELEASE-arm64-aarch64-BASIC-CLOUDINIT-ufs.qcow2.xz"
+        user=freebsd ;;
+    *) die "distro must be debian12, debian11, ubuntu2204 or freebsd14" ;;
 esac
 
 name="${OD_LINUX_VM:-OD-${distro}-${arch}}"
@@ -102,12 +110,16 @@ command -v qemu-img >/dev/null || die "qemu-img not found -- brew install qemu"
 step "the cloud image"
 cache="$HOME/VMs/cloud"
 mkdir -p "$cache"
-img="$cache/$(basename "$url")"
+img="$cache/$(basename "${url%.xz}")"
 if [ -f "$img" ]; then
     note "cached: $img ($(du -h "$img" | cut -f1))"
 else
     note "downloading $url"
     curl -fL --progress-bar -o "$img.part" "$url"
+    case "$url" in
+        *.xz) note "decompressing"; mv "$img.part" "$img.xz.part"
+              xz -d -c "$img.xz.part" > "$img.part" && rm -f "$img.xz.part" ;;
+    esac
     mv "$img.part" "$img"
     note "$(du -h "$img" | cut -f1)"
 fi
@@ -126,11 +138,20 @@ instance-id: ${name}
 local-hostname: ${name}
 EOF
 
+# FreeBSD has no "sudo" group -- its wheel group is the equivalent, and asking
+# for a group that does not exist makes cloud-init fail the whole user.
+case "$distro" in
+    freebsd*) admin_group=wheel
+              pkg_list="  - bash"$'\n'"  - unzip"$'\n'"  - git" ;;
+    *)        admin_group=sudo
+              pkg_list="  - file"$'\n'"  - unzip"$'\n'"  - rpm"$'\n'"  - fuse3" ;;
+esac
+
 cat > "$work/user-data" <<EOF
 #cloud-config
 users:
   - name: odtest
-    groups: [sudo, audio, video]
+    groups: [${admin_group}, audio, video]
     shell: /bin/bash
     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     lock_passwd: false
@@ -146,10 +167,11 @@ packages:
   # Deliberately NOT the game's X11 runtime dependencies: whether the .deb
   # pulls those in by itself is one of the things being tested, and
   # pre-installing them would answer the question before it was asked.
-  - file
-  - unzip
-  - rpm
-  - fuse3
+  #
+  # FreeBSD has neither rpm nor fuse3 in that spelling, and asking pkg for a
+  # package that does not exist fails the whole cloud-init run rather than
+  # skipping it -- so that list is per family.
+${pkg_list}
 runcmd:
   - [ systemctl, enable, --now, ssh ]
   - [ sh, -c, "echo READY > /var/lib/cloud/od-ready" ]
@@ -171,8 +193,16 @@ cp "$seed" "$bundle/Data/seed.iso"
 note "disk: ${disk_gb} GB from $(basename "$img")"
 
 python3 - "$bundle" "$ram_mb" "$cores" "$utm_arch" "$distro" <<'PY'
-import plistlib, sys, uuid, random
+import plistlib, sys, uuid, random, platform
 bundle, ram, cores, arch, distro = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5]
+# THE MACHINE TYPE IS PER ARCHITECTURE, and "virt" is the Arm one. An x86_64
+# guest wants q35; given virt it does not boot, and UTM reports nothing useful
+# about why. Hypervisor.framework can only run the HOST's architecture too, so
+# an x86_64 guest on Apple silicon is emulated and must not ask for it -- with
+# Hypervisor true and a foreign architecture the VM fails to start at all.
+host_arm = platform.machine() in ("arm64", "aarch64")
+target = "virt" if arch == "aarch64" else "q35"
+native = (arch == "aarch64") == host_arm
 mac = "C2:" + ":".join(f"{random.randint(0,255):02X}" for _ in range(5))
 cfg = {
     "Backend": "QEMU",
@@ -222,7 +252,7 @@ cfg = {
     "Network": [{"Hardware": "virtio-net-pci", "IsolateFromHost": False,
                  "MacAddress": mac, "Mode": "Shared", "PortForward": []}],
     "QEMU": {"AdditionalArguments": [], "BalloonDevice": False, "DebugLog": False,
-             "Hypervisor": True, "PS2Controller": False, "RNGDevice": True,
+             "Hypervisor": native, "PS2Controller": False, "RNGDevice": True,
              "RTCLocalTime": False, "TPMDevice": False, "TSO": False,
              "UEFIBoot": True},
     "Serial": [],
@@ -239,11 +269,12 @@ cfg = {
     # key here is another way to be silently skipped.
     "System": {"Architecture": arch, "CPU": "default", "CPUCount": cores,
                "CPUFlagsAdd": [], "CPUFlagsRemove": [], "ForceMulticore": False,
-               "JITCacheSize": 0, "MemorySize": ram, "Target": "virt"},
+               "JITCacheSize": 0, "MemorySize": ram, "Target": target},
 }
 with open(f"{bundle}/config.plist", "wb") as f:
     plistlib.dump(cfg, f)
-print(f"  config.plist written ({arch}, {cores} cores, {ram} MB)")
+print(f"  config.plist written ({arch}/{target}, {cores} cores, {ram} MB, "
+      f"{'hypervisor' if native else 'EMULATED -- slow'})")
 PY
 
 step "next"

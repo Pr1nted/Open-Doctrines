@@ -409,9 +409,11 @@ jobs:
   #
   #   tarball    what exists today. Needs glibc 2.35, because it is built on
   #              Ubuntu 22.04, which is why the next two exist.
-  #   AppImage   one file, no install, carries enough of a runtime to run on
-  #              the distributions README.md currently tells to build from
-  #              source: Ubuntu 20.04, Debian 11, RHEL 9.
+  #   AppImage   one file, no install, no root. NOT a glibc fix: measured
+  #              2026-09-30, it carries no libc and no loader, so it needs the
+  #              same GLIBC_2.35 the tarball does and fails on the same
+  #              distributions. Only the Flatpak, with its own runtime, runs on
+  #              Debian 11. See tools/make_linux_packages.sh.
   #   .deb/.rpm  for people who want their package manager to own it, and to
   #              put the game in the applications menu. They do NOT fix glibc.
   #

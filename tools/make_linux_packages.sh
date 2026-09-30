@@ -12,10 +12,29 @@
 #
 # The published binary is built on Ubuntu 22.04 and needs glibc 2.35, so
 # README.md tells anyone on Ubuntu 20.04, Debian 11 or RHEL 9 to build from
-# source. The AppImage and the Flatpak both carry enough of a runtime to change
-# that answer to "install it". The .deb and .rpm do not solve the glibc problem
-# -- they solve the "I want my package manager to own this" one, and they put
-# the game in the menu.
+# source.
+#
+# ONLY THE FLATPAK FIXES THAT, and this comment used to claim the AppImage did
+# too. It does not. Measured 2026-09-30 on a Debian guest: the AppImage this
+# script builds contains no libc and no dynamic loader, so glibc still comes
+# from the HOST, and the binary inside still demands GLIBC_2.35 -- the same
+# symbols, failing on the same distributions, for the same reason. An AppImage
+# bundles an application's own libraries, not the C library under them; the
+# usual advice is to build it on the oldest system you intend to support, and
+# ours is built on the newest.
+#
+# So, honestly:
+#   Flatpak    brings org.freedesktop.Platform, its own glibc included. Works
+#              on Debian 11.
+#   AppImage   one file, no install, no root, no package manager. Genuinely
+#              useful, and NOT a glibc fix. It needs the same 2.35 the tarball
+#              does.
+#   .deb/.rpm  for people who want their package manager to own it, and to put
+#              the game in the menu. Also not a glibc fix.
+#
+# What WOULD fix it is building the game itself against an older glibc -- in an
+# ubuntu:20.04 container, say -- because the requirement is baked into the
+# binary and no amount of repackaging lowers it.
 #
 # THEY CANNOT GO INTO DEBIAN OR FEDORA. The licence is free to play, modify and
 # share NON-COMMERCIALLY, which is not OSI-approved, so the official archives
