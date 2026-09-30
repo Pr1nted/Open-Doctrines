@@ -207,7 +207,20 @@ cfg = {
     # accepted and silently ignored. An hour went into that on the Windows VM
     # -- and worse, into authenticating against ANOTHER VM that had bound the
     # forwarded port. Reach this guest at its own IP.
-    "Network": [{"Hardware": "virtio-net-pci", "MacAddress": mac, "Mode": "Shared"}],
+    # IsolateFromHost AND PortForward MUST BE PRESENT, even empty. This is the
+    # third key in this file whose absence makes UTM skip the whole bundle in
+    # silence -- after Information.Icon and the top-level Sharing block. The
+    # config is written, is valid plist, and never appears: utmctl answers
+    # "Virtual machine not found", restarting UTM changes nothing, and
+    # `open -a UTM` does not import it either. Found by diffing against the
+    # Windows bundle this repository's own script builds and UTM accepts.
+    #
+    # PortForward is EMPTY on purpose. UTM runs vmnet-shared; hostfwd belongs
+    # to QEMU's slirp, so entries here are accepted and ignored. Reach the
+    # guest at its own 192.168.64.x address -- see the Windows notes for the
+    # hour that cost.
+    "Network": [{"Hardware": "virtio-net-pci", "IsolateFromHost": False,
+                 "MacAddress": mac, "Mode": "Shared", "PortForward": []}],
     "QEMU": {"AdditionalArguments": [], "BalloonDevice": False, "DebugLog": False,
              "Hypervisor": True, "PS2Controller": False, "RNGDevice": True,
              "RTCLocalTime": False, "TPMDevice": False, "TSO": False,
