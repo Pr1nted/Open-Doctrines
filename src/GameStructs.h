@@ -552,17 +552,43 @@ inline void planOutputs(const float need[GOOD_COUNT], const float stock[GOOD_COU
     // -1.0f is the floor the per-province rule used, and it means the same
     // thing here: a country whose shelves are all more than twice as full as
     // anyone wants directs nothing, rather than topping up the least-full one.
+    // This is now the ONLY thing `worst` decides -- it is a stop, not a gate.
     if (worst < -1.0f) return;
 
-    // 2. everything within a hair of it is equally starved, and shares the
-    //    capacity in proportion to HOW MUCH it is short of -- the term the
-    //    fraction threw away.
+    // 2. every good shares the capacity in proportion to HOW MUCH it is short
+    //    of -- the term the fraction threw away.
+    //
+    // ── THE THIRD TIME, AND WHY THE WINDOW HAD TO GO ──
+    //
+    // This step used to admit only goods within 0.02 of `worst`, on the
+    // reasoning that everything "within a hair" of the worst is equally starved
+    // and should share. The reasoning holds; the arithmetic does not. Consumer
+    // goods are EATEN TO ZERO every turn, so their unmet fraction is pinned at
+    // 1.0 permanently, and `worst` is therefore permanently 1.0. Any other good
+    // holding the smallest amount of stock drops below 0.98 and was excluded
+    // outright -- not given less, given NOTHING, because it never reached the
+    // one-factory-each step below either.
+    //
+    // Measured with the demands the 2026-09-30 sweep found (consumer 1480.9,
+    // machinery 262.3, fuel 112.3, munitions 155.4, 100 factories):
+    //
+    //   all shelves empty                 consumer 72  machinery 14  fuel 6  mun 8
+    //   machinery holding 2.3% of demand  consumer 83  machinery  0  fuel 7  mun 10
+    //   machinery 10%, fuel 3%, mun 3%    consumer 100 machinery  0  fuel 0  mun 0
+    //
+    // So a country made 92% food, produced machinery at 5% of what it wanted,
+    // and could never build the industry that would have fed it. Every bench
+    // seat compressed to exactly par: they stopped growing rather than losing.
+    //
+    // The window is gone. Proportional-to-shortfall already does what it was
+    // there for -- a good that is nearly satisfied has a small shortfall and
+    // takes a small share -- without the cliff. This is the same lesson as the
+    // note above, applied to the rule that replaced the last one: a saturating
+    // quantity cannot be a gate.
     float shortTotal = 0.0f;
     float shortfall[GOOD_COUNT] = {0.0f};
     for (int g = 0; g < GOOD_COUNT; ++g) {
         if (!feasible[g] || need[g] <= 0.0001f) continue;
-        const float frac = (need[g] - stock[g]) / need[g];
-        if (frac < worst - 0.02f) continue;
         shortfall[g] = need[g] - stock[g];
         if (shortfall[g] < 0.0f) shortfall[g] = 0.0f;
         shortTotal += shortfall[g];

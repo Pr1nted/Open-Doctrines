@@ -253,6 +253,77 @@ int main() {
            "and so does one nobody wants anything from");
     }
 
+    section("a good that holds stock is not locked out");
+    {
+        // THE THIRD TIME. The two notes above describe the same bug twice:
+        // consumer goods ending up the only thing anyone makes. It happened a
+        // third way, and none of the checks above could see it, because they
+        // all start from EMPTY shelves -- which is the one state where the
+        // rule behaved.
+        //
+        // Step 2 admitted only goods within 0.02 of the worst unmet fraction.
+        // Consumer goods are eaten to zero every turn, so their fraction is
+        // pinned at 1.0 forever and `worst` is pinned with it. Any other good
+        // holding the smallest stock fell outside the window and was excluded
+        // ENTIRELY -- it never reached the one-factory-each step either.
+        //
+        // These are the demands the 2026-09-30 sweep measured, and the stocks
+        // are what a country actually holds mid-game. Before the fix the last
+        // two cases both returned consumer=100 and zero of everything else.
+        auto all = [](float c, float m, float f, float mu) {
+            std::array<float, GOOD_COUNT> a{};
+            a[GOOD_CONSUMER] = c; a[GOOD_MACHINERY] = m;
+            a[GOOD_FUEL] = f; a[GOOD_MUNITIONS] = mu;
+            return a;
+        };
+        const bool yes[GOOD_COUNT] = {true, true, true, true};
+        int out[GOOD_COUNT];
+        auto need = all(1480.9f, 262.3f, 112.3f, 155.4f);
+
+        // A trace of stock in one good must not cost it its whole share.
+        auto s1 = all(0.0f, 6.0f, 0.0f, 0.0f);          // 2.3% of its demand
+        planOutputs(need.data(), s1.data(), yes, 100, out);
+        ok(out[GOOD_MACHINERY] > 0,
+           "machinery holding 2.3% of its demand still gets factories",
+           std::to_string(out[GOOD_MACHINERY]) + " of 100");
+
+        // The state a mid-game country is actually in.
+        auto s2 = all(0.0f, 26.0f, 3.0f, 5.0f);
+        planOutputs(need.data(), s2.data(), yes, 100, out);
+        ok(out[GOOD_CONSUMER] < 100,
+           "food does not take every factory once the others hold any stock",
+           std::to_string(out[GOOD_CONSUMER]) + " of 100");
+        ok(out[GOOD_MACHINERY] > 0 && out[GOOD_FUEL] > 0 && out[GOOD_MUNITIONS] > 0,
+           "and machinery, fuel and munitions are all still made");
+
+        // INVESTMENT IS THE ONE THAT MATTERS. Without machinery a country
+        // cannot build the industry that would feed it, so a lockout here is
+        // not one shortage among four -- it is the reason the shortage never
+        // ends.
+        ok(out[GOOD_MACHINERY] >= 8,
+           "machinery gets a share near its share of total shortfall",
+           std::to_string(out[GOOD_MACHINERY]) + " of 100, demand share ~13%");
+
+        // Everything half-stocked: food should lead, nothing should be zero.
+        auto s3 = all(0.0f, 131.0f, 56.0f, 77.0f);
+        planOutputs(need.data(), s3.data(), yes, 100, out);
+        ok(out[GOOD_CONSUMER] > out[GOOD_MACHINERY],
+           "the good that is furthest short still leads");
+        ok(out[GOOD_MACHINERY] > 0 && out[GOOD_FUEL] > 0 && out[GOOD_MUNITIONS] > 0,
+           "but none of the others is locked out at half stock");
+
+        // The window's LEGITIMATE purpose has to survive its removal: a good
+        // nobody is short of should not be made. Proportional-to-shortfall
+        // does this on its own -- zero shortfall, zero share.
+        auto s4 = all(0.0f, 400.0f, 200.0f, 200.0f);   // all more than full
+        planOutputs(need.data(), s4.data(), yes, 100, out);
+        ok(out[GOOD_MACHINERY] == 0 && out[GOOD_FUEL] == 0 && out[GOOD_MUNITIONS] == 0,
+           "a good nobody is short of is still not made");
+        ok(out[GOOD_CONSUMER] == 100,
+           "and the one good that IS short takes the country",
+           std::to_string(out[GOOD_CONSUMER]) + " of 100");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }
