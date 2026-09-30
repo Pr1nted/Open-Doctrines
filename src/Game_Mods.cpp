@@ -5,6 +5,7 @@
 // rules"), so everything that can start or stop a mod lives in this file.
 
 #include "Game.h"
+#include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
 #include "mods/ModManager.h"
@@ -1941,7 +1942,7 @@ void Game::updateModsMenu() {
             std::string err;
             if (mm.importFile(p, err)) {
                 clearModThumbnails();
-                m_modFeedback = "Added " + p.substr(p.find_last_of('/') + 1);
+                m_modFeedback = "Added " + odBaseName(p);   // dropped paths are native
             } else {
                 m_modFeedback = "Rejected: " + err;
             }
@@ -2102,7 +2103,7 @@ void Game::updateModsMenu() {
             std::string err;
             if (mm.importFile(p, err)) {
                 clearModThumbnails();
-                m_modFeedback = "Added " + p.substr(p.find_last_of('/') + 1);
+                m_modFeedback = "Added " + odBaseName(p);   // dropped paths are native
             } else {
                 m_modFeedback = "Rejected: " + err;
             }

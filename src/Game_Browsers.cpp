@@ -2548,12 +2548,12 @@ void Game::updateMapBrowser() {
 
             m_importPath = chosen;
 
-            // Default name from filename (without extension)
-            size_t slash = chosen.rfind('/');
-            std::string fname = (slash != std::string::npos) ? chosen.substr(slash + 1) : chosen;
-            size_t dot = fname.rfind('.');
-            if (dot != std::string::npos) fname = fname.substr(0, dot);
-            m_importName = fname;
+            // Default name from filename (without extension). odStemName
+            // rather than rfind('/'): the dialog hands back a native path, and
+            // on Windows that has backslashes in it, so splitting on '/' alone
+            // found nothing and pre-filled the prompt with the entire path --
+            // which then became a directory name under custom_maps/.
+            m_importName = odStemName(chosen);
 
             m_showImportNameDialog = true;
             return;

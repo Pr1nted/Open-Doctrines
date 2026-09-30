@@ -92,6 +92,37 @@ inline std::string odSafeFileName(const std::string& name) {
 }
 
 /**
+ * The filename part of a path, whichever separator the OS used.
+ *
+ * Windows hands back backslashes -- GetOpenFileNameW does, and so does
+ * raylib's dropped-file list -- and splitting on '/' alone finds nothing in
+ * "C:\\Users\\me\\world.odmap". find_last_of returns npos, npos + 1 is 0, and
+ * substr(0) is the WHOLE PATH. Importing a map that way named the import
+ * after its full path instead of its filename, and that name then became a
+ * directory under custom_maps/.
+ *
+ * Splits on both separators, because a path on Windows may legitimately hold
+ * either and often holds both.
+ */
+inline std::string odBaseName(const std::string& path) {
+    const std::string::size_type cut = path.find_last_of("/\\");
+    return (cut == std::string::npos) ? path : path.substr(cut + 1);
+}
+
+/**
+ * The filename part of a path with its last extension removed.
+ *
+ * What a "name this import" prompt should be pre-filled with.
+ */
+inline std::string odStemName(const std::string& path) {
+    std::string base = odBaseName(path);
+    const std::string::size_type dot = base.find_last_of('.');
+    // A leading dot is the whole name of a hidden file, not an extension.
+    if (dot != std::string::npos && dot > 0) base = base.substr(0, dot);
+    return base;
+}
+
+/**
  * Text the player has just asked to paste, or empty.
  *
  * Consumes it: calling twice in a frame gives the second caller nothing, which

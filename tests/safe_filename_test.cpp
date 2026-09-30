@@ -98,6 +98,38 @@ int main() {
     becomes(std::string("a\tb"), "ab");
     becomes(std::string("a\nb"), "ab");
 
+    section("splitting a path the OS handed us");
+    {
+        // The dialog and the dropped-file list both return NATIVE paths, so on
+        // Windows they contain backslashes. Splitting on '/' alone finds
+        // nothing, find_last_of gives npos, npos + 1 is 0, and substr(0) is
+        // the whole path -- which is what the map importer used to pre-fill
+        // its name prompt with, and then made a directory out of.
+        auto base = [](const std::string& p) { return odBaseName(p); };
+        auto stem = [](const std::string& p) { return odStemName(p); };
+
+        ok(base("C:\\Users\\me\\world.odmap") == "world.odmap",
+           "a Windows path gives its filename", base("C:\\Users\\me\\world.odmap"));
+        ok(stem("C:\\Users\\me\\world.odmap") == "world",
+           "and its stem", stem("C:\\Users\\me\\world.odmap"));
+        ok(base("/home/me/world.odmap") == "world.odmap", "a POSIX path still works");
+        ok(stem("/home/me/world.odmap") == "world", "and so does its stem");
+        ok(base("C:/mixed\\separators/file.odmap") == "file.odmap",
+           "a path with both separators splits on the last of either",
+           base("C:/mixed\\separators/file.odmap"));
+        ok(stem("world.odmap") == "world", "a bare filename needs no directory");
+        ok(stem("no-extension") == "no-extension", "a name without an extension keeps all of it");
+        ok(stem("archive.tar.gz") == "archive.tar", "only the LAST extension goes");
+        ok(base("C:\\Users\\me\\") == "", "a trailing separator leaves nothing after it");
+        ok(stem(".hidden") == ".hidden", "a leading dot is a name, not an extension");
+
+        // The two together are what the importer does: name a map from the
+        // path the OS gave, then make that name safe to be a directory.
+        ok(odSafeFileName(stem("C:\\Users\\me\\My Map?.odmap")) == "My Map",
+           "path -> stem -> safe name, which is what the importer needs",
+           odSafeFileName(stem("C:\\Users\\me\\My Map?.odmap")));
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }
