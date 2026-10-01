@@ -540,8 +540,8 @@ Alpha, and the honest version of that word:
   | **Linux (x64)** | qualified — built, tested, and played a game |
   | **Windows (x64)** | qualified — built, tested, and played a game |
   | **macOS (arm64, x64)** | qualified *with one gap*: playing a real game is unproven |
-  | **FreeBSD (amd64)** | builds and packages on every release; not yet played |
-  | **OpenBSD (amd64)** | builds and packages on every release, **without mods**; not yet played |
+  | **FreeBSD (amd64)** | builds, packages, and loads a world headlessly |
+  | **OpenBSD (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
 
   The macOS gap is the hosted runner and not the build: GitHub's macOS images
   have no usable display, so the game cannot open a window there and the play
@@ -600,6 +600,14 @@ Alpha, and the honest version of that word:
   that can produce a `freebsd-aarch64` one. The codebase itself is fine there —
   every source file of the server target compiles on FreeBSD 14.5/arm64, and
   the build reaches the final link.
+
+  What each release actually proves on a BSD: the game compiles and packages,
+  and the headless server **runs** — it loads the 1939 scenario and reports
+  1298 provinces and 65 countries, which exercises the map reader, the save
+  layer, the AI tables and the text layer. What it does not prove is the
+  windowed game, because a VM on a CI runner has no display. That is the same
+  gap macOS has, for the same reason, and it is why both rows above say
+  "headlessly".
 
   The **web** build compiles, boots and passes its own checks in CI; it does not
   go through `qualify.sh`, which needs a window and a filesystem.
