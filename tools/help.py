@@ -32,6 +32,12 @@ GROUPS = [
         # they build on the machine that built them, which is the condition a
         # packaging bug hides in; this is where one gets installed and started.
         "linux_vm_create.sh",
+        # The headless one, and the one a pipeline uses. UTM is a GUI app that
+        # registers VMs only at launch, whose attach subcommand is not
+        # implemented, and whose sandbox refuses a serial log -- so a guest
+        # that will not boot cannot be read. This gives a console on disk and
+        # ssh on a port we chose.
+        "qemu_guest.sh",
         # And what to do with that guest: build the packages in it, install one
         # where none of its libraries are, run it, remove it, and check it took
         # nothing of the player's with it. CI cannot ask any of that -- it runs
