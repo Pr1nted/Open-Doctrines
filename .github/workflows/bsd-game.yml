@@ -86,7 +86,19 @@ jobs:
             # builds a world and exits, which exercises the map reader, the
             # save layer, the AI tables and the text layer odseal feeds.
             cmake --build build --target OpenDoctrinesServer -j 4
-            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check
+            # < /dev/null IS LOAD-BEARING, and this cost two runs to see.
+            #
+            # The dedicated server has an interactive console that reads
+            # stdin, and vmactions feeds this whole script to the remote shell
+            # ON stdin. So the server sat there and ATE THE REST OF THE
+            # SCRIPT: packaging never ran, the shell reached end-of-input with
+            # nothing left to do, and the step exited 0. The failure surfaced
+            # two steps later as "does not carry the account service" -- a
+            # complaint about a directory that was never created.
+            #
+            # Nothing in the log said so, because from the shell's point of
+            # view the script simply ended.
+            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check < /dev/null
 
             # Echoed either side, because this step once did not run at all
             # and nothing said so: the job went green here and failed in the
@@ -146,10 +158,11 @@ jobs:
               -DOD_DISCORD_APP_ID=1547303703370014830
             cmake --build build --target OpenDoctrines -j 4
 
-            # See the note in the FreeBSD block: this is the only thing in a
-            # BSD job that RUNS rather than compiles.
+            # See the notes in the FreeBSD block: this is the only thing in a
+            # BSD job that RUNS rather than compiles, and < /dev/null is what
+            # stops the server's console eating the rest of this script.
             cmake --build build --target OpenDoctrinesServer -j 4
-            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check
+            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check < /dev/null
 
             # Echoed either side, because this step once did not run at all
             # and nothing said so: the job went green here and failed in the
