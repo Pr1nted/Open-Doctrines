@@ -977,7 +977,18 @@ void Game::drawMainMenu() {
         // below the floor not drawn at all: on a window that narrow the title
         // is already at its own floor and a joke beside it helps nobody.
         const float rad = 16.0f * 3.14159265f / 180.0f;
-        const float px = (float)(centerX + titleW / 2 + 18 + titleDX);
+        // TUCKED INTO THE TITLE, not held off at arm's length. It sat 18px
+        // clear of the last glyph, which read as two unrelated things that
+        // happened to be on the same line. Overlapping the tail of the word
+        // is what makes it one piece of lettering -- and it is only legible
+        // overlapping because of the shadow below, which is what separates
+        // accent-on-accent.
+        //
+        // Proportional to the TITLE and not to the splash: px has to be known
+        // before fits() can choose a splash size, and fits() needs px. The
+        // splash starts at titleSize/4, so 0.14 of the title is the same
+        // overlap expressed in the one number that is already settled here.
+        const float px = (float)(centerX + titleW / 2 + titleDX) - (float)titleSize * 0.30f;
         auto fits = [&](int sz) {
             const float w = (float)MeasureText(m_splashLine.c_str(), sz);
             return px + w * cosf(rad) + (float)sz * sinf(rad) < (float)m_screenW - 10;
@@ -989,10 +1000,22 @@ void Game::drawMainMenu() {
             // 2 Hz, between 1.0 and about 1.08 -- enough to catch the eye and
             // not enough to be motion anybody has to look away from.
             const float pulse = 1.0f + 0.08f * fabsf(sinf((float)GetTime() * 3.2f));
+            const float sz = (float)splashSize * pulse;
+            const float sp = sz / 10.0f;
+
+            // A SHADOW OF ITSELF, and it is load-bearing rather than
+            // decorative: the line is the accent colour now and it overlaps
+            // the title, which is also the accent colour. Without something
+            // between them the two run together into one unreadable smear
+            // wherever they cross. Offset with the size so it stays a shadow
+            // at every title size instead of a fixed smudge.
+            const float off = std::max(2.0f, sz * 0.14f);
+            DrawTextPro(GetFontDefault(), m_splashLine.c_str(),
+                        {px + off, py + off}, {0, 0}, -16.0f, sz, sp,
+                        fade({0, 0, 0, 170}));
             DrawTextPro(GetFontDefault(), m_splashLine.c_str(), {px, py}, {0, 0},
-                        -16.0f, (float)splashSize * pulse,
-                        (float)splashSize * pulse / 10.0f,
-                        fade({236, 199, 72, 255}));
+                        -16.0f, sz, sp,
+                        fade(hexToColor(m_config.accent())));
         }
     }
 
