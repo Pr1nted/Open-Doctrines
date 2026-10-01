@@ -6,6 +6,7 @@
 #   tools/qemu_guest.sh wait   <name> [secs]  block until ssh answers
 #   tools/qemu_guest.sh ssh    <name> [cmd]   run something in it
 #   tools/qemu_guest.sh push   <name> <src> <dst>
+#   tools/qemu_guest.sh sshenv <name>         exports so other tools can reach it
 #   tools/qemu_guest.sh console <name> [n]    the last n lines of its boot
 #   tools/qemu_guest.sh stop   <name>
 #   tools/qemu_guest.sh list
@@ -217,6 +218,24 @@ cmd_push() {
     scp $(ssh_opts) -P "$p" -r "$src" "odtest@127.0.0.1:$dst"
 }
 
+# A guest here is reached at odtest@127.0.0.1 on a forwarded port with a
+# specific key -- not through an ~/.ssh/config alias, the way a UTM guest from
+# linux_vm_create.sh is. Tools written against an alias therefore cannot reach
+# one, and the alternative is writing into the user's ssh config, which is
+# theirs and not ours to edit.
+#
+# So: eval "$(tools/qemu_guest.sh sshenv pf-debian)" and the ssh and scp in
+# those tools pick up the options they need from the environment. ssh takes
+# -p for the port and scp takes -P, which is why there are two of these.
+cmd_sshenv() {
+    local name="$1"
+    local p; p=$(port_for "$name")
+    printf 'OD_SSH_HOST=%s\n' "odtest@127.0.0.1"
+    printf 'OD_SSH_OPTS=%s\n' "'-p $p $(ssh_opts)'"
+    printf 'OD_SCP_OPTS=%s\n' "'-P $p $(ssh_opts)'"
+    printf 'export OD_SSH_HOST OD_SSH_OPTS OD_SCP_OPTS\n'
+}
+
 cmd_console() { sed 's/\r//' "$(gdir "$1")/console.log" | tail -"${2:-40}"; }
 
 cmd_stop() {
@@ -251,6 +270,7 @@ case "$sub" in
     wait)    cmd_wait "$@" ;;
     ssh)     cmd_ssh "$@" ;;
     push)    cmd_push "$@" ;;
+    sshenv)  cmd_sshenv "$@" ;;
     console) cmd_console "$@" ;;
     stop)    cmd_stop "$@" ;;
     list)    cmd_list "$@" ;;

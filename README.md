@@ -234,8 +234,34 @@ You also need the runtime libraries raylib links against — X11, ALSA and GL.
 Every mainstream desktop install already has them; a minimal or headless install
 may not.
 
-Only **x86_64** is published. Arm Linux builds from source; GitHub hosts no Arm
-Linux runner, so there is no artifact for it.
+**x86_64 and arm64** are both published:
+
+| | what it is | arches | glibc |
+|---|---|---|---|
+| `.tar.gz` | the binary and its data, unpack anywhere | both | needs 2.35+ |
+| `.deb` | Debian, Ubuntu, Mint — `sudo apt install ./opendoctrines_*.deb` | both | needs 2.35+ |
+| `.rpm` | Fedora, RHEL, openSUSE — `sudo dnf install ./opendoctrines-*.rpm` | both | needs 2.35+ |
+| `.AppImage` | one file, no install — `chmod +x` and run | both | needs 2.35+ |
+| Flatpak | `flatpak install` — **the only one that works on older glibc** | x86_64 | brings its own |
+
+The AppImage needs **`fusermount`** to mount itself, and several distributions
+ship the FUSE *libraries* without that *binary* — Debian 12 among them, where
+you get
+
+```
+Error: No suitable fusermount binary found on the $PATH
+```
+
+which is about your machine and not about the download. Install it
+(`sudo apt install fuse`, or `sudo dnf install fuse`), or skip FUSE entirely:
+
+```bash
+./OpenDoctrines-*.AppImage --appimage-extract-and-run
+```
+
+An AppImage bundles the application's libraries but **not** the C library under
+them, so it is not a way around the glibc requirement. On Debian 11, Ubuntu
+20.04 or RHEL 9, use the Flatpak or build from source.
 
 ### Windows
 

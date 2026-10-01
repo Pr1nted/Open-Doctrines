@@ -30,9 +30,19 @@
 # that.
 set -uo pipefail
 
-HOST="${1:-}"
+HOST="${1:-$OD_SSH_HOST}"
 TREE="${2:-}"
 [ -n "$HOST" ] || { echo "usage: $0 <ssh-host> [packaged-tree]"; exit 1; }
+
+# A guest from tools/linux_vm_create.sh is an ~/.ssh/config alias and needs no
+# options. One from tools/qemu_guest.sh is odtest@127.0.0.1 on a forwarded port
+# with its own key, and needs several -- so it supplies them in the
+# environment, via `eval "$(tools/qemu_guest.sh sshenv <name>)"`. Empty here is
+# the alias case, unchanged.
+#
+# Two variables rather than one because ssh spells the port -p and scp -P.
+SSH_OPTS="${OD_SSH_OPTS:-}"
+SCP_OPTS="${OD_SCP_OPTS:-}"
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PKG="$ROOT/packaging/linux"
@@ -45,7 +55,8 @@ bad() { checks=$((checks+1)); failed=$((failed+1)); printf '  FAIL  %s%s\n' "$1"
 try() { if [ "$1" = 0 ]; then ok "$2"; else bad "$2" "${3:-}"; fi; }
 sec() { printf '\n== %s ==\n' "$1"; }
 
-r() { ssh "$HOST" "$@"; }
+# shellcheck disable=SC2086 -- splitting SSH_OPTS into arguments is the point
+r() { ssh $SSH_OPTS "$HOST" "$@"; }
 
 echo "host: $HOST"
 arch=$(r 'dpkg --print-architecture' 2>/dev/null) || { echo "cannot reach $HOST"; exit 1; }
@@ -55,15 +66,15 @@ echo "guest: $distro  ($arch, glibc $glibc)"
 
 sec "getting the tools and the sources there"
 r 'rm -rf ~/od && mkdir -p ~/od/packaging/linux ~/od/tools ~/od/tree/data/Icon'
-scp -q "$ROOT/tools/make_linux_packages.sh" "$HOST:od/tools/"
-scp -q "$PKG/opendoctrines-launcher" "$PKG/$APPID.desktop" "$PKG/$APPID.metainfo.xml" \
+scp $SCP_OPTS -q "$ROOT/tools/make_linux_packages.sh" "$HOST:od/tools/"
+scp $SCP_OPTS -q "$PKG/opendoctrines-launcher" "$PKG/$APPID.desktop" "$PKG/$APPID.metainfo.xml" \
        "$HOST:od/packaging/linux/"
 if [ -n "$TREE" ]; then
     echo "  pushing $TREE"
-    scp -qr "$TREE/." "$HOST:od/tree/"
+    scp $SCP_OPTS -qr "$TREE/." "$HOST:od/tree/"
 else
     echo "  no tree given: using a stub that prints OD_DATA_DIR"
-    scp -q "$ROOT/data/Icon/icon.png" "$HOST:od/tree/data/Icon/"
+    scp $SCP_OPTS -q "$ROOT/data/Icon/icon.png" "$HOST:od/tree/data/Icon/"
     r 'printf "#!/bin/sh\nprintf \"GAME OK data=%%s\\n\" \"\$OD_DATA_DIR\"\n" > ~/od/tree/OpenDoctrines
        chmod +x ~/od/tree/OpenDoctrines
        echo tips > ~/od/tree/data/tips.json'
@@ -121,11 +132,50 @@ r 'test -f ~/.local/share/opendoctrines/data/.installed-version'
 try $? "the shipped tree was seeded into the player's home"
 
 sec "the AppImage, with nothing installed at all"
-out=$(r "cd ~/od && ./out/*.AppImage 2>&1" | tail -1)
+# AN APPIMAGE NEEDS FUSERMOUNT, AND DEBIAN 12 DOES NOT SHIP IT.
+#
+# The first version of this check ran the file and failed, which read as "the
+# AppImage is broken". It is not: a stock Debian 12 has libfuse2 and libfuse3
+# and /dev/fuse, and no `fusermount` BINARY, because that lives in the `fuse`
+# package, which nothing pulls in. The AppImage then says
+#
+#   Error: No suitable fusermount binary found on the $PATH
+#
+# which is an accurate message about the machine and a baffling one to a
+# player who just wanted to double-click a game.
+#
+# So this asks the two questions separately. Extracted, it must ALWAYS work:
+# that is the package. Mounted, it works once fuse is installed: that is the
+# documented dependency, and the README has to say so, which is checked
+# further down rather than assumed.
+out=$(r "cd ~/od && ./out/*.AppImage --appimage-extract-and-run 2>&1" | tail -1)
 case "$out" in
-    *data=*) ok "it runs straight from the file" ;;
-    *) bad "it runs straight from the file" "$out" ;;
+    *data=*) ok "extracted, it runs with nothing installed at all" ;;
+    *) bad "extracted, it runs with nothing installed at all" "$out" ;;
 esac
+
+if r 'command -v fusermount >/dev/null || command -v fusermount3 >/dev/null'; then
+    out=$(r "cd ~/od && ./out/*.AppImage 2>&1" | tail -1)
+    case "$out" in
+        *data=*) ok "and mounted, on a machine that has fusermount" ;;
+        *) bad "and mounted, on a machine that has fusermount" "$out" ;;
+    esac
+else
+    # Install the one dependency a player would, and prove it is the only one.
+    r 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fuse' >/dev/null 2>&1
+    out=$(r "cd ~/od && ./out/*.AppImage 2>&1" | tail -1)
+    case "$out" in
+        *data=*) ok "and mounted, once fuse is installed -- its one dependency" ;;
+        *) bad "and mounted, once fuse is installed" "$out" ;;
+    esac
+fi
+
+# The README is the only place a player finds out, so it is part of the test.
+if grep -q "fusermount\|libfuse\|  fuse" "$ROOT/README.md" 2>/dev/null; then
+    ok "and README.md tells them to install it"
+else
+    bad "and README.md tells them to install it" "no mention of fuse in README.md"
+fi
 
 sec "taking it away again"
 r 'sudo dpkg -r opendoctrines' >/dev/null 2>&1

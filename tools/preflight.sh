@@ -82,7 +82,10 @@ stage_packages() {
     "$GUEST" create "$g" debian12 2>/dev/null || true
     "$GUEST" start "$g" || return 1
     "$GUEST" wait  "$g" 240 || return 1
-    "$ROOT/tools/linux_vm_test.sh" "pf-ssh-$g"
+    # The guest is on a forwarded port, not an ssh alias; this hands over the
+    # options to reach it.
+    eval "$("$GUEST" sshenv "$g")"
+    "$ROOT/tools/linux_vm_test.sh"
 }
 
 # Every guest the plan calls for, booted and proven to run the game's own

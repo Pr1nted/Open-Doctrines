@@ -177,7 +177,35 @@ HERE=$(dirname "$(readlink -f "$0")")
 exec "$HERE/usr/bin/opendoctrines" "$@"
 EOF
     chmod +x "$APPDIR/AppRun"
-    ARCH="$APPIMAGE_ARCH" appimagetool --no-appstream \
+    # THE RUNTIME IS FETCHED HERE, NOT BY APPIMAGETOOL.
+    #
+    # Left to itself appimagetool downloads the type2 runtime as the last step
+    # of the build, and on a Debian guest with working DNS and a working
+    # https -- curl pulls that exact URL, 936 KB, 200 -- its own downloader
+    # reports "server returned status code 0" and the whole build dies after
+    # the squashfs is already made. Whatever the cause inside appimagetool,
+    # curl can do it and appimagetool cannot, so curl does it.
+    #
+    # Fetching it on purpose is better anyway. "continuous" is a rolling tag:
+    # a package build that pulls from it is reaching for a moving artifact at
+    # the end of a release, which is both unreproducible and a thing that can
+    # break on a day nobody changed anything. Cached under the output
+    # directory, one download serves every arch and every re-run, and
+    # OD_APPIMAGE_RUNTIME points at a pinned copy where one is wanted.
+    rt="${OD_APPIMAGE_RUNTIME:-}"
+    if [ -z "$rt" ]; then
+        rt="$OUT/.runtime-$APPIMAGE_ARCH"
+        if [ ! -s "$rt" ]; then
+            echo "  fetching the AppImage runtime for $APPIMAGE_ARCH"
+            curl -fsSL --retry 3 -o "$rt.part" \
+                "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$APPIMAGE_ARCH" \
+                || die "could not fetch the AppImage runtime for $APPIMAGE_ARCH"
+            mv "$rt.part" "$rt"
+        fi
+    fi
+    [ -s "$rt" ] || die "AppImage runtime is empty: $rt"
+
+    ARCH="$APPIMAGE_ARCH" appimagetool --no-appstream --runtime-file "$rt" \
         "$APPDIR" "$OUT/OpenDoctrines-${VERSION}-${APPIMAGE_ARCH}.AppImage"
     echo "  AppImage: OpenDoctrines-${VERSION}-${APPIMAGE_ARCH}.AppImage"
     ;;
