@@ -644,13 +644,19 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
     // Commerce: what it builds to trade and to hold.
     mon(odmon::Kind::GrandExchange,    "commerce", {"mon_basics"},         40, 300, 170);
     mon(odmon::Kind::StrategicReserve, "commerce", {"mon_grand_exchange"}, 60, 300, 280);
-    mon(odmon::Kind::AdmiraltyYard,    "commerce", {"mon_grand_exchange"}, 85, 380, 390);
+    // 260, not 380. A node box is 160 wide (baseNodeW in drawResearchTree) and
+    // this row had Admiralty Yard at 380, Missile Silo at 480 and Signals
+    // Directorate at 640 -- a 100-point gap between 160-point boxes, so the
+    // first two overlapped outright and the third sat flush against the
+    // second. The row reads as four evenly spaced nodes now: Megacity 40,
+    // Admiralty Yard 260, Missile Silo 460, Signals Directorate 680.
+    mon(odmon::Kind::AdmiraltyYard,    "commerce", {"mon_grand_exchange"}, 85, 260, 390);
 
     // War: and the silo last, because it is the one that changes the map.
     mon(odmon::Kind::AirDefence,         "war", {"mon_basics"},                 45, 560, 170);
     mon(odmon::Kind::DefenceCorporation, "war", {"mon_air_defence"},            75, 560, 280);
-    mon(odmon::Kind::SignalsDirectorate, "war", {"mon_defence_corporation"},   100, 640, 390);
-    mon(odmon::Kind::MissileSilo,        "war", {"mon_defence_corporation"},   150, 480, 390);
+    mon(odmon::Kind::SignalsDirectorate, "war", {"mon_defence_corporation"},   100, 680, 390);
+    mon(odmon::Kind::MissileSilo,        "war", {"mon_defence_corporation"},   150, 460, 390);
 
     LoadLog() << "  Loaded " << m_researchNodes.size() << " research nodes" << std::endl;
 }

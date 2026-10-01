@@ -720,12 +720,17 @@ void Game::update(float dt) {
     }
     if (!m_paused && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         Vector2 mp = getMouse();
-        if (mp.x >= barX && mp.x < barX + barW && mp.y >= barY && mp.y < barY + barH) {
-            int buttonStartX = barX + 8;
-            int buttonEndX = barX + barW - 8;
-            int buttonW = (buttonEndX - buttonStartX) / 8;
-            int idx = ((int)mp.x - buttonStartX) / buttonW;
-            if (idx >= 0 && idx < 8) {
+        // THE SAME RECTANGLES THE ICONS ARE DRAWN IN. This used to recompute
+        // the geometry here and got two things wrong: it divided the bar by 8
+        // where the drawing divides by 9, so clicks landed left of the icon
+        // under the cursor and Monuments could not be reached at all; and it
+        // used a hardcoded height of 80 where the bar is bottomBarH(), so on a
+        // compact HUD the clickable strip reached 36 points above the bar.
+        if (CheckCollisionPointRec(mp, viewTabBarRect())) {
+            int idx = -1;
+            for (int i = 0; i < kViewTabCount; ++i)
+                if (CheckCollisionPointRec(mp, viewTabRect(i))) { idx = i; break; }
+            if (idx >= 0) {
                 int tab = idx + 1;
                 m_activeViewTab = (m_activeViewTab == tab) ? 0 : tab;
                 Audio::get().playSfx("tab_switch");
@@ -1552,6 +1557,7 @@ void Game::update(float dt) {
         for (int vi = 0; vi < visCount; ++vi) {
             int i = visIdx[vi];
             int y = startY + (vi - effScroll) * itemH;
+            if (!settingsRowOnScreen(y, startY, m_screenH)) continue;
             std::string label = makeSettingLabel(m_settingsTab, i, m_config);
             int tw = MeasureText(label.c_str(), fontSize);
             if (m_settingsTab == 0 && i == 5) {
@@ -1719,7 +1725,8 @@ void Game::update(float dt) {
             int sliderX = centerX - sliderW / 2;
             Rectangle sliderRow = { (float)(centerX - 260), (float)sy, 520, (float)itemH };
 
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, sliderRow)) {
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, sliderRow) &&
+                settingsRowOnScreen(sy, startY, m_screenH)) {
                 m_draggingFpsSlider = true;
             }
             if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {

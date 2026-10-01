@@ -1007,8 +1007,13 @@ void Game::drawMainMenu() {
         // recomputed from the pulsing width it would slide left and right
         // once a second, which is the drift that makes a pulse look like a
         // wobble.
-        const float leftX = (float)(centerX + titleDX) + (float)titleW * 0.40f;
-        const float leftY = (float)titleY + (float)titleSize * 0.88f;
+        // LOW ENOUGH TO CLEAR THE WORD, not to sit across it. 0.88 of the
+        // title put the line through the middle of the last letters: the
+        // shadow kept it readable but the title was not, which is the wrong
+        // side of that trade. It hangs off the bottom-right corner now, and
+        // the clamp below keeps the far end off the subtitle.
+        const float leftX = (float)(centerX + titleDX) + (float)titleW * 0.42f;
+        const float leftY = (float)titleY + (float)titleSize * 1.12f;
 
         // ── IT HAS TO FIT, AND ROTATED TEXT IS WIDER THAN ITS MEASURE ──
         //

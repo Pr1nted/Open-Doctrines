@@ -2421,6 +2421,40 @@ public:
     /// supposed to sit above. One number, read by everyone who needs it.
     int bottomBarH() const { return compactHud() ? 44 : 80; }
 
+    /// How many view tabs the bottom bar holds. ONE number, because this was
+    /// two: the drawing divided the bar by 9 and the click handler by 8.
+    ///
+    /// Every click therefore landed one or more tabs to the LEFT of the icon
+    /// under the cursor -- the slots were wider than the icons, so the error
+    /// grew across the bar -- and the ninth tab, Monuments, could not be
+    /// reached at all, because the handler clamped the index below 8.
+    ///
+    /// This is the second time the bar and its hit test have disagreed; the
+    /// first was a sidebar click handler using three buttons' height for
+    /// four. Both came from the geometry being computed twice. It is computed
+    /// once now, here and in viewTabRect(), and a tab added to the labels in
+    /// drawBottomPanel() has to change this number or it will not be drawn.
+    static constexpr int kViewTabCount = 9;
+
+    /// The bar itself. The click handler used a hardcoded height of 80 while
+    /// the drawing asked bottomBarH(), so on a compact HUD -- a narrow window
+    /// or a phone -- the clickable strip was 36 points taller than the bar
+    /// and swallowed presses meant for the map above it.
+    Rectangle viewTabBarRect() const {
+        const int w = std::min(880, m_screenW - 32);
+        const int h = bottomBarH();
+        return {(float)(m_screenW - w - 16), (float)(m_screenH - h - 16),
+                (float)w, (float)h};
+    }
+
+    /// The i-th tab, in the same coordinates the icon is drawn at.
+    Rectangle viewTabRect(int i) const {
+        const Rectangle bar = viewTabBarRect();
+        const float startX = bar.x + 8.0f;
+        const float buttonW = (bar.width - 16.0f) / (float)kViewTabCount;
+        return {startX + (float)i * buttonW, bar.y, buttonW, bar.height};
+    }
+
     /// The top of the bottom-left stub row -- Process Turn, or Ready in a
     /// network game. The left-hand panels have to stop above it.
     ///

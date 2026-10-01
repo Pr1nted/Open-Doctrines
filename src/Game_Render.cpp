@@ -177,13 +177,21 @@ void Game::drawBottomPanel() {
     const char* labels[] = {"Population", "Industry", "Defence", "Relations",
                              "Army Navigation", "Navy", "Resources", "Country Names",
                              "Monuments"};
-    const int count = 9;
+    // Adding a tab here without changing kViewTabCount is a compile error
+    // rather than a bar whose tenth icon is drawn and cannot be clicked.
+    static_assert(sizeof(labels) / sizeof(labels[0]) == kViewTabCount,
+                  "the labels and kViewTabCount must agree -- see Game.h");
+    static_assert(sizeof(icons) / sizeof(icons[0]) == kViewTabCount,
+                  "the icons and kViewTabCount must agree -- see Game.h");
+    const int count = kViewTabCount;
     const int iconSize = 32;
     const int fontSize = 12;
 
-    int buttonStartX = barX + 8;
-    int buttonEndX = barX + barW - 8;
-    int buttonW = (buttonEndX - buttonStartX) / count;
+    // Geometry from viewTabRect(), which the click handler also reads. Two
+    // copies of this arithmetic is how the bar and its hit test came to
+    // disagree -- twice.
+    const int buttonStartX = (int)viewTabRect(0).x;
+    const int buttonW      = (int)viewTabRect(0).width;
 
     int iconY = barY + 8;
     int labelY = iconY + iconSize + 10;
@@ -193,7 +201,7 @@ void Game::drawBottomPanel() {
         int ix = cx - iconSize / 2;
 
         Vector2 mouse = getMouse();
-        Rectangle btnRect = {(float)(buttonStartX + i * buttonW), (float)barY, (float)buttonW, (float)barH};
+        Rectangle btnRect = viewTabRect(i);
         // By id, not by the label beside it: the words are translated, the
         // slot is not. "view.army" is the army view wherever it says that.
         static const char* kViewName[] = {"view.population", "view.industry",

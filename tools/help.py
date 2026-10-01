@@ -81,6 +81,11 @@ GROUPS = [
         # invokes every import in it and counts what came back, generated from
         # abi.json so it cannot drift from the surface it is testing.
         "gen_capability_mods.py",
+        # The research screen's node coordinates are literals in a function
+        # that needs the whole game to link, so nothing could check that two
+        # boxes did not overlap -- and three monument nodes did. This reads
+        # them out of the source and says which pair collides.
+        "check_research_layout.py",
         # check_bindings.py is a text lint and says so; this one asks the
         # compiler, which is the only thing that catches a generated call
         # with the wrong arity.

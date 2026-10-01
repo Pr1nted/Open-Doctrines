@@ -387,6 +387,12 @@ check "generated bindings vs abi.json" $PY "$root/tools/gen_bindings.py" --check
 
 check "sdk bindings vs abi.json" $PY "$root/tools/check_bindings.py"
 
+# The research screen draws each node as a 160x50 box at coordinates written
+# by hand. Three monument nodes sat 100 apart and overlapped; nothing could
+# see it, because the coordinates live in a function that needs the whole game
+# to link. This reads them.
+check "research tree layout" $PY "$root/tools/check_research_layout.py"
+
 # And do the generated Python bindings COMPILE? check_bindings.py is a text
 # lint by its own admission; this asks the compiler, which is the only thing
 # that can catch a generated call with the wrong arity.
