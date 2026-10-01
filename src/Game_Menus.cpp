@@ -977,31 +977,80 @@ void Game::drawMainMenu() {
         // below the floor not drawn at all: on a window that narrow the title
         // is already at its own floor and a joke beside it helps nobody.
         const float rad = 16.0f * 3.14159265f / 180.0f;
-        // TUCKED INTO THE TITLE, not held off at arm's length. It sat 18px
-        // clear of the last glyph, which read as two unrelated things that
-        // happened to be on the same line. Overlapping the tail of the word
-        // is what makes it one piece of lettering -- and it is only legible
-        // overlapping because of the shadow below, which is what separates
-        // accent-on-accent.
+
+        // ── ANCHORED BY ITS OWN CENTRE ──
         //
-        // Proportional to the TITLE and not to the splash: px has to be known
-        // before fits() can choose a splash size, and fits() needs px. The
-        // splash starts at titleSize/4, so 0.14 of the title is the same
-        // overlap expressed in the one number that is already settled here.
-        const float px = (float)(centerX + titleW / 2 + titleDX) - (float)titleSize * 0.30f;
+        // DrawTextPro's `origin` is both the rotation pivot and the point the
+        // position refers to, and this passed {0,0} -- the top-left corner.
+        // So the pulse grew the line DOWN AND RIGHT out of a fixed corner
+        // instead of breathing in place, which is visible as a twitch at the
+        // start of the text rather than a pulse of the whole line. Rotation
+        // had the same corner problem: the far end swung, the near end did
+        // not.
+        //
+        // Centre origin fixes both. `anchor` is then the middle of the line
+        // and does not move, so every size the pulse passes through is drawn
+        // around the same point.
+        // ── THE CENTRE IS DERIVED FROM A PINNED LEFT END ──
+        //
+        // Anchoring the centre at a fixed point made the overlap depend on
+        // how long the line is: "Trick or annex" sat squarely ON TOP of the
+        // title's last letters while "Someone is always at war somewhere"
+        // only grazed them, because a centred line grows both ways.
+        //
+        // So the LEFT END is the fixed thing -- the point where the splash
+        // meets the title -- and the centre is worked out from it. Every
+        // line, long or short, starts at the same place and runs off to the
+        // right.
+        //
+        // From the BASE width, not the pulsed one. If the centre were
+        // recomputed from the pulsing width it would slide left and right
+        // once a second, which is the drift that makes a pulse look like a
+        // wobble.
+        const float leftX = (float)(centerX + titleDX) + (float)titleW * 0.40f;
+        const float leftY = (float)titleY + (float)titleSize * 0.88f;
+
+        // ── IT HAS TO FIT, AND ROTATED TEXT IS WIDER THAN ITS MEASURE ──
+        //
+        // The first guard allowed sw * 0.9, on the reasoning that tilting the
+        // line brings its far end back. It does the opposite: rotating swings
+        // the end out, so the half-width needed is (w/2)cos(t) + (h/2)sin(t)
+        // -- measured from the centre now that the centre is the pivot. A
+        // forty-character Halloween line ran clean off the edge of the screen
+        // when this was wrong.
+        //
+        // Measured at the size the PULSE reaches, not the base size, or it
+        // would fit for half of every second. Shrunk rather than clipped, and
+        // below the floor not drawn at all: on a window that narrow the title
+        // is already at its own floor and a joke beside it helps nobody.
         auto fits = [&](int sz) {
             const float w = (float)MeasureText(m_splashLine.c_str(), sz);
-            return px + w * cosf(rad) + (float)sz * sinf(rad) < (float)m_screenW - 10;
+            // Right end, from the pinned left end: leftX + w cos + (h/2) sin.
+            return leftX + w * cosf(rad) + (float)sz * 0.5f * sinf(rad)
+                   < (float)m_screenW - 10.0f;
         };
         int splashSize = std::max(10, titleSize / 4);
         while (splashSize > 9 && !fits((int)(splashSize * 1.08f))) --splashSize;
-        const float py = (float)(titleY + titleSize - splashSize);
+
         if (fits((int)(splashSize * 1.08f))) {
             // 2 Hz, between 1.0 and about 1.08 -- enough to catch the eye and
             // not enough to be motion anybody has to look away from.
             const float pulse = 1.0f + 0.08f * fabsf(sinf((float)GetTime() * 3.2f));
             const float sz = (float)splashSize * pulse;
             const float sp = sz / 10.0f;
+
+            // Recomputed per frame BECAUSE it is the pulsed size: a half-width
+            // taken at the base size would drift the centre as the line grew.
+            // The centre, from the BASE half-width, so it does not move as
+            // the line pulses -- the whole point of the origin below.
+            const float wBase = (float)MeasureText(m_splashLine.c_str(), splashSize);
+            const float anchorX = leftX + wBase * 0.5f * cosf(rad);
+            const float anchorY = leftY - wBase * 0.5f * sinf(rad);
+
+            // Origin is the middle of the text AS DRAWN, so it is the pulsed
+            // width that matters here rather than the base one.
+            const float w = (float)MeasureText(m_splashLine.c_str(), (int)sz);
+            const Vector2 origin = {w * 0.5f, sz * 0.5f};
 
             // A SHADOW OF ITSELF, and it is load-bearing rather than
             // decorative: the line is the accent colour now and it overlaps
@@ -1011,10 +1060,10 @@ void Game::drawMainMenu() {
             // at every title size instead of a fixed smudge.
             const float off = std::max(2.0f, sz * 0.14f);
             DrawTextPro(GetFontDefault(), m_splashLine.c_str(),
-                        {px + off, py + off}, {0, 0}, -16.0f, sz, sp,
+                        {anchorX + off, anchorY + off}, origin, -16.0f, sz, sp,
                         fade({0, 0, 0, 170}));
-            DrawTextPro(GetFontDefault(), m_splashLine.c_str(), {px, py}, {0, 0},
-                        -16.0f, sz, sp,
+            DrawTextPro(GetFontDefault(), m_splashLine.c_str(),
+                        {anchorX, anchorY}, origin, -16.0f, sz, sp,
                         fade(hexToColor(m_config.accent())));
         }
     }
