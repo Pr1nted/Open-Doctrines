@@ -290,9 +290,13 @@ stage_saves() {
     local hostbin="$ROOT/build/SaveRoundTripTest"
     [ -x "$hostbin" ] || { echo "build it first: cmake --build build --target SaveRoundTripTest"; return 1; }
 
-    SV_DIR=$(mktemp -d)
-    cleanup_sv() { rm -rf "$SV_DIR"; }
-    trap cleanup_sv RETURN
+    # IN THE RUN DIRECTORY, not a temp dir that is deleted on the way out.
+    # This stage failed once inside a full gate and passed every time by hand,
+    # and the logs that would have said why had already been removed by its own
+    # cleanup. Evidence that only exists while the thing is working is not
+    # evidence. $RUNDIR is kept for every run, which is the whole point of it.
+    SV_DIR="$RUNDIR/saves"
+    mkdir -p "$SV_DIR"
     local rc=0
 
     "$hostbin" --emit "$SV_DIR/mac.odsv" > "$SV_DIR/mac-emit.log" 2>&1
@@ -335,12 +339,22 @@ stage_saves() {
                 echo "  ok    and this machine reads a save written there ($(du -h "$SV_DIR/$g.odsv" | cut -f1))"
             else
                 echo "  FAIL  and this machine reads a save written there"
-                tail -8 "$SV_DIR/mac-verify-$g.log" | sed 's/^/          /'; rc=1
+                # The FAILURES section, not tail -- the last lines of this log
+                # are the checks that PASSED, so a tail printed "ok turn 3:
+                # army count" six times and the word FAILURES, and said
+                # nothing about what failed.
+                sed -n "/^FAILURES/,\$p" "$SV_DIR/mac-verify-$g.log" | head -12 | sed "s/^/          /"
+                grep -E "^ *FAIL" "$SV_DIR/mac-verify-$g.log" | head -6 | sed "s/^/          /"
+                rc=1
             fi
         else
             echo "  FAIL  it emits a save"
             tail -5 "$SV_DIR/$g-emit.log" | sed 's/^/          /'; rc=1
         fi
+        # The size, every time, pass or fail: a truncated transfer is the one
+        # way this fails that looks like a verification failure.
+        [ -f "$SV_DIR/$g.odsv" ] && printf '        (%s emitted %s bytes)\n' \
+            "$g" "$(wc -c < "$SV_DIR/$g.odsv" | tr -d ' ')"
     done
     return $rc
 }

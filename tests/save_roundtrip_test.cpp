@@ -31,6 +31,7 @@
 #include "miniz_zip.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -128,7 +129,25 @@ TurnDelta canonicalTurn(int n) {
 }
 
 void writeCanonical(const std::string& path) {
-    SaveManager::createSave(path, std::string(kOdmBytes), canonicalMeta());
+    // THE RETURN VALUE IS NOT OPTIONAL.
+    //
+    // createSave refuses to write over a save that already holds turns --
+    // that is deliberate, it is what stops a rename destroying a world. The
+    // refusal was being dropped here, so emitting over an existing file left
+    // the OLD archive in place and then appended three more turns to it: the
+    // metadata turn_count climbed 3, 6, 9, 12 across repeated emits while the
+    // archive still held three turns, and --verify failed with "turn count
+    // survives -- wanted 3, got 21" on a file that had simply been written
+    // seven times.
+    //
+    // Same shape as the discarded appendTurn return in Game_TurnLogic.cpp:
+    // a function that refuses for real reasons, called as though it cannot.
+    std::error_code rmec;
+    std::filesystem::remove(path, rmec);
+    if (!SaveManager::createSave(path, std::string(kOdmBytes), canonicalMeta())) {
+        fprintf(stderr, "writeCanonical: createSave refused %s\n", path.c_str());
+        std::exit(1);
+    }
     SaveManager::writeState(path, kStateJson,
                             {{"rebellion/9.svg", "<svg/>"}});
     for (int n = 1; n <= 3; ++n) SaveManager::appendTurn(path, canonicalTurn(n));
