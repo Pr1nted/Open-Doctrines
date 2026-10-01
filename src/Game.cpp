@@ -1092,6 +1092,28 @@ bool Game::init(int screenW, int screenH, const char* title) {
     m_screenW = m_config.screenW;
     m_screenH = m_config.screenH;
 
+#if defined(__ANDROID__)
+    // ── THE PANEL'S RESOLUTION, BECAUSE ANDROID HAS NO RESOLUTION SETTING ──
+    //
+    // config.screenW/H default to 1600x900 and nothing on Android ever changed
+    // them, so the game asked raylib for a 1600x900 screen on every device and
+    // raylib said so in logcat:
+    //
+    //   DISPLAY: Upscaling required: Screen size (1600x900) smaller than
+    //            display size (1920x1080)
+    //
+    // Everything was then drawn once and stretched -- the map, the interface
+    // and the text -- on hardware that could have drawn it sharp. It is the
+    // same defect FLAG_WINDOW_HIGHDPI exists to prevent on a desktop panel,
+    // arriving by a different route, and nobody saw it because nothing had
+    // ever run the APK: CI inspects the zip.
+    //
+    // 0,0 asks raylib for the native window, which on Android is the display.
+    // There is no setting to respect here -- a phone's panel is its panel.
+    m_screenW = 0;
+    m_screenH = 0;
+#endif
+
     int winFlags = FLAG_WINDOW_RESIZABLE;
     if (m_config.fpsTarget == 0) winFlags |= FLAG_VSYNC_HINT;
     // ── DRAW AT THE PANEL'S RESOLUTION, NOT THE WINDOW'S ──

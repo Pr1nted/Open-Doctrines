@@ -62,7 +62,7 @@ green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 note()  { printf '  %s\n' "$*"; }
 
-STAGES=(suite qualify packages guests multiplayer)
+STAGES=(suite qualify packages guests multiplayer android)
 
 # CROSS-PLAY NEEDS NO ACCOUNT, which was not obvious and nearly cost one.
 #
@@ -286,6 +286,21 @@ stage_multiplayer() {
     return $rc
 }
 
+# The APK, installed on a real Android emulator and started. CI builds it and
+# inspects the zip; nothing had ever run it.
+stage_android() {
+    local apk="$ROOT/build-android/OpenDoctrines.apk"
+    [ -f "$apk" ] || {
+        echo "no APK -- build one first:"
+        echo "  cmake -B build-android -DCMAKE_TOOLCHAIN_FILE=\$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \\"
+        echo "        -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DPLATFORM=Android \\"
+        echo "        -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_MODS=OFF"
+        echo "  cmake --build build-android && tools/package_android.sh"
+        return 1
+    }
+    "$ROOT/tools/android_emulator_test.sh" "$apk"
+}
+
 # ── the runner ───────────────────────────────────────────────────────────────
 
 only=""; fast=0
@@ -313,16 +328,29 @@ if [ "$fast" = 1 ]; then
     wants packages    && skip_stage packages    "--fast"
     wants guests      && skip_stage guests      "--fast"
     wants multiplayer && skip_stage multiplayer "--fast"
+    wants android     && skip_stage android     "--fast"
 elif ! command -v qemu-system-aarch64 >/dev/null; then
     # Named rather than silently passed: a gate that skips what it cannot do
     # and still says "pass" is the failure this whole file exists to avoid.
     wants packages    && skip_stage packages    "qemu not installed (brew install qemu)"
     wants guests      && skip_stage guests      "qemu not installed (brew install qemu)"
     wants multiplayer && skip_stage multiplayer "qemu not installed (brew install qemu)"
+    wants android     && skip_stage android     "qemu not installed (brew install qemu)"
 else
     wants guests   && run_stage guests   "boot every guest the plan needs" stage_guests
     wants packages && run_stage packages "deb/rpm/AppImage in a clean guest" stage_packages
     wants multiplayer && run_stage multiplayer "each end hosts for the other" stage_multiplayer
+
+    # The emulator is Android's SDK, not qemu -- it is gated on its own tools
+    # rather than on the ones above.
+    if wants android; then
+        ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools}}"
+        if [ -x "$ANDROID_SDK/platform-tools/adb" ]; then
+            run_stage android "the APK installs, starts and draws" stage_android
+        else
+            skip_stage android "no Android SDK (brew install --cask android-commandlinetools)"
+        fi
+    fi
 fi
 
 # ── the report ───────────────────────────────────────────────────────────────

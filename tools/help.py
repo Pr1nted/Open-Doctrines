@@ -62,6 +62,12 @@ GROUPS = [
         # sat two releases stale. This says so, every suite run.
         "update_flatpak_release.py",
         "itch-cover.py", "banner.py", "steam-logo.py", "package_android.sh",
+        # And the APK that script builds, INSTALLED on a real emulator and
+        # started. CI has only ever inspected the zip and run nm over the .so,
+        # so every question a player's first thirty seconds asks -- does it
+        # install, does the native activity find its library, does GLES come
+        # up, does it draw -- was being answered without running it.
+        "android_emulator_test.sh",
         # Builds the web version and puts it on Cloudflare Pages -- the hosting
         # a Discord Activity needs, and the thing that makes the web build
         # update itself for everybody. See docs/discord-activity.md.
