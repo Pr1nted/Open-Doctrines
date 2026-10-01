@@ -194,12 +194,30 @@ EOF
     # OD_APPIMAGE_RUNTIME points at a pinned copy where one is wanted.
     rt="${OD_APPIMAGE_RUNTIME:-}"
     if [ -z "$rt" ]; then
-        rt="$OUT/.runtime-$APPIMAGE_ARCH"
+        # OUTSIDE THE OUTPUT DIRECTORY, because the output directory is not
+        # ours to keep. tools/linux_vm_test.sh starts every run with
+        # `rm -rf ~/od`, which took the cache with it -- so a "cache" added to
+        # stop this reaching the network on every build was re-downloaded on
+        # every build, and the whole stage quietly depended on github.com
+        # being up. One gate run failed exactly there and the reason was
+        # discarded; blocking github reproduces it character for character.
+        #
+        # The runtime is a fixed binary for an architecture, so a cache that
+        # survives between runs is the correct lifetime for it.
+        cache="${XDG_CACHE_HOME:-$HOME/.cache}/opendoctrines"
+        mkdir -p "$cache"
+        rt="$cache/appimage-runtime-$APPIMAGE_ARCH"
         if [ ! -s "$rt" ]; then
             echo "  fetching the AppImage runtime for $APPIMAGE_ARCH"
-            curl -fsSL --retry 3 -o "$rt.part" \
+            # --retry-connrefused and --retry-all-errors as well as --retry:
+            # plain --retry does not re-attempt a refused connection or a 5xx,
+            # which are the two ways this actually fails.
+            curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused \
+                 --retry-all-errors --connect-timeout 20 -o "$rt.part" \
                 "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$APPIMAGE_ARCH" \
-                || die "could not fetch the AppImage runtime for $APPIMAGE_ARCH"
+                || die "could not fetch the AppImage runtime for $APPIMAGE_ARCH.
+  It is cached at $rt once fetched, so this needs the network only once per
+  machine; set OD_APPIMAGE_RUNTIME to a local copy to skip it entirely."
             mv "$rt.part" "$rt"
         fi
     fi
