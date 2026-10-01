@@ -594,10 +594,17 @@ stage_android() {
 
 # ── the runner ───────────────────────────────────────────────────────────────
 
-only=""; fast=0
+only=""; fast=0; skip=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --only) only="$2"; shift 2 ;;
+        # --skip <stage>, repeatable. Mainly for `qualify`, which launches a
+        # real game with a window and writes to data/saves and config.json --
+        # so running it while somebody is PLAYING fights them for their own
+        # settings. A deferred stage is recorded as a skip, which the report
+        # counts apart from a pass, so this cannot quietly turn a partial run
+        # green.
+        --skip) skip="$skip $2"; shift 2 ;;
         --fast) fast=1; shift ;;
         --list) printf '%s\n' "${STAGES[@]}"; exit 0 ;;
         -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
@@ -605,7 +612,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-wants() { [ -z "$only" ] || [ "$only" = "$1" ]; }
+skipped_by_flag() {
+    case " $skip " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+wants() {
+    skipped_by_flag "$1" && return 1
+    [ -z "$only" ] || [ "$only" = "$1" ]
+}
 
 # EVERY RUN IS KEPT, under its own directory, because the question a pipeline
 # gets asked most is "did this used to work" and a single overwritten log
@@ -633,6 +646,13 @@ meta host      "$(uname -sm)"
 meta started   "$(date +%s)"
 meta status    running
 
+
+for st in $skip; do
+    case " ${STAGES[*]} " in
+        *" $st "*) ;;
+        *) red "unknown stage: $st"; exit 2 ;;
+    esac
+done
 
 bold "preflight: $(cd "$ROOT" && git rev-parse --short HEAD) on $(uname -sm)"
 note "logs in $RUNDIR"
@@ -676,6 +696,8 @@ else
         fi
     fi
 fi
+
+for st in $skip; do skip_stage "$st" "deferred with --skip"; done
 
 # ── the report ───────────────────────────────────────────────────────────────
 echo
