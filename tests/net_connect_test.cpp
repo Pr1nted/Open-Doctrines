@@ -1243,9 +1243,30 @@ int testRace(const std::string& issuer) {
         if (host.phase() == NetHost::Phase::Live || host.phase() == NetHost::Phase::Closed) {
             // Keep reading for a moment after it goes live: the seat is taken
             // on the first update() of that phase, which is mid-loop here.
+            //
+            // AND KEEP COUNTING, which this tail did not.
+            //
+            // The main loop compares members().size() BEFORE it checks the
+            // phase, so a seat taken on the same update that flips to Live is
+            // counted. A seat taken on a LATER update is not: the loop has
+            // already broken into this tail, and this tail only re-read the
+            // roster. That is a real hole and it is why the count is now kept
+            // here too.
+            //
+            // IT IS NOT A DEMONSTRATED FIX for the intermittent failure this
+            // check has shown twice in one day -- once on a CI macOS runner,
+            // once in a local gate with two VMs and an emulator alive. Six
+            // runs under artificial load passed both with this change and
+            // without it, so the original failure was not reproduced and this
+            // removes a plausible cause rather than a proven one. If it
+            // recurs, that is the thing to know.
             for (int i = 0; i < 50; ++i) {
                 host.update();
                 for (const NetPeer& p : host.lobby().roster()) { (void)p.peerId; reads++; }
+                if (host.lobby().members().size() != lastSeen) {
+                    lastSeen = host.lobby().members().size();
+                    seatChanges++;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
             break;
