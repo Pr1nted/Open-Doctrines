@@ -269,7 +269,13 @@ jobs:
             # declined to do, what leaves this VM must be the entry points and
             # nothing else -- a stray symbol is what points a reader at what
             # this library does. Same two rules as the android check.
-            GOT="$(nm -g --defined-only out/libodseal.a 2>/dev/null | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
+            # Plain `nm -g`, and its errors are NOT hidden. --defined-only is
+            # a GNU long option OpenBSD's nm does not take; with stderr sent
+            # to /dev/null the check simply saw an empty list and reported
+            # "missing entry point: od_fz" about an archive that was fine.
+            # Filtering on T already excludes undefined symbols, which is all
+            # --defined-only was doing.
+            GOT="$(nm -g out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
             echo "exports: $GOT"
             for sym in od_fz od_k9 od_s7 od_v3; do
               printf '%s\n' $GOT | grep -qx "$sym" || { echo "missing entry point: $sym"; exit 1; }
