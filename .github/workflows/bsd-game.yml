@@ -77,6 +77,17 @@ jobs:
               -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
               -DOD_DISCORD_APP_ID=1547303703370014830
             cmake --build build --target OpenDoctrines -j 4
+
+            # AND THE HEADLESS SERVER, so something can actually be RUN here.
+            # The game itself needs an OpenGL window and there is no display
+            # in a VM on a CI runner, so a build that is only ever compiled is
+            # all a BSD job could otherwise claim. The server is the same
+            # engine with raylib stubbed out: --check loads a shipped map,
+            # builds a world and exits, which exercises the map reader, the
+            # save layer, the AI tables and the text layer odseal feeds.
+            cmake --build build --target OpenDoctrinesServer -j 4
+            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check
+
             python3 tools/package.py --binary build/OpenDoctrines \
                                      --out dist/OpenDoctrines-freebsd-amd64 --zip
             ls -lh dist/
@@ -118,6 +129,12 @@ jobs:
               -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
               -DOD_DISCORD_APP_ID=1547303703370014830
             cmake --build build --target OpenDoctrines -j 4
+
+            # See the note in the FreeBSD block: this is the only thing in a
+            # BSD job that RUNS rather than compiles.
+            cmake --build build --target OpenDoctrinesServer -j 4
+            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check
+
             python3 tools/package.py --binary build/OpenDoctrines \
                                      --out dist/OpenDoctrines-openbsd-amd64 --zip
             ls -lh dist/
