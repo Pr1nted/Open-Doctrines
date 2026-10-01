@@ -33329,3 +33329,116 @@ much as to anything else -- but it cost four minutes against two hours, and it w
 PATHS TOUCHED: src/ai/AISystem.cpp (comment only; the gate's default is unchanged), docs/ai/LOOP_JOURNAL.md,
 docs/ai/BACKLOG.md.
 PENDING COMMIT: this re-measurement.
+
+## 444 — iteration: the supply term on the BAR ONLY, with the sizing left alone
+
+PRE-REGISTERED. Journal 443 named the prerequisite and this does exactly that, nothing else. `margin` serves a gate
+and a divisor; the supply correction is right for the gate and backwards through the divisor, so the two uses are
+separated and supply is applied to the gate alone.
+
+    OD_SUPPLY_GATE=1 (default off):
+      gateMargin = margin * supplyFactor(me, target) / supplyFactor(them, target)
+      if (gateMargin <= 1.05) continue;        <- the bar, now the resolver's own odds
+      cands.push_back({... margin ...});        <- RAW margin, so 0.75*SAFETY/margin is untouched
+
+So the AI declines the attacks the resolver would lose, and commits exactly what it commits today to the ones it still
+makes. That is the one change; `OD_SUPPLY_MARGIN` stays off and untouched.
+
+PREDICTION, committed, and more modest than journal 443's: **the mechanism moves as intended -- assaults DOWN and
+repulses DOWN together, which is the signature 443 failed to produce (it had assaults flat and repulses up 18%) -- and
+the seats land inside their floors.** On the seats I expect rush improved-or-unchanged and rung flat to slightly down,
+because blanket caution rescued collapsing seats and ruined winning ones (1.40 bar: China 5 -> 77, France at war
+97 -> 29) and this is a narrower version of the same thing.
+
+FALSIFIERS, named now: if repulses rise again, the sizing was not the mechanism and my journal 443 explanation is
+wrong -- which matters more than this arm, because that explanation is in a memory. If rush gets worse, selective
+caution is not the answer either and the whole "help the collapsing seat by attacking less badly" family is spent.
+
+VERDICT RULE: recommend ON only if rush improves and rung does not clear its floor downward. Same rule as 443, and for
+the same reason -- rush is the only seat left in the reject rule.
+
+PRIOR, stated honestly: five iterations in a row have produced no gain. The base rate here is a null and I am not
+expecting this to be the exception; what it settles either way is whether 443's dual-use explanation is right.
+
+MECHANISM, one rush seed, 400 turns:
+
+                  assaults   repulsed   repulse RATE   decisions   seat
+  SUPPLY_GATE=0     78,643     3,983       5.06%        257,604     0.4
+  SUPPLY_GATE=1     85,003     4,053       4.77%        211,360    10.1
+
+**MY PREDICTED DIRECTION FOR THE ASSAULT COUNT WAS WRONG, and the reason is worth more than the prediction.** I said
+assaults down and repulses down. Assaults went UP, 78,643 -> 85,003. Because `gateMargin = margin * aS / dS` is not a
+one-way brake: it LOWERS the bar's view of an attack when I am the worse-supplied side and RAISES it when the
+DEFENDER is, so it opens attacks into poorly-supplied provinces as readily as it closes attacks out of poorly-supplied
+ones. I had this filed as selective caution. It is not caution at all -- it is selection, in both directions.
+
+What did move as hoped is the QUALITY: the repulse rate falls 5.06% -> 4.77% while the AI makes 8% more attacks. That
+is the signature 443 could not produce -- there the assault count was flat and repulses rose 18%. So **journal 443's
+dual-use explanation survives its first test**: separating the threshold from the divisor changes the sign of the
+quality effect, which is what that explanation predicts and nothing else here does.
+
+Seat 0.4 -> 10.1 on this seed. That is a rush seed and rush is bistable, so it is one coin, recorded and not read --
+the same discipline journal 438 applied when one seed flattered a change that the bench then called a dead null.
+
+## 445 — a comprehension test for the LLM advisor (user asked), and three defects it found in itself
+
+The advisor has been judged on whether its letters read well. That is not comprehension: journal 436 found the entire
+our_* family answering "There is no country by that name in this world" while every letter still read plausibly.
+`tools/llm_comprehend.py` scores comprehension directly against ground truth, in four blocks:
+
+  RULES        mechanics with one right answer, each citing the source that settles it. CLOSED BOOK by nature -- these
+               are a custom game's rules and no model has read them, so this is a baseline for the open-book case.
+  READING      the game's OWN precomputed tool answers as context, which is exactly what Game_Llm.cpp hands a model
+               before it writes. A failure here is a failure in play.
+  TOOL         which real tool answers a question. The catalogue is PARSED from Advisor.cpp, so the test cannot drift
+               from what the game offers -- the same discipline as check_llm_tools.py.
+  CONSEQUENCE  causal chains this project has measured, where the plausible answer and the true one differ.
+
+**EVERY SCORE IS AGAINST ITS CHANCE LEVEL**, 25% on four options, because a bare percentage hides it
+([[read-an-effect-against-its-chance-value]]). `--open-book` supplies the real catalogue, and the gap between the two
+modes is how much of any failure is OUR WORDING rather than the model.
+
+RESULT, llama3.1:8b, the model data/config.json already points at:
+
+    RULES         5/6    83.3%     chance 25%
+    CONSEQUENCE   4/4   100.0%
+    TOOL          6/6   100.0%
+    READING       6/6   100.0%
+    TOTAL        21/22   95.5%
+
+The one miss is the monument dismantle cost -- a flat 50 -- which is unguessable trivia about a custom game. Closed
+book 15/16 against open book 14/16 on the no-state subset: one question, noise at n=16, so the catalogue neither helps
+nor hurts measurably yet.
+
+**THE TEST FOUND THREE DEFECTS, ALL OF THEM MINE, AND THAT IS THE PART WORTH READING.** Each one read as a finding
+about the model:
+
+  1. **READING scored 2/6 and the briefing was never attached.** `run_block` took no context, so six questions asking
+     "per the briefing" arrived with no briefing. The model answered "the briefing does not say" four times, which was
+     CORRECT. Fixed: 2/6 -> 6/6. [[wiring-checks-are-not-execution]] pointed at the test itself.
+  2. **TOOL scored 4/6 on unfair distractors.** They were `tools[:3]` -- standing_with, who_is_fighting, strength_of,
+     all about other countries -- so a war question drew three near-synonyms and the "wrong" answer was defensible.
+     Spread deterministically instead: 4/6 -> 6/6. [[unequal-standards-fake-a-hit-rate]].
+  3. **The parser fed the model my own comment, asserting the wrong answer.** The description extractor pulled every
+     string literal from an entry INCLUDING those inside `//` comments. A comment beside `intend` recording that a
+     model had wrongly said "intend is a recording tool with no effect" was handed to the model, in open-book mode, as
+     part of the tool's description. It agreed. The run read as "our documentation misleads the model". Comments are
+     stripped now and a guard exits if `//` ever appears in a parsed description.
+
+A fourth was a question rather than code: the `intend` question offered "Nothing -- intend is a recording tool with no
+effect", whose first clause is TRUE (records=true) and second false. Two defensible options make a question measure
+its writer. Rewritten to be exclusive on the one thing tested, and the model then gets it right closed-book.
+
+ALSO CHANGED, and honestly labelled: `intend`'s description now leads with the EFFECT -- "your government WEIGHS what
+you record here" -- instead of opening with two disclaimers and never saying the lean is weighed at all. That was
+prompted by the test, and **the test did not confirm an improvement**: the model answered correctly before and after,
+once the question was fair. Kept because the old wording genuinely never stated the effect, and recorded as
+unvalidated rather than claimed as a win.
+
+WHAT THIS SAYS ABOUT LLM COMPREHENSION, plainly: an 8B local model reads this game's briefings correctly, picks the
+right tool from 21 reliably, and reasons correctly about consequences this project needed measurements to settle. What
+it cannot do is know unstated rules. So the lever for advisor quality is **what the prompt tells it**, not the model.
+
+PATHS TOUCHED: tools/llm_comprehend.py (new), src/llm/Advisor.cpp (intend wording), docs/ai/LOOP_JOURNAL.md.
+NOT wired into tests/run_all.sh: it needs a live endpoint and ~2 minutes, and a suite that fails when Ollama is not
+running would be a suite people learn to ignore ([[a-skip-is-not-a-pass]]). Run it by hand; the JSON is for tracking.

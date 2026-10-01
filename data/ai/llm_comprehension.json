@@ -1,0 +1,215 @@
+{
+  "endpoint": "http://127.0.0.1:11434/v1",
+  "model": "llama3.1:8b",
+  "blocks": {
+    "RULES": {
+      "right": 5,
+      "n": 6,
+      "pct": 83.33333333333333,
+      "rows": [
+        {
+          "q": "Two armies fight over a province. Both stacks are far larger than the province's",
+          "got": "C",
+          "want": "C",
+          "src": "resolveAssault caps both sides at combatWidth(pid)",
+          "chose": "Nothing \u2014 above the frontage both sides' power is capped",
+          "wanted": "Nothing \u2014 above the frontage both sides' power is capped"
+        },
+        {
+          "q": "The frontage a force consumes is computed how?",
+          "got": "B",
+          "want": "B",
+          "src": "Game_TurnLogic.cpp: 'the frontage is consumed by men WEIGHTED BY THEIR KIND'",
+          "chose": "By headcount weighted by troop kind \u2014 mechanised take less than militia",
+          "wanted": "By headcount weighted by troop kind \u2014 mechanised take less than militia"
+        },
+        {
+          "q": "A country runs its 1st, 2nd and 3rd monument. What does the THIRD active slot co",
+          "got": "C",
+          "want": "C",
+          "src": "odmon::slotCost = 50 + 25*T(n-1): 50, 75, 125, 200, 300, 425",
+          "chose": "125",
+          "wanted": "125"
+        },
+        {
+          "q": "Taking a monument down costs:",
+          "got": "D",
+          "want": "C",
+          "src": "Monuments.h kDismantleCost = 50.0f, 'a decision, not a sale'",
+          "chose": "It scales with the monument's level",
+          "wanted": "A flat 50, the same for every kind"
+        },
+        {
+          "q": "You record 'more industry' with the intend tool. Does that change what your gove",
+          "got": "B",
+          "want": "B",
+          "src": "Advisor.cpp intend + Game::applyLlmLean: a bounded, clamped thumb on the scale",
+          "chose": "Yes \u2014 it biases what the ministries are inclined to do, though they still choose",
+          "wanted": "Yes \u2014 it biases what the ministries are inclined to do, though they still choose"
+        },
+        {
+          "q": "A province's ethnic composition is given as shares. To find how many people belo",
+          "got": "B",
+          "want": "B",
+          "src": "minorities partition a province; shares total 100%, never summed raw",
+          "chose": "Take that group's share of the province population \u2014 the shares partition it",
+          "wanted": "Take that group's share of the province population \u2014 the shares partition it"
+        }
+      ]
+    },
+    "CONSEQUENCE": {
+      "right": 4,
+      "n": 4,
+      "pct": 100.0,
+      "rows": [
+        {
+          "q": "A country at war has an empty treasury but a large population and plenty of manp",
+          "got": "B",
+          "want": "B",
+          "src": "journal 438: raising the manpower cap is a null; budgetCount binds",
+          "chose": "The money \u2014 an order is sized against the treasury, which is empty",
+          "wanted": "The money \u2014 an order is sized against the treasury, which is empty"
+        },
+        {
+          "q": "An AI country spends 41% of its income on research and under 1% on its army, and",
+          "got": "B",
+          "want": "B",
+          "src": "OD_RESEARCH_BAR 0.35 and 0.25 scored 262 and 202 against 435 for 0.45",
+          "chose": "Not obviously help \u2014 research compounds harder at this horizon, and it was measured as a loss",
+          "wanted": "Not obviously help \u2014 research compounds harder at this horizon, and it was measured as a loss"
+        },
+        {
+          "q": "A small country under permanent attack from one neighbour has fallen from 17 pro",
+          "got": "C",
+          "want": "C",
+          "src": "journal 411: the hood seat is decided before turn 40, nine arms span 0.034",
+          "chose": "Barely move \u2014 the outcome was decided before the rule can act",
+          "wanted": "Barely move \u2014 the outcome was decided before the rule can act"
+        },
+        {
+          "q": "A country is funding pacification heavily and goes bankrupt. Bankruptcy cuts the",
+          "got": "B",
+          "want": "B",
+          "src": "memory chn-dies-to-rebellion: bankruptcy -> minority cuts -> unrest",
+          "chose": "Their alignment drifts down, and unrest rises",
+          "wanted": "Their alignment drifts down, and unrest rises"
+        }
+      ]
+    },
+    "TOOL": {
+      "right": 6,
+      "n": 6,
+      "pct": 100.0,
+      "rows": [
+        {
+          "q": "You want to know whether your own country can afford a war you are considering. ",
+          "got": "A",
+          "want": "A",
+          "src": "parsed from Advisor.cpp",
+          "chose": "our_economy",
+          "wanted": "our_economy"
+        },
+        {
+          "q": "You want to know what great works your country has raised and which it is paying",
+          "got": "B",
+          "want": "B",
+          "src": "parsed from Advisor.cpp",
+          "chose": "our_monuments",
+          "wanted": "our_monuments"
+        },
+        {
+          "q": "You want to know what standing agreement -- alliance, pact or none -- you have w",
+          "got": "C",
+          "want": "C",
+          "src": "parsed from Advisor.cpp",
+          "chose": "standing_with",
+          "wanted": "standing_with"
+        },
+        {
+          "q": "You want to know where your own army is posted and what kind of troops they are.",
+          "got": "B",
+          "want": "B",
+          "src": "parsed from Advisor.cpp",
+          "chose": "our_forces",
+          "wanted": "our_forces"
+        },
+        {
+          "q": "You want to record, in your own words, what your country is trying to achieve. W",
+          "got": "C",
+          "want": "C",
+          "src": "parsed from Advisor.cpp",
+          "chose": "set_goal",
+          "wanted": "set_goal"
+        },
+        {
+          "q": "You want to know what land your own country claims but does not hold. Which tool",
+          "got": "A",
+          "want": "A",
+          "src": "parsed from Advisor.cpp",
+          "chose": "our_claims",
+          "wanted": "our_claims"
+        }
+      ]
+    },
+    "READING": {
+      "right": 6,
+      "n": 6,
+      "pct": 100.0,
+      "rows": [
+        {
+          "q": "Given the briefing, your country is best described as:",
+          "got": "A",
+          "want": "A",
+          "src": "our_territory",
+          "chose": "a small country",
+          "wanted": "a small country"
+        },
+        {
+          "q": "Does your country have ports on the sea, according to the briefing?",
+          "got": "A",
+          "want": "A",
+          "src": "our_territory",
+          "chose": "Yes",
+          "wanted": "Yes"
+        },
+        {
+          "q": "How many great works has your country raised, per the briefing?",
+          "got": "A",
+          "want": "A",
+          "src": "our_monuments",
+          "chose": "None",
+          "wanted": "None"
+        },
+        {
+          "q": "What does the briefing say about your materiel?",
+          "got": "C",
+          "want": "C",
+          "src": "our_stockpiles",
+          "chose": "Your ministries keep no separate books for materiel in this world",
+          "wanted": "Your ministries keep no separate books for materiel in this world"
+        },
+        {
+          "q": "Per the briefing, your treasury position each turn is:",
+          "got": "A",
+          "want": "A",
+          "src": "our_economy",
+          "chose": "Ahead \u2014 you are putting money by or a little ahead",
+          "wanted": "Ahead \u2014 you are putting money by or a little ahead"
+        },
+        {
+          "q": "What share of the country's earnings do your institutes take, per the briefing?",
+          "got": "C",
+          "want": "C",
+          "src": "our_research",
+          "chose": "Very little or nothing",
+          "wanted": "Very little or nothing"
+        }
+      ]
+    }
+  },
+  "total": {
+    "right": 21,
+    "n": 22,
+    "pct": 95.45454545454545
+  }
+}

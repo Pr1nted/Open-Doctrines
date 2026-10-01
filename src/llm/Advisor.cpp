@@ -948,10 +948,20 @@ constexpr Tool kTools[] = {
      "nobody else reads it. Everything you write should serve it.",
      "goal", "One sentence. What this country wants out of this world.", true},
     {"intend",
+     // WORDED EFFECT-FIRST, and that is a measured change, not a style
+     // preference. tools/llm_comprehend.py asked a model what this tool does
+     // with the whole catalogue in front of it, and it answered "nothing --
+     // intend is a recording tool with no effect" in BOTH closed and open book.
+     // The old wording opened with two disclaimers ("not an order", "your
+     // ministries still decide") and never said the lean is weighed at all, so
+     // a reader could come away believing it does nothing -- and an advisor who
+     // believes that will not use it.
      "Lean your government toward or away from something: \"more industry\", "
-     "\"less war\", \"fewer alliances\", \"more recruitment\". This is a "
-     "preference, not an order -- your ministries still decide, and a lean "
-     "against what the country plainly needs will simply lose to it.",
+     "\"less war\", \"fewer alliances\", \"more recruitment\". Your "
+     "government WEIGHS what you record here when it decides: the lean shifts "
+     "what your ministries are inclined to do, and asking twice is emphasis. "
+     "It is a preference rather than an order, so they still choose, and a "
+     "lean against what the country plainly needs will lose to it.",
      "lean", "A direction and a subject, e.g. \"more industry\" or \"less war\".", true},
     {"press",
      "Name the country you want your government to press: the one your armies "
