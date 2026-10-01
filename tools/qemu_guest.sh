@@ -326,8 +326,16 @@ provision_freebsd() {
     note "provision: FreeBSD packages"
     # No fpm, no appimagetool and no dpkg on FreeBSD: a FreeBSD guest is for
     # building and running the game, not for making Linux packages.
-    $run 'sudo pkg install -y cmake ninja git pkgconf mesa-libs libX11 \
-            libXrandr libXi libXcursor libXinerama libxkbcommon wayland' >/dev/null 2>&1 \
+    # libglvnd as well as mesa-libs: mesa-libs ships the LIBRARY, libglvnd
+    # ships GL/gl.h. Without it raylib's find_package leaves
+    # OPENGL_INCLUDE_DIR as NOTFOUND and the generate step fails with a path
+    # that explains nothing. It is easy to miss here because the SERVER target
+    # stubs raylib out and needs no GL at all -- a local configure was happy
+    # for an afternoon while the CI game build was not.
+    $run 'sudo pkg install -y cmake ninja git pkgconf python3 \
+            libglvnd mesa-libs xorgproto \
+            libX11 libXext libXrandr libXi libXcursor libXinerama \
+            libxkbcommon wayland' >/dev/null 2>&1 \
         || { note "provision: pkg failed"; return 1; }
     $run 'for b in cmake ninja cc; do command -v $b >/dev/null || echo "MISSING $b"; done'
 }
