@@ -25,7 +25,18 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG=io.itch.pr1nted.opendoctrines
 ACTIVITY="$PKG/android.app.NativeActivity"
-AVD="${OD_ANDROID_AVD:-od_test}"
+# A PHONE-SHAPED AVD, and the shape matters more than it sounds.
+#
+# The first emulator this ran on was called pixel_6 and configured with a
+# 1920x1080 landscape panel, which Android treats as a large screen: it drew a
+# persistent taskbar over the bottom of the main menu and took a 128px band
+# off the top. That looked exactly like a fullscreen bug in the game, and a
+# manifest fix for it was written and then thrown away -- on a real 1080x2400
+# Pixel 6 profile there is no taskbar and nothing overlaps.
+#
+# So the default is created from the device profile, which sets the geometry,
+# rather than from whatever AVD happens to exist.
+AVD="${OD_ANDROID_AVD:-od_phone}"
 APK="${1:-$ROOT/build-android/OpenDoctrines.apk}"
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools}}"
@@ -51,7 +62,7 @@ if ! "$ADB" devices | grep -q "emulator-.*device$"; then
         img=$(ls -d "$SDK"/system-images/*/*/* 2>/dev/null | head -1)
         [ -n "$img" ] || { echo "no system image installed -- sdkmanager 'system-images;android-34;google_apis;arm64-v8a'"; exit 1; }
         tag=$(printf '%s' "$img" | awk -F/ '{print $(NF-2)";"$(NF-1)";"$NF}')
-        echo no | "$AVDMAN" create avd -n "$AVD" -k "system-images;$tag" --device pixel_6 >/dev/null 2>&1 \
+        echo no | "$AVDMAN" create avd -n "$AVD" -k "system-images;$tag" --device pixel_6 --force >/dev/null 2>&1 \
             || { echo "could not create the AVD"; exit 1; }
     fi
     echo "  booting '$AVD' (headless)"
@@ -83,7 +94,26 @@ esac
 
 # ── run ──────────────────────────────────────────────────────────────────────
 sec "starting it"
+# CAPTURE CONTINUOUSLY, FROM BEFORE THE LAUNCH.
+#
+# This used to start the app and dump `logcat -d` at the end, which worked on
+# a quiet device and lost everything on a busy one: the phone emulator writes
+# twenty thousand lines in a minute, the ring buffer rolls, and the raylib
+# lines from the first half-second are gone by the time anything reads them.
+# The check then reported "it got no GL context" about an app whose GL context
+# came up 384 ms after start.
+#
+# A follower started BEFORE `am start` cannot miss them, whatever the device
+# does afterwards. The bigger buffer is belt and braces.
+log="${OD_ANDROID_LOG:-/tmp/od-android-logcat.txt}"
+"$ADB" logcat -G 16M >/dev/null 2>&1 || true
 "$ADB" logcat -c >/dev/null 2>&1 || true
+: > "$log"
+"$ADB" logcat > "$log" 2>/dev/null &
+LOGCAT_PID=$!
+trap 'kill "$LOGCAT_PID" 2>/dev/null' EXIT
+sleep 1
+
 "$ADB" shell am start -n "$ACTIVITY" >/dev/null 2>&1
 
 # Startup unpacks assets and builds a font atlas, so it is not instant. Poll
@@ -95,21 +125,27 @@ while [ -z "$pid" ] && [ "$waited" -lt 90 ]; do
 done
 [ -n "$pid" ] && ok "the process is running (pid $pid)" || bad "the process is running" "never appeared"
 
-# Give it a while to get through init, then ask whether it is STILL running --
-# a native activity that dies after two seconds would otherwise look identical
-# to one that started.
-sleep 20
+# WAIT FOR THE WINDOW TO BE UP, rather than for a fixed number of seconds.
+#
+# Twenty seconds was enough on one emulator and not on another: the phone
+# profile was still loading textures and music at seventy-five. A fixed sleep
+# reports a game that works as a game that does not draw, and the screenshot
+# below catches the launcher instead of the menu.
+up=0
+for _ in $(seq 1 "${OD_ANDROID_WAIT:-60}"); do
+    grep -q "GL: OpenGL device information" "$log" 2>/dev/null && { up=1; break; }
+    sleep 2
+done
+
 still=$("$ADB" shell pidof "$PKG" 2>/dev/null | tr -d '\r')
-[ -n "$still" ] && ok "and it is still running twenty seconds later" \
-                || bad "and it is still running twenty seconds later" "it exited"
+[ -n "$still" ] && ok "it is still running once the window is up" \
+                || bad "it is still running once the window is up" "it exited"
 
 # TO A FILE, not a shell variable. The first version captured logcat into
 # $log and grepped it with printf, and every pattern missed -- on a log that
 # demonstrably contained "Initializing raylib 5.5". A whole device's logcat is
 # megabytes; this is not the shape to hold it in. The file is also left behind,
 # which is what you want when a check fails and you have to ask why.
-log="${OD_ANDROID_LOG:-/tmp/od-android-logcat.txt}"
-"$ADB" logcat -d > "$log" 2>/dev/null
 printf '  (logcat: %s lines -> %s)\n' "$(wc -l < "$log" | tr -d ' ')" "$log"
 
 # raylib's own TraceLog goes to logcat under the "raylib" tag; the game's
@@ -133,29 +169,43 @@ crash=$(grep -E "Fatal signal|>>> $PKG <<<|FATAL EXCEPTION" "$log" | head -1)
 # ── did it DRAW ──────────────────────────────────────────────────────────────
 sec "did anything reach the screen"
 shot="${OD_ANDROID_SHOT:-/tmp/od-android.png}"
-"$ADB" exec-out screencap -p > "$shot" 2>/dev/null
-if [ -s "$shot" ]; then
-    ok "a screenshot came back ($(du -h "$shot" | cut -f1)) -> $shot"
-    # A black frame is what a dead renderer gives, and it is also what a
-    # loading screen gives -- so this only claims that SOMETHING was drawn.
-    verdict=$(python3 - "$shot" <<'PY'
+
+# POLLED, for the same reason the wait above is polled: a slow device is still
+# on its loading screen when a fast one is already at the menu, and a single
+# early shot photographs whatever was in front -- which the first time was the
+# LAUNCHER, 92.7% white, and it passed a 99.5%-one-colour test comfortably.
+# Hence 90%: a home screen is mostly one colour too.
+content() {
+    python3 - "$1" <<'ANALYSE' 2>/dev/null
 import sys
 try:
     from PIL import Image
 except ImportError:
-    print("skip no Pillow"); raise SystemExit
+    print("skip no-Pillow"); raise SystemExit
 im = Image.open(sys.argv[1]).convert("RGB")
 cols = im.getcolors(maxcolors=1 << 24) or []
 total = sum(c for c, _ in cols)
 top, topc = max(cols, key=lambda p: p[0]) if cols else (0, (0, 0, 0))
-print("%s %d %.1f %s" % ("ok" if len(cols) > 8 and top / total < 0.995 else "flat",
-                         len(cols), 100.0 * top / total, topc))
-PY
-)
+print("%s %d %.1f" % ("ok" if len(cols) > 8 and top / total < 0.90 else "flat",
+                      len(cols), 100.0 * top / total))
+ANALYSE
+}
+
+verdict=""
+for _ in $(seq 1 "${OD_ANDROID_SHOTS:-24}"); do
+    "$ADB" exec-out screencap -p > "$shot" 2>/dev/null
+    verdict=$(content "$shot")
+    case "$verdict" in ok*|skip*) break ;; esac
+    sleep 5
+done
+
+if [ -s "$shot" ]; then
+    ok "a screenshot came back ($(du -h "$shot" | cut -f1)) -> $shot"
+    # shellcheck disable=SC2086
     set -- $verdict
-    case "$1" in
-        ok)   ok "the frame has real content ($2 colours, most common $3% $4)" ;;
-        flat) bad "the frame has real content" "$2 colours, $3% one colour -- a blank screen" ;;
+    case "${1:-}" in
+        ok)   ok "the frame has real content ($2 colours, most common $3%)" ;;
+        flat) bad "the frame has real content" "$2 colours, $3% one colour -- loading screen or launcher" ;;
         *)    printf '  skip  colour analysis (%s)\n' "$verdict" ;;
     esac
 else
