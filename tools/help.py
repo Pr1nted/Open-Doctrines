@@ -43,6 +43,10 @@ GROUPS = [
         # nothing of the player's with it. CI cannot ask any of that -- it runs
         # on the machine that built the game.
         "linux_vm_test.sh",
+        # The runs that gate kept, in a browser, the way CI shows them. A
+        # terminal report answers "did it pass"; it cannot answer "did this
+        # used to pass" or "which stage is it on now".
+        "preflight_dashboard.py",
         # The gate in front of all of it: the suite, a real game, the packages
         # installed in a guest, every guest booted. CI runs on the machine that
         # built the thing, which is the one condition a packaging bug cannot

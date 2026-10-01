@@ -557,7 +557,32 @@ int main(int argc, char** argv) {
     }
 
     if (!dataOverride.empty()) config.dataDir = dataOverride;
-    if (!mapOverride.empty())  config.map = mapOverride;
+
+    // AN EXPLICIT --map CLEARS A load-save THE CONFIG FILE IS CARRYING.
+    //
+    // Game_Server.cpp starts a new world only when loadSave is empty, so
+    // loadSave silently outranks map. That would be a defensible precedence
+    // between two settings in one file -- except the server WRITES load-save
+    // into its own config when it makes a world. So:
+    //
+    //   run once, resume a save, and the config now names that save forever;
+    //   `--map 1939` afterwards prints nothing, starts nothing new, and
+    //   quietly resumes the old world instead.
+    //
+    // Found by asking a Linux guest for a fresh 1939 world and getting a
+    // 1642-province modern one. A flag given on the command line beats a
+    // file: that is what a command line is for. Both together is not a
+    // contradiction -- --load names the save, --map names nothing it
+    // conflicts with -- so only an unaccompanied --map clears it.
+    if (!mapOverride.empty()) {
+        config.map = mapOverride;
+        if (loadOverride.empty() && !config.loadSave.empty()) {
+            std::cerr << "[config] --map " << mapOverride
+                      << " overrides load-save=" << config.loadSave
+                      << " from the config file: starting a new world.\n";
+            config.loadSave.clear();
+        }
+    }
     if (!loadOverride.empty()) config.loadSave = loadOverride;
     if (!nameOverride.empty()) config.sessionName = nameOverride;
     if (portOverride >= 0 && portOverride <= 65535) config.port = (uint16_t)portOverride;

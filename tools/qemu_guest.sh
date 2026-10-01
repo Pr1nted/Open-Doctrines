@@ -6,6 +6,7 @@
 #   tools/qemu_guest.sh wait   <name> [secs]  block until ssh answers
 #   tools/qemu_guest.sh ssh    <name> [cmd]   run something in it
 #   tools/qemu_guest.sh push   <name> <src> <dst>
+#   tools/qemu_guest.sh provision <name> <role>  install what a role needs
 #   tools/qemu_guest.sh sshenv <name>         exports so other tools can reach it
 #   tools/qemu_guest.sh console <name> [n]    the last n lines of its boot
 #   tools/qemu_guest.sh stop   <name>
@@ -227,6 +228,105 @@ cmd_push() {
 # So: eval "$(tools/qemu_guest.sh sshenv pf-debian)" and the ssh and scp in
 # those tools pick up the options they need from the environment. ssh takes
 # -p for the port and scp takes -P, which is why there are two of these.
+# WHAT A GUEST NEEDS, WRITTEN DOWN RATHER THAN TYPED IN ONCE.
+#
+# The packages guest was provisioned by hand, and a reboot took it apart: the
+# appimagetool on it was a two-line wrapper execing /tmp/appimagetool, which
+# survives exactly until /tmp is cleared. Everything then failed with
+#
+#   /usr/local/bin/appimagetool: 2: exec: /tmp/appimagetool: not found
+#
+# and nine checks went red for a reason that had nothing to do with the game.
+# A gate whose guests cannot be rebuilt is not a gate -- the first time one is
+# lost, the gate is lost with it.
+#
+# Idempotent and cheap on a second run: every step checks before it installs,
+# so a stage can call this every time rather than remembering whether it has.
+#
+#   roles: build     compilers, cmake, and the libraries raylib links
+#          packages  fpm, rpm, appimagetool, fuse
+#          both      the two together
+cmd_provision() {
+    local name="$1" role="${2:-both}"
+    local os; os=$(cat "$(gdir "$name")/os" 2>/dev/null || echo debian12)
+    local p; p=$(port_for "$name")
+    local R; R="ssh $(ssh_opts) -p $p odtest@127.0.0.1"
+
+    case "$os" in
+      freebsd*) provision_freebsd "$R" "$role" ;;
+      *)        provision_debian  "$R" "$role" ;;
+    esac
+}
+
+provision_debian() {
+    local R="$1" role="$2"
+    # shellcheck disable=SC2086
+    local run="$R"
+    $run 'sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq' >/dev/null 2>&1
+
+    if [ "$role" = build ] || [ "$role" = both ]; then
+        note "provision: build tools and raylib's libraries"
+        $run 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+                build-essential cmake ninja-build git pkg-config \
+                libasound2-dev libx11-dev libxrandr-dev libxi-dev \
+                libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+                libxinerama-dev libwayland-dev libxkbcommon-dev' >/dev/null 2>&1 \
+            || { note "provision: apt failed (build)"; return 1; }
+    fi
+
+    if [ "$role" = packages ] || [ "$role" = both ]; then
+        note "provision: packaging tools"
+        # fuse for the AppImage's own mount, rpm for fpm's rpm output,
+        # ruby+dev because fpm is a gem with native extensions.
+        $run 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+                ruby ruby-dev rpm fuse squashfs-tools file curl' >/dev/null 2>&1 \
+            || { note "provision: apt failed (packages)"; return 1; }
+        $run 'command -v fpm >/dev/null' \
+            || { note "provision: installing fpm"; $run 'sudo gem install --no-document fpm' >/dev/null 2>&1; }
+
+        # appimagetool is itself an AppImage. Kept in /usr/local/lib rather
+        # than /tmp -- see the comment above cmd_provision for what happens
+        # otherwise -- and run with --appimage-extract-and-run so it does not
+        # need FUSE to build something that does.
+        $run 'test -s /usr/local/lib/appimagetool.AppImage' || {
+            note "provision: fetching appimagetool"
+            $run 'set -e
+                a=$(uname -m)
+                sudo mkdir -p /usr/local/lib
+                sudo curl -fsSL --retry 3 -o /usr/local/lib/appimagetool.AppImage \
+                  "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$a.AppImage"
+                sudo chmod +x /usr/local/lib/appimagetool.AppImage
+                # A QUOTED HEREDOC, not printf with escapes. The wrapper has to
+                # contain a literal "$@", and this text passes through a bash
+                # single-quoted string, ssh, and a remote shell before anything
+                # writes it. Two attempts at escaping that produced a wrapper
+                # reading `--appimage-extract-and-run ""`, which silently drops
+                # every argument -- appimagetool then ran with no AppDir and
+                # the failure surfaced nowhere near here. <<"EOS" expands
+                # nothing, so there is nothing left to get wrong.
+                sudo tee /usr/local/bin/appimagetool >/dev/null <<"EOS"
+#!/bin/sh
+exec /usr/local/lib/appimagetool.AppImage --appimage-extract-and-run "$@"
+EOS
+                sudo chmod +x /usr/local/bin/appimagetool' >/dev/null 2>&1 \
+            || { note "provision: could not install appimagetool"; return 1; }
+        }
+    fi
+
+    $run 'for b in cmake g++ fpm rpm appimagetool; do command -v $b >/dev/null || echo "MISSING $b"; done'
+}
+
+provision_freebsd() {
+    local run="$1" role="$2"
+    note "provision: FreeBSD packages"
+    # No fpm, no appimagetool and no dpkg on FreeBSD: a FreeBSD guest is for
+    # building and running the game, not for making Linux packages.
+    $run 'sudo pkg install -y cmake ninja git pkgconf mesa-libs libX11 \
+            libXrandr libXi libXcursor libXinerama libxkbcommon wayland' >/dev/null 2>&1 \
+        || { note "provision: pkg failed"; return 1; }
+    $run 'for b in cmake ninja cc; do command -v $b >/dev/null || echo "MISSING $b"; done'
+}
+
 cmd_sshenv() {
     local name="$1"
     local p; p=$(port_for "$name")
@@ -270,6 +370,7 @@ case "$sub" in
     wait)    cmd_wait "$@" ;;
     ssh)     cmd_ssh "$@" ;;
     push)    cmd_push "$@" ;;
+    provision) cmd_provision "$@" ;;
     sshenv)  cmd_sshenv "$@" ;;
     console) cmd_console "$@" ;;
     stop)    cmd_stop "$@" ;;

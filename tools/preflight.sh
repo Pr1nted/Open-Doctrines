@@ -35,7 +35,27 @@ ROOT="$(cd "$(dirname "$0")" && pwd)/.."
 ROOT="$(cd "$ROOT" && pwd)"
 GUEST="$ROOT/tools/qemu_guest.sh"
 LOGDIR="${OD_PREFLIGHT_LOGS:-$ROOT/build/preflight}"
-mkdir -p "$LOGDIR"
+
+# EVERY RUN IS KEPT, under its own directory, because the question a pipeline
+# gets asked most is "did this used to work" and a single overwritten log
+# cannot answer it. tools/preflight_dashboard.py reads these.
+RUNID="$(date +%Y%m%d-%H%M%S)"
+RUNDIR="$LOGDIR/runs/$RUNID"
+mkdir -p "$RUNDIR"
+ln -sfn "$RUNDIR" "$LOGDIR/latest"
+
+# TSV, written from bash, parsed by python. Bash cannot be trusted to emit
+# valid JSON -- one quote or backslash in a stage description and the
+# dashboard is reading a syntax error -- so the shell writes the dumbest
+# possible format and the reader does the escaping.
+meta() { printf '%s\t%s\n' "$1" "$2" >> "$RUNDIR/meta.tsv"; }
+meta id        "$RUNID"
+meta commit    "$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null)"
+meta subject   "$(cd "$ROOT" && git log -1 --format=%s 2>/dev/null | tr '\t' ' ')"
+meta branch    "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+meta host      "$(uname -sm)"
+meta started   "$(date +%s)"
+meta status    running
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -49,25 +69,40 @@ started=$(date +%s)
 # A stage reports pass, fail or skip, and a SKIP IS NOT A PASS -- the report
 # counts them separately and the exit code ignores them, so a pipeline that
 # quietly stopped running half its stages cannot read as green.
-record() { RESULTS+=("$1|$2|$3"); }
+record() {
+    RESULTS+=("$1|$2|$3")
+    # Written AS IT HAPPENS, not at the end: a run that takes twenty minutes
+    # and is watched in a browser has to show the stage it is on, and a run
+    # that is killed half way still leaves what it had got through.
+    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}" >> "$RUNDIR/stages.tsv"
+}
+
+# The stage that is running right now, so the page can show it spinning
+# rather than showing nothing until it finishes.
+running_now() { printf '%s\t%s\n' "$1" "$2" > "$RUNDIR/current"; }
+finish_now()  { rm -f "$RUNDIR/current"; }
 
 run_stage() {   # run_stage <name> <description> <command...>
     local name="$1" desc="$2"; shift 2
     bold "── $name: $desc"
-    local log="$LOGDIR/$name.log"
+    local log="$RUNDIR/$name.log"
+    running_now "$name" "$desc"
     local t0; t0=$(date +%s)
     if "$@" > "$log" 2>&1; then
         local dt=$(( $(date +%s) - t0 ))
-        green "   pass (${dt}s)"; record "$name" pass "${dt}s"
+        green "   pass (${dt}s)"; record "$name" pass "${dt}s" "$desc"
     else
         local dt=$(( $(date +%s) - t0 ))
         red "   FAIL (${dt}s) -- $log"
         tail -12 "$log" | sed 's/^/     /'
-        record "$name" fail "${dt}s"
+        record "$name" fail "${dt}s" "$desc"
     fi
+    finish_now
+    # Kept as a stable name too, so "the last packages log" is one path.
+    ln -sf "$log" "$LOGDIR/$name.log" 2>/dev/null || true
 }
 
-skip_stage() { local n="$1" why="$2"; bold "── $n: skipped"; note "$why"; record "$n" skip "$why"; }
+skip_stage() { local n="$1" why="$2"; bold "── $n: skipped"; note "$why"; record "$n" skip "$why" "$why"; }
 
 # ── the stages ───────────────────────────────────────────────────────────────
 
@@ -82,6 +117,10 @@ stage_packages() {
     "$GUEST" create "$g" debian12 2>/dev/null || true
     "$GUEST" start "$g" || return 1
     "$GUEST" wait  "$g" 240 || return 1
+    # Idempotent, and cheap once it has run: the guest this gate depends on
+    # must be rebuildable from nothing, or the first time one is lost the
+    # gate is lost with it.
+    "$GUEST" provision "$g" packages || return 1
     # The guest is on a forwarded port, not an ssh alias; this hands over the
     # options to reach it.
     eval "$("$GUEST" sshenv "$g")"
@@ -120,7 +159,8 @@ done
 wants() { [ -z "$only" ] || [ "$only" = "$1" ]; }
 
 bold "preflight: $(cd "$ROOT" && git rev-parse --short HEAD) on $(uname -sm)"
-note "logs in $LOGDIR"
+note "logs in $RUNDIR"
+note "watch it:  tools/preflight_dashboard.py --serve"
 echo
 
 wants suite   && run_stage suite   "the whole test suite"        stage_suite
@@ -152,10 +192,13 @@ for r in "${RESULTS[@]}"; do
     esac
 done
 echo
+meta finished "$(date +%s)"
 if [ "$fails" -gt 0 ]; then
+    meta status failed
     red "$fails stage(s) failed. Do not tag."
     exit 1
 fi
+meta status "$([ "$skips" -gt 0 ] && echo partial || echo passed)"
 if [ "$skips" -gt 0 ]; then
     printf '\033[33m%s\033[0m\n' "all run stages passed, but $skips were skipped -- that is not a green run"
     exit 0
