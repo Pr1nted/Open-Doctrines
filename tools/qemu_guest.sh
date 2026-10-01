@@ -102,9 +102,15 @@ cmd_create() {
     # cloud-init fails the WHOLE user when a listed group is absent, which is
     # how a guest comes up with no account and no way in.
     local groups pkgs
+    # FreeBSD DOES NOT SHIP SUDO, and cloud-init will write a sudoers rule for
+    # it regardless -- so the account comes up with permission to use a command
+    # that is not installed, and every privileged step fails with
+    # "sh: sudo: not found". It is a package there, so it is asked for.
     case "$os" in
-        freebsd*) groups="[wheel]";              pkgs="  - bash" ;;
-        *)        groups="[sudo, audio, video]"; pkgs="  - file" ;;
+        freebsd*) groups="[wheel]"
+                  pkgs="  - sudo"$'\n'"  - bash" ;;
+        *)        groups="[sudo, audio, video]"
+                  pkgs="  - file" ;;
     esac
     local w; w=$(mktemp -d)
     printf 'instance-id: %s\nlocal-hostname: %s\n' "$name" "$name" > "$w/meta-data"

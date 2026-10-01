@@ -64,15 +64,30 @@ jobs:
           - name: linux-x64
             os: ubuntu-22.04
             artifact: OpenDoctrines-linux-x64
-          # ARM LINUX IS A HOSTED RUNNER NOW. This used to be a job whose whole
-          # content was a warning that GitHub had no Arm Linux runner and that
-          # this release therefore shipped three platforms while the notes
-          # claimed four. GitHub added ubuntu-*-arm as public runners, free for
-          # public repositories, so the warning outlived the thing it warned
-          # about. Raspberry Pi, Asahi and every Arm cloud desktop get a build.
-          - name: linux-arm64
-            os: ubuntu-22.04-arm
-            artifact: OpenDoctrines-linux-arm64
+          # ── ARM LINUX IS BLOCKED ON ONE ARTEFACT, NOT ON A RUNNER ──
+          #
+          # GitHub hosts Arm Linux runners now (free for public repositories),
+          # so the old "no Arm runner" note was out of date and is gone. But
+          # the build still cannot run, and it fails at CONFIGURE rather than
+          # at compile:
+          #
+          #   odseal: no prebuilt for this platform and no source to build one.
+          #     looked for: third_party/odseal/linux-aarch64/libodseal.a
+          #
+          # odseal ships as a sealed archive, one per platform, and there is no
+          # linux-aarch64 one. Only a maintainer can produce it, because the
+          # source is not in this repository -- see docs/odseal.md.
+          #
+          # TO TURN THIS ON: run the "odseal prebuilts" workflow, which now has
+          # a linux-aarch64 entry, merge the branch it pushes, then uncomment
+          # the three lines below. Verified on a FreeBSD guest, which hits the
+          # same missing archive through the same elseif(UNIX) branch.
+          #
+          # Left commented rather than left failing: a matrix entry that stops
+          # every tag is worse than a platform that is honestly absent.
+          # - name: linux-arm64
+          #   os: ubuntu-22.04-arm
+          #   artifact: OpenDoctrines-linux-arm64
 
     steps:
       - uses: actions/checkout@v5
@@ -429,7 +444,8 @@ jobs:
       matrix:
         include:
           - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64 }
-          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64 }
+          # Paired with the linux-arm64 build above: re-enable both together.
+          # - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64 }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
