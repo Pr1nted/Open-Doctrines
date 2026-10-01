@@ -540,7 +540,7 @@ did **not** build them, before anything is pushed:
 | `qualify` | build it, play a game, load it back |
 | `packages` | the deb, rpm and AppImage install, run and uninstall in a clean Linux guest |
 | `guests` | every VM the plan needs actually boots |
-| `multiplayer` | each guest hosts for this machine and joins it — real cross-play |
+| `multiplayer` | six ordered pairs — each guest with this machine, and the guests with *each other*, this machine relaying only |
 | `saves` | each guest writes a save this machine reads, and reads one it wrote |
 | `mods` | the WASM runtime and mod manager, on platforms CI never reaches |
 | `android` | the APK installs, starts and draws on a real emulator |
