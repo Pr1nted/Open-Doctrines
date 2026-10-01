@@ -84,6 +84,11 @@ STAGES=(suite qualify packages guests multiplayer)
 # nothing is relaxed to allow it and nothing is exposed to the network.
 MOCK_PORT="${OD_PREFLIGHT_ISSUER_PORT:-9911}"
 GAME_PORT="${OD_PREFLIGHT_GAME_PORT:-7777}"
+
+# Which guests take part. A guest with no NetConnectTest built is reported as
+# a skip rather than a failure -- it has not been prepared, which is a
+# different thing from not working.
+MP_GUESTS="${OD_PREFLIGHT_MP_GUESTS:-pf-debian pf-freebsd}"
 declare -a RESULTS=()
 started=$(date +%s)
 
@@ -173,15 +178,8 @@ stage_guests() {
 stage_multiplayer() {
     command -v node >/dev/null || { echo "node is needed for the stand-in account service"; return 1; }
 
-    local g=pf-debian
-    "$GUEST" start "$g" >/dev/null 2>&1 || true
-    "$GUEST" wait  "$g" 240 || return 1
-    eval "$("$GUEST" sshenv "$g")"
-
     local bin="$ROOT/build/NetConnectTest"
     [ -x "$bin" ] || { echo "build NetConnectTest first: cmake --build build --target NetConnectTest"; return 1; }
-    ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'test -x ~/src/build/NetConnectTest' || {
-        echo "no NetConnectTest in $g -- run: tools/preflight.sh --only build"; return 1; }
 
     local issuer="http://localhost:$MOCK_PORT"
     local rc=0
@@ -200,14 +198,19 @@ stage_multiplayer() {
     # instead of reporting its result.
     cleanup_mp() {
         pkill -f "NetConnectTest .* host $GAME_PORT" 2>/dev/null || true
-        ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'pkill -f NetConnectTest' 2>/dev/null || true
         pkill -f "mock_issuer.mjs --port $MOCK_PORT" 2>/dev/null || true
         pkill -f "ssh .*-R $MOCK_PORT:127.0.0.1:$MOCK_PORT" 2>/dev/null || true
         rm -rf "$MP_DIR"
     }
     trap cleanup_mp RETURN
 
-    local mock_log="$MP_DIR/issuer.log"
+    node "$ROOT/tests/mock_issuer.mjs" --port "$MOCK_PORT" > "$MP_DIR/issuer.log" 2>&1 &
+    local waited=0
+    while ! grep -q "mock-issuer ready" "$MP_DIR/issuer.log" 2>/dev/null; do
+        sleep 0.2; waited=$((waited+1))
+        [ "$waited" -gt 100 ] && { echo "the stand-in account service never came up"; cat "$MP_DIR/issuer.log"; return 1; }
+    done
+    echo "stand-in account service on $issuer"
 
     # A host prints its join code while still Opening, and prints "Ctrl-C to
     # stop" only once it is Live. Waiting for the code alone raced the host
@@ -225,38 +228,61 @@ stage_multiplayer() {
         return 1
     }
 
-    node "$ROOT/tests/mock_issuer.mjs" --port "$MOCK_PORT" > "$mock_log" 2>&1 &
-    local waited=0
-    while ! grep -q "mock-issuer ready" "$mock_log" 2>/dev/null; do
-        sleep 0.2; waited=$((waited+1))
-        [ "$waited" -gt 100 ] && { echo "the stand-in account service never came up"; cat "$mock_log"; return 1; }
+    # EACH GUEST HOSTS ONCE, AND JOINS ONCE.
+    #
+    # tools/preflight_plan.py works out why this is the right shape: proving
+    # every ordered host/client pair across six platforms is thirty sessions;
+    # proving each platform can host and each can join, with the Mac as the
+    # fixed other end, is a handful. The Mac is free because it is always here.
+    # A LOCAL PORT PER GUEST, not one shared one.
+    #
+    # Every guest used to be reached on 7777, and `ssh -L 7777` for the second
+    # guest silently lost the race against the first one's tunnel, which had
+    # not finished dying. The Mac then connected to a forward pointing at a
+    # guest that had stopped hosting and reported "that server did not answer"
+    # -- about the wrong machine. Three pairs passed and the fourth failed,
+    # and nothing about the message said it was a leftover tunnel.
+    local idx=0
+    for g in $MP_GUESTS; do
+        idx=$((idx + 1))
+        local lport=$(( GAME_PORT + idx ))
+        "$GUEST" start "$g" >/dev/null 2>&1 || true
+        "$GUEST" wait  "$g" 300 || { echo "$g did not come up"; rc=1; continue; }
+        eval "$("$GUEST" sshenv "$g")"
+
+        if ! ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'test -x ~/src/build/NetConnectTest'; then
+            echo "  skip  $g has no NetConnectTest built"
+            continue
+        fi
+
+        echo
+        echo "== this machine hosts, $g joins =="
+        "$bin" "$issuer" host "$GAME_PORT" --all > "$MP_DIR/$g-machost.log" 2>&1 &
+        local code
+        if code=$(wait_for_host "$MP_DIR/$g-machost.log"); then
+            ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -R "$GAME_PORT:127.0.0.1:$GAME_PORT" \
+                "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer connect 127.0.0.1:$GAME_PORT $code $g" \
+                || rc=1
+        else
+            echo "  FAIL  the host never came up"; tail -5 "$MP_DIR/$g-machost.log"; rc=1
+        fi
+        pkill -f "NetConnectTest .* host $GAME_PORT" 2>/dev/null || true
+        sleep 2
+
+        echo
+        echo "== $g hosts, this machine joins =="
+        ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -L "$lport:127.0.0.1:$GAME_PORT" \
+            "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer host $GAME_PORT --all" \
+            > "$MP_DIR/$g-guesthost.log" 2>&1 &
+        if code=$(wait_for_host "$MP_DIR/$g-guesthost.log"); then
+            "$bin" "$issuer" connect "127.0.0.1:$lport" "$code" mac-client || rc=1
+        else
+            echo "  FAIL  $g never came up as a host"; tail -5 "$MP_DIR/$g-guesthost.log"; rc=1
+        fi
+        ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'pkill -f NetConnectTest' 2>/dev/null || true
+        pkill -f "ssh .*-L $lport:127.0.0.1:$GAME_PORT" 2>/dev/null || true
+        sleep 2
     done
-    echo "stand-in account service on $issuer"
-
-    # ── this machine hosts, the guest joins ──
-    echo
-    echo "== macOS hosts, $g joins =="
-    "$bin" "$issuer" host "$GAME_PORT" --all > "$MP_DIR/mac-host.log" 2>&1 &
-    local code
-    code=$(wait_for_host "$MP_DIR/mac-host.log") \
-        || { echo "the host never came up"; tail -5 "$MP_DIR/mac-host.log"; return 1; }
-
-    ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -R "$GAME_PORT:127.0.0.1:$GAME_PORT" \
-        "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer connect 127.0.0.1:$GAME_PORT $code linux-guest" \
-        || rc=1
-    pkill -f "NetConnectTest .* host $GAME_PORT" 2>/dev/null || true
-    sleep 2
-
-    # ── the guest hosts, this machine joins ──
-    echo
-    echo "== $g hosts, macOS joins =="
-    ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -L "$GAME_PORT:127.0.0.1:$GAME_PORT" \
-        "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer host $GAME_PORT --all" \
-        > "$MP_DIR/guest-host.log" 2>&1 &
-    code=$(wait_for_host "$MP_DIR/guest-host.log") \
-        || { echo "the guest host never came up"; tail -5 "$MP_DIR/guest-host.log"; return 1; }
-
-    "$bin" "$issuer" connect "127.0.0.1:$GAME_PORT" "$code" mac-client || rc=1
     return $rc
 }
 

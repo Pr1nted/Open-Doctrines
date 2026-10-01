@@ -2231,6 +2231,14 @@ add_executable(NetConnectTest EXCLUDE_FROM_ALL
 )
 target_include_directories(NetConnectTest PRIVATE src tests)
 target_compile_definitions(NetConnectTest PRIVATE OD_ENABLE_NET=1)
+# BOTH SIDES OF THIS TEST RUN A THREAD -- NetHost and NetSession each start
+# one -- and this target never said so. It linked anyway on Linux and macOS
+# by accident: glibc 2.34 folded libpthread into libc, so pthread_create
+# resolves with no -lpthread at all. FreeBSD keeps them separate and the link
+# fails with "undefined symbol: pthread_create", which reads like a missing
+# source file rather than a missing library.
+find_package(Threads REQUIRED)
+target_link_libraries(NetConnectTest PRIVATE Threads::Threads)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_link_libraries(NetConnectTest PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
 endif()
