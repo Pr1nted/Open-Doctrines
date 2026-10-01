@@ -13,6 +13,9 @@ one prebuilt per platform, and CMake picks the matching one:
 |---|---|---|
 | macOS (Intel + Apple Silicon) | `macos-universal/` | clang, `-arch x86_64 -arch arm64`, `-mmacosx-version-min=11.0` |
 | Linux x86_64 | `linux-x86_64/` | gcc 12, `-fPIC` |
+| Linux aarch64 | `linux-aarch64/` | gcc 12, `-fPIC`, on an Arm runner |
+| FreeBSD amd64 | `freebsd-amd64/` | base clang, `-fPIC`, in a VM on a Linux runner |
+| OpenBSD amd64 | `openbsd-amd64/` | base clang, `-fPIC`, in a VM on a Linux runner |
 | Web (wasm32) | `web-wasm32/` | emscripten `em++` |
 | Windows x86_64 | `windows-x86_64/` | MSVC, `/O2 /GR-` |
 | Android arm64-v8a | `android-arm64-v8a/` | NDK clang, API 24 |
@@ -24,9 +27,15 @@ When neither is available the **configure** stops with an explanation, rather
 than letting the build reach a link error about unresolved `od_*` symbols,
 which says nothing about the cause.
 
+The directory name is `${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}`,
+lowercased, for everything that is not macOS, Windows, Android or web — so it
+follows the OS rather than assuming Linux. **Note that the BSDs say `amd64`
+where Linux says `x86_64`**, because `CMAKE_SYSTEM_PROCESSOR` follows
+`uname -m`; a directory named `freebsd-x86_64` would simply never be found.
+
 ## Keeping them in sync
 
-Building five archives on five machines by hand is the chore that silently
+Building eight archives on eight machines by hand is the chore that silently
 stops happening, and it fails as a red CI on a platform nobody built for. So
 `.github/workflows/odseal-prebuilts.yml` does it: run it from the Actions tab
 and it rebuilds every archive from one source with one set of flags, tests each
@@ -46,6 +55,12 @@ a build timestamp, so those two differ on every rebuild even when the source is
 identical, while linux and android come out byte-for-byte the same. The pull
 request lists the exported symbols of each archive for that reason — it is the
 part of a stripped binary a reviewer can actually check.
+
+GitHub hosts no FreeBSD or OpenBSD runner, so those two build inside a real
+BSD VM (`vmactions/*-vm`) on a Linux runner — by the target system's own `cc`
+and `ar`, not cross-compiled. They are tested there too, in the same step: the
+archive never leaves the VM in between, so a test run anywhere else would not
+be testing what the job produces.
 
 It needs two repository secrets, because the source is not in this repository:
 

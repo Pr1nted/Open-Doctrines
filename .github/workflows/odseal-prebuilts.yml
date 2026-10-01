@@ -67,15 +67,22 @@ jobs:
           # this platform", because CMake asks for linux-${CMAKE_SYSTEM_PROCESSOR}
           # and there is no linux-aarch64 directory. GitHub hosts Arm runners
           # now, so this one needs no special machine.
-          #
-          # It is ALSO what FreeBSD needs. FreeBSD falls into CMakeLists.txt's
-          # elseif(UNIX) branch and asks for the same linux-aarch64 archive --
-          # which is wrong, it is a different ABI, but it is what the tree does
-          # today and worth knowing before anyone adds a freebsd-aarch64 entry.
           - { name: linux-aarch64,   os: ubuntu-22.04-arm }
           - { name: windows-x86_64,  os: windows-2022 }
           - { name: web-wasm32,      os: ubuntu-22.04 }
           - { name: android-arm64-v8a, os: ubuntu-22.04 }
+          # THE BSDs RUN INSIDE A VM ON A LINUX RUNNER, because GitHub hosts
+          # no BSD runner and is not going to. vmactions boots a real FreeBSD
+          # or OpenBSD, shares the workspace into it, and runs the build
+          # there -- so these are genuinely built by the target system's own
+          # cc and ar, not cross-compiled by a Linux toolchain pretending.
+          #
+          # amd64, not x86_64: that is what `uname -m` says on both BSDs, and
+          # CMAKE_SYSTEM_PROCESSOR follows it. The directory name has to match
+          # what CMakeLists.txt asks for or the archive is invisible -- which
+          # is the whole class of bug that kept linux-aarch64 from shipping.
+          - { name: freebsd-amd64,   os: ubuntu-22.04 }
+          - { name: openbsd-amd64,   os: ubuntu-22.04 }
 
     steps:
       - uses: actions/checkout@v5
@@ -209,6 +216,49 @@ jobs:
       #
       # Removed before the archive is packed, so there is no path by which a
       # later step or a stray artifact upload could carry it out of the runner.
+      # One step builds AND tests, because crossing the VM boundary twice to
+      # do them separately buys nothing: the archive never leaves the VM in
+      # between, and a test that ran anywhere else would not be testing the
+      # thing this job produces.
+      - name: Build and test (FreeBSD amd64)
+        if: matrix.name == 'freebsd-amd64'
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: '14.2'
+          usesh: true
+          copyback: true
+          run: |
+            set -e
+            mkdir -p out
+            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+                -c guard/odseal.cpp -o odseal.o
+            strip --strip-unneeded odseal.o
+            ar rcs out/libodseal.a odseal.o
+            # Native, so the real test runs rather than a symbol check.
+            c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
+            ./odseal_test
+            rm -rf guard odseal_test
+
+      - name: Build and test (OpenBSD amd64)
+        if: matrix.name == 'openbsd-amd64'
+        uses: vmactions/openbsd-vm@v1
+        with:
+          release: '7.6'
+          usesh: true
+          copyback: true
+          run: |
+            set -e
+            mkdir -p out
+            # OpenBSD's base clang, and `strip -x` rather than GNU's
+            # --strip-unneeded, which elftoolchain's strip here does not take.
+            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+                -c guard/odseal.cpp -o odseal.o
+            strip -x odseal.o
+            ar rcs out/libodseal.a odseal.o
+            c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
+            ./odseal_test
+            rm -rf guard odseal_test
+
       - name: Drop the sealed source
         if: always()
         shell: bash

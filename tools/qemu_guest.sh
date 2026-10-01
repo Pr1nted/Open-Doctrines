@@ -344,15 +344,43 @@ cmd_sshenv() {
 
 cmd_console() { sed 's/\r//' "$(gdir "$1")/console.log" | tail -"${2:-40}"; }
 
+# SHUT THE GUEST DOWN, do not pull its power.
+#
+# This used to kill(1) qemu, which is a power cut as far as the guest is
+# concerned. On the FreeBSD guest that lost work: UFS rolls back writes that
+# had not reached the disk, and a source tree unpacked, configured and left
+# alone for ten minutes was simply not there after a restart -- which reads
+# like the tool wiping the disk rather than the guest never having written it.
+#
+# So: ask the guest to halt, and give it time. kill is still here as the last
+# resort for a guest that has hung, which is the only case it was ever right
+# for.
 cmd_stop() {
-    local d; d=$(gdir "$1")
-    [ -f "$d/qemu.pid" ] || { note "$1 is not running"; return 0; }
+    local name="$1"
+    local d; d=$(gdir "$name")
+    [ -f "$d/qemu.pid" ] || { note "$name is not running"; return 0; }
     local pid; pid=$(cat "$d/qemu.pid")
-    kill "$pid" 2>/dev/null || true
-    for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
-    kill -9 "$pid" 2>/dev/null || true
+    local p; p=$(port_for "$name")
+
+    # shellcheck disable=SC2086
+    ssh $(ssh_opts) -p "$p" odtest@127.0.0.1 'sudo poweroff || sudo shutdown -p now' \
+        >/dev/null 2>&1 || true
+
+    # 60s: a BSD unmounting a dirty filesystem is not instant, and cutting it
+    # short here is exactly the bug this replaced.
+    local waited=0
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 120 ]; do
+        sleep 0.5; waited=$((waited + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        note "$name did not halt in 60s -- terminating it"
+        kill "$pid" 2>/dev/null || true
+        for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+        kill -9 "$pid" 2>/dev/null || true
+    fi
     rm -f "$d/qemu.pid"
-    note "$1 stopped"
+    note "$name stopped"
 }
 
 cmd_list() {

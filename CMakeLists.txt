@@ -382,7 +382,13 @@ else()
         set(ODSEAL_PLATFORM "windows-x86_64")
         set(ODSEAL_LIBNAME  "odseal.lib")
     elseif(UNIX)
-        set(ODSEAL_PLATFORM "linux-${CMAKE_SYSTEM_PROCESSOR}")
+        # The OS name, not a hardcoded "linux-". FreeBSD and OpenBSD reach
+        # this branch too, and used to ask for
+        # third_party/odseal/linux-aarch64 on a machine that is not Linux and
+        # could not have linked it if it were there -- a confusing way to fail,
+        # because the path named a platform the build was not running on.
+        string(TOLOWER "${CMAKE_SYSTEM_NAME}" ODSEAL_OS)
+        set(ODSEAL_PLATFORM "${ODSEAL_OS}-${CMAKE_SYSTEM_PROCESSOR}")
         set(ODSEAL_LIBNAME  "libodseal.a")
     else()
         set(ODSEAL_PLATFORM "unknown")

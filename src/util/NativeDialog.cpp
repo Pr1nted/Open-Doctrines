@@ -29,9 +29,20 @@ std::string capture(const std::string& command) {
     return result;
 }
 
-#if defined(__linux__) && !defined(__ANDROID__)
+// NOT #ifdef __linux__.
+//
+// The call site below is an #else -- everything that is not Emscripten,
+// Android, macOS or Windows -- and this was guarded on Linux alone, so on
+// FreeBSD the compiler reached a call to a function that had not been
+// declared. One error, in 284 objects, and the only thing standing between
+// this codebase and a BSD build.
+//
+// Widening it is also simply right: zenity and kdialog are what the ports
+// trees install on FreeBSD and OpenBSD as well, and a desktop there runs the
+// same two of them. Hence the name -- it was never about Linux.
+#if !defined(_WIN32) && !defined(__APPLE__)
 // Whichever of the two desktops' dialogs is installed, or empty for neither.
-const char* linuxHelper() {
+const char* desktopHelper() {
     if (system("command -v zenity >/dev/null 2>&1") == 0) return "zenity";
     if (system("command -v kdialog >/dev/null 2>&1") == 0) return "kdialog";
     return nullptr;
@@ -108,7 +119,7 @@ std::string commandFor(Kind kind, const std::string& title, const std::string& e
            "$d.Filter='" + filter + "';"
            "if($d.ShowDialog() -eq 'OK'){$d.FileName}\" 2>NUL";
 #else
-    const char* helper = linuxHelper();
+    const char* helper = desktopHelper();
     if (!helper) return "";
     if (std::string(helper) == "zenity") {
         const std::string dir = folder ? " --directory" : "";
