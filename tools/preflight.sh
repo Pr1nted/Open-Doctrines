@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# Everything that has to be true before a tag, run here rather than in CI.
+#
+#   tools/preflight.sh                 the lot
+#   tools/preflight.sh --fast          skip the guests (suite + qualify only)
+#   tools/preflight.sh --only guests   one stage
+#   tools/preflight.sh --list          what the stages are
+#
+# WHY THIS EXISTS WHEN THERE IS ALREADY CI
+#
+# CI runs on the machine that built the thing. That is the condition every
+# packaging bug hides in: the libraries are already installed, the paths are
+# the build's own, and the artifact is never carried anywhere. Everything that
+# has actually gone wrong lately was invisible to it --
+#
+#   the Windows installer, which nothing had ever run until a real Windows
+#   machine ran it and found two bugs in an afternoon;
+#   the .deb's dependency names, which only a machine without those libraries
+#   can check;
+#   the launcher's prefix, which only an install can exercise;
+#   the save-durability test, which passed everywhere and had never once run
+#   on Windows;
+#   and the arm64 Linux build, which stops at configure for want of a sealed
+#   archive and which CI would have failed on the tag itself.
+#
+# So: a gate that runs on THIS machine, against guests that are not the build
+# machine, before anything is pushed.
+#
+# WHAT IT DOES NOT DO. It is not a replacement for CI and must not become one.
+# CI is the thing that runs for other people, on hardware nobody here owns,
+# every push. This is the thing that runs before you ask it to.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)/.."
+ROOT="$(cd "$ROOT" && pwd)"
+GUEST="$ROOT/tools/qemu_guest.sh"
+LOGDIR="${OD_PREFLIGHT_LOGS:-$ROOT/build/preflight}"
+mkdir -p "$LOGDIR"
+
+bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
+green() { printf '\033[32m%s\033[0m\n' "$*"; }
+red()   { printf '\033[31m%s\033[0m\n' "$*"; }
+note()  { printf '  %s\n' "$*"; }
+
+STAGES=(suite qualify packages guests)
+declare -a RESULTS=()
+started=$(date +%s)
+
+# A stage reports pass, fail or skip, and a SKIP IS NOT A PASS -- the report
+# counts them separately and the exit code ignores them, so a pipeline that
+# quietly stopped running half its stages cannot read as green.
+record() { RESULTS+=("$1|$2|$3"); }
+
+run_stage() {   # run_stage <name> <description> <command...>
+    local name="$1" desc="$2"; shift 2
+    bold "── $name: $desc"
+    local log="$LOGDIR/$name.log"
+    local t0; t0=$(date +%s)
+    if "$@" > "$log" 2>&1; then
+        local dt=$(( $(date +%s) - t0 ))
+        green "   pass (${dt}s)"; record "$name" pass "${dt}s"
+    else
+        local dt=$(( $(date +%s) - t0 ))
+        red "   FAIL (${dt}s) -- $log"
+        tail -12 "$log" | sed 's/^/     /'
+        record "$name" fail "${dt}s"
+    fi
+}
+
+skip_stage() { local n="$1" why="$2"; bold "── $n: skipped"; note "$why"; record "$n" skip "$why"; }
+
+# ── the stages ───────────────────────────────────────────────────────────────
+
+stage_suite()   { "$ROOT/tests/run_all.sh"; }
+stage_qualify() { "$ROOT/tools/qualify.sh"; }
+
+# The Linux packages, built and installed in a guest that does NOT have the
+# game's libraries -- which is the only way to find out whether the .deb
+# declares them correctly.
+stage_packages() {
+    local g=pf-debian
+    "$GUEST" create "$g" debian12 2>/dev/null || true
+    "$GUEST" start "$g" || return 1
+    "$GUEST" wait  "$g" 240 || return 1
+    "$ROOT/tools/linux_vm_test.sh" "pf-ssh-$g"
+}
+
+# Every guest the plan calls for, booted and proven to run the game's own
+# checks. The multiplayer sessions from tools/preflight_plan.py hang off this
+# once the cross-play driver exists.
+stage_guests() {
+    local ok=0
+    for spec in "pf-debian:debian12" "pf-freebsd:freebsd14"; do
+        local g="${spec%%:*}" os="${spec##*:}"
+        note "guest $g ($os)"
+        "$GUEST" create "$g" "$os" 2>/dev/null || true
+        "$GUEST" start "$g"   || { ok=1; continue; }
+        "$GUEST" wait  "$g" 240 || { ok=1; continue; }
+        "$GUEST" ssh   "$g" 'uname -sr' || ok=1
+    done
+    return $ok
+}
+
+# ── the runner ───────────────────────────────────────────────────────────────
+
+only=""; fast=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --only) only="$2"; shift 2 ;;
+        --fast) fast=1; shift ;;
+        --list) printf '%s\n' "${STAGES[@]}"; exit 0 ;;
+        -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+        *) red "unknown argument: $1"; exit 2 ;;
+    esac
+done
+
+wants() { [ -z "$only" ] || [ "$only" = "$1" ]; }
+
+bold "preflight: $(cd "$ROOT" && git rev-parse --short HEAD) on $(uname -sm)"
+note "logs in $LOGDIR"
+echo
+
+wants suite   && run_stage suite   "the whole test suite"        stage_suite
+wants qualify && run_stage qualify "build, play a game, load it" stage_qualify
+
+if [ "$fast" = 1 ]; then
+    wants packages && skip_stage packages "--fast"
+    wants guests   && skip_stage guests   "--fast"
+elif ! command -v qemu-system-aarch64 >/dev/null; then
+    # Named rather than silently passed: a gate that skips what it cannot do
+    # and still says "pass" is the failure this whole file exists to avoid.
+    wants packages && skip_stage packages "qemu not installed (brew install qemu)"
+    wants guests   && skip_stage guests   "qemu not installed (brew install qemu)"
+else
+    wants guests   && run_stage guests   "boot every guest the plan needs" stage_guests
+    wants packages && run_stage packages "deb/rpm/AppImage in a clean guest" stage_packages
+fi
+
+# ── the report ───────────────────────────────────────────────────────────────
+echo
+bold "── preflight, $(( $(date +%s) - started ))s"
+fails=0; skips=0
+for r in "${RESULTS[@]}"; do
+    IFS='|' read -r n s d <<< "$r"
+    case "$s" in
+        pass) printf '   \033[32m%-10s pass\033[0m  %s\n' "$n" "$d" ;;
+        fail) printf '   \033[31m%-10s FAIL\033[0m  %s\n' "$n" "$d"; fails=$((fails+1)) ;;
+        skip) printf '   %-10s skip  %s\n' "$n" "$d"; skips=$((skips+1)) ;;
+    esac
+done
+echo
+if [ "$fails" -gt 0 ]; then
+    red "$fails stage(s) failed. Do not tag."
+    exit 1
+fi
+if [ "$skips" -gt 0 ]; then
+    printf '\033[33m%s\033[0m\n' "all run stages passed, but $skips were skipped -- that is not a green run"
+    exit 0
+fi
+green "all stages passed"

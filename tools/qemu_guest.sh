@@ -140,8 +140,14 @@ EOF
             cp "$w/user-data" "$w/meta-data" "$mnt/"
             hdiutil detach "$mnt" -quiet ;;
         *)
+            # makehybrid APPENDS .iso to whatever -o is given, so asking for
+            # seed.img produces seed.img.iso and the guest starts with a drive
+            # pointing at a file that does not exist. QEMU says so and dies
+            # immediately, which is at least loud -- but only because the
+            # console is a file now.
             hdiutil makehybrid -iso -joliet -default-volume-name cidata \
-                    -o "$d/seed.img" "$w" -quiet ;;
+                    -o "$d/seed" "$w" -quiet
+            mv "$d/seed.iso" "$d/seed.img" ;;
     esac
     rm -rf "$w"
     printf '%s\n' "$os" > "$d/os"

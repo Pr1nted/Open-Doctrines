@@ -43,6 +43,11 @@ GROUPS = [
         # nothing of the player's with it. CI cannot ask any of that -- it runs
         # on the machine that built the game.
         "linux_vm_test.sh",
+        # The gate in front of all of it: the suite, a real game, the packages
+        # installed in a guest, every guest booted. CI runs on the machine that
+        # built the thing, which is the one condition a packaging bug cannot
+        # hide in; this runs before anything is pushed.
+        "preflight.sh",
         # Which multiplayer sessions actually have to be run. Proving every
         # ordered host/client pair is thirty sessions on six platforms; proving
         # each platform hosts once, with the Mac joining free, is seven. This
