@@ -88,9 +88,16 @@ jobs:
             cmake --build build --target OpenDoctrinesServer -j 4
             ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check
 
+            # Echoed either side, because this step once did not run at all
+            # and nothing said so: the job went green here and failed in the
+            # NEXT step with "does not carry the account service", which is a
+            # report about a directory that was never created.
+            echo "=== packaging ==="
             python3 tools/package.py --binary build/OpenDoctrines \
                                      --out dist/OpenDoctrines-freebsd-amd64 --zip
+            echo "=== packaged ==="
             ls -lh dist/
+            test -d dist/OpenDoctrines-freebsd-amd64 || { echo "no packaged tree"; exit 1; }
 
       - name: Build and package (OpenBSD amd64)
         if: matrix.name == 'openbsd-amd64'
@@ -112,12 +119,21 @@ jobs:
           copyback: true
           prepare: |
             set -e
-            pkg_add -I cmake ninja python3 git
+            # NOT `pkg_add python3`. OpenBSD has no package by that name --
+            # pkg_add answers "Can't find python3" and carries on, having
+            # installed the others, so the prepare looked fine. The image
+            # already ships a python3.NN under /usr/local/bin; what is missing
+            # is only the unversioned name tools/package.py is invoked by.
+            pkg_add -I cmake ninja git
             for t in cmake ninja; do
               command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
             done
-            # python3 is installed as python3.x with a versioned name only.
-            command -v python3 >/dev/null || ln -sf "$(ls /usr/local/bin/python3.* | head -1)" /usr/local/bin/python3
+            if ! command -v python3 >/dev/null; then
+              py=$(ls /usr/local/bin/python3.[0-9]* 2>/dev/null | grep -E 'python3\.[0-9]+$' | sort -V | tail -1)
+              [ -n "$py" ] || { echo "prepare failed: no python3 anywhere"; exit 1; }
+              ln -sf "$py" /usr/local/bin/python3
+            fi
+            python3 --version
           run: |
             set -e
             # OpenBSD ships X and Mesa in base (xenocara), so there is nothing
@@ -135,9 +151,16 @@ jobs:
             cmake --build build --target OpenDoctrinesServer -j 4
             ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check
 
+            # Echoed either side, because this step once did not run at all
+            # and nothing said so: the job went green here and failed in the
+            # NEXT step with "does not carry the account service", which is a
+            # report about a directory that was never created.
+            echo "=== packaging ==="
             python3 tools/package.py --binary build/OpenDoctrines \
                                      --out dist/OpenDoctrines-openbsd-amd64 --zip
+            echo "=== packaged ==="
             ls -lh dist/
+            test -d dist/OpenDoctrines-openbsd-amd64 || { echo "no packaged tree"; exit 1; }
 
       # The same check the desktop jobs run, for the same reason: v1.0.4a
       # shipped with sign-in disabled on every platform and CI was green,
