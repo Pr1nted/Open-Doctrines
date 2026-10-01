@@ -36,33 +36,12 @@ ROOT="$(cd "$ROOT" && pwd)"
 GUEST="$ROOT/tools/qemu_guest.sh"
 LOGDIR="${OD_PREFLIGHT_LOGS:-$ROOT/build/preflight}"
 
-# EVERY RUN IS KEPT, under its own directory, because the question a pipeline
-# gets asked most is "did this used to work" and a single overwritten log
-# cannot answer it. tools/preflight_dashboard.py reads these.
-RUNID="$(date +%Y%m%d-%H%M%S)"
-RUNDIR="$LOGDIR/runs/$RUNID"
-mkdir -p "$RUNDIR"
-ln -sfn "$RUNDIR" "$LOGDIR/latest"
-
-# TSV, written from bash, parsed by python. Bash cannot be trusted to emit
-# valid JSON -- one quote or backslash in a stage description and the
-# dashboard is reading a syntax error -- so the shell writes the dumbest
-# possible format and the reader does the escaping.
-meta() { printf '%s\t%s\n' "$1" "$2" >> "$RUNDIR/meta.tsv"; }
-meta id        "$RUNID"
-meta commit    "$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null)"
-meta subject   "$(cd "$ROOT" && git log -1 --format=%s 2>/dev/null | tr '\t' ' ')"
-meta branch    "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-meta host      "$(uname -sm)"
-meta started   "$(date +%s)"
-meta status    running
-
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 note()  { printf '  %s\n' "$*"; }
 
-STAGES=(suite qualify packages guests multiplayer android)
+STAGES=(suite qualify packages guests multiplayer saves mods android)
 
 # CROSS-PLAY NEEDS NO ACCOUNT, which was not obvious and nearly cost one.
 #
@@ -286,6 +265,159 @@ stage_multiplayer() {
     return $rc
 }
 
+# ── saves, across platforms ─────────────────────────────────────────────────
+#
+# The same shape as the multiplayer stage: each end WRITES one and READS the
+# other's, so neither direction is assumed from the other.
+#
+# SaveRoundTripTest is the vehicle, and it was built for this -- it links
+# SaveManager.cpp and nothing else, no window, no GL, no map, which is what
+# lets it run anywhere. `--emit` writes the canonical save, `--verify` reads
+# one and checks its MEANING rather than its bytes, because two correct zips
+# of the same content differ in their headers.
+#
+# NOT the dedicated server, which was the first attempt here: `--check`
+# deliberately DELETES the world it creates (Game_Policies.cpp,
+# dropAutoCreatedSave) so that health-checking a server in a loop does not
+# fill the disk -- this tree had collected 2,668 unplayed worlds, 1.7 GB.
+# It says "Auto-created save: <path>" and then removes it, which is correct
+# and makes it useless as a save producer.
+#
+# WHAT THIS ADDS OVER CI. test.yml already runs an emit/verify matrix, across
+# the platforms a GitHub runner offers: x86_64 Linux, macOS, Windows. The
+# guests here are arm64 Linux and FreeBSD, which nothing else covers.
+stage_saves() {
+    local hostbin="$ROOT/build/SaveRoundTripTest"
+    [ -x "$hostbin" ] || { echo "build it first: cmake --build build --target SaveRoundTripTest"; return 1; }
+
+    SV_DIR=$(mktemp -d)
+    cleanup_sv() { rm -rf "$SV_DIR"; }
+    trap cleanup_sv RETURN
+    local rc=0
+
+    "$hostbin" --emit "$SV_DIR/mac.odsv" > "$SV_DIR/mac-emit.log" 2>&1
+    if [ ! -s "$SV_DIR/mac.odsv" ]; then
+        echo "  FAIL  this machine emits a save"; tail -5 "$SV_DIR/mac-emit.log"; return 1
+    fi
+    echo "  ok    this machine emits a save ($(du -h "$SV_DIR/mac.odsv" | cut -f1))"
+    if "$hostbin" --verify "$SV_DIR/mac.odsv" > "$SV_DIR/mac-self.log" 2>&1; then
+        echo "  ok    and verifies its own"
+    else
+        echo "  FAIL  and verifies its own"; tail -8 "$SV_DIR/mac-self.log"; return 1
+    fi
+
+    for g in $MP_GUESTS; do
+        "$GUEST" start "$g" >/dev/null 2>&1 || true
+        "$GUEST" wait  "$g" 300 || { echo "  FAIL  $g did not come up"; rc=1; continue; }
+        eval "$("$GUEST" sshenv "$g")"
+        if ! ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'test -x ~/src/build/SaveRoundTripTest'; then
+            echo "  skip  $g has no SaveRoundTripTest built"
+            continue
+        fi
+        echo
+        echo "== $g =="
+
+        # This machine's save, read there.
+        scp $OD_SCP_OPTS -q "$SV_DIR/mac.odsv" "$OD_SSH_HOST:/tmp/mac.odsv"
+        if ssh $OD_SSH_OPTS "$OD_SSH_HOST" \
+               "~/src/build/SaveRoundTripTest --verify /tmp/mac.odsv" > "$SV_DIR/$g-verify-mac.log" 2>&1; then
+            echo "  ok    it reads a save written here"
+        else
+            echo "  FAIL  it reads a save written here"
+            tail -8 "$SV_DIR/$g-verify-mac.log" | sed 's/^/          /'; rc=1
+        fi
+
+        # Its save, read here.
+        if ssh $OD_SSH_OPTS "$OD_SSH_HOST" \
+               "~/src/build/SaveRoundTripTest --emit /tmp/$g.odsv" > "$SV_DIR/$g-emit.log" 2>&1; then
+            scp $OD_SCP_OPTS -q "$OD_SSH_HOST:/tmp/$g.odsv" "$SV_DIR/$g.odsv"
+            if [ -s "$SV_DIR/$g.odsv" ] && "$hostbin" --verify "$SV_DIR/$g.odsv" > "$SV_DIR/mac-verify-$g.log" 2>&1; then
+                echo "  ok    and this machine reads a save written there ($(du -h "$SV_DIR/$g.odsv" | cut -f1))"
+            else
+                echo "  FAIL  and this machine reads a save written there"
+                tail -8 "$SV_DIR/mac-verify-$g.log" | sed 's/^/          /'; rc=1
+            fi
+        else
+            echo "  FAIL  it emits a save"
+            tail -5 "$SV_DIR/$g-emit.log" | sed 's/^/          /'; rc=1
+        fi
+    done
+    return $rc
+}
+
+# ── mods, on a machine that did not build them ──────────────────────────────
+#
+# tests/run_all.sh already proves a great deal about mods -- the archive
+# format, the runtime, the manager, ABI conformance, every SDK example rebuilt
+# and compared byte for byte -- all on the machine that built the game, and in
+# CI on the platforms a GitHub runner offers: x86_64 Linux, macOS, Windows.
+#
+# The question left is whether the WASM INTERPRETER works on the platforms
+# nothing else reaches. That is the interesting half: WAMR is a lot of
+# architecture-specific code, and arm64 Linux and FreeBSD are exactly where it
+# has never been run.
+#
+# The fixtures are .wasm, which is the same everywhere, so they are built once
+# here and carried over -- a guest needs no wasm toolchain, only the ability to
+# run the interpreter.
+#
+# NOT through the dedicated server, which was the first attempt: it calls
+# ModManager::init(), which scans, and attestation() lists what LOADED, so a
+# server reports nothing about an installed mod and there is no headless path
+# that instantiates one. The test binaries are the designed vehicle, the same
+# way SaveRoundTripTest is for saves.
+stage_mods() {
+    local fixtures="$ROOT/build/testmods"
+    [ -d "$fixtures" ] || { echo "no fixtures: tests/build_test_mods.sh build/testmods"; return 1; }
+
+    local rc=0 ran=0
+    for g in $MP_GUESTS; do
+        "$GUEST" start "$g" >/dev/null 2>&1 || true
+        "$GUEST" wait  "$g" 300 || { echo "  FAIL  $g did not come up"; rc=1; continue; }
+        eval "$("$GUEST" sshenv "$g")"
+
+        if ! ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'test -x ~/src/build/ModRuntimeTest'; then
+            # Named, not silent. On FreeBSD this is the sealed archive: every
+            # target links odseal and there is no freebsd-aarch64 prebuilt,
+            # because the VM images that build them are x86_64.
+            echo "  skip  $g has no ModRuntimeTest built"
+            continue
+        fi
+        echo
+        echo "== $g =="
+        ran=1
+
+        ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'rm -rf ~/testmods && mkdir -p ~/testmods'
+        scp $OD_SCP_OPTS -qr "$fixtures/." "$OD_SSH_HOST:testmods/"
+
+        # PER BINARY, because they are not all buildable everywhere and a
+        # missing one is a skip, not a failure. On FreeBSD ModManagerTest
+        # links the i18n layer, which calls into odseal, and there is no
+        # freebsd-aarch64 archive -- so it does not build, which says nothing
+        # about mods.
+        for t in ModArchiveTest ModRuntimeTest ModManagerTest; do
+            if ! ssh $OD_SSH_OPTS "$OD_SSH_HOST" "test -x ~/src/build/$t"; then
+                echo "  skip  $t is not built here"
+                continue
+            fi
+            local args="~/testmods"
+            [ "$t" = ModManagerTest ] && args="~/testmods ~/modmgr_scratch"
+            ssh $OD_SSH_OPTS "$OD_SSH_HOST" "rm -rf ~/modmgr_scratch" >/dev/null 2>&1
+            if ssh $OD_SSH_OPTS "$OD_SSH_HOST" \
+                   "~/src/build/$t $args" > "/tmp/pf-mods-$g-$t.log" 2>&1; then
+                echo "  ok    $t -- $(grep -oE '[0-9]+ checks, [0-9]+ failed' "/tmp/pf-mods-$g-$t.log" | tail -1)"
+            else
+                echo "  FAIL  $t"
+                grep -E "^ *FAIL|checks, [0-9]+ failed" "/tmp/pf-mods-$g-$t.log" | head -6 | sed 's/^/          /'
+                rc=1
+            fi
+        done
+    done
+
+    [ "$ran" = 1 ] || { echo "  no guest could run the mod tests"; return 1; }
+    return $rc
+}
+
 # The APK, installed on a real Android emulator and started. CI builds it and
 # inspects the zip; nothing had ever run it.
 stage_android() {
@@ -316,6 +448,33 @@ done
 
 wants() { [ -z "$only" ] || [ "$only" = "$1" ]; }
 
+# EVERY RUN IS KEPT, under its own directory, because the question a pipeline
+# gets asked most is "did this used to work" and a single overwritten log
+# cannot answer it. tools/preflight_dashboard.py reads these.
+#
+# AFTER the arguments are parsed, not before: this used to run at the top of
+# the file, so `--list` and `--help` each left an empty run in the history
+# that the dashboard showed, for ever, as a run that started and never
+# finished. Asking what the stages are is not a run.
+RUNID="$(date +%Y%m%d-%H%M%S)"
+RUNDIR="$LOGDIR/runs/$RUNID"
+mkdir -p "$RUNDIR"
+ln -sfn "$RUNDIR" "$LOGDIR/latest"
+
+# TSV, written from bash, parsed by python. Bash cannot be trusted to emit
+# valid JSON -- one quote or backslash in a stage description and the
+# dashboard is reading a syntax error -- so the shell writes the dumbest
+# possible format and the reader does the escaping.
+meta() { printf '%s\t%s\n' "$1" "$2" >> "$RUNDIR/meta.tsv"; }
+meta id        "$RUNID"
+meta commit    "$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null)"
+meta subject   "$(cd "$ROOT" && git log -1 --format=%s 2>/dev/null | tr '\t' ' ')"
+meta branch    "$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+meta host      "$(uname -sm)"
+meta started   "$(date +%s)"
+meta status    running
+
+
 bold "preflight: $(cd "$ROOT" && git rev-parse --short HEAD) on $(uname -sm)"
 note "logs in $RUNDIR"
 note "watch it:  tools/preflight_dashboard.py --serve"
@@ -328,6 +487,8 @@ if [ "$fast" = 1 ]; then
     wants packages    && skip_stage packages    "--fast"
     wants guests      && skip_stage guests      "--fast"
     wants multiplayer && skip_stage multiplayer "--fast"
+    wants saves       && skip_stage saves       "--fast"
+    wants mods        && skip_stage mods        "--fast"
     wants android     && skip_stage android     "--fast"
 elif ! command -v qemu-system-aarch64 >/dev/null; then
     # Named rather than silently passed: a gate that skips what it cannot do
@@ -335,11 +496,15 @@ elif ! command -v qemu-system-aarch64 >/dev/null; then
     wants packages    && skip_stage packages    "qemu not installed (brew install qemu)"
     wants guests      && skip_stage guests      "qemu not installed (brew install qemu)"
     wants multiplayer && skip_stage multiplayer "qemu not installed (brew install qemu)"
+    wants saves       && skip_stage saves       "qemu not installed (brew install qemu)"
+    wants mods        && skip_stage mods        "qemu not installed (brew install qemu)"
     wants android     && skip_stage android     "qemu not installed (brew install qemu)"
 else
     wants guests   && run_stage guests   "boot every guest the plan needs" stage_guests
     wants packages && run_stage packages "deb/rpm/AppImage in a clean guest" stage_packages
     wants multiplayer && run_stage multiplayer "each end hosts for the other" stage_multiplayer
+    wants saves       && run_stage saves       "each end writes a save the other reads" stage_saves
+    wants mods        && run_stage mods        "an .odmod loads where it was not built"  stage_mods
 
     # The emulator is Android's SDK, not qemu -- it is gated on its own tools
     # rather than on the ones above.

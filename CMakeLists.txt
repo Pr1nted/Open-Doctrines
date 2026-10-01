@@ -473,6 +473,26 @@ if(OD_ENABLE_MODS)
         set(WAMR_BUILD_MULTI_MODULE     0)
         set(WAMR_BUILD_SHARED_MEMORY    0)
         set(WAMR_BUILD_SIMD             0)
+
+        # ── NO HARDWARE STACK GUARD ON THE BSDs ──
+        #
+        # WAMR guards the native stack with mprotected pages, and
+        # init_stack_guard_pages() FAILS on FreeBSD -- every instantiation
+        # then dies with "Failed to init stack guard pages" and the runtime
+        # never comes up at all. Measured on FreeBSD 14.5/arm64: ModArchiveTest
+        # passed 60/60 and ModRuntimeTest failed 11 of 68, all of them that
+        # one message.
+        #
+        # This disables the check for the NATIVE STACK only. Memory bound
+        # checks are untouched, so a mod still cannot read or write outside
+        # its own linear memory -- what is lost is the hardware trap on a
+        # runaway native recursion, which WAMR then handles in software.
+        #
+        # Nothing else would have found this: the mod tests had never run on a
+        # BSD. CI builds mods for FreeBSD and runs none of them.
+        if(CMAKE_SYSTEM_NAME MATCHES "BSD|DragonFly")
+            set(WAMR_DISABLE_STACK_HW_BOUND_CHECK 1)
+        endif()
         # LLVM emits memory.copy/memory.fill by default, so a mod built with a
         # current clang needs this to link at all.
         set(WAMR_BUILD_BULK_MEMORY      1)

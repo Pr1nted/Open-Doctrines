@@ -541,6 +541,8 @@ did **not** build them, before anything is pushed:
 | `packages` | the deb, rpm and AppImage install, run and uninstall in a clean Linux guest |
 | `guests` | every VM the plan needs actually boots |
 | `multiplayer` | each guest hosts for this machine and joins it — real cross-play |
+| `saves` | each guest writes a save this machine reads, and reads one it wrote |
+| `mods` | the WASM runtime and mod manager, on platforms CI never reaches |
 | `android` | the APK installs, starts and draws on a real emulator |
 
 Everything it needs it builds or boots itself: `tools/qemu_guest.sh` makes the
@@ -551,8 +553,8 @@ not read as green.
 
 It has earned its place: it found the Windows installer's two bugs, the
 AppImage's missing `fusermount`, a server flag that was being ignored, a data
-file that would have shipped nowhere, and an Android build that had been
-upscaling itself onto every phone.
+file that would have shipped nowhere, an Android build that had been upscaling
+itself onto every phone, and a mod runtime that could not start on FreeBSD.
 
 ## Status
 
