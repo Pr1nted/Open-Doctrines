@@ -183,6 +183,17 @@ stage_multiplayer() {
     }
     trap cleanup_mp RETURN
 
+    # CLEAR THE GUESTS FIRST, not just afterwards. A NetConnectTest left
+    # running in a guest still holds its port, so `ssh -R` cannot bind it --
+    # and the join then reaches the LEFTOVER host instead, which has a
+    # different session and refuses. It reads as "the host welcomed this
+    # machine -- FAIL" about a host that was never contacted.
+    for g in $MP_GUESTS; do
+        eval "$("$GUEST" sshenv "$g")" 2>/dev/null || continue
+        ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'pkill -f NetConnectTest' >/dev/null 2>&1 || true
+    done
+    pkill -f "NetConnectTest .* host" 2>/dev/null || true
+
     node "$ROOT/tests/mock_issuer.mjs" --port "$MOCK_PORT" > "$MP_DIR/issuer.log" 2>&1 &
     local waited=0
     while ! grep -q "mock-issuer ready" "$MP_DIR/issuer.log" 2>/dev/null; do
@@ -261,6 +272,55 @@ stage_multiplayer() {
         ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'pkill -f NetConnectTest' 2>/dev/null || true
         pkill -f "ssh .*-L $lport:127.0.0.1:$GAME_PORT" 2>/dev/null || true
         sleep 2
+    done
+
+    # ── GUEST TO GUEST, with this machine only carrying the wire ──
+    #
+    # Every pair above has the Mac at one end, which leaves the question
+    # preflight_plan.py is actually about unanswered: can two machines that
+    # are BOTH guests play each other. Fifteen ordered pairs across six
+    # platforms; this covers the ones between the guests that exist.
+    #
+    # The routing is the whole trick. A hosts on its own port; `ssh -L` brings
+    # that back here; `ssh -R` pushes it into B. Both ends also get the
+    # issuer on their own 127.0.0.1. So every address either end sees is
+    # loopback -- which is what both ends require before they will accept
+    # http:// -- and this machine is a wire, not a player.
+    local ai=0
+    for A in $MP_GUESTS; do
+        ai=$((ai + 1))
+        local bi=0
+        for B in $MP_GUESTS; do
+            bi=$((bi + 1))
+            [ "$A" = "$B" ] && continue
+            local relay=$(( GAME_PORT + 100 + ai * 10 + bi ))
+
+            eval "$("$GUEST" sshenv "$A")"
+            local A_OPTS="$OD_SSH_OPTS" A_HOST="$OD_SSH_HOST"
+            ssh $A_OPTS "$A_HOST" 'test -x ~/src/build/NetConnectTest' || continue
+
+            echo
+            echo "== $A hosts, $B joins (this machine only relays) =="
+            ssh $A_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -L "$relay:127.0.0.1:$GAME_PORT" \
+                "$A_HOST" "cd ~/src/build && ./NetConnectTest $issuer host $GAME_PORT --all" \
+                > "$MP_DIR/$A-to-$B.log" 2>&1 &
+            local code
+            if code=$(wait_for_host "$MP_DIR/$A-to-$B.log"); then
+                eval "$("$GUEST" sshenv "$B")"
+                ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'test -x ~/src/build/NetConnectTest' \
+                    && { ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -R "$GAME_PORT:127.0.0.1:$relay" \
+                             "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer connect 127.0.0.1:$GAME_PORT $code $B" \
+                             || rc=1; } \
+                    || echo "  skip  $B has no NetConnectTest"
+            else
+                echo "  FAIL  $A never came up as a host"
+                tail -5 "$MP_DIR/$A-to-$B.log"; rc=1
+            fi
+            eval "$("$GUEST" sshenv "$A")"
+            ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'pkill -f NetConnectTest' 2>/dev/null || true
+            pkill -f "ssh .*-L $relay:127.0.0.1:$GAME_PORT" 2>/dev/null || true
+            sleep 2
+        done
     done
     return $rc
 }
