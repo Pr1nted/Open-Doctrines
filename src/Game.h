@@ -1690,6 +1690,14 @@ public:
     void gdtlTranslateTo(const std::string& destDir);
     void gdtlDownloadInBrowser();
     void gdtlImportFromGd5();
+
+    // The Unciv crossing. A separate pair rather than a flag on the GD5 ones:
+    // a Unciv map is one FILE where a GD5 map is a directory, so the
+    // "something is already there" check, the chooser and the destination all
+    // differ, and threading a target enum through the GD5 path would have made
+    // every one of them conditional.
+    void gdtlTranslateToUnciv();
+    void gdtlImportFromUnciv();
     std::vector<Notification> m_notifications;
     void addNotification(const std::string& msg, Color color = WHITE, float duration = 6.0f);
     void updateNotifications();

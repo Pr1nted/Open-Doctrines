@@ -1204,6 +1204,77 @@ void Game::gdtlDownloadInBrowser() {
     m_gdtlStage = GdtlStage::Result;
 }
 
+// .odmap -> a Unciv map, written beside the game's own data.
+//
+// No destination stage. A GD5 map goes into another game's installation, which
+// has to be found and confirmed; a Unciv map is a single file that its map
+// editor opens from anywhere, so there is nothing to ask.
+void Game::gdtlTranslateToUnciv() {
+    if (m_gdtlMapIndex < 0 || m_gdtlMapIndex >= (int)m_mapEntries.size()) return;
+    auto& entry = m_mapEntries[m_gdtlMapIndex];
+    const std::string source = entry.directory + entry.filename;
+
+    const std::string outDir = m_dataDir + "unciv";
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+    const std::string dest = outDir + "/" + entry.name + ".json";
+
+    if (std::filesystem::exists(dest)) {
+        m_gdtlOk = false;
+        m_gdtlMessage = "There is already a map at " + dest + " — nothing was written.";
+        m_gdtlNotes.clear();
+        m_gdtlStage = GdtlStage::Result;
+        return;
+    }
+
+    Gdtl::Result r = Gdtl::toUnciv(source, dest);
+    m_gdtlOk = r.ok;
+    m_gdtlNotes = r.notes;
+    m_gdtlNotesScroll = 0;
+    m_gdtlMessage = r.ok ? ("Wrote " + dest)
+                         : ("Could not translate this world: " + r.error);
+    if (!r.ok) {
+        std::error_code rmEc;
+        std::filesystem::remove(dest, rmEc);   // a half-written map is worse than none
+    }
+    m_gdtlStage = GdtlStage::Result;
+}
+
+// A Unciv map -> .odmap, through the importer the player already knows.
+void Game::gdtlImportFromUnciv() {
+    const std::string file = NativeDialog::openFile("Select a Unciv map", "json");
+    if (file.empty()) return;
+
+    const std::string work = gdtlScratch(m_dataDir);
+    removeTree(work);
+    std::filesystem::create_directories(work);
+
+    std::string name = file;
+    const size_t slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    const size_t dot = name.find_last_of('.');
+    if (dot != std::string::npos) name = name.substr(0, dot);
+    if (name.empty()) name = "Imported Map";
+
+    const std::string odmap = work + "/" + name + ".odmap";
+    // toOdmap, not a Unciv-specific reader: open-dragoman decides what the
+    // source is by looking at it, so this is the same call the GD5 import makes.
+    Gdtl::Result r = Gdtl::toOdmap(file, odmap);
+    m_gdtlNotes = r.notes;
+    m_gdtlNotesScroll = 0;
+    if (!r.ok) {
+        m_gdtlOk = false;
+        m_gdtlMessage = "Could not read that as a Unciv map: " + r.error;
+        m_gdtlMapIndex = -1;
+        m_gdtlStage = GdtlStage::Result;
+        return;
+    }
+
+    m_importPath = odmap;
+    m_importName = name;
+    m_showImportNameDialog = true;
+}
+
 void Game::gdtlImportFromGd5() {
     const std::string dir = NativeDialog::openFolder("Select a Greater Diplomacy 5 map folder");
     if (dir.empty()) return;
@@ -1825,6 +1896,28 @@ void Game::drawMapBrowser() {
                 m_mapInfoIndex = -1;
                 return;
             }
+
+            // And the same for Unciv, which skips the destination stage -- see
+            // gdtlTranslateToUnciv. It writes immediately, so unlike Translate
+            // this button IS the conversion and says so.
+            const int uncivW = 150;
+            const int uncivX = transX + transW + 12;
+            Rectangle uncivBtn = {(float)uncivX, (float)licenseBtnY, (float)uncivW, (float)licenseBtnH};
+            const bool uncivHov = CheckCollisionPointRec(mouse, uncivBtn);
+            DrawRectangleRounded(uncivBtn, 0.2f, 8,
+                                 uncivHov ? Color{120, 90, 40, 255} : Color{85, 65, 30, 255});
+            DrawText(T("To Unciv"), uncivX + (uncivW - MeasureText(T("To Unciv"), 20)) / 2,
+                     licenseBtnY + 8, 20, Color{245, 220, 160, 255});
+            if (uncivHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                Audio::get().playSfx("click_light");
+                m_gdtlMapIndex = m_mapInfoIndex;
+                m_gdtlNotes.clear();
+                m_gdtlMessage.clear();
+                m_showMapInfoPopup = false;
+                m_mapInfoIndex = -1;
+                gdtlTranslateToUnciv();
+                return;
+            }
         }
 
         // Close button
@@ -2026,8 +2119,11 @@ void Game::drawMapBrowser() {
     // Same tab, same shape, same place -- it is the same act.
     bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available() &&
                             Gdtl::canChooseLocation();  // it asks for a folder
+    bool showUncivImportBtn = showImportBtn && m_config.gdtl && Gdtl::available() &&
+                              NativeDialog::available();   // it asks for a file
     int importIdx = (int)visible.size();
     int gd5ImportIdx = importIdx + 1;
+    int uncivImportIdx = gd5ImportIdx + (showGd5ImportBtn ? 1 : 0);
 
     // Layout: vertical list with cards
     int cardX = 60;
@@ -2036,7 +2132,8 @@ void Game::drawMapBrowser() {
     int cardGap = 8;
     int listStartY = 130;
 
-    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0);
+    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0)
+                     + (showUncivImportBtn ? 1 : 0);
     int maxVisibleCards = std::max(1, (m_screenH - listStartY - 60) / (cardH + cardGap));
     int maxScroll = std::max(0, totalItems - maxVisibleCards);
     m_mapScroll = std::clamp(m_mapScroll, 0, maxScroll);
@@ -2084,6 +2181,7 @@ void Game::drawMapBrowser() {
 
         bool isImportBtn = showImportBtn && vi == importIdx;
         bool isGd5ImportBtn = showGd5ImportBtn && vi == gd5ImportIdx;
+        bool isUncivImportBtn = showUncivImportBtn && vi == uncivImportIdx;
         bool isSelected = (vi == m_mapIndex);
         bool isHovered = CheckCollisionPointRec(mouse, {(float)cardX, (float)y, (float)cardW, (float)cardH});
         Color bgColor = isSelected ? Color{60, 70, 100, 180} : (isHovered ? Color{255, 255, 255, 15} : Color{15, 17, 28, 200});
@@ -2118,6 +2216,17 @@ void Game::drawMapBrowser() {
             // treats a bare lowercase word as a key rather than prose, so
             // "experimental" was dropped from the catalogue and would have
             // stayed English in every language.
+            const char* sub = T("Experimental");
+            DrawText(sub, icX - MeasureText(sub, 12) / 2, icY + 34, 12, Color{150, 130, 90, 200});
+        } else if (isUncivImportBtn) {
+            // The third import card, same shape and colour as the GD5 one.
+            int icX = centerX;
+            int icY = y + cardH / 2;
+            int plusSize = 40;
+            DrawText("+", icX - MeasureText("+", plusSize) / 2, icY - plusSize / 2, plusSize, Color{220, 180, 90, 200});
+            const char* label = T("Import Unciv map");
+            DrawText(label, icX - MeasureText(label, 18) / 2, icY + 12, 18,
+                     Color{220, 180, 90, static_cast<unsigned char>(isHovered ? 255 : 180)});
             const char* sub = T("Experimental");
             DrawText(sub, icX - MeasureText(sub, 12) / 2, icY + 34, 12, Color{150, 130, 90, 200});
         } else {
@@ -2479,9 +2588,13 @@ void Game::updateMapBrowser() {
     // Same tab, same shape, same place -- it is the same act.
     bool showGd5ImportBtn = showImportBtn && m_config.gdtl && Gdtl::available() &&
                             Gdtl::canChooseLocation();  // it asks for a folder
+    bool showUncivImportBtn = showImportBtn && m_config.gdtl && Gdtl::available() &&
+                              NativeDialog::available();   // it asks for a file
     int importIdx = (int)visible.size();
     int gd5ImportIdx = importIdx + 1;
-    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0);
+    int uncivImportIdx = gd5ImportIdx + (showGd5ImportBtn ? 1 : 0);
+    int totalItems = (int)visible.size() + (showImportBtn ? 1 : 0) + (showGd5ImportBtn ? 1 : 0)
+                     + (showUncivImportBtn ? 1 : 0);
     if (totalItems == 0) return;
 
     int cardX = 60;
@@ -2532,6 +2645,12 @@ void Game::updateMapBrowser() {
         if (showGd5ImportBtn && vi == gd5ImportIdx) {
             // A folder, not a file: that game keeps a map as a directory.
             gdtlImportFromGd5();
+            return;
+        }
+
+        if (showUncivImportBtn && vi == uncivImportIdx) {
+            // A file, not a folder: a Unciv map is one JSON.
+            gdtlImportFromUnciv();
             return;
         }
 
@@ -2594,6 +2713,7 @@ void Game::updateMapBrowser() {
         m_mapIndex = std::clamp(m_mapIndex, 0, totalItems - 1);
         if (showImportBtn && m_mapIndex == importIdx) return; // handled above
         if (showGd5ImportBtn && m_mapIndex == gd5ImportIdx) return; // handled above
+        if (showUncivImportBtn && m_mapIndex == uncivImportIdx) return; // handled above
         int realIdx = visible[m_mapIndex];
         auto& entry = m_mapEntries[realIdx];
         // Show world name dialog before starting

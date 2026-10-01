@@ -193,11 +193,47 @@ Result toGd5(const std::string& odmapPath, const std::string& outDir) {
 #endif
 }
 
-Result toOdmap(const std::string& gd5Dir, const std::string& odmapPath) {
+Result toUnciv(const std::string& odmapPath, const std::string& jsonPath,
+               int columns, int rows) {
 #ifdef OD_ENABLE_GDTL
-    return convert(gd5Dir, odmapPath, DG_FORMAT_ODMAP);
+    Result r;
+    r.outputPath = jsonPath;
+
+    dg_options opt;
+    dg_options_defaults(&opt);
+
+    dg_report* report = nullptr;
+    // dg_convert_unciv rather than dg_convert, because the grid size is not in
+    // dg_options -- that struct is allocated by the caller, so a field added to
+    // it would break every binding's ABI, and open-dragoman adds functions
+    // instead. Zero for either is its own default, so this is dg_convert with a
+    // Unciv target when nothing is asked for.
+    const int rc = dg_convert_unciv(odmapPath.c_str(), jsonPath.c_str(),
+                                    columns, rows, &opt, &report);
+    drainReport(report, r);
+
+    r.ok = rc == 0;   // zero is success, as everywhere else in this ABI
+    if (!r.ok) {
+        const char* err = dg_last_error();
+        r.error = (err && *err) ? err : "the conversion failed without saying why";
+    }
+    return r;
 #else
-    (void)gd5Dir;
+    (void)odmapPath;
+    (void)columns;
+    (void)rows;
+    Result r;
+    r.outputPath = jsonPath;
+    r.error = "this build has no translation layer (rebuild with -DOD_ENABLE_GDTL=ON)";
+    return r;
+#endif
+}
+
+Result toOdmap(const std::string& sourcePath, const std::string& odmapPath) {
+#ifdef OD_ENABLE_GDTL
+    return convert(sourcePath, odmapPath, DG_FORMAT_ODMAP);
+#else
+    (void)sourcePath;
     Result r;
     r.outputPath = odmapPath;
     r.error = "this build has no translation layer (rebuild with -DOD_ENABLE_GDTL=ON)";

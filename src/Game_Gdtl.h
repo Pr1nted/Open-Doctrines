@@ -45,7 +45,23 @@ struct Result {
 Result toGd5(const std::string& odmapPath, const std::string& outDir);
 
 // A Greater Diplomacy 5 map directory -> .odmap.
-Result toOdmap(const std::string& gd5Dir, const std::string& odmapPath);
+//
+// Also reads a Unciv map: open-dragoman decides what the source is by looking
+// at it, not at its name, so one function covers both and a player who picks
+// the wrong kind of file still gets the right answer.
+Result toOdmap(const std::string& sourcePath, const std::string& odmapPath);
+
+// .odmap -> a Unciv map, which is ONE JSON FILE rather than a directory.
+//
+// Not the same kind of crossing as the GD5 one. That game paints provinces onto
+// a raster the way this one does; Unciv has a hexagon per place, so this is a
+// RESAMPLING -- the provinces are sampled onto a grid and the map that comes
+// home is the one the sidecar carried, not one rebuilt from hexes.
+//
+// `columns` and `rows` are hexes; 0 for either takes open-dragoman's own
+// default of 80x50, which is Unciv's largest standard size.
+Result toUnciv(const std::string& odmapPath, const std::string& jsonPath,
+               int columns = 0, int rows = 0);
 
 // Can the player choose where the map goes?
 //

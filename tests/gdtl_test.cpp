@@ -17,6 +17,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "miniz.h"
@@ -129,6 +130,51 @@ int main() {
             for (const char* f : {"land_sea.png", "provinces.png", "provinces.json",
                                   "countries.json"}) {
                 check(archiveHas(back, f), (std::string("the archive carries ") + f).c_str());
+            }
+        }
+    }
+
+    // ---- Unciv ----
+    //
+    // A different kind of crossing: that game has a hexagon per place where
+    // these two paint provinces onto a raster, so this is a RESAMPLING and the
+    // result is ONE FILE rather than a directory.
+    {
+        const std::string unciv = (work / "AsUnciv.json").string();
+        Gdtl::Result u = Gdtl::toUnciv(map, unciv, 24, 15);
+        check(u.ok, "the shipped world becomes a Unciv map");
+        if (!u.ok) std::printf("        %s\n", u.error.c_str());
+
+        if (u.ok) {
+            check(std::filesystem::exists(unciv), "it wrote the file");
+            std::ifstream in(unciv, std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(in)),
+                                   std::istreambuf_iterator<char>());
+            check(text.find("\"tileList\"") != std::string::npos,
+                  "it is a Unciv map and not something else with a .json name");
+
+            // 24x15 is Unciv's "Tiny". Counting the positions keeps this test
+            // free of a JSON parser it does not otherwise need -- and checks
+            // the grid was honoured, which is the whole reason dg_convert_unciv
+            // exists instead of a field on dg_options.
+            size_t hexes = 0, at = 0;
+            while ((at = text.find("\"position\"", at)) != std::string::npos) {
+                ++hexes;
+                ++at;
+            }
+            check(hexes == 24 * 15, "the grid size was honoured");
+
+            // And home again, through the SAME call the GD5 import uses:
+            // open-dragoman decides what a source is by looking at it.
+            const std::string home2 = (work / "fromUnciv.odmap").string();
+            Gdtl::Result back2 = Gdtl::toOdmap(unciv, home2);
+            check(back2.ok, "a Unciv map comes back as an .odmap");
+            if (!back2.ok) std::printf("        %s\n", back2.error.c_str());
+            if (back2.ok) {
+                for (const char* f : {"provinces.png", "provinces.json", "countries.json"}) {
+                    check(archiveHas(home2, f),
+                          (std::string("the archive carries ") + f).c_str());
+                }
             }
         }
     }
