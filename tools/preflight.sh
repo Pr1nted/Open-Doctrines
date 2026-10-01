@@ -68,6 +68,22 @@ GAME_PORT="${OD_PREFLIGHT_GAME_PORT:-7777}"
 # a skip rather than a failure -- it has not been prepared, which is a
 # different thing from not working.
 MP_GUESTS="${OD_PREFLIGHT_MP_GUESTS:-pf-debian pf-freebsd}"
+
+# ── THE WINDOWS VM ──
+#
+# Not a qemu_guest.sh guest: it is a UTM VM reached through an ~/.ssh/config
+# alias, with Windows paths and .exe on the end of everything, so it does not
+# fit the loops above and is handled beside them.
+#
+# ITS ARCHITECTURE IS NOT THE ONE WE SHIP. The VM is Windows on ARM, and the
+# published Windows build is x86_64 -- so what runs here is an x64 cross-build
+# (MSVC arm64_x64) executing under emulation. For the save FORMAT and the wire
+# PROTOCOL that is the right test and the instruction set is irrelevant. It is
+# not a substitute for running the shipped binary on an x64 machine, and this
+# stage does not claim to be.
+PF_WIN="${OD_PREFLIGHT_WIN:-odwin}"
+PF_WIN_BUILD='C:\od\build'
+win_up() { ssh -o ConnectTimeout=8 -o BatchMode=yes "$PF_WIN" "echo ok" >/dev/null 2>&1; }
 declare -a RESULTS=()
 started=$(date +%s)
 
@@ -210,7 +226,12 @@ stage_multiplayer() {
         for _ in $(seq 1 90); do
             sleep 1
             if grep -q "Ctrl-C to stop" "$log" 2>/dev/null; then
-                grep -o "join code : .*" "$log" | head -1 | sed "s/join code : //"
+                # tr -d CR: a Windows host writes CRLF, so the code came out
+                # as "TEST-GAME\r" and the client politely asked for a
+                # different game -- reported as "that server is running a
+                # different game to the one you asked for", which is true and
+                # says nothing about the carriage return that caused it.
+                grep -o "join code : .*" "$log" | head -1 | sed "s/join code : //" | tr -d '\r'
                 return 0
             fi
             grep -q "^FAIL" "$log" 2>/dev/null && break
@@ -322,6 +343,41 @@ stage_multiplayer() {
             sleep 2
         done
     done
+
+    # ── and Windows, both ways ──
+    if win_up; then
+        local wport=$(( GAME_PORT + 14 ))
+        echo
+        echo "== this machine hosts, $PF_WIN joins =="
+        "$bin" "$issuer" host "$GAME_PORT" --all > "$MP_DIR/win-machost.log" 2>&1 &
+        local wcode
+        if wcode=$(wait_for_host "$MP_DIR/win-machost.log"); then
+            ssh -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -R "$GAME_PORT:127.0.0.1:$GAME_PORT" "$PF_WIN" \
+                "$PF_WIN_BUILD\\NetConnectTest.exe $issuer connect 127.0.0.1:$GAME_PORT $wcode windows" \
+                2>&1 | tr -d '\r' || rc=1
+        else
+            echo "  FAIL  the host never came up"; rc=1
+        fi
+        pkill -f "NetConnectTest .* host $GAME_PORT" 2>/dev/null || true
+        sleep 2
+
+        echo
+        echo "== $PF_WIN hosts, this machine joins =="
+        ssh -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -L "$wport:127.0.0.1:$GAME_PORT" "$PF_WIN" \
+            "$PF_WIN_BUILD\\NetConnectTest.exe $issuer host $GAME_PORT --all" \
+            > "$MP_DIR/win-host.log" 2>&1 &
+        if wcode=$(wait_for_host "$MP_DIR/win-host.log"); then
+            "$bin" "$issuer" connect "127.0.0.1:$wport" "$wcode" mac-client || rc=1
+        else
+            echo "  FAIL  $PF_WIN never came up as a host"
+            tr -d '\r' < "$MP_DIR/win-host.log" | tail -5 | sed 's/^/          /'; rc=1
+        fi
+        ssh "$PF_WIN" 'taskkill /im NetConnectTest.exe /f' >/dev/null 2>&1 || true
+        pkill -f "ssh .*-L $wport:127.0.0.1:$GAME_PORT" 2>/dev/null || true
+    else
+        echo
+        echo "  skip  $PF_WIN is not reachable (start the Windows VM in UTM)"
+    fi
     return $rc
 }
 
@@ -416,6 +472,35 @@ stage_saves() {
         [ -f "$SV_DIR/$g.odsv" ] && printf '        (%s emitted %s bytes)\n' \
             "$g" "$(wc -c < "$SV_DIR/$g.odsv" | tr -d ' ')"
     done
+
+    # ── and Windows ──
+    if win_up; then
+        echo
+        echo "== $PF_WIN (x64 under emulation on Windows-on-ARM) =="
+        if ssh "$PF_WIN" "$PF_WIN_BUILD\\SaveRoundTripTest.exe --emit C:\\od\\pf.odsv" >/dev/null 2>&1 \
+           && scp -q "$PF_WIN:C:/od/pf.odsv" "$SV_DIR/windows.odsv"; then
+            if "$hostbin" --verify "$SV_DIR/windows.odsv" > "$SV_DIR/mac-verify-windows.log" 2>&1; then
+                echo "  ok    this machine reads a save written there ($(wc -c < "$SV_DIR/windows.odsv" | tr -d ' ') bytes)"
+            else
+                echo "  FAIL  this machine reads a save written there"
+                sed -n "/^FAILURES/,\$p" "$SV_DIR/mac-verify-windows.log" | head -8 | sed "s/^/          /"; rc=1
+            fi
+        else
+            echo "  FAIL  it emits a save"; rc=1
+        fi
+
+        if scp -q "$SV_DIR/mac.odsv" "$PF_WIN:C:/od/mac.odsv" \
+           && ssh "$PF_WIN" "$PF_WIN_BUILD\\SaveRoundTripTest.exe --verify C:\\od\\mac.odsv" \
+                > "$SV_DIR/windows-verify-mac.log" 2>&1; then
+            echo "  ok    it reads a save written here"
+        else
+            echo "  FAIL  it reads a save written here"
+            tr -d '\r' < "$SV_DIR/windows-verify-mac.log" | tail -6 | sed 's/^/          /'; rc=1
+        fi
+    else
+        echo
+        echo "  skip  $PF_WIN is not reachable (start the Windows VM in UTM)"
+    fi
     return $rc
 }
 
