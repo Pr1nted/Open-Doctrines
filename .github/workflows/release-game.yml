@@ -576,10 +576,18 @@ jobs:
     name: Test
     uses: ./.github/workflows/test.yml
 
+  # FreeBSD and OpenBSD, built inside real BSDs on a Linux runner. Its own
+  # workflow because it is a different shape from this matrix -- one job per
+  # runner -- and because it is dispatchable on its own, so a BSD break is
+  # found before a tag rather than by one.
+  bsd:
+    name: BSD
+    uses: ./.github/workflows/bsd-game.yml
+
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web, linux-packages, flatpak]
+    needs: [build, test, web, linux-packages, flatpak, bsd]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.

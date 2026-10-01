@@ -54,9 +54,23 @@ jobs:
           usesh: true
           copyback: true
           prepare: |
+            set -e
+            # libglvnd, not just mesa-libs: mesa-libs ships the LIBRARY and
+            # libglvnd ships GL/gl.h, so without it raylib's find_package
+            # leaves OPENGL_INCLUDE_DIR as NOTFOUND and the generate step
+            # fails with a path that does not explain itself. The server
+            # target builds without any of this, which is why a local FreeBSD
+            # configure was happy and this was not.
             pkg install -y cmake ninja pkgconf python3 git \
-                           mesa-libs libX11 libXrandr libXi libXcursor \
+                           libglvnd mesa-libs xorgproto \
+                           libX11 libXext libXrandr libXi libXcursor \
                            libXinerama libxkbcommon wayland
+            # Fail HERE if a tool is missing. A prepare block that quietly
+            # half-worked turned up later as "cmake: not found" in the build,
+            # which points at the wrong step.
+            for t in cmake ninja python3; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
           run: |
             set -e
             cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -71,11 +85,28 @@ jobs:
         if: matrix.name == 'openbsd-amd64'
         uses: vmactions/openbsd-vm@v1
         with:
-          release: '7.6'
+          # 7.7, not 7.6: OpenBSD keeps package sets for the two most recent
+          # releases, and 7.6's were pruned --
+          #
+          #   https://cdn.openbsd.org/pub/OpenBSD/7.6/packages/amd64/: no such dir
+          #
+          # so pkg_add found nothing, the step carried on, and the build
+          # failed later with "cmake: not found". The odseal job survives on
+          # 7.6 because it needs only base clang and installs nothing.
+          #
+          # This pins a release that will itself age out. When it does, the
+          # symptom is that same "no such dir" line in the prepare step.
+          release: '7.7'
           usesh: true
           copyback: true
           prepare: |
+            set -e
             pkg_add -I cmake ninja python3 git
+            for t in cmake ninja; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
+            # python3 is installed as python3.x with a versioned name only.
+            command -v python3 >/dev/null || ln -sf "$(ls /usr/local/bin/python3.* | head -1)" /usr/local/bin/python3
           run: |
             set -e
             # OpenBSD ships X and Mesa in base (xenocara), so there is nothing

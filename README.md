@@ -263,6 +263,25 @@ An AppImage bundles the application's libraries but **not** the C library under
 them, so it is not a way around the glibc requirement. On Debian 11, Ubuntu
 20.04 or RHEL 9, use the Flatpak or build from source.
 
+### FreeBSD and OpenBSD
+
+Both are built and published as **amd64** tarballs, by each system's own
+compiler inside a real VM — not cross-compiled from Linux. Unpack and run.
+
+You need the usual X11, Mesa and ALSA runtime libraries. On FreeBSD they are
+ports (`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
+libxkbcommon`); on OpenBSD X and Mesa are already in base.
+
+**Mods do not work on OpenBSD, and the build says so rather than pretending.**
+The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
+which has no OpenBSD port, and OpenBSD's W^X policy is a poor fit for an
+interpreter that wants pages it can write and then execute. The OpenBSD build
+is compiled with the runtime left out: there is no mod menu, rather than one
+that is there and does nothing. Everything else — the full game, scenarios,
+saves, multiplayer — is unaffected. FreeBSD has mods as normal.
+
+Porting the runtime is a separate piece of work and not scheduled.
+
 ### Windows
 
 Requires **Windows 10 or later**, 64-bit. The build is unsigned, so SmartScreen
@@ -520,6 +539,8 @@ Alpha, and the honest version of that word:
   | **Linux (x64)** | qualified — built, tested, and played a game |
   | **Windows (x64)** | qualified — built, tested, and played a game |
   | **macOS (arm64, x64)** | qualified *with one gap*: playing a real game is unproven |
+  | **FreeBSD (amd64)** | builds and packages on every release; not yet played |
+  | **OpenBSD (amd64)** | builds and packages on every release, **without mods**; not yet played |
 
   The macOS gap is the hosted runner and not the build: GitHub's macOS images
   have no usable display, so the game cannot open a window there and the play
@@ -552,7 +573,7 @@ Alpha, and the honest version of that word:
   attests to the packaging, the registry and the shortcuts rather than to the
   binary on x64 hardware.
 
-  **FreeBSD and OpenBSD are being worked on, and they will not be equal.**
+  **FreeBSD and OpenBSD ship, and they are not equal.**
   The mod runtime is WebAssembly Micro Runtime, and WAMR ships platform support
   for `freebsd` and none for `openbsd` — checked against its own
   `core/shared/platform` directory, which lists sixteen platforms and not that
@@ -560,18 +581,24 @@ Alpha, and the honest version of that word:
 
   | | the game | mods and the Gearbox SDK |
   |---|---|---|
-  | **FreeBSD** | intended | intended |
-  | **OpenBSD** | intended | **not available** |
+  | **FreeBSD** | built every release | yes |
+  | **OpenBSD** | built every release | **not available** |
 
-  An OpenBSD build will ship with modding disabled rather than shipping a
-  runtime that loads nothing, and the `.odmod` menu will say so rather than
-  failing quietly. Porting WAMR to OpenBSD is a real piece of work and belongs
-  to its own project, not to a release of this one; if it lands, the platform
-  gains mods without anything else changing.
+  The OpenBSD build is compiled with the runtime left out rather than shipping
+  one that loads nothing. Porting WAMR to OpenBSD is a real piece of work and
+  belongs to its own project, not to a release of this one; if it lands, the
+  platform gains mods without anything else changing.
 
-  Neither BSD has a GitHub-hosted runner, so when they arrive their binaries
-  will be built locally in UTM rather than in CI — which is the same machinery
-  the Linux packages are tested on.
+  Neither BSD has a GitHub-hosted runner, so both build inside a real BSD VM on
+  a Linux runner (`.github/workflows/bsd-game.yml`) — by the target system's
+  own compiler, not cross-compiled. That workflow is dispatchable on its own,
+  so a BSD break is found before a tag rather than by one.
+
+  Both are **amd64 only**, and the reason is the sealed `odseal` archive: the
+  VM images those jobs run are x86_64, so there is no machine in the pipeline
+  that can produce a `freebsd-aarch64` one. The codebase itself is fine there —
+  every source file of the server target compiles on FreeBSD 14.5/arm64, and
+  the build reaches the final link.
 
   The **web** build compiles, boots and passes its own checks in CI; it does not
   go through `qualify.sh`, which needs a window and a filesystem.

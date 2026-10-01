@@ -61,11 +61,18 @@ jobs:
     permissions:
       contents: write        # same -- its Publish is gated on a server-v tag
 
+  # The BSDs build in a VM on a Linux runner and take far longer than any
+  # other target, which makes them the worst possible thing to discover on a
+  # tag. Rehearsed here for exactly that reason.
+  bsd:
+    name: BSD game
+    uses: ./.github/workflows/bsd-game.yml
+
   verdict:
     name: Rehearsed
-    needs: [test, sdk, server]
+    needs: [test, sdk, server, bsd]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "Test, SDK and server all built without a tag."
+          echo "Test, SDK, server and both BSDs all built without a tag."
           echo "The release path is exercised; tagging should not discover new breakage."
