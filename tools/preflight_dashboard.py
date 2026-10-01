@@ -28,7 +28,7 @@ import json
 import os
 import sys
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(os.environ.get("OD_PREFLIGHT_LOGS", os.path.join(ROOT, "build", "preflight")), "runs")
@@ -146,7 +146,7 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:6px;
  padding:14px;overflow:auto;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 a.back{color:var(--run);text-decoration:none}
 </style></head><body>
-<header><h1>preflight</h1><span class=sub id=sub></span></header>
+<header><h1>preflight</h1><span class=sub id=sub></span><span class=sub id=beat style="margin-left:auto"></span></header>
 <main id=main><div class=empty>loading</div></main>
 <script>
 const ago=s=>{if(!s)return'';const d=Date.now()/1000-s;
@@ -156,7 +156,9 @@ const dur=s=>s>=60?Math.floor(s/60)+'m '+(s%60)+'s':s+'s';
 const esc=t=>{const d=document.createElement('div');d.textContent=t;return d.innerHTML};
 let open=new Set();
 async function draw(){
- const r=await fetch('api/runs');const runs=await r.json();
+ // cache:'no-store' as well as the server's header: a browser that has
+ // already cached a response will reuse it for a plain fetch() regardless.
+ const r=await fetch('api/runs',{cache:'no-store'});const runs=await r.json();
  document.getElementById('sub').textContent=runs.length?runs.length+' runs':'';
  const m=document.getElementById('main');
  if(!runs.length){m.innerHTML='<div class=empty>No runs yet. <code>tools/preflight.sh</code></div>';return}
@@ -182,8 +184,25 @@ async function draw(){
   el.classList.toggle('open');
   el.classList.contains('open')?open.add(id):open.delete(id);
  });
+ // A newly started run opens itself, so a watched pipeline shows its stages
+ // without being clicked.
+ if(runs[0].status==='running'&&!lastRuns){open.add(runs[0].id)}
+ lastRuns=runs.length;
+ return runs.some(r=>r.status==='running');
 }
-draw();setInterval(draw,4000);
+// A RUNNING PIPELINE IS WATCHED; A FINISHED ONE IS GLANCED AT.
+// Two seconds while anything is in flight, fifteen when nothing is -- and
+// the header says when it last heard back, so "is this live" is answerable
+// from the page instead of by reloading it to see whether anything changes.
+let timer=null, lastRuns=0;
+async function tick(){
+ let active=false;
+ try{ active=await draw(); document.getElementById('beat').textContent='updated '+new Date().toLocaleTimeString(); }
+ catch(e){ document.getElementById('beat').textContent='not reachable'; }
+ clearTimeout(timer);
+ timer=setTimeout(tick, active?2000:15000);
+}
+tick();
 </script></body></html>"""
 
 
@@ -200,24 +219,40 @@ def log_page(run_id, name, body):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, body, ctype="text/html; charset=utf-8", code=200):
+    def _send(self, body, ctype="text/html; charset=utf-8", code=200, head=False):
         raw = body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
+        # NO-STORE, OR THE PAGE DOES NOT MOVE.
+        #
+        # Nothing here sent cache headers, so the browser was free to serve
+        # /api/runs from its own cache -- and did. The server was returning
+        # the live state the whole time (a run mid-flight reported
+        # suite=fail, qualify=running on every curl), and the page sat frozen
+        # on whatever it had first fetched. It looked like the poll had
+        # stopped; the poll was fine and the answers were stale.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
         self.end_headers()
-        self.wfile.write(raw)
+        if not head:
+            self.wfile.write(raw)
 
-    def do_GET(self):
+    # 501 on HEAD is just untidy -- curl -I against your own dashboard should
+    # not look like a broken server.
+    def do_HEAD(self):
+        self.do_GET(head=True)
+
+    def do_GET(self, head=False):
         path, _, query = self.path.partition("?")
         args = dict(p.split("=", 1) for p in query.split("&") if "=" in p)
         from urllib.parse import unquote
         args = {k: unquote(v) for k, v in args.items()}
 
         if path in ("/", "/index.html"):
-            return self._send(PAGE)
+            return self._send(PAGE, head=head)
         if path == "/api/runs":
-            return self._send(json.dumps(all_runs()), "application/json")
+            return self._send(json.dumps(all_runs()), "application/json", head=head)
         if path == "/log":
             run_id, name = args.get("run", ""), args.get("name", "")
             # A run id and a stage name both come off the query string, so
@@ -234,7 +269,7 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as e:
                 body = "could not read it: %s" % e
             return self._send(log_page(run_id, name, body or "(empty)"))
-        self._send("<h1>404</h1>", code=404)
+        self._send("<h1>404</h1>", code=404, head=head)
 
     def log_message(self, *a):
         pass          # the server's own access log is noise here
@@ -259,7 +294,10 @@ def main():
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 8787
     # localhost only. This reads a directory that describes six virtual
     # machines; it is nobody else's business and it is not hardened for them.
-    srv = HTTPServer(("127.0.0.1", port), Handler)
+    # Threading: one slow read of a large log used to block the poll behind
+    # it, on a single-threaded server, which also looks exactly like a page
+    # that has stopped updating.
+    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print("preflight dashboard: http://127.0.0.1:%d   (ctrl-c to stop)" % port)
     print("reading %s" % RUNS)
     try:
