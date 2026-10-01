@@ -1440,7 +1440,14 @@ set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses comms
                     # list and it disagreed with this one, which the comment
                     # further down said must not happen and nothing checked.
                     # tools/check_shipped_data.py checks it now.
-                    district_laws.json parties.json menu_bg.png)
+                    district_laws.json parties.json menu_bg.png
+                    # The menu's splash line and its seasonal ones. Absent,
+                    # odsplash::pick() draws from an empty list and the menu is
+                    # silently plain -- nothing fails, the feature is just not
+                    # there. It was added to release.py's list first, which is
+                    # exactly the disagreement check_shipped_data.py exists to
+                    # catch, and it caught it.
+                    splashes.json)
 
 # ── Android: stage the APK's assets, and list them ──
 #

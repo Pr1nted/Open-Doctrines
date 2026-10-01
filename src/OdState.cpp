@@ -30,7 +30,7 @@ namespace {
 // the player made, which is why the default is to include.
 const char* kShipped[] = {
     "STDmaps", "audio", "flags", "fonts", "icons", "symbols", "licenses", "ai",
-    "tips.json", "credits.txt",
+    "tips.json", "splashes.json", "credits.txt",
     // Added to OD_SHIPPED_DATA later and not here, which cost far more than
     // the "fatter .odstate" the comment above predicted: on the web this list
     // decides what is re-compressed and pushed to IndexedDB every time the
