@@ -559,6 +559,34 @@ AISystem::attackCandidates(int cid) const {
             // re-measure once the game is settled; the term itself is simply
             // the supply factor processArmyMovement already applies and this
             // scan omits.
+            //
+            // ── RE-MEASURED, AS ASKED ABOVE (journal 443). IT STAYS OFF ──
+            //
+            //                      rush collapsed   rung per-seed
+            //     off (shipped)        15/32        446.3 (se 12.3)
+            //     SUPPLY_MARGIN=1      19/32        450.7 (se 10.5)   +4.4, floor 31.8
+            //
+            // 32 seeds an arm, 400 turns, N24. Rung is nil and the rush seat
+            // did not improve. Neither difference resolves at 32 seeds, so this
+            // is "did not help", not "costs 4 seats" -- but the term was the
+            // strictly MORE ACCURATE number, and it did not pay.
+            //
+            // WHY A MORE ACCURATE NUMBER DECIDED WORSE, which is the useful part:
+            // `margin` does two jobs. It gates the attack (>= the winnability
+            // bar) and it SIZES it -- the sizing below is 0.75 * ATTACK_SAFETY
+            // / margin, so a LOWER margin commits MORE men. The attacker is
+            // worse supplied in a province it does not own, so adding the term
+            // lowers margins almost everywhere: the gate admits a slightly
+            // different set of attacks and each one is over-committed. Measured
+            // on one seat, same assault count either way (78,643 vs 78,638) and
+            // repulses up 18% (3,983 -> 4,698). A quantity and a threshold
+            // cannot both be made more accurate by correcting one number.
+            //
+            // So the honest statement is NOT "supply does not matter". It is
+            // that this margin cannot carry the correction while it is also the
+            // divisor for force size. Anyone fixing it properly should separate
+            // the two uses FIRST, then re-apply the supply term to the gate
+            // alone.
             static const bool supplyMargin = std::getenv("OD_SUPPLY_MARGIN") &&
                                              atoi(std::getenv("OD_SUPPLY_MARGIN")) != 0;
             const float atkSup = supplyMargin ? g.supplyFactor(cid, nid)    : 1.0f;

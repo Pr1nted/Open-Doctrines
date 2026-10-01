@@ -33228,3 +33228,104 @@ twice-measured choice.
 PATHS TOUCHED: src/ai/AISystem.cpp (the comment carries both measurements now; no behaviour change),
 docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
 PENDING COMMIT: journals 440-442 -- the corrected campaign-share comment, the 441 counters, this re-measurement.
+
+## 443 — iteration: OD_SUPPLY_MARGIN, a re-measurement its own comment asks for
+
+PRE-REGISTERED. Journal 440 found a documented constant whose measurement had expired and journal 442 found one that
+held; this gate is the clearest remaining case of the first kind, and it says so itself:
+
+    // the other session was editing the resolver -- the control on
+    // these seeds moved 349 -> 175 within the hour -- so it is a fact
+    // about a binary that no longer exists. OD_SUPPLY_MARGIN=1 to
+    // re-measure once the game is settled
+
+WHAT IT IS, and why it is not another knob. The AI's attack scan computes `margin = atk / def` and the resolver
+`processArmyMovement` then applies a SUPPLY FACTOR to both sides that the scan omits. So the margin the AI decides on
+is not the margin the game will resolve: wherever the attacker is worse supplied than the defender, the AI believes it
+is above its 1.05 winnability bar when the resolver will put it below 1.0. This is a **fidelity fix** -- the estimate
+made to match the rule -- not a preference. Memory [[fidelity-fixes-carry-a-direction]] says a proxy swap can be
+one-way, and [[expose-the-resolvers-numbers]] says the AI should read the resolver's own term rather than a second
+copy of it. `supplyFactor()` is that term, already written and already called by the resolver.
+
+WHY IT MIGHT MATTER HERE. The same comment block records the failure it would touch: benched as France in a world at
+war the AI issues **4.008 attacks per turn against the blitz script's 1.754, and 40% are REPULSED (189 of 473)** --
+"it does not start outnumbered; it spends its army on coin flips and becomes outnumbered". A margin that systematically
+overstates the attacker's odds is one mechanism for exactly that.
+
+WHY THE OBVIOUS ALTERNATIVE IS CLOSED, so nobody suggests it: raising the bar instead was tried (1.05 -> 1.40) and
+"caution rescues the positions that were collapsing and ruins the ones that were winning" -- China 5 -> 77, France at
+war 97 -> 29, rating 129 -> 124. A conditional bar was tried too and its signal was exactly inverted. The supply term
+is different in kind because it is SELECTIVE by construction: it only lowers the margin where supply is actually
+worse, so it is not a blanket caution.
+
+PREDICTION, committed: **rush improves and rung is flat to slightly down.** The reasoning is the bar evidence above --
+selective caution should buy the collapsing seat without the blanket cost that sank the 1.40 bar. Rush is a rate
+question, so "improves" means a lower collapse count, not a score. **What would falsify it:** rung clearly down
+(the fidelity fix is costing the growth seats, i.e. supply is mostly hurting attacks the AI should be making), or rush
+unmoved (the term is too rare to matter -- which the mechanism check below should catch first).
+
+VERDICT RULE, fixed now: recommend ON if rush improves and rung does not clear its floor downward. A correctness fix
+that measures as a null is still arguably worth shipping -- the AI would be reading the resolver's own number instead
+of an incomplete copy -- but that is the user's call, not mine, and I will say so rather than ship it quietly.
+
+STEP 1, the mechanism: does the term fire at all? If supplyFactor is ~1.0 almost everywhere the gate is a no-op and
+there is nothing to bench.
+
+MECHANISM, one rush seed, 400 turns -- live, and pointing the WRONG way:
+
+                    assaults   repulsed   contested   bound    decisions   seat
+  SUPPLY_MARGIN=0     78,643     3,983       9,585    24.8%     257,604     0.4
+  SUPPLY_MARGIN=1     78,638     4,698      11,279    22.5%     190,024     0.3
+
+The term fires -- the hash moves and the decision count falls by a quarter. But the ASSAULT COUNT is unchanged while
+repulses rise 18%, so the attacks being chosen are worse, not fewer.
+
+A HYPOTHESIS FOR WHY A MORE ACCURATE NUMBER MAKES WORSE DECISIONS, and it is the interesting part of this iteration:
+**the margin is used for two different jobs.** It gates the attack (`margin >= 1.05`) and it SIZES it -- the comment
+above says the sizing is `0.75 * ATTACK_SAFETY / margin`. Dividing by the margin means a LOWER margin commits MORE
+men. Adding the supply factor lowers margins almost everywhere, because the attacker is worse supplied in a province
+it does not own, so the same gate now admits a slightly different set of attacks AND over-commits to each one. One
+number serving a gate and a quantity cannot be made more accurate for both at once.
+
+I am running the bench as pre-registered regardless. One seed of a bistable seat is not a verdict, the repulse count
+is not the seat score, and journal 438 is the precedent in the other direction -- there one seed looked good and the
+bench said nothing. Abandoning a committed plan on the same evidence I refused to accept when it flattered me would be
+choosing when to be rigorous.
+
+RESULT, all four arms clean:
+
+                     rush collapsed   land    rung
+  off (shipped)          15/32        10.92   446.3 (se 12.3)
+  SUPPLY_MARGIN=1        19/32         8.23   450.7 (se 10.5)
+  rung +4.4, floor 31.8 -> WITHIN FLOOR          rush Fisher p 0.4527
+
+**PREDICTION FALSIFIED on the half that mattered.** I committed to "rush improves and rung is flat to slightly down".
+Rung was flat (+4.4, nil) and the rush seat went the WRONG way, 15/32 -> 19/32. Neither difference resolves at 32
+seeds, so the honest statement is "did not help", not "costs four seats" -- but the reasoning that produced the
+prediction was wrong, not merely unlucky, and that is worth more than the number.
+
+VERDICT: **gate stays off**, by the rule fixed before the run (ON only if rush improves). No judgement call needed.
+
+WHAT I GOT WRONG, precisely. I argued the supply term was "selective caution" and so would avoid the blanket cost that
+sank the 1.40 bar. It is selective, and that was not the problem. The problem is that **`margin` does two jobs**: it
+gates the attack and it SIZES it, via `0.75 * ATTACK_SAFETY / margin`, so a lower margin commits MORE men. The
+attacker is always worse supplied in a province it does not own, so the term lowers margins nearly everywhere -- and
+the result is not fewer attacks but the same attacks, over-committed. The mechanism check saw it before the bench:
+assaults 78,643 vs 78,638, repulses 3,983 -> 4,698. I read that correctly and benched anyway, which was right, and the
+bench agreed with it.
+
+**A strictly more accurate input made the decisions worse, and no amount of accuracy would have fixed it**, because a
+single number cannot be made more correct for both a threshold and a divisor at once. New memory:
+[[one-number-cannot-serve-a-gate-and-a-quantity]].
+
+So the comment's request is answered and the answer is not "supply does not matter" -- it is that this margin cannot
+carry the correction while it is also the force-size divisor. Separating the two uses is the prerequisite, and that is
+a resolver-shaped change rather than a knob.
+
+AND ONE METHOD NOTE WORTH KEEPING: this is the first time this session that a cheap mechanism proxy (the repulse
+count) predicted a bench outcome correctly. One instance, and [[count-the-groupings-you-looked-at]] applies to me as
+much as to anything else -- but it cost four minutes against two hours, and it was right.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (comment only; the gate's default is unchanged), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md.
+PENDING COMMIT: this re-measurement.

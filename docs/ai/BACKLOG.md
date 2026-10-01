@@ -1310,6 +1310,16 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
+134. ~~**OD_SUPPLY_MARGIN: re-measure, as its own comment asks.**~~ **DONE journal 443:
+   it stays off, and the reason is structural.** 32 seeds an arm: rung **+4.4 against a
+   31.8 floor** (nil), rush **15/32 -> 19/32** at p 0.45 -- did not help. The term is the
+   strictly more ACCURATE number (the supply factor the resolver applies and the scan
+   omits), so this is not "supply does not matter". **`margin` does two jobs:** it gates
+   the attack and it sizes it (`0.75 * ATTACK_SAFETY / margin`), so lowering it commits
+   MORE men. Same assault count, repulses +18%. **Prerequisite for anyone retrying:
+   separate the gate from the sizing divisor first**, then apply supply to the gate
+   alone -- a resolver change, not a knob. See [[one-number-cannot-serve-a-gate-and-a-quantity]].
+
 133. ~~**Re-measure OD_CAMPAIGN_DEFENSIVE: its 53-point cost may have expired.**~~
    **DONE journal 442, user asked: it still costs, and the hoped-for half failed.**
    32 seeds an arm on the current build: rung **446.3 -> 414.9 (-31.4, floor 37.6)**,
