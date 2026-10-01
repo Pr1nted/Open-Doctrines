@@ -265,8 +265,9 @@ them, so it is not a way around the glibc requirement. On Debian 11, Ubuntu
 
 ### FreeBSD and OpenBSD
 
-Both are built and published as **amd64** tarballs, by each system's own
-compiler inside a real VM — not cross-compiled from Linux. Unpack and run.
+Both are built and published as **amd64** zips, the same shape as every other
+desktop download, by each system's own compiler inside a real VM — not
+cross-compiled from Linux. Unpack and run.
 
 You need the usual X11, Mesa and ALSA runtime libraries. On FreeBSD they are
 ports (`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
