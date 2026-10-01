@@ -452,7 +452,7 @@ static JSValue gbxjs_field_name(JSContext *ctx, JSValueConst this_val,
 /* field is text, was never declared, or belongs to a mod that is not */
 /* loaded. */
 /* gearbox:country "set_number" */
-/* `(iiid)i` */
+/* `(iiiF)i` */
 static JSValue gbxjs_set_number(JSContext *ctx, JSValueConst this_val,
                         int argc, JSValueConst *argv) {
     (void)this_val;

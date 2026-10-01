@@ -1956,7 +1956,16 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:country", "field_has", "(ii)i", (void*)ctry_field_has, MODULE_COUNTRY},
     {"gearbox:country", "field_count", "()i", (void*)ctry_field_count, MODULE_COUNTRY},
     {"gearbox:country", "field_name", "(iii)i", (void*)ctry_field_name, MODULE_COUNTRY},
-    {"gearbox:country", "set_number", "(iiid)i", (void*)ctry_set_number, MODULE_COUNTRY},
+    // (iiiF)i, not (iiid)i. WAMR's signature alphabet is i/I/f/F -- there is no
+    // 'd', so this one entry never matched the import a compiled mod declares
+    // and WAMR refused to link it: "failed to link import function
+    // (gearbox:country, set_number)". The instance still builds; the trap
+    // comes when the mod CALLS it. Every other f64 in this table is already F.
+    //
+    // abi.json carried the same typo, so ModAbiTest compared the two and found
+    // them in perfect agreement. Nothing that reads a table could have caught
+    // this -- it took calling the function.
+    {"gearbox:country", "set_number", "(iiiF)i", (void*)ctry_set_number, MODULE_COUNTRY},
     {"gearbox:country", "get_number", "(iii)F", (void*)ctry_get_number, MODULE_COUNTRY},
     {"gearbox:country", "set_text", "(iiiii)i", (void*)ctry_set_text, MODULE_COUNTRY},
     {"gearbox:country", "get_text", "(iiiii)i", (void*)ctry_get_text, MODULE_COUNTRY},

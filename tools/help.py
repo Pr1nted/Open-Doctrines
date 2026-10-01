@@ -76,6 +76,11 @@ GROUPS = [
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",
         "check_bindings.py", "check_abi_compat.py", "wasm_imports.py",
+        # Those three check that every capability is DESCRIBED correctly. This
+        # one makes each of them get CALLED: a mod per gearbox module that
+        # invokes every import in it and counts what came back, generated from
+        # abi.json so it cannot drift from the surface it is testing.
+        "gen_capability_mods.py",
         # check_bindings.py is a text lint and says so; this one asks the
         # compiler, which is the only thing that catches a generated call
         # with the wrong arity.

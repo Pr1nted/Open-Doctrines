@@ -1360,7 +1360,7 @@ declare namespace GearboxRaw {
   // field is text, was never declared, or belongs to a mod that is not
   // loaded.
   // gearbox:country "set_number"
-  // `(iiid)i`
+  // `(iiiF)i`
   function setNumber(name: number, nameLen: number, country: number, value: number): number;
 
   // A country's value, or 0 when the field or the country has none. 0 is a

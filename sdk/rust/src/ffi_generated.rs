@@ -1448,7 +1448,7 @@ extern "C" {
     /// field is text, was never declared, or belongs to a mod that is not
     /// loaded.
     /// gearbox:country "set_number"
-    /// `(iiid)i`
+    /// `(iiiF)i`
     pub fn set_number(name: *const u8, name_len: u32, country: u32, value: f64) -> u32;
 
     /// A country's value, or 0 when the field or the country has none. 0 is a

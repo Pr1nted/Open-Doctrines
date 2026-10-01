@@ -5794,7 +5794,7 @@
    "name": "set_number",
    "capability": "Country",
    "since": "1.3",
-   "signature": "(iiid)i",
+   "signature": "(iiiF)i",
    "params": [
     {
      "name": "name",

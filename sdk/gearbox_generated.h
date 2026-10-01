@@ -1789,7 +1789,7 @@ uint32_t gearbox_field_name(uint32_t index, char* buf, uint32_t cap);
  * field is text, was never declared, or belongs to a mod that is not
  * loaded.
  * gearbox:country "set_number"
- * `(iiid)i`
+ * `(iiiF)i`
  */
 GEARBOX_IMPORT("country", "set_number")
 uint32_t gearbox_set_number(const char* name, uint32_t name_len, gearbox_country country, double value);

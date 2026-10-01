@@ -1561,7 +1561,7 @@ func rawFieldName(index uint32, buf unsafe.Pointer, cap uint32) uint32
 // field is text, was never declared, or belongs to a mod that is not
 // loaded.
 // gearbox:country "set_number"
-// `(iiid)i`
+// `(iiiF)i`
 //go:wasmimport gearbox:country set_number
 func rawSetNumber(name unsafe.Pointer, name_len uint32, country uint32, value float64) uint32
 

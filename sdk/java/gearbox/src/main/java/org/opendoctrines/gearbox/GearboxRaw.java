@@ -1564,7 +1564,7 @@ public final class GearboxRaw {
     // field is text, was never declared, or belongs to a mod that is not
     // loaded.
     // gearbox:country "set_number"
-    // `(iiid)i`
+    // `(iiiF)i`
     @Import(module = "gearbox:country", name = "set_number")
     public static native int setNumber(int name, int nameLen, int country, double value);
 

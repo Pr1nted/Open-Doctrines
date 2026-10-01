@@ -44,12 +44,21 @@ step() { printf '\n=== %s ===\n' "$1"; }
 step "fixture mods"
 "$root/tests/build_test_mods.sh" "$build/testmods" || fail=1
 
+# ONE MOD PER CAPABILITY, generated from sdk/abi.json and compiled with the
+# same toolchain the fixtures above use. These call every import in every
+# gearbox module; ModCapabilityTest below checks the host answered all of
+# them. Generated rather than written so they cannot fall behind the ABI they
+# are testing -- which is the failure mode of a hand-written coverage test.
+step "capability mods"
+"$root/tools/gen_capability_mods.py" "$build/capmods" >/dev/null || fail=1
+"$root/tests/build_capability_mods.sh" "$build/capmods" || fail=1
+
 step "build test targets"
 # --config Release for the multi-config generators. Visual Studio and Xcode
 # ignore CMAKE_BUILD_TYPE at configure time and take the configuration here
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
-cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest \
+cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
       ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest FuzzParsersTest MonumentsTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
@@ -172,6 +181,12 @@ if [ "${OD_TSAN:-0}" != "0" ]; then
 fi
 run "abi conformance"  "$bin/ModAbiTest" "$root/sdk/abi.json"
 run "runtime"          "$bin/ModRuntimeTest" "$build/testmods"
+# Every capability, called. ModAbiTest proves the host's table matches
+# abi.json and the binding checks prove each SDK describes it; this is the
+# only thing that invokes them. It found gearbox:country set_number declared
+# with "(iiid)i" -- there is no 'd' in WAMR's signature alphabet, so it never
+# linked and any mod calling it trapped.
+run "capabilities"     "$bin/ModCapabilityTest" "$build/capmods"
 run "mod manager"      "$bin/ModManagerTest" "$build/testmods" "$build/modmgr_scratch"
 # Run from the repository root: the version test shells out to tools/odver.py
 # and reads tests/fixtures/, and both are relative to it.

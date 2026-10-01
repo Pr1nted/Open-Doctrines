@@ -2561,6 +2561,29 @@ if(OD_MODS_BACKEND STREQUAL "wamr")
     target_compile_definitions(ModRuntimeTest PRIVATE OD_MODS_WAMR=1)
 endif()
 
+# EVERY CAPABILITY, CALLED. ModAbiTest proves the host's table matches
+# abi.json, and gen_bindings.py/check_bindings.py prove every SDK binding
+# describes it -- none of which calls anything. This loads one generated mod
+# per gearbox module, each invoking every import in that module, and checks
+# the host answered all of them. See tools/gen_capability_mods.py.
+add_executable(ModCapabilityTest EXCLUDE_FROM_ALL
+    tests/mod_capability_test.cpp
+    src/mods/ModPackage.cpp
+    src/net/ModAttest.cpp
+    src/mods/ModRuntime.cpp
+    src/mods/ModHost.cpp
+    src/mods/ModProtected.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(ModCapabilityTest PRIVATE src tests tools/map_generator)
+if(OD_MODS_BACKEND STREQUAL "wamr")
+    target_link_libraries(ModCapabilityTest vmlib)
+    target_compile_definitions(ModCapabilityTest PRIVATE OD_MODS_WAMR=1)
+endif()
+
 # Exercises the state machine, grants and persistence against a scratch mods
 # directory, using the same import/scan path the mod menu uses.
 add_executable(ModManagerTest EXCLUDE_FROM_ALL

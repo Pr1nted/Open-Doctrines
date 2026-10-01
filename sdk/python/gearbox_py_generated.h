@@ -355,7 +355,7 @@ static PyObject *gbxpy_field_name(PyObject *self, PyObject *args) {
 /* field is text, was never declared, or belongs to a mod that is not */
 /* loaded. */
 /* gearbox:country "set_number" */
-/* `(iiid)i` */
+/* `(iiiF)i` */
 static PyObject *gbxpy_set_number(PyObject *self, PyObject *args) {
     (void)self;
     const char *a0 = NULL; Py_ssize_t a0_n = 0;

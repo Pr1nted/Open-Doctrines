@@ -343,7 +343,7 @@ static int gbxlua_field_name(lua_State *L) {
 /* field is text, was never declared, or belongs to a mod that is not */
 /* loaded. */
 /* gearbox:country "set_number" */
-/* `(iiid)i` */
+/* `(iiiF)i` */
 static int gbxlua_set_number(lua_State *L) {
     size_t a1_n = 0;
     const char *a1 = luaL_checklstring(L, 1, &a1_n);

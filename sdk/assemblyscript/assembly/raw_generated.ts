@@ -1555,7 +1555,7 @@ export declare function _fieldName(index: u32, buf: usize, cap: u32): u32;
 // field is text, was never declared, or belongs to a mod that is not
 // loaded.
 // gearbox:country "set_number"
-// `(iiid)i`
+// `(iiiF)i`
 @external("gearbox:country", "set_number")
 export declare function _setNumber(name: usize, name_len: u32, country: u32, value: f64): u32;
 
