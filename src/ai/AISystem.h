@@ -204,6 +204,12 @@ public:
     /// 8 of those the threat rule picks elsewhere; 9/10/11 the same at the
     /// reinforce site, 11 being "staging was in the ordinary top slots".
     static long long s_camp[12];
+    /// Journal 441: which of the three candidate gates in openCampaignFor
+    /// actually rejects. [0] candidates seen, [1] margin < MIN_MARGIN,
+    /// [2] !finishes, [3] survivingShare < MIN_LEFT, [4] survived all three.
+    /// Printed under OD_CAMPAIGN_PROBE; a constant nobody has shown to BIND is
+    /// not worth a two-hour sweep.
+    static long long s_campRej[8];
     static long long s_campReinf;
     /// Journal 346: 0 hull-turns whose type is "boat", 1 crewless boats,
     /// 2 crewless non-boats. Filled under OD_LANDING_PROBE.
@@ -5478,13 +5484,39 @@ private:
      *  reflex's earmark starved the industry head when it was not
      *  (journal 39g), and a commitment that empties the country is the
      *  Norway failure with extra steps. */
-    // 0.20 since ParrotZero 8.4.0. 0.35 was a guess never swept until it
-    // was: at 0.20 three models go 206 -> 250, 224 -> 253 and 235 -> 227,
-    // mean 222 -> 243, and NO model's worst seat gets worse (26->31,
-    // 28->41, 18->36). At 0.55 the floor collapses to 8. The size of the
-    // committed force is the ceiling-floor exchange rate for campaigns --
-    // a third of the army is a spearhead that costs the seat its defence,
-    // a fifth is one that does not. OD_CAMPAIGN_SHARE overrides.
+    // ── 0.35, AND THE COMMENT THAT SAID 0.20 WAS WRONG (journal 440) ──
+    //
+    // This block used to open "0.20 since ParrotZero 8.4.0". It never was:
+    // `git log -p` shows the constant reading 0.35, being removed, and being
+    // re-added as 0.35, and `git log -S` puts the 0.20 comment's arrival
+    // alongside 801fd20, "Complete the revert: restore pre-branch AI code for
+    // 1.2.0a". The revert restored the VALUE and the new COMMENT survived it,
+    // so for weeks the tree documented a number it did not run. Proved against
+    // the binary rather than the source: unset and OD_CAMPAIGN_SHARE=0.35 hash
+    // byte-identically (14336312219319526770/109360), 0.20 does not.
+    //
+    // RE-MEASURED on the current build, 32 seeds an arm, 400 turns, N24, and
+    // the old sweep does not describe this game any more:
+    //
+    //                  rush collapsed   rung per-seed
+    //     0.35             15/32        446.3 (se 12.3)
+    //     0.20             20/32        447.4 (se 10.8)   +1.1, floor 32.0
+    //
+    // The claimed gain was +29 on THIS model (224 -> 253 on the six-seat
+    // rating); what replicates is +1.1 on the rung seats, inside the floor,
+    // while the rush seat -- now the only seat in LOOP.md's reject rule --
+    // trends the wrong way at p 0.32. Not resolvable either way on a rate
+    // question at 32 seeds, which is the point: there is no case for changing
+    // a shipped value on it.
+    //
+    // KEPT ORIGINAL, because the old numbers were real on their own build and
+    // instrument (three models, six-seat rating, before the v22 resolver,
+    // nationalisation and monuments): "at 0.20 three models go 206 -> 250,
+    // 224 -> 253 and 235 -> 227, mean 222 -> 243, and NO model's worst seat
+    // gets worse (26->31, 28->41, 18->36). At 0.55 the floor collapses to 8."
+    // That last clause still stands as the shape of the thing: the committed
+    // share is the ceiling-floor exchange rate for campaigns. 0.20 is simply
+    // no longer measurably better than 0.35 here. OD_CAMPAIGN_SHARE overrides.
     static constexpr float  AI_CAMPAIGN_SHARE      = 0.35f;
     static constexpr int    AI_CAMPAIGN_DEADLINE   = 12;   // == the credit horizon
     static constexpr float  AI_CAMPAIGN_MIN_MARGIN = 1.15f;

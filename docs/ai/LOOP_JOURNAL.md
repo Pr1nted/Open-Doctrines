@@ -33021,3 +33021,210 @@ interchangeable.
 
 PATHS TOUCHED: docs/ai/BACKLOG.md, docs/ai/LOOP_JOURNAL.md.
 PENDING COMMIT: journals 438-439b — the inert OD_RECRUIT_SHARE knob, LOOP.md's five edits, the rewritten target table.
+
+## 440 — iteration: the campaign share says 0.20 in the comment and 0.35 in the code
+
+The user asked to maximise the bench score. Looking for the cheapest expected value, per [[sweep-the-defaults]] --
+"when a rule measures as a real gain, immediately sweep its own constants" -- found something better than an unswept
+constant: a SWEPT one whose answer was never applied.
+
+`src/ai/AISystem.h` carries this comment, verbatim:
+
+    // 0.20 since ParrotZero 8.4.0. 0.35 was a guess never swept until it
+    // was: at 0.20 three models go 206 -> 250, 224 -> 253 and 235 -> 227,
+    // mean 222 -> 243, and NO model's worst seat gets worse (26->31,
+    // 28->41, 18->36). At 0.55 the floor collapses to 8.
+    static constexpr float  AI_CAMPAIGN_SHARE      = 0.35f;
+
+The comment says 0.20 and the constant says 0.35. Nothing sets `OD_CAMPAIGN_SHARE` anywhere in src/, tools/ or data/,
+so 0.35 is what every game has run.
+
+PROVED AGAINST THE BINARY rather than read off the source, because a constant's value is exactly the kind of thing a
+build can disagree with the tree about ([[restoring-a-file-does-not-rebuild-it]]):
+
+    unset                    14336312219319526770/109360   seat 34.1
+    OD_CAMPAIGN_SHARE=0.35   14336312219319526770/109360   byte-identical to unset
+    OD_CAMPAIGN_SHARE=0.20    3146447265065568267/151816   different, and +42,456 decisions
+
+HOW IT HAPPENED: `git log -S` puts the comment's arrival alongside **801fd20 "Complete the revert: restore pre-branch
+AI code for 1.2.0a"**. The revert restored the old VALUE and the new COMMENT survived it. `git log -p` on the header
+shows the constant reading 0.35, being removed, and being re-added as 0.35 -- it has never once been 0.20 in this tree.
+
+WHY THIS IS AN ITERATION AND NOT JUST AN EDIT: the two must be reconciled, and which way depends on whether the
+documented gain is real on the CURRENT binary. It was measured on three models before the v22 resolver, nationalisation
+and monuments, and [[bench-baseline-is-build-relative]] says a number taken on another build does not transfer.
+
+PREDICTION, committed, and deliberately not the optimistic one. The documented figures are PER MODEL: +44, +29 and
+**-8**, mean +21, on the SIX-seat rating. On N24 specifically -- the model this bench uses -- it was 224 -> 253, so
++29. My instrument here is the three-rung-seat per-seed figure with a floor near 37. **So I expect the right direction
+and expect it to sit INSIDE the floor**, which would leave the decision resting on the older three-model evidence
+rather than on this run. A clear rung gain over ~37 would be the surprise; a rung LOSS would say the old sweep no
+longer describes this game and the comment should be deleted rather than the value changed.
+
+Either outcome resolves the contradiction, which is the point: this iteration cannot come back empty.
+
+THE BENCH: 0.35 (shipped) against 0.20 (documented), 32 rush seeds and 32 rung seeds, pinned binary f56104e9, reading
+binary_changed_mid_run.
+
+RESULT, all four arms clean:
+
+                     rush collapsed   land    rung
+  0.35 (shipped)         15/32        10.92   446.3 (se 12.3)
+  0.20 (documented)      20/32        10.17   447.4 (se 10.8)
+  rung +1.1, floor 32.0 -> WITHIN FLOOR        rush Fisher p 0.3152
+
+**THE DOCUMENTED GAIN DOES NOT REPLICATE.** The comment claimed +29 on THIS model (224 -> 253 on the six-seat
+rating); what this build gives is **+1.1 on the rung seats, inside a 32-point floor**, while the rush seat -- now the
+ONLY seat in LOOP.md's reject rule after journal 439 -- goes 15/32 -> 20/32 collapsed. That rush difference is not
+resolvable at 32 seeds (it is a rate question wanting ~128 an arm), and that is exactly why it settles the question:
+there is no case for changing a shipped value on an unresolved worsening of the one guard seat left.
+
+My prediction was "right direction, inside the floor". Half credit at best: +1.1 is nominally the right sign and is
+indistinguishable from nothing, and I did not predict the rush seat trending worse -- the old comment explicitly
+claimed no model's worst seat got worse, so I had no reason to.
+
+VERDICT: **keep 0.35, correct the comment.** Both had to be reconciled and the bench chose which way. The original
+numbers are KEPT in the comment, attributed to their own build and instrument -- three models, six-seat rating, before
+the v22 resolver, nationalisation and monuments -- because they were real there, and
+[[bench-baseline-is-build-relative]] is the whole reason they do not transfer. The "0.55 collapses the floor to 8"
+clause survives as the shape of the parameter: the committed share is the ceiling-floor exchange rate for campaigns.
+
+A FAIR-INSTRUMENT CAVEAT, stated rather than buried: the old figure was a SIX-seat rating and this run measured the
+three rung seats plus rush separately. The two seats not run are `1914:SWE:rung` (capped at 500 on this model) and
+`1939:NOR:hood` (a constant, journal 439), so adding them could only DILUTE a difference by 6/4, never create one.
+The conclusion is safe under that correction; it would not have been if either missing seat varied.
+
+WHAT WAS NEARLY SHIPPED, AND THE HABIT THAT STOPPED IT: the obvious move on finding this was to set the constant to
+0.20 and call it a recovered gain -- the comment is emphatic, cites three models, and says every floor improved. One
+2-hour bench says it would have cost the guard seat for nothing. **A number documented on another build is a
+hypothesis, not a finding.**
+
+PATHS TOUCHED: src/ai/AISystem.h (comment only -- the value is unchanged), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+PENDING COMMIT: the corrected comment, journal 440, backlog item 131.
+
+## 441 — iteration: the three unswept campaign constants cannot be swept
+
+I proposed sweeping `AI_CAMPAIGN_MIN_MARGIN`, `AI_CAMPAIGN_MIN_LEFT` and `AI_CAMPAIGN_DEADLINE` -- the siblings of the
+constant journal 440 examined -- and the user approved it. **The cheap check killed the plan, which is the result.**
+Six arms at two hours each were about to measure constants that mostly cannot reject anything.
+
+THE HABIT, from backlog item 117: before benching a rule on a seat, count the mechanism's firings. New counters at
+every exit of the candidate loop in `openCampaignFor`, printed under the EXISTING `OD_CAMPAIGN_PROBE` gate so nothing
+new is introduced. Inertness proved first: unset still hashes **14336312219319526770/109360**, the shipped reference.
+
+1914:FRA, 400 turns, N24, seed 13579 (1939:USA agrees to a tenth of a percent):
+
+    candidates                                     5683
+    margin < AI_CAMPAIGN_MIN_MARGIN (1.15)          221   3.9%
+    !finishes                                         0   0.0%   UNREACHABLE
+    survivingShare < AI_CAMPAIGN_MIN_LEFT (0.25)      0   0.0%   UNREACHABLE
+    not-the-threat                                    0   0.0%   UNREACHABLE
+    enemy has no provinces                            0   0.0%
+    below minVictim (1)                               0   0.0%   cannot fire at 1
+    scored                                         2078  36.6%
+    ------------------------------------------------------------
+    abandoned by the homeThreatened early return   3384  59.5%
+
+AND THE ACCOUNT CLOSES EXACTLY: 221 + 3384 + 2078 = 5683, which is how the last row is known without another run --
+every other exit counted zero, and the only remaining way out of the loop body is `if (homeThreatened && !defensive)
+return`.
+
+WHY TWO OF THE THREE ARE UNREACHABLE: `!finishes`, `MIN_LEFT` and `DEADLINE`'s use in the candidate score all sit
+inside `if (project)`, and `project` is `OD_CAMPAIGN_PROJECT`, **off by default**. Only `c.deadlineTurns = deadline`
+is live, so DEADLINE sets a campaign's actual deadline and contributes nothing to choosing one. `minVictim` defaults
+to 1, which cannot reject what the line above it already excluded -- and its comment records why it is off: gating
+one-province victims out cost N24 253 -> 229 and N37 250 -> 193.
+
+So of the three constants I offered to sweep, **two are dead code by default and the third rejects 3.9%.** There was
+nothing there. Sweeping MIN_MARGIN alone remains possible but it is a 3.9% gate, and journal 440 just measured the
+same rule's much larger constant at +1.1.
+
+WHAT THE ACCOUNTING FOUND INSTEAD, and it is the biggest single fact about the campaign system: **a threatened country
+opens no campaign at all.** Three fifths of every candidate is discarded unexamined by one early return. That is
+deliberate and measured -- the comment records that letting a threatened country campaign against its attacker cost
+**53 points at hard, 265 -> 212** -- so it is not a bug and `OD_CAMPAIGN_DEFENSIVE=1` restores the other behaviour.
+It is worth knowing precisely because it bounds what the campaign system can ever contribute to a seat under pressure,
+and because 59.5% is a much larger number than any constant in it.
+
+VERDICT: **PARK the sweep, do not run it.** No code change to judge; the counters stay, inert, printing only under a
+gate that already existed, because the next person to notice three unexamined constants should find this table instead
+of booking six hours.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (counters + the probe line only; hash proved unchanged),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+PENDING COMMIT: journal 440's corrected comment, journal 441's counters, items 131-132.
+
+## 442 — iteration: re-measure OD_CAMPAIGN_DEFENSIVE, whose 53-point cost may have expired
+
+PRE-REGISTERED. Journal 441 found that `if (homeThreatened && !defensive) return` discards **59.5%** of all campaign
+candidates, and that the reason it is off is a measurement in its own comment: *"letting it open one against its
+attacker costs 53 points at hard (265 -> 212)"*. That was taken at "the 265 measurement" -- an older model on an older
+build. Journal 440 found a documented constant whose measurement had expired exactly that way, so the question is
+whether this one has too.
+
+A MECHANISTIC REASON IT MIGHT HAVE, not just the passage of time. The 265 measurement predates the **v22 resolver**,
+where over-frontage troops became a RESERVE that replaces losses instead of fighting wider -- `OD_WIDTH_MARGIN`'s own
+comment says the old gate "was worth 20-50 on the OLD resolver, where an above-frontage repulse deleted the engaged
+men; depth pays for the reserve". A campaign commits a third of the army to one place. Under the old rule that depth
+bought nothing above the frontage ([[width-makes-numbers-irrelevant]]); under v22 it buys staying power. So the price
+of concentrating while threatened has plausibly changed, and in the favourable direction.
+
+AGAINST IT, and this is the stronger prior: LOOP.md's own standing finding is that **"the AI is not losing because it
+is passive, it is passive because it is losing"** and that "anything that makes it fight more must make it stronger
+first". This rule is precisely a make-it-fight-more rule, aimed at countries under attack. [[caution-rules-trade-growth]]
+runs the same way round.
+
+PREDICTION, committed: **a rung LOSS, and I expect it to clear the floor downward** -- the old -53 and LOOP.md's
+passivity finding agree, and two independent reasons to expect harm outweigh one mechanistic reason to hope. If it is
+a loss, the comment gets the new number beside the old one and the gate stays off. **What would change my mind:** rung
+up over its floor with rush not worse. A rung null with rush improved would be interesting but not shippable on its own.
+
+VERDICT RULE, fixed now: ship ON only if rung clears its floor UPWARD **and** rush does not worsen. Rush is the only
+seat left in the reject rule (journal 439), so a rung gain paid for in rush collapses is the trade this project has
+already rolled back once.
+
+STEP 1, mechanism, because an arm that does not do what I think measures nothing: the 441 counters under
+OD_CAMPAIGN_PROBE should show the 59.5% abandonment collapse and the scored share rise.
+
+MECHANISM, confirmed before the bench -- the arm does exactly what it claims:
+
+                 candidates   margin-rejected   scored
+  DEFENSIVE=0        5,683        3.9%          36.6%
+  DEFENSIVE=1       24,700        4.0%          94.6%
+
+The 59.5% abandonment is gone and the candidate count quadruples, because the function no longer returns on the first
+non-defensive candidate and campaigns then open more often. Seat on that one seed 34.1 -> 18.0 -- one seed, but FRA:rung
+is a graded seat rather than the bistable rush one, so it carries more than a coin flip does.
+
+THE BENCH: 32 rung seeds and 32 rush seeds, off (shipped) against on, pinned binary, reading binary_changed_mid_run.
+
+RESULT, all four arms clean:
+
+                   rush collapsed   land    rung
+  off (shipped)        15/32        10.92   446.3 (se 12.3)
+  DEFENSIVE=1          13/32        10.21   414.9 (se 14.7)
+  rung -31.4, floor 37.6 -> WITHIN FLOOR         rush Fisher p 0.8013
+
+VERDICT: **the gate stays off.** My pre-registered rule was "ship ON only if rung clears its floor UPWARD and rush
+does not worsen"; rung went DOWN, so the rule is not met and no judgement call is needed.
+
+ON MY PREDICTION: I said a rung loss **clearing the floor downward**. The direction is right and the clearing is
+wrong -- -31.4 against a 37.6 floor is not resolvable at 32 seeds. So this run on its own does not establish the cost.
+What it does is agree in SIGN with the old -53, taken on a different build and a different model, and
+[[bench-resolution-limit]] says sign agreement across models is the thing to require. Two independent arms pointing
+the same way is better evidence than either alone, and neither is a clean rejection by itself.
+
+THE INTERESTING HALF IS THE ONE THAT FAILED COMPLETELY. The whole case for re-measuring was that a threatened country
+is the one that needs help, and the v22 reserve rule should have made concentration pay. **The rush seat did not
+improve: 15/32 -> 13/32 at p 0.80.** So letting a country under attack commit a third of its army to one campaign does
+not save it -- and it costs the growth seats. The rule fails on both halves, and the mechanistic argument from the v22
+resolver did not rescue it. That argument was the strongest reason to look; it was not enough, and it is worth
+recording that it was tried rather than leaving the next reader to think of it again.
+
+This also closes the loop on journal 441's finding. The 59.5% abandonment is real, large, and NOT free money: the
+only switch that recovers it makes things worse. A threatened country opening no campaign is a deliberate, now
+twice-measured choice.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (the comment carries both measurements now; no behaviour change),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+PENDING COMMIT: journals 440-442 -- the corrected campaign-share comment, the 441 counters, this re-measurement.

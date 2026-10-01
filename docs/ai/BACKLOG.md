@@ -1310,6 +1310,43 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
+133. ~~**Re-measure OD_CAMPAIGN_DEFENSIVE: its 53-point cost may have expired.**~~
+   **DONE journal 442, user asked: it still costs, and the hoped-for half failed.**
+   32 seeds an arm on the current build: rung **446.3 -> 414.9 (-31.4, floor 37.6)**,
+   rush **15/32 -> 13/32 at p 0.80**. The -31.4 does not clear its floor, so this run
+   alone does not resolve the cost, but it agrees in SIGN with the old -53 on a
+   different build and model. **The rush seat -- the country actually under attack --
+   did not improve at all**, which was the entire case for looking: the v22 reserve rule
+   should have made concentrating a third of the army pay, and it did not. Gate stays
+   off; the comment now carries both measurements. Journal 441's 59.5% abandonment is
+   therefore real but NOT recoverable money.
+
+132. ~~**Sweep the campaign rule's other three constants.**~~ **DO NOT: journal 441
+   counted the gates and there is nothing to sweep.** `AI_CAMPAIGN_MIN_LEFT`, the
+   `!finishes` test and `AI_CAMPAIGN_DEADLINE`'s role in the candidate score all sit
+   inside `if (project)`, and `OD_CAMPAIGN_PROJECT` is **off by default** -- unreachable.
+   `minVictim` defaults to 1 and cannot reject anything. `AI_CAMPAIGN_MIN_MARGIN`
+   rejects **3.9%** of 5,683 candidates. The counters are in the tree under the existing
+   OD_CAMPAIGN_PROBE gate; read them before proposing this again.
+   **The real number in that function:** `if (homeThreatened && !defensive) return`
+   discards **59.5%** of all candidates unexamined -- a threatened country opens no
+   campaign at all. Deliberate and measured (letting it cost 53 points at hard, 265 ->
+   212, OD_CAMPAIGN_DEFENSIVE=1 restores it), but it bounds what campaigns can
+   contribute to any seat under pressure, which is where the rating's remaining gap is.
+
+131. ~~**The campaign share's comment documented a value the code never ran.**~~
+   **RESOLVED journal 440: the COMMENT was wrong; 0.35 stays.** `AI_CAMPAIGN_SHARE`
+   opened "0.20 since ParrotZero 8.4.0" above a constant reading `0.35f`; nothing sets
+   OD_CAMPAIGN_SHARE anywhere, `git log -p` shows the value has never been 0.20, and the
+   comment arrived with **801fd20 "Complete the revert"** -- the revert restored the
+   value and the comment survived. Proved against the binary: unset and 0.35 hash
+   byte-identically, 0.20 does not. Re-measured, 32 seeds an arm: rung **+1.1 against a
+   32.0 floor**, rush **15/32 -> 20/32** collapsed at p 0.32. The claimed +29 on this
+   very model does not replicate, and the one remaining guard seat trends worse, so the
+   value stands and the comment now records both its own measurement and this one.
+   **Transferable:** a constant documented on another build is a hypothesis, not a
+   finding -- see memory [[a-revert-keeps-the-comment-and-restores-the-value]].
+
 130. ~~**Sweep the recruit order's treasury share.**~~ **DONE journal 438: A NULL, and
    it corrects how item 111's money story should be read.** `OD_RECRUIT_SHARE` (default
    0.20, inert) sweeps the constant behind **58.5% of every AI no-op**. At 0.50 the

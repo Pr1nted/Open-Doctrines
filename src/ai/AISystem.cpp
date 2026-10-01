@@ -8277,7 +8277,8 @@ void AISystem::campaignReflex(int cid) {
     // candidate province that gets us in.
     const AttackCandidate* best = nullptr; float bestScore = -1.0f;
     for (const AttackCandidate& ch : cands) {
-        if (ch.margin < AI_CAMPAIGN_MIN_MARGIN) continue;
+        ++s_campRej[0];
+        if (ch.margin < AI_CAMPAIGN_MIN_MARGIN) { ++s_campRej[1]; continue; }
         // ── DEFENSIVE CAMPAIGNS (OD_CAMPAIGN_DEFENSIVE, off) ──
         //
         // Added when the projection and the recall rule collided over
@@ -8288,6 +8289,31 @@ void AISystem::campaignReflex(int cid) {
         // 212 -- the profile was innocent). The commitment is worth making
         // when we choose the war; when the war is on our ground the
         // ordinary defensive rules do better.
+        //
+        // ── RE-MEASURED ON THE CURRENT BUILD (journal 442), and it still costs ──
+        //
+        // The 265 -> 212 above was an older model on an older build, and journal
+        // 440 had just caught a documented constant whose measurement had
+        // expired, so this one was re-run. There was a mechanistic reason to
+        // hope, too: the v22 resolver made over-frontage troops a RESERVE rather
+        // than useless (see OD_WIDTH_MARGIN), so committing a third of the army
+        // to one place should be worth more than it was. It is not.
+        //
+        //                     rush collapsed   rung per-seed
+        //     off (shipped)       15/32        446.3 (se 12.3)
+        //     DEFENSIVE=1         13/32        414.9 (se 14.7)   -31.4, floor 37.6
+        //
+        // 32 seeds an arm, 400 turns, N24. The -31.4 does NOT clear its floor, so
+        // that run alone does not resolve the cost -- but it agrees in SIGN with
+        // the old -53 on a different build and model, which is the agreement
+        // memory bench-resolution-limit asks for. And the hoped-for half failed
+        // outright: the rush seat, the country actually under attack, did not
+        // improve (p 0.80). The rule neither saves the threatened country nor
+        // pays for itself on the growth seats.
+        //
+        // What it DOES do, measured: candidates 5,683 -> 24,700 and scored
+        // 36.6% -> 94.6%, because the early return below is what discards 59.5%
+        // of all campaign candidates (journal 441). Real, large, and not money.
         static const bool defensive = std::getenv("OD_CAMPAIGN_DEFENSIVE") &&
                                       atoi(std::getenv("OD_CAMPAIGN_DEFENSIVE")) != 0;
         if (homeThreatened && !defensive) return;
@@ -8295,10 +8321,10 @@ void AISystem::campaignReflex(int cid) {
             bool isTheThreat = false;
             for (const auto& fr : st.frontiers)
                 if (fr.enemyCid == ch.enemyCid) { isTheThreat = true; break; }
-            if (!isTheThreat) continue;
+            if (!isTheThreat) { ++s_campRej[5]; continue; }
         }
         const auto es = m_stats.find(ch.enemyCid);
-        if (es == m_stats.end() || es->second.provinces <= 0) continue;
+        if (es == m_stats.end() || es->second.provinces <= 0) { ++s_campRej[6]; continue; }
         // ── A VICTIM WORTH COMMITTING TO ──
         //
         // Found by tracing a Norway seat: of 297 campaigns that closed, 96
@@ -8322,7 +8348,7 @@ void AISystem::campaignReflex(int cid) {
         // evidence. OD_CAMPAIGN_MIN_VICTIM=2 to measure it again.
         static const int minVictim = std::getenv("OD_CAMPAIGN_MIN_VICTIM")
                                    ? atoi(std::getenv("OD_CAMPAIGN_MIN_VICTIM")) : 1;
-        if (es->second.provinces < minVictim) continue;
+        if (es->second.provinces < minVictim) { ++s_campRej[7]; continue; }
         // Worth: how much of them there is to take, and how good the ground
         // is. Feasibility: the margin the ordinary rule already computed.
         const float worth = std::log1p((float)es->second.provinces) *
@@ -8359,14 +8385,17 @@ void AISystem::campaignReflex(int cid) {
                                             if (fr.enemyCid == ch.enemyCid) return true;
                                         return false; }();
             if (!defensive) {
-                if (!p.finishes) continue;                   // do not start what we cannot end
-                if (p.survivingShare < AI_CAMPAIGN_MIN_LEFT) continue;  // not at this price
+                if (!p.finishes) { ++s_campRej[2]; continue; }  // do not start what we cannot end
+                if (p.survivingShare < AI_CAMPAIGN_MIN_LEFT) {         // not at this price
+                    ++s_campRej[3]; continue;
+                }
             }
             // Sooner is better, and cheaper is better: a war won in four
             // turns with two thirds of the force intact is worth more than
             // the same conquest that takes twelve and costs everything.
             score *= (float)(p.survivingShare * (2.0 - (double)p.turns / AI_CAMPAIGN_DEADLINE));
         }
+        ++s_campRej[4];
         if (score > bestScore) { bestScore = score; best = &ch; }
     }
     if (!best) return;
@@ -13875,6 +13904,7 @@ long long AISystem::s_land[7] = {};
 long long AISystem::s_landWhy[6] = {};
 long long AISystem::s_navySplit[5] = {};
 long long AISystem::s_camp[12] = {};
+long long AISystem::s_campRej[8] = {0};
 long long AISystem::s_campReinf = 0;
 long long AISystem::s_hullType[3] = {};
 long long AISystem::s_landDist[5] = {};
@@ -13973,8 +14003,32 @@ void AISystem::dumpDecisionHash() {
 // -- registering inside one is the defect journals 300, 339 and 343 all hit.
 void AISystem::dumpCampaignProbe() {
     static bool done = false;
-    if (done || s_camp[0] <= 0) return;
+    if (done) return;
     done = true;
+    // WHICH GATE BINDS. Journal 440 swept AI_CAMPAIGN_SHARE and found nothing;
+    // its three siblings were about to be swept the same way, which is two
+    // hours each. A constant that never rejects anything cannot be worth
+    // moving, so count first -- the habit backlog item 117 asked for.
+    if (s_campRej[0] > 0) {
+        const double n = (double)s_campRej[0];
+        fprintf(stderr, "[CAMPREJ] candidates %lld   margin<%.2f %lld (%.1f%%)   "
+                        "!finishes %lld (%.1f%%)   surviving<%.2f %lld (%.1f%%)   "
+                        "scored %lld (%.1f%%)\n",
+                s_campRej[0], (double)AI_CAMPAIGN_MIN_MARGIN,
+                s_campRej[1], 100.0 * (double)s_campRej[1] / n,
+                s_campRej[2], 100.0 * (double)s_campRej[2] / n,
+                (double)AI_CAMPAIGN_MIN_LEFT,
+                s_campRej[3], 100.0 * (double)s_campRej[3] / n,
+                s_campRej[4], 100.0 * (double)s_campRej[4] / n);
+        fprintf(stderr, "[CAMPREJ] and before those: not-the-threat %lld (%.1f%%)   "
+                        "enemy has no provinces %lld (%.1f%%)   below minVictim %lld (%.1f%%)"
+                        "   | MIN_LEFT and !finishes sit inside OD_CAMPAIGN_PROJECT, "
+                        "which is OFF by default -- they cannot reject anything\n",
+                s_campRej[5], 100.0 * (double)s_campRej[5] / n,
+                s_campRej[6], 100.0 * (double)s_campRej[6] / n,
+                s_campRej[7], 100.0 * (double)s_campRej[7] / n);
+    }
+    if (s_camp[0] <= 0) return;
     const double a = (double)s_camp[0];
     fprintf(stderr, "[CAMPGATE] recruit decisions %lld   campaign OPEN %lld (%.1f%%)   "
                     "open AND home losing %lld (%.1f%% of all, %.1f%% of open)\n",
