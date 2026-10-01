@@ -1,0 +1,117 @@
+# The game, built on FreeBSD and OpenBSD.
+#
+# WHY A SEPARATE WORKFLOW
+#
+# GitHub hosts no BSD runner and is not going to, so these build inside a real
+# BSD VM (vmactions) on a Linux runner -- by the target system's own cc, not
+# cross-compiled by a Linux toolchain pretending. That is a different shape
+# from every other entry in release-game.yml's matrix, which is one job per
+# runner, so it lives on its own and is CALLED from there.
+#
+# It is also workflow_dispatch, which the release path is not: a BSD build
+# that can only be exercised by tagging is one that gets discovered broken on
+# a tag, which is the exact failure release-dryrun.yml exists to prevent.
+#
+# WHAT IS DIFFERENT FROM A DESKTOP BUILD
+#
+# OpenBSD builds with mods OFF. The Gearbox runtime is WAMR, which has no
+# OpenBSD port, and OpenBSD's W^X policy is a poor fit for a WASM interpreter
+# that wants writable-then-executable pages. Rather than ship a build whose
+# mod menu is there and does nothing, mods are compiled out and README.md says
+# so. FreeBSD keeps them.
+name: BSD game
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-22.04
+    # A whole game in an emulated VM on a shared runner. The desktop jobs take
+    # about fifteen minutes on real hardware; this has room to be several
+    # times that before it is a hang rather than a build.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: freebsd-amd64, artifact: OpenDoctrines-freebsd-amd64 }
+          - { name: openbsd-amd64, artifact: OpenDoctrines-openbsd-amd64 }
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and package (FreeBSD amd64)
+        if: matrix.name == 'freebsd-amd64'
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: '14.2'
+          usesh: true
+          copyback: true
+          prepare: |
+            pkg install -y cmake ninja pkgconf python3 git \
+                           mesa-libs libX11 libXrandr libXi libXcursor \
+                           libXinerama libxkbcommon wayland
+          run: |
+            set -e
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+              -DOD_DISCORD_APP_ID=1547303703370014830
+            cmake --build build --target OpenDoctrines -j 4
+            python3 tools/package.py --binary build/OpenDoctrines \
+                                     --out dist/OpenDoctrines-freebsd-amd64 --zip
+            ls -lh dist/
+
+      - name: Build and package (OpenBSD amd64)
+        if: matrix.name == 'openbsd-amd64'
+        uses: vmactions/openbsd-vm@v1
+        with:
+          release: '7.6'
+          usesh: true
+          copyback: true
+          prepare: |
+            pkg_add -I cmake ninja python3 git
+          run: |
+            set -e
+            # OpenBSD ships X and Mesa in base (xenocara), so there is nothing
+            # to install for them -- unlike FreeBSD, where they are ports.
+            #
+            # OD_ENABLE_MODS=OFF: see the note at the top of this file.
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DOD_ENABLE_MODS=OFF \
+              -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+              -DOD_DISCORD_APP_ID=1547303703370014830
+            cmake --build build --target OpenDoctrines -j 4
+            python3 tools/package.py --binary build/OpenDoctrines \
+                                     --out dist/OpenDoctrines-openbsd-amd64 --zip
+            ls -lh dist/
+
+      # The same check the desktop jobs run, for the same reason: v1.0.4a
+      # shipped with sign-in disabled on every platform and CI was green,
+      # because the thing that was broken existed only in the build nobody
+      # tested. LC_ALL=C because GNU grep in a UTF-8 locale can decline to
+      # match inside a binary whose bytes are not valid UTF-8.
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/${{ matrix.artifact }}" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service::${{ matrix.artifact }} does not carry $issuer."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+          retention-days: 14
