@@ -389,16 +389,16 @@ void Game::drawCountryPanel() {
             int pendY = yOff + 32;
             for (auto& mo : m_pendingShipMoveOrders)
                 if (mo.shipIndex == shipIdx)
-                    { cancelBtn(pendY, "Cancel Move Order", Color{60,40,10,220}, Color{180,140,50,200}, m_pendingShipMoveOrders); pendY += 26; }
+                    { cancelBtn(pendY, T("Cancel Move Order"), Color{60,40,10,220}, Color{180,140,50,200}, m_pendingShipMoveOrders); pendY += 26; }
             for (auto& eo : m_pendingShipEngageOrders)
                 if (eo.shipIndex == shipIdx)
-                    { cancelBtn(pendY, "Cancel Engage Order", Color{60,20,20,220}, Color{180,60,60,200}, m_pendingShipEngageOrders); pendY += 26; }
+                    { cancelBtn(pendY, T("Cancel Engage Order"), Color{60,20,20,220}, Color{180,60,60,200}, m_pendingShipEngageOrders); pendY += 26; }
             for (auto& bo : m_pendingShipBombardOrders)
                 if (bo.shipIndex == shipIdx)
-                    { cancelBtn(pendY, "Cancel Bombard Order", Color{40,20,40,220}, Color{140,60,140,200}, m_pendingShipBombardOrders); pendY += 26; }
+                    { cancelBtn(pendY, T("Cancel Bombard Order"), Color{40,20,40,220}, Color{140,60,140,200}, m_pendingShipBombardOrders); pendY += 26; }
             for (auto& do_ : m_pendingShipDisembarks)
                 if (do_.shipIndex == shipIdx)
-                    { cancelBtn(pendY, "Cancel Disembark Order", Color{30,40,10,220}, Color{100,160,50,200}, m_pendingShipDisembarks); pendY += 26; }
+                    { cancelBtn(pendY, T("Cancel Disembark Order"), Color{30,40,10,220}, Color{100,160,50,200}, m_pendingShipDisembarks); pendY += 26; }
 
             // ── Ship action buttons (own country only, not scrapping) ──
             if (cid == m_playerCountryId && !shipScrapping) {
@@ -433,7 +433,8 @@ void Game::drawCountryPanel() {
 
                 // Move — all ships (boats: move=water or disembark=land)
                 shipBtn(panelX+pad, sY, sHalf,
-                    inMove ? (ship.type=="boat" ? "Click: water move, land disembark" : "Set destination...") : "Move",
+                    inMove ? (ship.type=="boat" ? T("Click: water move, land disembark")
+                                                : T("Set destination...")) : T("Move"),
                     !canAct || inEngage || inBombard,
                     inMove ? Color{40,60,40,220} : Color{30,50,80,220},
                     inMove ? Color{60,100,60,200} : Color{60,120,200,200}, clicked);
@@ -445,7 +446,7 @@ void Game::drawCountryPanel() {
                 // Engage Ship — destroyers/carriers/frigates (not boats)
                 if (ship.type=="destroyer" || ship.type=="carrier" || ship.type=="frigate") {
                     shipBtn(panelX+pad+sHalf+sBtnG, sY, sHalf,
-                        inEngage ? "Click target ship..." : "Engage Ship",
+                        inEngage ? T("Click target ship...") : T("Engage Ship"),
                         !canAct || inMove || inBombard,
                         inEngage ? Color{40,60,40,220} : Color{80,30,30,220},
                         inEngage ? Color{60,100,60,200} : Color{200,60,60,200}, clicked);

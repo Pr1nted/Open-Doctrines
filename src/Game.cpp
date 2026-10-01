@@ -1816,6 +1816,24 @@ void Game::reloadFonts() {
     // The shaped Arabic path for Urdu; same pipeline, right to left.
     odArab::load(m_dataDir + "fonts/NotoNaskhArabic-Regular.ttf");
     m_dialog.setFonts(m_defaultFont, m_gameFont);
+    // ── AND THE MAP, which held the old one by value ──
+    //
+    // MapRenderer keeps its own copy of this Font for the country labels, and
+    // only applyLanguage()'s two callers ever pushed it -- at load. So
+    // changing language mid-session unloaded the atlas underneath it and left
+    // the renderer drawing from a destroyed texture.
+    //
+    // The symptom was specific enough to be misleading: country names
+    // VANISHED, but only in a language that is not written in ASCII. Latin
+    // names survived because the label loop sends ASCII to GetFontDefault(),
+    // which is always valid, and only reaches for this font on the first
+    // non-ASCII codepoint -- so Ukrainian lost every label on the map and
+    // German lost none.
+    //
+    // Here rather than in applyLanguage(): this is the function that
+    // invalidates the font, so this is where handing out the new one cannot
+    // be forgotten.
+    if (m_renderer) m_renderer->setFallbackFont(m_gameFont);
     if (old.texture.id > 0 && old.texture.id != built.texture.id) UnloadFont(old);
 
     LoadLog() << "  Font atlas: " << built.glyphCount << " glyphs for \""
@@ -2352,22 +2370,28 @@ void Game::drawDebugOverlay() {
         int fps = GetFPS();
         const char* fpsStr = TextFormat(T("FPS: %d"), fps);
         Color fpsColor = fps >= 55 ? Color{100, 255, 100, 220} : (fps >= 30 ? Color{255, 255, 100, 220} : Color{255, 100, 100, 220});
-        DrawText(fpsStr, 10, 10, 18, fpsColor);
+        // drawHybridText, not DrawText: every one of these is a TRANSLATED
+        // string, and raylib's default font carries ASCII 32-126 and nothing
+        // else -- so in Ukrainian the overlay read "?????????: 1298". The
+        // hybrid renderer sends each character to a font that has it.
+        drawHybridText(10, 10, 18, fpsStr, fpsColor);
     }
 
     if (m_config.showZoom) {
         int provCount = (int)m_provinces.getAllProvinces().size();
         float zoom = m_renderer ? m_renderer->getZoom() : 1.0f;
-        DrawText(TextFormat(T("Provinces: %d"), provCount), 10, 32, 14, Color{180, 220, 255, 200});
-        DrawText(TextFormat(T("Zoom: %.2f"), zoom), 10, 48, 14, Color{180, 220, 255, 200});
-        DrawText(TextFormat(T("DPI: %.2f"), m_dpiScale), 10, 64, 14, Color{140, 160, 180, 160});
+        drawHybridText(10, 32, 14, TextFormat(T("Provinces: %d"), provCount), Color{180, 220, 255, 200});
+        drawHybridText(10, 48, 14, TextFormat(T("Zoom: %.2f"), zoom), Color{180, 220, 255, 200});
+        drawHybridText(10, 64, 14, TextFormat(T("DPI: %.2f"), m_dpiScale), Color{140, 160, 180, 160});
     }
 
     // AI decision feed: last decisions from the ring buffer, newest first
     if (m_config.aiDebug && m_ai) {
         int y = 84;
-        DrawText(TextFormat(T("AI decisions (turn, country, module, action) — %d this turn"),
-                            m_ai->decisionsThisTurn()), 10, y, 14, {255, 220, 140, 230});
+        // Translated, and the em dash is already non-ASCII in English.
+        drawHybridText(10, y, 14,
+                       TextFormat(T("AI decisions (turn, country, module, action) — %d this turn"),
+                                  m_ai->decisionsThisTurn()), {255, 220, 140, 230});
         y += 18;
         for (const auto& line : m_ai->debugLines(24)) {
             DrawText(line.c_str(), 10, y, 12, {220, 220, 180, 210});
