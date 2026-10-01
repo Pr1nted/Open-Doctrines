@@ -127,14 +127,21 @@ jobs:
           ar rcs out/libodseal.a odseal.o
           lipo -archs out/libodseal.a
 
+      # The same recipe as x86_64, deliberately character for character apart
+      # from the runner: two archives of one source built with different flags
+      # would differ in ways nothing here would catch. The first version of
+      # this step invented its own flags and its own source path (src/ rather
+      # than guard/) and failed with "No such file or directory".
       - name: Build (Linux aarch64)
         if: matrix.name == 'linux-aarch64'
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-12
+          set -e
           mkdir -p out
-          g++-12 -c -O2 -fPIC -std=c++20 -o out/odseal.o src/odseal.cpp
-          ar rcs out/libodseal.a out/odseal.o
+          g++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+              -c guard/odseal.cpp -o odseal.o
+          strip --strip-unneeded odseal.o
+          ar rcs out/libodseal.a odseal.o
 
       - name: Build (Linux x86_64)
         if: matrix.name == 'linux-x86_64'
