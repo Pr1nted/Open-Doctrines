@@ -233,6 +233,12 @@ bundle, ram, cores, arch, distro = sys.argv[1], int(sys.argv[2]), int(sys.argv[3
 host_arm = platform.machine() in ("arm64", "aarch64")
 target = "virt" if arch == "aarch64" else "q35"
 native = (arch == "aarch64") == host_arm
+bsd = distro.startswith("freebsd") or distro.startswith("openbsd")
+# 4600 + a hash of the name: stable for one guest, distinct between guests, and
+# clear of anything a developer is likely to be running.
+serial_port = 4600 + (sum(ord(c) for c in bundle) % 300)
+gpu = "virtio-ramfb" if bsd else "virtio-gpu-pci"
+share_mode = "None" if bsd else "VirtFS"
 mac = "C2:" + ":".join(f"{random.randint(0,255):02X}" for _ in range(5))
 cfg = {
     "Backend": "QEMU",
@@ -246,13 +252,24 @@ cfg = {
                     "IconCustom": False,
                     "Notes": f"Built by tools/linux_vm_create.sh ({distro}). "
                              "Login odtest / odtest. Disposable: rebuild rather than repair."},
-    # virtio-gpu-pci here, and NOT the ramfb the Windows VM is stuck with.
-    # Linux has virtio drivers in the kernel, so the guest drives a real GPU
-    # and picks its own resolution instead of being capped at whatever the
-    # firmware set. The Windows VM black-screens on this device; that is a
-    # Windows-on-ARM driver gap, not a UTM one.
+    # ── THE DISPLAY DEVICE IS A DRIVER QUESTION, PER GUEST ──
+    #
+    # virtio-gpu-pci for Linux: the driver is in the kernel, so the guest picks
+    # its own resolution instead of being capped at whatever the firmware set.
+    #
+    # NOT for FreeBSD. Given virtio-gpu-pci, a FreeBSD/aarch64 guest panics
+    # twelve seconds into boot -- "panic: vm_fault failed", stack through
+    # data_abort, then an automatic reboot, forever. It looks nothing like a
+    # graphics fault from outside: the VM appears to boot, ssh answers on a
+    # partial boot and then stops, no address holds, and every layer above
+    # (cloud-init, the seed, the user) gets blamed in turn. It cost an evening.
+    #
+    # This is the same shape as the Windows note in windows_vm_create.sh, for
+    # the same reason: virtio-gpu wants a driver the guest does not have.
+    # ramfb is what both fall back to -- a firmware-set framebuffer that needs
+    # no driver at all.
     "Display": [{"DownscalingFilter": "Linear", "DynamicResolution": True,
-                 "Hardware": "virtio-gpu-pci", "NativeResolution": True,
+                 "Hardware": gpu, "NativeResolution": True,
                  "UpscalingFilter": "Linear"}],
     "Drive": [
         {"Identifier": str(uuid.uuid4()).upper(), "ImageName": "disk.qcow2",
@@ -281,7 +298,8 @@ cfg = {
     # hour that cost.
     "Network": [{"Hardware": "virtio-net-pci", "IsolateFromHost": False,
                  "MacAddress": mac, "Mode": "Shared", "PortForward": []}],
-    "QEMU": {"AdditionalArguments": [], "BalloonDevice": False, "DebugLog": False,
+    "QEMU": {"AdditionalArguments": [],
+             "BalloonDevice": False, "DebugLog": False,
              "Hypervisor": native, "PS2Controller": False, "RNGDevice": True,
              "RTCLocalTime": False, "TPMDevice": False, "TSO": False,
              "UEFIBoot": True},
@@ -290,14 +308,42 @@ cfg = {
     # ssh, and there is nothing to look at but a framebuffer. That is how an
     # hour went into a FreeBSD guest whose user-data asked for a group FreeBSD
     # does not have. `utmctl attach <name>` opens it.
-    "Serial": [{"Mode": "Ptty", "Target": "Auto"}],
+    # ── THE BOOT, READABLE OVER A SOCKET ──
+    #
+    # A guest that will not come up has to be readable or it can only be
+    # guessed at -- four theories went into a FreeBSD guest that turned out to
+    # be panicking twelve seconds into every boot, and a screenshot from the
+    # person at the machine solved it in ten seconds.
+    #
+    # NOT `-serial file:`: UTM runs QEMU in a sandboxed XPC helper which is
+    # refused the open, even on a path inside UTM's own container and even
+    # when the file is created first ("could not connect serial device to
+    # character backend"). NOT UTM's Ptty mode either: `utmctl attach`, the
+    # documented way to reach that, is not implemented in this build.
+    #
+    # A TCP server is allowed, and the port is ours to choose, so the console
+    # can be read with nc from anywhere -- including a pipeline with nobody
+    # watching. Derived from the name so two guests never collide.
+    "Serial": [{"Mode": "TcpServer", "Port": serial_port,
+                "Target": "Auto", "WaitForConnection": False}],
     # SHARING IS NOT OPTIONAL, in the same way Icon is not. A bundle without a
     # top-level Sharing block is written, is valid plist, and is IGNORED: it
     # never appears in UTM and `utmctl start` answers "Virtual machine not
     # found". Found by diffing this against the two bundles UTM does accept,
     # which is the same way the Icon requirement was found. VirtFS rather than
     # WebDAV because the guest is Linux and has 9p in the kernel.
-    "Sharing": {"ClipboardSharing": True, "DirectoryShareMode": "VirtFS",
+    # VirtFS IS 9p, AND FREEBSD HAS NO 9p DRIVER. Chosen for Linux, where the
+    # driver is in the kernel, and then reused for FreeBSD without thinking --
+    # which put a device on the bus with nothing to attach it. The guest
+    # panicked twelve seconds into boot, "vm_fault failed", every time, and
+    # rebooted forever. It survived the display device being changed because
+    # the display was never the problem.
+    #
+    # None for the BSDs: no share is better than a share that panics, and the
+    # packages under test arrive over ssh anyway. The Windows VM uses WebDAV
+    # for the same reason -- it has no 9p either.
+    "Sharing": {"ClipboardSharing": True,
+                "DirectoryShareMode": share_mode,
                 "DirectoryShareReadOnly": False},
     "Sound": [{"Hardware": "intel-hda"}],
     # No MachineProperties. The working Linux bundle has none, and an unknown
@@ -308,7 +354,8 @@ cfg = {
 }
 with open(f"{bundle}/config.plist", "wb") as f:
     plistlib.dump(cfg, f)
-print(f"  config.plist written ({arch}/{target}, {cores} cores, {ram} MB, "
+print(f"  console on tcp://127.0.0.1:{serial_port}  (nc 127.0.0.1 {serial_port})")
+print(f"  config.plist written ({arch}/{target}, {gpu}, share={share_mode}, {cores} cores, {ram} MB, "
       f"{'hypervisor' if native else 'EMULATED -- slow'})")
 PY
 
