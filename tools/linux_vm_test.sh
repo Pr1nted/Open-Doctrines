@@ -95,8 +95,20 @@ r 'command -v fpm >/dev/null || {
 try $? "the packaging tools are present"
 
 sec "building the packages, on Linux"
-r "cd ~/od && tools/make_linux_packages.sh tree $VERSION $arch out" >/dev/null 2>&1
-try $? "make_linux_packages.sh runs to completion"
+# KEEP THE OUTPUT. This was >/dev/null 2>&1, so when the build failed the
+# report said "make_linux_packages.sh runs to completion -- FAIL" and threw
+# away the only thing that could say why; the next eight checks then failed
+# as consequences, and the cause was gone. A gate that discards the reason
+# makes you reproduce the failure by hand to find out what it already knew.
+pkglog=$(mktemp)
+r "cd ~/od && tools/make_linux_packages.sh tree $VERSION $arch out" > "$pkglog" 2>&1
+pkgrc=$?
+try $pkgrc "make_linux_packages.sh runs to completion"
+if [ "$pkgrc" != 0 ]; then
+    echo "        --- what it said ---"
+    tail -15 "$pkglog" | sed 's/^/        /'
+fi
+rm -f "$pkglog"
 for k in deb rpm AppImage; do
     r "ls ~/od/out/*.$k" >/dev/null 2>&1
     try $? "it produced a .$k"
