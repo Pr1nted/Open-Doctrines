@@ -62,7 +62,28 @@ green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 note()  { printf '  %s\n' "$*"; }
 
-STAGES=(suite qualify packages guests)
+STAGES=(suite qualify packages guests multiplayer)
+
+# CROSS-PLAY NEEDS NO ACCOUNT, which was not obvious and nearly cost one.
+#
+# NetHost::open() wants an issuer, a session token and a serverCredential, so
+# the first plan here was a throwaway account whose token would be copied into
+# every guest -- credentials sitting in VM disk images, for a test.
+#
+# None of that is necessary. tests/mock_issuer.mjs is a stand-in account
+# service that signs real Ed25519 tickets, and tests/net_connect_test.cpp
+# drives a real NetHost and a real NetSession against it. It only ever ran
+# both ends in ONE PROCESS, which proves the protocol and says nothing about
+# two machines -- so a `connect` mode was added, and now the two ends can be
+# on different computers.
+#
+# The tunnels are what make it work. Both ends insist http:// is only
+# acceptable on localhost, which an address like 10.0.2.2 is not; ssh -R puts
+# this machine's issuer on the guest's OWN 127.0.0.1, and ssh -L brings the
+# guest's listening port back here. Everything is loopback at both ends, so
+# nothing is relaxed to allow it and nothing is exposed to the network.
+MOCK_PORT="${OD_PREFLIGHT_ISSUER_PORT:-9911}"
+GAME_PORT="${OD_PREFLIGHT_GAME_PORT:-7777}"
 declare -a RESULTS=()
 started=$(date +%s)
 
@@ -143,6 +164,102 @@ stage_guests() {
     return $ok
 }
 
+# CROSS-PLAY: this machine and a guest, each hosting for the other.
+#
+# tools/preflight_plan.py works out which sessions a full matrix needs -- 30
+# ordered host/client pairs across six platforms reduce to 7 if each platform
+# hosts once and the Mac joins free. This runs the macOS<->Linux pair of them;
+# the rest follow the same shape as more guests can build the client.
+stage_multiplayer() {
+    command -v node >/dev/null || { echo "node is needed for the stand-in account service"; return 1; }
+
+    local g=pf-debian
+    "$GUEST" start "$g" >/dev/null 2>&1 || true
+    "$GUEST" wait  "$g" 240 || return 1
+    eval "$("$GUEST" sshenv "$g")"
+
+    local bin="$ROOT/build/NetConnectTest"
+    [ -x "$bin" ] || { echo "build NetConnectTest first: cmake --build build --target NetConnectTest"; return 1; }
+    ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'test -x ~/src/build/NetConnectTest' || {
+        echo "no NetConnectTest in $g -- run: tools/preflight.sh --only build"; return 1; }
+
+    local issuer="http://localhost:$MOCK_PORT"
+    local rc=0
+
+    # FRESH FILES, NOT FIXED PATHS IN /tmp.
+    #
+    # These were /tmp/pf-mac-host.log, and the first run read a join code out
+    # of one left behind by an earlier experiment -- so it "found" a code
+    # instantly, joined a host that did not exist yet, and reported "the
+    # connection to that server was lost" twice. The failure looked like a
+    # networking problem and was a stale file.
+    MP_DIR=$(mktemp -d)
+    # Module scope, not local: the RETURN trap below runs after this function's
+    # locals are gone, and under `set -u` reading one is a fatal error rather
+    # than an empty string -- which is how the first version died in cleanup
+    # instead of reporting its result.
+    cleanup_mp() {
+        pkill -f "NetConnectTest .* host $GAME_PORT" 2>/dev/null || true
+        ssh $OD_SSH_OPTS "$OD_SSH_HOST" 'pkill -f NetConnectTest' 2>/dev/null || true
+        pkill -f "mock_issuer.mjs --port $MOCK_PORT" 2>/dev/null || true
+        pkill -f "ssh .*-R $MOCK_PORT:127.0.0.1:$MOCK_PORT" 2>/dev/null || true
+        rm -rf "$MP_DIR"
+    }
+    trap cleanup_mp RETURN
+
+    local mock_log="$MP_DIR/issuer.log"
+
+    # A host prints its join code while still Opening, and prints "Ctrl-C to
+    # stop" only once it is Live. Waiting for the code alone raced the host
+    # into existence; this waits for the line that means it is listening.
+    wait_for_host() {   # wait_for_host <logfile> -> prints the join code
+        local log="$1"
+        for _ in $(seq 1 90); do
+            sleep 1
+            if grep -q "Ctrl-C to stop" "$log" 2>/dev/null; then
+                grep -o "join code : .*" "$log" | head -1 | sed "s/join code : //"
+                return 0
+            fi
+            grep -q "^FAIL" "$log" 2>/dev/null && break
+        done
+        return 1
+    }
+
+    node "$ROOT/tests/mock_issuer.mjs" --port "$MOCK_PORT" > "$mock_log" 2>&1 &
+    local waited=0
+    while ! grep -q "mock-issuer ready" "$mock_log" 2>/dev/null; do
+        sleep 0.2; waited=$((waited+1))
+        [ "$waited" -gt 100 ] && { echo "the stand-in account service never came up"; cat "$mock_log"; return 1; }
+    done
+    echo "stand-in account service on $issuer"
+
+    # ── this machine hosts, the guest joins ──
+    echo
+    echo "== macOS hosts, $g joins =="
+    "$bin" "$issuer" host "$GAME_PORT" --all > "$MP_DIR/mac-host.log" 2>&1 &
+    local code
+    code=$(wait_for_host "$MP_DIR/mac-host.log") \
+        || { echo "the host never came up"; tail -5 "$MP_DIR/mac-host.log"; return 1; }
+
+    ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -R "$GAME_PORT:127.0.0.1:$GAME_PORT" \
+        "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer connect 127.0.0.1:$GAME_PORT $code linux-guest" \
+        || rc=1
+    pkill -f "NetConnectTest .* host $GAME_PORT" 2>/dev/null || true
+    sleep 2
+
+    # ── the guest hosts, this machine joins ──
+    echo
+    echo "== $g hosts, macOS joins =="
+    ssh $OD_SSH_OPTS -R "$MOCK_PORT:127.0.0.1:$MOCK_PORT" -L "$GAME_PORT:127.0.0.1:$GAME_PORT" \
+        "$OD_SSH_HOST" "cd ~/src/build && ./NetConnectTest $issuer host $GAME_PORT --all" \
+        > "$MP_DIR/guest-host.log" 2>&1 &
+    code=$(wait_for_host "$MP_DIR/guest-host.log") \
+        || { echo "the guest host never came up"; tail -5 "$MP_DIR/guest-host.log"; return 1; }
+
+    "$bin" "$issuer" connect "127.0.0.1:$GAME_PORT" "$code" mac-client || rc=1
+    return $rc
+}
+
 # ── the runner ───────────────────────────────────────────────────────────────
 
 only=""; fast=0
@@ -167,16 +284,19 @@ wants suite   && run_stage suite   "the whole test suite"        stage_suite
 wants qualify && run_stage qualify "build, play a game, load it" stage_qualify
 
 if [ "$fast" = 1 ]; then
-    wants packages && skip_stage packages "--fast"
-    wants guests   && skip_stage guests   "--fast"
+    wants packages    && skip_stage packages    "--fast"
+    wants guests      && skip_stage guests      "--fast"
+    wants multiplayer && skip_stage multiplayer "--fast"
 elif ! command -v qemu-system-aarch64 >/dev/null; then
     # Named rather than silently passed: a gate that skips what it cannot do
     # and still says "pass" is the failure this whole file exists to avoid.
-    wants packages && skip_stage packages "qemu not installed (brew install qemu)"
-    wants guests   && skip_stage guests   "qemu not installed (brew install qemu)"
+    wants packages    && skip_stage packages    "qemu not installed (brew install qemu)"
+    wants guests      && skip_stage guests      "qemu not installed (brew install qemu)"
+    wants multiplayer && skip_stage multiplayer "qemu not installed (brew install qemu)"
 else
     wants guests   && run_stage guests   "boot every guest the plan needs" stage_guests
     wants packages && run_stage packages "deb/rpm/AppImage in a clean guest" stage_packages
+    wants multiplayer && run_stage multiplayer "each end hosts for the other" stage_multiplayer
 fi
 
 # ── the report ───────────────────────────────────────────────────────────────

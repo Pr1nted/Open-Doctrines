@@ -54,6 +54,11 @@ note() { printf '  %s\n' "$*"; }
 # A stable port per guest: 2 bytes of its name, kept well clear of the
 # ephemeral range and of anything a developer is likely to be running.
 port_for() { printf '%d\n' $(( 33000 + $(printf '%s' "$1" | cksum | cut -d' ' -f1) % 2000 )); }
+# The game port, forwarded alongside ssh so a guest can HOST and the host
+# machine -- or another guest, through the host -- can join it. Derived from
+# the ssh port rather than hashed separately, so the two cannot collide and
+# `list` can print both without a second lookup.
+gameport_for() { printf '%d\n' $(( $(port_for "$1") + 2000 )); }
 gdir()     { printf '%s/%s\n' "$HOME_DIR" "$1"; }
 
 ssh_opts() {
@@ -174,7 +179,7 @@ cmd_start() {
         -drive "if=pflash,format=raw,file=$d/vars.fd" \
         -drive "if=virtio,format=qcow2,file=$d/disk.qcow2" \
         -drive "if=virtio,format=raw,file=$d/seed.img" \
-        -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:$p-:22" \
+        -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:$p-:22,hostfwd=tcp:127.0.0.1:$(gameport_for "$name")-:27015" \
         -device virtio-net-pci,netdev=n0 \
         > "$d/qemu.log" 2>&1 &
     echo $! > "$d/qemu.pid"
@@ -333,7 +338,8 @@ cmd_sshenv() {
     printf 'OD_SSH_HOST=%s\n' "odtest@127.0.0.1"
     printf 'OD_SSH_OPTS=%s\n' "'-p $p $(ssh_opts)'"
     printf 'OD_SCP_OPTS=%s\n' "'-P $p $(ssh_opts)'"
-    printf 'export OD_SSH_HOST OD_SSH_OPTS OD_SCP_OPTS\n'
+    printf 'OD_GAME_PORT=%s\n' "$(gameport_for "$name")"
+    printf 'export OD_SSH_HOST OD_SSH_OPTS OD_SCP_OPTS OD_GAME_PORT\n'
 }
 
 cmd_console() { sed 's/\r//' "$(gdir "$1")/console.log" | tail -"${2:-40}"; }
@@ -351,14 +357,15 @@ cmd_stop() {
 
 cmd_list() {
     [ -d "$HOME_DIR" ] || { note "no guests"; return 0; }
-    printf '  %-16s %-12s %-7s %s\n' NAME OS PORT STATE
+    printf '  %-16s %-12s %-7s %-7s %s\n' NAME OS SSH GAME STATE
     for d in "$HOME_DIR"/*/; do
         [ -d "$d" ] || continue
         local n os state
         n=$(basename "$d"); os=$(cat "$d/os" 2>/dev/null || echo "?")
         if [ -f "$d/qemu.pid" ] && kill -0 "$(cat "$d/qemu.pid")" 2>/dev/null
         then state=running; else state=stopped; fi
-        printf '  %-16s %-12s %-7s %s\n' "$n" "$os" "$(port_for "$n")" "$state"
+        printf '  %-16s %-12s %-7s %-7s %s\n' "$n" "$os" \
+               "$(port_for "$n")" "$(gameport_for "$n")" "$state"
     done
 }
 

@@ -48,6 +48,7 @@
 #include <thread>
 #include <vector>
 #include "net/AccountClient.h"
+#include "net/HttpClient.h"
 
 namespace fs = std::filesystem;
 
@@ -239,6 +240,51 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     if (!AccountClient::get().account().valid()) {
         console.warn("the stored account did not refresh; hosting under whatever "
                      "name the service has on file.");
+    }
+
+    // ── REGISTERING THIS SERVER, WHICH NOTHING HERE USED TO DO ──
+    //
+    // NetHost::open() wants three things: an issuer, a session token, and a
+    // serverCredential. The two above supply the first two. The third is
+    // issued once by the account service and kept, and the only code that
+    // ever asked for one lived in the client's hosting UI
+    // (Game_Multiplayer.cpp) -- which a dedicated server never runs.
+    //
+    // So a dedicated server on a machine that had never hosted from the GAME
+    // could not host at all. It loaded the map, built a world, and failed at
+    // the last step with "Sign in and register this server before hosting."
+    // -- advice with no way to follow it, because there was no "register"
+    // anywhere in this binary. Found on a Linux guest doing exactly that.
+    //
+    // It is cached in config.json for the reason the client caches it:
+    // per-player pseudonyms on a server are derived from it, so registering
+    // afresh each start would make every returning player look like a
+    // stranger.
+    if (m_config.serverCredential.empty() &&
+        !AccountClient::get().sessionToken().empty()) {
+        console.info("registering this server with the account service...");
+        HttpRequest req;
+        req.method = "POST";
+        req.url = m_config.accountIssuer + "/server/register";
+        req.bearer = AccountClient::get().sessionToken();
+        // Only for a service running on this machine, which is how the
+        // account worker is developed; anything else must be https.
+        req.allowInsecure =
+            m_config.accountIssuer.rfind("http://localhost", 0) == 0 ||
+            m_config.accountIssuer.rfind("http://127.0.0.1", 0) == 0;
+        const HttpResponse res = httpRequest(req);
+        const std::string credential =
+            httpJsonString(res.body, "serverCredential", 4096);
+        if (res.ok() && !credential.empty()) {
+            m_config.serverCredential = credential;
+            m_config.save(m_configPath);
+            console.info("registered; the credential is kept in " + m_configPath);
+        } else {
+            const std::string why = !res.error.empty()
+                ? res.error : httpJsonString(res.body, "message", 512);
+            console.warn("could not register this server: " +
+                         (why.empty() ? std::string("no reason given") : why));
+        }
     }
 
     // ── configuration ──

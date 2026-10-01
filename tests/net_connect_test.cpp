@@ -963,6 +963,20 @@ int runHost(const std::string& issuer, int port, bool bindAll) {
 
     NetHost host;
     Seen seen;
+
+    // PUBLISH A CATALOGUE AND A MAP NAME, which this mode did not.
+    //
+    // Every in-process mode sets these; host mode never did, because until
+    // there was a `connect` mode nothing external ever asked. A real client
+    // joining got a welcome with an empty map name and no countries, and
+    // "the country catalogue crossed the wire -- 0 countries" is a failure
+    // report about the host, not about the link it came over.
+    NetCountryList countries;
+    countries.countries.push_back({101, "Testland"});
+    countries.countries.push_back({102, "Otherstan"});
+    host.setCountries(countries);
+    host.setMapName("STDmaps/map");
+
     if (!host.open(hostConfig(issuer, port, bindAll))) {
         printf("FAIL: the host did not start: %s\n", host.error().c_str());
         return 1;
@@ -1411,6 +1425,65 @@ int main(int argc, char** argv) {
     else if (mode == "idle") testQuiet(issuer, true);
     else if (mode == "race") testRace(issuer);
     else if (mode == "relay") testRelay(issuer);
+    else if (mode == "connect") {
+        // THE OTHER HALF OF `host`, AND THE ONE THAT MAKES CROSS-PLAY
+        // TESTABLE AT ALL.
+        //
+        // Every other mode here builds the host AND the client in one
+        // process, which proves the protocol and proves nothing about two
+        // MACHINES. `host` already binds a port and prints its join code;
+        // there was simply nothing that could walk up to one. So the question
+        // "can a Linux guest join a session a Mac is hosting" had no answer
+        // short of two people with two keyboards.
+        //
+        //     NetConnectTest <issuer> host 7777 --all          on one machine
+        //     NetConnectTest <issuer> connect <ip:port> <code> on the other
+        //
+        // It reports what it got rather than a bare exit code, because the
+        // interesting failures here are specific: refused, timed out, seated
+        // as a spectator.
+        if (argc < 5) {
+            printf("connect needs an address and a join code\n");
+            return 2;
+        }
+        const std::string address = argv[3];
+        const std::string code = argv[4];
+        const std::string nick = argc > 5 ? argv[5] : "preflight";
+
+        NetSession session;
+        Seen seen;
+        printf("  joining   : %s\n  code      : %s\n", address.c_str(), code.c_str());
+        const bool started = session.join(address, issuer, code,
+                                          "mock-session-token", nick, "");
+        check("the join starts", started, session.error());
+        if (!started) { printf("\n%d checks, %d failed\n", g_checks, g_failures); return 1; }
+
+        const bool landed = pumpUntil(nullptr, &session, [&] {
+            drain(nullptr, &session, seen);
+            return seen.welcomed || seen.rejected || seen.disconnected;
+        }, 30000);
+        check("the host welcomed this machine",
+              landed && seen.welcomed,
+              seen.rejected ? "rejected: " + session.error()
+                            : (landed ? "disconnected" : "timed out"));
+        if (seen.welcomed) {
+            const NetWelcome& w = session.welcome();
+            printf("  session   : %s\n  map       : %s\n  seat      : %u%s\n",
+                   w.sessionName.c_str(), w.mapName.c_str(),
+                   (unsigned)w.peerId, w.spectator ? " (spectator)" : "");
+            check("it was given a seat", w.peerId != 0);
+            // The catalogue arrives unasked, and is the first thing that
+            // crosses the wire in bulk -- a good proxy for "the link works",
+            // not merely "the handshake did".
+            pumpUntil(nullptr, &session, [&] {
+                drain(nullptr, &session, seen); return seen.countries;
+            }, 8000);
+            check("the country catalogue crossed the wire", seen.countries,
+                  std::to_string(session.countries().size()) + " countries");
+        }
+        printf("\n%d checks, %d failed\n", g_checks, g_failures);
+        return g_failures == 0 ? 0 : 1;
+    }
     else if (mode == "host") {
         // Not a check-counting mode: it reports its own success and returns,
         // so the "N checks, 0 failed" tail below would be a lie about it.
