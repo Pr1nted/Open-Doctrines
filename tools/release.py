@@ -97,6 +97,12 @@ DATA_ALLOWLIST = [
                       # Absent, Game_TutorialWalk finds no route it can open
                       # and the tutorial does nothing at all.
     "tips.json",
+    "splashes.json",  # the line beside the title on the menu, and its seasonal
+                      # ones. Absent, odsplash::pick() draws from an empty list
+                      # and returns nothing, so the menu is silently plain --
+                      # the feature does not fail, it just is not there. This
+                      # list is exactly the gate for that, and it caught this
+                      # on a FreeBSD job before any tag did.
     "credits.txt",
     "district_laws.json",  # the regional laws a district can run. Absent, the
                       # Districts tab lists none and says nothing: 1.2.2a

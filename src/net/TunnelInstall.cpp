@@ -14,6 +14,10 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+// readFile() below builds a std::stringstream. Every other platform's
+// <fstream> or <filesystem> drags <sstream> in behind it; OpenBSD's libc++
+// does not, so this was the one compile error in the whole game there.
+#include <sstream>
 #include <thread>
 
 #if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
