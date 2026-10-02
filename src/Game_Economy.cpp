@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "util/OdEnv.h"
 #include "Palette.h"
 #include "GameInternals.h"
 #include "Keybinds.h"
@@ -730,8 +731,8 @@ void Game::autoAssignOutputs(int countryId, const CountryStockpile& pool) {
     // ONE BINARY, TWO ARMS. The old per-province rule is kept behind a switch
     // so a bench can run both without two builds -- a stored result that
     // tests the patch AND the build tests neither.
-    static const bool usePlan = !std::getenv("OD_ALLOC_PLAN") ||
-                                atoi(std::getenv("OD_ALLOC_PLAN")) != 0;
+    static const bool usePlan = !OD_ENV("OD_ALLOC_PLAN") ||
+                                atoi(OD_ENV("OD_ALLOC_PLAN")) != 0;
     int quota[GOOD_COUNT] = {0, 0, 0, 0};
     if (usePlan) {
         planOutputs(need, stock, feasible, (int)undirected.size(), quota);
@@ -1007,8 +1008,8 @@ float Game::pacificationRebate(int countryId) const {
     // OFF BY DEFAULT. It moves a country's expenses, which moves net income,
     // which the AI's every money decision reads -- so it changes play and every
     // bench baseline, and the flag is how that gets measured before it ships.
-    static const bool on = std::getenv("OD_PACIFICATION_REBATE") &&
-                           atoi(std::getenv("OD_PACIFICATION_REBATE")) != 0;
+    static const bool on = OD_ENV("OD_PACIFICATION_REBATE") &&
+                           atoi(OD_ENV("OD_PACIFICATION_REBATE")) != 0;
     if (!on) return 0.0f;
 
     const int cid = (countryId >= 0) ? countryId : m_playerCountryId;

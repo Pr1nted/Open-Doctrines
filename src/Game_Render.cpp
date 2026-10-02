@@ -3048,12 +3048,19 @@ void Game::drawTouchMenuButton() {
     }
 }
 
-void Game::drawSidebarButtons() {
-    bool isSpectator = (m_playerCountryId == SPC_CID);
-    int btnSize = 100;
-    int btnSpacing = 8;
-    int startX = m_screenW - btnSize - 12;
-    int totalH = 4 * btnSize + 3 * btnSpacing;
+int Game::sidebarVisibleTabs() const {
+    // Matches the packing in drawSidebarButtons: the middle state shows Claims
+    // and nothing else.
+    return (m_turnState == TURN_VIEWING_ORDERS) ? 1 : kSidebarTabCount;
+}
+
+int Game::sidebarStartY() const {
+    const int btnSize = kSidebarBtnSize;
+    const int btnSpacing = 8;
+    // AS MANY BUTTONS AS ARE DRAWN. This said four while five were drawn; see
+    // kSidebarTabCount for what that cost.
+    const int tabs = sidebarVisibleTabs();
+    int totalH = tabs * btnSize + (tabs - 1) * btnSpacing;
     int startY = (m_screenH - totalH) / 2;
 
     // ── ROOM FOR MAIL, RESERVED BEFORE THE TABS ARE DRAWN ──
@@ -3082,13 +3089,32 @@ void Game::drawSidebarButtons() {
     // test resolution leaves behind. It shares the Settings row now, so it fits
     // wherever Settings fits; this keeps that row itself clear of the bar.
     {
-        const int stackH = 4 * btnSize + 3 * btnSpacing;   // the tabs
-        const int underH = 10 + 46;                        // the Settings row
+        const int stackH = tabs * btnSize + (tabs - 1) * btnSpacing;
+        const int underH = kSidebarFooterH;                // the Settings row
         const int barTop = m_screenH - bottomBarH() - 16;
         const int over = (startY + stackH + underH) - barTop;
         if (over > 0) startY -= over;
         if (startY < 12) startY = 12;
     }
+
+    return startY;
+}
+
+Rectangle Game::sidebarColumnRect() const {
+    // The tabs, plus the Settings row that hangs under them. Anything in the
+    // HUD that right-aligns into this corner is asking about the whole thing.
+    const int tabs = sidebarVisibleTabs();
+    const int stackH = tabs * kSidebarBtnSize + (tabs - 1) * 8;
+    return {(float)sidebarLeftX(), (float)sidebarStartY(),
+            (float)kSidebarBtnSize, (float)(stackH + kSidebarFooterH)};
+}
+
+void Game::drawSidebarButtons() {
+    bool isSpectator = (m_playerCountryId == SPC_CID);
+    const int btnSize = kSidebarBtnSize;
+    const int btnSpacing = 8;
+    const int startX = sidebarLeftX();
+    const int startY = sidebarStartY();
 
     struct SBtn { Texture2D tex; const char* label; int id; bool disabled; };
     // T() here rather than at the draw: this is a struct table, and the
@@ -3112,6 +3138,12 @@ void Game::drawSidebarButtons() {
         {{}, T("Monuments"), 5, isSpectator || !hasResearched("mon_basics", m_playerCountryId)},
     };
     static constexpr int BTN_COUNT = 5;
+    // The column's height is computed from kSidebarTabCount in three places
+    // that cannot see this table. Adding a sixth tab here without changing it
+    // is a compile error rather than a column that runs off the bottom of its
+    // own geometry -- which is what adding the fifth did.
+    static_assert(sizeof(btns) / sizeof(btns[0]) == kSidebarTabCount,
+                  "kSidebarTabCount must match this table -- see Game.h");
 
     // ── THE MIDDLE STATE IS A VIEW, NOT A PANEL ──
     //
@@ -3149,8 +3181,8 @@ void Game::drawSidebarButtons() {
     }
     for (int slot = 0; slot < shownTabs; ++slot) {
         const int i = order[slot];
-        int y = startY + slot * (btnSize + btnSpacing);
-        Rectangle r = {(float)startX, (float)y, (float)btnSize, (float)btnSize};
+        Rectangle r = sidebarTabRect(slot);
+        const int y = (int)r.y;
         // Offer it to the tutorial by a stable name. The label is what the
         // player reads and may be translated; the id is what the script
         // writes, so the name is built from the id and never from the words.
@@ -3199,8 +3231,20 @@ void Game::drawSidebarButtons() {
                   : (btns[i].id == 5) ? m_iconMonuments : btns[i].tex;
         DrawTextureEx(iconTex, {(float)iconX, (float)iconY2}, 0.0f, (float)iconDrawSize / 64.0f, iconCol);
 
-        int labelW = MeasureText(btns[i].label, 13);
-        DrawText(btns[i].label, startX + (btnSize - labelW) / 2, y + btnSize - 18, 13,
+        // FITTED, like Find country, Mail, Settings and the globe toggle below
+        // -- which were each given this one at a time, leaving the five tabs in
+        // the middle of the column as the only labels in this function drawn at
+        // whatever width they happened to want. DrawText centres what it is
+        // given, so an over-wide label does not clip, it hangs out of BOTH ends
+        // of the button and over the map and the window edge. "Дослідження" and
+        // "Претензії" are already at the limit of a 100 px button; nothing here
+        // was measuring whether they passed it.
+        int labelFs = 13;
+        const std::string tabLabel =
+            odText::fitToWidth(btns[i].label, btnSize - 8, labelFs, 9);
+        DrawText(tabLabel.c_str(),
+                 startX + (btnSize - MeasureText(tabLabel.c_str(), labelFs)) / 2,
+                 y + btnSize - labelFs - 5, labelFs,
                  btns[i].disabled ? Color{80, 80, 90, 150}
                  : (active || alert) ? accent : LIGHTGRAY);
 
@@ -3496,14 +3540,18 @@ void Game::drawInner() {
                 ? Rectangle{0, (float)panelY, (float)panelW, (float)panelH}
                 : Rectangle{});
         }
-        // Set skip-click rect for sidebar area
+        // Where map clicks are suppressed because the column is over them.
+        //
+        // This was a FOURTH hand-written copy of the column's layout and it
+        // disagreed with the real one twice: eight points out horizontally
+        // (- 20 against the column's - 12) and 108 points short vertically,
+        // because it sized the stack for four buttons. So clicks on Monuments
+        // and on the Settings row went past the buttons and selected whatever
+        // province was underneath. It asks the column now.
         {
-            int btnSize = 100;
-            int btnSpacing = 8;
-            int startX = m_screenW - btnSize - 20;
-            int totalH = 4 * btnSize + 3 * btnSpacing;
-            int startY = (m_screenH - totalH) / 2;
-            m_renderer->setSkipClickRect({(float)startX, (float)startY - 8, (float)(btnSize + 16), (float)(totalH + 16)});
+            const Rectangle col = sidebarColumnRect();
+            m_renderer->setSkipClickRect({col.x - 8, col.y - 8,
+                                          col.width + 16, col.height + 16});
         }
         m_renderer->draw(m_landSea, m_provinces, m_countries);
     }
@@ -4692,11 +4740,50 @@ void Game::drawInner() {
             // alone, and it credited the human's navySpeedPct to any hull.
             float maxRange = shipMaxRangePx(srcShip);
 
-            // Draw range circle (more visible)
-            float screenRange = maxRange * cam.zoom;
-            DrawCircleLines((int)sp.x, (int)sp.y, screenRange, ColorAlpha(WHITE, 120.0f/255.0f));
-            DrawCircleLines((int)sp.x, (int)sp.y, screenRange + 2, ColorAlpha(WHITE, 60.0f/255.0f));
-            DrawCircleLines((int)sp.x, (int)sp.y, screenRange - 2, ColorAlpha(WHITE, 40.0f/255.0f));
+            // ── HOW FAR THIS HULL GETS, DRAWN ON THE GROUND ──
+            //
+            // The range is in MAP PIXELS (shipMaxRangePx), and on the flat map
+            // one screen pixel is one map pixel times the camera zoom, so a
+            // screen circle is the right shape and always was.
+            //
+            // The globe has no such number. The scale varies across the disc --
+            // a hand's width of map at the limb is a few pixels and the same
+            // hand's width under the camera is a hundred -- so `maxRange *
+            // cam.zoom` is a circle of a size that means nothing, drawn around
+            // a hull whose reach is nothing like it. It is worse than no ring,
+            // because it reads as an answer.
+            //
+            // So on the globe the ring is built in MAP space, where the number
+            // is defined, and projected point by point. The run breaks wherever
+            // the planet gets in the way rather than being bridged across it,
+            // which is also how it tells you the reach has gone over the
+            // horizon.
+            if (m_renderer->viewMode() == MapRenderer::ViewMode::Globe) {
+                const int kRingPts = 72;
+                const float mapHf = (float)std::max(1, m_landSea.getHeight() - 1);
+                Vector2 ringPrev{};
+                bool ringHave = false;
+                for (int ri = 0; ri <= kRingPts; ++ri) {
+                    const float a = (float)ri / (float)kRingPts * 2.0f * PI;
+                    // y clamped to the raster: past the pole there is no map
+                    // row, and the projection would read a latitude that does
+                    // not exist rather than wrapping over the top.
+                    Vector2 w{(float)sx + cosf(a) * maxRange,
+                              std::clamp((float)sy + sinf(a) * maxRange, 0.0f, mapHf)};
+                    Vector2 pt{};
+                    const bool have = projectRoutePoint(w, 0.0f, pt);
+                    if (have && ringHave)
+                        DrawLineEx(ringPrev, pt, 1.5f, ColorAlpha(WHITE, 120.0f/255.0f));
+                    ringPrev = pt;
+                    ringHave = have;
+                }
+            } else {
+                // Draw range circle (more visible)
+                float screenRange = maxRange * cam.zoom;
+                DrawCircleLines((int)sp.x, (int)sp.y, screenRange, ColorAlpha(WHITE, 120.0f/255.0f));
+                DrawCircleLines((int)sp.x, (int)sp.y, screenRange + 2, ColorAlpha(WHITE, 60.0f/255.0f));
+                DrawCircleLines((int)sp.x, (int)sp.y, screenRange - 2, ColorAlpha(WHITE, 40.0f/255.0f));
+            }
 
             if (m_shipActionMode == 1) {
                 int px, py;
@@ -4767,22 +4854,68 @@ void Game::drawInner() {
                             if (!navRoute(srcShip.lon, srcShip.lat, lon, lat, way))
                                 lineCol = previewCol(odPalette::Role::Bad, 255);
                             way.emplace_back((double)lon, (double)lat);
+
+                            // ── DRAWN THE WAY THE COMMITTED ORDER IS DRAWN ──
+                            //
+                            // This used to project each waypoint on its own and
+                            // join them with straight screen lines, which fails
+                            // two different ways and failed both in the report
+                            // that produced this comment.
+                            //
+                            // ON THE GLOBE: worldToScreen answers the far side
+                            // with a sentinel a hundred thousand pixels off --
+                            // documented, deliberate, and fine for a MARKER,
+                            // which simply does not land on screen. A LINE to
+                            // it is a streak clean across the picture, so a
+                            // voyage with any waypoint round the back drew a
+                            // stroke to the corner of the window. And a leg
+                            // that is a quarter of the world is a chord through
+                            // the planet when it is one straight screen
+                            // segment, not a track on the ocean.
+                            //
+                            // ON THE FLAT MAP: per-point projection picks the
+                            // map copy nearest the camera FOR EACH POINT, so a
+                            // route across the antimeridian put its two halves
+                            // on opposite copies and drew a stripe across the
+                            // world. drawShipRoutePath has accumulated x with
+                            // lonDelta since that bug; this never did.
+                            //
+                            // So it goes through the same drawMapSegment the
+                            // committed order uses, with the same single camera
+                            // offset taken once from the hull. One projection
+                            // rule for the preview and the thing it previews.
+                            const double pxPerDeg =
+                                (double)m_landSea.getWidth() / 360.0;
+                            std::vector<Vector2> wpts;
+                            wpts.reserve(way.size() + 1);
+                            wpts.push_back({(float)sx, (float)sy});
+                            double accX = (double)sx;
                             double total = 0.0;
                             double cl = srcShip.lon, ct = srcShip.lat;
-                            Vector2 prev = sp;
                             for (auto& [wl, wt] : way) {
                                 // Wrapped, like the resolver: an Aleutian leg
                                 // measured 359 degrees and reported twenty
                                 // turns for a one-turn hop.
                                 total += seaDistanceDeg(cl, ct, wl, wt);
+                                accX += lonDelta(cl, wl) * pxPerDeg;
                                 cl = wl; ct = wt;
                                 int wx, wy;
+                                // Only the ROW is taken from here. The column
+                                // is the accumulated one above, which is
+                                // allowed to run outside the raster so the
+                                // polyline stays continuous across the seam.
                                 m_landSea.lonLatToPixel((float)wl, (float)wt, wx, wy);
-                                Vector2 cur = worldToScreen({(float)wx, (float)wy});
-                                DrawLineEx(prev, cur, 2.0f,
-                                           previewCol(odPalette::Role::Good, 140));
-                                prev = cur;
+                                (void)wx;
+                                wpts.push_back({(float)accX, (float)wy});
                             }
+                            const float mwf = (float)m_landSea.getWidth();
+                            Vector2 anchor = wpts[0];
+                            while (anchor.x - cam.target.x >  mwf * 0.5f) anchor.x -= mwf;
+                            while (anchor.x - cam.target.x < -mwf * 0.5f) anchor.x += mwf;
+                            const float routeShift = anchor.x - wpts[0].x;
+                            for (size_t wi = 0; wi + 1 < wpts.size(); ++wi)
+                                drawMapSegment(wpts[wi], wpts[wi + 1], routeShift, 2.0f,
+                                               previewCol(odPalette::Role::Good, 140));
                             const double per = shipMaxRangeDeg(srcShip);
                             const int turns = per > 1e-9
                                 ? (int)std::ceil(total / per) : 0;
@@ -4964,7 +5097,7 @@ void Game::drawInner() {
     // ─── Stub buttons click handler (horizontal, lowered) ───
     if (!m_paused && m_turnState == TURN_NORMAL && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         Vector2 sm = getMouse();
-        int sbBtnW = 180, sbBtnH = 36, sbGap = 8;
+        int sbBtnW = kBottomLeftStubW, sbBtnH = 36, sbGap = 8;
         // From the same helper the panels clamp themselves against, so the
         // two cannot drift apart again.
         int sbX = 12, sbY = bottomLeftStubTop();
@@ -5694,8 +5827,27 @@ void Game::drawInner() {
         int dateW = MeasureText(dateText, fontDate);
         int dateH = fontDate + padY * 2;
         int datePanelW = dateW + padX * 2 + 4;
+        // ── WHERE IT HAS ALWAYS GONE, UNLESS SOMETHING IS ACTUALLY THERE ──
+        //
+        // The sidebar column owns the right edge and is drawn AFTER this, so a
+        // date that reaches it is not pushed aside, it is covered -- which is
+        // how "Вересень 1940 н.е." came to have its tail drawn under the
+        // Settings and globe buttons while "September 1940" never did.
+        //
+        // The first repair right-aligned the date to the column on EVERY
+        // window, moving it 104 points on windows where nothing was in the way.
+        // So the intended position is computed first and kept, and the panel
+        // slides left only when it genuinely meets the column, and then only
+        // far enough to clear it.
         int dateX = mainBarX + mainBarW - datePanelW;
         int dateY = mainBarY - dateH - 4;
+        {
+            const Rectangle col = sidebarColumnRect();
+            const Rectangle here{(float)dateX, (float)dateY,
+                                 (float)datePanelW, (float)dateH};
+            if (CheckCollisionRecs(here, col))
+                dateX = std::max(0, (int)col.x - 8 - datePanelW);
+        }
         offerUiTarget("label.date", {(float)dateX, (float)dateY,
                                      (float)datePanelW, (float)dateH});
         DrawRectangleGradientH(dateX, dateY, datePanelW, dateH,
@@ -5767,8 +5919,20 @@ void Game::drawInner() {
             Color bg = (i == m_activeResourceIdx) ? Color{60, 120, 60, 200} : (hovered ? Color{60, 60, 70, 200} : Color{40, 40, 50, 200});
             DrawRectangle(bx, btnY, btnW, btnH, bg);
             DrawRectangleLines(bx, btnY, btnW, btnH, {100, 100, 120, 150});
-            int tw = MeasureText(RESOURCE_NAMES[i], 16);
-            DrawText(RESOURCE_NAMES[i], bx + (btnW - tw) / 2, btnY + (btnH - 16) / 2, 16,
+            // 80 px a button, and the label centred in it with nothing
+            // measuring the fit. See the navy row below for what that does.
+            // T() BEFORE fitToWidth, not after. DrawText translates what it is
+            // given, so fitting the English and handing the result on works
+            // until the label has to be shortened -- and then the ellipsised
+            // ENGLISH prefix is what reaches the lookup, misses, and draws. The
+            // other fitted labels in this file pass T(...) in for that reason;
+            // these two tables are raw because the extractor reads them as
+            // tables, so the T() belongs here.
+            int rfs = 16;
+            const std::string rlabel =
+                odText::fitToWidth(T(RESOURCE_NAMES[i]), btnW - 6, rfs, 10);
+            DrawText(rlabel.c_str(), bx + (btnW - MeasureText(rlabel.c_str(), rfs)) / 2,
+                     btnY + (btnH - rfs) / 2, rfs,
                      i == m_activeResourceIdx ? WHITE : (hovered ? WHITE : LIGHTGRAY));
         }
     }
@@ -5798,8 +5962,22 @@ void Game::drawInner() {
             Color bg = active ? Color{60, 120, 60, 200} : (hovered ? Color{60, 60, 70, 200} : Color{40, 40, 50, 200});
             DrawRectangle(bx, dY, btnW2, btnH2, bg);
             DrawRectangleLines(bx, dY, btnW2, btnH2, {100, 100, 120, 150});
-            int tw2 = MeasureText(fLabels[i], 16);
-            DrawText(fLabels[i], bx + (btnW2 - tw2) / 2, dY + (btnH2 - 16) / 2, 16,
+            // ── THE ROW THAT COLLIDED WITH THE BUTTON BESIDE IT ──
+            //
+            // 80 px a button, 16 px text, centred and never measured. "Neutral"
+            // fits; "Нейтральні" does not, and a centred label that does not fit
+            // hangs out of both ends rather than clipping -- so the last filter
+            // ran out of its own group and underneath "Масове покращення", the
+            // bulk-paint button drawn in the same toolbar row. It reads as the
+            // bulk button being in the wrong place, and it is the label.
+            //
+            // The rest of this function's buttons have been fitted one at a
+            // time as each was reported; the two rows in this toolbar were the
+            // ones left.
+            int ffs = 16;   // T() first -- see the resource row above
+            const std::string flab = odText::fitToWidth(T(fLabels[i]), btnW2 - 6, ffs, 10);
+            DrawText(flab.c_str(), bx + (btnW2 - MeasureText(flab.c_str(), ffs)) / 2,
+                     dY + (btnH2 - ffs) / 2, ffs,
                      active ? WHITE : (hovered ? WHITE : LIGHTGRAY));
             if (!m_paused && hovered && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                 if (i == 0) {
@@ -5891,7 +6069,7 @@ void Game::drawInner() {
     if (m_renderer->getSelectedProvinceId() > 0 || !m_selectedShipIndices.empty()) drawCountryPanel();
     // ─── Bottom-left stub buttons (only when not processing turn) ───
     if ((!m_mapDate.empty() || m_playerCountryId == SPC_CID) && m_turnState == TURN_NORMAL) {
-        int sbBtnW = 180, sbBtnH = 36, sbGap = 8;
+        int sbBtnW = kBottomLeftStubW, sbBtnH = 36, sbGap = 8;
         // bottomLeftStubTop(), not the same arithmetic written out again: it is
         // what the left-hand panels reserve space against, and it now accounts
         // for the Orders strip below. Recomputing it here is how this row ended

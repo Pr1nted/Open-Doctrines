@@ -771,19 +771,28 @@ void Game::update(float dt) {
         {
             Vector2 mp = getMouse();
             bool isSpectator = (m_playerCountryId == SPC_CID);
-            int btnSize = 100;
-            int btnSpacing = 8;
-            int startX = m_screenW - btnSize - 12;
-            int totalH = 4 * btnSize + 3 * btnSpacing;
-            int startY = (m_screenH - totalH) / 2;
-            // Must match drawSidebarButtons(): a button drawn greyed and still
-            // clickable is worse than either.
-            struct { int id; bool disabled; } sbtns[] = {{1, isSpectator}, {2, false},
-                                                        {3, isSpectator}, {4, isSpectator}};
-            for (int i = 0; i < 4; ++i) {
+            // GEOMETRY FROM THE COLUMN, NOT FROM A COPY OF IT. This worked the
+            // position out for itself -- centred on four buttons, with neither
+            // the mail nudge nor the bottom clearance the drawing applies -- so
+            // the hitboxes sat above the buttons. See Game::sidebarTabRect.
+            //
+            // AND FIVE BUTTONS, NOT FOUR. Monuments is id 5 and was never in
+            // this list, so the tid == 5 branch below has never once run: the
+            // button drew, un-greyed when mon_basics was researched, and did
+            // nothing. m_inMonuments = true appears in exactly one other place
+            // in the game, which is the screenshot tour.
+            struct { int id; bool disabled; } sbtns[] = {
+                {1, isSpectator}, {2, false}, {3, isSpectator}, {4, isSpectator},
+                {5, isSpectator || !hasResearched("mon_basics", m_playerCountryId)}};
+            // The same packing drawSidebarButtons uses: the middle state shows
+            // Claims alone, and the survivors close up from the top.
+            const bool readingOrders = (m_turnState == TURN_VIEWING_ORDERS);
+            int slot = -1;
+            for (int i = 0; i < 5; ++i) {
+                if (readingOrders && sbtns[i].id != 3) continue;
+                ++slot;
                 if (sbtns[i].disabled) continue;
-                Rectangle r = {(float)startX, (float)(startY + i * (btnSize + btnSpacing)),
-                               (float)btnSize, (float)btnSize};
+                Rectangle r = sidebarTabRect(slot);
                 // While the tutorial is pointing somewhere, that is the only
                 // tab that opens. Otherwise "click Economy" is followed by
                 // the player in Research and Mia still talking about tax.

@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include "util/OdEnv.h"
 #include "Game.h"
 #include "MinorityShares.h"
 #include "util/LoadLog.h"
@@ -464,7 +465,7 @@ void Game::processTurn() {
     // Measured with it on: survival 75.5% against 73.6% all-line, 18,077
     // assaults, 33 battles, supply biting at 19.8% -- so the columns fire and
     // the game is stable with mixed armies.
-    if (m_turnNumber <= 1 && std::getenv("OD_SEED_KINDS")) {
+    if (m_turnNumber <= 1 && OD_ENV("OD_SEED_KINDS")) {
         int k = 0;
         for (auto& [pid, units] : m_provinceArmies)
             for (auto& u : units)
@@ -754,7 +755,7 @@ void Game::processTurn() {
     // on the wire in a multiplayer game -- the packed delta the host broadcasts to each
     // client (Game::mpResolveTurn), times the number of clients. Packing costs time, so it
     // only happens when asked and never during a turn-speed run.
-    if (const char* ojhNet = std::getenv("OD_OJH_NET")) {
+    if (const char* ojhNet = OD_ENV("OD_OJH_NET")) {
         const long clients = std::max(1L, std::strtol(ojhNet, nullptr, 10));
         const size_t packed = SaveManager::packTurn(delta).size();
         printf("OJH data 0 %zu\n", packed * (size_t)clients);
@@ -927,15 +928,15 @@ void Game::processTurn() {
     m_turnState = (somebodyIsWatching && !m_config.skipViewingOrders && !m_turnOrderLog.empty())
                       ? TURN_VIEWING_ORDERS : TURN_NORMAL;
 
-    if (getenv("OD_RCAP") && (m_turnNumber % 40) == 0) dumpResearchCapacity();
-    if (getenv("OD_ORDERLOG") && (m_turnNumber % 10) == 0) {
+    if (OD_ENV("OD_RCAP") && (m_turnNumber % 40) == 0) dumpResearchCapacity();
+    if (OD_ENV("OD_ORDERLOG") && (m_turnNumber % 10) == 0) {
         int byKind[5] = {};
         for (const auto& m : m_turnOrderLog) byKind[(int)m.kind]++;
         printf("[ORDERLOG] turn %d: %zu marks  arty %d  move %d  ship %d  recruit %d  build %d\n",
                m_turnNumber, m_turnOrderLog.size(), byKind[0], byKind[1], byKind[2],
                byKind[3], byKind[4]);
     }
-    if (getenv("OD_NAV_STATS") && (m_turnNumber % 20) == 0)
+    if (OD_ENV("OD_NAV_STATS") && (m_turnNumber % 20) == 0)
         printf("[NAVROUTE] turn %d: %lld call(s), %lld unroutable (%.1f%%)\n",
                m_turnNumber, g_navRouteCalls, g_navRouteFails,
                g_navRouteCalls ? 100.0 * (double)g_navRouteFails / (double)g_navRouteCalls : 0.0);
@@ -997,7 +998,7 @@ void Game::processTurn() {
     // iteration order would report a divergence whenever the containers merely
     // rehashed differently, which is exactly the false positive that would send
     // someone hunting a bug that is not there.
-    static const bool detTrace = std::getenv("OD_DET_TRACE") != nullptr;
+    static const bool detTrace = OD_ENV("OD_DET_TRACE") != nullptr;
     if (detTrace) {
         uint64_t owners = 0, armies = 0, money = 0;
         for (size_t pid = 0; pid < m_provinceCountryLookup.size(); ++pid)
@@ -1044,12 +1045,12 @@ void Game::processCountryTurn(int countryId) {
     // and nothing it decided has been consumed yet. See m_turnOrderLog.
     // Where this country's pacification money goes. A reflex, not a decision
     // the policy net takes -- see updateAIDistricts.
-    if (!getenv("OD_AI_DISTRICTS_OFF")) updateAIDistricts(countryId);
+    if (!OD_ENV("OD_AI_DISTRICTS_OFF")) updateAIDistricts(countryId);
     // What it is willing to say about itself, on the same terms the player has.
-    if (!getenv("OD_AI_DISCLOSE_OFF")) updateAIDisclosure(countryId);
+    if (!OD_ENV("OD_AI_DISCLOSE_OFF")) updateAIDisclosure(countryId);
     // And the law its districts run, which is the part of them that works
     // without a pacification budget. See updateAIDistrictLaws.
-    if (!getenv("OD_AI_DLAW_OFF")) updateAIDistrictLaws(countryId);
+    if (!OD_ENV("OD_AI_DLAW_OFF")) updateAIDistrictLaws(countryId);
 
     recordTurnOrders(countryId);
     // How often wartime diplomacy was AVAILABLE, against how often anybody used
@@ -3031,7 +3032,7 @@ void Game::processEconomy(int countryId) {
     // bankruptcy can be traced to the expense that caused it rather than
     // read off the penalty line after the fact.
     {
-        static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+        static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
         if (traceCid == countryId)
             fprintf(stderr, "[ECON] turn %d cid=%d provinces=%zu treasury=%.2f net=%.2f income=%.2f (ind %.2f res %.2f pop %.2f)"
                     " expenses=%.2f (army %.2f navy %.2f policy %.2f minority %.2f research %.2f pacify %.2f industry %.2f)\n",
@@ -3548,7 +3549,7 @@ void Game::processShipDisembarks(int countryId) {
         int shipIdx = do_.shipIndex;
         m_pendingShipDisembarks.erase(m_pendingShipDisembarks.begin() + i);
         if (shipIdx >= 0 && shipIdx < (int)m_ships.size()) {
-            if (std::getenv("OD_BOAT_TRACE"))
+            if (OD_ENV("OD_BOAT_TRACE"))
                 printf("[BOAT] t%d cid=%d DISEMBARK-ERASE ship=%d owner=%d crew=%d at prov %d (ships %zu -> %zu)\n",
                        m_turnNumber, countryId, shipIdx, m_ships[shipIdx].countryId, m_ships[shipIdx].crew,
                        pid, m_ships.size(), m_ships.size() - 1);
@@ -3576,8 +3577,8 @@ long long Game::recruitCap(long long pool, int provinceId, int countryId) const 
     // Whether the AI is bound by the same ceiling as the player. OFF: the AI
     // keeps its bare pool/5 and the player keeps the panel's formula, so the
     // decision hash does not move. ON, the two callers are one rule.
-    static const bool shared = std::getenv("OD_AI_RECRUIT_CAP") &&
-                               atoi(std::getenv("OD_AI_RECRUIT_CAP")) != 0;
+    static const bool shared = OD_ENV("OD_AI_RECRUIT_CAP") &&
+                               atoi(OD_ENV("OD_AI_RECRUIT_CAP")) != 0;
 
     long long cap = pool / 5;                    // 20% of the pool per turn
     if (cap <= 0) return 0;
@@ -3741,7 +3742,7 @@ int Game::cancelAllDisbands() {
 // troops standing there at that moment, so a "Disbanding" remnant can be
 // traced back to the click (or load) that queued it.
 void Game::traceDisband(const char* origin, int pid, int count, int countryId) const {
-    static const bool on = std::getenv("OD_DISBAND_TRACE") != nullptr;
+    static const bool on = OD_ENV("OD_DISBAND_TRACE") != nullptr;
     if (!on) return;
     int here = 0;
     auto aIt = m_provinceArmies.find(pid);
@@ -3798,10 +3799,10 @@ bool Game::openCampaign(const Campaign& c) {
         // power holds two fronts, a small country holding two has nothing
         // at home. OD_BIG_PROVINCES (0 = off) gates the second campaign on
         // owning at least that many provinces.
-        static const int bigProv = std::getenv("OD_BIG_PROVINCES")
-                                 ? atoi(std::getenv("OD_BIG_PROVINCES")) : 0;
-        static const int maxOpen = std::getenv("OD_CAMPAIGN_MAX")
-                                 ? atoi(std::getenv("OD_CAMPAIGN_MAX")) : 1;
+        static const int bigProv = OD_ENV("OD_BIG_PROVINCES")
+                                 ? atoi(OD_ENV("OD_BIG_PROVINCES")) : 0;
+        static const int maxOpen = OD_ENV("OD_CAMPAIGN_MAX")
+                                 ? atoi(OD_ENV("OD_CAMPAIGN_MAX")) : 1;
         if (bigProv > 0 && (int)provincesOf(c.countryId).size() < bigProv) {
             int openNow = 0;
             for (const auto& x : m_campaigns) if (x.countryId == c.countryId) ++openNow;
@@ -3816,7 +3817,7 @@ bool Game::openCampaign(const Campaign& c) {
     }
     m_campaigns.push_back(c);
     m_campaigns.back().startedTurn = m_turnNumber;
-    if (std::getenv("OD_CAMPAIGN_TRACE"))
+    if (OD_ENV("OD_CAMPAIGN_TRACE"))
         fprintf(stderr, "[CAMPAIGN] turn %d cid=%d OPEN vs=%d first=%d staging=%d men=%lld deadline=%d\n",
                 m_turnNumber, c.countryId, c.targetCountry, c.targetProvince, c.stagingProvince,
                 c.committedMen, c.deadlineTurns);
@@ -3826,7 +3827,7 @@ bool Game::openCampaign(const Campaign& c) {
 bool Game::closeCampaign(int countryId, const char* why) {
     for (size_t i = 0; i < m_campaigns.size(); ++i) {
         if (m_campaigns[i].countryId != countryId) continue;
-        if (std::getenv("OD_CAMPAIGN_TRACE"))
+        if (OD_ENV("OD_CAMPAIGN_TRACE"))
             fprintf(stderr, "[CAMPAIGN] turn %d cid=%d CLOSE vs=%d after %d turns (%s, took %d)\n",
                     m_turnNumber, countryId, m_campaigns[i].targetCountry,
                     m_turnNumber - m_campaigns[i].startedTurn, why ? why : "asked",
@@ -3839,7 +3840,7 @@ bool Game::closeCampaign(int countryId, const char* why) {
 
 void Game::processCampaigns() {
     if (m_campaigns.empty()) return;   // inert, and cheap to prove so
-    static const bool trace = std::getenv("OD_CAMPAIGN_TRACE") != nullptr;
+    static const bool trace = OD_ENV("OD_CAMPAIGN_TRACE") != nullptr;
     for (size_t i = 0; i < m_campaigns.size(); ) {
         Campaign& c = m_campaigns[i];
         const char* why = nullptr;
@@ -4441,7 +4442,7 @@ void Game::forgetShipOrders(int removedIdx) {
 // different, because its endpoint was chosen by a person or by the AI rather
 // than by the router, so that one is still walked and clamped at the coast.
 void Game::processNavyMovement(int countryId) {
-    if (std::getenv("OD_BOAT_TRACE") && !m_pendingShipMoveOrders.empty()) {
+    if (OD_ENV("OD_BOAT_TRACE") && !m_pendingShipMoveOrders.empty()) {
         printf("[BOAT] t%d cid=%d ROUTER-ENTER %zu order(s) pending:", m_turnNumber, countryId, m_pendingShipMoveOrders.size());
         for (const auto& o : m_pendingShipMoveOrders) {
             const bool ok = o.shipIndex >= 0 && o.shipIndex < (int)m_ships.size();
@@ -4478,7 +4479,7 @@ void Game::processNavyMovement(int countryId) {
                 mo.route = std::move(way);
             // OD_BOAT_TRACE: which of navRoute's exits fired for a loaded boat
             // whose reachability test said yes (journal 37c: 158 stuck/80 turns).
-            if (!routed && ship.crew > 0 && std::getenv("OD_BOAT_TRACE")) {
+            if (!routed && ship.crew > 0 && OD_ENV("OD_BOAT_TRACE")) {
                 int sx, sy, gx, gy;
                 m_landSea.lonLatToPixel((float)ship.lon, (float)ship.lat, sx, sy);
                 m_landSea.lonLatToPixel((float)mo.destLon, (float)mo.destLat, gx, gy);
@@ -4716,7 +4717,7 @@ void Game::processNavyMovement(int countryId) {
         // OD_BOAT_TRACE: anatomy of a stuck loaded boat -- the first leg's
         // length in cells, the route size, and whether the first step from
         // the hull is a land pixel (the two-cell hop never fired, journal 37i).
-        if (ship.crew > 0 && stuck && std::getenv("OD_BOAT_TRACE") && !mo.route.empty()) {
+        if (ship.crew > 0 && stuck && OD_ENV("OD_BOAT_TRACE") && !mo.route.empty()) {
             const double lLon = mo.route.front().first - ship.lon, lLat = mo.route.front().second - ship.lat;
             const double legDeg = std::sqrt(lLon * lLon + lLat * lLat);
             const double cellDeg = 360.0 * (double)m_nav.cell / std::max(1.0, (double)m_landSea.getWidth());
@@ -4733,7 +4734,7 @@ void Game::processNavyMovement(int countryId) {
                    firstStepLand ? 1 : 0, routerStepLand ? 1 : 0,
                    m_landSea.isLand((float)ship.lon, (float)ship.lat) ? 1 : 0, mo.planned ? 1 : 0);
         }
-        if (ship.crew > 0 && std::getenv("OD_BOAT_TRACE"))
+        if (ship.crew > 0 && OD_ENV("OD_BOAT_TRACE"))
             printf("[BOAT] t%d cid=%d ship=%d ROUTER got=%.3f route=%zu arrived=%d stuck=%d at (%.2f,%.2f) dest (%.2f,%.2f)\n",
                    m_turnNumber, countryId, mo.shipIndex, got, mo.route.size(), arrived ? 1 : 0, stuck ? 1 : 0,
                    ship.lon, ship.lat, mo.destLon, mo.destLat);
@@ -4833,7 +4834,7 @@ void Game::cleanupSunkShips() {
     // Remove all ships with countryId == UNC_CID (sunk/scrapped) and shift pending order indices
     for (int i = (int)m_ships.size() - 1; i >= 0; i--) {
         if (m_ships[i].countryId == UNC_CID) {
-            if (std::getenv("OD_BOAT_TRACE"))
+            if (OD_ENV("OD_BOAT_TRACE"))
                 printf("[BOAT] t%d SUNK-ERASE ship=%d crew=%d (ships %zu -> %zu)\n",
                        m_turnNumber, i, m_ships[i].crew, m_ships.size(), m_ships.size() - 1);
             m_ships.erase(m_ships.begin() + i);
@@ -6639,7 +6640,7 @@ void Game::captureProvince(int newOwner, int pid, bool contested) {
     // OD_ECON_TRACE=<cid>: every province that country takes or loses, so a
     // ledger step can be tied to the map event that caused it.
     {
-        static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+        static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
         if (traceCid >= 0) {
             const Province* p0 = m_provinces.getProvinceById(pid);
             const int oldOwner = p0 ? p0->countryId : -1;
@@ -6815,7 +6816,7 @@ Game::AssaultPowers Game::weighAssault(int attackerCid, int pid, const ForceComp
     // Kept rather than deleted: when a second kind exists it still proves that
     // every all-line fight -- which will remain most of them -- is untouched.
     // The env is read once into a static, so it costs nothing when off.
-    static const bool checkInvariant = std::getenv("OD_TYPE_INVARIANT") != nullptr;
+    static const bool checkInvariant = OD_ENV("OD_TYPE_INVARIANT") != nullptr;
     if (checkInvariant) {
         bool allLine = true;
         for (int t = 1; t < (int)TROOP_TYPE_COUNT; ++t) if (attackers.men[t]) allLine = false;
@@ -7089,7 +7090,7 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
 
     // OD_ECON_TRACE=<cid>: every assault that country makes or receives.
     {
-        static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+        static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
         if (traceCid >= 0 && (attackerCid == traceCid || dst->countryId == traceCid)) {
             long long defOwn = 0;
             for (const auto& u : dstArmies) if (isHostile(u) && u.countryId == dst->countryId) defOwn += u.count;
@@ -7638,7 +7639,7 @@ void Game::buildNavGrid() {
     //     Gibraltar->Suez    46 px -> 16
     //     Naples->Venice     37 px -> 14    (across Italy)
     //     Athens->Odessa     36 px -> 15
-    const int LEGNECK = getenv("OD_LEGNECK") ? atoi(getenv("OD_LEGNECK")) : 16;
+    const int LEGNECK = OD_ENV("OD_LEGNECK") ? atoi(OD_ENV("OD_LEGNECK")) : 16;
     m_nav.link.assign(n, 0);
     auto sailable = [&](int ax, int ay, int bx, int by) {
         int dx = bx - ax;
@@ -7728,7 +7729,7 @@ void Game::buildNavGrid() {
     // and no hull cares about, and every pocket is a port the AI stops even
     // TRYING to reach. Kept behind a flag because the reasoning still holds if
     // the failure rate ever stops being zero.
-    if (getenv("OD_NAVSEAS") && std::string(getenv("OD_NAVSEAS")) == "links")
+    if (OD_ENV("OD_NAVSEAS") && std::string(OD_ENV("OD_NAVSEAS")) == "links")
         m_nav.component.swap(sea);
 
     const int label = (int)denseLabel.size();
@@ -7739,7 +7740,7 @@ void Game::buildNavGrid() {
            "%lld sailable edges, %d reachable sea(s)\n",
            m_nav.w, m_nav.h, label, cells, edges, seas);
 
-    if (getenv("OD_NAV_AUDIT")) {
+    if (OD_ENV("OD_NAV_AUDIT")) {
         std::vector<long long> size((size_t)seas, 0);
         for (size_t i = 0; i < n; ++i)
             if (m_nav.component[i] >= 0) ++size[(size_t)m_nav.component[i]];

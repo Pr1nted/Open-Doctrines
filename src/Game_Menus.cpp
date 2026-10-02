@@ -1054,7 +1054,19 @@ void Game::drawMainMenu() {
 
             // Origin is the middle of the text AS DRAWN, so it is the pulsed
             // width that matters here rather than the base one.
-            const float w = (float)MeasureText(m_splashLine.c_str(), (int)sz);
+            //
+            // SCALED, NOT RE-MEASURED. This was MeasureText(line, (int)sz), and
+            // the cast is the bug: sz pulses CONTINUOUSLY while (int)sz steps,
+            // so the width used to centre the line jumped a whole glyph's worth
+            // every time the pulse crossed an integer -- while DrawTextPro drew
+            // the glyphs at the smooth float sz. The line therefore slid left
+            // and right as it breathed, which is the opposite of what the
+            // anchor above exists to guarantee.
+            //
+            // raylib advances each glyph by advanceX * fontSize/baseSize, so
+            // the drawn width is linear in fontSize and the base measurement
+            // scales to it exactly -- continuously, with no step.
+            const float w = wBase * (sz / (float)splashSize);
             const Vector2 origin = {w * 0.5f, sz * 0.5f};
 
             // A SHADOW OF ITSELF, and it is load-bearing rather than

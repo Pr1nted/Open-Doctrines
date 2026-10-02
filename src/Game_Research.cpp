@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "util/OdEnv.h"
 #include "util/LoadLog.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -76,7 +77,7 @@ bool Game::isNodeAvailableFor(const ResearchNode& node, int countryId) const {
         // gain on 1914:FRA (+3.33, p 0.003). OD_RESEARCH_MUTEX_FIX=0 restores the old
         // rule, for reproducing results measured before the flip.
         static const bool inProgressBlocks = [] {
-            const char* e = std::getenv("OD_RESEARCH_MUTEX_FIX");
+            const char* e = OD_ENV("OD_RESEARCH_MUTEX_FIX");
             return !(e && *e == '0');
         }();
         if (inProgressBlocks) {
@@ -116,8 +117,8 @@ std::map<std::string, ResearchProbeRow> s_researchProbe;
 long long s_researchProbeDone[2] = {};      // completions: main slot, extra groups
 long long s_researchProbeBeside = 0;        // extra group STARTED the main slot's mutex sibling
 bool researchProbeOn() {
-    static const bool on = std::getenv("OD_RESEARCH_PROBE") &&
-                           atoi(std::getenv("OD_RESEARCH_PROBE")) != 0;
+    static const bool on = OD_ENV("OD_RESEARCH_PROBE") &&
+                           atoi(OD_ENV("OD_RESEARCH_PROBE")) != 0;
     return on;
 }
 void dumpResearchProbe() {
@@ -186,7 +187,7 @@ void Game::progressCountryResearch(int countryId) {
     // Gated so the AI half can be measured against itself. Without this the
     // control arm is the same build as the treatment, which is an A/B with one
     // arm -- and it reports a perfect null every time.
-    static const bool groupsOff = getenv("OD_RGROUPS_OFF") != nullptr;
+    static const bool groupsOff = OD_ENV("OD_RGROUPS_OFF") != nullptr;
     const int unlocked = groupsOff ? 1
         : std::clamp(researchGroupsUnlocked(countryId), 1, RESEARCH_GROUPS_MAX);
     auto& extra = m_countryResearchExtra[countryId];
@@ -1025,33 +1026,89 @@ int Game::getResearchedPortLevel(int countryId) const {
 // The per-country set is authoritative when it exists, with the same fallback
 // to the shared flag that getResearchedFortLevel and its siblings use, so a map
 // or save that predates per-country research still behaves as it did.
+// The seventeen fields, in the order the if-chain tested them. The order is
+// what keeps the float sums bit-identical: addNodeEffects writes each node's
+// contribution into the same slot the old chain added to, and the caller reads
+// one slot out, so the additions happen in the same sequence they always did.
+int Game::effectFieldIndex(const std::string& field) {
+    static const std::unordered_map<std::string, int> kIndex = {
+        {"armyDefPct", 0},
+        {"armyAtkPct", 1},
+        {"conscriptionCostPct", 2},
+        {"maintenanceCostPct", 3},
+        {"navyCostPct", 4},
+        {"popModPct", 5},
+        {"resourceModPct", 6},
+        {"industryCostPct", 7},
+        {"industryUpkeepPct", 8},
+        {"passiveIncome", 9},
+        {"popGrowthPct", 10},
+        {"migrationRate", 11},
+        {"indoctrinationPct", 12},
+        {"conscriptionPct", 13},
+        {"navyAtkPct", 14},
+        {"navyDefPct", 15},
+        {"navySpeedPct", 16},
+    };
+    const auto it = kIndex.find(field);
+    return it == kIndex.end() ? -1 : it->second;
+}
+
+void Game::addNodeEffects(const ResearchNode& n, float* out) {
+    out[0] += n.armyDefPct;
+    out[1] += n.armyAtkPct;
+    out[2] += n.conscriptionCostPct;
+    out[3] += n.maintenanceCostPct;
+    out[4] += n.navyCostPct;
+    out[5] += n.popModPct;
+    out[6] += n.resourceModPct;
+    out[7] += n.industryCostPct;
+    out[8] += n.industryUpkeepPct;
+    out[9] += n.passiveIncome;
+    out[10] += n.popGrowthPct;
+    out[11] += n.migrationRate;
+    out[12] += n.indoctrinationPct;
+    out[13] += n.conscriptionPct;
+    out[14] += n.navyAtkPct;
+    out[15] += n.navyDefPct;
+    out[16] += n.navySpeedPct;
+}
+
 float Game::getResearchEffect(const std::string& effectField, int countryId) const {
+    const int idx = effectFieldIndex(effectField);
+    if (idx < 0) return 0.0f;            // a field nothing carries; was 0 before
     const int cid = (countryId >= 0) ? countryId : m_playerCountryId;
     auto cit = m_countryResearched.find(cid);
     const std::unordered_set<std::string>* own =
         (cit != m_countryResearched.end() && !cit->second.empty()) ? &cit->second : nullptr;
-    float total = 0;
-    for (const auto& n : m_researchNodes) {
-        if (own ? !own->count(n.id) : !n.researched) continue;
-        if (effectField == "armyDefPct") total += n.armyDefPct;
-        else if (effectField == "armyAtkPct") total += n.armyAtkPct;
-        else if (effectField == "conscriptionCostPct") total += n.conscriptionCostPct;
-        else if (effectField == "maintenanceCostPct") total += n.maintenanceCostPct;
-        else if (effectField == "navyCostPct") total += n.navyCostPct;
-        else if (effectField == "popModPct") total += n.popModPct;
-        else if (effectField == "resourceModPct") total += n.resourceModPct;
-        else if (effectField == "industryCostPct") total += n.industryCostPct;
-        else if (effectField == "industryUpkeepPct") total += n.industryUpkeepPct;
-        else if (effectField == "passiveIncome") total += n.passiveIncome;
-        else if (effectField == "popGrowthPct") total += n.popGrowthPct;
-        else if (effectField == "migrationRate") total += n.migrationRate;
-        else if (effectField == "indoctrinationPct") total += n.indoctrinationPct;
-        else if (effectField == "conscriptionPct") total += n.conscriptionPct;
-        else if (effectField == "navyAtkPct") total += n.navyAtkPct;
-        else if (effectField == "navyDefPct") total += n.navyDefPct;
-        else if (effectField == "navySpeedPct") total += n.navySpeedPct;
+
+    // The country's own list: summed once for all seventeen fields and kept
+    // until the list grows. See m_researchEffectCache in Game.h for why the
+    // set's SIZE is enough to know the sums are still current.
+    if (own) {
+        const auto hit = m_researchEffectCache.find(cid);
+        if (hit != m_researchEffectCache.end() && hit->second.builtFrom == own->size())
+            return hit->second.v[idx];
+        ResearchEffectSums sums;
+        sums.builtFrom = own->size();
+        for (const auto& n : m_researchNodes) {
+            if (!own->count(n.id)) continue;
+            addNodeEffects(n, sums.v);
+        }
+        const float out = sums.v[idx];
+        m_researchEffectCache[cid] = sums;
+        return out;
     }
-    return total;
+
+    // No list of its own -- the globally-researched flags. Left uncached: this
+    // is the player's own screens rather than the turn loop, and n.researched
+    // is written in five more places that the size check cannot see.
+    float acc[kEffectCount]{};
+    for (const auto& n : m_researchNodes) {
+        if (!n.researched) continue;
+        addNodeEffects(n, acc);
+    }
+    return acc[idx];
 }
 
 // Research plus doctrines. The research sum is taken first and the doctrine

@@ -615,6 +615,26 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         char b[64]; snprintf(b, sizeof(b), ": %dx%d", cfg.screenW, cfg.screenH); label += b;
     } else if (tab == 0 && index == 5) {
         label += std::string(": ") + fpsLabel(cfg.fpsTarget);
+        // ── AND SAY SO WHEN THE BUDGET IS OVERRULING IT ──
+        //
+        // The resource limiter caps every frame-rate choice: an explicit target
+        // becomes min(target, ceiling) and "Unlimited" becomes the ceiling
+        // outright. At the default 60 Hz and a budget of 78% that is 47 fps, so
+        // a player who picks Unlimited gets something a shade under their
+        // refresh rate and reads it as the VSync setting they just moved away
+        // from -- which is exactly how it was reported.
+        //
+        // The cap is deliberate; being invisible is not. The row now names the
+        // number actually in force and what is imposing it.
+        {
+            const int ceiling = budgetedFpsCeiling();
+            if (ceiling > 0 && (cfg.fpsTarget < 0 || cfg.fpsTarget > ceiling)) {
+                char note[96];
+                snprintf(note, sizeof note, "  (capped to %d by Resource Budget %d%%)",
+                         ceiling, (int)lroundf(resourceBudget() * 100.0f));
+                label += note;
+            }
+        }
     } else if (tab == 0 && index == 6) {
         char b[16]; snprintf(b, sizeof(b), ": #%06X", cfg.accent()); label += b;
     } else if (tab == 0 && index == 7) {
@@ -1588,6 +1608,11 @@ static std::string odCodepointName(int cp) {
 // for a character nobody can see.
 static bool odIsBlankCodepoint(int cp) {
     if (cp <= 0x20) return true;                      // control codes and space
+    // DEL and the C1 controls. Unifont draws a HEX BOX for every one of them,
+    // which is a replacement glyph and not coverage -- so counting them as
+    // present is the exact false reading this function exists to stop.
+    if (cp == 0x7F) return true;                      // DEL
+    if (cp >= 0x80 && cp <= 0x9F) return true;        // C1 controls
     if (cp == 0x00A0) return true;                    // no-break space
     if (cp == 0x00AD) return true;                    // soft hyphen
     if (cp >= 0x2000 && cp <= 0x200F) return true;    // spaces, zero-width, marks
@@ -1631,6 +1656,106 @@ static int odFontGlyphsMissing(const Font& f, const std::vector<int>& want,
         }
     }
     return missing;
+}
+
+// ── ONE ATLAS OUT OF TWO FACES ───────────────────────────────────────────────
+//
+// WHY. Unifont is a BITMAP face -- a 16x16 cell per glyph, one pixel of stem --
+// and the interface asks for 12 px, 13 px, 20 px. Two rounds of work went into
+// making that legible and neither could: point filtering deleted the strokes,
+// bilinear smeared them, and rasterising the atlas at 32 produced a sharper
+// copy of the same hairlines. "The characters are so thin that it is basically
+// unreadable, especially when buttons are small enough" is not a filter setting
+// or an atlas size. It is the FACE.
+//
+// Unifont is here for COVERAGE, which is the one thing it is extraordinary at:
+// it has the whole BMP, which is why Japanese, Chinese and Korean draw at all.
+// DejaVuSans has been sitting in the same directory the whole time as the
+// if-nothing-loads fallback, and it covers every Latin, Cyrillic, Greek,
+// Armenian, Georgian and Vietnamese language in the game as real outlines with
+// real stem weights, rasterised at whatever size is asked for.
+//
+// SO BOTH, AND PER GLYPH. The alternative considered first was to pick one file
+// per language, and it fails in the picker: a Ukrainian session draws every
+// other language's name in its own script, so choosing DejaVu for Ukrainian
+// blanks the Japanese, Chinese and Korean entries -- a regression, measured, in
+// the one screen whose whole job is to be readable to somebody who cannot read
+// the current language. Merging has no such case: each codepoint is drawn by
+// whichever face has it, the atlas is one Font, and not one call site changes.
+//
+// This is what LoadFontEx does, with a second pass in the middle. Faithful to
+// rtext.c's own sequence -- the padding, the atlas, and re-pointing each glyph
+// image into it -- because the Font handed back is used by raylib's own
+// drawing and measuring code and has to be the shape those expect.
+static Font odLoadMergedFont(const std::string& primaryPath,
+                             const std::string& coverPath,
+                             int size, const std::vector<int>& codepoints,
+                             int* fromCover = nullptr) {
+    Font font{};
+    if (fromCover) *fromCover = 0;
+    const int n = (int)codepoints.size();
+    if (n <= 0) return font;
+
+    std::vector<int> cps = codepoints;   // LoadFontData takes a non-const pointer
+    int pSize = 0;
+    unsigned char* pData = LoadFileData(primaryPath.c_str(), &pSize);
+    if (pData == nullptr) return font;
+    GlyphInfo* glyphs = LoadFontData(pData, pSize, size, cps.data(), n, FONT_DEFAULT);
+    UnloadFileData(pData);
+    if (glyphs == nullptr) return font;
+
+    // What the primary could not supply. raylib leaves a codepoint the file has
+    // never heard of exactly as it was zero-initialised -- rtext.c guards the
+    // whole fill with `if (index > 0)` -- so no advance and no pixels is the
+    // signal, and it is the same pair odFontGlyphsMissing reads.
+    std::vector<int> missing;
+    std::vector<int> missingAt;
+    for (int i = 0; i < n; ++i) {
+        if (odIsBlankCodepoint(cps[i])) continue;
+        if (glyphs[i].advanceX == 0 && glyphs[i].image.width == 0) {
+            missing.push_back(cps[i]);
+            missingAt.push_back(i);
+        }
+    }
+    if (!missing.empty()) {
+        int cSize = 0;
+        unsigned char* cData = LoadFileData(coverPath.c_str(), &cSize);
+        if (cData != nullptr) {
+            GlyphInfo* cover = LoadFontData(cData, cSize, size, missing.data(),
+                                            (int)missing.size(), FONT_DEFAULT);
+            UnloadFileData(cData);
+            if (cover != nullptr) {
+                for (size_t k = 0; k < missing.size(); ++k) {
+                    const int i = missingAt[k];
+                    UnloadImage(glyphs[i].image);
+                    glyphs[i] = cover[k];
+                    // The image moved rather than being copied, so the cover
+                    // array must not free it underneath the atlas. Freeing a
+                    // null data pointer is what UnloadFontData does with it.
+                    cover[k].image.data = nullptr;
+                }
+                if (fromCover) *fromCover = (int)missing.size();
+                UnloadFontData(cover, (int)missing.size());
+            }
+        }
+    }
+
+    font.baseSize = size;
+    font.glyphCount = n;
+    font.glyphs = glyphs;
+    font.glyphPadding = 4;            // FONT_TTF_DEFAULT_CHARS_PADDING
+    Image atlas = GenImageFontAtlas(font.glyphs, &font.recs, font.glyphCount,
+                                    font.baseSize, font.glyphPadding, 0);
+    font.texture = LoadTextureFromImage(atlas);
+    // Each glyph's own image re-pointed into the atlas, exactly as LoadFontEx
+    // leaves it: ImageDrawText reads them and a dangling one is a crash with no
+    // connection to fonts in its backtrace.
+    for (int i = 0; i < font.glyphCount; ++i) {
+        UnloadImage(font.glyphs[i].image);
+        font.glyphs[i].image = ImageFromImage(atlas, font.recs[i]);
+    }
+    UnloadImage(atlas);
+    return font;
 }
 
 void Game::reloadFonts() {
@@ -1723,12 +1848,27 @@ void Game::reloadFonts() {
     const std::string basePath = m_dataDir + "fonts/unifont.ttf";
     const std::string fullPath = m_dataDir + "fonts/unifont-full.ttf";
 
+    // The outline face. Primary for every codepoint it has; unifont covers the
+    // rest. See odLoadMergedFont.
+    const std::string outlinePath = m_dataDir + "fonts/DejaVuSans.ttf";
+
     Font built{};
     // Already here means already answered: a desktop install, or a web session
     // that fetched it earlier and should not ask twice.
     std::string fontPath = FileExists(fullPath.c_str()) ? fullPath : basePath;
     if (FileExists(fontPath.c_str())) {
-        built = LoadFontEx(fontPath.c_str(), kAtlasSize, codepoints.data(), (int)codepoints.size());
+        int covered = 0;
+        built = odLoadMergedFont(outlinePath, fontPath, kAtlasSize, codepoints, &covered);
+        if (built.texture.id > 0) {
+            LoadLog() << "  Font: " << (codepoints.size() - (size_t)covered)
+                      << " glyph(s) from DejaVuSans outlines, " << covered
+                      << " from unifont" << std::endl;
+        } else {
+            // The merge needs BOTH files readable. If the outline font is not
+            // there, unifont alone is what the game has always drawn with.
+            built = LoadFontEx(fontPath.c_str(), kAtlasSize,
+                               codepoints.data(), (int)codepoints.size());
+        }
     }
 
     // MEASURED OVER THIS LANGUAGE'S OWN TEXT, not over the whole atlas.
@@ -1754,8 +1894,8 @@ void Game::reloadFonts() {
             // of a still screen. It is once per session, and the thing it is
             // replacing is a language the player cannot read at all.
             if (odEnsureAsset(fullPath)) {
-                Font whole = LoadFontEx(fullPath.c_str(), kAtlasSize,
-                                        codepoints.data(), (int)codepoints.size());
+                Font whole = odLoadMergedFont(outlinePath, fullPath, kAtlasSize,
+                                              codepoints);
                 if (whole.texture.id > 0) {
                     UnloadFont(built);
                     built = whole;
@@ -1781,8 +1921,7 @@ void Game::reloadFonts() {
     if (built.texture.id > 0 && kAtlasSize > 16 &&
         atlasBytes(built) > kAtlasBudgetBytes) {
         const long long was = atlasBytes(built);
-        Font small = LoadFontEx(fontPath.c_str(), 16,
-                                codepoints.data(), (int)codepoints.size());
+        Font small = odLoadMergedFont(outlinePath, fontPath, 16, codepoints);
         if (small.texture.id > 0) {
             UnloadFont(built);
             built = small;
@@ -1793,10 +1932,13 @@ void Game::reloadFonts() {
         }
     }
 
-    if (built.texture.id == 0) {
-        fontPath = m_dataDir + "fonts/DejaVuSans.ttf";
-        if (FileExists(fontPath.c_str()))
-            built = LoadFontEx(fontPath.c_str(), kAtlasSize, codepoints.data(), (int)codepoints.size());
+    // LAST RESORT: unifont would not load at all. The outline font on its own
+    // draws the interface and leaves CJK blank, which is worse than the merge
+    // and far better than no atlas -- with no atlas, non-ASCII does not draw
+    // ANYWHERE, including the language picker that is the way back out.
+    if (built.texture.id == 0 && FileExists(outlinePath.c_str())) {
+        fontPath = outlinePath;
+        built = LoadFontEx(fontPath.c_str(), kAtlasSize, codepoints.data(), (int)codepoints.size());
     }
     if (built.texture.id == 0) {
         LoadLog() << "  No font could be loaded -- non-ASCII text will not draw" << std::endl;

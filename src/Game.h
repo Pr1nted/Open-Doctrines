@@ -1,5 +1,6 @@
 #pragma once
 #include "Monuments.h"
+#include "util/OdEnv.h"
 #include "Nationalisation.h"
 #include "WorldProvenance.h"
 #include "ModContent.h"
@@ -2436,6 +2437,58 @@ public:
     /// drawBottomPanel() has to change this number or it will not be drawn.
     static constexpr int kViewTabCount = 9;
 
+    /// The sidebar column's own geometry, named once.
+    ///
+    /// drawSidebarButtons() spelled these as two literals inside itself, and
+    /// everything else that right-aligns into the HUD aligned to the WINDOW
+    /// edge -- so the date panel's right end was computed as m_screenW - 16 and
+    /// the column's left edge is m_screenW - 112, and the two overlapped by
+    /// ninety-six points. In English "September 1940" is short enough to stop
+    /// before it; "Вересень 1940 н.е." is not, and its tail was drawn under the
+    /// Settings and globe buttons.
+    ///
+    /// Same lesson as viewTabBarRect above: two copies of one piece of
+    /// arithmetic disagree, and the disagreement shows up as a drawing bug in
+    /// the one language nobody reads.
+    static constexpr int kSidebarBtnSize = 100;
+    /// How many tabs the column holds. drawSidebarButtons has drawn FIVE since
+    /// Monuments was added, and three separate pieces of arithmetic went on
+    /// sizing the column for four: the vertical centring, the clearance that
+    /// keeps it off the bottom bar, and the renderer's skip-click rect. So the
+    /// column ran 108 points past where every one of them thought it ended --
+    /// the fifth button was drawn underneath the Settings row, the date panel
+    /// was covered by a column that believed it stopped well above it, and
+    /// clicks on that button and that row fell through to the map, because the
+    /// rect that suppresses them was the short one. A static_assert in
+    /// drawSidebarButtons ties this to the table it is counting.
+    static constexpr int kSidebarTabCount = 5;
+    /// The Settings/globe row under the tabs: its own height plus the gap.
+    static constexpr int kSidebarFooterH = 10 + 46;
+    int sidebarLeftX() const { return m_screenW - kSidebarBtnSize - 12; }
+    /// The column's top, and the whole column including the row beneath it.
+    /// Lifted out of drawSidebarButtons because the HUD around it has to be
+    /// able to ASK: the column is drawn last, so anything that guesses where it
+    /// is gets covered rather than pushed aside.
+    int sidebarStartY() const;
+    Rectangle sidebarColumnRect() const;
+    /// One tab's rectangle, by its SLOT in the packed column -- the same slot
+    /// drawSidebarButtons assigns, so the drawing and the hit test cannot
+    /// disagree about where a button is.
+    ///
+    /// They did. The click handler in Game_Update.cpp kept a fifth hand-written
+    /// copy of this arithmetic which centred the column on FOUR buttons and
+    /// applied neither the mail nudge nor the bottom clearance, so every
+    /// hitbox sat above the button it belonged to. Same fault as the view-tab
+    /// bar, which is why that one answers through viewTabRect().
+    Rectangle sidebarTabRect(int slot) const {
+        return {(float)sidebarLeftX(),
+                (float)(sidebarStartY() + slot * (kSidebarBtnSize + 8)),
+                (float)kSidebarBtnSize, (float)kSidebarBtnSize};
+    }
+    /// How many of those tabs are on screen. The middle state shows Claims
+    /// alone, and a column of one is 432 points shorter than a column of five.
+    int sidebarVisibleTabs() const;
+
     /// The bar itself. The click handler used a hardcoded height of 80 while
     /// the drawing asked bottomBarH(), so on a compact HUD -- a narrow window
     /// or a phone -- the clickable strip was 36 points taller than the bar
@@ -2482,15 +2535,37 @@ public:
     /// Whether it is drawn at all: only alongside the button it belongs to.
     bool ordersStripVisible() const { return bottomLeftStubVisible(); }
 
+    /// How wide that group is. A literal in the two places that draw and
+    /// hit-test it, and now wanted by the arithmetic below too, which is one
+    /// copy more than is safe to leave scattered.
+    static constexpr int kBottomLeftStubW = 180;
+
     int bottomLeftStubTop() const {
         // The strip hangs BELOW Process Turn, so the group starts higher by
         // exactly its height. The bottom of the group is unchanged, which is
-        // what keeps it clear of the view-tab bar on every screen size -- and
         // why this arithmetic lives here rather than in the four places that
         // would otherwise each have to know about the strip. See the note
         // above about seven places all writing 80.
-        return m_screenH - bottomBarH() - 16 - 36 - 6 -
-               (ordersStripVisible() ? ordersStripH() + 4 : 0);
+        //
+        // ── AND IT CLEARS THE TAB BAR ONLY WHEN THE BAR IS ACTUALLY THERE ──
+        //
+        // This subtracted the bar's full height on every window. The bar is
+        // right-aligned and at most 880 wide, so on anything much wider than
+        // 1100 it begins hundreds of points to the RIGHT of this column and
+        // never comes near it -- and the group was lifted eighty points clear
+        // of nothing all the same. On a 2016-wide window they are 900 points
+        // apart. The lift is wanted on a window small enough for the bar to
+        // reach back across to this corner, which is exactly the case where it
+        // does overlap and exactly when the button has to move.
+        //
+        // Cleared against the bar's OWN top edge rather than by subtracting a
+        // height from the window. It is the same number wherever the two meet,
+        // so a small window keeps the layout it had to the pixel, and it says
+        // what is being cleared.
+        const Rectangle bar = viewTabBarRect();
+        const bool meets = bar.x < (float)(12 + kBottomLeftStubW);
+        const int floorY = meets ? (int)bar.y : (m_screenH - 16);
+        return floorY - 36 - 6 - (ordersStripVisible() ? ordersStripH() + 4 : 0);
     }
 
     /// Whether that row is on screen at all. The panels reserve space for it
@@ -2930,6 +3005,39 @@ public:
     /** Queue one province's specialization and pay for it. */
     bool queueSpecialization(int pid, const char* resource, int countryId = -1);
     mutable std::unordered_map<int, CountryIncomeSnapshot> m_countryIncomeCache;
+
+    // ── THE RESEARCH EFFECT TABLE, SUMMED ONCE INSTEAD OF PER LOOKUP ──
+    //
+    // getResearchEffect took the field as a STRING and answered it by walking
+    // all 98 research nodes, doing an unordered_set<std::string> lookup per
+    // node and then up to seventeen string comparisons to decide which member
+    // to add. Game_Economy alone calls it 23 times, Game_TurnLogic 10, and the
+    // turn runs them per country -- so a profile of processTurn had
+    // __hash_table<string>::find, _platform_memcmp and murmur2_or_cityhash as
+    // three of its four hottest entries, about 14% of the turn spent hashing
+    // and comparing string literals.
+    //
+    // So the field resolves to an INDEX once per call, every node's effects
+    // land in one array in one pass, and the pass is cached per country.
+    //
+    // VALIDATED BY SIZE, NOT BY AN INVALIDATION HOOK. m_countryResearched is
+    // mutated in fifteen places across six files and nothing ever erases from
+    // it -- it only gains entries or is cleared wholesale -- so the size of the
+    // set the sums were built from is enough to know they are still current,
+    // and there is no hook to forget to call. The uncached path is kept for a
+    // country with no entry of its own, which is the player's UI rather than
+    // the turn loop.
+    //
+    // The node order is unchanged, so the floats are bit-identical -- which the
+    // decision hash checks (journal 373).
+    static constexpr int kEffectCount = 17;
+    static int effectFieldIndex(const std::string& field);   // -1 if unknown
+    static void addNodeEffects(const ResearchNode& n, float* out);
+    struct ResearchEffectSums {
+        size_t builtFrom = (size_t)-1;      // the researched-set size it used
+        float v[kEffectCount]{};
+    };
+    mutable std::unordered_map<int, ResearchEffectSums> m_researchEffectCache;
     std::unordered_map<int, std::vector<CountryIncomeSnapshot>> m_incomeHistory;
     std::string m_mapDate;
     /**
@@ -3876,7 +3984,7 @@ public:
         // OD_UNREST_UNIT_OLD restores the mismatch, so the measurement that
         // justifies this can be repeated rather than believed. Bench, same
         // binary and same model in both arms: 72 -> 121, survival 49 -> 87.
-        if (getenv("OD_UNREST_UNIT_OLD")) return p.effect.unrestReduction;
+        if (OD_ENV("OD_UNREST_UNIT_OLD")) return p.effect.unrestReduction;
         return p.effect.unrestReduction * 100.0f;
     }
     /**

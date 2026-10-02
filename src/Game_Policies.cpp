@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "util/OdEnv.h"
 #include <cstdlib>
 #include "util/LoadLog.h"
 #include "Palette.h"
@@ -560,8 +561,8 @@ constexpr float kCapitalAccrual = 0.5f;
 }
 
 bool Game::politicalCapitalOn() const {
-    static const bool on = std::getenv("OD_POLITICAL_CAPITAL") &&
-                           atoi(std::getenv("OD_POLITICAL_CAPITAL")) != 0;
+    static const bool on = OD_ENV("OD_POLITICAL_CAPITAL") &&
+                           atoi(OD_ENV("OD_POLITICAL_CAPITAL")) != 0;
     return on;
 }
 
@@ -622,8 +623,8 @@ float Game::wellFedRoom(const CountryIncomeSnapshot& inc, int countryId) const {
 }
 
 bool Game::wellFedRoomOn() const {
-    static const bool on = std::getenv("OD_WELLFED_ROOM") &&
-                           atoi(std::getenv("OD_WELLFED_ROOM")) != 0;
+    static const bool on = OD_ENV("OD_WELLFED_ROOM") &&
+                           atoi(OD_ENV("OD_WELLFED_ROOM")) != 0;
     return on;
 }
 
@@ -689,8 +690,8 @@ float Game::policyUpkeep(const ActivePolicy& ap, const Policy& p) const {
 // grew into its strength but never into its price is not a commitment, it is a
 // discount -- and measuring half of what ships measures nothing.
 bool Game::doctrineCommitment() const {
-    static const bool on = std::getenv("OD_DOCTRINE_TENURE") &&
-                           atoi(std::getenv("OD_DOCTRINE_TENURE")) != 0;
+    static const bool on = OD_ENV("OD_DOCTRINE_TENURE") &&
+                           atoi(OD_ENV("OD_DOCTRINE_TENURE")) != 0;
     return on;
 }
 
@@ -867,8 +868,8 @@ bool Game::hungerGrowthOn() const {
     // restores a consequence Game.h has claimed for livingStandards all along.
     // The knob exists so the rate sweep can run an arm without it, not because
     // the effect is optional.
-    static const bool on = !std::getenv("OD_HUNGER_GROWTH") ||
-                           atoi(std::getenv("OD_HUNGER_GROWTH")) != 0;
+    static const bool on = !OD_ENV("OD_HUNGER_GROWTH") ||
+                           atoi(OD_ENV("OD_HUNGER_GROWTH")) != 0;
     return on;
 }
 
@@ -1215,8 +1216,8 @@ float Game::ethnicUnrestOf(int provinceId, int countryId) const {
 }
 
 bool Game::minorityWorstOn() const {
-    static const bool on = std::getenv("OD_MINORITY_WORST") &&
-                           atoi(std::getenv("OD_MINORITY_WORST")) != 0;
+    static const bool on = OD_ENV("OD_MINORITY_WORST") &&
+                           atoi(OD_ENV("OD_MINORITY_WORST")) != 0;
     return on;
 }
 
@@ -1381,7 +1382,7 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     // only ever raises it -- pacify-down is taken on 0.00% of 18,251 offers --
     // so the question is how much of that spend is buying nothing at all.
     // Counted once per province-turn, same guard as the trace below.
-    if (std::getenv("OD_ACT_HIST")) {
+    if (OD_ENV("OD_ACT_HIST")) {
         static int wTurn = -1, wPid = -1;
         if (!(wTurn == m_turnNumber && wPid == provinceId)) {
             wTurn = m_turnNumber; wPid = provinceId;
@@ -1397,7 +1398,7 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
     // provinces, once per turn (the resolver's call; the UI panels call this
     // per frame, and those are skipped by the turn check).
     {
-        static const int traceCid = std::getenv("OD_UNREST_TRACE") ? atoi(std::getenv("OD_UNREST_TRACE")) : -1;
+        static const int traceCid = OD_ENV("OD_UNREST_TRACE") ? atoi(OD_ENV("OD_UNREST_TRACE")) : -1;
         static int lastTurn = -1, lastPid = -1;
         if (traceCid == countryId && !(lastTurn == m_turnNumber && lastPid == provinceId)) {
             lastTurn = m_turnNumber; lastPid = provinceId;
@@ -3000,7 +3001,7 @@ void Game::ensureDefaultDistrict(int countryId) {
             reconcileDistricts(countryId);
             normaliseDistrictShares(countryId, -1);
             if (!m_districts[countryId].empty()) {
-                if (getenv("OD_DNAME_DEBUG")) {
+                if (OD_ENV("OD_DNAME_DEBUG")) {
                     printf("[AUTHDIST] cid=%d iso=%s installed %zu authored district(s):",
                            countryId, ac->isoA3.c_str(), m_districts[countryId].size());
                     for (const auto& ad : m_districts[countryId])
@@ -4004,7 +4005,7 @@ void Game::rebuildDistrictOverlay(int cid, int texW, int texH) {
                          {(float)x0, (float)y0, (float)rw, (float)rh}, rect.data());
     }
 
-    if (getenv("OD_TIME_PIXELS"))
+    if (OD_ENV("OD_TIME_PIXELS"))
         printf("[TIME] district overlay: %.1f ms, %zu country pixels, rect %dx%d\n",
                std::chrono::duration<double, std::milli>(
                    std::chrono::steady_clock::now() - t0).count(),
@@ -4177,7 +4178,7 @@ void Game::updateAIDistrictLaws(int countryId) {
             const bool calm = risk < AI_DLAW_RISK_BAR * 0.5f;
             if (calm || already > ceiling) {
                 d.policies.clear();
-                if (getenv("OD_DISTRICT_DEBUG"))
+                if (OD_ENV("OD_DISTRICT_DEBUG"))
                     printf("[AIDLAW] turn %d cid=%d \"%s\" repealed (risk %.2f bill %.1f/%.1f)\n",
                            m_turnNumber, countryId, d.name.c_str(), (double)risk,
                            (double)already, (double)ceiling);
@@ -4220,7 +4221,7 @@ void Game::updateAIDistrictLaws(int countryId) {
         }
         if (!best) continue;
         d.policies.push_back(best->id);
-        if (getenv("OD_DISTRICT_DEBUG"))
+        if (OD_ENV("OD_DISTRICT_DEBUG"))
             printf("[AIDLAW] turn %d cid=%d \"%s\" passes %s (risk %.2f bill %.1f/%.1f)\n",
                    m_turnNumber, countryId, d.name.c_str(), best->id.c_str(), (double)risk,
                    (double)(best->costPerTurn * d.provinces.size()), (double)ceiling);
@@ -4256,7 +4257,7 @@ void Game::updateAIDisclosure(int countryId) {
 
     if (bits == 0) m_countryDisclosure.erase(countryId);
     else           m_countryDisclosure[countryId] = bits;
-    if (getenv("OD_DISCLOSE_STATS"))
+    if (OD_ENV("OD_DISCLOSE_STATS"))
         fprintf(stderr, "[DISCLOSE] turn %d cid %d bits %u appeal %.3f\n",
                 m_turnNumber, countryId, bits, disclosureAppeal(countryId));
 }
@@ -4907,7 +4908,7 @@ void Game::updateAIDistricts(int countryId) {
                 }
                 for (int i = 0; i < n; ++i) av[(size_t)i].sharePct = want[(size_t)i];
                 normaliseDistrictShares(countryId, 0);
-                if (getenv("OD_DNAME_DEBUG")) {
+                if (OD_ENV("OD_DNAME_DEBUG")) {
                     printf("[AUTHWEIGH] turn %d cid=%d", m_turnNumber, countryId);
                     for (const auto& d : av)
                         printf("  \"%s\" %d%%", d.name.c_str(), d.sharePct);
@@ -4945,7 +4946,7 @@ void Game::updateAIDistricts(int countryId) {
         if (i < hotCount) { hot.push_back(byRisk[i].second); hotRisk += byRisk[i].first; }
         else              { calm.push_back(byRisk[i].second); calmRisk += byRisk[i].first; }
     }
-    if (getenv("OD_DISTRICT_DEBUG"))
+    if (OD_ENV("OD_DISTRICT_DEBUG"))
         printf("[AIRISK] turn %d cid=%d worst=%.3f hot=%.3f calm=%.3f\n",
                m_turnNumber, countryId, (double)byRisk.front().first,
                (double)hotRisk, (double)calmRisk);
@@ -4981,7 +4982,7 @@ void Game::updateAIDistricts(int countryId) {
     // both fell inside the bar. uniqueDistrictName settles it, and it appends a
     // numeral only when the compass could not.
     if (b.name == a.name) b.name = uniqueDistrictName(countryId, b.name, 0, b.provinces);
-    if (getenv("OD_DNAME_DEBUG"))
+    if (OD_ENV("OD_DNAME_DEBUG"))
         printf("[DNAME] cid=%d  \"%s\" (%zu prov)  |  \"%s\" (%zu prov)\n",
                countryId, a.name.c_str(), a.provinces.size(),
                b.name.c_str(), b.provinces.size());
@@ -5011,7 +5012,7 @@ void Game::updateAIDistricts(int countryId) {
     // Making it bite means giving AI countries spare income to spend, which is
     // a change to how they budget and was measured as expensive the last time
     // it was tried. OD_AI_PACIFY_OFF compares the two.
-    if (!getenv("OD_AI_PACIFY_OFF")) {
+    if (!OD_ENV("OD_AI_PACIFY_OFF")) {
         const float worst = byRisk.front().first;
         float& pac = m_countryPacification[countryId];
         // ── WHERE THE BAR SITS, AND WHY IT IS A VARIABLE ──
@@ -5024,7 +5025,7 @@ void Game::updateAIDistricts(int countryId) {
         // OD_AI_PACIFY_BAR moves it without a rebuild, so an arm that pacifies
         // and an arm that does not are the same binary.
         static const float bar = [] {
-            const char* e = getenv("OD_AI_PACIFY_BAR");
+            const char* e = OD_ENV("OD_AI_PACIFY_BAR");
             return e ? (float)atof(e) : AI_PACIFY_RISK_BAR;
         }();
         if (worst > bar) {
@@ -5044,14 +5045,14 @@ void Game::updateAIDistricts(int countryId) {
             // from a treasury that does not exist. Off by default until it is
             // measured: it is a change to how AI countries budget, and every
             // caution rule tried before it lifted survival and cost rating.
-            if (getenv("OD_AI_PACIFY_GROSS"))
+            if (OD_ENV("OD_AI_PACIFY_GROSS"))
                 pac = std::clamp(std::max(pac, AI_PACIFY_FLOOR), 0.0f, AI_PACIFY_MAX);
         } else if (pac > 0.0f && worst < bar * 0.6f) {
             pac = 0.0f;      // the trouble passed; stop paying for it
         }
     }
 
-    if (getenv("OD_DISTRICT_DEBUG")) {
+    if (OD_ENV("OD_DISTRICT_DEBUG")) {
         float pac = 0.0f;
         auto it = m_countryPacification.find(countryId);
         if (it != m_countryPacification.end()) pac = it->second;
