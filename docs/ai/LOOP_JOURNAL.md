@@ -33799,3 +33799,39 @@ is worth more than a rush coin flip and it is the trade I registered as the risk
 
 THE BENCH: 32 seeds an arm on **set B of j447_fresh64 (fields 33-64), untouched** -- it was reserved to confirm
 journal 447 and journal 447 was rejected before needing it, so it is still pristine. Rung and rush, off against on.
+
+RESULT, all four arms clean, 32 untouched seeds (set B of j447_fresh64):
+
+                   rush collapsed   land    rung
+  cooldown OFF         15/32        10.36   445.2 (se 15.2)
+  COOLDOWN=1           11/32        11.04   446.2 (se 12.1)
+  rung +0.9, floor 38.1 -> WITHIN FLOOR          rush Fisher p 0.4455
+
+**THE VERDICT RULE PASSES, AND ON A NIL.** Both clauses hold -- war length fell (36.6 -> 24.3) and neither seat set
+clears its floor downward -- but the rating moved +0.9, which is nothing, and the rush improvement 15/32 -> 11/32 is
+unresolved at p 0.45 and is NOT claimed. So the honest reading is: **the mechanism works, does no harm, and buys no
+measurable strength.**
+
+That is the outcome I pre-registered as a possible honest answer to item 105: "if the duration effect is real but the
+seats are flat, that would say the growth channel identified in journal 448 is reachable and simply not worth much".
+It is reachable -- a third off the mean war length from suppressing 6.5% of orders -- and on this bench it is not worth
+anything. Journal 448's arithmetic said shorter wars should mean more wars in 400 turns and therefore more ground; the
+first half happened (114 -> 149 wars ended) and the second did not reach the seat score.
+
+ONE SEED MISLED ME AGAIN, IN THE OTHER DIRECTION. The mechanism run showed the rung seat at 34.1 -> 26.9 and I
+registered that as the risk. Across 32 seeds it is +0.9. That is the fourth time this session a single seed has
+pointed somewhere the bench did not follow -- journals 438 (good), 444 (good), 449's slip, and now this one (bad).
+The rule holds in both directions and I keep having to relearn it in the second.
+
+WHAT IS AND IS NOT ESTABLISHED, because the duration number is the finding here and it deserves the caveat:
+  - **The rating effect is measured and nil** on 32 seeds, two seat sets, clean arms.
+  - **The duration effect rests on ONE world.** 36.6 -> 24.3 is a mean over 114 and 149 ended wars, so it is far
+    better powered than a single seed score, but it is one map and one seed. The bench arms did not carry OD_WARLIFE,
+    so I cannot read duration out of them. **Confirming it across seeds is the next measurement and it is cheap.**
+
+VERDICT: **KEEP the rule, gated off; do not ship on this.** A knob that changes how the game plays by a third of war
+length while moving no measured strength is a game-design decision, not a strength one -- and that is the user's call,
+like item 123's pacification cooldown. Item 140.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (already committed as 4a115b3, default off, inert proved),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.

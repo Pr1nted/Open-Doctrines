@@ -1321,6 +1321,21 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
+140. **FOR THE USER -- a rule that shortens wars by a third and changes no score.**
+   `OD_REATTACK_COOLDOWN` (journal 450, default off, inert proved). Refuses an attack
+   order only when it repeats the same province pair on the very NEXT turn with the
+   garrison ratio unmoved -- the one case the width rule says cannot resolve. Measured:
+   suppresses **6.5%** of orders, mean war length **36.6 -> 24.3 turns**, wars ended
+   114 -> 149, width-bound share 24.5% -> 16.3% with total assaults flat, so it moves
+   attacks off fronts that cannot resolve rather than reducing them.
+   **The bench says nothing**: 32 untouched seeds, rung **+0.9** against a 38.1 floor,
+   rush 15/32 -> 11/32 at p 0.45 (unresolved, not claimed). No harm anywhere.
+   **So this is a game-feel decision, not a strength one** -- wars a third shorter is
+   visible to a player and the AI is no stronger for it. Same shape as item 123.
+   **Before shipping, one cheap thing is missing:** the duration figure rests on ONE
+   world, because the bench arms did not carry OD_WARLIFE. Confirm 36.6 -> 24.3 across
+   several seeds first; a third off war length is the whole claim.
+
 139. **THE AI RE-ORDERS ATTACKS ON PAIRS IT HAS ALREADY ATTACKED: 66.6% ordinary,
    75.9% rush.** Journal 449, `OD_REATTACK`, inert unset. 11,743 orders over 2,832
    distinct province pairs in the rush world; one pair ordered **40 times**; **16.3% of
