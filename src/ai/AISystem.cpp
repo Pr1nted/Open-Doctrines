@@ -6895,6 +6895,35 @@ std::string AISystem::execWar(int cid, int action) {
                 const int pct = (int)std::lround(100.0f * need);
                 if (pct <= 0 || pct > 100) continue;
                 g.m_pendingMoveOrders.push_back({ch.fromPid, ch.toPid, pct, cid});
+                // ── IS THIS A BATTLE WE HAVE ALREADY FOUGHT? (OD_REATTACK) ──
+                //
+                // Counted where the order is ISSUED, not where it resolves: the
+                // resolver knows the verdict and this does not, but another
+                // session is editing Game_TurnLogic.cpp and the shared-tree rule
+                // says I do not follow it in there (journal 449). So this reads
+                // "the same from->to ordered again", which over-counts a pair
+                // re-attacked after a genuine change in the defence and
+                // under-counts nothing.
+                {
+                    static const bool reatk = OD_ENV("OD_REATTACK") &&
+                                              atoi(OD_ENV("OD_REATTACK")) != 0;
+                    if (reatk) {
+                        static const bool reg = (atexit(&AISystem::dumpReattack), true);
+                        (void)reg;
+                        ++s_reatkOrders;
+                        const auto key = std::make_pair(ch.fromPid, ch.toPid);
+                        auto f = s_reatkSeen.find(key);
+                        if (f == s_reatkSeen.end()) {
+                            s_reatkSeen[key] = {1, m_turn};
+                        } else {
+                            ++f->second.first;
+                            ++s_reatkRepeats;
+                            if (m_turn == f->second.second + 1) ++s_reatkConsecutive;
+                            f->second.second = m_turn;
+                            if (f->second.first > s_reatkMax) s_reatkMax = f->second.first;
+                        }
+                    }
+                }
                 {
                     static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
                     if (traceCid == cid)
@@ -14003,6 +14032,11 @@ std::map<std::string, long long> AISystem::s_doctrineReflexBy;
 std::map<std::string, long long> AISystem::s_doctrineReflexByCountry;
 std::map<std::pair<int,int>, int> AISystem::s_warOpen;
 std::map<std::pair<int,int>, std::pair<int,int>> AISystem::s_warProvAtStart;
+std::map<std::pair<int,int>, std::pair<int,int>> AISystem::s_reatkSeen;
+long long AISystem::s_reatkOrders = 0;
+long long AISystem::s_reatkRepeats = 0;
+long long AISystem::s_reatkConsecutive = 0;
+int AISystem::s_reatkMax = 0;
 std::vector<int> AISystem::s_warTransfers;
 long long AISystem::s_warStalemates = 0;
 long long AISystem::s_warEliminations = 0;
@@ -14824,6 +14858,21 @@ void AISystem::seatTrace() {
             "wars %d rebelwars %d\n", m_turn, g.m_benchSeatIso.c_str(),
             it->second.provinces, it->second.army,
             c ? c->treasury : 0.0, foreign, rebel);
+}
+
+void AISystem::dumpReattack() {
+    static bool done = false;
+    if (done || s_reatkOrders <= 0) return;
+    done = true;
+    const double n = (double)s_reatkOrders;
+    fprintf(stderr, "[REATTACK] attack orders %lld over %zu distinct province pairs   "
+                    "REPEATS %lld (%.1f%%)   of those on the very next turn %lld (%.1f%% of orders)   "
+                    "most-attacked pair ordered %d times\n",
+            s_reatkOrders, s_reatkSeen.size(), s_reatkRepeats,
+            100.0 * (double)s_reatkRepeats / n, s_reatkConsecutive,
+            100.0 * (double)s_reatkConsecutive / n, s_reatkMax);
+    fprintf(stderr, "[REATTACK] counted at ISSUE, so a pair re-attacked after the defence "
+                    "genuinely changed counts as a repeat too.\n");
 }
 
 void AISystem::dumpResearchPicks() {

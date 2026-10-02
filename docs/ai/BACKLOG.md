@@ -1321,6 +1321,21 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
+139. **THE AI RE-ORDERS ATTACKS ON PAIRS IT HAS ALREADY ATTACKED: 66.6% ordinary,
+   75.9% rush.** Journal 449, `OD_REATTACK`, inert unset. 11,743 orders over 2,832
+   distinct province pairs in the rush world; one pair ordered **40 times**; **16.3% of
+   all orders are repeats on the VERY NEXT TURN**. Above the frontage a lost assault
+   loses identically when re-made (memory width-makes-numbers-irrelevant), so a
+   next-turn repeat spends a turn that cannot change the position -- and duration is the
+   only growth channel left (item 105).
+   **NEXT, AND IT IS TWO STEPS.** (1) The instrument is incomplete: counted at ISSUE, so
+   it cannot tell deterministic re-loss from genuine pressure. The join needed is "was
+   this pair's previous attack repulsed", which lives in Game_TurnLogic.cpp -- **blocked
+   while another session edits that file**, not blocked on an idea. (2) The candidate
+   rule, once the join exists: refuse to re-order a pair on the next turn unless the
+   garrison ratio actually moved. Pre-register it as a DURATION experiment (mean war
+   length, OD_WARLIFE) and not only as a rating one, since the rating may not resolve it.
+
 138. **THE WAR BAR IS NOT A NEAR-MISS GATE -- do not tune it.** Journal 448, free from
    journal 447's probe output: when the superiority bar refuses a target the AI holds
    **5.8%** of the army it demands (mean 922,533 against 16,000,640) across 17,330

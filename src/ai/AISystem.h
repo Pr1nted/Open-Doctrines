@@ -308,6 +308,15 @@ public:
     /// growth channel the AI has (87.2% of declare-war calls exit at the cap,
     /// journal 447) so whether a war moves any ground at all is the question.
     static std::map<std::pair<int,int>, std::pair<int,int>> s_warProvAtStart;
+    /// Journal 449 (OD_REATTACK): is the AI re-ordering attacks on province
+    /// pairs it has already attacked? Above the combat frontage a lost assault
+    /// loses identically every time it is re-made (memory
+    /// width-makes-numbers-irrelevant), so a repeat is a spent turn that cannot
+    /// change the position. Keyed (fromPid, toPid) -> {times ordered, last turn}.
+    static std::map<std::pair<int,int>, std::pair<int,int>> s_reatkSeen;
+    static long long s_reatkOrders, s_reatkRepeats, s_reatkConsecutive;
+    static int s_reatkMax;
+    static void dumpReattack();
     static std::vector<int> s_warTransfers;   ///< |net province change|, per war
     static long long s_warStalemates, s_warEliminations;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port

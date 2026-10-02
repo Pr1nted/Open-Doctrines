@@ -33662,3 +33662,80 @@ deleting two candidate explanations -- the war bar, and futile wars -- and namin
 
 PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (census only; inert unset, hash proved), docs/ai/LOOP_JOURNAL.md,
 docs/ai/BACKLOG.md.
+
+## 449 — iteration: is the AI re-fighting battles it has already lost?
+
+PRE-REGISTERED. Journal 448 left duration as the only growth channel. This asks what spends the turns.
+
+THE NUMBERS THAT POINT HERE, from instruments that already existed (1914:FRA, 400 turns, ordinary world):
+
+    [WIDTH] assaults=105471  bound=25815 (24.5%)  contested=6153  repulsed=2187
+
+**35.5% of CONTESTED assaults are repulsed**, which matches the 40% the winnability-bar comment recorded for France
+at war. Against roughly 1,799 province changes (114 wars x mean 15.78) that is about 3.4 contested assaults per
+province taken, a third of them failures.
+
+WHY A FAILURE MIGHT BE WORSE THAN A WASTED TURN: [[width-makes-numbers-irrelevant]]. Above the frontage both sides'
+power is capped, so "the same battle returns the same answer every turn for ever until one stack falls below the
+frontage", and "an attack that loses, loses by exactly `width` men, repeatably". If the AI re-issues an attack it has
+already lost, it loses it again identically -- the turn is spent, the men are spent, and nothing about the position has
+changed. Across a 36.6-turn war that would be a direct and large duration cost.
+
+HYPOTHESIS: a large share of issued attack orders are REPEATS -- the same (from province -> to province) pair the AI
+already attacked while the target is still enemy-held.
+
+PREDICTION, committed: **repeats are a substantial minority, 20-50% of issued attacks.** If it is near zero the AI
+already avoids this and the 35.5% repulse rate is genuine attrition against changing defenders, which would be a
+null and would send duration work elsewhere. If it is above half, re-fighting lost battles is the single largest
+identifiable waste in the AI's war conduct.
+
+A CONSTRAINT ON THIS ITERATION, recorded because it shaped the design: `git status` shows the peer is editing
+**src/Game.cpp and src/Game_TurnLogic.cpp**. The resolver is where a repulse is actually known, and under LOOP.md's
+shared-tree protocol I do not touch a file another session is working in. So this is instrumented entirely in
+AISystem.cpp, at the point orders are ISSUED, which can see "I ordered this pair before and the target is still
+hostile" but cannot see the resolver's verdict. That is a weaker measurement and the journal says so rather than
+pretending otherwise.
+
+RESULT. Inert unset -- hash still 14336312219319526770/109360.
+
+                 attack orders   distinct pairs   REPEATS      next-turn repeats   worst pair
+  ordinary world      6,450          2,155       4,295 (66.6%)   977 (15.1%)         25x
+  rush world         11,743          2,832       8,911 (75.9%)  1,910 (16.3%)        40x
+
+  rush also: contested 9,585, repulsed 3,983 -- a **41.6% repulse rate among contested assaults**, which is the
+  "40% of them are REPULSED" the winnability-bar comment recorded, independently reproduced.
+
+**PREDICTION FALSIFIED, and in the direction of worse.** I committed to "a substantial minority, 20-50%". It is a
+substantial MAJORITY: two thirds in the ordinary world and three quarters in the rush world. By my own
+pre-registration -- "if it is above half, re-fighting lost battles is the single largest identifiable waste in the
+AI's war conduct" -- that is what this says. And the rush world, the seat that dies, is the worse of the two on every
+column.
+
+**THE CLEANEST SUBSET IS THE NEXT-TURN REPEATS: 16.3% of all attack orders.** The headline 75.9% over-counts, and the
+instrument says so in its own output: counted at ISSUE, a pair re-attacked after the defence genuinely changed counts
+as a repeat, and a province ordered 40 times may be a legitimately contested front rather than a lost battle re-run.
+But a repeat on the VERY NEXT TURN is the case [[width-makes-numbers-irrelevant]] describes exactly -- above the
+frontage "the same battle returns the same answer every turn for ever", and an attack that loses "loses by exactly
+`width` men, repeatably". One turn apart, with both stacks above frontage, almost nothing can have changed. That 16%
+is the part I would defend.
+
+WHAT I CANNOT MEASURE HERE, and why: the resolver is where a repulse is known, and the peer is editing
+Game_TurnLogic.cpp, so under the shared-tree protocol this is instrumented at the order site instead. The missing
+join is "was this pair's previous attack REPULSED" -- with it, 75.9% would split into genuine pressure and
+deterministic re-loss. That join is the next instrument and it is blocked on a file, not on an idea.
+
+TWO PROCESS SLIPS, BOTH MINE, recorded because the first nearly became a finding:
+  1. I ran the two worlds as `$EX` with `EX="--vs-exploit 3"` unquoted. **zsh does not word-split**
+     ([[zsh-does-not-word-split]], a memory that exists because this project paid for it before): the flag arrives as
+     ONE argument and the rush run was not a rush run.
+  2. My log filename carried a trailing space from the label variable, so the grep that should have caught slip 1
+     silently read the ordinary log twice.
+  Together they produced two byte-identical tables that I was one step from reporting as "the rush and ordinary
+  worlds behave identically". Caught by noticing the numbers were too identical, not by either guard.
+
+VERDICT: **instrument KEPT, no behaviour changed.** This is the first positively-identified waste in the AI's war
+conduct rather than another deleted theory, and it bears directly on journal 448's duration question: a next-turn
+re-attack spends a turn that cannot change the position, and duration is the only growth channel left.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (counter only, inert unset), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md.
