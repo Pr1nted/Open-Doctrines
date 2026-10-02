@@ -89,6 +89,88 @@ const std::vector<float>& NeuralNet::forward(const std::vector<float>& in) {
     return m_acts.back();
 }
 
+void NeuralNet::primePrefix(const std::vector<float>& prefix) {
+    m_prefixLen = 0;
+    if (!valid() || m_layers.empty()) return;
+    const Layer& L = m_layers[0];
+    if ((int)prefix.size() >= L.in) return;      // nothing left for a suffix
+    m_prefix = prefix;
+    m_prefixPartial.assign(L.b.begin(), L.b.end());
+    const int p = (int)prefix.size();
+    for (int o = 0; o < L.out; ++o) {
+        const float* wr = &L.w[(size_t)o * L.in];
+        float acc = m_prefixPartial[o];
+        for (int i = 0; i < p; ++i) acc += wr[i] * prefix[i];
+        m_prefixPartial[o] = acc;
+    }
+    m_prefixLen = p;
+}
+
+const std::vector<float>& NeuralNet::forwardSuffix(const std::vector<float>& suffix) {
+    static std::vector<float> bad;
+    if (!valid() || m_layers.empty()) return bad;
+    const Layer& L0 = m_layers[0];
+    // NOT a silent zero. If the prefix was never primed, or the two halves do
+    // not add up to the input width, this falls back to the ordinary pass
+    // rather than returning an empty result -- which a caller reads as a score
+    // of zero, so a width that changed somewhere else would quietly turn every
+    // candidate into a tie instead of failing.
+    if (m_prefixLen <= 0 || m_prefixLen + (int)suffix.size() != L0.in) {
+        if (m_prefixLen <= 0) return bad;        // nothing to rebuild from
+        std::vector<float> whole;
+        whole.reserve(m_prefix.size() + suffix.size());
+        whole.insert(whole.end(), m_prefix.begin(), m_prefix.end());
+        whole.insert(whole.end(), suffix.begin(), suffix.end());
+        return forward(whole);
+    }
+
+#if defined(OD_USE_ACCELERATE) && !defined(OD_FORCE_SCALAR)
+    // BLAS picks its own summation order, so a split sum is not guaranteed to
+    // match an unsplit one. Correctness over speed: rebuild the whole input and
+    // take the ordinary path. See the note in forward().
+    std::vector<float> whole;
+    whole.reserve(L0.in);
+    whole.insert(whole.end(), m_prefix.begin(), m_prefix.end());
+    whole.insert(whole.end(), suffix.begin(), suffix.end());
+    return forward(whole);
+#else
+    // backprop reads m_acts[0], so it gets the whole input even though layer
+    // one no longer walks all of it.
+    std::vector<float>& x0 = m_acts[0];
+    x0.resize(L0.in);
+    std::copy(m_prefix.begin(), m_prefix.end(), x0.begin());
+    std::copy(suffix.begin(), suffix.end(), x0.begin() + m_prefixLen);
+
+    // Layer one, continued from the shared partial.
+    {
+        std::vector<float>& y = m_acts[1];
+        const bool hidden = (m_layers.size() > 1) || m_tanhOutput;
+        const int sn = (int)suffix.size();
+        for (int o = 0; o < L0.out; ++o) {
+            const float* wr = &L0.w[(size_t)o * L0.in] + m_prefixLen;
+            float acc = m_prefixPartial[o];
+            for (int i = 0; i < sn; ++i) acc += wr[i] * suffix[i];
+            y[o] = hidden ? std::tanh(acc) : acc;
+        }
+    }
+
+    // ...and the rest exactly as forward() runs them.
+    for (size_t l = 1; l < m_layers.size(); ++l) {
+        const Layer& L = m_layers[l];
+        const std::vector<float>& x = m_acts[l];
+        std::vector<float>& y = m_acts[l + 1];
+        const bool hidden = (l + 1 < m_layers.size()) || m_tanhOutput;
+        for (int o = 0; o < L.out; ++o) {
+            const float* wr = &L.w[(size_t)o * L.in];
+            float acc = L.b[o];
+            for (int i = 0; i < L.in; ++i) acc += wr[i] * x[i];
+            y[o] = hidden ? std::tanh(acc) : acc;
+        }
+    }
+    return m_acts.back();
+#endif
+}
+
 void NeuralNet::backprop(const std::vector<float>& outputGrad, float lr) {
     if (!valid()) return;
     m_grads.back() = outputGrad;

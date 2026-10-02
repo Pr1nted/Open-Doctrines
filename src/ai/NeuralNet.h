@@ -43,6 +43,32 @@ public:
     // raw output (logits / value). No allocations after the first call.
     const std::vector<float>& forward(const std::vector<float>& in);
 
+    /**
+     * The same forward pass, for many inputs that share a leading slice.
+     *
+     * WHY. chooseAttack scores up to sixteen candidates for one decision, and
+     * every one of those inputs is the SAME 143 features describing the country
+     * followed by 12 describing that candidate. The attack net is
+     * {155, 256, 128, 1}, so its first layer is 39,680 multiply-adds of which
+     * 36,608 -- the country's own half -- were being recomputed per candidate.
+     * NeuralNet::forward was the hottest entry in a profile of processTurn.
+     *
+     * primePrefix() does the shared half once; forwardSuffix() finishes layer
+     * one from that partial and runs the rest normally. At sixteen candidates
+     * the work drops about 1.9x.
+     *
+     * BIT-IDENTICAL TO forward(), and not by luck: the scalar loop sums
+     * i = 0..in-1 in order, which is the prefix and then the suffix, so
+     * splitting the sum at that boundary performs exactly the same additions in
+     * exactly the same sequence. The benchmark and the decision hash depend on
+     * that, which is why the Accelerate path below declines to split -- BLAS
+     * chooses its own summation order (see the note in forward()).
+     *
+     * m_acts[0] is still filled with the whole input, because backprop reads it.
+     */
+    void primePrefix(const std::vector<float>& prefix);
+    const std::vector<float>& forwardSuffix(const std::vector<float>& suffix);
+
     // REINFORCE update for a policy head: pushes the log-probability of
     // `action` up (advantage > 0) or down (advantage < 0). Call forward()
     // first with the same input — the update uses the cached activations.
@@ -354,6 +380,10 @@ private:
     std::vector<int> m_sizes;
     std::vector<Layer> m_layers;
     std::vector<std::vector<float>> m_acts;   // activations per layer (incl. input copy)
+    // The shared slice and layer one's partial sums for it. See primePrefix.
+    std::vector<float> m_prefix;
+    std::vector<float> m_prefixPartial;
+    int m_prefixLen = 0;
     std::vector<std::vector<float>> m_grads;  // scratch for backprop
     std::vector<float> m_empty;
     uint64_t m_updates = 0;
