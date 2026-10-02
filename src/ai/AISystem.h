@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+#include "util/OdEnv.h"
 #include <set>
 #include <utility>
 #include "NeuralNet.h"
@@ -301,6 +302,14 @@ public:
     static std::atomic<long long> s_pacCooldownRefused;
     static std::map<std::pair<int,int>, int> s_warOpen;   ///< pair -> turn it opened
     static long long s_warsStarted, s_warsEnded, s_warLenSum, s_warOpenSum, s_warTurns;
+    /// Backlog item 105, journal 448: what a war ACHIEVES, not just how long it
+    /// lasts. Province counts for both sides at the moment a war opens, so the
+    /// census can report net change when it closes -- the war slot is the only
+    /// growth channel the AI has (87.2% of declare-war calls exit at the cap,
+    /// journal 447) so whether a war moves any ground at all is the question.
+    static std::map<std::pair<int,int>, std::pair<int,int>> s_warProvAtStart;
+    static std::vector<int> s_warTransfers;   ///< |net province change|, per war
+    static long long s_warStalemates, s_warEliminations;
     std::unordered_map<int,int> m_lastNavalBuy;   ///< cid -> turn of last hull/port
     std::unordered_map<int,int> m_lastIndustryBuy;///< cid -> turn of last industry level
     // Politics: 0 hold, 1 enact policy, 2 pac up, 3 pac down, 4 cancel policy,
@@ -1123,8 +1132,8 @@ public:
     // campaigns, one chosen war, and a second-front bar that could not fire.
     // OD_UNCLAIMED_BAR scales BOTH, keeping the land/naval ratio.
     static double unclaimedBar(bool naval) {
-        static const double scale = std::getenv("OD_UNCLAIMED_BAR")
-                                  ? atof(std::getenv("OD_UNCLAIMED_BAR")) : 1.0;
+        static const double scale = OD_ENV("OD_UNCLAIMED_BAR")
+                                  ? atof(OD_ENV("OD_UNCLAIMED_BAR")) : 1.0;
         return (naval ? AI_WAR_BAR_UNCLAIMED_NAVAL : AI_WAR_BAR_UNCLAIMED) * scale;
     }
     // Added to the bar when already fighting someone. One front at a time
@@ -1145,8 +1154,8 @@ public:
     // three-seed bench. OD_SECOND_FRONT_BAR overrides.
     static constexpr double AI_WAR_BAR_SECOND_FRONT    = 0.50;
     static double secondFrontBar() {
-        static const double v = std::getenv("OD_SECOND_FRONT_BAR")
-                              ? atof(std::getenv("OD_SECOND_FRONT_BAR"))
+        static const double v = OD_ENV("OD_SECOND_FRONT_BAR")
+                              ? atof(OD_ENV("OD_SECOND_FRONT_BAR"))
                               : AI_WAR_BAR_SECOND_FRONT;
         return v;
     }
@@ -1166,6 +1175,39 @@ public:
     // 90 -> 100 and the worst seat 41 -> 97 -- not one seat lost on the
     // whole bench. The gate DID fire; what the old measurement could not
     // see is that the wars it blocked are the ones a commitment feeds.
+    //
+    // ══ THE THREE PARAGRAPHS ABOVE DESCRIBE A VERSION THIS TREE IS NOT ══
+    //
+    // They say "2 since ParrotZero 8.6.0" and cite 8.6.0/8.6.1 measurements.
+    // This tree is 8.5.0, the constant below has only ever been 1 in its whole
+    // git history, and `git log -S` puts these comments' arrival at 801fd20,
+    // "Complete the revert: restore pre-branch AI code for 1.2.0a" -- the same
+    // commit that stranded AI_CAMPAIGN_SHARE's comment (journal 440). The
+    // revert restored the VALUES and kept the branch's COMMENTS.
+    //
+    // RE-MEASURED on this build, journal 447, 32 fresh seeds an arm, 400 turns,
+    // N24 -- and "not one seat lost" is FALSE here:
+    //
+    //                    rush collapsed   rung per-seed
+    //     1 (shipped)        13/32        444.6 (se 11.2)
+    //     2 (documented)     21/32        342.7 (se 19.8)
+    //     rung -101.9 against a 44.6 floor: it CLEARS. rush p 0.0787, worse.
+    //
+    // That is the only effect this loop has RESOLVED in eight iterations and it
+    // is a harm. The gate is live -- OD_WARMASK_PROBE says 87.2% of all
+    // "declare war" mask calls exit here, falling to 35.2% at 2 -- so this is
+    // not a null, it is a large change in the wrong direction.
+    //
+    // WHY THE OLD ARGUMENT FAILS, since it is a good argument: the wars this
+    // gate blocks ARE the ones a commitment feeds, and a country does take
+    // them. It then fights two wars with one army. On the seat that is already
+    // under attack that is fatal (13 -> 21 collapses), and on the growth seats
+    // it costs a hundred points. **The revert was right on the merits**, even
+    // though it left this comment lying about what the code does.
+    //
+    // Do not lift this to 2 on the strength of the text above. If anyone tries
+    // again it needs a reason the 1914:FRA:rush seat survives, which neither
+    // measurement has.
     static constexpr int    AI_MAX_CONCURRENT_WARS     = 1;
     // Nor while the home front is this unhappy (Game::WAR_WEARINESS_MAX is 20).
     // 12 was most of the way to maximum unrest -- a country that far gone has
@@ -1836,8 +1878,8 @@ public:
      * what it was.
      */
     static float anchorK() {
-        static const float v = std::getenv("OD_ANCHOR_K")
-                             ? (float)atof(std::getenv("OD_ANCHOR_K")) : 0.0f;
+        static const float v = OD_ENV("OD_ANCHOR_K")
+                             ? (float)atof(OD_ENV("OD_ANCHOR_K")) : 0.0f;
         return v;
     }
     /**
@@ -1927,8 +1969,8 @@ public:
     // is two-sided -- the AI's bankruptcy history came from spending against
     // income it did not have.
     static int planHorizon() {
-        static const int v = std::getenv("OD_PLAN_HORIZON")
-                           ? atoi(std::getenv("OD_PLAN_HORIZON")) : AI_PLAN_HORIZON;
+        static const int v = OD_ENV("OD_PLAN_HORIZON")
+                           ? atoi(OD_ENV("OD_PLAN_HORIZON")) : AI_PLAN_HORIZON;
         return v > 0 ? v : AI_PLAN_HORIZON;
     }
 
@@ -3297,7 +3339,7 @@ public:
      */
     static float lrScale() {
         static const float s = [] {
-            if (const char* e = std::getenv("OD_LR_SCALE")) {
+            if (const char* e = OD_ENV("OD_LR_SCALE")) {
                 const float f = (float)atof(e);
                 if (f > 0.0f && f <= 10.0f) {
                     printf("[AI] LR scaled by %.4f\n", f);
@@ -4058,7 +4100,7 @@ private:
      */
     static int nStep() {
         static const int v = [] {
-            if (const char* e = std::getenv("OD_N_STEP")) {
+            if (const char* e = OD_ENV("OD_N_STEP")) {
                 const int n = std::atoi(e);
                 if (n >= 2 && n <= 64) {
                     printf("[AI] N_STEP overridden: %d (was %d)\n", n, N_STEP);
@@ -4085,7 +4127,7 @@ private:
      */
     static float ppoEntropy() {
         static const float v = [] {
-            if (const char* e = std::getenv("OD_PPO_ENTROPY")) {
+            if (const char* e = OD_ENV("OD_PPO_ENTROPY")) {
                 const float f = (float)std::atof(e);
                 if (f >= 0.0f && f < 1.0f) {
                     printf("[AI] PPO_ENTROPY overridden: %.4f (was %.4f)\n", f, PPO_ENTROPY);
@@ -4902,8 +4944,8 @@ private:
     /// checkpoint at all has to address the rotation one too. The comment this
     /// replaces claimed otherwise (journal 268, corrected in 275).
     static double saveIntervalSeconds() {
-        static const double v = std::getenv("OD_SAVE_INTERVAL")
-                              ? atof(std::getenv("OD_SAVE_INTERVAL")) : 60.0;
+        static const double v = OD_ENV("OD_SAVE_INTERVAL")
+                              ? atof(OD_ENV("OD_SAVE_INTERVAL")) : 60.0;
         return v;
     }
     std::chrono::steady_clock::time_point m_lastSave = std::chrono::steady_clock::now();

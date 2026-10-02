@@ -33442,3 +33442,223 @@ it cannot do is know unstated rules. So the lever for advisor quality is **what 
 PATHS TOUCHED: tools/llm_comprehend.py (new), src/llm/Advisor.cpp (intend wording), docs/ai/LOOP_JOURNAL.md.
 NOT wired into tests/run_all.sh: it needs a live endpoint and ~2 minutes, and a suite that fails when Ollama is not
 running would be a suite people learn to ignore ([[a-skip-is-not-a-pass]]). Run it by hand; the JSON is for tracking.
+
+RESULT, all four arms clean:
+
+                     rush collapsed   land    rung
+  off (shipped)          15/32        10.92   446.3 (se 12.3)
+  SUPPLY_GATE=1           9/32        11.48   451.6 (se 12.3)
+  rung +5.3, floor 34.1 -> WITHIN FLOOR          rush Fisher p 0.1963
+
+**THE FIRST ARM THIS SESSION TO MOVE THE RIGHT WAY ON BOTH HALVES.** The guard seat's collapse count falls by a
+third, land on it rises, and the rung seats are flat-to-slightly-up rather than paying for it. The pre-registered
+verdict rule -- ship only if rush improves and rung does not clear its floor downward -- is MET.
+
+AND IT IS NOT YET A RESULT. p 0.1963 is not resolved: LOOP.md says this seat is a rate question wanting ~128 seeds an
+arm, and 15/32 against 9/32 is a 0.19 difference at a sample where the binomial floor is around 0.49. Five iterations
+of nulls make a sixth arm that finally points the right way exactly the arm to distrust -- and
+[[decide-on-fresh-seeds]] is unambiguous about what happens next: effects measured on the seeds that raised them
+shrink, +38.7 -> +13.3, +20.3 -> +0.2, and one p 0.017 harm became p 0.620.
+
+My prediction for this arm was "rush improved-or-unchanged and rung flat to slightly down". Rush improved and rung was
+slightly UP, so the prediction holds, which is the first time this session. I note it without celebrating it: the
+mechanism check also predicted the quality direction correctly beforehand, and both of those are single instances.
+
+VERDICT: **PROMISING, NOT SHIPPED.** Confirm on fresh seeds first -- journal 446.
+
+## 446 — iteration: confirm journal 444's supply gate on seeds that did not raise it
+
+PRE-REGISTERED, before the run. The only question is whether 444's effect survives seeds it was not measured on.
+
+THE SEEDS ARE GENUINELY FRESH: `j403_rush64_seeds.txt` holds 63 and every arm to date used `cut -f1-32`, so fields
+33-63 have never been run by anything. 31 rush seeds, and 15 fresh rung seeds from fields 33-47 of the rung list.
+Nothing about this arm was chosen by looking at them.
+
+PREDICTION, committed:
+  - **Direction holds, magnitude shrinks.** Fresh-seed collapsed lower in the ON arm, but by less than 15->9.
+  - **Pooled over all 63 rush seeds, Fisher p falls below 0.05** if the effect is real at roughly the size 444 saw.
+    If the fresh half is flat, pooled p stays above 0.05 and the honest answer is "unresolved, and the loop should
+    stop here rather than buy another 64 seeds on a hunch".
+  - Rung flat on 15 seeds -- that sample resolves almost nothing and is run only as a harm check.
+
+WHAT WOULD MAKE ME RECOMMEND SHIPPING: fresh-seed direction holding AND pooled p under 0.05, with rung not down. That
+is a stronger bar than the verdict rule 444 already met, deliberately, because this would be the session's first
+shipped gain and the base rate for those is poor.
+
+[[predictions-anchored-on-shrinkage]] cuts the other way here and I am recording that I thought about it: the shrink
+prior belongs to FITTED effects, and 444 was a pre-registered single arm with its mechanism checked in advance, not a
+number picked from a sweep. So I expect less shrinkage than the memory's examples, which is itself a prediction.
+
+RESULT. All four arms clean. **IT DID NOT REPLICATE.**
+
+  FRESH SEEDS (31 rush / 15 rung, never run by anything before):
+    off              rush 12/31   rung 465.2 (se 11.7)
+    SUPPLY_GATE=1    rush 13/31   rung 407.0 (se 25.4)
+    fresh rush  12/31 -> 13/31   Fisher p 1.0000      39% -> 42% collapse
+    fresh rung  -58.3, floor 54.8 -> clears DOWNWARD
+
+  POOLED with journal 444:
+    rush  27/63 -> 22/63   Fisher p 0.4650   still unresolved
+    rung  452.3 (se 9.2) -> 437.4 (se 11.9)   -15.0, floor 29.5   WITHIN FLOOR
+
+**PREDICTION FALSIFIED, and on the clause I argued hardest for.** I predicted "direction holds, magnitude shrinks"
+and reasoned explicitly that [[predictions-anchored-on-shrinkage]] should apply LESS here, because 444 was a
+pre-registered single arm with its mechanism checked in advance rather than a number picked out of a sweep. That
+reasoning was wrong. The effect did not shrink; it **vanished**, and the rung half changed sign. A pre-registered
+effect at p 0.20 is still an effect at p 0.20: the discipline that produced it does not make it real, and I gave it
+credit it had not earned.
+
+VERDICT: **REJECT.** My pre-registered ship bar was "fresh direction holds AND pooled p < 0.05, with rung not down".
+Nothing in that is met. The gate stays off and nothing needs reverting, because it was never defaulted on.
+
+HOW FIRMLY, and the honest answer is less firmly than the numbers look in either direction:
+  - The fresh rung -58.3 clears a 54.8 floor, which reads as harm. It rests on **15 seeds** with the ON arm's se at
+    25.4 against the OFF arm's 11.7 -- more than double. A doubled standard error is the arm being erratic, not the
+    difference being solid, and the pooled 47-seat reading is -15.0 inside a 29.5 floor. So: **no benefit, possible
+    harm, neither resolved.**
+  - The two seed halves disagree on the OFF arm too, 15/32 against 12/31 collapsed, which is
+    [[seed-sets-carry-difficulty]] behaving exactly as recorded.
+
+WHAT THIS COSTS AND WHAT IT BUYS. Six iterations, no gain, and this one looked like the exception for two hours. What
+it buys is that the exception was caught before anything shipped, by the cheapest possible means: 31 seeds nobody had
+touched. **Journal 444 would have been shipped on its own evidence** -- it met a verdict rule I had fixed in advance,
+on a mechanism I had confirmed in advance, with a prediction that came true. All of that, and it was noise.
+
+So the standing rule earns a sharper statement than LOOP.md currently gives it: a pre-registered arm that meets its
+verdict rule at p ~ 0.2 is a CANDIDATE, not a result, and the confirmation is not optional. Backlog item 135.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (the gate's comment carries both runs now; default unchanged, still off),
+docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+## 447 — iteration: the war cap's comment says 2, the code says 1, and the SAME revert did it
+
+Journal 440 found `AI_CAMPAIGN_SHARE` documenting 0.20 while running 0.35, stranded by **801fd20 "Complete the revert:
+restore pre-branch AI code for 1.2.0a"**. This is the second one, from the same commit, and it is larger.
+
+    // 2 since ParrotZero 8.6.0. ... Lifting the limit: N37 266 -> 277, N24
+    // 259 -> 270 with survival 90 -> 100 and the worst seat 41 -> 97 -- not
+    // one seat lost on the whole bench.
+    static constexpr int    AI_MAX_CONCURRENT_WARS     = 1;
+
+`git log -p` shows the constant has only ever been `1` in this tree. The comments around it cite measurements from
+**8.6.0 and 8.6.1** and this tree is at **8.5.0** -- they are branch comments that survived a revert of branch values.
+So the claim is not merely stale, it describes a version that does not exist here.
+
+THE DECISION IS LIVE, and more so than anything else measured this session. OD_WARMASK_PROBE, 1914:FRA, 400 turns:
+
+                 mask calls   exit "at max wars"        other exits
+    MAX_WARS=1     137,752     120,082  (87.2%)         army<=0 3,251, pending 1,203, weary 90
+    MAX_WARS=2     143,642      50,538  (35.2%)         army<=0 4,909, pending 2,329, weary 155
+
+**87% of every "declare war" mask call is refused by this one constant**, and lifting it to 2 cuts that to 35%. Seat
+34.1 -> 38.9 on the probe seed, decisions 109,360 -> 139,560.
+
+A MECHANISTIC REASON IT MIGHT WORK NOW AND NOT BEFORE, which is the comment's own argument and a good one: the old
+measurement found the gate "almost never fired" and declarations down only 11%. That was taken BEFORE campaigns
+existed. The campaign cap is now 2, so a country can hold two commitments while being allowed one war it chose --
+meaning the second commitment can only ever point at somebody already fighting it. The wars this gate blocks are
+precisely the ones a commitment would feed.
+
+SEEDS: journals 444/446 consumed rush 1-63 and rung 1-47, so nothing untouched remained. 64 new seeds generated
+deterministically into `build/loop/seeds/j447_fresh64.txt` (Random(20261002)); **set A (1-32) runs now and set B
+(33-64) is held back for the confirmation**, which journal 446 established one hour ago is not optional.
+
+PREDICTION, committed, and deliberately modest given the last two entries: **rung up, direction only.** Two things
+pull against the documented +11s -- journal 440's documented gain did not replicate at all, and LOOP.md's standing
+finding is that "anything that makes it fight more must make it stronger first". Two things pull for them: the prior
+evidence is two models with no seat lost, which is stronger than anything else in this header, and the campaign
+argument above is a real reason the old null expired. I expect rush unchanged: being rushed is a defensive problem and
+this gate restrains only wars the AI CHOOSES.
+
+VERDICT RULE, fixed now: **nothing ships on set A alone, whatever it says.** Recommend only if set A clears upward on
+rung with rush not worse, AND set B replicates the direction. If shipped it is a RULES bump, 8.5.0 -> 8.6.0 -- which is
+exactly the version the comment already claims, so the branch intended this and the revert undid it.
+
+RESULT, all four arms clean. **REJECT, and it is the session's first RESOLVED effect -- a harm.**
+
+                        rush collapsed   land    rung
+  1 (shipped)               13/32        11.14   444.6 (se 11.2)
+  2 (documented)            21/32         8.37   342.7 (se 19.8)
+  rung -101.9, floor 44.6 -> CLEARS DOWNWARD        rush Fisher p 0.0787
+
+**BOTH HALVES OF MY PREDICTION WERE WRONG, AND IN THE SAME DIRECTION.** I predicted rung up and rush unchanged. Rung
+fell by a hundred points, clearing its floor, and rush got worse. I was optimistic because the documented prior was
+the strongest in the header -- two models, survival up, worst seat 41 -> 97, "not one seat lost on the whole bench" --
+and that is the second time in eight iterations a strong documented prior from another build has misled me the same
+way (journal 440 was the first). **The pattern is now established enough to state as a rule: a numerate comment citing
+measurements from a version this tree is not is evidence about a game that no longer exists, and it should move my
+prior by nothing at all.**
+
+Set B was NOT run. The verdict rule said recommend only if rush is not worse, and rush was worse before the rung arms
+landed; spending two more hours confirming a rejected candidate would be ceremony. The rung reading then cleared its
+floor downward, which settles it without a confirmation -- a harm that clears is not the shape that needs replication
+before being believed, because nothing is being shipped on it.
+
+WHY THE OLD ARGUMENT FAILS, and it was a good argument: the gate blocks exactly the wars a commitment would feed, and
+lifting it does let the country take them -- 87.2% of mask calls exited here, 35.2% at 2. It then fights two wars with
+one army. On the seat already under attack that is fatal; on the growth seats it costs a hundred points. **So the
+revert was right on the merits**, even though it left the comment lying.
+
+BOTH CONSTANTS STRANDED BY 801fd20 HAVE NOW BEEN RE-MEASURED AND BOTH FAILED: the campaign share was flat (+1.1
+inside a 32-point floor, journal 440) and the war cap is a resolved harm. Item 136's audit is therefore worth more,
+not less -- its job is not recovering lost gains, it is stopping the next reader trusting those comments. Two for two
+says the branch's 8.6.x numbers do not describe this game.
+
+VERDICT: **REJECT.** Nothing to revert -- `OD_MAX_WARS` already existed and the default is untouched at 1. The
+comment now carries both measurements and an explicit instruction not to lift it on the strength of the old one.
+
+PATHS TOUCHED: src/ai/AISystem.h (comment only), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+## 448 — iteration: what a war ACHIEVES (item 105), and it refutes the obvious story
+
+After eight arms and no gain I stopped proposing changes and measured instead. Two findings, one free and one built.
+
+**FREE, from journal 447's probe output that I had captured and never read:**
+
+    [WARMASK] land: neighbours examined 69811; rejected at-war-or-friendly 15338,
+              pending-diplomacy 534, bigger guarantor 3984, WAR BAR 17330; land target found 2971
+    [WARMASK] war bar fails: mean own army 922533 vs needed 16000640 (ratio 0.058)
+
+**The war bar is not a near-miss gate.** When it refuses, the AI has **5.8%** of the army it demands -- a factor of
+17. So moving that bar is structurally a null for the same reason raising the manpower ceiling was
+([[ai-recruitment-is-money-bound]]): a threshold nobody is near. That closes a whole family of candidates for the
+price of reading a log I already had.
+
+**BUILT (item 105):** `OD_WARLIFE` reported how long wars last and never what they accomplish. It now records each
+belligerent's province count when a war opens and the net change when it closes. Inert unset -- hash still
+14336312219319526770/109360.
+
+1914:FRA, 400 turns, N24, seed 13579:
+
+    started 127   ended 114   still open 13   mean length 36.6 turns   mean concurrent 16.85
+    provinces moved per ended war: mean 15.78   median 8   max 86
+    STALEMATES (zero ground moved) 0 of 114 -- 0.0%
+    eliminations 88
+
+**MY HYPOTHESIS WAS WRONG AND THE DATA IS UNAMBIGUOUS ABOUT IT.** I had reasoned that because 87.2% of declare-war
+calls exit at the one-war cap, and lifting the cap is catastrophic (journal 447), the growth ceiling must be wars that
+hold the slot without achieving anything -- the Sweden failure in [[stalled-wars-lock-the-war-slot]] generalised. **Not
+one war in 114 was a stalemate.** The median war moves 8 provinces and 77% end with a side annihilated. The war slot
+is not being wasted; it is being used, decisively, over and over.
+
+WHAT THAT LEAVES, and it is arithmetic rather than a new theory: one slot, mean 36.6 turns a war, 400 turns -- about
+ten sequential wars, each taking a median 8 provinces. That IS what 27.6% of the world looks like. France is not
+stalling against a wall; it is growing at the rate one war slot allows. To reach the 5x cap at 33.5% it needs either
+more wars at once -- **measured, catastrophic, journal 447** -- or **faster wars**. Duration is the only remaining
+channel, and the instrument to measure it now exists.
+
+LIMITS OF THIS MEASUREMENT, stated rather than left for a reader to trip over:
+  - **It is WORLD-WIDE, not seat-scoped** ([[aggregate-vs-seat-measurement]]). Mean concurrent 16.85 and the 88
+    eliminations are facts about 53 countries, not about France. The **0% stalemate rate does generalise**, because 0
+    of 114 leaves no room for France's wars to differ.
+  - Province change is NET per side, not transfers between the two belligerents: a side that lost ground to a third
+    party during the war is counted here as having lost it to this one. The question "does a war move ground at all"
+    survives that; "who took what from whom" does not.
+  - One seed. The stalemate rate is a count over 114 wars rather than over seeds, so it is better powered than it
+    looks, but mean length 36.6 is one world.
+
+VERDICT: **instrument KEPT, item 105 closed, no behaviour changed.** The honest contribution of this iteration is
+deleting two candidate explanations -- the war bar, and futile wars -- and naming the one that survives.
+
+PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (census only; inert unset, hash proved), docs/ai/LOOP_JOURNAL.md,
+docs/ai/BACKLOG.md.

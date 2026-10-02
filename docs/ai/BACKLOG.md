@@ -1105,7 +1105,18 @@ opponent is not a league.
    inside N24's floor again.
    (Ran as it367-rusher8-s2, stored.)
 
-105. **Separate "the winner wins faster" from "the loser is annexed."** Journal
+105. ~~**Separate "the winner wins faster" from "the loser is annexed."**~~ **DONE
+   journal 448, and the answer is BOTH, emphatically.** OD_WARLIFE now records each
+   belligerent's provinces at a war's open and the net change at its close. 1914:FRA, 400
+   turns: 114 wars ended, **0 stalemates**, median 8 provinces moved, **88 eliminations**.
+   Wars are decisive and the war slot is not wasted -- which refutes the standing guess
+   that the growth ceiling was futile wars holding the only slot.
+   **WHAT SURVIVES AS THE GROWTH LEVER: war DURATION.** One slot x mean 36.6 turns a war
+   x 400 turns is about ten wars at a median 8 provinces, which is exactly the 27.6% the
+   seat holds. More wars at once is measured and catastrophic (item 137). Faster wars is
+   the only channel left, and the instrument to measure it exists now.
+   Caveats in the journal: world-wide not seat-scoped, and NET change per side rather
+   than transfers between the two. ORIGINAL: Journal
    405 measured wars getting shorter under the doctrine reflex and registered in
    advance that its instrument cannot tell those apart -- both shorten a war. Needs
    conquest counts per war (provinces changing hands, and whether a side ceased to
@@ -1309,6 +1320,57 @@ opponent is not a league.
    says pair it with growth or expect to pay on the rung seats.~~ **BUILT AND SCREENED,
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
+
+138. **THE WAR BAR IS NOT A NEAR-MISS GATE -- do not tune it.** Journal 448, free from
+   journal 447's probe output: when the superiority bar refuses a target the AI holds
+   **5.8%** of the army it demands (mean 922,533 against 16,000,640) across 17,330
+   refusals. A threshold nobody is within a factor of 17 of cannot be moved usefully --
+   the same shape as the manpower ceiling (item 130). Any proposal to adjust
+   AI_WAR_BAR_* should quote a near-miss distribution first.
+
+137. ~~**Lift AI_MAX_CONCURRENT_WARS to 2, as its comment says it already is.**~~
+   **REJECTED journal 447, and it is the loop's first RESOLVED effect in eight iterations
+   -- a harm.** 32 fresh seeds an arm: rung **444.6 -> 342.7, -101.9 against a 44.6
+   floor, CLEARS DOWNWARD**; rush **13/32 -> 21/32** at p 0.0787. The comment's "not one
+   seat lost on the whole bench" is false on this build: every measured seat lost. The
+   gate is unmistakably live (87.2% of all "declare war" mask calls exit there, 35.2% at
+   2), so this is a large change in the wrong direction rather than a null. The old
+   argument -- that the blocked wars are the ones a commitment feeds -- is correct and is
+   the problem: the country takes them and fights two wars with one army. **The revert
+   was right on the merits.** Do not reopen without a reason 1914:FRA:rush survives.
+
+136. **AUDIT 801fd20: one revert stranded at least TWO documented constants.**
+   **BOTH HAVE NOW BEEN RE-MEASURED AND BOTH FAILED** -- campaign share flat (journal
+   440), war cap a resolved harm (journal 447). Two for two says the branch's 8.6.x
+   numbers do not describe this game, so the audit's value is not recovering gains, it is
+   stopping the next reader trusting those comments.
+   Journal 440 found `AI_CAMPAIGN_SHARE` documenting 0.20 while running 0.35; journal 447
+   found `AI_MAX_CONCURRENT_WARS` documenting **"2 since ParrotZero 8.6.0"**, with two
+   models' numbers and "not one seat lost", while running 1. Both comments arrived with
+   **801fd20 "Complete the revert: restore pre-branch AI code for 1.2.0a"**, which
+   restored pre-branch VALUES and kept branch COMMENTS. The header also cites 8.6.0 and
+   8.6.1 measurements while this tree is at 8.5.0, so those comments describe a version
+   that does not exist here. **Nobody has checked how many more there are.** Cheap and
+   mechanical: a script that extracts every "<value> since ParrotZero <v>" claim in
+   src/ai and compares it with the constant beside it, failing when they disagree or when
+   the version cited exceeds AIVersion.h -- the same shape as check_llm_tools.py. Until
+   that exists, treat any numerate comment in AISystem.h as a hypothesis and prove the
+   value against the binary (memory a-revert-keeps-the-comment-and-restores-the-value).
+
+135. ~~**Split the attack margin's two uses and put supply on the bar alone.**~~
+   **BUILT, BENCHED TWICE, REJECTED (journals 444, 446).** `OD_SUPPLY_GATE`, default
+   off. First 32 seeds: rush **15/32 -> 9/32**, rung +5.3 -- it met a verdict rule fixed
+   in advance, on a mechanism confirmed in advance (repulse rate 5.06% -> 4.77% on 8%
+   MORE attacks), and read as the session's one success. **On 31 fresh seeds it vanished:
+   12/31 -> 13/31 at p 1.0000, and the rung half changed sign (-58.3 on 15 seeds, ON-arm
+   se doubled).** Pooled: rush p 0.465, rung -15.0 inside a 29.5 floor. No benefit,
+   possible harm, neither resolved.
+   **THE TRANSFERABLE RULE, and LOOP.md should say it:** a pre-registered arm that meets
+   its verdict rule at p ~ 0.2 is a CANDIDATE, not a result. Pre-registration and a
+   confirmed mechanism make an effect WORTH CONFIRMING; they do not make it real. Journal
+   444 would have shipped on its own evidence. The confirmation cost 31 untouched seeds.
+   See [[one-number-cannot-serve-a-gate-and-a-quantity]] for why the split was needed at
+   all, and note the mechanism remains correctly reasoned -- it just does not pay.
 
 134. ~~**OD_SUPPLY_MARGIN: re-measure, as its own comment asks.**~~ **DONE journal 443:
    it stays off, and the reason is structural.** 32 seeds an arm: rung **+4.4 against a

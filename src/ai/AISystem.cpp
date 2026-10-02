@@ -1,4 +1,5 @@
 #include "AISystem.h"
+#include "util/OdEnv.h"
 #include "AIVersion.h"
 #include "ModelBlob.h"
 #include "MoneyLedger.h"
@@ -522,7 +523,7 @@ AISystem::attackCandidates(int cid) const {
             // defPower 77,033, repulsed, a third of the army gone on turn 1.
             // The old score (attackers over defenders, no cap) read that as a
             // fair fight; this one reads it as 0.94.
-            static const bool widthMargin = std::getenv("OD_WIDTH_MARGIN") && atoi(std::getenv("OD_WIDTH_MARGIN")) != 0;   // OFF by default from v22: it was worth 20-50 on the OLD resolver, where an above-frontage repulse deleted the engaged men; depth pays for the reserve, and with it the gate costs 15 mean (journal 43a). OD_WIDTH_MARGIN=1 restores it.
+            static const bool widthMargin = OD_ENV("OD_WIDTH_MARGIN") && atoi(OD_ENV("OD_WIDTH_MARGIN")) != 0;   // OFF by default from v22: it was worth 20-50 on the OLD resolver, where an above-frontage repulse deleted the engaged men; depth pays for the reserve, and with it the gate costs 15 mean (journal 43a). OD_WIDTH_MARGIN=1 restores it.
             const float sent = myG * 0.75f;
             const float width = widthMargin ? (float)g.combatWidth(nid) : 1e30f;
             // Men beyond the frontage are the reserve: they do not widen the
@@ -587,8 +588,8 @@ AISystem::attackCandidates(int cid) const {
             // divisor for force size. Anyone fixing it properly should separate
             // the two uses FIRST, then re-apply the supply term to the gate
             // alone.
-            static const bool supplyMargin = std::getenv("OD_SUPPLY_MARGIN") &&
-                                             atoi(std::getenv("OD_SUPPLY_MARGIN")) != 0;
+            static const bool supplyMargin = OD_ENV("OD_SUPPLY_MARGIN") &&
+                                             atoi(OD_ENV("OD_SUPPLY_MARGIN")) != 0;
             const float atkSup = supplyMargin ? g.supplyFactor(cid, nid)    : 1.0f;
             const float defSup = supplyMargin ? g.supplyFactor(nOwner, nid) : 1.0f;
             float margin = (def * defSup) > 0 ? (atk * atkSup) / (def * defSup) : 10.0f;
@@ -697,7 +698,49 @@ AISystem::attackCandidates(int cid) const {
                     margin *= history::pressure(g.m_countryDoctrines, c->isoA3,
                                                 histTarget->isoA3, histYear);
             }
-            if (margin <= 1.05f) continue;   // the winnability bar
+            // ── THE BAR GETS THE SUPPLY TERM; THE SIZING DOES NOT (journal 444) ──
+            //
+            // OD_SUPPLY_MARGIN (above) put supply into `margin` itself and
+            // measured worse: `margin` is also the divisor in
+            // 0.75 * ATTACK_SAFETY / margin, so lowering it committed MORE men
+            // and the same attacks went in over-committed -- assault count
+            // unchanged, repulses +18% (journal 443). The correction is right
+            // for the THRESHOLD and backwards through the QUANTITY, so the two
+            // uses are separated here: the bar sees the resolver's own odds,
+            // and the force size keeps reading the raw ratio it has always read.
+            // ── BENCHED TWICE AND REJECTED (journals 444, 446). STAYS OFF ──
+            //
+            //                      rush collapsed   rung per-seed
+            //   first 32 seeds:
+            //     off                  15/32        446.3 (se 12.3)
+            //     SUPPLY_GATE=1         9/32        451.6 (se 12.3)   p 0.20
+            //   FRESH 31/15 seeds, never run before:
+            //     off                  12/31        465.2 (se 11.7)
+            //     SUPPLY_GATE=1        13/31        407.0 (se 25.4)   p 1.00
+            //   pooled: rush 27/63 -> 22/63 at p 0.465; rung -15.0, floor 29.5
+            //
+            // The first half looked like the session's one success -- the guard
+            // seat's collapses down a third, rung not paying for it, and the
+            // mechanism confirmed in advance (repulse rate 5.06% -> 4.77% on 8%
+            // MORE attacks). On seeds it had not been measured on the whole
+            // thing vanished, and the rung half changed sign. No benefit,
+            // possible harm, neither resolved.
+            //
+            // The mechanism is still real and still correctly reasoned: the bar
+            // sees the resolver's own odds while the force size keeps the raw
+            // ratio, which is the separation journal 443 said was required. It
+            // simply does not pay. Anyone reopening this needs a different
+            // reason than "the margin should be accurate", because that reason
+            // has now been tried on both sides of the split.
+            static const bool supplyGate = OD_ENV("OD_SUPPLY_GATE") &&
+                                           atoi(OD_ENV("OD_SUPPLY_GATE")) != 0;
+            float gateMargin = margin;
+            if (supplyGate) {
+                const float aS = g.supplyFactor(cid, nid);
+                const float dS = g.supplyFactor(nOwner, nid);
+                if (dS > 0.0f) gateMargin = margin * (aS / dS);
+            }
+            if (gateMargin <= 1.05f) continue;   // the winnability bar
             slot.cands.push_back({fromPid, nid, nOwner, margin, fromAlly, myG, defG,
                                   (int)fort,
                                   ind != g.m_provinceIndustry.end()
@@ -1032,7 +1075,7 @@ bool AISystem::nextPortBuy(int cid, int& outPid, float& outCost) const {
     // Journal 325: when this fails, WHICH branch was shut? The three cases
     // want three different fixes, and only the first is helped by the cap.
     {
-        static const bool pfOn = std::getenv("OD_ACT_HIST") != nullptr;
+        static const bool pfOn = OD_ENV("OD_ACT_HIST") != nullptr;
         if (pfOn && found.pid < 0) {
             bool ownsPort = false, coastalPortless = false;
             for (const auto& [pid2, port2] : g.m_provincePorts) {
@@ -1148,7 +1191,7 @@ float AISystem::embeddingValue(int module, const std::vector<float>& emb) const 
 
 int AISystem::mctsSims() {
     static const int v = [] {
-        if (const char* e = std::getenv("OD_MCTS_SIMS")) {
+        if (const char* e = OD_ENV("OD_MCTS_SIMS")) {
             const int n = atoi(e);
             if (n >= 0 && n <= 4096) return n;
         }
@@ -1159,7 +1202,7 @@ int AISystem::mctsSims() {
 
 float AISystem::mctsCpuct() {
     static const float v = [] {
-        if (const char* e = std::getenv("OD_MCTS_CPUCT")) {
+        if (const char* e = OD_ENV("OD_MCTS_CPUCT")) {
             const float f = (float)atof(e);
             if (f > 0.0f && f < 20.0f) return f;
         }
@@ -1612,7 +1655,7 @@ std::string AISystem::didNothing(std::string why) {
     // "generating a gradient, teaching the politics head that the action is
     // safe and free". A refusal that fires often is not free: it costs the
     // country its turn and teaches the head something untrue.
-    static const bool histOn = std::getenv("OD_ACT_HIST") != nullptr;
+    static const bool histOn = OD_ENV("OD_ACT_HIST") != nullptr;
     if (histOn) ++s_noopWhy[why];
     return why;
 }
@@ -2294,9 +2337,9 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
     };
     static const RelAblation abl = [] {
         RelAblation a;
-        const char* f = std::getenv("OD_AI_REL_ABLATE_FEATURE");
+        const char* f = OD_ENV("OD_AI_REL_ABLATE_FEATURE");
         if (!f) return a;
-        const char* v = std::getenv("OD_AI_REL_ABLATE_VALUE");
+        const char* v = OD_ENV("OD_AI_REL_ABLATE_VALUE");
         auto split = [](const char* csv) {
             std::vector<std::string> out;
             if (!csv) return out;
@@ -2331,7 +2374,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
                       : (float)atof(vs[vs.size() == 1 ? 0 : i].c_str());
             a.any = true;
         }
-        const char* mode = std::getenv("OD_AI_REL_ABLATE_MODE");
+        const char* mode = OD_ENV("OD_AI_REL_ABLATE_MODE");
         a.rotate = mode && std::strcmp(mode, "rotate") == 0;
         if (a.any && a.rotate) {
             fprintf(stderr, "[REL-ABLATE] rotating");
@@ -2398,7 +2441,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
         // against the current model is in the changelog. OD_AI_FOG_TREASURY_OFF
         // restores perfect information, which is what a model trained before
         // this expects -- keep it in the trainer's control arm.
-        static const bool fogTreasury = std::getenv("OD_AI_FOG_TREASURY_OFF") == nullptr;
+        static const bool fogTreasury = OD_ENV("OD_AI_FOG_TREASURY_OFF") == nullptr;
         const bool published = oc && g.discloses(ocid, Game::DISCLOSE_TREASURY);
         if (!oc) {
             r[3] = 0.0f;
@@ -2430,7 +2473,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
         // so the constant can be the feature's own average rather than a number
         // chosen to be flattering.
         {
-            static const char* abl = std::getenv("OD_AI_REL_ABLATE_TREASURY");
+            static const char* abl = OD_ENV("OD_AI_REL_ABLATE_TREASURY");
             // ── WHICH READS TO DESTROY, WHICH IS WHAT MAKES THIS FALSIFIABLE ──
             //
             // Ablating EVERY read bounds what the fog can cost, and that is all
@@ -2473,7 +2516,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
             // become dependent on r[3] in a way neither of these policies is,
             // which is a fragility rather than a skill.
             static const int ablWhere = [] {
-                const char* w = std::getenv("OD_AI_REL_ABLATE_WHERE");
+                const char* w = OD_ENV("OD_AI_REL_ABLATE_WHERE");
                 if (!w) return 0;
                 if (std::strcmp(w, "fogged") == 0) return 1;
                 if (std::strcmp(w, "published") == 0) return 2;
@@ -2483,7 +2526,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
                                         (ablWhere == 1 && !published) ||
                                         (ablWhere == 2 && published));
             if (ablate) r[3] = (float)atof(abl);
-            if (std::getenv("OD_AI_REL_TREASURY_STATS")) {
+            if (OD_ENV("OD_AI_REL_TREASURY_STATS")) {
                 extern double g_r3Sum; extern long long g_r3N;
                 g_r3Sum += r[3]; ++g_r3N;
             }
@@ -2505,7 +2548,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
         // closest to breaking" looks like as a number, and for a continuous
         // feature the mean is the neutral value -- see the note on the binary
         // features, where it is not.
-        static const bool fogWeariness = std::getenv("OD_AI_FOG_WEARINESS_OFF") == nullptr;
+        static const bool fogWeariness = OD_ENV("OD_AI_FOG_WEARINESS_OFF") == nullptr;
         r[6] = std::tanh((fogWeariness ? meanWeariness : g.warWearinessOf(ocid)) / 5.0f);
         r[7] = (float)std::min(1.0, (double)o.claimsAgainstMe / 4.0);
 
@@ -2534,7 +2577,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
             if (!abl.rotate)
                 for (int k = 0; k < REL_FEATURES; ++k)
                     if (abl.on[k]) r[(size_t)k] = abl.to[k];
-            if (std::getenv("OD_AI_REL_STATS")) {
+            if (OD_ENV("OD_AI_REL_STATS")) {
                 extern double g_relSum[]; extern long long g_relN;
                 for (int k = 0; k < REL_FEATURES; ++k) g_relSum[k] += r[(size_t)k];
                 ++g_relN;
@@ -2566,7 +2609,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
     // one: it removes "which neighbour" while leaving "what the neighbourhood
     // looks like", where a constant removes both.
     if (abl.any && abl.rotate && cand.size() >= 2) {
-        const bool trace = std::getenv("OD_REL_DUMP") && m_turn <= 3;
+        const bool trace = OD_ENV("OD_REL_DUMP") && m_turn <= 3;
         for (int k = 0; k < REL_FEATURES; ++k) {
             if (!abl.on[k]) continue;
             std::vector<float> before;
@@ -2590,7 +2633,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
         }
     }
 
-    if (std::getenv("OD_REL_DUMP") && m_turn <= 3) {
+    if (OD_ENV("OD_REL_DUMP") && m_turn <= 3) {
         printf("[REL] t=%d cid=%d n=%zu", m_turn, cid, cand.size());
         for (size_t i = 0; i < cand.size(); ++i) {
             printf(" |%d:", nb[i].second);
@@ -2609,7 +2652,7 @@ void AISystem::buildRelational(int cid, std::vector<std::vector<float>>& cand,
     }
     std::vector<float> attn;
     NeuralNet::attentionPool(emb, scores, pooled, attn);
-    if (std::getenv("OD_REL_DUMP") && m_turn <= 3) {
+    if (OD_ENV("OD_REL_DUMP") && m_turn <= 3) {
         printf("[EMB] t=%d cid=%d", m_turn, cid);
         for (size_t i = 0; i < emb.size(); ++i)
             printf(" s%zu:%.9g e%zu:%.9g", i, scores[i], i, emb[i].empty() ? 0.0f : emb[i][0]);
@@ -2626,7 +2669,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     const CountryStat& st = m_stats[cid];
 
     CountryIncomeSnapshot inc = g.computeCountryIncome(cid);
-    if (std::getenv("OD_ACT_HIST")) {
+    if (OD_ENV("OD_ACT_HIST")) {
         s_expense[0] += inc.armyExpenses;   s_expense[1] += inc.navyExpenses;
         s_expense[2] += inc.policyCosts;    s_expense[3] += inc.minorityCosts;
         s_expense[4] += inc.researchCost;   s_expense[5] += inc.pacificationCost;
@@ -2943,7 +2986,7 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
     // Search at play (4/8 sims) turned out to be plain greedy play and scored
     // 32 below the sampled policy (journal 35h), so the temperature is doing
     // work; this is the knob to measure it with. Absolute, 0.01..5.
-    if (const char* e = std::getenv("OD_PLAY_TEMP")) {
+    if (const char* e = OD_ENV("OD_PLAY_TEMP")) {
         const float t = (float)atof(e);
         if (t >= 0.01f && t <= 5.0f) temperature = t;
     }
@@ -2954,7 +2997,7 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
     // yet greedy play (search at 4/8 sims, which bypasses this roll too)
     // scored 32 lower. That leaves the epsilon roll as the stochasticity
     // doing the work (journal 35j). Absolute, 0..0.5.
-    if (const char* e = std::getenv("OD_PLAY_EPS")) {
+    if (const char* e = OD_ENV("OD_PLAY_EPS")) {
         const float x = (float)atof(e);
         if (x >= 0.0f && x <= 0.5f) epsilon = x;
     }
@@ -3129,7 +3172,7 @@ void AISystem::logDecision(int cid, int module, int action, float score, const s
 // path is unchanged.
 static bool reflexAblated(const char* name) {
     static const std::string spec = [] {
-        const char* e = std::getenv("OD_ABLATE");
+        const char* e = OD_ENV("OD_ABLATE");
         return std::string(e ? e : "");
     }();
     if (spec.empty()) return false;               // the shipped path
@@ -3143,8 +3186,8 @@ static bool reflexAblated(const char* name) {
 // cannot answer a question about one seat (journal 386). Counters only; no decision
 // reads it.
 static bool actHistCountsCid(int cid) {
-    static const int only = std::getenv("OD_ACT_HIST_CID")
-                                 ? atoi(std::getenv("OD_ACT_HIST_CID")) : -1;
+    static const int only = OD_ENV("OD_ACT_HIST_CID")
+                                 ? atoi(OD_ENV("OD_ACT_HIST_CID")) : -1;
     return only < 0 || only == cid;
 }
 
@@ -3174,7 +3217,7 @@ static void dumpWarMaskProbe() {
             v(12), v(13), v(14));
 }
 static bool wmCounting(int cid) {
-    static const bool on = std::getenv("OD_WARMASK_PROBE") && atoi(std::getenv("OD_WARMASK_PROBE")) != 0;
+    static const bool on = OD_ENV("OD_WARMASK_PROBE") && atoi(OD_ENV("OD_WARMASK_PROBE")) != 0;
     if (!on || !s_wmFromMask || !actHistCountsCid(cid)) return false;
     static const bool reg = (atexit(&dumpWarMaskProbe), true);
     (void)reg;
@@ -3209,8 +3252,8 @@ void dumpPolicyHist() {
         fprintf(stderr, "[POLHIST]   %-28s %lld\n", id.c_str(), n);
 }
 void policyHistNote(int cid, const std::string& id) {
-    static const bool on = std::getenv("OD_POLICY_HIST") &&
-                           atoi(std::getenv("OD_POLICY_HIST")) != 0;
+    static const bool on = OD_ENV("OD_POLICY_HIST") &&
+                           atoi(OD_ENV("OD_POLICY_HIST")) != 0;
     if (!on || !actHistCountsCid(cid)) return;
     static const bool reg = (atexit(&dumpPolicyHist), true);
     (void)reg;
@@ -3258,7 +3301,7 @@ void AISystem::takeTurn(int cid) {
     // country during --train-ai, m_scriptedThisCountry can never be set, and
     // the variant MIX below -- labelled TRAINING ONLY -- is unreachable while
     // training. Counted rather than argued.
-    if (std::getenv("OD_TRAIN_PROBE")) {
+    if (OD_ENV("OD_TRAIN_PROBE")) {
         static long long seen = 0, randoms = 0, scripted = 0;
         ++seen;
         if (isRandomCountry(cid)) ++randoms;
@@ -3676,7 +3719,7 @@ void AISystem::takeTurn(int cid) {
             // An action at 0% of picks means nothing until you know whether it
             // was on the menu.
             {
-                static const bool offHist = std::getenv("OD_ACT_HIST") != nullptr;
+                static const bool offHist = OD_ENV("OD_ACT_HIST") != nullptr;
                 if (offHist && mod >= 0 && mod < MOD_COUNT)
                     for (int a = 0; a < MAX_MODULE_ACTIONS && a < (int)valid.size(); ++a)
                         if (valid[a] && actHistCountsCid(cid)) s_offHist[mod][a]++;
@@ -3845,7 +3888,7 @@ void AISystem::takeTurn(int cid) {
                 // Journal 313 found zero naval decisions reaching the policy on
                 // the Norway seat while ECON on the same run was 99% policy;
                 // each condition implies a different explanation. Journal 315.
-                static const bool whyOn = std::getenv("OD_ACT_HIST") != nullptr;
+                static const bool whyOn = OD_ENV("OD_ACT_HIST") != nullptr;
                 if (whyOn) {
                     // ORDER IS CAUSAL, not the order of the && chain below.
                     // A scripted or in-book decision routes to scriptedChoice,
@@ -3871,7 +3914,7 @@ void AISystem::takeTurn(int cid) {
                 // measured NAVY a0 at 19,861 plays with pi(a) = 2.57e-07: the
                 // book playing, not the policy. Journal 306 built a dead-action
                 // list from the wrong column and had to be corrected.
-                static const bool netHistOn = std::getenv("OD_ACT_HIST") != nullptr;
+                static const bool netHistOn = OD_ENV("OD_ACT_HIST") != nullptr;
                 if (netHistOn && act >= 0 && act < MAX_MODULE_ACTIONS && actHistCountsCid(cid))
                     s_netPicked[mod][act]++;
                 for (size_t vi = 0; vi < valid.size() && vi < MAX_MODULE_ACTIONS; ++vi)
@@ -3889,7 +3932,7 @@ void AISystem::takeTurn(int cid) {
                         // marginals above decay for the guard's benefit; the
                         // question "can a bias reach this action" needs the
                         // run's mean, not a recent one. Journal 306.
-                        static const bool histOn = std::getenv("OD_ACT_HIST") != nullptr;
+                        static const bool histOn = OD_ENV("OD_ACT_HIST") != nullptr;
                         if (histOn && vi < nprob.size() && actHistCountsCid(cid)) {
                             s_probSum[mod][vi] += nprob[vi];
                             ++s_probN[mod][vi];
@@ -3918,16 +3961,16 @@ void AISystem::takeTurn(int cid) {
                 // alone would have counted correctly and printed nothing --
                 // the exact defect journal 300 fixed for the hash and journal
                 // 339 hit again. Caught here by reading the diff, not by a run.
-                static const bool regNS = (std::getenv("OD_NAVY_SPLIT")
+                static const bool regNS = (OD_ENV("OD_NAVY_SPLIT")
                                            ? (atexit(&AISystem::dumpNavySplit), true)
                                            : false);
                 (void)regNS;
-                static const bool regCP = (std::getenv("OD_CAMPAIGN_PROBE")
+                static const bool regCP = (OD_ENV("OD_CAMPAIGN_PROBE")
                                            ? (atexit(&AISystem::dumpCampaignProbe), true)
                                            : false);
                 (void)regCP;
                 // FNV-1a over (cid, module, action), in decision order.
-                if (std::getenv("OD_DECISION_HASH")) {
+                if (OD_ENV("OD_DECISION_HASH")) {
                     // Its own exit hook. The report used to live only in
                     // dumpActionHistogram, whose hook is registered under
                     // OD_ACT_HIST -- so OD_DECISION_HASH alone recorded a hash
@@ -3974,7 +4017,7 @@ void AISystem::takeTurn(int cid) {
             // dead has never been re-measured on the current game, and a head
             // that only ever returns two of twelve actions makes every rule
             // built on the others silently inert.
-            static const bool actHist = std::getenv("OD_ACT_HIST") != nullptr;
+            static const bool actHist = OD_ENV("OD_ACT_HIST") != nullptr;
             if (actHist && mod >= 0 && mod < MOD_COUNT &&
                 act >= 0 && act < MAX_MODULE_ACTIONS) {
                 static const bool reg = (atexit(&AISystem::dumpActionHistogram), true);
@@ -3989,7 +4032,7 @@ void AISystem::takeTurn(int cid) {
             }
             // OD_ECON_TRACE=<cid>: every module decision that country makes.
             {
-                static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+                static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
                 if (traceCid == cid)
                     fprintf(stderr, "[ACTION] turn %d cid=%d %s %d -> %s\n", m_turn, cid,
                             mod == MOD_ECONOMY ? "econ" : mod == MOD_POLITICS ? "politics" : mod == MOD_WAR ? "war" : "navy",
@@ -4041,7 +4084,7 @@ void AISystem::takeTurn(int cid) {
     // Defence runs before the sampled war action, unconditionally. See the
     // note on garrisonReflex: holding a threatened border is not a choice the
     // policy should be gambling on once every eight turns.
-    static const bool actHistOn = std::getenv("OD_ACT_HIST") != nullptr;
+    static const bool actHistOn = OD_ENV("OD_ACT_HIST") != nullptr;
     if (actHistOn) {
         const auto raIt = g.m_countryResearchAllocation.find(cid);
         if (raIt != g.m_countryResearchAllocation.end()) {
@@ -4112,7 +4155,7 @@ void AISystem::takeTurn(int cid) {
     // can then be diffed to find the FIRST country whose decision differs, and
     // whether its inputs differed too -- which separates "the observation was
     // already different" from "the same observation produced a different pick".
-    static const bool decTrace = std::getenv("OD_DEC_TRACE") != nullptr;
+    static const bool decTrace = OD_ENV("OD_DEC_TRACE") != nullptr;
     if (decTrace) {
         uint64_t fh = 1469598103934665603ULL;
         for (float v : exp.features) {
@@ -4124,7 +4167,7 @@ void AISystem::takeTurn(int cid) {
             uint32_t bits; memcpy(&bits, &v, 4);
             eh ^= bits; eh *= 1099511628211ULL;
         }
-        if (std::getenv("OD_FEAT_DUMP") && m_turn <= 3) {
+        if (OD_ENV("OD_FEAT_DUMP") && m_turn <= 3) {
             printf("[FEAT] t=%d cid=%d", m_turn, cid);
             for (size_t k = 0; k < exp.features.size(); ++k)
                 printf(" %zu:%.9g", k, exp.features[k]);
@@ -4214,7 +4257,7 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     // reported. Industry is offered on 2.1% of econ decisions and taken on half
     // of those -- so the question "why does the AI not industrialise" is a
     // question about this gate, not about the policy.
-    static const bool histOn = std::getenv("OD_ACT_HIST") != nullptr;
+    static const bool histOn = OD_ENV("OD_ACT_HIST") != nullptr;
     auto gate = [&](int i, bool possible, double price) {
         v[i] = possible && t >= price;
         if (possible && !v[i]) cash.econCashBlocked[i]++;
@@ -4227,7 +4270,7 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     int portPid = -1; float portCost = 0.0f;
     const bool portPossible = nextPortBuy(cid, portPid, portCost);
     {   // Journal 324: is the port cap still 1? See portCap().
-        static const bool pcOn = std::getenv("OD_ACT_HIST") != nullptr;
+        static const bool pcOn = OD_ENV("OD_ACT_HIST") != nullptr;
         if (pcOn) { const int pc = portCap(cid);
                     if (pc >= 0 && pc <= 3) ++s_portCapSeen[pc]; }
     }
@@ -4311,8 +4354,8 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     // a DIFFERENT model, not the one any bench here uses.) The bar is still
     // worth sweeping, because a head that wants up 97% of the time it is asked
     // gains room from a higher bar -- but it is not releasing a jammed ratchet.
-    static const float offerBar = std::getenv("OD_RESEARCH_BAR")
-                                ? (float)atof(std::getenv("OD_RESEARCH_BAR")) : 0.45f;
+    static const float offerBar = OD_ENV("OD_RESEARCH_BAR")
+                                ? (float)atof(OD_ENV("OD_RESEARCH_BAR")) : 0.45f;
     v[7] = alloc < offerBar;   // fund up
     v[8] = alloc > 0.01f;   // fund down
     auto actIt = g.m_countryResearchActive.find(cid);
@@ -4634,11 +4677,20 @@ int AISystem::chooseAttack(int cid, const std::vector<AttackCandidate>& cands,
     const size_t n = std::min(cands.size(), (size_t)ATTACK_MAX_CANDIDATES);
     std::vector<float> scores(n, 0.0f);
     std::vector<float> candFeat;
+    // Every candidate's input is `own` followed by that candidate's twelve
+    // features, so layer one's share of `own` is the same number sixteen times.
+    // Done once here. See NeuralNet::primePrefix -- the result is bit-identical,
+    // which the decision hash checks.
+    m_attack.primePrefix(own);
     for (size_t i = 0; i < n; ++i) {
         buildAttackFeatures(cid, cands[i], candFeat);
-        std::vector<float> in = own;
+        std::vector<float> in;
+        in.reserve(own.size() + candFeat.size());    // one allocation, not two
+        in.insert(in.end(), own.begin(), own.end());
         in.insert(in.end(), candFeat.begin(), candFeat.end());
-        const std::vector<float>& o = m_attack.forward(in);
+        // The full input is still kept for training; only the FORWARD pass
+        // skips the shared half.
+        const std::vector<float>& o = m_attack.forwardSuffix(candFeat);
         scores[i] = o.empty() || !std::isfinite(o[0]) ? 0.0f : o[0];
         m_pendingAttackCand.push_back(std::move(in));
     }
@@ -4761,19 +4813,19 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
     // Whether that contradiction costs anything is a measurement, not an
     // assumption, and the old one was taken in a different game.
     // OD_MAX_WARS overrides.
-    static const int maxWars = std::getenv("OD_MAX_WARS")
-                             ? atoi(std::getenv("OD_MAX_WARS")) : AI_MAX_CONCURRENT_WARS;
+    static const int maxWars = OD_ENV("OD_MAX_WARS")
+                             ? atoi(OD_ENV("OD_MAX_WARS")) : AI_MAX_CONCURRENT_WARS;
     // Same size gate as the campaign cap: the second chosen war belongs to
     // a country with the provinces to hold a second front. See
     // OD_BIG_PROVINCES in Game::openCampaign.
-    static const int bigProvW = std::getenv("OD_BIG_PROVINCES")
-                              ? atoi(std::getenv("OD_BIG_PROVINCES")) : 0;
+    static const int bigProvW = OD_ENV("OD_BIG_PROVINCES")
+                              ? atoi(OD_ENV("OD_BIG_PROVINCES")) : 0;
     const int effMaxWars = (bigProvW > 0 && (int)g.provincesOf(cid).size() < bigProvW)
                          ? 1 : std::max(1, maxWars);
     if (myWars >= effMaxWars) { wmNote(cid, 4); return false; }
     // A country coming apart at home does not go looking for more.
-    static const float wearyBlock = std::getenv("OD_WEARY_BLOCK")
-                                  ? (float)atof(std::getenv("OD_WEARY_BLOCK"))
+    static const float wearyBlock = OD_ENV("OD_WEARY_BLOCK")
+                                  ? (float)atof(OD_ENV("OD_WEARY_BLOCK"))
                                   : AI_WAR_WEARINESS_BLOCK;
     if (g.warWearinessOf(cid) >= wearyBlock) { wmNote(cid, 5); return false; }
 
@@ -4833,7 +4885,7 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         // French provinces; the learned chooser sees how many guarantors a
         // target has (out[6]), not their size.
         {
-            static const bool coalitionBar = std::getenv("OD_COALITION_BAR") && atoi(std::getenv("OD_COALITION_BAR")) != 0;
+            static const bool coalitionBar = OD_ENV("OD_COALITION_BAR") && atoi(OD_ENV("OD_COALITION_BAR")) != 0;
             if (coalitionBar) {
                 long long backers = 0;
                 for (const auto& [isoA, targets] : g.m_relations) {
@@ -4856,13 +4908,13 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
             // PER RUNG (DifficultyProfile::useGuarantorBar): +61 on hard, +1
             // on normal, -39 on EASY, where the protector it fears does not
             // punish the war it declines. OD_GUARANTOR_BAR forces it.
-            const char* barEnv = std::getenv("OD_GUARANTOR_BAR");
+            const char* barEnv = OD_ENV("OD_GUARANTOR_BAR");
             const bool guarantorBar = barEnv ? atoi(barEnv) != 0 : difficulty().useGuarantorBar;
             // OD_GUARANTOR_CLAIMED=1 applies the bar to CLAIMED wars too
             // (reconquest is otherwise exempt); OD_GUARANTOR_BY=army compares
             // armies instead of provinces.
-            static const bool guarClaimed = std::getenv("OD_GUARANTOR_CLAIMED") && atoi(std::getenv("OD_GUARANTOR_CLAIMED")) != 0;
-            static const bool guarByArmy = std::getenv("OD_GUARANTOR_BY") && std::string(std::getenv("OD_GUARANTOR_BY")) == "army";
+            static const bool guarClaimed = OD_ENV("OD_GUARANTOR_CLAIMED") && atoi(OD_ENV("OD_GUARANTOR_CLAIMED")) != 0;
+            static const bool guarByArmy = OD_ENV("OD_GUARANTOR_BY") && std::string(OD_ENV("OD_GUARANTOR_BY")) == "army";
             if (guarantorBar && (guarClaimed || !claimTargets.count(fr.enemyCid))) {
                 bool bigGuarantor = false;
                 for (const auto& [isoA, targets] : g.m_relations) {
@@ -4944,8 +4996,8 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         // OD_WAR_BAR_RESEARCH on change any war decision, and in which
         // direction" for the price of one seat instead of a 24-run bench arm
         // that -- see backlog 26 -- could not resolve the answer anyway.
-        static const bool barProbe = std::getenv("OD_WAR_BAR_PROBE") &&
-                                     atoi(std::getenv("OD_WAR_BAR_PROBE")) != 0;
+        static const bool barProbe = OD_ENV("OD_WAR_BAR_PROBE") &&
+                                     atoi(OD_ENV("OD_WAR_BAR_PROBE")) != 0;
         if (barProbe) {
             static const bool reg = (atexit(&AISystem::dumpWarBarProbe), true);
             (void)reg;
@@ -4972,8 +5024,8 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
             s_warBarAtkRes += g.getResearchEffect("armyAtkPct", cid);
             s_warBarDefRes += g.getResearchEffect("armyDefPct", fr.enemyCid);
         }
-        static const bool barResearch = std::getenv("OD_WAR_BAR_RESEARCH") &&
-                                        atoi(std::getenv("OD_WAR_BAR_RESEARCH")) != 0;
+        static const bool barResearch = OD_ENV("OD_WAR_BAR_RESEARCH") &&
+                                        atoi(OD_ENV("OD_WAR_BAR_RESEARCH")) != 0;
         double mySide = (double)side, theirSide = (double)ea;
         if (barResearch) {
             mySide    *= 1.0 + g.getTotalEffect("armyAtkPct", cid) / 100.0;
@@ -5146,8 +5198,8 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // is certain to refuse, so offering it is certainly waste. Where some
     // province could, the executor may still pick a different one.
     if (v[1]) {
-        static const bool tightRecruit = std::getenv("OD_RECRUIT_MASK") &&
-                                         atoi(std::getenv("OD_RECRUIT_MASK")) != 0;
+        static const bool tightRecruit = OD_ENV("OD_RECRUIT_MASK") &&
+                                         atoi(OD_ENV("OD_RECRUIT_MASK")) != 0;
         if (tightRecruit) {
             long long bestMp = 0;
             for (int p2 : g.provincesOf(cid))
@@ -5184,7 +5236,7 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // preOrdered; this is the same rule for the same reason.
     // OFF by default for the same reason as the bombard gate above: the
     // no-ops are real but removing them is measured worse. OD_REINFORCE_GATE=1.
-    static const bool reinforceGate = std::getenv("OD_REINFORCE_GATE") && atoi(std::getenv("OD_REINFORCE_GATE")) != 0;
+    static const bool reinforceGate = OD_ENV("OD_REINFORCE_GATE") && atoi(OD_ENV("OD_REINFORCE_GATE")) != 0;
     std::unordered_set<int> preOrderedSrc;
     if (reinforceGate)
         for (const auto& mo : g.m_pendingMoveOrders)
@@ -5342,7 +5394,7 @@ void AISystem::validNavy(int cid, std::vector<bool>& v) {
     // head's favourite safe action and the freed probability goes to the
     // next safe one, which is worse. A wasted action is not free, but it is
     // cheaper than the action that replaces it. OD_BOMBARD_GATE=1 to test.
-    static const bool bombardGate = std::getenv("OD_BOMBARD_GATE") && atoi(std::getenv("OD_BOMBARD_GATE")) != 0;
+    static const bool bombardGate = OD_ENV("OD_BOMBARD_GATE") && atoi(OD_ENV("OD_BOMBARD_GATE")) != 0;
     v[2] = st.destroyers + st.carriers > 0 && (!bombardGate || bombardAvailable(cid));
     // Embarking must have somewhere to go. Without this the AI loaded half the
     // garrison of its best port onto boats every time the action came up, with
@@ -5492,8 +5544,8 @@ std::string AISystem::execEconomy(int cid, int action) {
             // campaign's horizon is twelve turns and industry's is a hundred.
             // A commitment may steer decisions that pay back inside its own
             // deadline, and no others.
-            static const bool warEcon = std::getenv("OD_CAMPAIGN_ECON") &&
-                                        atoi(std::getenv("OD_CAMPAIGN_ECON")) != 0;
+            static const bool warEcon = OD_ENV("OD_CAMPAIGN_ECON") &&
+                                        atoi(OD_ENV("OD_CAMPAIGN_ECON")) != 0;
             if (warEcon)
                 if (const Game::Campaign* camp = g.campaignOf(cid)) {
                     int lv = 0; float c2 = 0.0f;
@@ -5651,15 +5703,15 @@ std::string AISystem::execEconomy(int cid, int action) {
                 // forced the same cut on a cash threshold failed the same way
                 // (N24 325 -> 181). The lever is "fund a specific expense",
                 // not "spend less on research while busy".
-                static const bool campLabs = std::getenv("OD_CAMPAIGN_LABS") &&
-                                             atoi(std::getenv("OD_CAMPAIGN_LABS")) != 0;
+                static const bool campLabs = OD_ENV("OD_CAMPAIGN_LABS") &&
+                                             atoi(OD_ENV("OD_CAMPAIGN_LABS")) != 0;
                 if (campLabs && g.campaignOf(cid))
                     return didNothing("research: the campaign first");
             }
             {
                 // Same knob as siegeReflex, same sense: default OFF is what
                 // ships, OD_SIEGE_RESEARCH=1 restores the old behaviour.
-                static const bool cutResearch = std::getenv("OD_SIEGE_RESEARCH") && atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
+                static const bool cutResearch = OD_ENV("OD_SIEGE_RESEARCH") && atoi(OD_ENV("OD_SIEGE_RESEARCH")) != 0;
                 // Gated on the EARMARK (a fort is owed), not on the siege alone:
                 // refusing fund-up whenever besieged measured 67.9 world
                 // survival against 69.8 for this form on the peer's aggregate
@@ -5674,8 +5726,8 @@ std::string AISystem::execEconomy(int cid, int action) {
             // ratchets removed the mean allocation settles at 0.4339, which is
             // 87% of it. Whether 0.5 is the right ceiling has never been
             // asked -- OD_RESEARCH_CAP asks it.
-            static const float cap = std::getenv("OD_RESEARCH_CAP")
-                                   ? (float)atof(std::getenv("OD_RESEARCH_CAP")) : 0.5f;
+            static const float cap = OD_ENV("OD_RESEARCH_CAP")
+                                   ? (float)atof(OD_ENV("OD_RESEARCH_CAP")) : 0.5f;
             alloc = std::min(cap, alloc + 0.05f);
             return TextFormat("research funding up to %.0f%%", alloc * 100);
         }
@@ -5713,7 +5765,7 @@ std::string AISystem::execEconomy(int cid, int action) {
             // province reaches level III, and nextIndustryBuy then returns
             // false on 91.7% of checks -- industry is not refused, it is
             // impossible. Building research is what raises the ceiling.
-            static const char* forcedBranch = std::getenv("OD_FOCUS_BRANCH");
+            static const char* forcedBranch = OD_ENV("OD_FOCUS_BRANCH");
             if (forcedBranch && *forcedBranch) want = forcedBranch;
             // Cheapest available node in the focused branch; if the branch is
             // exhausted, cheapest available anywhere (population/misc land here).
@@ -5783,8 +5835,8 @@ std::string AISystem::execEconomy(int cid, int action) {
                 // frozen model (265->220, 238->189, 202->198, 212->200)
                 // because they were fitted where this action meant "cheapest
                 // node". Ship it WITH a retrain; see journal 66.
-                static const bool focusFix = std::getenv("OD_RESEARCH_FOCUS") &&
-                                             atoi(std::getenv("OD_RESEARCH_FOCUS")) != 0;
+                static const bool focusFix = OD_ENV("OD_RESEARCH_FOCUS") &&
+                                             atoi(OD_ENV("OD_RESEARCH_FOCUS")) != 0;
                 const bool wanted = focusFix
                     ? (n.category == want || n.subcategory == want ||
                        (strcmp(want, "army") == 0 && n.category == "formations"))
@@ -5808,7 +5860,7 @@ std::string AISystem::execEconomy(int cid, int action) {
             // fires when the focused branch is exhausted. Whether that ever
             // happens is a question about a 400-turn game, not about the code,
             // so it is counted rather than argued.
-            if (std::getenv("OD_ACT_HIST")) {
+            if (OD_ENV("OD_ACT_HIST")) {
                 s_researchPickBy[g.m_researchNodes[pick].category]++;
                 static const bool reg = (atexit(&AISystem::dumpResearchPicks), true);
                 (void)reg;
@@ -5861,8 +5913,8 @@ std::string AISystem::execPolitics(int cid, int action) {
             // and -85; raising it cost -54. It refuses to RE-raise for N turns
             // after insolvency zeroed it -- a rule that binds only on a country
             // which has just proved it could not afford what it was buying.
-            static const int coolTurns = std::getenv("OD_PAC_COOLDOWN")
-                                       ? atoi(std::getenv("OD_PAC_COOLDOWN")) : 0;
+            static const int coolTurns = OD_ENV("OD_PAC_COOLDOWN")
+                                       ? atoi(OD_ENV("OD_PAC_COOLDOWN")) : 0;
             if (coolTurns > 0) {
                 auto zit = m_pacZeroedTurn.find(cid);
                 if (zit != m_pacZeroedTurn.end() && (m_turn - zit->second) < coolTurns) {
@@ -6035,7 +6087,7 @@ std::string AISystem::execPolitics(int cid, int action) {
             // points (journal 296) -- so leave the default where the mechanism
             // argument puts it, and do not re-derive it from the old number.
             // OD_CALM_GATE=1 to measure it again.
-            static const bool calmGate = std::getenv("OD_CALM_GATE") && atoi(std::getenv("OD_CALM_GATE")) != 0;
+            static const bool calmGate = OD_ENV("OD_CALM_GATE") && atoi(OD_ENV("OD_CALM_GATE")) != 0;
             const float calmHeadroom = !calmGate ? 1e9f : losingGround(cid) ? 0.0f
                                      : std::max(0.0f, inc.total - inc.expenses);
             for (auto& p : g.m_allPolicies) {
@@ -6388,8 +6440,8 @@ std::string AISystem::execWar(int cid, int action) {
         // So it is not how OFTEN the correction fires, it is WHICH decision
         // it governs. Where reinforcements go is a question about threat;
         // where new men are raised apparently is not, at least not only.
-        static const bool threatPower = std::getenv("OD_THREAT_POWER_RECRUIT") &&
-                                        atoi(std::getenv("OD_THREAT_POWER_RECRUIT")) != 0;
+        static const bool threatPower = OD_ENV("OD_THREAT_POWER_RECRUIT") &&
+                                        atoi(OD_ENV("OD_THREAT_POWER_RECRUIT")) != 0;
         float s;
         if (threatPower) {
             const auto ind = g.m_provinceIndustry.find(pid);
@@ -6448,8 +6500,8 @@ std::string AISystem::execWar(int cid, int action) {
     // those; and the threat rule then wants a different province on 96.9% /
     // 72.8%. So the gate moves 2-3% of decisions at each site -- the largest
     // reach of the three gates this loop has measured.
-    static const bool homeFirst = std::getenv("OD_CAMPAIGN_HOMEFIRST") &&
-                                  atoi(std::getenv("OD_CAMPAIGN_HOMEFIRST")) != 0;
+    static const bool homeFirst = OD_ENV("OD_CAMPAIGN_HOMEFIRST") &&
+                                  atoi(OD_ENV("OD_CAMPAIGN_HOMEFIRST")) != 0;
     const bool campYields = homeFirst && (st.provincesLost > 0 || st.worstDeficit > 0);
     switch (action) {
         case 1: { // recruit in the most threatened frontier province (or richest)
@@ -6528,8 +6580,8 @@ std::string AISystem::execWar(int cid, int action) {
                 // figures above carry no seat, model or seed, so this is a
                 // configuration difference that cannot be resolved rather than
                 // a refutation. Neither is on by default.
-                static const bool pickByManpower = std::getenv("OD_RECRUIT_PICK") &&
-                                                   atoi(std::getenv("OD_RECRUIT_PICK")) != 0;
+                static const bool pickByManpower = OD_ENV("OD_RECRUIT_PICK") &&
+                                                   atoi(OD_ENV("OD_RECRUIT_PICK")) != 0;
                 long long bp = -1;
                 for (int p2 : g.provincesOf(cid)) {
                     long long key = pickByManpower
@@ -6558,8 +6610,8 @@ std::string AISystem::execWar(int cid, int action) {
             // raising the MANPOWER ceiling is a null because nobody reaches it.
             // Journal 438 sweeps it. Default 0.20 keeps every stored measurement
             // describing the code.
-            static const double kRecruitShare = std::getenv("OD_RECRUIT_SHARE")
-                                              ? atof(std::getenv("OD_RECRUIT_SHARE")) : 0.20;
+            static const double kRecruitShare = OD_ENV("OD_RECRUIT_SHARE")
+                                              ? atof(OD_ENV("OD_RECRUIT_SHARE")) : 0.20;
             long long budgetCount = (long long)std::min((double)INT32_MAX,
                                                         c.treasury * kRecruitShare * 10000.0);
             int count = (int)std::min((long long)INT32_MAX,
@@ -6590,8 +6642,8 @@ std::string AISystem::execWar(int cid, int action) {
             // through recruitPrice rather than re-deriving its formula (memory
             // expose-the-resolvers-numbers). Inert without the goods economy:
             // recruitPrice returns munitions 0 and the branch never runs.
-            static const bool munClamp = !std::getenv("OD_RECRUIT_MUN_CLAMP") ||
-                                         atoi(std::getenv("OD_RECRUIT_MUN_CLAMP")) != 0;
+            static const bool munClamp = !OD_ENV("OD_RECRUIT_MUN_CLAMP") ||
+                                         atoi(OD_ENV("OD_RECRUIT_MUN_CLAMP")) != 0;
             if (munClamp && price.munitions > 0.0f) {
                 auto sit = g.m_countryStockpiles.find(cid);
                 const float have = (sit == g.m_countryStockpiles.end())
@@ -6785,8 +6837,8 @@ std::string AISystem::execWar(int cid, int action) {
             // measured rather than argued: OD_ATTACK_SAFETY (the odds the
             // prong is sized to clear) and OD_ATTACK_MAX_COMMIT (the share of
             // a garrison a province may ever send).
-            static const float ATTACK_SAFETY = std::getenv("OD_ATTACK_SAFETY") ? (float)atof(std::getenv("OD_ATTACK_SAFETY")) : 1.25f;
-            static const float ATTACK_MAX_COMMIT = std::getenv("OD_ATTACK_MAX_COMMIT") ? (float)atof(std::getenv("OD_ATTACK_MAX_COMMIT")) : 0.85f;
+            static const float ATTACK_SAFETY = OD_ENV("OD_ATTACK_SAFETY") ? (float)atof(OD_ENV("OD_ATTACK_SAFETY")) : 1.25f;
+            static const float ATTACK_MAX_COMMIT = OD_ENV("OD_ATTACK_MAX_COMMIT") ? (float)atof(OD_ENV("OD_ATTACK_MAX_COMMIT")) : 0.85f;
             constexpr int   PRONGS_PER_PROVINCE = 3;
             int issued = 0, blocked = 0;
             std::unordered_map<int, float> committed;   // fromPid -> fraction of original
@@ -6844,7 +6896,7 @@ std::string AISystem::execWar(int cid, int action) {
                 if (pct <= 0 || pct > 100) continue;
                 g.m_pendingMoveOrders.push_back({ch.fromPid, ch.toPid, pct, cid});
                 {
-                    static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+                    static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
                     if (traceCid == cid)
                         fprintf(stderr, "[ATTACK-ORDER] turn %d cid=%d from=%d to=%d pct=%d myG=%d defG=%d margin=%.2f\n",
                                 m_turn, cid, ch.fromPid, ch.toPid, pct, ch.myGarrison, ch.theirGarrison, ch.margin);
@@ -6975,8 +7027,8 @@ std::string AISystem::execWar(int cid, int action) {
             // ground is shelled first and everything else is the fallback.
             // MEASURED AND OFF: N24 265 -> 234, N37 238 -> 218. Shells were
             // already going where they were needed; see journal 66.
-            static const bool campGuns = std::getenv("OD_CAMPAIGN_GUNS") &&
-                                         atoi(std::getenv("OD_CAMPAIGN_GUNS")) != 0;
+            static const bool campGuns = OD_ENV("OD_CAMPAIGN_GUNS") &&
+                                         atoi(OD_ENV("OD_CAMPAIGN_GUNS")) != 0;
             const Game::Campaign* guncamp = campGuns ? g.campaignOf(cid) : nullptr;
             for (int pass = guncamp ? 0 : 1; pass < 2; ++pass)
             for (auto& fr : st.frontiers) {
@@ -7214,8 +7266,8 @@ bool AISystem::reinforceProvince(int cid, int dstPid, long long want) {
     // accident and takes the worst seat to ZERO on both models. Do not make
     // the quantity dynamic without solving source selection properly first --
     // they are one rule, and this pair is the evidence.
-    static const bool guard = std::getenv("OD_REINF_GUARD") &&
-                              atoi(std::getenv("OD_REINF_GUARD")) != 0;
+    static const bool guard = OD_ENV("OD_REINF_GUARD") &&
+                              atoi(OD_ENV("OD_REINF_GUARD")) != 0;
     auto atRisk = [&](int pid) -> bool {
         if (!guard) return false;
         auto wIt = m_warWith.find(cid);
@@ -7252,8 +7304,8 @@ bool AISystem::reinforceProvince(int cid, int dstPid, long long want) {
     // breaks: sorting equal garrisons by province id picked a different source
     // than the original's first-encountered, which changed play on a run that
     // was supposed to be inert. The decision hash caught it.
-    static const bool fallback = std::getenv("OD_REINF_FALLBACK") &&
-                                 atoi(std::getenv("OD_REINF_FALLBACK")) != 0;
+    static const bool fallback = OD_ENV("OD_REINF_FALLBACK") &&
+                                 atoi(OD_ENV("OD_REINF_FALLBACK")) != 0;
     int srcPid = -1; long long srcG = 0;
     if (!fallback) {
         for (int nid : nIt->second) {
@@ -7300,8 +7352,8 @@ bool AISystem::reinforceProvince(int cid, int dstPid, long long want) {
     // never less than the old 50 so that no call gets weaker than before.
     // want <= 0 keeps the flat behaviour, which is what the campaign and
     // ordinary reinforce paths pass -- they have no deficit to quote.
-    static const bool sized = std::getenv("OD_REINF_SIZED") &&
-                              atoi(std::getenv("OD_REINF_SIZED")) != 0;
+    static const bool sized = OD_ENV("OD_REINF_SIZED") &&
+                              atoi(OD_ENV("OD_REINF_SIZED")) != 0;
     long long send = 50;
     if (sized && want > 0)
         send = std::max(50LL, std::min<long long>(want, srcG / 2));
@@ -7372,8 +7424,8 @@ void AISystem::garrisonReflex(int cid) {
         // the two cannot drift. Depth and frontage are left out on purpose:
         // the attack scan omits them symmetrically by measurement (see
         // OD_WIDTH_MARGIN), and this rule should not disagree with that one.
-        static const bool threatPower = std::getenv("OD_THREAT_POWER") &&
-                                        atoi(std::getenv("OD_THREAT_POWER")) != 0;
+        static const bool threatPower = OD_ENV("OD_THREAT_POWER") &&
+                                        atoi(OD_ENV("OD_THREAT_POWER")) != 0;
         long long deficit;
         if (threatPower) {
             const auto ind = g.m_provinceIndustry.find(fr.pid);
@@ -7574,7 +7626,7 @@ static int lossFreezeTurns() {
     // and the two calm-headroom terms -- therefore NEVER EXECUTE. They are
     // written as safety checks and they are disabled features; journal 426
     // found that out by trying to narrow a rule with one of them.
-    static const int v = std::getenv("OD_LOSS_FREEZE") ? atoi(std::getenv("OD_LOSS_FREEZE"))
+    static const int v = OD_ENV("OD_LOSS_FREEZE") ? atoi(OD_ENV("OD_LOSS_FREEZE"))
                                                        : 0;
     return v;
 }
@@ -7589,13 +7641,13 @@ static int lossFreezeTurns() {
 // country and ruinous for a growing one. This keeps the solvency floor and
 // spares the growth engine.
 static bool austerityResearchLast() {
-    static const bool v = !std::getenv("OD_AUSTERITY_RESEARCH_LAST") ||
-                          atoi(std::getenv("OD_AUSTERITY_RESEARCH_LAST")) != 0;
+    static const bool v = !OD_ENV("OD_AUSTERITY_RESEARCH_LAST") ||
+                          atoi(OD_ENV("OD_AUSTERITY_RESEARCH_LAST")) != 0;
     return v;
 }
 
 static int crashCuts() {
-    static const int v = std::getenv("OD_CRASH_CUTS") ? atoi(std::getenv("OD_CRASH_CUTS"))
+    static const int v = OD_ENV("OD_CRASH_CUTS") ? atoi(OD_ENV("OD_CRASH_CUTS"))
                                                       : 1;   // one cut a turn: 6 measured 181 vs 209 -- the deep cascade destroys more than it saves
     return v;
 }
@@ -7831,7 +7883,7 @@ void AISystem::austerityReflex(int cid) {
 // some outnumbered garrison, and the reflex then starves its economy);
 // Norway's 574k against a 210k army is what the reflex is for.
 bool AISystem::besieged(const CountryStat& st) const {
-    static const float share = std::getenv("OD_SIEGE_SHARE") ? (float)atof(std::getenv("OD_SIEGE_SHARE")) : 0.25f;
+    static const float share = OD_ENV("OD_SIEGE_SHARE") ? (float)atof(OD_ENV("OD_SIEGE_SHARE")) : 0.25f;
     if (st.worstDeficit <= 0 || st.worstThreatPid < 0) return false;
     return (double)st.worstDeficit >= share * (double)std::max(1LL, st.army);
 }
@@ -7875,7 +7927,7 @@ void AISystem::callToArmsReflex(int cid) {
     // drag countries into wars whose weariness they carry home. Whether a
     // world where alliances really pull people in is the game that is
     // wanted is the user's decision, not a default. OD_CALL_REFLEX=1.
-    static const bool on = std::getenv("OD_CALL_REFLEX") && atoi(std::getenv("OD_CALL_REFLEX")) != 0;
+    static const bool on = OD_ENV("OD_CALL_REFLEX") && atoi(OD_ENV("OD_CALL_REFLEX")) != 0;
     if (!on) return;
     Game& g = *m_g;
     const auto sIt = m_stats.find(cid);
@@ -7886,7 +7938,7 @@ void AISystem::callToArmsReflex(int cid) {
     if (!losing) return;
     const std::vector<std::string> friends = g.callableFriends(cid);
     if (friends.empty()) return;
-    static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+    static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
     // WHO TO ASK. Only one call a turn, so the choice is the whole decision.
     // Strength alone (OD_CALL_PICK=army) asks the biggest friend every turn
     // until the cooldown bites, and the peer measured the answer rate halving
@@ -7894,7 +7946,7 @@ void AISystem::callToArmsReflex(int cid) {
     // weighs the army the call would bring by the chance it is answered --
     // predictAcceptance runs the diplomacy net on THEIR features, which is
     // the same estimate the pact head already trusts.
-    static const bool byArmyOnly = std::getenv("OD_CALL_PICK") && std::string(std::getenv("OD_CALL_PICK")) == "army";
+    static const bool byArmyOnly = OD_ENV("OD_CALL_PICK") && std::string(OD_ENV("OD_CALL_PICK")) == "army";
     const std::string* best = nullptr; double bestScore = -1; long long bestArmy = 0;
     const std::string* byArmyBest = nullptr; long long byArmyBestArmy = -1;
     for (const std::string& iso : friends) {
@@ -7960,11 +8012,11 @@ void AISystem::withdrawReflex(int cid) {
     // too, so "losing this round" is not "losing this battle", and pulling
     // out forfeits fights that persistence wins. See journal 46; a better
     // rule would compare the TREND in lastDefPower across rounds.
-    static const bool on = std::getenv("OD_WITHDRAW_REFLEX") && atoi(std::getenv("OD_WITHDRAW_REFLEX")) != 0;
+    static const bool on = OD_ENV("OD_WITHDRAW_REFLEX") && atoi(OD_ENV("OD_WITHDRAW_REFLEX")) != 0;
     if (!on) return;
-    static const int minRounds = std::getenv("OD_WITHDRAW_ROUNDS") ? atoi(std::getenv("OD_WITHDRAW_ROUNDS")) : 2;
+    static const int minRounds = OD_ENV("OD_WITHDRAW_ROUNDS") ? atoi(OD_ENV("OD_WITHDRAW_ROUNDS")) : 2;
     Game& g = *m_g;
-    static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+    static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
     for (const Battle& b : g.m_battles) {
         if (b.attackerCid != cid) continue;
         if (b.fromProvince < 0) continue;                 // a landing cannot fall back
@@ -7984,7 +8036,7 @@ void AISystem::withdrawReflex(int cid) {
         //      totalAtkLosses over every round, which counts what the fight
         //      has cost them however many times they reinforce (a RISING
         //      lastDefPower may be the enemy feeding a fight it is losing).
-        static const double grind = std::getenv("OD_WITHDRAW_GRIND") ? atof(std::getenv("OD_WITHDRAW_GRIND")) : 0.9;
+        static const double grind = OD_ENV("OD_WITHDRAW_GRIND") ? atof(OD_ENV("OD_WITHDRAW_GRIND")) : 0.9;
         const bool grindWorking = b.openingDefPower > 0.0 &&
                                   b.lastDefPower < b.openingDefPower * grind;
         const bool exchangeOurs = b.totalDefLosses >= b.totalAtkLosses;
@@ -8035,7 +8087,7 @@ void AISystem::withdrawReflex(int cid) {
 // the expensive kinds cost money, munitions AND four times the people
 // (the manpower multiplier is on the population draw, not in the price).
 TroopType AISystem::chooseTroopType(int cid) const {
-    static const bool on = std::getenv("OD_TROOP_KINDS") && atoi(std::getenv("OD_TROOP_KINDS")) != 0;
+    static const bool on = OD_ENV("OD_TROOP_KINDS") && atoi(OD_ENV("OD_TROOP_KINDS")) != 0;
     if (!on) return TROOP_LINE;
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -8156,7 +8208,7 @@ void AISystem::peaceReflex(int cid) {
     // AI was not fighting five wars badly, it was holding five fronts and
     // three of them were feeding it. Concentration is a maxim from a game
     // where wars cost upkeep and peace is free. OD_PEACE_REFLEX=1.
-    static const bool on = std::getenv("OD_PEACE_REFLEX") && atoi(std::getenv("OD_PEACE_REFLEX")) != 0;
+    static const bool on = OD_ENV("OD_PEACE_REFLEX") && atoi(OD_ENV("OD_PEACE_REFLEX")) != 0;
     if (!on) return;
     Game& g = *m_g;
     const Game::Campaign* camp = g.campaignOf(cid);
@@ -8182,11 +8234,11 @@ void AISystem::peaceReflex(int cid) {
         // point where a ceasefire buys anything. The value of ending side wars
         // is PREVENTIVE. So condition on over-extension -- how many wars are
         // open -- rather than on how badly they are going.
-        static const int peaceWars = std::getenv("OD_PEACE_WARS")
-                                   ? atoi(std::getenv("OD_PEACE_WARS")) : 0;
+        static const int peaceWars = OD_ENV("OD_PEACE_WARS")
+                                   ? atoi(OD_ENV("OD_PEACE_WARS")) : 0;
         if (peaceWars > 0 && foreignWarCount(cid) < peaceWars) return;
-        static const double peaceBar = std::getenv("OD_PEACE_BAR")
-                                     ? atof(std::getenv("OD_PEACE_BAR")) : 0.0;
+        static const double peaceBar = OD_ENV("OD_PEACE_BAR")
+                                     ? atof(OD_ENV("OD_PEACE_BAR")) : 0.0;
         if (peaceBar > 0.0) {
             const long long ours = m_stats.count(cid) ? m_stats[cid].army : 0;
             long long theirs = 0;
@@ -8198,7 +8250,7 @@ void AISystem::peaceReflex(int cid) {
             if ((double)theirs < peaceBar * (double)std::max(1LL, ours)) return;
         }
     }
-    static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+    static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
     // The weakest enemy first: a small war is the cheapest one to be rid of,
     // and being rid of it frees the most army per offer made.
     int target = -1; long long best = -1;
@@ -8235,7 +8287,7 @@ void AISystem::campaignReflex(int cid) {
     // credit horizon, same weights -- one decision simply now owns twelve
     // turns, so the credit window covers a whole decision instead of a
     // twelfth of one. OD_CAMPAIGNS=0 turns it off.
-    static const bool on = !std::getenv("OD_CAMPAIGNS") || atoi(std::getenv("OD_CAMPAIGNS")) != 0;
+    static const bool on = !OD_ENV("OD_CAMPAIGNS") || atoi(OD_ENV("OD_CAMPAIGNS")) != 0;
     if (!on) return;
     Game& g = *m_g;
     const auto sIt = m_stats.find(cid);
@@ -8258,7 +8310,7 @@ void AISystem::campaignReflex(int cid) {
     // floor 110 -> 23). A commitment that can be abandoned when things get
     // difficult is not a commitment, and the floor was the whole gain.
     // OD_CAMPAIGN_RECALL=1 to measure again.
-    static const bool recall = std::getenv("OD_CAMPAIGN_RECALL") && atoi(std::getenv("OD_CAMPAIGN_RECALL")) != 0;
+    static const bool recall = OD_ENV("OD_CAMPAIGN_RECALL") && atoi(OD_ENV("OD_CAMPAIGN_RECALL")) != 0;
     const bool homeThreatened = st.provincesLost > 0 || st.worstDeficit > 0;
     if (recall && homeThreatened) {
         if (const Game::Campaign* open = g.campaignOf(cid)) {
@@ -8342,8 +8394,8 @@ void AISystem::campaignReflex(int cid) {
         // What it DOES do, measured: candidates 5,683 -> 24,700 and scored
         // 36.6% -> 94.6%, because the early return below is what discards 59.5%
         // of all campaign candidates (journal 441). Real, large, and not money.
-        static const bool defensive = std::getenv("OD_CAMPAIGN_DEFENSIVE") &&
-                                      atoi(std::getenv("OD_CAMPAIGN_DEFENSIVE")) != 0;
+        static const bool defensive = OD_ENV("OD_CAMPAIGN_DEFENSIVE") &&
+                                      atoi(OD_ENV("OD_CAMPAIGN_DEFENSIVE")) != 0;
         if (homeThreatened && !defensive) return;
         if (homeThreatened) {
             bool isTheThreat = false;
@@ -8374,8 +8426,8 @@ void AISystem::campaignReflex(int cid) {
         // slot it "wastes" would otherwise go to a harder target the model
         // does worse against. DEFAULT 1 (off): the gate is kept only as
         // evidence. OD_CAMPAIGN_MIN_VICTIM=2 to measure it again.
-        static const int minVictim = std::getenv("OD_CAMPAIGN_MIN_VICTIM")
-                                   ? atoi(std::getenv("OD_CAMPAIGN_MIN_VICTIM")) : 1;
+        static const int minVictim = OD_ENV("OD_CAMPAIGN_MIN_VICTIM")
+                                   ? atoi(OD_ENV("OD_CAMPAIGN_MIN_VICTIM")) : 1;
         if (es->second.provinces < minVictim) { ++s_campRej[7]; continue; }
         // Worth: how much of them there is to take, and how good the ground
         // is. Feasibility: the margin the ordinary rule already computed.
@@ -8397,8 +8449,8 @@ void AISystem::campaignReflex(int cid) {
         // countries together. Kept because it is the only exact lookahead in
         // the codebase and the next attempt should start from it rather than
         // from a net. OD_CAMPAIGN_PROJECT=1 to measure again.
-        static const bool project = std::getenv("OD_CAMPAIGN_PROJECT") &&
-                                    atoi(std::getenv("OD_CAMPAIGN_PROJECT")) != 0;
+        static const bool project = OD_ENV("OD_CAMPAIGN_PROJECT") &&
+                                    atoi(OD_ENV("OD_CAMPAIGN_PROJECT")) != 0;
         if (project) {
             const Projection p = projectCampaign(cid, ch.enemyCid, ch.fromPid, ch.toPid,
                                                  (long long)(st.army * AI_CAMPAIGN_SHARE));
@@ -8436,17 +8488,17 @@ void AISystem::campaignReflex(int cid) {
     // when campaigns were written; it is the parameter most likely to be
     // wrong, and it is the one that decides whether a campaign is a
     // spearhead or the whole country. OD_CAMPAIGN_SHARE overrides it.
-    static const float share = std::getenv("OD_CAMPAIGN_SHARE")
-                             ? (float)atof(std::getenv("OD_CAMPAIGN_SHARE")) : AI_CAMPAIGN_SHARE;
+    static const float share = OD_ENV("OD_CAMPAIGN_SHARE")
+                             ? (float)atof(OD_ENV("OD_CAMPAIGN_SHARE")) : AI_CAMPAIGN_SHARE;
     c.committedMen = (long long)(st.army * share);
-    static const int deadline = std::getenv("OD_CAMPAIGN_DEADLINE")
-                              ? atoi(std::getenv("OD_CAMPAIGN_DEADLINE")) : AI_CAMPAIGN_DEADLINE;
+    static const int deadline = OD_ENV("OD_CAMPAIGN_DEADLINE")
+                              ? atoi(OD_ENV("OD_CAMPAIGN_DEADLINE")) : AI_CAMPAIGN_DEADLINE;
     c.deadlineTurns = deadline;
     g.openCampaign(c);
 }
 
 void AISystem::pacificationReflex(int cid) {
-    static const bool on = std::getenv("OD_PACIFY_REFLEX") && atoi(std::getenv("OD_PACIFY_REFLEX")) != 0;
+    static const bool on = OD_ENV("OD_PACIFY_REFLEX") && atoi(OD_ENV("OD_PACIFY_REFLEX")) != 0;
     if (!on) return;
     Game& g = *m_g;
     if (g.m_countries.getCountry(cid) == nullptr) return;
@@ -8454,7 +8506,7 @@ void AISystem::pacificationReflex(int cid) {
     for (int pid : g.provincesOf(cid))
         worst = std::max(worst, g.getProvinceRebellionChance(pid, cid));
     float& pac = g.m_countryPacification[cid];
-    static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+    static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
     if (worst > 0.0f) {
         // The chance already has today's suppression taken off; add what is
         // still showing, capped at a quarter of the slider per turn.
@@ -8473,7 +8525,7 @@ bool AISystem::underSiege(int cid) const {
     // PER RUNG (DifficultyProfile::useSiegeReflex): +35 hard, +8 easy, -32 on
     // NORMAL, where it trades research for forts against a threat that is not
     // real. OD_SIEGE_REFLEX forces it either way for measurement.
-    const char* siegeEnv1 = std::getenv("OD_SIEGE_REFLEX");
+    const char* siegeEnv1 = OD_ENV("OD_SIEGE_REFLEX");
     const bool on = siegeEnv1 ? atoi(siegeEnv1) != 0 : difficulty().useSiegeReflex;
     if (!on) return false;
     const auto sIt = m_stats.find(cid);
@@ -8484,9 +8536,9 @@ float AISystem::siegeEarmark(int cid) const {
     // PER RUNG (DifficultyProfile::useSiegeReflex): +35 hard, +8 easy, -32 on
     // NORMAL, where it trades research for forts against a threat that is not
     // real. OD_SIEGE_REFLEX forces it either way for measurement.
-    const char* siegeEnv2 = std::getenv("OD_SIEGE_REFLEX");
+    const char* siegeEnv2 = OD_ENV("OD_SIEGE_REFLEX");
     const bool on = siegeEnv2 ? atoi(siegeEnv2) != 0 : difficulty().useSiegeReflex;
-    static const bool buyFort = !std::getenv("OD_SIEGE_FORT") || atoi(std::getenv("OD_SIEGE_FORT")) != 0;   // ON by default: +5 mean rating and +3.8 world survival for -35 on the China seat (journal 39h); OD_SIEGE_FORT=0 to drop it
+    static const bool buyFort = !OD_ENV("OD_SIEGE_FORT") || atoi(OD_ENV("OD_SIEGE_FORT")) != 0;   // ON by default: +5 mean rating and +3.8 world survival for -35 on the China seat (journal 39h); OD_SIEGE_FORT=0 to drop it
     if (!on || !buyFort) return 0.0f;
     const auto sIt = m_stats.find(cid);
     if (sIt == m_stats.end() || !besieged(sIt->second)) return 0.0f;
@@ -8504,7 +8556,7 @@ void AISystem::siegeReflex(int cid) {
     // PER RUNG (DifficultyProfile::useSiegeReflex): +35 hard, +8 easy, -32 on
     // NORMAL, where it trades research for forts against a threat that is not
     // real. OD_SIEGE_REFLEX forces it either way for measurement.
-    const char* siegeEnv3 = std::getenv("OD_SIEGE_REFLEX");
+    const char* siegeEnv3 = OD_ENV("OD_SIEGE_REFLEX");
     const bool on = siegeEnv3 ? atoi(siegeEnv3) != 0 : difficulty().useSiegeReflex;
     if (!on) return;
     Game& g = *m_g;
@@ -8512,7 +8564,7 @@ void AISystem::siegeReflex(int cid) {
     if (sIt == m_stats.end()) return;
     const CountryStat& st = sIt->second;
     if (!besieged(st)) return;
-    static const int traceCid = std::getenv("OD_ECON_TRACE") ? atoi(std::getenv("OD_ECON_TRACE")) : -1;
+    static const int traceCid = OD_ENV("OD_ECON_TRACE") ? atoi(OD_ENV("OD_ECON_TRACE")) : -1;
     // OD_SIEGE_RESEARCH=1 puts the research slider back INTO the reflex.
     //
     // The default is OFF, and off is what shipped: keeping the slider out of
@@ -8525,7 +8577,7 @@ void AISystem::siegeReflex(int cid) {
     // semantics, so =0 became a no-op that looks like a control. Anyone
     // following it would disable something already disabled, see no change,
     // and conclude the research half is free.
-    static const bool cutResearch = std::getenv("OD_SIEGE_RESEARCH") && atoi(std::getenv("OD_SIEGE_RESEARCH")) != 0;
+    static const bool cutResearch = OD_ENV("OD_SIEGE_RESEARCH") && atoi(OD_ENV("OD_SIEGE_RESEARCH")) != 0;
     auto raIt = g.m_countryResearchAllocation.find(cid);
     if (cutResearch && raIt != g.m_countryResearchAllocation.end() && raIt->second > 0.10f) {
         raIt->second = std::max(0.10f, raIt->second - 0.15f);
@@ -8534,7 +8586,7 @@ void AISystem::siegeReflex(int cid) {
                     m_turn, cid, raIt->second * 100.0f, st.worstDeficit, st.worstThreatPid);
     }
     // OD_SIEGE_FORT=0: no fort and no earmark (the research cut alone).
-    static const bool buyFort = !std::getenv("OD_SIEGE_FORT") || atoi(std::getenv("OD_SIEGE_FORT")) != 0;   // ON by default: +5 mean rating and +3.8 world survival for -35 on the China seat (journal 39h); OD_SIEGE_FORT=0 to drop it
+    static const bool buyFort = !OD_ENV("OD_SIEGE_FORT") || atoi(OD_ENV("OD_SIEGE_FORT")) != 0;   // ON by default: +5 mean rating and +3.8 world survival for -35 on the China seat (journal 39h); OD_SIEGE_FORT=0 to drop it
     if (!buyFort) return;
     const std::string what = execEconomy(cid, 2);
     if (traceCid == cid)
@@ -8811,7 +8863,7 @@ void AISystem::amphibiousReflex(int cid) {
             else               statsFor(cid).boatsSailing++;
             // OD_BOAT_TRACE=1: one line per loaded boat per turn, the
             // instrument for "1,273 parked boat-turns, 0 arrived, 0 stuck".
-            static const bool trace = std::getenv("OD_BOAT_TRACE") != nullptr;
+            static const bool trace = OD_ENV("OD_BOAT_TRACE") != nullptr;
             if (trace)
                 printf("[BOAT] t%d cid=%d ship=%zu crew=%d enemyPid=%d enemyD=%.2f range=%.2f order=%d sailingTo=%d homePid=%d\n",
                        m_turn, cid, i, s.crew, enemyPid, enemyD, LAND_RANGE, underOrders ? 1 : 0,
@@ -8826,7 +8878,7 @@ void AISystem::amphibiousReflex(int cid) {
         PendingShipMoveOrder ord;
         ord.shipIndex = (int)i;
         ord.destLon = enemyLon; ord.destLat = enemyLat;
-        if (std::getenv("OD_BOAT_TRACE"))
+        if (OD_ENV("OD_BOAT_TRACE"))
             printf("[BOAT] t%d cid=%d ship=%zu PUSH order -> prov %d at (%.2f,%.2f) from (%.2f,%.2f); orders now %zu\n",
                    m_turn, cid, i, enemyPid, enemyLon, enemyLat, s.lon, s.lat, g.m_pendingShipMoveOrders.size() + 1);
         ord.destProvince = enemyPid;
@@ -9051,8 +9103,8 @@ std::string AISystem::execNavy(int cid, int action) {
                 // [PROBE] journal 342: counted BEFORE the filters, because
                 // journal 341's 71,373 was the count AFTER them and item 78
                 // asks whether that was the right denominator.
-                static const bool landWhy = std::getenv("OD_LANDING_PROBE") &&
-                                            atoi(std::getenv("OD_LANDING_PROBE")) != 0;
+                static const bool landWhy = OD_ENV("OD_LANDING_PROBE") &&
+                                            atoi(OD_ENV("OD_LANDING_PROBE")) != 0;
                 if (landWhy && s.countryId == cid) {
                     ++s_landWhy[0];
                     // Journal 346 (item 81): split the crew-less hulls by
@@ -9084,8 +9136,8 @@ std::string AISystem::execNavy(int cid, int action) {
                 // than asserting it. It answers "how often is there more than
                 // one shore, and how much stronger is the one container order
                 // happens to yield" without a bench arm -- journal 341.
-                static const bool landProbe = std::getenv("OD_LANDING_PROBE") &&
-                                              atoi(std::getenv("OD_LANDING_PROBE")) != 0;
+                static const bool landProbe = OD_ENV("OD_LANDING_PROBE") &&
+                                              atoi(OD_ENV("OD_LANDING_PROBE")) != 0;
                 if (landProbe) {
                     static const bool reg = (atexit(&AISystem::dumpLandingProbe), true);
                     (void)reg;
@@ -9219,8 +9271,8 @@ std::string AISystem::execNavy(int cid, int action) {
                     // in, at 0.74-0.81 landings per embarkation. This action
                     // is a snapshot test from wherever a hull happens to be,
                     // and hulls are usually mid-crossing. Tune it last.
-                    static const bool pickWeakest = std::getenv("OD_LANDING_PICK") &&
-                                                    atoi(std::getenv("OD_LANDING_PICK")) != 0;
+                    static const bool pickWeakest = OD_ENV("OD_LANDING_PICK") &&
+                                                    atoi(OD_ENV("OD_LANDING_PICK")) != 0;
                     if (pickWeakest) { landCands.push_back(pid); continue; }
                     ++s_navySplit[3];   // [PROBE] head, container-order shore
                     g.m_pendingShipDisembarks.push_back({(int)i, pid});
@@ -10368,7 +10420,7 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
         //    costs nothing, we are not losing (rule A covers that), the war
         //    fills the slot, and we have been at war for at least <turns>.
         static const int stallTurns = [] {
-            const char* e = std::getenv("OD_CEASEFIRE_STALL");
+            const char* e = OD_ENV("OD_CEASEFIRE_STALL");
             return e ? atoi(e) : 0;
         }();
         if (stallTurns > 0 && cfState != 1 && cfNet >= 0.0f && !cfCedes &&
@@ -11447,7 +11499,7 @@ void AISystem::endTurn() {
                 const bool fleetUseful = exp.atWar || now.navalTargets > 0 ||
                                          now.navalWarTargets > 0;
                 {   // Journal 322: the ship term's sign depends on this rate.
-                    static const bool fuOn = std::getenv("OD_ACT_HIST") != nullptr;
+                    static const bool fuOn = OD_ENV("OD_ACT_HIST") != nullptr;
                     if (fuOn) ++s_fleetUseful[fleetUseful ? 0 : 1];
                 }
                 // THE FLEET, CHARGED TO WHOEVER MADE THE DECISION.
@@ -11683,7 +11735,7 @@ int AISystem::learningThreads() const {
 #endif
     // Explicit override, mainly so the parallel path can be A/B'd against the
     // serial one on the same binary and the same map.
-    if (const char* env = std::getenv("OD_AI_THREADS")) {
+    if (const char* env = OD_ENV("OD_AI_THREADS")) {
         const int n = std::atoi(env);
         if (n > 0) return std::min(n, 32);
     }
@@ -12796,28 +12848,28 @@ const float AISystem::STANCE_NAVY[STANCE_COUNT][NAVY_ACTIONS] = {
 };
 
 bool AISystem::s_readOnlyModel = false;
-bool AISystem::s_updTrace = std::getenv("OD_UPDATE_TRACE") != nullptr;
+bool AISystem::s_updTrace = OD_ENV("OD_UPDATE_TRACE") != nullptr;
 bool AISystem::s_scriptedControl = false;
 int AISystem::s_exploitVariant = -1;
 std::unordered_set<int> AISystem::s_exploitCids;
 // Cloning weight, read once. See BC_DEFAULT_WEIGHT.
-bool AISystem::s_bcObserve = std::getenv("OD_BC_OBSERVE") != nullptr;
+bool AISystem::s_bcObserve = OD_ENV("OD_BC_OBSERVE") != nullptr;
 // See the note at the diplo head's trunk backprop. 1.0 reproduces the old
 // behaviour exactly, so a build with this compiled in measures the same as one
 // without until OD_DIPLO_TRUNK_GRAD is set.
 float AISystem::s_diploTrunkGrad = [] {
-    const char* e = std::getenv("OD_DIPLO_TRUNK_GRAD");
+    const char* e = OD_ENV("OD_DIPLO_TRUNK_GRAD");
     return e ? (float)atof(e) : 1.0f;
 }();
 // See s_diploCeasefireTrunkGrad. Also 1.0 by default, so a build carrying both
 // knobs measures exactly the same as one carrying neither.
 float AISystem::s_diploCeasefireTrunkGrad = [] {
-    const char* e = std::getenv("OD_DIPLO_CEASEFIRE_TRUNK");
+    const char* e = OD_ENV("OD_DIPLO_CEASEFIRE_TRUNK");
     return e ? (float)atof(e) : 1.0f;
 }();
 // See Experience::ceasefireCredit. OD_CEASEFIRE_CREDIT=0 removes the term.
 float AISystem::s_ceasefireCredit = [] {
-    if (const char* s = std::getenv("OD_CEASEFIRE_CREDIT")) {
+    if (const char* s = OD_ENV("OD_CEASEFIRE_CREDIT")) {
         const float f = (float)atof(s);
         if (f >= 0.0f && f <= 4.0f) { printf("[AI] ceasefire credit x%.2f\n", f); return f; }
     }
@@ -12826,7 +12878,7 @@ float AISystem::s_ceasefireCredit = [] {
 
 // See s_diploPactWeight. 1.0 leaves diploReward exactly as written.
 float AISystem::s_diploPactWeight = [] {
-    const char* e = std::getenv("OD_DIPLO_PACT_WEIGHT");
+    const char* e = OD_ENV("OD_DIPLO_PACT_WEIGHT");
     return e ? (float)atof(e) : 1.0f;
 }();
 // See s_warStageBias. All zero leaves every action selection exactly as it was.
@@ -12843,7 +12895,7 @@ float AISystem::s_diploPactWeight = [] {
 //                                   sweep reproduces by name
 int AISystem::openingTurns() {
     static const int v = [] {
-        if (const char* e = std::getenv("OD_OPENING_TURNS")) {
+        if (const char* e = OD_ENV("OD_OPENING_TURNS")) {
             const int n = atoi(e);
             if (n >= 0 && n <= 200) return n;
         }
@@ -12855,7 +12907,7 @@ int AISystem::openingTurns() {
 float AISystem::entropyFor(int head) {
     static const std::vector<float> v = [] {
         std::vector<float> e((size_t)MOD_COUNT + 1, PPO_ENTROPY);
-        if (const char* s = std::getenv("OD_PPO_ENTROPY_HEADS")) {
+        if (const char* s = OD_ENV("OD_PPO_ENTROPY_HEADS")) {
             size_t i = 0;
             for (const char* p = s; *p && i <= (size_t)MOD_COUNT; ) {
                 const float f = (float)atof(p);
@@ -12885,23 +12937,23 @@ float AISystem::entropyFor(int head) {
 // bug for a comparison.
 // See the "nobody stronger is standing next to us" note. ON by default.
 bool AISystem::s_scriptLoomFix = [] {
-    const char* e = std::getenv("OD_SCRIPT_LOOM_FIX");
+    const char* e = OD_ENV("OD_SCRIPT_LOOM_FIX");
     return !(e && *e == '0');
 }();
 bool AISystem::s_scriptDeclareFix = [] {
-    const char* e = std::getenv("OD_SCRIPT_DECLARE_FIX");
+    const char* e = OD_ENV("OD_SCRIPT_DECLARE_FIX");
     return !(e && *e == '0');
 }();
 // See s_lossAversion. 1.0 leaves the land term exactly symmetric, as shipped.
 float AISystem::s_lossAversion = [] {
-    const char* e = std::getenv("OD_LOSS_AVERSION");
+    const char* e = OD_ENV("OD_LOSS_AVERSION");
     if (!e) return 1.0f;
     const float f = (float)atof(e);
     return (f >= 1.0f && f <= 10.0f) ? f : 1.0f;
 }();
 // See s_leagueExploitCap. Off = the league is past selves only, as shipped.
 float AISystem::s_leagueExploitCap = [] {
-    const char* e = std::getenv("OD_LEAGUE_EXPLOIT");
+    const char* e = OD_ENV("OD_LEAGUE_EXPLOIT");
     if (!e) return 0.0f;
     const float f = (float)atof(e);
     // A bare "1" means "on", not "always" -- the uncapped reading is what took
@@ -12911,13 +12963,13 @@ float AISystem::s_leagueExploitCap = [] {
 }();
 // See s_leagueFix. Off = the league draw behaves as in journals 366-368.
 bool AISystem::s_leagueFix = [] {
-    const char* e = std::getenv("OD_LEAGUE_FIX");
+    const char* e = OD_ENV("OD_LEAGUE_FIX");
     return e && atoi(e) != 0;
 }();
 float AISystem::s_warBias[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 float AISystem::s_navyBias[7] = {0, 0, 0, 0, 0, 0, 0};
 static const bool s_navyBiasParsed = [] {
-    if (const char* e = std::getenv("OD_NAVY_BIAS")) {
+    if (const char* e = OD_ENV("OD_NAVY_BIAS")) {
         int i = 0;
         for (const char* p = e; *p && i < 7; ) {
             AISystem::s_navyBias[i++] = (float)atof(p);
@@ -12933,7 +12985,7 @@ static const bool s_navyBiasParsed = [] {
 float& AISystem::s_warStageBias = AISystem::s_warBias[7];
 namespace {
 const bool g_warBiasInit = [] {
-    if (const char* e = std::getenv("OD_WAR_BIAS")) {
+    if (const char* e = OD_ENV("OD_WAR_BIAS")) {
         int i = 0;
         for (const char* p = e; *p && i < 8; ) {
             AISystem::s_warBias[i++] = (float)atof(p);
@@ -12941,14 +12993,14 @@ const bool g_warBiasInit = [] {
             if (*p == ',') ++p;
         }
     }
-    if (const char* e = std::getenv("OD_WAR_STAGE_BIAS"))
+    if (const char* e = OD_ENV("OD_WAR_STAGE_BIAS"))
         AISystem::s_warBias[7] = (float)atof(e);
     return true;
 }();
 }
 // Monte-Carlo value blend, read once. See VALUE_MC_WEIGHT.
 float AISystem::s_valueMcWeight = [] {
-    if (const char* e = std::getenv("OD_VALUE_MC")) {
+    if (const char* e = OD_ENV("OD_VALUE_MC")) {
         const float w = (float)std::atof(e);
         if (w > 0.0f && w <= 1.0f) {
             printf("[AI] value head blended toward the map outcome at %.2f\n", w);
@@ -12960,7 +13012,7 @@ float AISystem::s_valueMcWeight = [] {
 }();
 bool AISystem::bcCloneModule(int module) {
     static const unsigned mask = [] {
-        const char* e = std::getenv("OD_BC_MODULES");
+        const char* e = OD_ENV("OD_BC_MODULES");
         if (!e || !*e) return 0xFu;               // unset: every module, as shipped
         unsigned m = 0;
         std::string v(e);
@@ -12975,7 +13027,7 @@ bool AISystem::bcCloneModule(int module) {
 }
 
 float AISystem::s_bcWeight = [] {
-    if (const char* e = std::getenv("OD_BC_FROM_SCRIPT")) {
+    if (const char* e = OD_ENV("OD_BC_FROM_SCRIPT")) {
         const float w = (float)std::atof(e);
         if (w > 0.0f && w <= 5.0f) {
             printf("[AI] behavioural cloning from the scripted player at weight %.2f\n", w);
@@ -13950,14 +14002,18 @@ std::atomic<long long> AISystem::s_nationalisedFired{0};
 std::map<std::string, long long> AISystem::s_doctrineReflexBy;
 std::map<std::string, long long> AISystem::s_doctrineReflexByCountry;
 std::map<std::pair<int,int>, int> AISystem::s_warOpen;
+std::map<std::pair<int,int>, std::pair<int,int>> AISystem::s_warProvAtStart;
+std::vector<int> AISystem::s_warTransfers;
+long long AISystem::s_warStalemates = 0;
+long long AISystem::s_warEliminations = 0;
 std::atomic<long long> AISystem::s_pacCooldownRefused{0};
 std::atomic<long long> AISystem::s_recruitMunClamped{0};
 std::map<std::string, long long> AISystem::s_researchPickBy;
 // OD_MONUMENT_REFLEX=2 adds a per-event trace -- journal 435 needed to know
 // whether build and idle were touching the SAME province turn after turn.
 static bool monumentTrace() {
-    static const bool on = std::getenv("OD_MONUMENT_REFLEX") &&
-                           atoi(std::getenv("OD_MONUMENT_REFLEX")) >= 2;
+    static const bool on = OD_ENV("OD_MONUMENT_REFLEX") &&
+                           atoi(OD_ENV("OD_MONUMENT_REFLEX")) >= 2;
     return on;
 }
 std::atomic<long long> AISystem::s_monumentsBuilt{0};
@@ -14223,7 +14279,7 @@ void AISystem::dumpActionHistogram() {
         // score, so anything printed here is discarded. OD_ACT_HIST_FILE gets
         // the number out of a benched process, which is the only place these
         // rules fire often enough for the mean to mean anything.
-        if (const char* f = std::getenv("OD_ACT_HIST_FILE")) {
+        if (const char* f = OD_ENV("OD_ACT_HIST_FILE")) {
             if (FILE* fp = fopen(f, "a")) {
                 fprintf(fp, "%.4f %lld\n", s_researchSum / (double)s_researchN, s_researchN);
                 fclose(fp);
@@ -14364,11 +14420,11 @@ void AISystem::dumpActionHistogram() {
 // a turn for ever, and the reason the head was ever punished for buying them
 // was a country ordering several before the first bill arrived.
 void AISystem::navalReflex(int cid) {
-    static const bool on = std::getenv("OD_NAVAL_REFLEX") &&
-                           atoi(std::getenv("OD_NAVAL_REFLEX")) != 0;
+    static const bool on = OD_ENV("OD_NAVAL_REFLEX") &&
+                           atoi(OD_ENV("OD_NAVAL_REFLEX")) != 0;
     if (!on) return;
-    static const int cadence = std::getenv("OD_NAVAL_CADENCE")
-                             ? atoi(std::getenv("OD_NAVAL_CADENCE")) : 8;
+    static const int cadence = OD_ENV("OD_NAVAL_CADENCE")
+                             ? atoi(OD_ENV("OD_NAVAL_CADENCE")) : 8;
     int& last = m_lastNavalBuy[cid];
     if (last != 0 && m_turn - last < cadence) return;
     // A harbour first: it is what unlocks the hulls, returns no income, and so
@@ -14403,11 +14459,11 @@ void AISystem::navalReflex(int cid) {
 // bad at both, the hypothesis is wrong and the horizon was not the reason
 // investment rules keep failing here.
 void AISystem::industryReflex(int cid) {
-    static const bool on = std::getenv("OD_INDUSTRY_REFLEX") &&
-                           atoi(std::getenv("OD_INDUSTRY_REFLEX")) != 0;
+    static const bool on = OD_ENV("OD_INDUSTRY_REFLEX") &&
+                           atoi(OD_ENV("OD_INDUSTRY_REFLEX")) != 0;
     if (!on) return;
-    static const int cadence = std::getenv("OD_INDUSTRY_CADENCE")
-                             ? atoi(std::getenv("OD_INDUSTRY_CADENCE")) : 4;
+    static const int cadence = OD_ENV("OD_INDUSTRY_CADENCE")
+                             ? atoi(OD_ENV("OD_INDUSTRY_CADENCE")) : 4;
     int& last = m_lastIndustryBuy[cid];
     if (last != 0 && m_turn - last < cadence) return;
     int pid = -1, lvl = 0; float cost = 0.0f;
@@ -14568,8 +14624,8 @@ void AISystem::doctrineReflex(int cid) {
     // (pooled 14/64 -> 20/64 annihilated, Fisher p 0.317), and 1939:NOR:hood
     // read clean because the seat is below the median army and the rule can
     // never fire for it (journal 404), so it guards nothing here.
-    static const int mode = std::getenv("OD_DOCTRINE_REFLEX")
-                          ? atoi(std::getenv("OD_DOCTRINE_REFLEX")) : 3;
+    static const int mode = OD_ENV("OD_DOCTRINE_REFLEX")
+                          ? atoi(OD_ENV("OD_DOCTRINE_REFLEX")) : 3;
     if (mode <= 0) return;
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -14578,8 +14634,8 @@ void AISystem::doctrineReflex(int cid) {
     // spend it on, and this is the condition the journal registered.
     auto w = m_warWith.find(cid);
     if (w == m_warWith.end() || w->second.empty()) return;
-    static const double floorCash = std::getenv("OD_DOCTRINE_CASH")
-                                  ? atof(std::getenv("OD_DOCTRINE_CASH")) : 50.0;
+    static const double floorCash = OD_ENV("OD_DOCTRINE_CASH")
+                                  ? atof(OD_ENV("OD_DOCTRINE_CASH")) : 50.0;
     if (c->treasury < floorCash) return;
     // ── NARROWED (OD_DOCTRINE_REFLEX=2, journal 400) ──
     //
@@ -14684,8 +14740,8 @@ void AISystem::dumpDoctrineReflex() {
 // decision can see. Rebels are skipped, as they are in every other reflex here
 // -- a rebellion is not a war anybody declared.
 void AISystem::warLifeCensus() {
-    static const bool on = std::getenv("OD_WARLIFE") &&
-                           atoi(std::getenv("OD_WARLIFE")) != 0;
+    static const bool on = OD_ENV("OD_WARLIFE") &&
+                           atoi(OD_ENV("OD_WARLIFE")) != 0;
     if (!on) return;
     std::set<std::pair<int,int>> now;
     for (const auto& [cid, enemies] : m_warWith) {
@@ -14695,12 +14751,40 @@ void AISystem::warLifeCensus() {
             now.insert({std::min(cid, e), std::max(cid, e)});
         }
     }
+    auto provOf = [&](int cid) -> int {
+        auto s = m_stats.find(cid);
+        return s == m_stats.end() ? 0 : s->second.provinces;
+    };
     for (const auto& p : now)
-        if (!s_warOpen.count(p)) { s_warOpen[p] = m_turn; ++s_warsStarted; }
+        if (!s_warOpen.count(p)) {
+            s_warOpen[p] = m_turn;
+            ++s_warsStarted;
+            s_warProvAtStart[p] = {provOf(p.first), provOf(p.second)};
+        }
     for (auto it = s_warOpen.begin(); it != s_warOpen.end(); ) {
         if (now.count(it->first)) { ++it; continue; }
         s_warLenSum += (long long)(m_turn - it->second);
         ++s_warsEnded;
+        // ── WHAT DID IT ACHIEVE? (item 105) ──
+        //
+        // NET province change for each belligerent between the turn the war
+        // opened and the turn it closed. CAVEAT, and it belongs in the output
+        // rather than in a reader's head: this is NET change, not transfers
+        // BETWEEN these two. A side that lost ground to a third party during
+        // the war is counted here as having lost it to this one. The question
+        // being asked -- does holding the only war slot move any ground at all
+        // -- survives that, but "who took it from whom" does not.
+        auto st = s_warProvAtStart.find(it->first);
+        if (st != s_warProvAtStart.end()) {
+            const int a = provOf(it->first.first)  - st->second.first;
+            const int b = provOf(it->first.second) - st->second.second;
+            const int moved = std::abs(a) + std::abs(b);
+            s_warTransfers.push_back(moved);
+            if (moved == 0) ++s_warStalemates;
+            if (provOf(it->first.first) == 0 || provOf(it->first.second) == 0)
+                ++s_warEliminations;
+            s_warProvAtStart.erase(st);
+        }
         it = s_warOpen.erase(it);
     }
     s_warOpenSum += (long long)now.size();
@@ -14722,8 +14806,8 @@ void AISystem::warLifeCensus() {
 // guess at -- a second copy of a number is how they drift apart (memory
 // expose-the-resolvers-numbers). Provinces here, share computed later if wanted.
 void AISystem::seatTrace() {
-    static const bool on = std::getenv("OD_SEAT_TRACE") &&
-                           atoi(std::getenv("OD_SEAT_TRACE")) != 0;
+    static const bool on = OD_ENV("OD_SEAT_TRACE") &&
+                           atoi(OD_ENV("OD_SEAT_TRACE")) != 0;
     if (!on) return;
     Game& g = *m_g;
     if (g.m_benchSeatIso.empty()) return;
@@ -14782,6 +14866,19 @@ void AISystem::dumpWarLife() {
             s_warsEnded ? (double)s_warLenSum / (double)s_warsEnded : 0.0,
             s_warTurns ? (double)s_warOpenSum / (double)s_warTurns : 0.0,
             s_warTurns);
+    if (!s_warTransfers.empty()) {
+        std::vector<int> v = s_warTransfers;
+        std::sort(v.begin(), v.end());
+        const double mean = (double)std::accumulate(v.begin(), v.end(), 0LL) / (double)v.size();
+        const int med = v[v.size() / 2];
+        fprintf(stderr, "[WARLIFE] provinces moved per ended war: mean %.2f  median %d  "
+                        "max %d   STALEMATES (zero ground) %lld of %zu (%.1f%%)   "
+                        "eliminations %lld\n",
+                mean, med, v.back(), s_warStalemates, v.size(),
+                100.0 * (double)s_warStalemates / (double)v.size(), s_warEliminations);
+        fprintf(stderr, "[WARLIFE] NET change per side, not transfers between them: a side "
+                        "that lost ground to a third party is counted here.\n");
+    }
 }
 
 // ── MONUMENT REFLEX (OD_MONUMENT_REFLEX, off by default) ──
@@ -14807,13 +14904,13 @@ void AISystem::monumentReflex(int cid) {
     // SHIPPED ON (journal 437). OD_MONUMENT_REFLEX=0 restores the world in
     // which the AI never touches a monument, which is what every measurement
     // before ParrotZero 8.5.0 was taken in.
-    static const bool on = !std::getenv("OD_MONUMENT_REFLEX") ||
-                           atoi(std::getenv("OD_MONUMENT_REFLEX")) != 0;
+    static const bool on = !OD_ENV("OD_MONUMENT_REFLEX") ||
+                           atoi(OD_ENV("OD_MONUMENT_REFLEX")) != 0;
     if (!on) return;
     // The counter is an instrument, and instruments print under OD_ACT_HIST --
     // now that the reflex runs on every ordinary game, an unconditional atexit
     // would put a line on the stderr of every session that ever ends.
-    static const bool reg = (std::getenv("OD_ACT_HIST") || monumentTrace())
+    static const bool reg = (OD_ENV("OD_ACT_HIST") || monumentTrace())
                           ? (atexit(&AISystem::dumpMonuments), true) : false;
     (void)reg;
     Game& g = *m_g;
@@ -14841,10 +14938,10 @@ void AISystem::monumentReflex(int cid) {
     // to spare rather than room exactly. Defaults are swept-able because memory
     // sweep-the-defaults says the largest gain this project ever measured was an
     // unexamined constant.
-    static const int   kPatience = std::getenv("OD_MONUMENT_PATIENCE")
-                                 ? atoi(std::getenv("OD_MONUMENT_PATIENCE")) : 5;
-    static const float kBuffer   = std::getenv("OD_MONUMENT_BUFFER")
-                                 ? (float)atof(std::getenv("OD_MONUMENT_BUFFER")) : 3.0f;
+    static const int   kPatience = OD_ENV("OD_MONUMENT_PATIENCE")
+                                 ? atoi(OD_ENV("OD_MONUMENT_PATIENCE")) : 5;
+    static const float kBuffer   = OD_ENV("OD_MONUMENT_BUFFER")
+                                 ? (float)atof(OD_ENV("OD_MONUMENT_BUFFER")) : 3.0f;
     int& lean  = m_monLeanTurns[cid];
     int& flush = m_monFlushTurns[cid];
     if (squeezed) { ++lean; flush = 0; } else { ++flush; lean = 0; }
@@ -14920,8 +15017,8 @@ void AISystem::dumpMonuments() {
 }
 
 void AISystem::researchAusterityReflex(int cid) {
-    static const bool on = std::getenv("OD_RESEARCH_AUSTERITY") &&
-                           atoi(std::getenv("OD_RESEARCH_AUSTERITY")) != 0;
+    static const bool on = OD_ENV("OD_RESEARCH_AUSTERITY") &&
+                           atoi(OD_ENV("OD_RESEARCH_AUSTERITY")) != 0;
     if (!on) return;
     Game& g = *m_g;
     Country* c = g.m_countries.getCountry(cid);
@@ -14929,8 +15026,8 @@ void AISystem::researchAusterityReflex(int cid) {
     auto w = m_warWith.find(cid);
     const bool atWar = (w != m_warWith.end() && !w->second.empty());
     if (!atWar) return;
-    static const double floorCash = std::getenv("OD_AUSTERITY_CASH")
-                                  ? atof(std::getenv("OD_AUSTERITY_CASH")) : 20.0;
+    static const double floorCash = OD_ENV("OD_AUSTERITY_CASH")
+                                  ? atof(OD_ENV("OD_AUSTERITY_CASH")) : 20.0;
     if (c->treasury >= floorCash) return;
     float& alloc = g.m_countryResearchAllocation[cid];
     if (alloc <= 0.0f) return;
