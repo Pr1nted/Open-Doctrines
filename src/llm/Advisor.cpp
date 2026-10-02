@@ -11,6 +11,21 @@
 
 namespace llm {
 
+// ── THE FEW RULES THE MODEL GETS WRONG AND AN ADVISOR NEEDS (journal 453) ──
+//
+// Chosen by measurement. tools/llm_comprehend.py asks a model ten rules
+// questions closed-book, which is how the advisor really runs -- the prompt
+// below tells it how to write and who it is, and nothing about how the world
+// works. It scored 7/10, and the misses sorted by whether a letter depends on
+// them. The two below are the ones that do; the monument dismantle cost and
+// which great works need a coast are also wrong and deliberately absent,
+// because no letter turns on them and every line costs budget every turn.
+//
+// Written as ordinary p<< lines, NOT as a string array: an array of literals
+// is what tools/i18n_extract.py treats as translatable UI text, and it swallowed
+// the surrounding comments with it. Prompt text is not UI text. The markers
+// below are what llm_comprehend.py parses, so the test cannot drift from what
+// the game actually sends.
 std::string systemPrompt(const Persona& persona, const Situation& situation,
                          const std::string& languageName) {
     std::ostringstream p;
@@ -47,6 +62,13 @@ std::string systemPrompt(const Persona& persona, const Situation& situation,
     // The one instruction that is about the game rather than the prose. A model
     // told only "be a diplomat" plays a helpful assistant in period costume.
     p << "- Write in " << languageName << ".\n\n";
+
+    p << "HOW THIS WORLD WORKS\n";
+    // WORLD-RULES-BEGIN (parsed by tools/llm_comprehend.py)
+    p << "- Your country may CHOOSE only one war at a time. While a war of your own choosing is open you cannot declare another -- though being attacked, honouring a guarantee, or answering a call to arms will still add wars regardless. So an open war is a cost: it holds the one slot you have.\n";
+    p << "- What you record with the tools is weighed by your government when it decides -- a lean shifts what your ministries are inclined to do. It is not an order and they still choose, but it is not decoration either.\n";
+    // WORLD-RULES-END
+    p << "\n";
 
     p << "WHO YOU ARE\n";
     p << "- You want what is good for " << persona.countryName

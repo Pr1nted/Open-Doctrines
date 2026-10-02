@@ -97,6 +97,43 @@ RULES = [
    "Only when you are at peace"], 1,
   "Advisor.cpp intend + Game::applyLlmLean: a bounded, clamped thumb on the scale"),
 
+ # ── RULES AN ADVISOR'S OWN ADVICE DEPENDS ON (journal 453) ──
+ #
+ # The system prompt in Advisor.cpp covers how to write and who you are, and its
+ # own comment notes the only game-level instruction is the language. So the
+ # advisor is CLOSED BOOK on rules in play, exactly as this block tests it --
+ # which makes a failure here a failure in the game, and makes this block a
+ # shortlist of what is worth prompt budget.
+ ("Your country is already fighting one war. Your government is considering "
+  "declaring war on somebody else as well. What does the game allow?",
+  ["Any number of wars at once",
+   "Two chosen wars at once",
+   "One war it CHOSE at a time -- though being attacked, a guarantee or a call "
+   "to arms still add more",
+   "One war in total, however it started"], 2,
+  "AI_MAX_CONCURRENT_WARS = 1: 'It restrains only wars the AI CHOOSES'"),
+
+ ("A neighbour you are at war with offers a ceasefire. You are not losing. "
+  "Refusing it keeps the war open. What does that cost you?",
+  ["Nothing -- an open war you are winning is pure upside",
+   "Only war weariness at home",
+   "Your one war slot stays occupied, so you cannot declare war on anyone else",
+   "Your existing alliances lapse"], 2,
+  "journals 385-388: a refused ceasefire kept the only slot full and blocked all expansion"),
+
+ ("Your government can win over a restive minority by funding concessions. "
+  "What is the catch?",
+  ["It costs nothing and is simply good policy",
+   "It commits income every turn afterwards, while costing nothing at the "
+   "moment you choose it",
+   "It can only be done once per country",
+   "It converts the minority into your own ethnic majority"], 1,
+  "austerityReflex comment: conciliate 'commits income PERMANENTLY while costing nothing at the moment chosen'"),
+
+ ("Which of these great works cannot be built inland?",
+  ["A university", "A grand exchange", "A missile silo", "A megacity"], 1,
+  "Monuments.h: GrandExchange needsPort = true -- 'what it does happens at sea'"),
+
  ("A province's ethnic composition is given as shares. To find how many people "
   "belong to a named minority there you should:",
   ["Sum the minority counts across the province",
@@ -197,6 +234,19 @@ def parse_tools():
             # The description is the concatenation of the adjacent literals that
             # form it, which in this catalogue is everything before the argName.
             descs[name] = " ".join(" ".join(parts).split())
+    # The world-rules block the prompt really sends, parsed from between the
+    # markers in systemPrompt so the brief this test supplies cannot drift from
+    # the game's wording. Comments inside the region are stripped: a quoted
+    # wrong answer in a comment is not an assertion (journals 445, 452).
+    rules = []
+    rb, re_ = adv.find("WORLD-RULES-BEGIN"), adv.find("WORLD-RULES-END")
+    if rb >= 0 and re_ > rb:
+        region = re.sub(r'//[^\n]*', '', adv[rb:re_])
+        for lit in re.findall(r'"((?:[^"\\]|\\.)*)"', region):
+            lit = lit.replace("\\n", " ").strip()
+            if len(lit) > 20:
+                rules.append(lit)
+    globals()["WORLD_RULES"] = "\n".join(rules)
     bad = [n for n, d in descs.items() if "//" in d]
     if bad:
         sys.exit(f"llm_comprehend: comment text leaked into {bad}; parser is wrong")
@@ -404,6 +454,11 @@ def main():
     for name, items in blocks:
         if not items: continue
         ctx = briefing if name == "READING" else None
+        if name in ("RULES", "CONSEQUENCE") and globals().get("WORLD_RULES"):
+            # What systemPrompt actually sends, so RULES is scored against the
+            # briefing the advisor really gets rather than against nothing.
+            ctx = ("How this world works:\n" + globals()["WORLD_RULES"]
+                   + (f"\n\n{ctx}" if ctx else ""))
         if a.open_book and name in ("RULES", "CONSEQUENCE", "TOOL"):
             book = "\n".join(f"- {t}: {tool_descs.get(t,'')}" for t in tools)
             ctx = (f"These are the tools your government offers you, with what "

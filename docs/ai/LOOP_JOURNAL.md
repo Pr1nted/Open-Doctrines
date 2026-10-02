@@ -33901,3 +33901,59 @@ been re-measured and rejected on this build. So the check is not a recovery tool
 Wired into tests/run_all.sh beside check_llm_tools.py. Item 136 closed.
 
 PATHS TOUCHED: tools/check_ai_comments.py (new), tests/run_all.sh, docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+## 453 — tell the advisor the two rules it gets wrong, and only those
+
+The system prompt covers how to write and who you are; its own comment notes the only game-level instruction is the
+language. So the advisor runs CLOSED BOOK on rules, exactly as llm_comprehend.py's RULES block tests it -- which makes
+a failure there a failure in play, and the failure list a shortlist of what is worth prompt budget.
+
+MEASURED FIRST, ten rules questions, closed book, llama3.1:8b:
+
+    7/10. Wrong: the monument dismantle cost, WHICH GREAT WORKS NEED A COAST, and
+    **how many wars a country may choose at once** -- it answered "two".
+
+    Right, unprompted: that a refused ceasefire keeps the war slot full, that conciliating a minority commits income
+    permanently, that men above the combat frontage buy nothing, the monument slot series, and that shares partition
+    a province.
+
+So one miss mattered. An advisor whose advice about declaring war assumes two slots is wrong about the game; the
+dismantle cost and which monuments need a port are not things a foreign minister's letter turns on, and a prompt grows
+by default, so those were deliberately left out.
+
+ADDED the war rule as `kWorldRules[]`, parsed by the test from that same array so the brief cannot drift from what the
+game sends. Re-measured: **8/10 -- and an unrelated answer broke.**
+
+    before: wrong = dismantle, one-war, grand-exchange
+    after:  wrong = dismantle, INTEND
+
+Asked whether a lean recorded with `intend` changes what the government does, the model went from "yes, it biases
+them" to "no, it is noted but never acted on". **Three runs, identical, at temperature 0 -- this is deterministic, not
+noise.** A prompt addition is not local: it fixed its target, fixed the coast question as a side effect, and broke a
+third thing.
+
+That trade was not worth taking. `intend` is one of five recording tools and the steering path runs through it, so a
+model that believes its leans are inert stops using them. Said plainly in a second rule. Re-measured twice:
+
+    9/10 RULES, 19/20 overall, deterministic. Only the dismantle cost remained.
+
+**CORRECTED, and the correction is itself the finding. The SHIPPED form scores 8/10, not 9/10.** That draft delivered
+the rules as a `const char* const kWorldRules[]` array; the pre-commit i18n hook rejected it, because
+tools/i18n_extract.py treats an array of literals as translatable UI text and had swallowed the surrounding COMMENTS
+with it -- including a comment quoting the wrong answer, for the third time this week that a tool has read a quotation
+as an assertion. Prompt text is not UI text, and none of the existing prompt lines are extracted, so the rules moved
+into `systemPrompt` as ordinary `p <<` lines between parse markers.
+
+Same words, different delivery -- and the grand-exchange answer flipped back to wrong. Twice, deterministically.
+
+So the honest figure is **7/10 -> 8/10 for two lines of prompt**: the war rule holds, the `intend` regression stays
+fixed, and a third answer moves with nothing but the FORMATTING of the brief. That is a stronger version of the lesson
+than the one I set out to record -- [[a-prompt-addition-is-not-local]] is not only about which facts you add, it is
+about how they are laid out.
+
+WHAT THIS IS NOT. One model, ten questions, and the score is not a claim about comprehension in general -- it is a
+targeted fix validated on the thing it targeted, plus one regression caught because the whole bank is re-run rather
+than the question being fixed. The habit is the result: **after adding anything to a prompt, re-run every question,
+not the one you aimed at.**
+
+PATHS TOUCHED: src/llm/Advisor.cpp, tools/llm_comprehend.py, docs/ai/LOOP_JOURNAL.md.
