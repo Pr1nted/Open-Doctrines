@@ -33835,3 +33835,43 @@ like item 123's pacification cooldown. Item 140.
 
 PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (already committed as 4a115b3, default off, inert proved),
 docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+## 451 — the duration claim does not replicate, and my own commit title overclaims
+
+Journal 450 shipped nothing but it CLAIMED something: mean war length 36.6 -> 24.3, "a third off". That rested on one
+world, journal 450 said so, and item 140 said confirming it was the one cheap thing missing. Confirmed, 6 seeds, both
+arms, same pinned binary:
+
+    seed         off     on    delta
+    11102156    37.0   19.0   -18.0
+    15692679    26.2   26.0    -0.2
+    18217940    29.6   16.5   -13.1
+    46267017    25.3   24.5    -0.8
+    87203627    41.6   42.0    +0.4
+    94374479    34.5   34.0    -0.5
+
+    mean 32.4 -> 27.0, delta -5.4   paired 95% interval -11.8 to +1.1 -- SPANS ZERO
+    shortened by more than 3 turns on 2 of 6 seeds
+
+**IT IS BIMODAL, NOT SMALL.** Two worlds lose 18 and 13 turns; the other four move by under a turn. So the rule does
+something large in some worlds and nothing in most, and the mean of -5.4 is a number with no world behind it -- the
+same shape as [[capped-small-par-seats-are-coins]] and [[bistable-seats-need-many-seeds]], met for the first time in
+a duration statistic rather than a seat score. One run of 114 wars looked well-powered because the DENOMINATOR was
+wars; the variation that matters is between worlds, and on that the sample was n=1.
+
+**MY COMMIT TITLE IS WRONG.** 3d1c696 reads "A rule that shortens wars by a third and changes no score". The second
+half stands -- the score is unchanged on 32 seeds. The first half does not: on six seeds it shortens wars by a third
+in two of them and by nothing in four, and the interval includes zero. I am not rewriting the commit; this entry is
+the correction, and item 140 is edited so nobody reads the claim out of the backlog.
+
+WHAT THIS LEAVES OF JOURNAL 450: a rule that is inert by default, provably harmless on 32 seeds, and whose only
+measured effect is unresolved. Not a game-feel decision for the user any more, because "wars a third shorter" was the
+entire case for putting it in front of them -- and that case is withdrawn. It stays in the tree, gated off, as the
+answer to item 139's question (yes, the AI re-fights battles; no, stopping it does not reliably change anything).
+
+AND THE PATTERN IS NOW FIVE FOR FIVE THIS SESSION: every effect that looked real on one world or one seed set --
+journal 444's rush improvement, journal 447's documented war cap, journal 450's duration gain -- dissolved on
+replication. Not one survived. [[preregistration-does-not-make-an-effect-real]] should be read as the general case
+rather than the exception it was written as.
+
+PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. No code change -- there was nothing to revert.

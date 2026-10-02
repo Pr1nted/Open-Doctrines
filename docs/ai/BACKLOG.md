@@ -1321,7 +1321,18 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
-140. **FOR THE USER -- a rule that shortens wars by a third and changes no score.**
+140. ~~**FOR THE USER -- a rule that shortens wars by a third and changes no score.**~~
+   **CLAIM WITHDRAWN, journal 451. It does not shorten wars reliably.** Six seeds, both
+   arms: deltas -18.0, -0.2, -13.1, -0.8, +0.4, -0.5; mean -5.4 with a paired 95%
+   interval of **-11.8 to +1.1, spanning zero**; shortened by more than 3 turns on **2 of
+   6** worlds. Bimodal, not small. The 36.6 -> 24.3 in journal 450 was one world, and
+   one run of 114 wars looked well-powered only because the denominator was wars -- the
+   variation that matters is between worlds and there the sample was n=1.
+   **So there is nothing to put in front of the user**: the rule is inert by default,
+   harmless on 32 seeds (rung +0.9), and its only measured effect is unresolved. It stays
+   as the answer to item 139 -- yes the AI re-fights battles, no stopping it does not
+   reliably change anything. Commit 3d1c696's title overclaims; this item and journal 451
+   are the correction. ORIGINAL CLAIM:
    `OD_REATTACK_COOLDOWN` (journal 450, default off, inert proved). Refuses an attack
    order only when it repeats the same province pair on the very NEXT turn with the
    garrison ratio unmoved -- the one case the width rule says cannot resolve. Measured:
