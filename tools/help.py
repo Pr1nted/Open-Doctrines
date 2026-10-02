@@ -112,6 +112,13 @@ GROUPS = [
         # nothing -- the same shape as a validity mask offering an action the
         # executor refuses, and just as invisible at compile time.
         "check_llm_tools.py",
+        # ...and whether the advisor UNDERSTANDS what it is offered, which is a
+        # different question from whether the wiring answers. check_llm_tools.py
+        # proves every tool has an answer; this scores the answers against
+        # ground truth from a loaded world, after journal 436 found the whole
+        # our_* family replying "There is no country by that name in this world"
+        # while every letter still read plausibly.
+        "llm_comprehend.py",
         # The verdict qualify.sh's 5-turn game gets: it played, it could not be
         # tried, or it crashed. Its own file so tests/qualify_play_gate_test.sh
         # can feed it the real logs from the day a segfault was read as a skip.

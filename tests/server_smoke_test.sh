@@ -75,6 +75,63 @@ run_bounded() {                       # run_bounded <seconds> <log> <cmd...>
     wait "$pid" 2>/dev/null
 }
 
+# ── AND A RUN THAT HAS TO BE ALLOWED TO FINISH SPEAKING ──
+#
+# run_bounded puts `stop` on stdin BEFORE the process starts. That is right for
+# the hang check and right for a server expected to refuse immediately, and it
+# is wrong for the one case whose answer arrives over the network.
+#
+# Opening a session is asynchronous: mpOpenHost() starts a worker that posts to
+# the account service, fetches the issuer key and only then goes Live -- see the
+# long comment in Game::serverTick. The console polls stdin on the same tick,
+# finds the `stop` that has been sitting there since before the world even
+# loaded, and serverTick returns false with NEITHER announcement made. The log
+# then ends
+#
+#     [22:45:17 INFO] stopping.
+#     [22:45:17 INFO] shutting down.
+#     [22:45:17 INFO] world is at .../data/saves/Dedicated (32).odsv
+#
+# and verdict_of reads it as `broken`: a run in which everything worked,
+# reported as the one fault this step exists to catch.
+#
+# IT ONLY BITES ON A MACHINE THAT IS SIGNED IN, which is why CI never saw it
+# and a developer's own suite did. The signed-out refusal is produced without a
+# network call and wins the race comfortably.
+#
+# So the `stop` is held back until the log says which of the three things
+# happened, or until the wait runs out. A pipeline rather than a FIFO: mkfifo
+# is emulated on the Windows runner and this has to work there too.
+run_until_verdict() {                 # run_until_verdict <seconds> <log> <cmd...>
+    local secs="$1" log="$2"; shift 2
+    : > "$log"
+    {
+        # A subshell, so these are not the function's variables and `local`
+        # would be the wrong word for them.
+        w=0
+        while [ "$w" -lt "$secs" ] && [ "$(verdict_of "$log")" = broken ]; do
+            sleep 1
+            w=$((w + 1))
+        done
+        printf 'stop\n'
+    } | "$@" > "$log" 2>&1 &
+    # The last command of a pipeline, which is the server and not the watcher.
+    local pid=$! waited=0
+    # $secs to say something, then 30 more to act on `stop`. A server that
+    # ignores it is still cut off at 124, exactly as run_bounded does -- the
+    # hang this whole shape replaced must not come back through the new door.
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt $((secs + 30)) ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null
+        wait "$pid" 2>/dev/null
+        return 124
+    fi
+    wait "$pid" 2>/dev/null
+}
+
 # ── WHAT A REAL RUN'S LOG MEANS ──
 #
 # Three outcomes, and only ONE of them is reachable on any given machine:
@@ -219,13 +276,50 @@ run_bounded 2 "$sc/hang.log" sleep 30
 if [ "$?" -eq 124 ]; then ok "a run that will not stop is cut off, not waited on"
 else bad "a run that will not stop is cut off, not waited on"; fi
 
+# 5e. AND THE HOLDING BACK OF `stop`, driven by stand-ins rather than by the
+#     real server -- because which branch the real one takes depends on whether
+#     this machine is signed in, and the branch that broke is the one CI cannot
+#     reach. Both stand-ins read stdin FIRST and announce later, which is the
+#     ordering inside serverTick and the whole of the fault.
+#
+#     The first one is the regression: under the old runner its `stop` was
+#     already waiting, it read it on the first tick and exited having said
+#     nothing, and a perfectly good run was reported broken.
+#     `read -t 1` and not a plain `read`: the console POLLS stdin, it does not
+#     block on it (ServerConsole::poll answers false when nothing is there). A
+#     stand-in that blocks waits for a `stop` that is waiting for it to speak,
+#     and the pair deadlock -- which is what the first version of this check
+#     did, and it fails the same way a real blocking console would, so it is
+#     worth the two words it costs to model properly.
+late_session='t=0
+while [ $t -lt 30 ]; do
+  if IFS= read -r -t 1 line; then case "$line" in stop) exit 0;; esac; fi
+  t=$((t + 1))
+  [ $t -eq 3 ] && echo "[00:00:00 INFO] session open. Join code: TEST-TEST"
+done'
+run_until_verdict 20 "$sc/late.log" bash -c "$late_session" >/dev/null 2>&1
+[ "$(verdict_of "$sc/late.log")" = session ] \
+    && ok "a session announced late is waited for, not cut off" \
+    || bad "a session announced late is waited for, not cut off"
+
+#     And the other direction, which matters just as much: holding `stop` back
+#     must not turn silence into a pass. A stand-in that never announces
+#     anything is still broken, and is still stopped rather than waited on.
+says_nothing='while :; do
+  if IFS= read -r -t 1 line; then case "$line" in stop) exit 0;; esac; fi
+done'
+run_until_verdict 3 "$sc/silent.log" bash -c "$says_nothing" >/dev/null 2>&1
+[ "$(verdict_of "$sc/silent.log")" = broken ] \
+    && ok "a run that announces nothing is still read as broken" \
+    || bad "a run that announces nothing is still read as broken"
+
 # 6. Without --check it gets all the way to the credential gate.
 #    THE POINT OF THIS CASE: every check above stops before hosting, so they
 #    would all pass on a server that could never host at all. This asserts the
 #    last thing standing between it and a live session is the account, and not
 #    something earlier that a non-zero exit would have hidden.
 out="$work/nocreds.log"
-run_bounded 90 "$out" "$srv" --config "$cfg" --data "$root/data/" \
+run_until_verdict 90 "$out" "$srv" --config "$cfg" --data "$root/data/" \
             --no-tunnel --port 0
 rc=$?
 case "$(verdict_of "$out")" in
