@@ -404,6 +404,13 @@ check "generated script bindings compile" bash "$root/tools/check_script_binding
 # refers to the other -- so it is checked here. See tools/check_llm_tools.py.
 check "every llm tool offered is answered" $PY "$root/tools/check_llm_tools.py"
 
+# A numerate comment in src/ai that documents another build is worse than no
+# comment: journals 440 and 447 each spent a two-hour bench on a stranded
+# measurement -- "0.20 since ParrotZero 8.4.0" above a 0.35, and "2 since
+# 8.6.0 ... not one seat lost" above a 1 -- and BOTH re-measured as failures.
+# A comment is accepted once the re-measurement sits beside it; see the script.
+check "ai comments describe this build" $PY "$root/tools/check_ai_comments.py"
+
 # THE COMPATIBILITY GATE, and a different question from the two checks above.
 #
 # ModAbiTest asks "does abi.json describe the host this build has?" -- both

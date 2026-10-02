@@ -1380,7 +1380,16 @@ opponent is not a league.
    the problem: the country takes them and fights two wars with one army. **The revert
    was right on the merits.** Do not reopen without a reason 1914:FRA:rush survives.
 
-136. **AUDIT 801fd20: one revert stranded at least TWO documented constants.**
+136. ~~**AUDIT 801fd20: one revert stranded at least TWO documented constants.**~~
+   **BUILT, journal 452: `tools/check_ai_comments.py`, wired into tests/run_all.sh.**
+   Flags a comment in src/ai citing a ParrotZero version newer than AIVersion.h, and a
+   "<value> since ParrotZero <v>" claim disagreeing with the constant under it. Proved to
+   fail when the annotation is removed and pass when restored.
+   **The audit's answer: only the ONE known block, AI_MAX_CONCURRENT_WARS.** No third
+   stranded constant exists -- so the damage from 801fd20 was two comments, both now
+   re-measured and both failed, and the check exists to stop a third costing another
+   bench. It accepts a stranded comment once the re-measurement sits beside it, which is
+   the convention this journal already follows.
    **BOTH HAVE NOW BEEN RE-MEASURED AND BOTH FAILED** -- campaign share flat (journal
    440), war cap a resolved harm (journal 447). Two for two says the branch's 8.6.x
    numbers do not describe this game, so the audit's value is not recovering gains, it is

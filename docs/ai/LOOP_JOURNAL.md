@@ -33875,3 +33875,29 @@ replication. Not one survived. [[preregistration-does-not-make-an-effect-real]] 
 rather than the exception it was written as.
 
 PATHS TOUCHED: docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md. No code change -- there was nothing to revert.
+
+## 452 — the stranded-comment check (item 136), and what the audit actually found
+
+Two benches this session were spent on comments describing another build: journal 440's "0.20 since ParrotZero 8.4.0"
+above a 0.35, and journal 447's "2 since ParrotZero 8.6.0 ... not one seat lost on the whole bench" above a 1. Both
+re-measured as failures. `tools/check_ai_comments.py` makes a third one cheap instead of free:
+
+  - flags any comment in src/ai citing a ParrotZero version NEWER than AIVersion.h;
+  - flags a "<value> since ParrotZero <v>" claim whose value disagrees with the constant defined under it;
+  - ACCEPTS either once the re-measurement sits beside it, which is this journal's own convention.
+
+That last rule exists because the first run flagged **its own fix**: AISystem.h:1193 is a line written to say the
+comment above it is wrong, and quoting a false claim is not making one. That is the same defect as journal 445's
+parser feeding the model a comment as fact, met twice in a week in two different tools -- **a naive reader cannot tell
+an assertion from a quotation of one**, and both times the fix was to teach it the difference explicitly.
+
+Proved by breaking it: with the annotation stripped the check exits 1, restored it exits 0.
+
+**WHAT THE AUDIT FOUND, which is the part worth recording: nothing new.** Item 136 was filed on the worry that 801fd20
+had stranded more than the two constants already known. It had not. The damage was two comments, and both have now
+been re-measured and rejected on this build. So the check is not a recovery tool -- there is nothing left to recover
+-- it is a tripwire so the next stranded number costs a test failure rather than two hours of bench.
+
+Wired into tests/run_all.sh beside check_llm_tools.py. Item 136 closed.
+
+PATHS TOUCHED: tools/check_ai_comments.py (new), tests/run_all.sh, docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
