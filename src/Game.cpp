@@ -1157,6 +1157,14 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // never comes back out. See odWindowsGlTraceLog above.
     SetTraceLogCallback(odWindowsGlTraceLog);
 #endif
+#ifdef OD_HEADLESS_SDL
+    // Built on raylib's SDL backend for headless rendering: default SDL to its
+    // offscreen video driver, which gives a GL context with no display at all.
+    // Left overridable -- a developer can set SDL_VIDEODRIVER=x11 to watch this
+    // build in a window -- but unset means headless, which is what this
+    // configuration exists for. Read by SDL_Init, inside InitWindow below.
+    if (!getenv("SDL_VIDEODRIVER")) setenv("SDL_VIDEODRIVER", "offscreen", 1);
+#endif
     InitWindow(m_screenW, m_screenH, title);
     if (getenv("OD_DPI_PROBE")) {
         const Vector2 sc = GetWindowScaleDPI();

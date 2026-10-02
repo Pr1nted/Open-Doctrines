@@ -156,7 +156,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(od_system_raylib_ok TRUE)
 if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
    NOT CMAKE_OSX_ARCHITECTURES STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
-    set(od_system_raylib_ok FALSE)
+    option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offscreen GL (CI/porting; not the shipped desktop build)" OFF)
+set(od_system_raylib_ok FALSE)
     message(STATUS "raylib: targeting ${CMAKE_OSX_ARCHITECTURES} on a "
                    "${CMAKE_HOST_SYSTEM_PROCESSOR} host, so building from source "
                    "instead of using a host-architecture system copy")
@@ -197,6 +198,28 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
 
     if(EMSCRIPTEN)
         set(PLATFORM "Web" CACHE STRING "raylib platform for Emscripten" FORCE)
+    endif()
+
+    # ── A HEADLESS RENDER OF THE REAL GAME, NO DISPLAY SERVER ──
+    #
+    # OD_HEADLESS_SDL builds raylib against its SDL backend instead of GLFW.
+    # SDL has an "offscreen" video driver that creates a GL context with no X,
+    # no Wayland, no window -- so the game's OWN renderer runs headless, which
+    # GLFW cannot do (it needs a display to put a window on) and which Xvfb
+    # fakes at the cost of an X server that is not always easy to raise, as the
+    # FreeBSD xkb failure showed.
+    #
+    # This is a SEPARATE build configuration -- a build tree is one backend or
+    # the other -- and it is off by default: the shipped desktop game is GLFW,
+    # exactly as before. The headless binary is a CI and porting instrument,
+    # run with SDL_VIDEODRIVER=offscreen (the game sets it itself when it finds
+    # no display; see Game::init). The approach was proven before the plumbing:
+    # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
+    # with DISPLAY unset, and the game is pure raylib API, so its backend is a
+    # build switch rather than a code change.
+    if(OD_HEADLESS_SDL)
+        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL backend for headless" FORCE)
+        message(STATUS "OD_HEADLESS_SDL: raylib on its SDL backend (headless offscreen GL)")
     endif()
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
@@ -1268,6 +1291,22 @@ endif()
 target_include_directories(OpenDoctrines PRIVATE src tools/map_generator ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # Both system raylib (via find_package) and FetchContent create a target named raylib
 target_link_libraries(OpenDoctrines raylib)
+# raylib's SDL backend links SDL2 itself for its own translation units, but the
+# game target also pulls SDL symbols transitively through raylib's headers on
+# this path, so name it explicitly. find_package first, pkg-config as the
+# fallback distros without the CMake config still answer.
+if(OD_HEADLESS_SDL)
+    find_package(SDL2 QUIET)
+    if(SDL2_FOUND)
+        target_link_libraries(OpenDoctrines SDL2::SDL2)
+    else()
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SDL2 REQUIRED sdl2)
+        target_link_libraries(OpenDoctrines ${SDL2_LIBRARIES})
+        target_include_directories(OpenDoctrines PRIVATE ${SDL2_INCLUDE_DIRS})
+    endif()
+    target_compile_definitions(OpenDoctrines PRIVATE OD_HEADLESS_SDL=1)
+endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
     # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
