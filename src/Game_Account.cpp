@@ -466,7 +466,7 @@ void Game::drawAccountMenu() {
                 const Button retry = buttonAt((float)(centerX - btnW / 2),
                                               (float)(startY + 60), (float)btnW,
                                               (float)btnH, mouse);
-                drawButton(retry, "Try again", fontSize,
+                drawButton(retry, T("Try again"), fontSize,
                            Color{45, 45, 55, 220}, Color{110, 110, 130, 200});
                 break;
             }
@@ -520,11 +520,11 @@ void Game::drawAccountMenu() {
 
             const Button pol = buttonAt((float)(centerX - 170), (float)(noteY + 82),
                                         170, 32, mouse);
-            drawButton(pol, "Privacy policy", 16,
+            drawButton(pol, T("Privacy policy"), 16,
                        Color{34, 34, 42, 220}, Color{95, 95, 115, 200});
             const Button ter = buttonAt((float)(centerX + 6), (float)(noteY + 82),
                                         170, 32, mouse);
-            drawButton(ter, "Terms of use", 16,
+            drawButton(ter, T("Terms of use"), 16,
                        Color{34, 34, 42, 220}, Color{95, 95, 115, 200});
             break;
         }
@@ -537,12 +537,12 @@ void Game::drawAccountMenu() {
 
             const Button open = buttonAt((float)(centerX - btnW / 2), (float)(startY + 110),
                                          (float)btnW, (float)btnH, mouse);
-            drawButton(open, "Open the page again", fontSize,
+            drawButton(open, T("Open the page again"), fontSize,
                        Color{45, 55, 70, 220}, Color{120, 140, 170, 200});
             const Button cancel = buttonAt((float)(centerX - btnW / 2),
                                            (float)(startY + 110 + btnH + gap),
                                            (float)btnW, (float)btnH, mouse);
-            drawButton(cancel, "Cancel", fontSize,
+            drawButton(cancel, T("Cancel"), fontSize,
                        Color{45, 45, 50, 220}, Color{110, 110, 120, 200});
             break;
         }
@@ -565,7 +565,7 @@ void Game::drawAccountMenu() {
             const Button create = buttonAt((float)(centerX - btnW / 2),
                                            (float)(startY + 70 + btnH + gap + 26),
                                            (float)btnW, (float)btnH, mouse);
-            drawButton(create, "Create account", fontSize,
+            drawButton(create, T("Create account"), fontSize,
                        Color{40, 70, 45, 220}, Color{110, 170, 120, 200}, valid);
             break;
         }
@@ -618,7 +618,7 @@ void Game::drawAccountMenu() {
             const bool valid = AccountClient::nicknameLooksValid(m_accountNickField, why);
             const Button change = buttonAt((float)(L.centerX - L.btnW / 2), (float)L.change,
                                            (float)L.btnW, (float)L.btnH, mouse);
-            drawButton(change, "Change nickname", fontSize,
+            drawButton(change, T("Change nickname"), fontSize,
                        Color{45, 55, 70, 220}, Color{120, 140, 170, 200}, valid);
             if (!m_accountNickField.empty() && !valid) {
                 DrawText(why.c_str(), L.centerX - MeasureText(why.c_str(), 15) / 2,
@@ -627,12 +627,12 @@ void Game::drawAccountMenu() {
 
             const Button out = buttonAt((float)(L.centerX - L.btnW / 2), (float)L.signOut,
                                         (float)L.btnW, (float)L.btnH, mouse);
-            drawButton(out, "Sign out", fontSize, Color{45, 45, 50, 220},
+            drawButton(out, T("Sign out"), fontSize, Color{45, 45, 50, 220},
                        Color{110, 110, 120, 200});
 
             const Button del = buttonAt((float)(L.centerX - L.btnW / 2), (float)L.del,
                                         (float)L.btnW, (float)L.btnH, mouse);
-            drawButton(del, "Delete account", fontSize,
+            drawButton(del, T("Delete account"), fontSize,
                        Color{70, 35, 35, 220}, Color{170, 90, 90, 200});
 
             // Hidden by default, and hideable again: it is not a password, but
@@ -640,7 +640,7 @@ void Game::drawAccountMenu() {
             if (!m_accountShowId) {
                 Button b; b.rect = L.idButton;
                 b.hovered = CheckCollisionPointRec(mouse, b.rect);
-                drawButton(b, "Show account ID", 14,
+                drawButton(b, T("Show account ID"), 14,
                            Color{32, 32, 40, 210}, Color{85, 85, 100, 190});
             } else {
                 DrawRectangleRounded(L.idButton, 0.2f, 6, Color{26, 26, 33, 230});
@@ -651,11 +651,11 @@ void Game::drawAccountMenu() {
 
                 Button copy; copy.rect = L.idCopy;
                 copy.hovered = CheckCollisionPointRec(mouse, copy.rect);
-                drawButton(copy, "Copy", 13, Color{36, 44, 36, 220}, Color{95, 125, 95, 190});
+                drawButton(copy, T("Copy"), 13, Color{36, 44, 36, 220}, Color{95, 125, 95, 190});
 
                 Button hide; hide.rect = L.idHide;
                 hide.hovered = CheckCollisionPointRec(mouse, hide.rect);
-                drawButton(hide, "Hide", 13, Color{40, 34, 34, 220}, Color{120, 95, 95, 190});
+                drawButton(hide, T("Hide"), 13, Color{40, 34, 34, 220}, Color{120, 95, 95, 190});
 
                 const char* n = "identifies you to support — keep it off stream";
                 DrawText(n, L.centerX - MeasureText(n, 12) / 2, L.idNote, 12,
@@ -679,11 +679,11 @@ void Game::drawAccountMenu() {
             y += 30;
             const Button confirm = buttonAt((float)(centerX - btnW - 10), (float)y,
                                             (float)btnW, (float)btnH, mouse);
-            drawButton(confirm, "Yes, delete it", fontSize,
+            drawButton(confirm, T("Yes, delete it"), fontSize,
                        Color{80, 35, 35, 230}, Color{190, 90, 90, 220});
             const Button cancel = buttonAt((float)(centerX + 10), (float)y,
                                            (float)btnW, (float)btnH, mouse);
-            drawButton(cancel, "Keep my account", fontSize,
+            drawButton(cancel, T("Keep my account"), fontSize,
                        Color{45, 55, 45, 230}, Color{120, 160, 120, 220});
             break;
         }
@@ -714,7 +714,7 @@ void Game::drawAccountMenu() {
     if (status != AccountClient::Status::DeleteConfirm) {
         const Button back = buttonAt((float)(centerX - 80), (float)(m_screenH - 100),
                                      160, 48, mouse);
-        drawButton(back, "Back", 20, Color{40, 40, 48, 220}, Color{110, 110, 130, 200});
+        drawButton(back, T("Back"), 20, Color{40, 40, 48, 220}, Color{110, 110, 130, 200});
     }
 }
 

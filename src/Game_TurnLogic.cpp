@@ -5097,12 +5097,25 @@ void Game::declareWar(const std::string& attackerIso, const std::string& defende
         std::string otherName = oc ? oc->name : attackerIso;
         // ...and what they said it was for, if anything. A CLAIM, not a fact:
         // see WarGoal. A declaration with no stated goal says something too.
-        std::string decl = otherName + " has declared war on you!";
+        // ── A SENTENCE, NOT A PILE OF PIECES ──
+        //
+        // This was built by concatenation, and the shim translates a whole
+        // string by looking it up, so a string assembled at runtime matches no
+        // key and is drawn exactly as written. The title went through T() and
+        // came out Ukrainian; the body did not. warGoalText DOES return a
+        // translated clause, so the dialog read "They declare it щоб повернути
+        // землі, які вважають своїми." -- half a sentence in each language.
+        //
+        // Templates with a placeholder instead: the translator gets the whole
+        // sentence and decides where the name goes, which is the same reason
+        // drawWrapped takes a paragraph rather than a line.
+        std::string decl = TextFormat(T("%s has declared war on you!"),
+                                      od::i18n::properName(otherName).c_str());
         if (const char* why = warGoalText(statedGoal))
-            decl += std::string("\n\nThey declare it ") + why + ".";
+            decl += std::string("\n\n") + TextFormat(T("They declare it %s."), why);
         else
-            decl += "\n\nThey give no reason.";
-        pushPopup(PopupType::WAR_DECLARED, "War Declared!", decl, otherCid);
+            decl += std::string("\n\n") + T("They give no reason.");
+        pushPopup(PopupType::WAR_DECLARED, T("War Declared!"), decl, otherCid);
     }
 
     // Only wars the player is in. On a 185-country map the AI declares a dozen
@@ -5647,8 +5660,9 @@ void Game::processDiplomaticRequests() {
 
                 // Build a brief summary
                 std::string summary;
-                summary += srcName + (isTrade ? " proposes a trade.\n"
-                                                : " proposes a ceasefire.\n");
+                summary += TextFormat(isTrade ? T("%s proposes a trade.\n")
+                                             : T("%s proposes a ceasefire.\n"),
+                                      od::i18n::properName(srcName).c_str());
                 if (terms.ourMoney > 0)  summary += TextFormat(T("  Offers %d gold\n"), terms.ourMoney);
                 if (terms.theirMoney > 0) summary += TextFormat(T("  Demands %d gold\n"), terms.theirMoney);
                 if (!terms.ourProvs.empty()) summary += TextFormat(T("  Cedes %zu province(s)\n"), terms.ourProvs.size());
@@ -5667,7 +5681,7 @@ void Game::processDiplomaticRequests() {
                                           terms.theirReleaseProvs.size());
                 if (summary.back() == '\n') summary.pop_back();
                 pushPopup(PopupType::CEASEFIRE_REQUEST,
-                          isTrade ? "Trade Offer" : "Ceasefire Offer", summary,
+                          isTrade ? T("Trade Offer") : T("Ceasefire Offer"), summary,
                           reqCid, da.action, da.sourceIso, da.targetIso);
                 // Attach the terms to the popup entry so draw/update can show + apply them.
                 if (!m_popupQueue.empty()) m_popupQueue.back().terms = terms;
@@ -5681,28 +5695,39 @@ void Game::processDiplomaticRequests() {
             std::string msg2;
             if (da.action == "declare_war") {
                 title = T("War Declared!");
-                msg2 = srcName + " has declared war on " + (playerIso.empty() ? da.targetIso : "you") + "!";
+                // See the note on the player's own declaration above.
+                const std::string srcN = od::i18n::properName(srcName);
+                msg2 = playerIso.empty()
+                     ? std::string(TextFormat(T("%s has declared war on %s!"),
+                                              srcN.c_str(), da.targetIso.c_str()))
+                     : std::string(TextFormat(T("%s has declared war on you!"),
+                                              srcN.c_str()));
                 if (const char* why = warGoalText(da.statedGoal))
-                    msg2 += std::string("\n\nThey declare it ") + why + ".";
+                    msg2 += std::string("\n\n") + TextFormat(T("They declare it %s."), why);
                 else
-                    msg2 += "\n\nThey give no reason.";
+                    msg2 += std::string("\n\n") + T("They give no reason.");
             } else if (da.action == "request_alliance") {
                 title = T("Alliance Request");
-                msg2 = srcName + " proposes an alliance.";
+                msg2 = TextFormat(T("%s proposes an alliance."),
+                                  od::i18n::properName(srcName).c_str());
             } else if (da.action == "request_guarantee") {
                 title = T("Guarantee Request");
-                msg2 = srcName + " requests a mutual guarantee.";
+                msg2 = TextFormat(T("%s requests a mutual guarantee."),
+                                  od::i18n::properName(srcName).c_str());
             } else if (da.action == "request_nap") {
                 title = T("Non-Aggression Proposal");
-                msg2 = srcName + " proposes a non-aggression pact.";
+                msg2 = TextFormat(T("%s proposes a non-aggression pact."),
+                                  od::i18n::properName(srcName).c_str());
             } else if (da.action == "call_to_arms") {
                 int aggCid = cidForIso(da.subjectIso);
                 const Country* aggC = m_countries.getCountry(aggCid);
                 std::string aggName = aggC ? aggC->name : da.subjectIso;
-                title = "Call to Arms";
-                msg2 = srcName + " invokes your alliance against " + aggName + ".\n"
-                       "Join the war, or refuse and the alliance ends.\n"
-                       "Joining will stir unrest at home.";
+                title = T("Call to Arms");   // the one title that was not wrapped
+                msg2 = std::string(TextFormat(T("%s invokes your alliance against %s."),
+                                              od::i18n::properName(srcName).c_str(),
+                                              od::i18n::properName(aggName).c_str()))
+                     + "\n" + T("Join the war, or refuse and the alliance ends.")
+                     + "\n" + T("Joining will stir unrest at home.");
             }
             pushPopup(pt, title, msg2, reqCid, da.action, da.sourceIso, da.targetIso);
             if (da.action == "call_to_arms" && !m_popupQueue.empty())
@@ -5981,7 +6006,7 @@ void Game::processDiplomaticRequests() {
                             (da.sourceIso == playerIso) ? da.targetIso : da.sourceIso);
                         std::string otherName = otherC ? otherC->name : (da.sourceIso == playerIso ? da.targetIso : da.sourceIso);
                         pushPopup(PopupType::WAR_DECLARED, "Ceasefire Accepted!",
-                            otherName + " has accepted your ceasefire offer. The war is over.",
+                            TextFormat(T("%s has accepted your ceasefire offer. The war is over."), od::i18n::properName(otherName).c_str()),
                             0, "ceasefire_accepted", da.sourceIso, da.targetIso);
                     }
                 } else {
@@ -6005,11 +6030,12 @@ void Game::processDiplomaticRequests() {
                     if (da.sourceIso == playerIso) {
                         const Country* otherC = m_countries.getCountryByCode(da.targetIso);
                         std::string otherName = otherC ? otherC->name : da.targetIso;
-                        pushPopup(PopupType::WAR_DECLARED, "Ceasefire Rejected",
-                            otherName + " has rejected your ceasefire offer" +
-                            (refusalText(cfStated) ? std::string(" — ") + refusalText(cfStated)
-                                                   : std::string()) +
-                            ". The war continues.",
+                        pushPopup(PopupType::WAR_DECLARED, T("Ceasefire Rejected"),
+                            TextFormat(T("%s has rejected your ceasefire offer%s. The war continues."),
+                                       od::i18n::properName(otherName).c_str(),
+                                       refusalText(cfStated)
+                                         ? (std::string(" — ") + refusalText(cfStated)).c_str()
+                                         : ""),
                             0, "ceasefire_rejected", da.sourceIso, da.targetIso);
                     }
                 }
@@ -6077,7 +6103,7 @@ void Game::processDiplomaticRequests() {
                         std::string otherName = otherC ? otherC->name
                                               : (da.sourceIso == playerIso ? da.targetIso : da.sourceIso);
                         pushPopup(PopupType::WAR_DECLARED, "Trade Agreed",
-                            otherName + " has accepted your trade proposal.",
+                            TextFormat(T("%s has accepted your trade proposal."), od::i18n::properName(otherName).c_str()),
                             0, "trade_accepted", da.sourceIso, da.targetIso);
                     }
                 } else {
@@ -6098,10 +6124,12 @@ void Game::processDiplomaticRequests() {
                     if (da.sourceIso == playerIso) {
                         const Country* otherC = m_countries.getCountryByCode(da.targetIso);
                         std::string otherName = otherC ? otherC->name : da.targetIso;
-                        pushPopup(PopupType::WAR_DECLARED, "Trade Rejected",
-                            otherName + " has rejected your trade proposal" +
-                            (refusalText(trStated) ? std::string(" — ") + refusalText(trStated)
-                                                   : std::string()) + ".",
+                        pushPopup(PopupType::WAR_DECLARED, T("Trade Rejected"),
+                            std::string(TextFormat(T("%s has rejected your trade proposal%s."),
+                                       od::i18n::properName(otherName).c_str(),
+                                       refusalText(trStated)
+                                         ? (std::string(" — ") + refusalText(trStated)).c_str()
+                                         : "")),
                             0, "trade_rejected", da.sourceIso, da.targetIso);
                     }
                 }

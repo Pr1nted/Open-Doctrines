@@ -2129,21 +2129,33 @@ int Game::largestProvinceOf(int countryId) const {
 /// India before British India.
 void Game::rebuildFindMatches() {
     m_findMatches.clear();
-    auto lower = [](std::string v) {
-        for (char& c : v) c = (char)std::tolower((unsigned char)c);
-        return v;
-    };
-    const std::string q = lower(m_findQuery);
+    // foldLower, and not a byte-wise std::tolower: that leaves every
+    // non-ASCII letter exactly as it found it, so a lower-case Cyrillic or
+    // Greek query could never match the name it was typed for.
+    const std::string q = od::i18n::foldLower(m_findQuery);
     std::vector<std::pair<int, int>> scored;   // (rank, cid); rank 0 sorts first
     for (const auto& [cid, c] : m_countries.getAll()) {
         if (cid <= 0 || cid == UNC_CID || cid == BLC_CID) continue;
-        const std::string shown = lower(od::i18n::properName(c.name));
-        const std::string plain = lower(c.name);
-        const std::string iso   = lower(c.isoA3);
+        const std::string shown = od::i18n::foldLower(od::i18n::properName(c.name));
+        const std::string plain = od::i18n::foldLower(c.name);
+        const std::string iso   = od::i18n::foldLower(c.isoA3);
         if (q.empty()) { scored.push_back({1, cid}); continue; }
         int rank = -1;
         if (shown.rfind(q, 0) == 0 || plain.rfind(q, 0) == 0 || iso.rfind(q, 0) == 0) rank = 0;
         else if (shown.find(q) != std::string::npos || plain.find(q) != std::string::npos) rank = 1;
+        // ── AND IN ANY OTHER LANGUAGE ──
+        //
+        // The three above are the CURRENT language, the English name and the
+        // ISO code, so "Sov" finds Радянський Союз and "Радянський" finds
+        // nothing -- and neither does the Polish or German name of a country
+        // somebody knows under that name. The other nineteen name tables are
+        // read once on the first search and matched here.
+        if (rank != 0) {
+            for (const std::string& alias : od::i18n::searchAliases(c.name)) {
+                if (alias.rfind(q, 0) == 0) { rank = 0; break; }
+                if (rank < 0 && alias.find(q) != std::string::npos) rank = 1;
+            }
+        }
         if (rank >= 0) scored.push_back({rank, cid});
     }
     std::stable_sort(scored.begin(), scored.end(),

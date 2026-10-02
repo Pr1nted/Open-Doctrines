@@ -360,7 +360,7 @@ void Game::drawLfgCallToAction(int x, int y, int w, Vector2 mouse, bool click) {
              x + 16, y + 36, w - 180, 14, Color{150, 150, 170, 255}, true);
 
     const MpButton go = buttonAt((float)(x + w - 156), (float)(y + h / 2 - 19), 140.0f, 38.0f, mouse);
-    drawButton(go, "Open Discord", 16, Color{60, 50, 80, 235}, Color{130, 100, 180, 230});
+    drawButton(go, T("Open Discord"), 16, Color{60, 50, 80, 235}, Color{130, 100, 180, 230});
     if (click && go.hovered) odlink::open(odlfg::kDiscordInvite);
 }
 
@@ -398,7 +398,7 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
     }
 
     const MpButton back = buttonAt((float)(left + listW - 130), (float)btnY, 130.0f, 44.0f, mouse);
-    drawButton(back, "Back", 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+    drawButton(back, T("Back"), 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
     if (click && back.hovered) { m_mpPage = MpPage::Hub; m_mpFocus = -1; }
 
     const MpButton again = buttonAt((float)(left + listW - 274), (float)btnY, 134.0f, 44.0f, mouse);
@@ -531,7 +531,7 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
         // explain.
         if (l.joinable()) {
             const MpButton join = buttonAt(row.x + row.width - 122, row.y + 12, 108.0f, 36.0f, mouse);
-            drawButton(join, "Join", 16, Color{40, 60, 48, 230}, Color{130, 190, 140, 210});
+            drawButton(join, T("Join"), 16, Color{40, 60, 48, 230}, Color{130, 190, 140, 210});
             if (click && join.hovered) lfgJoin(l);
         }
 
@@ -561,7 +561,7 @@ void Game::drawMpBoard(Vector2 mouse, bool click) {
                 m_mpFocus = 7;
             const MpButton send = buttonAt(row.x + row.width - 122, fy, 108.0f, 34.0f, mouse);
             const bool ready = m_lfgReportNote.size() >= 4;
-            drawButton(send, "Send", 15, Color{52, 40, 42, 230}, Color{160, 110, 115, 210}, ready);
+            drawButton(send, T("Send"), 15, Color{52, 40, 42, 230}, Color{160, 110, 115, 210}, ready);
             if (click && send.hovered && ready) {
                 lfgSendReport(l.id, m_lfgReportNote);
                 m_lfgReporting.clear();
@@ -610,14 +610,14 @@ void Game::drawMpPost(Vector2 mouse, bool click) {
     // Tag.
     const bool hosting = m_lfgDraft.kind == odlfg::Kind::Hosting;
     const MpButton tHost = buttonAt((float)left, (float)y, (float)(fieldW / 2 - 6), 38.0f, mouse);
-    drawButton(tHost, "I am hosting a game", 16,
+    drawButton(tHost, T("I am hosting a game"), 16,
                hosting ? Color{44, 62, 50, 235} : Color{28, 30, 38, 220},
                hosting ? Color{130, 190, 140, 220} : Color{80, 85, 100, 190});
     if (click && tHost.hovered) m_lfgDraft.kind = odlfg::Kind::Hosting;
 
     const MpButton tLook = buttonAt((float)(left + fieldW / 2 + 6), (float)y,
                                     (float)(fieldW / 2 - 6), 38.0f, mouse);
-    drawButton(tLook, "I am looking for one", 16,
+    drawButton(tLook, T("I am looking for one"), 16,
                !hosting ? Color{38, 52, 72, 235} : Color{28, 30, 38, 220},
                !hosting ? Color{120, 160, 200, 220} : Color{80, 85, 100, 190});
     if (click && tLook.hovered) {
@@ -674,14 +674,14 @@ void Game::drawMpPost(Vector2 mouse, bool click) {
         DrawText(T("Players"), left, y, 14, Color{140, 148, 165, 255});
         y += 19;
         const MpButton fewer = buttonAt((float)left, (float)y, 36.0f, 34.0f, mouse);
-        drawButton(fewer, "-", 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+        drawButton(fewer, T("-"), 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
         if (click && fewer.hovered)
             m_lfgDraft.slotsTotal = std::max(odlfg::Limits::kSlotsMin, m_lfgDraft.slotsTotal - 1);
         const std::string seats = std::to_string(m_lfgDraft.slotsTaken) + " of " +
                                   std::to_string(m_lfgDraft.slotsTotal) + " seats taken";
         DrawText(seats.c_str(), left + 48, y + 9, 16, RAYWHITE);
         const MpButton more = buttonAt((float)(left + 220), (float)y, 36.0f, 34.0f, mouse);
-        drawButton(more, "+", 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+        drawButton(more, T("+"), 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
         if (click && more.hovered)
             m_lfgDraft.slotsTotal = std::min(odlfg::Limits::kSlotsMax, m_lfgDraft.slotsTotal + 1);
         if (m_lfgDraft.slotsTaken > m_lfgDraft.slotsTotal)
@@ -738,11 +738,11 @@ void Game::drawMpPost(Vector2 mouse, bool click) {
     y += 24;
 
     const MpButton back = buttonAt((float)left, (float)y, 150.0f, 42.0f, mouse);
-    drawButton(back, "Back", 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+    drawButton(back, T("Back"), 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
     if (click && back.hovered) { m_mpPage = MpPage::Board; m_mpFocus = -1; }
 
     const MpButton send = buttonAt((float)(left + fieldW - 190), (float)y, 190.0f, 42.0f, mouse);
-    drawButton(send, "Post it", 17, Color{44, 62, 50, 230}, Color{130, 190, 140, 210},
+    drawButton(send, T("Post it"), 17, Color{44, 62, 50, 230}, Color{130, 190, 140, 210},
                problem.empty() && !m_lfgBusy);
     if (click && send.hovered && problem.empty() && !m_lfgBusy) lfgSubmitDraft();
 }

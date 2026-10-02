@@ -1927,7 +1927,7 @@ void Game::updateModsMenu() {
             mm.reloadAll();
             clearModThumbnails();
             m_modReloading = false;
-            m_modFeedback = "Modloader reloaded";
+            m_modFeedback = T("Modloader reloaded");
             m_modFeedbackTimer = 2.0f;
         }
         return;
@@ -2083,7 +2083,7 @@ void Game::updateModsMenu() {
         // updated" button does: the game does not fetch a mod, and a directory
         // is not a reason to change that.
         odlink::open(kModDirectoryUrl);
-        m_modFeedback = "Opened the mod directory in your browser";
+        m_modFeedback = T("Opened the mod directory in your browser");
         m_modFeedbackTimer = 3.0f;
         return;
     }
@@ -2097,7 +2097,7 @@ void Game::updateModsMenu() {
         Audio::get().playSfx("click_light");
         std::string p = pickOdmodFile();
         if (p.empty()) {
-            m_modFeedback = "Drag a .odmod file onto the window to add it";
+            m_modFeedback = T("Drag a .odmod file onto the window to add it");
             m_modFeedbackTimer = 3.0f;
         } else {
             std::string err;
@@ -2153,7 +2153,7 @@ void Game::updateModsMenu() {
                     if (CheckCollisionPointRec(mouse, upB)) {
                         Audio::get().playSfx("click_light");
                         odlink::open(up->page.c_str());
-                        m_modFeedback = "Opened the mod's page in your browser";
+                        m_modFeedback = T("Opened the mod's page in your browser");
                         m_modFeedbackTimer = 3.0f;
                         return;
                     }
@@ -2167,7 +2167,7 @@ void Game::updateModsMenu() {
             Audio::get().playSfx("click_light");
             mm.reloadOne((size_t)i);
             clearModThumbnails();
-            m_modFeedback = "Reloaded";
+            m_modFeedback = T("Reloaded");
             m_modFeedbackTimer = 2.0f;
             return;
         }
@@ -2184,7 +2184,7 @@ void Game::updateModsMenu() {
             Audio::get().playSfx(!e.enabled ? "toggle_on" : "toggle_off");
             mm.setEnabled((size_t)i, !e.enabled);
             if (mods[i].state == ModState::PendingReload) {
-                m_modFeedback = "Enabled — reload to apply while a game is running";
+                m_modFeedback = T("Enabled — reload to apply while a game is running");
                 m_modFeedbackTimer = 4.0f;
             }
             return;

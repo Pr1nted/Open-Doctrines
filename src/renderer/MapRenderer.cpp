@@ -12,6 +12,19 @@
 #include "../Audio.h"
 // T(): the debug overlays below are drawn text like any other.
 #include "../i18n/Locale.h"
+// ── AND THE DRAWING HALF OF THE TEXT LAYER, NOT JUST T() ──
+//
+// Locale.h alone gives this file T() and nothing else, so its DrawText was
+// raylib's -- the default font, which has 95 ASCII glyphs and no more. Every
+// string this file drew in a language that is not written in ASCII came out as
+// a row of question marks: the zoom and province readouts along the bottom were
+// "???????: 05x | ????????? ?, ????????" in Ukrainian.
+//
+// Text.h is where DrawText and MeasureText become the translating, atlas-aware
+// versions. The country-label loop below is unaffected either way: it picks a
+// font per codepoint and draws through DrawTextPro, which the macros do not
+// touch.
+#include "../i18n/Text.h"
 #include "raymath.h"
 
 // ── Recording WHAT a texel is, not just what colour it is ──
@@ -1967,8 +1980,9 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
             if (it != provinces.getAllProvinces().end()) {
                 const Province& sel = it->second;
                 const Country* c = countries.getCountry(sel.countryId);
-                std::string info = "Selected: " + sel.name;
-                if (c) info += " (" + c->name + ")";
+                std::string info = std::string(T("Selected: ")) +
+                                   od::i18n::properName(sel.name);
+                if (c) info += " (" + od::i18n::properName(c->name) + ")";
                 DrawText(info.c_str(), m_screenW / 2 - 200, m_screenH - 25, 20, YELLOW);
             }
         }

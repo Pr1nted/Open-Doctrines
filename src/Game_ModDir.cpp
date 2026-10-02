@@ -155,7 +155,7 @@ void Game::drawModDirectory(Vector2 mouse, bool click) {
 
     const int btnY = m_screenH - 56;
     const MpButton back = buttonAt((float)left, (float)btnY, 150.0f, 36.0f, mouse);
-    drawButton(back, "Back to my mods", 16, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+    drawButton(back, T("Back to my mods"), 16, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
     if (click && back.hovered) { m_modDirPage = false; return; }
 
     const MpButton again = buttonAt((float)(left + 162), (float)btnY, 134.0f, 36.0f, mouse);
@@ -164,7 +164,7 @@ void Game::drawModDirectory(Vector2 mouse, bool click) {
     if (click && again.hovered && !m_modDirBusy) modDirRefresh(true);
 
     const MpButton site = buttonAt((float)(m_screenW - 230), (float)btnY, 190.0f, 36.0f, mouse);
-    drawButton(site, "Open the directory", 16, Color{40, 44, 58, 230},
+    drawButton(site, T("Open the directory"), 16, Color{40, 44, 58, 230},
                Color{110, 125, 160, 200});
     if (click && site.hovered) {
         odlink::open("https://opendoctrines.pages.dev/mods");
@@ -241,7 +241,7 @@ void Game::drawModDirectory(Vector2 mouse, bool click) {
         if (!l.page.empty()) {
             const MpButton open = buttonAt((float)(left + listW - 150),
                                            (float)(ry + rowH - 44), 134.0f, 30.0f, mouse);
-            drawButton(open, "Open its page", 15, Color{38, 48, 40, 230},
+            drawButton(open, T("Open its page"), 15, Color{38, 48, 40, 230},
                        Color{120, 170, 130, 200});
             if (click && open.hovered) {
                 odlink::open(l.page.c_str());

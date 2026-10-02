@@ -317,7 +317,7 @@ void Game::mpNote(const std::string& text, bool error) {
 void Game::mpStartHosting() {
     AccountClient& account = AccountClient::get();
     if (account.status() != AccountClient::Status::SignedIn) {
-        mpNote("Please log in to proceed", true);
+        mpNote(T("Please log in to proceed"), true);
         return;
     }
 
@@ -327,7 +327,7 @@ void Game::mpStartHosting() {
     if (m_config.serverCredential.empty()) {
         if (m_mpRegisterState.load() == MpRegister::Working) return;
 
-        mpNote("Registering this server with the account service...");
+        mpNote(T("Registering this server with the account service..."));
         m_mpHostAfterRegister = true;
         m_mpRegisterState.store(MpRegister::Working);
         if (m_mpRegisterThread.joinable()) m_mpRegisterThread.join();
@@ -509,7 +509,7 @@ void Game::mpOpenHost() {
         // resolve and nothing to generate. Seats are restored once it lands, in
         // mpOnWorldLoaded, because the lobby has to exist first.
         if (m_mpSaveIndex < 0 || m_mpSaveIndex >= (int)m_mpSavePaths.size()) {
-            mpNote("Pick a saved game to continue first.", true);
+            mpNote(T("Pick a saved game to continue first."), true);
             return;
         }
         const std::string savePath = m_mpSavePaths[(size_t)m_mpSaveIndex];
@@ -543,7 +543,7 @@ void Game::mpOpenHost() {
 
     std::string path, name;
     if (!mpResolveMap(m_mpMapId, path, name)) {
-        mpNote("Could not find that map on this machine.", true);
+        mpNote(T("Could not find that map on this machine."), true);
         return;
     }
     m_mpLoad = MpLoad::HostOpen;
@@ -566,15 +566,15 @@ void Game::mpBeginJoin(const std::string& address, const std::string& code) {
     // join that no longer had an address in it at all -- the message was true
     // when written and a lie by the time it was read, which is worse than no
     // message, because it points at the attempt in front of you.
-    mpNote("");
+    mpNote(T(""));
 
     AccountClient& account = AccountClient::get();
     if (account.status() != AccountClient::Status::SignedIn) {
-        mpNote("Please log in to proceed", true);
+        mpNote(T("Please log in to proceed"), true);
         return;
     }
     if (!ServerBook::validCode(code)) {
-        mpNote("That invite code does not look right.", true);
+        mpNote(T("That invite code does not look right."), true);
         return;
     }
 
@@ -609,7 +609,7 @@ void Game::mpBeginJoin(const std::string& address, const std::string& code) {
         return;
     }
     m_mpPage = MpPage::Lobby;
-    mpNote("Connecting...");
+    mpNote(T("Connecting..."));
 }
 
 void Game::mpLeave() {
@@ -708,7 +708,7 @@ void Game::mpDrainEvents() {
         m_mpTunnel->update();
         const Tunnel::State now = m_mpTunnel->state();
         if (before != now && now == Tunnel::State::Up) {
-            mpNote("Tunnel open. Players can use the address shown above.");
+            mpNote(T("Tunnel open. Players can use the address shown above."));
         } else if (before != now && now == Tunnel::State::Failed) {
             mpNote(m_mpTunnel->error().empty()
                        ? "The tunnel stopped; players may not be able to reach you."
@@ -727,7 +727,7 @@ void Game::mpDrainEvents() {
                     if (m_netHost->lobby().state() == NetSessionState::Game && e.peerId) {
                         if (!m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
                                                      mpSnapshotForJoiner()))
-                            mpNote("A player asked for the world and it is too large to send.",
+                            mpNote(T("A player asked for the world and it is too large to send."),
                                    true);
                     }
                     break;
@@ -745,7 +745,7 @@ void Game::mpDrainEvents() {
                         m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
                                                 mpSnapshotForJoiner());
                     }
-                    mpNote(e.text + " joined");
+                    mpNote(TextFormat(T("%s joined"), e.text.c_str()));
                     break;
 
                 case NetHostEvent::Kind::Opened:
@@ -759,7 +759,7 @@ void Game::mpDrainEvents() {
                     }
                     break;
                 case NetHostEvent::Kind::PeerLeft:
-                    mpNote("A player disconnected");
+                    mpNote(T("A player disconnected"));
                     break;
                 case NetHostEvent::Kind::OrdersReceived:
                     if (e.text == "malformed") {
@@ -796,13 +796,13 @@ void Game::mpDrainEvents() {
                     // Into the lobby chat, which only the host is reading at
                     // this point, and NOT broadcast: who tried and failed to
                     // get in is the host's business and nobody else's.
-                    pushChatLine("", e.text + " tried to join and was turned away.");
+                    pushChatLine("", TextFormat(T("%s tried to join and was turned away."), e.text.c_str()));
                     break;
                 case NetHostEvent::Kind::Failed:
                     mpNote(e.text, true);
                     break;
                 case NetHostEvent::Kind::Closed:
-                    mpNote("The game closed.", true);
+                    mpNote(T("The game closed."), true);
                     break;
                 default:
                     break;
@@ -865,7 +865,7 @@ void Game::mpDrainEvents() {
                     m_mpTurnEndsAtMs = e.deadlineMs > 0
                         ? (long long)(GetTime() * 1000.0) + (long long)e.deadlineMs
                         : 0;
-                    mpNote("Turn " + std::to_string(e.turnNumber) + " has begun.");
+                    mpNote(TextFormat(T("Turn %d has begun."), (int)e.turnNumber));
                     break;
                 case NetSessionEvent::Kind::TurnStoreKnown: {
                     // Long-form: the host said where turns live and handed over
@@ -1182,7 +1182,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     const int btnW = 260, btnH = 52;
     const MpButton joinWeb = buttonAt((float)(centerX - btnW / 2), (float)y,
                                       (float)btnW, (float)btnH, mouse);
-    drawButton(joinWeb, "Join by code", 20, Color{40, 52, 68, 230},
+    drawButton(joinWeb, T("Join by code"), 20, Color{40, 52, 68, 230},
                Color{120, 150, 190, 210});
     if (click && joinWeb.hovered) {
         m_mpCodeField.clear();
@@ -1203,7 +1203,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     const int btnW = 260, btnH = 52, gap = 16;
     const MpButton join = buttonAt((float)(centerX - btnW - gap / 2), (float)y,
                                    (float)btnW, (float)btnH, mouse);
-    drawButton(join, "Join by code", 20, Color{40, 52, 68, 230}, Color{120, 150, 190, 210});
+    drawButton(join, T("Join by code"), 20, Color{40, 52, 68, 230}, Color{120, 150, 190, 210});
     if (click && join.hovered) {
         m_mpPage = MpPage::Join;
         m_mpIpWarningAccepted = false;
@@ -1212,7 +1212,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
 
     const MpButton host = buttonAt((float)(centerX + gap / 2), (float)y,
                                    (float)btnW, (float)btnH, mouse);
-    drawButton(host, "Host a game", 20, Color{44, 62, 50, 230}, Color{130, 190, 140, 210});
+    drawButton(host, T("Host a game"), 20, Color{44, 62, 50, 230}, Color{130, 190, 140, 210});
     if (click && host.hovered) {
         m_mpPage = MpPage::HostSetup;
         m_mpFocus = 2;
@@ -1236,7 +1236,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     const int backW = 200, backH = 46;
     const MpButton leave = buttonAt((float)(centerX - backW / 2), (float)y,
                                     (float)backW, (float)backH, mouse);
-    drawButton(leave, "Back to Menu", 19, Color{34, 36, 44, 220},
+    drawButton(leave, T("Back to Menu"), 19, Color{34, 36, 44, 220},
                Color{90, 95, 110, 190});
     if (click && leave.hovered) m_currentScreen = SCREEN_MENU;
 }
@@ -1323,7 +1323,7 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     const int btnW = 220, btnH = 50, gap = 16;
     const MpButton back = buttonAt((float)(centerX - btnW - gap / 2), (float)y,
                                    (float)btnW, (float)btnH, mouse);
-    drawButton(back, "Back", 19, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+    drawButton(back, T("Back"), 19, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
     if (click && back.hovered) { m_mpPage = MpPage::Hub; m_mpFocus = -1; }
 
     // An address is optional now; the tickbox is only asked for when there is
@@ -1331,7 +1331,7 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     const bool ready = !m_mpCodeField.empty() && (!direct || m_mpIpWarningAccepted);
     const MpButton go = buttonAt((float)(centerX + gap / 2), (float)y,
                                  (float)btnW, (float)btnH, mouse);
-    drawButton(go, "Join", 19, Color{40, 60, 48, 230}, Color{130, 190, 140, 210}, ready);
+    drawButton(go, T("Join"), 19, Color{40, 60, 48, 230}, Color{130, 190, 140, 210}, ready);
     if (click && go.hovered && ready) mpBeginJoin(m_mpAddressField, m_mpCodeField);
 }
 
@@ -1363,14 +1363,14 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         {
             const MpButton nw = buttonAt((float)(centerX - fieldW / 2), (float)y,
                                          (float)(fieldW / 2 - 4), 30.0f, mouse);
-            drawButton(nw, "New world", 15,
+            drawButton(nw, T("New world"), 15,
                        m_mpResume ? Color{28, 32, 40, 220} : Color{40, 60, 46, 235},
                        m_mpResume ? Color{80, 88, 104, 190} : Color{110, 170, 130, 210});
             if (click && nw.hovered) m_mpResume = false;
 
             const MpButton cont = buttonAt((float)(centerX + 4), (float)y,
                                            (float)(fieldW / 2 - 4), 30.0f, mouse);
-            drawButton(cont, "Continue a game", 15,
+            drawButton(cont, T("Continue a game"), 15,
                        m_mpResume ? Color{40, 60, 46, 235} : Color{28, 32, 40, 220},
                        m_mpResume ? Color{110, 170, 130, 210} : Color{80, 88, 104, 190});
             if (click && cont.hovered) { m_mpResume = true; mpRefreshSaves(); }
@@ -1622,12 +1622,12 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         y += fieldH + 14;
 
         const MpButton fewer = buttonAt((float)(centerX - fieldW / 2), (float)y, 38.0f, 34.0f, mouse);
-        drawButton(fewer, "-", 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+        drawButton(fewer, T("-"), 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
         if (click && fewer.hovered) m_mpMaxPlayers = std::max(2, m_mpMaxPlayers - 1);
         const std::string players = std::to_string(m_mpMaxPlayers) + " players";
         DrawText(players.c_str(), centerX - fieldW / 2 + 48, y + 9, 17, RAYWHITE);
         const MpButton more = buttonAt((float)(centerX - fieldW / 2 + 148), (float)y, 38.0f, 34.0f, mouse);
-        drawButton(more, "+", 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+        drawButton(more, T("+"), 18, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
         if (click && more.hovered) m_mpMaxPlayers = std::min(32, m_mpMaxPlayers + 1);
 
         const MpButton listed = buttonAt((float)(centerX + 20), (float)y, 24.0f, 24.0f, mouse);
@@ -1694,7 +1694,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                     if (TunnelInstaller::supported()) {
                         const MpButton get = buttonAt((float)(centerX - fieldW / 2),
                                                       (float)y, 210.0f, 32.0f, mouse);
-                        drawButton(get, "Install cloudflared", 15,
+                        drawButton(get, T("Install cloudflared"), 15,
                                    Color{40, 52, 68, 230}, Color{120, 150, 190, 210});
                         if (click && get.hovered) {
                             if (!m_mpTunnelInstaller)
@@ -1906,7 +1906,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
     const int btnW = 220, btnH = 48, gap = 16;
     const MpButton back = buttonAt((float)(centerX - btnW - gap / 2), (float)btnY,
                                    (float)btnW, (float)btnH, mouse);
-    drawButton(back, "Back", 19, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
+    drawButton(back, T("Back"), 19, Color{34, 36, 44, 220}, Color{90, 95, 110, 190});
     if (click && back.hovered) { m_mpPage = MpPage::Hub; m_mpFocus = -1; }
 
     // No timer is a legitimate choice and the right one for a campaign, but it
@@ -2043,11 +2043,11 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             const int bw = 150, bh = 28;
             const MpButton copy = buttonAt((float)(centerX - bw - 6), (float)y,
                                            (float)bw, (float)bh, mouse);
-            drawButton(copy, "Copy invite", 15, Color{40, 52, 68, 230},
+            drawButton(copy, T("Copy invite"), 15, Color{40, 52, 68, 230},
                        Color{120, 150, 190, 210});
             if (click && copy.hovered) {
                 SetClipboardText(mpInviteText().c_str());
-                mpNote("Invite copied -- the link, and the code behind it.");
+                mpNote(T("Invite copied -- the link, and the code behind it."));
             }
 
             // ── INSIDE DISCORD, A CLIPBOARD IS THE WRONG TOOL ──
@@ -2066,13 +2066,13 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             if (EM_ASM_INT({ return window.odDiscordCanInvite ? window.odDiscordCanInvite() : 0; })) {
                 const MpButton dbtn = buttonAt((float)(centerX - bw - 6), (float)(y + bh + 6),
                                                (float)(bw * 2 + 12), (float)bh, mouse);
-                drawButton(dbtn, "Invite this voice channel", 15,
+                drawButton(dbtn, T("Invite this voice channel"), 15,
                            Color{54, 44, 84, 235}, Color{130, 120, 200, 220});
                 if (click && dbtn.hovered) {
                     if (EM_ASM_INT({ return window.odDiscordInvite(); }))
-                        mpNote("Discord is asking who to invite.");
+                        mpNote(T("Discord is asking who to invite."));
                     else
-                        mpNote("Discord would not open the invite.", true);
+                        mpNote(T("Discord would not open the invite."), true);
                 }
             }
 #endif
@@ -2118,7 +2118,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                     if (listed) {
                         lfgCloseMine();
                     } else if (!AccountClient::get().account().valid()) {
-                        mpNote("Sign in first -- a listing is posted under your nickname.", true);
+                        mpNote(T("Sign in first -- a listing is posted under your nickname."), true);
                     } else {
                         lfgDraftFromLobby();
                         // Remembered, so posting puts the host back in their
@@ -2194,14 +2194,14 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
     const int tabW = 140;
     const MpButton peopleTab = buttonAt((float)(centerX - tabW - 4), (float)y,
                                         (float)tabW, 34.0f, mouse);
-    drawButton(peopleTab, "People", 17,
+    drawButton(peopleTab, T("People"), 17,
                m_mpPlayersTab ? Color{28, 30, 38, 210} : Color{44, 54, 70, 230},
                Color{100, 120, 150, 200});
     if (click && peopleTab.hovered) m_mpPlayersTab = false;
 
     const MpButton countriesTab = buttonAt((float)(centerX + 4), (float)y,
                                            (float)tabW, 34.0f, mouse);
-    drawButton(countriesTab, "Players", 17,
+    drawButton(countriesTab, T("Players"), 17,
                m_mpPlayersTab ? Color{44, 54, 70, 230} : Color{28, 30, 38, 210},
                Color{100, 120, 150, 200});
     if (click && countriesTab.hovered) m_mpPlayersTab = true;
@@ -2256,7 +2256,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                         const MpButton rel = buttonAt((float)(rightX - 84),
                                                       (float)(row.y + 6), 84.0f, 26.0f,
                                                       mouse);
-                        drawButton(rel, "Release seat", 13, Color{46, 36, 36, 230},
+                        drawButton(rel, T("Release seat"), 13, Color{46, 36, 36, 230},
                                    Color{150, 105, 105, 200});
                         if (click && rel.hovered) {
                             if (m_netHost->lobby().releaseSeat(p.psid)) {
@@ -2349,7 +2349,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             return std::find(taken.begin(), taken.end(), id) != taken.end();
         };
         auto claim = [&](uint16_t id) {
-            if (isTaken(id)) { mpNote("Somebody already has that country.", true); return; }
+            if (isTaken(id)) { mpNote(T("Somebody already has that country."), true); return; }
             if (hosting) {
                 if (m_netHost->lobby().claimCountry(myPeer, id) == LobbyDenial::None)
                     m_netHost->broadcastLobby();
@@ -2509,14 +2509,14 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             DrawText(("Seats: " + std::to_string(m_mpMaxPlayers)).c_str(), sx, y + 8,
                      15, RAYWHITE);
             const MpButton fewer = buttonAt((float)(sx + 110), (float)y, 30.0f, 30.0f, mouse);
-            drawButton(fewer, "-", 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190},
+            drawButton(fewer, T("-"), 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190},
                        m_mpMaxPlayers > std::max(2, seated));
             if (click && fewer.hovered && m_mpMaxPlayers > std::max(2, seated)) {
                 m_mpMaxPlayers--;
                 changed = true;
             }
             const MpButton more = buttonAt((float)(sx + 146), (float)y, 30.0f, 30.0f, mouse);
-            drawButton(more, "+", 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190},
+            drawButton(more, T("+"), 17, Color{34, 36, 44, 220}, Color{90, 95, 110, 190},
                        m_mpMaxPlayers < 32);
             if (click && more.hovered && m_mpMaxPlayers < 32) {
                 m_mpMaxPlayers++;
@@ -2703,7 +2703,7 @@ void Game::mpOnWorldLoaded() {
             mpNote(std::to_string(held) + " seat(s) are being held for players from "
                    "last time. They keep their country when they rejoin.");
         } else {
-            mpNote("World loaded. Share the code and start when everyone is ready.");
+            mpNote(T("World loaded. Share the code and start when everyone is ready."));
         }
         return;
     }
@@ -2721,7 +2721,7 @@ void Game::mpOnWorldLoaded() {
             for (const NetTurnDelta& t : snap.turns) {
                 TurnDelta delta;
                 if (!SaveManager::unpackTurn(t.packed.data(), t.packed.size(), delta)) {
-                    mpNote("That server sent a turn this build could not read.", true);
+                    mpNote(T("That server sent a turn this build could not read."), true);
                     break;
                 }
                 applyTurnDelta(delta);
@@ -2785,7 +2785,7 @@ std::vector<uint8_t> Game::mpBuildSnapshot() {
 void Game::mpApplySnapshot(const std::vector<uint8_t>& payload) {
     NetWorldSnapshot snap;
     if (!NetWorldSnapshot::decode(payload.data(), payload.size(), snap)) {
-        mpNote("That server sent a world this build could not read.", true);
+        mpNote(T("That server sent a world this build could not read."), true);
         return;
     }
 
@@ -3483,7 +3483,7 @@ void Game::mpSubmitTurn() {
     m_mpSentOrdersTurn = turn;
     m_mpSentOrdersAtMs = (long long)(GetTime() * 1000.0);
     m_mpResentOrders = false;
-    mpNote("Orders sent. Waiting for the other players...");
+    mpNote(T("Orders sent. Waiting for the other players..."));
 }
 
 Game::OrdersAck Game::mpOrdersAckStep(bool submitted, bool alreadyResent,
@@ -3560,7 +3560,7 @@ void Game::mpUnready() {
         m_netHost->lobby().withdrawOrders(m_netHost->lobby().hostPeerId(),
                                           m_mpTurns->turnNumber());
         m_netHost->broadcastLobby();
-        mpNote("Not ready. The turn will wait for you again.");
+        mpNote(T("Not ready. The turn will wait for you again."));
     }
 }
 
@@ -3596,7 +3596,7 @@ void Game::mpForceResolve() {
     const uint16_t me = m_netHost->lobby().hostPeerId();
     if (m_netHost->lobby().find(me))
         m_netHost->lobby().submitOrders(me, m_mpTurns->turnNumber(), {});
-    mpNote("Resolving now without the remaining players.");
+    mpNote(T("Resolving now without the remaining players."));
     mpResolveTurn();
 }
 
@@ -3796,7 +3796,7 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
 
     TurnDelta delta;
     if (!SaveManager::unpackTurn(payload.data(), payload.size(), delta)) {
-        mpNote("The server sent a turn this build could not read.", true);
+        mpNote(T("The server sent a turn this build could not read."), true);
         return;
     }
     applyTurnDelta(delta);
@@ -4575,7 +4575,7 @@ void Game::mpHandleStoreResult(const TurnStoreResult& result) {
             // envelope and hands back the bytes the host packed.
             if ((uint32_t)m_turnNumber + 1 != result.turnNumber) return;
             mpApplyDelta(result.turnNumber, result.payload);
-            mpNote("Turn " + std::to_string(result.turnNumber) + " has been played.");
+            mpNote(TextFormat(T("Turn %d has been played."), (int)result.turnNumber));
             return;
         }
 
@@ -4698,15 +4698,14 @@ bool Game::mpLoadJoinedSession(const std::string& savePath) {
 void Game::mpManualOfferTurn(uint32_t turnNumber, const std::vector<uint8_t>& packed) {
     m_mpManualOut  = turnStoreEncodeText("turn", turnNumber, packed);
     m_mpManualOpen = true;
-    mpNote("Turn " + std::to_string(turnNumber) + " is ready to send. Copy the "
-           "block and give it to your players.");
+    mpNote(TextFormat(T("Turn %d is ready to send. Copy the block and give it to your players."), (int)turnNumber));
 }
 
 void Game::mpManualOfferOrders(uint32_t turnNumber, const std::vector<uint8_t>& sealed) {
     const std::string what = "orders " + m_mpMyPsid;
     m_mpManualOut  = turnStoreEncodeText(what.c_str(), turnNumber, sealed);
     m_mpManualOpen = true;
-    mpNote("Your orders are ready to send. Copy the block and give it to the host.");
+    mpNote(T("Your orders are ready to send. Copy the block and give it to the host."));
 }
 
 void Game::mpManualApplyPasted() {
@@ -4748,15 +4747,15 @@ void Game::mpManualApplyPasted() {
         case PasteAction::ApplyTurn:
             mpApplyDelta(turn, payload);
             m_mpManualIn.clear();
-            mpNote("Turn " + std::to_string(turn) + " applied.");
+            mpNote(TextFormat(T("Turn %d applied."), (int)turn));
             return;
 
         case PasteAction::OrdersAreForHost:
-            mpNote("Those are somebody's orders. Only the host applies those.", true);
+            mpNote(T("Those are somebody's orders. Only the host applies those."), true);
             return;
 
         case PasteAction::OrdersFromStranger:
-            mpNote("Those orders are from somebody who is not in this game.", true);
+            mpNote(T("Those orders are from somebody who is not in this game."), true);
             return;
 
         case PasteAction::OpenOrders: {
@@ -4781,7 +4780,7 @@ void Game::mpManualApplyPasted() {
         case PasteAction::Unknown:
             break;
     }
-    mpNote("That block is not something this game knows how to apply.", true);
+    mpNote(T("That block is not something this game knows how to apply."), true);
 }
 
 void Game::mpDrawManualExchange(int screenW, int screenH) {
@@ -4814,16 +4813,16 @@ void Game::mpDrawManualExchange(int screenW, int screenH) {
 
     const int btnW = (panelW - 60) / 2;
     const MpButton copy = buttonAt((float)(x + 20), (float)cy, (float)btnW, 36, mouse);
-    drawButton(copy, "Copy what I must send", 15, Color{34, 44, 60, 235},
+    drawButton(copy, T("Copy what I must send"), 15, Color{34, 44, 60, 235},
                Color{100, 130, 170, 200}, !m_mpManualOut.empty());
     if (click && copy.hovered && !m_mpManualOut.empty()) {
         SetClipboardText(m_mpManualOut.c_str());
-        mpNote("Copied. Paste it wherever you and the other players agreed.");
+        mpNote(T("Copied. Paste it wherever you and the other players agreed."));
     }
 
     const MpButton paste =
         buttonAt((float)(x + 40 + btnW), (float)cy, (float)btnW, 36, mouse);
-    drawButton(paste, "Paste what I was sent", 15, Color{34, 44, 60, 235},
+    drawButton(paste, T("Paste what I was sent"), 15, Color{34, 44, 60, 235},
                Color{100, 130, 170, 200});
     if (click && paste.hovered) {
         const char* clip = GetClipboardText();
@@ -4831,7 +4830,7 @@ void Game::mpDrawManualExchange(int screenW, int screenH) {
         // Applied straight away rather than parked behind a second button: the
         // paste IS the intent, and a block sitting in a box nobody pressed
         // Apply on is a turn somebody thinks they submitted.
-        if (m_mpManualIn.empty()) mpNote("There was nothing on the clipboard.", true);
+        if (m_mpManualIn.empty()) mpNote(T("There was nothing on the clipboard."), true);
         else mpManualApplyPasted();
     }
     cy += 48;
@@ -4849,7 +4848,7 @@ void Game::mpDrawManualExchange(int screenW, int screenH) {
 
     const MpButton close =
         buttonAt((float)(x + panelW - 140), (float)(y + panelH - 52), 120, 36, mouse);
-    drawButton(close, "Close", 15, Color{40, 34, 34, 235}, Color{140, 110, 110, 200});
+    drawButton(close, T("Close"), 15, Color{40, 34, 34, 235}, Color{140, 110, 110, 200});
     if (click && close.hovered) m_mpManualOpen = false;
 }
 

@@ -82,6 +82,25 @@ const char* tr(const std::string& english);
 const std::string& properName(const std::string& name);
 
 /**
+ * Case-folded, for searching: ASCII, Latin-1, Latin Extended-A, Greek and
+ * Cyrillic. std::tolower works a byte at a time, so it folds "Soviet" and
+ * leaves "Радянський" exactly as it found it -- which is why typing a lower
+ * case Cyrillic query matched nothing.
+ */
+std::string foldLower(const std::string& s);
+
+/**
+ * Every language's name for an English one, folded -- so a country can be
+ * found by typing it in a language the player is not currently using.
+ *
+ * The search already matched the CURRENT language, the English name and the
+ * ISO code, which is why "Sov" finds Радянський Союз and "Радянський" does
+ * not. This reads all twenty data/lang/*.names.json tables once, on the first
+ * search, and keeps them.
+ */
+const std::vector<std::string>& searchAliases(const std::string& englishName);
+
+/**
  * Whether the names table actually HAS this name, as opposed to properName
  * being able to transliterate it.
  *

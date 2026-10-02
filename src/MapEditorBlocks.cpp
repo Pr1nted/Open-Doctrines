@@ -7,6 +7,11 @@
 // round-trip checks in tests/script_expr_test.cpp); without that guarantee,
 // opening this view would quietly rewrite the author's file.
 #include "MapEditor.h"
+// The block-script editor draws through DrawText/MeasureText, and without this
+// those are raylib's raw ASCII versions -- so even its T()-wrapped labels
+// ("Engine", "%d block(s) need version %d") rendered as boxes in any language
+// that is not Latin. Same fault MapRenderer.cpp had. See i18n/Text.h.
+#include "i18n/Text.h"
 // ── THE SAME INPUT EVERY OTHER SCREEN SEES ──
 //
 // Without this the editor read raylib directly, and on Android raylib's wheel

@@ -96,6 +96,7 @@ const std::vector<Language> kLanguages = {
 std::deque<std::string> g_arena;
 std::unordered_map<std::string, const char*> g_table;
 std::unordered_map<std::string, std::string> g_names;
+static std::string g_dataDir;
 /// Answers already worked out, for the language currently loaded. Cleared with it.
 std::unordered_map<std::string, std::string> g_nameCache;
 // The table's VALUES, for isTranslation(). Built on demand and dropped on a
@@ -757,6 +758,7 @@ bool setLanguage(const std::string& code, const std::string& dataDir) {
     g_names = std::move(names);
     g_nameCache.clear();   // every answer in it was for the old language
     delete g_values; g_values = nullptr;   // and so was every value in it
+    g_dataDir = dataDir;   // searchAliases reads the other name tables from it
     g_code = code;
     g_translated = translated;
     g_total = total;
@@ -815,6 +817,77 @@ const char* tr(const std::string& english) { return tr(english.c_str()); }
 
 bool knownName(const std::string& name) {
     return !name.empty() && g_names.find(name) != g_names.end();
+}
+
+std::string foldLower(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    const char* p = in.c_str();
+    const char* const end = p + in.size();
+    while (p < end) {
+        unsigned cp = (unsigned char)*p;
+        int len = 1;
+        if (cp >= 0xF0)      { cp &= 0x07; len = 4; }
+        else if (cp >= 0xE0) { cp &= 0x0F; len = 3; }
+        else if (cp >= 0xC0) { cp &= 0x1F; len = 2; }
+        if (p + len > end) len = 1;
+        for (int i = 1; i < len; ++i) cp = (cp << 6) | ((unsigned char)p[i] & 0x3F);
+        p += len;
+
+        if (cp < 0x80)                       { if (cp >= 'A' && cp <= 'Z') cp += 32; }
+        else if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) cp += 32;   // Latin-1
+        else if (cp >= 0x100 && cp <= 0x17F) { if ((cp & 1) == 0) cp += 1; }  // Latin Ext-A
+        else if (cp >= 0x391 && cp <= 0x3A9) cp += 32;               // Greek
+        else if (cp >= 0x410 && cp <= 0x42F) cp += 32;               // Cyrillic А-Я
+        else if (cp >= 0x400 && cp <= 0x40F) cp += 80;               // Cyrillic Ё, Є, Ї...
+
+        if (cp < 0x80) out += (char)cp;
+        else if (cp < 0x800) {
+            out += (char)(0xC0 | (cp >> 6));
+            out += (char)(0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            out += (char)(0xE0 | (cp >> 12));
+            out += (char)(0x80 | ((cp >> 6) & 0x3F));
+            out += (char)(0x80 | (cp & 0x3F));
+        } else {
+            out += (char)(0xF0 | (cp >> 18));
+            out += (char)(0x80 | ((cp >> 12) & 0x3F));
+            out += (char)(0x80 | ((cp >> 6) & 0x3F));
+            out += (char)(0x80 | (cp & 0x3F));
+        }
+    }
+    return out;
+}
+
+static std::unordered_map<std::string, std::vector<std::string>> g_aliases;
+static bool g_aliasesLoaded = false;
+
+const std::vector<std::string>& searchAliases(const std::string& englishName) {
+    static const std::vector<std::string> none;
+    if (!g_aliasesLoaded) {
+        g_aliasesLoaded = true;      // set first: a failed read must not retry per keystroke
+        std::error_code ec;
+        for (const auto& e :
+             std::filesystem::directory_iterator(g_dataDir + "lang", ec)) {
+            const std::string fn = e.path().filename().string();
+            if (fn.size() < 12 ||
+                fn.compare(fn.size() - 11, 11, ".names.json") != 0) continue;
+            std::ifstream f(e.path());
+            if (!f) continue;
+            nlohmann::json j;
+            try { f >> j; } catch (const std::exception&) { continue; }
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                if (!it.value().is_string()) continue;
+                std::string v = foldLower(it.value().get<std::string>());
+                if (v.empty()) continue;
+                auto& vec = g_aliases[it.key()];
+                if (std::find(vec.begin(), vec.end(), v) == vec.end())
+                    vec.push_back(std::move(v));
+            }
+        }
+    }
+    auto it = g_aliases.find(englishName);
+    return it == g_aliases.end() ? none : it->second;
 }
 
 const std::string& properName(const std::string& name) {

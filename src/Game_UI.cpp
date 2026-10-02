@@ -265,7 +265,7 @@ void Game::drawPopup() {
                                  whyHover ? Color{60, 60, 84, 255} : Color{38, 38, 54, 220});
             DrawRectangleRoundedLines(whyBtn, 0.15f, 6, Color{80, 80, 105, 200});
             const std::string lbl =
-                std::string("If you refuse: ") + refusalTextOwn(m_popupRefusalReason);
+                TextFormat(T("If you refuse: %s"), refusalTextOwn(m_popupRefusalReason));
             DrawText(lbl.c_str(), (int)whyBtn.x + 10, (int)whyBtn.y + 6, 14,
                      m_popupRefusalReason == REFUSE_NONE ? Color{150, 150, 165, 255}
                                                          : Color{225, 205, 150, 255});

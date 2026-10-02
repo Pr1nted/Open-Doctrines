@@ -1,6 +1,7 @@
 #include "AccountClient.h"
 
 #include "HttpClient.h"
+#include "../i18n/Locale.h"   // T() for the account-screen messages
 
 #include <atomic>
 #include <chrono>
@@ -599,7 +600,7 @@ void AccountClient::update() {
     }
     if (due) {
         if (emscripten_get_now() > deadlineMs) {
-            m_impl->setMessage("that timed out. Try again.", true);
+            m_impl->setMessage(T("that timed out. Try again."), true);
             std::lock_guard<std::mutex> lock(m_impl->mutex);
             m_impl->status = m_impl->pollRestingStatus;
             m_impl->pollBody.clear();
@@ -718,7 +719,7 @@ bool AccountClient::beginFlow(AuthProvider provider, bool link) {
         const std::string pollSecret = httpJsonString(begun.body, "pollSecret", 256);
         const std::string verify = httpJsonString(begun.body, "verifyUrl", 2048);
         if (pollSecret.empty() || verify.empty()) {
-            impl->setMessage("the account service sent an unusable reply", true);
+            impl->setMessage(T("the account service sent an unusable reply"), true);
             impl->post([impl, resting] {
                 std::lock_guard<std::mutex> lock(impl->mutex);
                 impl->status = resting;
@@ -763,7 +764,7 @@ bool AccountClient::beginFlow(AuthProvider provider, bool link) {
             netWait(kPollIntervalMs);
             if (impl->cancelRequested.load()) break;
             if (std::chrono::steady_clock::now() > deadline) {
-                impl->setMessage("that timed out. Try again.", true);
+                impl->setMessage(T("that timed out. Try again."), true);
                 impl->post([impl, resting] {
                     std::lock_guard<std::mutex> lock(impl->mutex);
                     impl->status = resting;
@@ -903,7 +904,7 @@ bool AccountClient::createAccount(const std::string& nickname) {
                 std::lock_guard<std::mutex> lock(impl->mutex);
                 impl->signupTicket.clear();
             }
-            impl->setMessage("Account created.", false);
+            impl->setMessage(T("Account created."), false);
             impl->post([impl] {
                 std::lock_guard<std::mutex> lock(impl->mutex);
                 impl->status = Status::SignedIn;
@@ -942,7 +943,7 @@ bool AccountClient::changeNickname(const std::string& nickname) {
 
         if (res.ok()) {
             impl->applyAccountJson(res.body);
-            impl->setMessage("Nickname changed.", false);
+            impl->setMessage(T("Nickname changed."), false);
         } else {
             const std::string why = !res.error.empty() ? res.error
                 : httpJsonString(res.body, "message", 512);
@@ -1042,7 +1043,7 @@ bool AccountClient::confirmDelete() {
 
         if (res.ok()) {
             impl->clearToken();
-            impl->setMessage("Your account has been deleted.", false);
+            impl->setMessage(T("Your account has been deleted."), false);
             impl->post([impl] {
                 std::lock_guard<std::mutex> lock(impl->mutex);
                 impl->account = AccountInfo{};
