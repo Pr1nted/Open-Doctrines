@@ -1321,6 +1321,24 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
+141. **THE ADVISOR'S PROMPT IS TRUNCATED IN PLAY -- ~1,000 tokens off the front on
+   the tools path.** Journal 454. Measured payload: system 1,658 + tools 982 + briefing
+   375 = **~3,015 tokens**; Ollama's runtime window is **2,048** and `prompt_tokens` pins
+   at 2050 however much is sent. A codeword planted at the start of the prompt is lost --
+   the model invents one. `ollama show` says context length 131072, which is the model's
+   capability, not the window it runs in.
+   **The fix is unavailable on the configured endpoint:** `/v1` (data/config.json) ignores
+   `options` entirely; native `/api/chat` honours `options.num_ctx` (verified,
+   prompt_eval 5456, marker survived).
+   Options: **(a)** use `/api/chat` with num_ctx for local endpoints -- recommended, and a
+   real change to the request builder, since chatRequestBodyWithTools splices onto a fixed
+   `,"stream":false}` tail; **(b)** get under 2,048, which means fewer or shorter tool
+   descriptions and journal 445 measured the model using all 21 correctly; **(c)** document
+   OLLAMA_CONTEXT_LENGTH as an operator step, leaving the shipped default broken.
+   **Consequence for journal 453:** the world rules it measured are at the front of the
+   system prompt, so on the tools path they are exactly what gets dropped. 453's
+   measurement stands; whether the GAME reproduces it does not, until this is fixed.
+
 140. ~~**FOR THE USER -- a rule that shortens wars by a third and changes no score.**~~
    **CLAIM WITHDRAWN, journal 451. It does not shorten wars reliably.** Six seeds, both
    arms: deltas -18.0, -0.2, -13.1, -0.8, +0.4, -0.5; mean -5.4 with a paired 95%

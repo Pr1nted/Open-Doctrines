@@ -765,6 +765,44 @@ int main() {
            more.direction > 0.0f, "and for more of them");
     }
 
+    // ── WHAT THE PROMPT ACTUALLY COSTS, EVERY TURN (journal 454) ──
+    //
+    // The user asked for the LLM path to cost less RAM. keep_alive was the
+    // first half (Advisor.h LOCAL_KEEP_ALIVE, so a local model unloads instead
+    // of sitting resident); num_ctx was deferred because nobody had measured
+    // how big the prompt really is, and sizing a context window by guess is how
+    // you either truncate a letter or reserve memory for nothing.
+    //
+    // So this measures it and then GUARDS it. A prompt grows by a line at a
+    // time -- journal 453 added two and this is where the next five get
+    // noticed -- and the number is printed so the next person sizing num_ctx
+    // has it rather than guessing.
+    {
+        Persona pe;
+        pe.countryName = "Austria-Hungary";
+        pe.correspondent = "the German Empire";
+        pe.goal = "Keep the Balkans quiet without a general war.";
+        Situation si;
+        si.turn = 41; si.date = "March 1914"; si.atWar = false;
+        si.relativeStrength = "comparable to you";
+        si.proximity = "we share a border";
+        si.pact = "an alliance";
+        si.theirWars = "they are at war with France and Russia";
+        si.ourWars = "you are at war with Serbia";
+        si.ourFortunes = "we have been losing ground";
+        si.historyWithThem = "you have written often and warmly";
+        const std::string sys = systemPrompt(pe, si, "English");
+        printf("  [SIZE] system prompt %zu chars, ~%zu tokens at 4 chars/token\n",
+               sys.size(), sys.size() / 4);
+        // 12,000 chars is roughly 3,000 tokens: comfortable inside any 4k
+        // window once a letter and the tool answers are added, and about twice
+        // the present size, so it is a ceiling that catches growth rather than
+        // one that fires on the next edit.
+        ok(sys.size() < 12000, "the system prompt stays inside its budget");
+        ok(sys.find("HOW THIS WORLD WORKS") != std::string::npos,
+           "and still carries the world rules journal 453 measured");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

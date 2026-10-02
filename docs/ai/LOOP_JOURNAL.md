@@ -33957,3 +33957,54 @@ than the question being fixed. The habit is the result: **after adding anything 
 not the one you aimed at.**
 
 PATHS TOUCHED: src/llm/Advisor.cpp, tools/llm_comprehend.py, docs/ai/LOOP_JOURNAL.md.
+
+## 454 — the advisor's prompt is being silently truncated in play
+
+Started as the deferred half of the user's "cost less RAM" brief: `keep_alive` shipped, `num_ctx` was left pending a
+measurement of real prompt sizes, because sizing a context window by guess either truncates a letter or reserves
+memory for nothing. The measurement found a correctness bug instead.
+
+MEASURED, via a new size guard in tests/advisor_test.cpp (which prints the figure and then holds a ceiling on it):
+
+    system prompt      6,632 chars   ~1,658 tokens
+    tool catalogue     3,929 chars     ~982 tokens
+    briefing (17 answers) ~1,500 chars  ~375 tokens
+    ------------------------------------------------
+    input, before any letter history   ~3,015 tokens
+
+THE RUNTIME WINDOW IS 2,048, AND THE FRONT IS WHAT GOES. A codeword planted at the very start of a long system
+prompt, then asked for:
+
+    sent ~6,400 tokens   -> prompt_tokens=2050   model answered "CANNON"
+    sent ~12,700 tokens  -> prompt_tokens=2050   model answered "CANNON"
+
+It invents a codeword rather than reading the one it was given, and `prompt_tokens` pins at 2050 whatever is sent.
+`ollama show` reports context length 131072, which is the MODEL'S CAPABILITY and not the window Ollama runs it in --
+that distinction is the whole bug.
+
+**AND THE FIX IS NOT AVAILABLE ON THE ENDPOINT THE GAME USES.** data/config.json points at
+`http://127.0.0.1:11434/v1`, the OpenAI-compatible path, which **ignores `options` entirely**:
+
+    /v1 + options.num_ctx     prompt_tokens=2050   TRUNCATED
+    /v1 + top-level num_ctx   prompt_tokens=2050   TRUNCATED
+    /api/chat + options       prompt_eval=5456     marker survived, OK
+
+So on the native `/api/chat` path a window can be asked for and is honoured; on `/v1` it cannot.
+
+WHAT THIS MEANS FOR WHAT ALREADY SHIPPED, and it is the uncomfortable part: a letter sent WITHOUT tools is
+~2,033 tokens and fits with nothing to spare. A letter sent WITH the tool catalogue is ~3,015 and loses about a
+thousand tokens off the FRONT -- which is the system prompt: who the advisor is, how to write, and the world rules
+journal 453 added two hours ago. **Journal 453 measured those rules working through a test harness that sends them in a
+short prompt. In the game, on the tools path, they may never arrive.** That is not a reason to doubt 453's
+measurement; it is a reason to doubt that the game reproduces it, which is a different and worse problem.
+
+NOT FIXED HERE, because the options are a design choice and this is one iteration:
+  (a) use `/api/chat` with `options.num_ctx` for local endpoints -- correct, and a real change to the request builder
+      and response parsing, which `chatRequestBodyWithTools` splices onto a fixed `,"stream":false}` tail;
+  (b) get the payload under 2,048 -- the tool catalogue is 982 tokens of it, so this means sending fewer tools or
+      shorter descriptions, and journal 445 measured the model choosing correctly from all 21;
+  (c) document that the operator must raise it server-side (OLLAMA_CONTEXT_LENGTH or a Modelfile), which leaves the
+      shipped default broken.
+My recommendation is (a), with (c) documented as the interim. Item 141.
+
+PATHS TOUCHED: tests/advisor_test.cpp (size guard, prints the number), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
