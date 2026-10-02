@@ -6894,6 +6894,40 @@ std::string AISystem::execWar(int cid, int action) {
                 // the same number.
                 const int pct = (int)std::lround(100.0f * need);
                 if (pct <= 0 || pct > 100) continue;
+                // ── DO NOT RE-FIGHT YESTERDAY'S BATTLE (OD_REATTACK_COOLDOWN) ──
+                //
+                // Journal 449: 16.3% of all attack orders re-order the same
+                // province pair on the very NEXT turn. Above the combat frontage
+                // the same battle returns the same answer every time it is made
+                // (memory width-makes-numbers-irrelevant), so a one-turn repeat
+                // with an unchanged garrison ratio is a spent turn that cannot
+                // change the position.
+                //
+                // Narrow on purpose: next turn only, and only when the ratio has
+                // not moved 10%. The 75.9% figure for repeats of ANY age mostly
+                // describes genuine pressure on a contested front, and memory
+                // conditions-are-expensive says start narrow rather than widen.
+                //
+                // `continue`, not a return: the men stay available and the next
+                // candidate is considered, so this REDIRECTS an attack rather
+                // than cancelling one -- memory masking-waste-costs measured -59
+                // for a rule that merely removed an option.
+                {
+                    static const bool cooldown = OD_ENV("OD_REATTACK_COOLDOWN") &&
+                                                 atoi(OD_ENV("OD_REATTACK_COOLDOWN")) != 0;
+                    if (cooldown && ch.theirGarrison > 0) {
+                        const auto ckey = std::make_pair(ch.fromPid, ch.toPid);
+                        const float ratio = (float)ch.myGarrison / (float)ch.theirGarrison;
+                        auto f = s_reatkRatio.find(ckey);
+                        if (f != s_reatkRatio.end() && m_turn == f->second.first + 1 &&
+                            f->second.second > 0.0f &&
+                            std::fabs(ratio - f->second.second) / f->second.second < 0.10f) {
+                            ++s_reatkSuppressed;
+                            continue;
+                        }
+                        s_reatkRatio[ckey] = {m_turn, ratio};
+                    }
+                }
                 g.m_pendingMoveOrders.push_back({ch.fromPid, ch.toPid, pct, cid});
                 // ── IS THIS A BATTLE WE HAVE ALREADY FOUGHT? (OD_REATTACK) ──
                 //
@@ -14036,6 +14070,8 @@ std::map<std::pair<int,int>, std::pair<int,int>> AISystem::s_reatkSeen;
 long long AISystem::s_reatkOrders = 0;
 long long AISystem::s_reatkRepeats = 0;
 long long AISystem::s_reatkConsecutive = 0;
+std::map<std::pair<int,int>, std::pair<int,float>> AISystem::s_reatkRatio;
+long long AISystem::s_reatkSuppressed = 0;
 int AISystem::s_reatkMax = 0;
 std::vector<int> AISystem::s_warTransfers;
 long long AISystem::s_warStalemates = 0;
@@ -14873,6 +14909,10 @@ void AISystem::dumpReattack() {
             100.0 * (double)s_reatkConsecutive / n, s_reatkMax);
     fprintf(stderr, "[REATTACK] counted at ISSUE, so a pair re-attacked after the defence "
                     "genuinely changed counts as a repeat too.\n");
+    if (s_reatkSuppressed > 0)
+        fprintf(stderr, "[REATTACK] cooldown suppressed %lld next-turn re-orders "
+                        "(%.1f%% of issues)\n", s_reatkSuppressed,
+                100.0 * (double)s_reatkSuppressed / n);
 }
 
 void AISystem::dumpResearchPicks() {

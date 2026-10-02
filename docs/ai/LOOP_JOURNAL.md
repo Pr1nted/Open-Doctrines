@@ -33739,3 +33739,63 @@ re-attack spends a turn that cannot change the position, and duration is the onl
 
 PATHS TOUCHED: src/ai/AISystem.cpp, src/ai/AISystem.h (counter only, inert unset), docs/ai/LOOP_JOURNAL.md,
 docs/ai/BACKLOG.md.
+
+## 450 — iteration: refuse a next-turn re-attack when nothing about the fight has changed
+
+PRE-REGISTERED. Item 139's candidate rule, built from what AISystem can see, because the resolver is still being
+edited by the peer and the shared-tree rule stands.
+
+THE RULE (`OD_REATTACK_COOLDOWN`, default off). At the order site, remember each pair's turn and garrison ratio. If
+the SAME (from -> to) comes up on the VERY NEXT TURN and the garrison ratio has moved by less than 10%, skip that
+candidate -- `continue`, so the next target is considered and the men stay available rather than being idled.
+
+**ONLY the next turn, and only when the ratio is unchanged.** That is deliberately the narrowest version. Journal 449
+measured 75.9% of orders as repeats of some kind, but the part I would defend is the 16.3% that repeat one turn later,
+because that is the case [[width-makes-numbers-irrelevant]] settles: above the frontage the same battle returns the
+same answer, so one turn apart with an unchanged ratio almost nothing can have changed. A rule aimed at the 75.9%
+would be suppressing genuine pressure, and [[conditions-are-expensive]] says narrow it here rather than widen later.
+
+PRIMARY STATISTIC: **mean war length** (OD_WARLIFE), not the rating. Item 139 asked for this and the reason is power:
+mean length is a count over ~114 ended wars in a single run, while the rating resolves nothing under ~30 points at 32
+seeds. If the mechanism works, wars get shorter; whether shorter wars are worth anything is the second question.
+
+PREDICTION, committed:
+  - The mechanism fires: suppressed orders land near 10-16% of issues, since that is the measured next-turn share.
+  - **Mean war length falls slightly, 36.6 turns down by 1-3.** Not more: a suppressed order frees one stack for one
+    turn, not a campaign.
+  - **Seats within floor, and I expect the rush seat to be the risk.** [[masking-waste-costs]] measured -59 for
+    exactly this shape -- "mass moves to the next safe action" -- and [[passivity-is-load-bearing]] warns that making
+    the AI attack less is how this project has lost seats before. A refused attack is a refused attack even when the
+    reasoning is sound.
+
+VERDICT RULE: recommend only if war length falls AND neither seat set clears its floor downward. A duration gain paid
+for in collapses is not a gain; the rush seat is the only one left in the reject rule.
+
+AND IF THE DURATION EFFECT IS REAL BUT THE SEATS ARE FLAT, that is still the honest answer to item 105 -- it would say
+the growth channel identified in journal 448 is reachable and simply not worth much, which is worth knowing before
+anyone spends more on it.
+
+MECHANISM, ordinary world, one seed, 400 turns. Inert unset -- hash still 14336312219319526770/109360.
+
+                      mean war length   wars ended   started   suppressed      seat   width-bound
+  COOLDOWN=0              36.6 turns        114         127        --          34.1    24.5%
+  COOLDOWN=1              24.3 turns        149         159     490 (6.5%)     26.9    16.3%
+
+**THE PRIMARY STATISTIC MOVED FAR MORE THAN PREDICTED, AND FROM FEWER SUPPRESSIONS.** I committed to "mean war length
+falls slightly, 36.6 down by 1-3" and to suppressions landing at 10-16% of issues. It suppressed **6.5%** -- below my
+range -- and took **12.3 turns off the mean war length**, a 34% reduction, four times my upper bound. Wars ended rose
+114 -> 149 on the same 400 turns, which is the slot turning over faster, exactly the chain journal 448 said was the
+only growth channel left.
+
+WHY SO LARGE FROM SO FEW, as far as this run can say: the width-bound share fell 24.5% -> 16.3% while contested
+assaults ROSE 6,153 -> 7,654 and total assaults stayed flat (105,471 -> 105,381). So the rule is not reducing
+fighting; it is moving the same volume of attacks off pairs where both stacks sit above the frontage -- the condition
+under which [[width-makes-numbers-irrelevant]] says the battle cannot resolve -- and onto pairs where it can. A
+stalemated front holds a war open; a resolvable one closes it.
+
+**AND THE SEAT FELL, 34.1 -> 26.9 on this seed.** One seed, but 1914:FRA:rung is graded rather than bistable, so that
+is worth more than a rush coin flip and it is the trade I registered as the risk: [[masking-waste-costs]] and
+[[passivity-is-load-bearing]] both say a refused attack costs something even when the reasoning is sound.
+
+THE BENCH: 32 seeds an arm on **set B of j447_fresh64 (fields 33-64), untouched** -- it was reserved to confirm
+journal 447 and journal 447 was rejected before needing it, so it is still pristine. Rung and rush, off against on.

@@ -315,6 +315,9 @@ public:
     /// change the position. Keyed (fromPid, toPid) -> {times ordered, last turn}.
     static std::map<std::pair<int,int>, std::pair<int,int>> s_reatkSeen;
     static long long s_reatkOrders, s_reatkRepeats, s_reatkConsecutive;
+    /// Journal 450: last turn and garrison ratio per pair, for the cooldown.
+    static std::map<std::pair<int,int>, std::pair<int,float>> s_reatkRatio;
+    static long long s_reatkSuppressed;
     static int s_reatkMax;
     static void dumpReattack();
     static std::vector<int> s_warTransfers;   ///< |net province change|, per war
