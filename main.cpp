@@ -2,6 +2,7 @@
 #include "Audio.h"
 #include "ai/AISystem.h"
 #include "WinFatalDialog.h"
+#include "util/SoftwareGlRelaunch.h"
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
@@ -10,6 +11,10 @@
 #include <vector>
 
 int main(int argc, char** argv) {
+    // Banked before anything can chdir, so a software-GL retry can re-exec this
+    // exact binary with the exact arguments. See util/SoftwareGlRelaunch.
+    odRememberRelaunch(argc, argv);
+
     // No dialogs in a run with nobody at the keyboard.
     //
     // A message box blocks the thread that raised it until it is dismissed, so

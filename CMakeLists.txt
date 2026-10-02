@@ -988,6 +988,7 @@ set(GAME_SOURCES
     src/Game_Llm.cpp
     # Threads on desktop, an ASYNCIFY queue in the browser. See its header.
     src/util/Async.cpp
+    src/util/SoftwareGlRelaunch.cpp
     # Hand-run: --llm-letter, a real letter through the real send path.
     src/Game_LlmLetter.cpp
     src/Game_Moderation.cpp
