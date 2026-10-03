@@ -76,6 +76,7 @@ cp packaging/web/_headers "$out/_headers"
 # The site itself: a handful of static pages sharing one stylesheet.
 cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/cookies.html packaging/web/site/press.html \
+   packaging/web/site/download.html \
    packaging/web/site/mods.html packaging/web/site/publish.html \
    packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
@@ -105,6 +106,55 @@ for name, (pat, rep) in marks.items():
     p.write_text(s2, encoding="utf-8")
 print(f"  stamped version {ver} into index.html and press.html")
 STAMP
+
+# ── THE DOWNLOAD PAGE'S RELEASE LIST ──
+#
+# From CHANGELOG.md, not from the GitHub API: no network at deploy time, no
+# per-visitor rate limit, and the list cannot disagree with the changelog
+# because it IS the changelog. /releases/latest is no use either -- every game
+# release is flagged pre-release, so it resolves to the TempleOS build.
+python3 - "$out" <<'RELS'
+import json, pathlib, re, sys
+out = pathlib.Path(sys.argv[1])
+text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+# "## game 1.2.2a", then the first non-empty prose line under it. sdk and
+# server headings are skipped: they are not things anybody downloads here.
+rels = []
+for m in re.finditer(r"^## game (\S+)\s*$", text, re.M):
+    ver = m.group(1)
+    body = text[m.end(): m.end() + 1200].lstrip("\n")
+    # Most releases open straight into a bulleted list, so a prose-only rule
+    # left eleven of twelve rows reading "--". Prose first where there is any;
+    # otherwise the first bullet's bolded lead, which is written as a sentence
+    # and is exactly the summary the column wants.
+    note = ""
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith(("#", ">", "|")):
+            break
+        if line.startswith(("-", "*")):
+            b = re.match(r"[-*]\s+\*\*(.+?)\*\*", line)
+            if b:
+                note = b.group(1).rstrip(".")
+            break
+        note = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
+        note = re.sub(r"`(.+?)`", r"\1", note)
+        break
+    rels.append({"tag": "v" + ver, "ver": ver, "note": note})
+if not rels:
+    raise SystemExit("no '## game <version>' headings in CHANGELOG.md")
+p = out / "download.html"
+s = p.read_text(encoding="utf-8")
+s2, n = re.subn(r"/\*__RELEASES__\*/\[.*?\];",
+                "/*__RELEASES__*/" + json.dumps(rels, ensure_ascii=False) + ";",
+                s, flags=re.S)
+if n != 1:
+    raise SystemExit(f"download.html: expected one release marker, found {n}")
+p.write_text(s2, encoding="utf-8")
+print(f"  stamped {len(rels)} release(s) into download.html, newest {rels[0]['ver']}")
+RELS
 
 # ANALYTICS ARE SITE-ONLY, AND THAT IS A PROMISE MADE IN WRITING. The cookie
 # policy and net/PRIVACY.md both say /play/ is excluded, so a stray copy of
