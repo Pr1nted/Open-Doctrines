@@ -105,7 +105,30 @@
           <a class="get" data-asset="OpenDoctrines.apk" href="#">Download .apk</a>
         </div>
       </div>
+      <div class="dl" data-os="templeos">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.6l1.9 3.9 4.3.6-3.1 3 .7 4.3-3.8-2-3.8 2 .7-4.3-3.1-3 4.3-.6zM4.2 14.3h15.6v1.6H4.2zm1.4 3.1h12.8v1.5H5.6zm-1.4 3h15.6v1.5H4.2z"/></svg>
+        <div>
+          <h3>TempleOS</h3>
+          <p>
+            The whole game in HolyC — map, rules and AI, nothing sent anywhere.
+            <strong>Needs a virtual machine</strong> (QEMU, Bochs, VirtualBox):
+            the screen mode it uses is one real graphics cards do not offer.
+          </p>
+          <a class="get" data-asset="open-doctrines-templeos-{ver}.zip"
+             data-tag="templeos-v{ver}" href="#">Download .zip</a>
+        </div>
+      </div>
     </div>
+
+    <p class="note">
+      <strong>FreeBSD and OpenBSD</strong> are built and tested for every
+      release, inside real BSDs, but they are not published as downloads yet —
+      <code>bsd-game.yml</code> runs on request and leaves CI artifacts, which
+      expire and need a GitHub account to fetch. Until they are attached to a
+      release, build from source: the
+      <a href="https://github.com/Pr1nted/Open-Doctrines#building" rel="noopener">README</a>
+      covers it, and nothing in the build is Linux-specific.
+    </p>
 
     <p class="note">
       Installers (<code>.exe</code>, <code>.dmg</code>) are on the
@@ -158,8 +181,14 @@ var REL = /*__RELEASES__*/[{"tag":"v1.2.2a","ver":"1.2.2a","note":""}];
 var BASE = "https://github.com/Pr1nted/Open-Doctrines/releases";
 
 document.getElementById("ver").textContent = REL[0].ver;
+/* {ver} in either the asset name or the tag, because not every build ships on
+   the game's own tag or with a stable filename: TempleOS is its own release
+   (templeos-v1.2.2a) and names the version in the file. The desktop zips are
+   stable-named on the game tag and substitute nothing. */
 document.querySelectorAll("a.get").forEach(function (a) {
-  a.href = BASE + "/download/" + REL[0].tag + "/" + a.dataset.asset;
+  var r = REL[0];
+  var tag = (a.dataset.tag || "{tag}").replace("{ver}", r.ver).replace("{tag}", r.tag);
+  a.href = BASE + "/download/" + tag + "/" + a.dataset.asset.replace("{ver}", r.ver);
 });
 
 /* WHICH SYSTEM. userAgentData where it exists, userAgent elsewhere. Android is
