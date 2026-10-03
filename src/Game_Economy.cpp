@@ -425,6 +425,24 @@ float Game::countryGoodsDemand(int countryId, int good) const {
     return (float)((double)people / CONSUMER_PER_CAPITA) * expectation;
 }
 
+float Game::goodShortfall(int cid, int good) const {
+    if (!m_goodsEconomy || good < 0 || good >= GOOD_COUNT) return 0.0f;
+    // need: consumer demand is computed fresh (it tracks population); the other
+    // three are the reserve the last turn recorded, which is what autoAssignOutputs
+    // feeds planOutputs. Same source, so the AI and the allocator cannot disagree.
+    float need = 0.0f;
+    if (good == GOOD_CONSUMER) {
+        need = countryGoodsDemand(cid, GOOD_CONSUMER);
+    } else {
+        auto it = m_countryProduction.find(cid);
+        if (it != m_countryProduction.end()) need = it->second.demand[good];
+    }
+    float stock = 0.0f;
+    auto sp = m_countryStockpiles.find(cid);
+    if (sp != m_countryStockpiles.end()) stock = sp->second.goods[good];
+    return std::max(0.0f, need - stock);
+}
+
 float Game::livingStandards(int countryId) const {
     auto it = m_countryProduction.find(countryId);
     if (it == m_countryProduction.end()) return 1.0f;

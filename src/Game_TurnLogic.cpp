@@ -5665,6 +5665,18 @@ void Game::processDiplomaticRequests() {
                                       od::i18n::properName(srcName).c_str());
                 if (terms.ourMoney > 0)  summary += TextFormat(T("  Offers %d gold\n"), terms.ourMoney);
                 if (terms.theirMoney > 0) summary += TextFormat(T("  Demands %d gold\n"), terms.theirMoney);
+                // The goods, named by their own labels. Only in the goods
+                // economy do the arrays carry anything; a money game skips them.
+                if (m_goodsEconomy) {
+                    for (int g = 0; g < GOOD_COUNT; ++g)
+                        if (terms.ourGoods[g] > 0.5f)
+                            summary += TextFormat(T("  Offers %d %s\n"),
+                                                  (int)terms.ourGoods[g], goodName(g));
+                    for (int g = 0; g < GOOD_COUNT; ++g)
+                        if (terms.theirGoods[g] > 0.5f)
+                            summary += TextFormat(T("  Demands %d %s\n"),
+                                                  (int)terms.theirGoods[g], goodName(g));
+                }
                 if (!terms.ourProvs.empty()) summary += TextFormat(T("  Cedes %zu province(s)\n"), terms.ourProvs.size());
                 if (!terms.theirProvs.empty()) summary += TextFormat(T("  Demands %zu province(s)\n"), terms.theirProvs.size());
                 if (!terms.ourDropClaims.empty()) summary += TextFormat(T("  Drops %zu own claim(s)\n"), terms.ourDropClaims.size());
@@ -6433,6 +6445,31 @@ void Game::applyCeasefireTerms(const std::string& sourceIso, const std::string& 
         tgtC.treasury -= amt;
         srcC.treasury += amt;
         printf("[CEASEFIRE] %s pays %g to %s\n", targetIso.c_str(), amt, sourceIso.c_str());
+    }
+
+    // ── GOODS, STOCKPILE TO STOCKPILE ──
+    //
+    // Only in the goods economy -- in a money game the arrays are zero and this
+    // loop does nothing. Clamped at both ends: a country cannot give goods it
+    // does not hold, and cannot receive past the stockpile cap. The sender's
+    // offer is capped to what it has; the demand on the recipient likewise, so
+    // a deal that asked for more than the other side kept simply moves what is
+    // there. This is the inter-country flow the goods economy was missing.
+    if (m_goodsEconomy) {
+        auto& srcSp = m_countryStockpiles[srcCid];
+        auto& tgtSp = m_countryStockpiles[tgtCid];
+        for (int g = 0; g < GOOD_COUNT; ++g) {
+            const float give = std::min(std::max(0.0f, terms.ourGoods[g]), srcSp.goods[g]);
+            if (give > 0.0f) {
+                srcSp.goods[g] -= give;
+                tgtSp.goods[g]  = std::min(STOCKPILE_CAP, tgtSp.goods[g] + give);
+            }
+            const float take = std::min(std::max(0.0f, terms.theirGoods[g]), tgtSp.goods[g]);
+            if (take > 0.0f) {
+                tgtSp.goods[g] -= take;
+                srcSp.goods[g]  = std::min(STOCKPILE_CAP, srcSp.goods[g] + take);
+            }
+        }
     }
 
     // Labels refresh once per turn via m_labelsDirty (full-map scan otherwise

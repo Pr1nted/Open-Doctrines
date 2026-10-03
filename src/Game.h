@@ -2776,6 +2776,14 @@ public:
     /** Consumer goods a country's population wants per turn. */
     float countryGoodsDemand(int countryId, int good) const;
     /**
+     * How short country `cid` is of good `good` this turn: max(0, demand -
+     * stock), the SAME quantity planOutputs allocates against. One accessor so
+     * the AI's trade valuation and the economy's own allocator read one number
+     * -- a second copy would drift, and the AI would value goods by a figure
+     * the economy no longer computes. Zero outside the goods economy.
+     */
+    float goodShortfall(int cid, int good) const;
+    /**
      * Extract, produce, feed, sell. One country, one turn, in that order.
      *
      * ORDER IS THE WHOLE THING. Extraction before production, because a factory

@@ -223,6 +223,23 @@ struct CeasefireTerms {
     std::vector<int> ourReleaseProvs;   // and the provinces it is given
     std::string theirReleaseTag;        // minority the sender demands be freed
     std::vector<int> theirReleaseProvs;
+
+    // ── GOODS CHANGE HANDS TOO ──
+    //
+    // A trade used to move money, provinces and claims and nothing a country
+    // had MADE. But the goods economy's one open fault is distribution: the
+    // world grows almost exactly enough food and none of it crosses a border,
+    // so a food-rich country sits on a surplus while a neighbour starves. A
+    // deal is the channel that was missing. `our` is what the sender gives;
+    // `their` is what the sender asks for. Transferred stockpile to stockpile
+    // in applyCeasefireTerms, and only when the goods economy is on -- in a
+    // money game these are zero and nothing reads them.
+    //
+    // Literal 4 rather than GOOD_COUNT because GoodId is declared further down
+    // this file; the static_assert after the enum keeps the two in step.
+    float ourGoods[4]   = {0.0f, 0.0f, 0.0f, 0.0f};
+    float theirGoods[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+};
 };
 
 struct PopupEntry {
@@ -354,6 +371,9 @@ enum GoodId {
     GOOD_MUNITIONS,
     GOOD_COUNT
 };
+// CeasefireTerms::ourGoods/theirGoods are sized 4 by hand because they appear
+// above this enum. If a fifth good is ever added, widen them too.
+static_assert(GOOD_COUNT == 4, "CeasefireTerms goods arrays are hardcoded to 4");
 
 /**
  * The raw materials a factory eats, which are the map's own deposits.
