@@ -271,11 +271,17 @@ provision_debian() {
 
     if [ "$role" = build ] || [ "$role" = both ]; then
         note "provision: build tools and raylib's libraries"
+        # The last three are for the headless render checks: libosmesa6-dev for
+        # tools/osmesa_check (offscreen GL with no display), libsdl2-dev +
+        # libegl1-mesa-dev for the OD_HEADLESS_SDL build and SDL's offscreen
+        # driver. Installed ad hoc before this; now part of the build role so a
+        # fresh guest has them.
         $run 'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
                 build-essential cmake ninja-build git pkg-config \
                 libasound2-dev libx11-dev libxrandr-dev libxi-dev \
                 libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-                libxinerama-dev libwayland-dev libxkbcommon-dev' >/dev/null 2>&1 \
+                libxinerama-dev libwayland-dev libxkbcommon-dev \
+                libosmesa6-dev libsdl2-dev libegl1-mesa-dev' >/dev/null 2>&1 \
             || { note "provision: apt failed (build)"; return 1; }
     fi
 
@@ -332,10 +338,11 @@ provision_freebsd() {
     # that explains nothing. It is easy to miss here because the SERVER target
     # stubs raylib out and needs no GL at all -- a local configure was happy
     # for an afternoon while the CI game build was not.
+    # mesa-libs carries libOSMesa on FreeBSD; sdl2 for the OD_HEADLESS_SDL build.
     $run 'sudo pkg install -y cmake ninja git pkgconf python3 \
-            libglvnd mesa-libs xorgproto \
+            libglvnd mesa-libs mesa-dri xorgproto \
             libX11 libXext libXrandr libXi libXcursor libXinerama \
-            libxkbcommon wayland' >/dev/null 2>&1 \
+            libxkbcommon wayland sdl2' >/dev/null 2>&1 \
         || { note "provision: pkg failed"; return 1; }
     $run 'for b in cmake ninja cc; do command -v $b >/dev/null || echo "MISSING $b"; done'
 }
