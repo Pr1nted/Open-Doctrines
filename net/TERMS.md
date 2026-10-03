@@ -108,10 +108,12 @@ agree to the modding guidelines, which are short and are served at `/mods/guidel
   means nobody has reported those bytes — not that the mod is safe.
 - **Downloading is at your own risk**, exactly as it would be from any other
   site. The game will not install a mod by itself, from here or anywhere.
-- **We can take a listing down**, and we can withdraw an account's ability to
-  publish, without withdrawing anything else about the account. Somebody who
-  should not be publishing is not automatically somebody who should not be
-  playing.
+- **We can take a listing down at our discretion, and without giving a
+  reason**, and we can withdraw an account's ability to publish without
+  withdrawing anything else about the account. Somebody who should not be
+  publishing is not automatically somebody who should not be playing. The
+  guidelines list the reasons that normally apply; they are not exhaustive, and
+  there is no right to be listed here.
 
 You keep every right you have in your mod. Listing it gives us permission to
 show what you wrote about it and to count how many people followed your link.

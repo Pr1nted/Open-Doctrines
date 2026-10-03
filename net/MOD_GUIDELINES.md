@@ -74,6 +74,40 @@ We take reports. If a moderator agrees with one, your listing comes down; if the
 problem is you rather than one mod, your ability to publish is withdrawn while
 your account carries on working normally everywhere else in the game.
 
+## Removal, and the discretion we keep
+
+The rules above are the reasons a listing normally comes down, and they are
+written out so that most removals are predictable. They are not the only
+reasons.
+
+**A listing can be removed, and the ability to publish withdrawn, at our
+discretion and without a reason being given.** This is a directory one person
+runs and pays for. It is not a common carrier, there is no right to be listed
+on it, and the alternative — a closed list of grounds — means the first problem
+nobody anticipated is one we would have to argue about instead of act on.
+
+The reasons that have come up, or that obviously will:
+
+- Code that is illegal where the service is operated, or that exists to break
+  the law somewhere else.
+- Malware, miners, undisclosed telemetry, or a download link that stops
+  fetching what the listing describes.
+- Material that infringes somebody's copyright or trade mark.
+- Content unsuitable for an audience that includes school classes.
+- Impersonating another author, another mod, or this project.
+- Attempts to abuse the directory itself: duplicate listings, inflated counts,
+  or a publish key used for something other than publishing.
+- Anything that puts the people running or using the service at risk.
+
+**Removal is not a judgement about you, and it is not a judgement about the
+mod's legality.** It means it is not being listed here. The file is on your own
+server and stays there; nothing in this directory can reach it.
+
+If a listing of yours comes down you are told that it has, and in almost every
+case which rule it was. "Almost" is honest rather than evasive: where saying so
+would compromise somebody's safety or an ongoing legal matter, we will say only
+that it was removed.
+
 ## What we do not do
 
 We do not check that your mod works, that it is any good, or that it is safe. We
