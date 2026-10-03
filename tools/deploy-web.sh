@@ -255,7 +255,15 @@ test -s "$out/play/data/STDmaps/map.odmap" || {
 echo "== policy pages =="
 ( cd packaging/web/policies && npm ci --no-audit --no-fund && npm run build ) \
     || { echo "could not render the policy pages" >&2; exit 1; }
-cp packaging/web/policies/privacy.html packaging/web/policies/terms.html "$out/"
+cp packaging/web/policies/privacy.html packaging/web/policies/terms.html \
+   packaging/web/policies/dmca.html packaging/web/policies/eula.html "$out/"
+# /mods/guidelines, the path the game and MOD_GUIDELINES itself already name.
+# NOT $out/mods/index.html: /mods is the mod DIRECTORY, served from mods.html
+# above and asserted by its own check below, and a mods/index.html would
+# collide with it. Pages serves foo.html at /foo, so this lands at
+# /mods/guidelines without touching /mods.
+mkdir -p "$out/mods"
+cp packaging/web/policies/guidelines.html "$out/mods/guidelines.html"
 
 # Discord's Embedded App SDK, bundled from the pinned version rather than
 # committed as a minified blob nobody can read. The page fetches it ONLY when

@@ -29,6 +29,17 @@ const PAGES = [
       desc: 'What the account service stores, why, and how long it keeps it.' },
     { md: 'net/TERMS.md',   out: 'terms.html',   slug: 'terms',   title: 'Terms of use',
       desc: 'The terms that cover the game, the website and the account service.' },
+    // The three below were written and then never served: /dmca and /eula were
+    // 404s while the documents sat in net/. A takedown procedure nobody can
+    // read is not a takedown procedure, and the EULA is agreed to by people
+    // installing mods, who have to be able to see what they agreed to.
+    { md: 'net/DMCA.md',    out: 'dmca.html',    slug: 'dmca',    title: 'Copyright',
+      desc: 'How to report a mod listing that infringes your copyright, and what happens next.' },
+    { md: 'net/EULA.md',    out: 'eula.html',    slug: 'eula',    title: 'Mod licence terms',
+      desc: 'What you agree to when you download and install a mod.' },
+    { md: 'net/MOD_GUIDELINES.md', out: 'guidelines.html', slug: 'mods/guidelines',
+      title: 'Modding guidelines',
+      desc: 'The rules for publishing a mod, and the grounds a listing comes down on.' },
 ];
 
 // Deliberately plain: no scripts, no fonts, no requests. A policy page that
