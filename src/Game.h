@@ -2943,6 +2943,18 @@ public:
     // random, and OD_WORLD_SEED pins even those -- which is what a player
     // reporting a reproducible bug will need.
     unsigned int m_worldSeed = 0;
+    /**
+     * Whether the seed in m_worldSeed was deliberately set to be REUSED, as
+     * opposed to being left there by the last game.
+     *
+     * chooseWorldSeed used to reuse any non-zero m_worldSeed, which made every
+     * new game after the first in a session play the identical world -- the AI
+     * doing the same thing each time, the exact complaint. A leftover value is
+     * not a request to reuse it. The timing harness and the bench seats DO want
+     * reuse, so they set this; chooseWorldSeed consumes it, and an ordinary new
+     * game, which never sets it, draws fresh entropy every time.
+     */
+    bool m_seedPinned = false;
 
     /**
      * This world has just been made, and nothing has happened in it yet.

@@ -3503,11 +3503,25 @@ void Game::applyEconomyEnvironment() {
 }
 
 void Game::chooseWorldSeed() {
-    unsigned int seed = m_worldSeed;
+    // ── A NEW GAME IS A NEW WORLD, UNLESS SOMETHING ASKED OTHERWISE ──
+    //
+    // This began at m_worldSeed, which nothing clears between games -- so the
+    // FIRST new world of a session drew entropy and every one after it silently
+    // reused that first seed, and a new game started after loading a save
+    // inherited the save's. The AI played the same world every time, which is
+    // exactly what was reported. A non-zero m_worldSeed is not a request to
+    // reuse it; it is the value the last game happened to leave there.
+    //
+    // So entropy is the DEFAULT, and reuse is explicit: OD_WORLD_SEED pins it
+    // for a reproducible bug report, and m_seedPinned is how the timing harness
+    // and the bench seats ask for the seed they set. The flag is consumed here,
+    // so the next ordinary new game is random again.
+    unsigned int seed = 0;
     if (const char* e = std::getenv("OD_WORLD_SEED")) {
         const unsigned long v = strtoul(e, nullptr, 10);
         if (v != 0) seed = (unsigned int)v;
     }
+    if (seed == 0 && m_seedPinned) seed = m_worldSeed;
     if (seed == 0) {
         // Genuine entropy, once, at the moment a world is made. random_device
         // rather than the clock: two worlds started in the same second are two
@@ -3517,6 +3531,7 @@ void Game::chooseWorldSeed() {
         seed = (unsigned int)rd();
         if (seed == 0) seed = 1337u;   // vanishingly unlikely; never seed on 0
     }
+    m_seedPinned = false;              // consumed: the next new game is fresh
     m_worldSeed = seed;
     m_freshWorld = true;      // spent by jitterStartingPolitics
     seedSimRng(seed);

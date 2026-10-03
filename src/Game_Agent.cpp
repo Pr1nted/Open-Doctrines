@@ -115,6 +115,7 @@ bool Game::agentBegin(const std::string& seatSpec, unsigned int seed, int untilT
     std::mt19937 seatRng(seed);
     m_agentMapSeed = (unsigned int)(seatRng() & 0x7FFFFFFF);
     if (m_worldSeed == 0) m_worldSeed = m_agentMapSeed;
+    m_seedPinned = true;   // a bench seat reuses its seed; see chooseWorldSeed
 
     startBenchSeat(seatSpec, untilTurn);
     while (m_loadingPhase != LOAD_NONE && m_loadingPhase != LOAD_DONE) {

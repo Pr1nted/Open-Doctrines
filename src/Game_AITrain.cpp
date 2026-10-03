@@ -2653,6 +2653,7 @@ bool Game::runHeadlessSimulation(const std::string& mapPath, int turns,
     // world or the numbers they produce are not comparable. Set before the call,
     // so chooseWorldSeed finds a seed already chosen and keeps it.
     if (m_worldSeed == 0) m_worldSeed = 1337u;
+    m_seedPinned = true;   // a stopwatch reuses its seed; see chooseWorldSeed
 
     // The menu's own new-world path, so this exercises what a player exercises
     // rather than a second loader that could drift away from it.
