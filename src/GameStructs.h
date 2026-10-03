@@ -240,7 +240,6 @@ struct CeasefireTerms {
     float ourGoods[4]   = {0.0f, 0.0f, 0.0f, 0.0f};
     float theirGoods[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 };
-};
 
 struct PopupEntry {
     PopupType type = PopupType::NONE;
