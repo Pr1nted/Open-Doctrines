@@ -167,7 +167,7 @@
       "version": "1.50.0",
       "license": "ISC",
       "url": "https://lucide.dev/",
-      "what": "Icon set used on the download page (the TempleOS mark is traced from TempleOS itself)"
+      "what": "The church glyph standing in for TempleOS, which has no icon in any set"
     }
   ],
   "fonts": [
@@ -193,13 +193,6 @@
       "license": "Public domain",
       "url": "https://commons.wikimedia.org/",
       "note": "Adapted from Wikimedia Commons; all sources public domain."
-    },
-    {
-      "name": "TempleOS",
-      "version": "5.03",
-      "license": "Public domain",
-      "url": "https://templeos.org/",
-      "what": "The sword on the download page's TempleOS card, traced from its own splash screen"
     }
   ]
 }

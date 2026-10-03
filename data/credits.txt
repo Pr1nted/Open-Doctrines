@@ -90,7 +90,6 @@ $ Flag artwork from Wikimedia Commons. Per-file licences and required attributio
 @Artwork
 ---
 - SVG symbol set (Public domain)
-- TempleOS (Public domain)
 @
 
 $Full third-party notices: NOTICE.md

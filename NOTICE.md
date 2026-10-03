@@ -106,7 +106,7 @@ the same one and wonder why it is not here.
 | [Tor (Tor Expert Bundle)](https://www.torproject.org/download/tor/) | 15.0.24 | BSD-3-Clause (tor, libevent), Apache-2.0 (OpenSSL) | Optional: onion hosting and "hide my IP"; shipped unmodified in data/tor/, licence texts in data/tor/licenses/ |
 | [Simple Icons](https://simpleicons.org/) | 16.33.0 | CC0-1.0 | The Apple, Linux, Android, FreeBSD and OpenBSD marks on the download page |
 | [Tabler Icons](https://tabler.io/icons) | 3.48.0 | MIT | The Windows mark on the download page; Simple Icons does not carry one |
-| [Lucide](https://lucide.dev/) | 1.50.0 | ISC | Icon set used on the download page (the TempleOS mark is traced from TempleOS itself) |
+| [Lucide](https://lucide.dev/) | 1.50.0 | ISC | The church glyph standing in for TempleOS, which has no icon in any set |
 
 ## Fonts
 
@@ -127,5 +127,3 @@ the same one and wonder why it is not here.
 ## Artwork
 
 - **SVG symbol set** — Heraldic symbols used by the procedural flag generator. Public domain. Adapted from Wikimedia Commons; all sources public domain. <https://commons.wikimedia.org/>
-
-- **TempleOS** — The sword on the download page's TempleOS card, traced from its own splash screen. Public domain.  <https://templeos.org/>
