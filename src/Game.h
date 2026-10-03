@@ -2783,6 +2783,29 @@ public:
      * the economy no longer computes. Zero outside the goods economy.
      */
     float goodShortfall(int cid, int good) const;
+    /// What country `cid` wants of good `good` this turn -- the one place need
+    /// is computed, so goodShortfall (need-stock) and the auto-flow's surplus
+    /// (stock-need) cannot disagree. Zero outside the goods economy.
+    float goodNeed(int cid, int good) const;
+    /**
+     * Surplus goods flow to friendly neighbours short of them, once per turn.
+     *
+     * The goods economy's distribution gap: the world grows enough food and
+     * none of it crosses a border. This moves an AI country's surplus to its
+     * allies / NAP / guarantee partners that are short, so aggregate
+     * sufficiency becomes actual sufficiency without anyone deciding each
+     * transfer -- the same deterministic-resolver shape as autoAssignOutputs.
+     *
+     * SCOPED TO AI COUNTRIES. The player's goods never auto-leave: a resolver
+     * that gave a player's food to an ally they did not choose to feed would
+     * bind the player, which is a design choice for the user, not a default two
+     * sessions pick. The player keeps manual trade.
+     *
+     * Behind OD_GOODS_AUTOFLOW, separate from OD_GOODS, so it benches as its
+     * own arm. OD_GOODS_RESIDUAL prints the four numbers that say whether a
+     * deliberate trade rule has any headroom left after this runs.
+     */
+    void processGoodsAutoFlow();
     /**
      * Extract, produce, feed, sell. One country, one turn, in that order.
      *

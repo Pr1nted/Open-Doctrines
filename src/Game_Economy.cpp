@@ -425,23 +425,109 @@ float Game::countryGoodsDemand(int countryId, int good) const {
     return (float)((double)people / CONSUMER_PER_CAPITA) * expectation;
 }
 
+float Game::goodNeed(int cid, int good) const {
+    if (!m_goodsEconomy || good < 0 || good >= GOOD_COUNT) return 0.0f;
+    // Consumer demand is computed fresh (it tracks population); the other three
+    // are the reserve the last turn recorded, which is what autoAssignOutputs
+    // feeds planOutputs. One source, so the AI's valuation, the allocator and
+    // the auto-flow's surplus all read the same number.
+    if (good == GOOD_CONSUMER) return countryGoodsDemand(cid, GOOD_CONSUMER);
+    auto it = m_countryProduction.find(cid);
+    return (it != m_countryProduction.end()) ? it->second.demand[good] : 0.0f;
+}
+
 float Game::goodShortfall(int cid, int good) const {
     if (!m_goodsEconomy || good < 0 || good >= GOOD_COUNT) return 0.0f;
-    // need: consumer demand is computed fresh (it tracks population); the other
-    // three are the reserve the last turn recorded, which is what autoAssignOutputs
-    // feeds planOutputs. Same source, so the AI and the allocator cannot disagree.
-    float need = 0.0f;
-    if (good == GOOD_CONSUMER) {
-        need = countryGoodsDemand(cid, GOOD_CONSUMER);
-    } else {
-        auto it = m_countryProduction.find(cid);
-        if (it != m_countryProduction.end()) need = it->second.demand[good];
-    }
     float stock = 0.0f;
     auto sp = m_countryStockpiles.find(cid);
     if (sp != m_countryStockpiles.end()) stock = sp->second.goods[good];
-    return std::max(0.0f, need - stock);
+    return std::max(0.0f, goodNeed(cid, good) - stock);
 }
+
+// === processGoodsAutoFlow ===
+//
+// See the header note. Surplus (stock - need) in an AI country flows to its
+// friendly partners (alliance | NAP | guarantee, not at war) that are short of
+// the same good. Friendly first and friendly only -- a deal is what reaches a
+// non-friendly country, and that is the AI session's valuation rule, not this.
+void Game::processGoodsAutoFlow() {
+    if (!m_goodsEconomy) return;
+    static const bool on = OD_ENV("OD_GOODS_AUTOFLOW")
+                        && atoi(OD_ENV("OD_GOODS_AUTOFLOW")) != 0;
+    if (!on) return;
+
+    auto friendly = [&](const std::string& a, const std::string& b) -> bool {
+        auto ra = m_relations.find(a);
+        if (ra == m_relations.end()) return false;
+        auto rb = ra->second.find(b);
+        if (rb == ra->second.end()) return false;
+        const CountryRelation& rel = rb->second;
+        return !rel.war && (rel.alliance || rel.nonAggression || rel.guarantee);
+    };
+    auto isReal = [&](int cid) {
+        return cid != UNC_CID && cid != BLC_CID && cid != SPC_CID;
+    };
+
+    // ── THE TRANSFER ──
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        for (auto& [srcCid, srcC] : m_countries.getAll()) {
+            if (!isReal(srcCid) || srcCid == m_playerCountryId) continue;  // player keeps its goods
+            auto sit = m_countryStockpiles.find(srcCid);
+            if (sit == m_countryStockpiles.end()) continue;
+            float surplus = sit->second.goods[g] - goodNeed(srcCid, g);
+            if (surplus <= 1.0f) continue;
+            for (auto& [dstCid, dstC] : m_countries.getAll()) {
+                if (surplus <= 1.0f) break;
+                if (dstCid == srcCid || !isReal(dstCid)) continue;
+                if (!friendly(srcC.isoA3, dstC.isoA3)) continue;
+                const float shortf = goodShortfall(dstCid, g);
+                if (shortf <= 1.0f) continue;
+                const float move = std::min(surplus, shortf);
+                sit->second.goods[g] -= move;
+                auto& dsp = m_countryStockpiles[dstCid];
+                dsp.goods[g] = std::min(STOCKPILE_CAP, dsp.goods[g] + move);
+                surplus -= move;
+            }
+        }
+    }
+
+    // ── THE FOUR NUMBERS (OD_GOODS_RESIDUAL) ──
+    //
+    // Drained, not labelled: friendly first (the transfer auto-flow was
+    // entitled to make), then whatever survives is deal-only -- the AI
+    // session's headroom. Summing the two into one hides which is which, and
+    // labelling the whole surplus by its first match biases the deal headroom
+    // to zero exactly when both are non-zero. See the peer's note.
+    static const bool trace = OD_ENV("OD_GOODS_RESIDUAL") != nullptr;
+    if (!trace) return;
+    double totalSurplus = 0.0, friendlyResid = 0.0, nonFriendlyResid = 0.0;
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        for (auto& [cid, c] : m_countries.getAll()) {
+            if (!isReal(cid) || cid == m_playerCountryId) continue;
+            auto sit = m_countryStockpiles.find(cid);
+            if (sit == m_countryStockpiles.end()) continue;
+            float s0 = sit->second.goods[g] - goodNeed(cid, g);
+            if (s0 <= 1.0f) continue;
+            totalSurplus += s0;
+            double fShort = 0.0, nShort = 0.0;
+            for (auto& [oc, oo] : m_countries.getAll()) {
+                if (oc == cid || !isReal(oc)) continue;
+                const float sf = goodShortfall(oc, g);
+                if (sf <= 1.0f) continue;
+                if (friendly(c.isoA3, oo.isoA3)) fShort += sf; else nShort += sf;
+            }
+            double s = s0;
+            const double f = std::min(s, fShort); friendlyResid += f; s -= f;
+            const double nf = std::min(s, nShort); nonFriendlyResid += nf;
+        }
+    }
+    const double share = totalSurplus > 0.0 ? nonFriendlyResid / totalSurplus : 0.0;
+    printf("[AUTOFLOW] turn %d  total_surplus=%.0f  friendly_resid=%.0f  "
+           "nonfriendly_resid=%.0f  nonfriendly_share=%.4f\n",
+           m_turnNumber, totalSurplus, friendlyResid, nonFriendlyResid, share);
+    fflush(stdout);
+}
+
 
 float Game::livingStandards(int countryId) const {
     auto it = m_countryProduction.find(countryId);

@@ -585,6 +585,10 @@ void Game::processTurn() {
             drawFrame(pct, buf);
         }
     }
+    // Goods settle between countries after every country's production has run:
+    // surplus flows to friendly neighbours short of it. Inert unless the goods
+    // economy and OD_GOODS_AUTOFLOW are both on. See Game::processGoodsAutoFlow.
+    processGoodsAutoFlow();
     auto t2 = std::chrono::steady_clock::now();
     drawFrame(0.50f, "Processing upgrades...");
     processUpgrades();
