@@ -1171,6 +1171,17 @@ opponent is not a league.
    (that one bought great-power skill and paid in survival). The rule is built, gated
    off, inert by hash, and waiting: say which of off / cooldown10 / cooldown25 you want
    and it is a one-line default flip plus the journal-408 hash proof.
+   **JOURNAL 460 ADDS THE NUMBER THIS ITEM WAS MISSING -- what the cooldown is actually
+   interrupting.** `pacify up` 437 offered / **382 chosen**; `pacify dn` **619 offered /
+   0 chosen**. The share is not managed, it is RATCHETED: committed in two or three
+   +0.125 steps by turn ~25 and never once lowered in 619 opportunities across 400 turns.
+   And **97.3% of the resulting spend is wasted** (applied 21,472,642 against a need of
+   571,802 -- 37-fold over-application), while the SCRIPT opponent that beats the model
+   on this very rush seat spends **0.07** to the model's 320.77.
+   That reframes the trade on offer here. The cooldown is not trimming a tuned budget;
+   it is the only existing brake on a one-way ratchet. It still costs the rung seats
+   -129.2/-152.7, because -- see item 120 -- the dial cannot separate the needed 2.7%
+   from the wasted 97.3%, so any brake on the amount removes both in proportion.
 
 122. ~~**Bench the pacification cooldown.**~~ **DONE journal 425: A MEASURED TRADE,
    not shipped.** The user's "ship if it clears" did not cover this branch, as the
@@ -1198,7 +1209,51 @@ opponent is not a league.
    CONTROL (journal 416's lesson: the reserve-floor screen ran with the reflex off and
    inverted its own sign). Rush seats first, then price the rung cost.
 
-120. **FOR THE USER: the AI cannot aim its largest discretionary spend.** Journal
+120. ~~**FOR THE USER: the AI cannot aim its largest discretionary spend.**~~
+   **THE TITLE IS FALSE -- CORRECTED journal 461, and I had restated it for the user
+   twice before checking.** The AI aims it already: `Game_TurnLogic.cpp:1052` calls
+   `updateAIDistricts` for every AI country every 5 turns on any country holding 8+
+   provinces, cutting a hot district and a calm one with risk-weighted shares clamped
+   25/75 (authored divisions keep their shape and are funded by risk with a
+   `max(5, 50/n)` floor). The grep that "established" otherwise was
+   `grep -rn m_districts src/ai/` -- the code is in `Game_Policies.cpp` under `Game::`,
+   not in `src/ai/`. See item 147.
+   **AND TOGGLING IT POINTS THE OTHER WAY.** `OD_AI_DISTRICTS_OFF=1`, one seed, 400
+   turns: binding province-turns (unrest left above the dial, i.e. a province that can
+   still rebel) go **40 with aiming OFF to 25,497 with it ON**, a factor of 637, with
+   total need within 4.5% and worst-ever unrest 36.53 -> 43.22. The calm district at the
+   25% clamp holds ~75% of the ground, so `pacificationFactor` multiplies its dial by
+   ~0.33: the mean dial where a province binds is **2.78 on against 10.62 off**. Binding
+   under districts is an underfunded calm district, not a hotspot.
+   **So there is nothing here for the user to decide and no districts feature to ask
+   for.** And the measurement is now in: **journal 462 benched it and the aiming is worth
+   +121 per-seed rating points** (France's land 34.12% vs 13.14% without it, p = 0.003).
+   Item 148. The exposure journal 461 measured is real and is paid for several times
+   over; a count of exposed province-turns was simply the wrong statistic. The units correction below also stands -- journal 460's
+   97.3% is suppression POINTS, not money, since `cs.pacificationCost = cs.total *
+   pAlloc` does not depend on the province count or on how much suppression lands.
+   ORIGINAL TITLE AND BRIEF, kept because the error is the point:
+   **FOR THE USER: the AI cannot aim its largest discretionary spend.**
+   **QUANTIFIED journal 460, and it resolves why three attempts to cut this spend all
+   failed.** One run, 400 turns: `pacify up` 437 offered / **382 chosen**; `pacify dn`
+   619 offered / **0 chosen** -- a stricter one-way ratchet than conciliate (78.1%/0.2%)
+   or `fund up` (81.1%/0.4%), both of which at least occasionally reverse. The share is
+   committed in two or three +0.125 steps by turn ~25 and never once reduced in 619
+   opportunities.
+   And the waste reproduces on this build: **applied 21,472,642 against a need of
+   571,802 -- 97.3% wasted, 37-fold over-application** -- while the SCRIPT opponent
+   spends 0.07 to the model's 320.77 and beats it on the rush seat.
+   **Why cutting it loses (memory unrest-levers-are-not-savings, three attempts):** the
+   waste is DISTRIBUTIONAL, not quantitative. The allocation is one country-wide share;
+   the need is per province-turn. Cutting the share removes the needed 2.7% in proportion
+   with the wasted 97.3%, because the dial cannot tell them apart. So the gating attempts
+   were right about the waste and wrong about the instrument.
+   **CORRECTED journal 461: "aiming, not amount" was wrong too, and for the same
+   reason as item 120 -- the aiming mechanism is already shipping and measures WORSE on
+   exposure (40 binding province-turns off, 25,497 on).** What stands from this item is
+   the cooldown trade and the ratchet counts. A fourth attempt at the share should still
+   not be run.
+   ORIGINAL: Journal
    422 traced 55,924 province-turns: **82.5% of all suppression lands where unrest is
    below 5**, 0.3% where it is above 20, and the rate is the SAME in both (32.25 vs
    31.61) on provinces whose unrest differs 17-fold. Cause, read from the source: `pac`
@@ -1322,7 +1377,49 @@ opponent is not a league.
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
 
-142. **THE WAR SLOT IS 84% FULL -- "more wars" is not the growth channel.** Journal
+143. **THE AI CANNOT DIRECT A FACTORY, so the plan/market distinction does not
+   exist for it.** Found while helping the economy session narrow the goods deficit
+   (journal 456's coordination, not an iteration). `setProvinceOutput` is the only path
+   that sets `ind.directed`, and its callers are Game_Economy.cpp (its own definition),
+   Game.h (the declaration) and **Game_Render.cpp -- the player's panel**. src/ai/ never
+   calls it and never touches `directed` or `sharePct`.
+   Consequences: (a) in a bench world no factory is EVER directed, so autoAssignOutputs
+   never returns early and planOutputs always runs -- which is how we ruled out "all
+   factories directed" as the cause of machinery=0 with two greps instead of a
+   per-country table; (b) `plannedShare` governs the AI's AUTOSELL rate (planned sells
+   20%, market 100%) but the direction limit it also scales is a limit on zero, so **a
+   planned-economy AI country allocates identically to a market one**. Its compass
+   changes what it sells and not what it makes.
+   (c) `setProvinceOutput`'s own comment says "this is the only path a player, the AI and
+   the multiplayer host all go through" -- the reasoning is sound and the premise is
+   false, the same class as the stranded constants in journals 440/447: a comment
+   describing behaviour the tree does not have. check_ai_comments.py cannot catch this
+   one (it is prose, not a numerate claim beside a constant).
+   **If goods is ever fixed, this still binds:** the AI would get only whatever
+   planOutputs' step-3 floor hands it, never a deliberate build. Giving it direction is a
+   decision question, and on this session's record that means a resolver rule rather than
+   a learned preference -- and it is gated behind the economy working at all.
+
+142. ~~**THE WAR SLOT IS 84% FULL -- "more wars" is not the growth channel.**~~
+   **CLOSED journal 456, and it closes the whole set.** The one channel it left --
+   wars being more productive -- is measured dead: ATTACK_ORDERS_PER_TURN binds on
+   **21.6%** of attacking country-turns with a censored distribution (a spike to 26.3%
+   at exactly four against a decline predicting ~8%), so the demand is real; raising it
+   to 8 moves provinces-per-war-turn by **-0.016 on a 95% interval of -1.258 to +1.226**
+   and the rung seats by -2.2 inside a 36.2 floor. **A limit can bind constantly and
+   still be worth nothing** -- a new category beside items 130 and 138, where the limits
+   were never reached.
+   So all three channels are dead: more wars (item 137, -101.9 and clearing), shorter
+   wars (items 139/140, bimodal and withdrawn), more productive wars (here). **The growth
+   ceiling is not in the war system.** Nine iterations were spent inside it; start
+   outside it.
+   **And this item's own advice was wrong:** it told the next person to pre-register on
+   provinces-per-war-turn rather than the rating. That statistic ranges 0.088 to 3.524
+   across six worlds -- a 40x spread, paired se 0.634 -- so it resolves less than the
+   rating does, not more. A count with many events per world is not better powered when
+   the worlds differ by 40x.
+
+142-ORIGINAL. **THE WAR SLOT IS 84% FULL -- "more wars" is not the growth channel.** Journal
    455 scoped OD_WARLIFE to the seat and corrected journal 448's figures, which were
    world-wide: **France's own wars are 13 ended, mean length 24.3 turns, median 19
    provinces moved (not 8), mean concurrent 0.84.** So 84% of turns have a war open and
@@ -1639,7 +1736,591 @@ opponent is not a league.
    and show whether the fall is a cliff or a slide. Must be proved inert on both gates
    (the pattern journals 404-405 used). Cheap, and it unblocks 111 and 113.
 
-111. **What kills France between turn 200 and turn 400?**
+154. **`f[24]` IS CLOSE TO A DEAD INPUT -- 1.3% of its available span.** Found while
+   closing item 152 (journal 466). Across eight seeds and both arms, `f[24]` ranges
+   **0.005 to 0.018** on a `tanh` feature whose span is [0,1]; the mean raw rebellion
+   chance over its six sampled provinces is **0.08%**. It is pinned near zero for every
+   country in every world, independent of districts.
+   Same family as the collapsed heads and the dead actions already catalogued
+   (items 32/34, memory saturated-heads-return-one-number): a constant input carries no
+   information, and any rule built on it would vanish.
+   Two things to establish before acting: whether the net's weights on `f[24]` are
+   non-trivial (if they are near zero the input is simply unused and harmless), and
+   whether the `/10.0f` scaling is the cause -- a chance expressed in PERCENT divided by
+   10 and then squashed by `tanh` compresses 0-10% into 0-0.01. If so the fix is a
+   rescale, which is a **feature-space change and needs a retrain** to judge (memory
+   mask-changes-need-a-retrain), so it is not a cheap iteration.
+
+163. **WHAT DISMANTLES A 160-PROVINCE FRANCE BETWEEN TURN 110 AND TURN 340?**
+   **The reframing from journal 475, and it supersedes the window every iteration since
+   462 used.** Arm C's collapsing runs are not weak: they peak at **93, 156, 158 and 171
+   provinces, at turns 58, 151, 111 and 282** -- the same size as the survivors' peaks --
+   and then fall below half their peak at turns **214, 284, 296 and 340**. At turn 60 the
+   collapsed and surviving groups are **indistinguishable**: mean province count 119.2
+   against 119.0.
+   So journals 462-474 measured turns 50-120 and the thing being explained had not started
+   yet. **The six closed channels are closed FOR TURNS 50-120 and untested for 110-340.**
+   **TEST, and the data is already on disk** (`j473-<seed>-C.err`, 400 turns of per-turn
+   provinces, army, treasury, wars, rebelwars, income, expenses, gross, resource, pop,
+   indlevels, people): for each collapsing run, take the window from its own PEAK turn to
+   the turn it crosses half, and compare every traced quantity against the surviving runs
+   over the same absolute turns. Per-run windows, because the peaks are 224 turns apart.
+   **This is item 111's question** ("what kills France between turn 200 and turn 400",
+   addressed by journals 411-412) arriving from the other direction -- read those first,
+   and note that the known-list's "1914:FRA:rush is decided by the opening draw" is about
+   the RUSH seat and says nothing about this one.
+   Pre-register on something measured in the DECLINE window. Do not re-run the unrest,
+   budget, population or army statistics on turns 50-120; that is what journal 475 found
+   was the wrong era.
+
+162. ~~**THE WAR: WHO TAKES THE GROUND, AND IS THE DIFFERENCE LOSS OR RECOVERY?**~~
+   **ANSWERED NEGATIVELY journal 475, and it reframed the problem.** Recovery over turns
+   10-60 (gross province gains over gross losses) does not separate: collapsed **0.50,
+   3.00, 3.42, 5.58** against survivors **0.83, 4.42, 5.40, 47.00**, fully interleaved,
+   with the lowest ratio of all belonging to a collapsing run and the second lowest to a
+   survivor.
+   The non-circularity check was the real finding: **at turn 60 the groups are
+   indistinguishable, 119.2 provinces against 119.0.** The collapse happens far later, from
+   peaks of 156-171 provinces reached at turns 111-282. Successor: 163.
+   "Who takes the ground" is still unmeasured; `OD_WARLIFE` with `OD_WARLIFE_CID` remains
+   the instrument, but run it over the DECLINE window, not the opening.
+   ORIGINAL:
+   **THE WAR: WHO TAKES THE GROUND, AND IS THE DIFFERENCE LOSS OR RECOVERY?**
+   Promoted from 159(a) with the question sharpened by journal 474. Everything else in
+   journals 462-474 is closed: six unrest statistics, the aiming, the laws, both together,
+   the recruitment cap, the population chain, the income disproportion, and now the army
+   (demoted from cause to symptom -- ground falls first in **4 of 4** collapsing runs, by
+   29 turns on one seed) and the recruiting surplus (**0.00% of income in all eight arm-C
+   runs** -- there is none, in any run, by construction).
+   **AND THE OBVIOUS VERSION IS ALREADY DEAD:** early ground loss does not separate the
+   groups. Three of the four SURVIVING arm-C runs start losing ground at turns 10, 20 and
+   47, as early as the collapsing ones. So the question is not "does it lose ground early"
+   but **"does it ever get the ground back"**.
+   **TEST:** `OD_WARLIFE` with `OD_WARLIFE_CID` set to the seat (journals 448/455 -- it
+   records each war's belligerents, each side's province count at the open, and the net
+   change at the close), on arm C's four collapsing and four surviving seeds. Single runs:
+   `od_bench` does not surface server stderr.
+   **Pre-register on RECOVERY** -- provinces regained after a loss, or net ground per war
+   closed -- and not on losses, war count or war length, all of which are already closed
+   (LOOP.md's known-list: the war system is closed as a GROWTH channel, which is a
+   different claim from this one and does not settle it).
+
+161. ~~**WHY IS THE ARMY NEVER REBUILT?**~~ **DONE journal 474: THE ARMY IS A SYMPTOM,
+   and the surplus route was closed by construction.** Analysis of the 24 stored traces,
+   no new runs. Ground falls before the army in **4 of 4** collapsing runs (turn 59 vs 60,
+   12 vs 15, **10 vs 39**, 15 vs 25), so journal 471's "the army is the leading indicator"
+   is **withdrawn** -- it rested on five-turn sampling of one seed.
+   Mean `income - expenses` over turns 50-120 is **0.00% in all eight arm-C runs**:
+   allocations are clamped to affordable income (journal 458), so no run has a surplus and
+   the statistic this item proposed could not discriminate. Predicted in advance, which is
+   why it cost one analysis instead of a bench.
+   Also: early ground loss does NOT separate collapse from survival -- three of four
+   survivors lose ground from turns 10, 20 and 47. Successor: 162.
+   ORIGINAL:
+   **WHY IS THE ARMY NEVER REBUILT? The one solid thread left.** Journals 462-473
+   closed, in order: six unrest statistics, the aiming, the laws, both together, the
+   recruitment cap (dead code for AI), the population chain, and the income disproportion
+   (resolved as province heterogeneity, not a mechanism). **What survives untouched is
+   journal 471's leading indicator:** on the collapsing seed both arms hold 6.79M troops
+   and 92 provinces at turn 50; arm C then bleeds to 2.52M by turn 100 and **its 400-turn
+   peak is 6.82M, at turn 10** -- it never rebuilds -- while arm A holds ~6.8M and reaches
+   **50.58M by turn 395**.
+   **The question is specifically about REBUILDING, not about losses.** Both arms lose
+   troops; only one replaces them. Recruitment is money-bound (memory
+   ai-recruitment-is-money-bound: the treasury binds, not the manpower share), and both
+   arms run a treasury of ~0 from turn 25 (journal 458) -- so what differs is how much
+   income is free AFTER standing costs, which the seat trace already prints
+   (`income`, `expenses`, `army_pay`, `policy`, `minority`, `pacify`).
+   **TEST, and it needs no new code:** from the 24 traced runs already stored
+   (`j473-<seed>-<arm>.err`), compute `income - expenses` per turn over turns 50-120 for
+   collapsed vs surviving runs. If the collapsing runs have no surplus to recruit from
+   while survivors do, that is the mechanism and it is measurable from data in hand.
+   **Pre-register on the surplus, not on unrest or population** -- both are closed.
+
+160. ~~**PUT POPULATION ON THE TRACE AND RUN A, C AND E ON THE COLLAPSING SEED.**~~
+   **DONE journal 473: THE POPULATION CHAIN IS RETIRED.** Widened to 24 runs (3 arms x 8
+   seeds) because one seed across three arms is three different worlds. Population at
+   turn 100 over turn 50, arm C: collapsed runs **1.062, 1.386, 1.552, 2.008**; survivors
+   **0.900, 0.967, 1.139, 1.464**. No separation, and the collapsed group averages 1.50
+   against the survivors' 1.12 -- **France's population GROWS while France is
+   annihilated**, which was the pre-registered falsifier.
+   **Also corrects journal 472 twice:** `cs.pop` fell 79% while the headcount rose 6%, so
+   it does not measure population; and `cs.gross` sums a STORED per-province field
+   (`cs.gross += ind->second.income`, written from the MAP at Game_Loading.cpp:2682 and
+   from the formula only for newly BUILT industry at Game_TurnLogic.cpp:8112), so the
+   capacity/fit/population mechanism was attached to a function `gross` never calls --
+   proved by arm A's gross/level of **3.693 against the formula's hard rate cap of 2.0**.
+   **The income disproportion is province HETEROGENEITY**: authored per-province income
+   varies far more than level does, so losing the industrial core costs 57% of income for
+   13% of the ground. Successor: 161.
+   ORIGINAL:
+   **PUT POPULATION ON THE TRACE AND RUN A, C AND E ON THE COLLAPSING SEED. This
+   attacks the crux, not the chain.** Journal 472 took the chain down to population:
+   population falls -> `provinceIndustryCapacity` falls (it is computed FROM population)
+   -> standing industry becomes overbuilt -> `provinceIndustryIncome`'s fit term drops
+   per-level income from 2.0 toward its 0.7 floor -> income falls far faster than ground.
+   Measured at turn 70 on seed 20260801: ground -13%, industry levels -26%, income per
+   level -43%, `pop` income **-79%**.
+   **THE CRUX IS E VERSUS C AND IT IS STILL OPEN.** Arm E (districts drawn, both mechanics
+   gated off) has `pacificationFactor` at 1.0 and no district laws, so **its unrest is
+   identical to arm C's** -- yet E never collapses (worst seed 14.0) and C collapses 4 of
+   8. So an unrest-driven emigration story cannot be the whole explanation, however well
+   it fits the population crash.
+   **TEST:** add `cs.population` to the seat trace (the snapshot already carries it; one
+   field inside the existing `OD_SEAT_TRACE` guard) and run **three** arms on seed
+   20260801 -- A, C and E, 400 turns.
+   - E's population holds while C's crashes, at identical unrest -> the crash is NOT
+     unrest-mediated and the difference is something about `updateAIDistricts` executing.
+     That is the defect, and it localises it.
+   - Both E and C crash but only C loses provinces -> population is not the channel
+     either, and the army/recruitment side is where to look (item 159a).
+   Pre-register on population, and confirm all three arms still reproduce their bench
+   scores (23.8 / 0.1 / 35.2) or the trace is perturbing the sim.
+
+159. ~~**THE ARMY STOPS BEING REBUILT, AND INCOME FALLS FASTER THAN GROUND.**~~
+   **(b) ANSWERED journal 472; (a) STILL OPEN.** The income disproportion is two things at
+   once, neither of them a mystery multiplier: the industrial core goes first (industry
+   levels -26.2% on a 13% ground loss) AND income per remaining level falls -42.6%,
+   because `provinceIndustryIncome` scales by `rate = 2.0 * max(0.35, min(1,
+   capacity/level))` -- an overbuilt province earns 0.7 per level instead of 2.0, a 65%
+   span -- and `provinceIndustryCapacity` is computed from POPULATION. `pop` income
+   -79.3% corroborates the population crash.
+   **(a) WHO takes the provinces is still unmeasured.** `OD_WARLIFE` with
+   `OD_WARLIFE_CID` set to the seat names each war's belligerents and the ground it moves
+   (journals 448/455); needs single runs, since `od_bench` does not surface server stderr.
+   Lower priority than item 160, which attacks the crux.
+   ORIGINAL:
+   **THE ARMY STOPS BEING REBUILT, AND INCOME FALLS FASTER THAN GROUND. Two cheap
+   questions.** Journal 471 traced the collapsing pair (seed 20260801, districts on vs
+   off) and found the chain: provinces are IDENTICAL for 50 turns, part at turn 57, and
+   what leads is the ARMY -- arm C bleeds 6.79M -> 2.52M by turn 100 and **never rebuilds
+   (peak 6.82M at turn 10)**, while arm A holds ~6.8M and reaches **50.58M by turn 395**.
+   Not revolt: arm C has 0 rebel wars until turn 334 and the surviving arm has three times
+   as many. Not war count: one foreign war in both, throughout.
+   **(a) WHO takes the provinces?** `OD_WARLIFE` with `OD_WARLIFE_CID` set to the seat
+   names each war's belligerents and the ground it moves (journals 448/455). One run per
+   arm on seed 20260801. Needs a single run, not `od_bench` -- that harness does not
+   surface server stderr (LOOP.md's known-list).
+   **(b) WHY does income fall 56% for 13% of the ground?** At turn 70 arm C holds 80
+   provinces against arm A's 92 but earns 401.4 against 913.4. `computeCountryIncome`
+   iterates `provincesOf`, so ground alone cannot do that. Either the provinces lost are
+   the industrial core, or something cuts income per province. `OD_ACT_HIST`'s expense
+   table plus the per-province industry data answer it without new code.
+   **Do not pre-register on unrest for either.** Journals 462-470 closed six unrest
+   statistics against this effect, and journal 471 shows the collapse runs through army
+   and income with rebellion moving the wrong way.
+
+158. ~~**WHY DOES SKIPPING `updateAIDistricts` ANNIHILATE FRANCE ON HALF THE SEEDS?**~~
+   **STEP 1 DONE journal 471: it is an army that stops being rebuilt, not revolt and not
+   war count.** Traces reproduce their bench scores exactly. Collapsing pair: identical
+   provinces for 50 turns, first divergence turn 57, then army 6.79M -> 2.52M by turn 100
+   and never recovering, provinces following it down. Arm A reaches 50.58M troops by turn
+   395. Rebel wars 0 in the collapsing arm until turn 334 (max 4) against max 12 in the
+   surviving arm -- the collapse is NOT rebellion. Control pair (606061) parts at turn 6
+   and neither arm collapses, so **divergence timing does not predict collapse**, and the
+   no-districts configuration is systematically weaker (176 provinces vs 280) rather than
+   only occasionally catastrophic. Successor: 159.
+   ORIGINAL:
+   **WHY DOES SKIPPING `updateAIDistricts` ANNIHILATE FRANCE ON HALF THE SEEDS?**
+   **This replaces the whole "what is the aiming worth" line, which journals 462-470
+   closed.** The effect is not a mean shift, it is a COLLAPSE RATE. 1914:FRA land per
+   seed, all one binary:
+   ```
+   A  districts, aiming, laws   23.8 25.2 25.3 32.6 34.1 37.6 44.3 50.1   collapsed 0/8
+   D  laws off                  21.3 22.1 25.9 29.6 31.4 38.6 41.1 44.1   collapsed 0/8
+   E  both mechanics off        14.0 32.2 35.2 35.5 36.4 40.4 44.9 46.8   collapsed 0/8
+   C  NO DISTRICTS               0.1  0.2  1.4  4.5 21.6 24.3 25.5 27.5   collapsed 4/8
+   ```
+   **C 4 of 8 against 0 of 24 pooled over A/D/E -- two-sided Fisher p = 0.00195** (against
+   arm A alone, p = 0.0769, which is why single-arm comparisons could not settle it).
+   Both of the feature's mechanics are measurably inert (aiming +10 floor 37; laws -24
+   floor 57; both off -30 floor 71), so **a catastrophic failure on half the worlds from a
+   reflex whose effects are neutralised is the shape of a DEFECT, not a balance property.**
+   **AUDIT, in this order, and no new code is needed for the first step:**
+   1. `OD_SEAT_TRACE` (journal 458) on one collapsing seed (20260801 or 13579) against one
+      surviving seed (606061), arm C -- it prints the seat's per-turn provinces, treasury,
+      income and expenses, so it says WHAT kills France before anything is built.
+   2. Side-effect initialisation. Memory labels-pass-builds-adjacency is this exact shape:
+      `computeCountryLabels` filled `m_provinceNeighbours` and skipping it silently emptied
+      the AI's legal menus. Check what `updateAIDistricts` touches that the rest of the
+      turn pipeline then reads.
+   3. RNG / iteration-order divergence. Journal 467 grepped the districts functions for
+      `simRand`/`rand()`/`GetRandomValue` (zero hits) but NOT the call chain under
+      `getProvinceRebellionChance`, which `updateAIDistricts` invokes once per province
+      every five turns and arm C never invokes at all.
+   4. A death spiral the reflex happens to interrupt (memory chn-dies-to-rebellion).
+   **And read the SPREAD, not the mean, for anything in this area.** Six consecutive
+   mean-based unrest statistics came back flat against this effect because on the
+   non-collapsing half there is nothing to see.
+
+157. ~~**BOTH GATES OFF, DISTRICTS ON.**~~ **DONE journal 470: E sits with A/B/D, not
+   with C.** 433 (se 35); vs A -30 on a floor of 71; vs C the rating gap is +90 on a floor
+   of 92 but **1914:FRA land 13.14 -> 35.67 at p 0.003**. So districts-existing matters
+   through NEITHER mechanic -- the branch this item pre-registered as indicting the gate.
+   Reading the per-seed spread then showed the real phenomenon: a 4-of-8 collapse in arm C
+   and 0-of-24 everywhere else. Successor: 158.
+   ORIGINAL:
+   **BOTH GATES OFF, DISTRICTS ON -- the arm that decides between two very different
+   answers.** Journal 469 left four arms on one binary and a contradiction:
+   ```
+   arm  districts  aiming  laws   per-seed        vs A
+   A       yes      live   live   463 (se 10)       --
+   B       yes      OFF    live   473 (se 16)      +10  (floor 37)  no
+   D       yes      live   OFF    439 (se 27)      -24  (floor 57)  no
+   C       no        --     --    343 (se 31)     -121  (floor 64)  CLEARS
+   ```
+   Single ablations sum to -14 against the structural -121: **non-additive by ~107
+   points** (memory ablations-dont-compose, measured again). C vs D, which differ only in
+   whether districts exist, is **+96**.
+   **TEST:** `OD_AI_DLAW_OFF=1` AND `OD_PACFACTOR_OFF=1` with districts left ON. Same 2
+   seats, 8 seeds, 400 turns, binary b53e066c, `--compare` against `j467-factor-live`.
+   - **Near 343** -> the two mechanics are JOINTLY NECESSARY, each compensating for the
+     other's absence. That is a real finding about the mechanic and ends the hunt.
+   - **Near 450** -> districts-existing matters through NEITHER, and since nothing else
+     reads `m_districts` in a bench run (checked journal 467: only Game_Mods, Game_Llm,
+     ScriptEngine and the journal-466 probe), that points at a defect in
+     `OD_AI_DISTRICTS_OFF` or in arm C rather than at any mechanic. **In that case stop
+     measuring and audit the gate**: diff what `updateAIDistricts` touches against what
+     skipping it changes, and check whether the early return at `Game_Policies.cpp:4889`
+     (`m_districts.erase(countryId)` for countries under 8 provinces) leaves state behind
+     that the skipped path would have cleaned.
+   Pre-register on the rating. Excluded already as causes of a C gap: RNG on the districts
+   path, authored districts/laws (both benched maps carry none -- verified journal 469),
+   district cost, and other readers of `m_districts`.
+
+156. ~~**IS THE +121 THE DISTRICT LAWS? `OD_AI_DLAW_OFF=1` with districts ON.**~~
+   **DONE journal 469: NO. Removing the laws costs nothing resolvable** -- 439 (se 27)
+   against 463 (se 10), **-24 on a floor of 57**, FRA p 0.604, USA p 0.905. Execution was
+   verified first (97 `[AIDLAW]` lines in 60 turns shipped, 0 with the gate on), so the
+   arm measured a real change.
+   So NEITHER district mechanic accounts for the effect, and the ablations are
+   non-additive by ~107 points. Successor: 157.
+   **Law mix, worth keeping:** of 104 laws passed, tax_holiday 58, language_rights 37,
+   public_works 4, martial_law 3, provincial_assembly 2 -- choice-weighted **income
+   -6.26%, growth +1.07%, unrest -5.65%**. The AI's favourite law cuts income 10%
+   (`tax_holiday` is free in `cost_per_turn`, so it wins the "calm per coin" ratio
+   whenever district income is small). The laws are an income sacrifice bought for
+   unrest, and removing them does not help either.
+   ORIGINAL:
+   **IS THE +121 THE DISTRICT LAWS? `OD_AI_DLAW_OFF=1` with districts ON.**
+   Journal 468 localised the effect: districts-existing is worth ~121 points and the
+   pacification aiming contributes none of it (A 463, B 473 with the aiming neutralised,
+   C 343 with no districts -- all one binary). The mechanism found by reading one function
+   further than I had: `updateAIDistrictLaws` (`Game_Policies.cpp:4213`, called for every
+   AI country from `Game_TurnLogic.cpp:1057`) returns early when a country has no
+   districts, so **arm C loses the entire regional-law mechanic.** A law carries
+   `unrestPct`, **`incomePct`** and **`growthPct`** plus `costPerTurn` per province.
+   **TEST, and the gate already exists:** `OD_AI_DLAW_OFF=1` with districts left ON,
+   2 seats, 8 seeds, 400 turns, binary b53e066c, `--compare` against `j467-factor-live`.
+   If it costs ~121 the laws are the channel and the question becomes which term
+   (income, growth or unrest) carries it -- `OD_DISTRICT_DEBUG` prints `[AIDLAW]` lines
+   naming the law each country passes, so the mix is readable without new code.
+   If it costs nothing, then districts-existing matters through neither the aiming NOR
+   the laws, and the next step is a build with both gated off to check they are not
+   jointly necessary.
+   **Pre-register on the rating.** Do NOT pre-register on unrest: six consecutive unrest
+   statistics came back flat against this same effect (journals 462-467) because the
+   channel is most likely income and growth, which are not in that subsystem.
+
+155. ~~**RE-RUN THE NO-DISTRICTS ARM ON THE CURRENT BINARY.**~~
+   **DONE journal 468: IT REPRODUCES TO THE LAST DIGIT.** 343 (se 31), land 13.1375 and
+   39.3625, difference **-121 against a floor of 64, CLEARS**, 1914:FRA:rung p **0.003**
+   with medians agreeing -- identical to journal 462's arm on the older binary. The binary
+   confound was zero, as the stored `j462-aim-on`/`j467-factor-live` land shares already
+   showed (34.125 and 33.475 on both builds).
+   So all three arms sit on one binary: **districts-existing is worth ~121 and the
+   pacification aiming contributes none of it.** Successor: 156.
+   ORIGINAL:
+   **RE-RUN THE NO-DISTRICTS ARM ON THE CURRENT BINARY. One arm, nine minutes, and it
+   decides what the +121 actually is.** Journal 467 established on one binary that
+   neutralising `pacificationFactor` costs nothing (A 463 se 10 vs B 473 se 16, difference
+   +10 against a floor of 37) -- **so the suppression aiming is not the channel.** If
+   journal 462's no-districts arm (343) reproduces on THIS binary, then districts-existing
+   carries ~130 points through something that is not the suppression, which would be the
+   most interesting open question in the sequence. If it does not reproduce, journal 462's
+   +121 was partly an artefact of the older binary and needs restating.
+   **Do not quote journal 462's 343 against journal 467's 473** -- different binaries,
+   which is the comparison journal 467's own design section forbade (LOOP.md: an A/B is
+   quotable only if both arms ran in one session on one tree).
+   `OD_AI_DISTRICTS_OFF=1`, 2 seats, 8 seeds, 400 turns, binary b53e066c, `--compare`
+   against the stored `j467-factor-live`.
+   **Already ruled out as a cause if the gap does survive** (journal 467, three greps):
+   RNG divergence -- nothing on the districts path draws on `simRand`/`rand()`; district
+   laws, policies and cost -- all zero for an AI district; other readers of `m_districts`
+   -- only Game_Mods, Game_Llm and ScriptEngine, none active in a bench.
+
+153. ~~**DOES UNREST BIND THE RECRUITMENT CAP? The live lead on the +121.**~~
+   **CLOSED journal 467 by reading, zero runs: THE LEAD WAS DEAD CODE.** `recruitCap` does
+   ```
+   static const bool shared = OD_ENV("OD_AI_RECRUIT_CAP") && atoi(...) != 0;
+   long long cap = pool / 5;
+   if (!isPlayer && !shared) return cap;        // exactly what the AI had
+   ```
+   `OD_AI_RECRUIT_CAP` is off by default and `--eval-ai` sets `m_playerCountryId = 0`
+   (spectator -- `Game_AITrain.cpp:393`), so `isPlayer` is false for every country in every
+   benched world and the function **returns before the unrest multiplication executes.**
+   The army difference journal 462 measured (57.58M vs 22.52M) is therefore DOWNSTREAM of
+   land -- more provinces, more pool -- not upstream of it. Same shape as memory
+   doctrine-effects-block-half-audited's "conscriptionPct is player-only", which is two
+   lines above it in the same function.
+   ORIGINAL:
+   **DOES UNREST BIND THE RECRUITMENT CAP? The live lead on the +121.** Journal 466.
+   Mechanically `updateAIDistricts` can act ONLY through `pacificationFactor` (AI
+   districts carry no laws and no policies, so `districtLawsAt` and `districtPolicyCost`
+   are zero for them -- checked journal 462), and every unrest consequence measured so
+   far is flat: budget identical (464), rebellion count within 2% (465), rebellion
+   location 4 pp (465), policy-net unrest input unmoved (466). One consumer is unexamined:
+   ```
+   Game_TurnLogic.cpp:3610   float unrestFactor = 1.0f - getProvinceRebellionChance(pid, cid);
+                             if (unrestFactor < 0.1f) unrestFactor = 0.1f;
+                             cap = (long long)(cap * unrestFactor);
+   ```
+   **Unrest multiplies the recruitment cap** -- and journal 462 already measured the world
+   army at turn 400 as **57.58M with aiming on against 22.52M with it off, a 2.56x
+   difference beside a 2.6x difference in land.** First quantity in the sequence that
+   moves on the scale of the effect.
+   **THE TENSION THAT MAKES THIS A TEST AND NOT A CONCLUSION:** memory
+   ai-recruitment-is-money-bound records the cap measured as a NULL -- the treasury binds,
+   not the ceiling. If that holds here the channel is shut. But it was measured in another
+   condition (memory measure-in-the-condition-that-fails). **So count first: over
+   country-turns in both arms, how often is the recruitment order actually clipped BY THE
+   CAP rather than by the treasury?** If the cap never clips, stop. Only if it clips does
+   the unrest term matter. Cheap: one counter at the recruitment site.
+   **Blocked on the file, not on the idea:** the site is `Game_TurnLogic.cpp`, which has
+   been dirty with the peer's uncommitted work since 15:10 (same blocker as items 139 and
+   151's instrument). Either wait for it, or observe army SIZE from `Game_AITrain.cpp`
+   instead -- which is clean, and which is how journal 465 worked around the same wall.
+
+152. ~~**THE AI'S UNREST FEATURE IS A POLICY-NET INPUT, AND AIMING MOVES IT.**~~
+   **DONE journal 466: IT DOES NOT MOVE. Feature channel closed, and step 2 cancelled.**
+   `f[24]` is higher with aiming ON on **3 of 8 seeds -- worse than the null of 4** --
+   paired mean **-0.00177**, CI [-0.00449, +0.00094] world-wide and [-0.00637, +0.00284]
+   restricted to the 8+ province countries districts can touch. Magnitude is **8.9% of
+   the predicted threshold**. Mean `pacificationFactor` over the sampled provinces is
+   0.9726, so districts barely reach the sample at all.
+   **Step 2 (neutralise `f[24]`, leave the suppression aimed, bench) is CANCELLED as
+   unnecessary** -- sixteen 30-second runs replaced a code change that would have needed
+   an inertness proof plus a 20-minute bench. LOOP.md's cheap-instruments-first rule
+   paying for itself. Successors: 153 (the live lead) and 154 (the dead input).
+   ORIGINAL:
+   **THE AI'S UNREST FEATURE IS A POLICY-NET INPUT, AND AIMING MOVES IT. The lead
+   after four failed unrest stories.** `AISystem.cpp:2745` builds `f[24]` as the mean
+   `getProvinceRebellionChance` over the **first six provinces in `provincesOf` index
+   order** -- not the worst six, not a sample weighted by anything -- and
+   `pacificationFactor` scales the suppression inside that call. So `updateAIDistricts`
+   changes what the net SEES for every AI country every turn, and those six provinces
+   carry a factor of either ~0.33 or up to 3.0 purely by which district they fall in.
+   **Why this is the right next place to look:** it is the only channel found so far that
+   can produce a large behavioural difference while the budget is identical (journal 464),
+   the rebellion count is within 2% and the rebellion location moves 4 pp (journal 465).
+   **TEST, cheap and decisive about the channel rather than the mechanic:** log `f[24]`
+   per country-turn in both arms and compare its distribution; then, separately, hold
+   `f[24]` fixed (compute it as if `pacificationFactor` were 1.0) while leaving the real
+   suppression aimed, and bench. If the +121 survives that, the channel is the mechanic;
+   if it collapses, the channel is the feature.
+   **Also worth reporting on its own merits even if the channel is elsewhere:** a feature
+   that samples six provinces by hash order is near-arbitrary, and item 100's finding
+   about node order deciding research forks is the same class of defect.
+
+151. ~~**WHICH provinces rebel, not how many -- the only hypothesis left standing.**~~
+   **DONE journal 465: FALSIFIED on the pre-registered interval, and it closes the unrest
+   system.** Recent-conquest share of rebellions is lower with aiming ON on **7 of 8
+   seeds** (null 4 of 8, P 0.035) but the paired mean is only **-4.11 pp, 95% CI
+   [-8.71, +0.49] -- includes zero**, which was the stated falsifier. Seed 606061 carries
+   it at -16.1 (the other seven average -2.4), the SECOND time that one seed has supplied
+   a mechanism that did not survive. Total province-rebellions move 2% (1419 vs 1389).
+   **A 4-point shift in rebellion location cannot be a 2.6x difference in land held.**
+   With the budget identical (464), the count within 2% and the location barely moved,
+   **the +121's channel is not in the unrest system.** Successor: item 152.
+   Within-arm descriptive, clean but unable to carry a cross-arm claim: with aiming on,
+   rebellions land in the STARVED district 53.8% against the FAVOURED district's 28.5%.
+   ORIGINAL:
+   **WHICH provinces rebel, not how many -- the only hypothesis left standing.**
+   Journals 462-464 leave three measurements that no single story has yet explained:
+   aiming is worth **+121 per-seed rating** (462), it has a **HIGHER** rebellion rate per
+   province-turn (463), and it costs **nothing extra** -- `pAlloc` identical across eight
+   paired seeds (464). All three fit if what matters is rebellion LOCATION: concentrating
+   the dial protects the hot district -- frontier and freshly conquered ground, where a
+   rebellion costs a conquest -- and lets the quiet interior riot, where it costs little.
+   **TEST:** instrument rebellion events with the district membership of the province
+   (hot vs calm vs undivided) and whether the province changed hands in the last N turns,
+   both arms, 1914:FRA:rung, journal 462's eight seeds. Pre-register on the SHARE of
+   rebellions landing in recently-conquered provinces, which is the quantity the story
+   predicts moves; do not pre-register on the total, which journal 463 settled and which
+   moves the other way.
+   **Note the trap this sequence has now sprung twice:** a coherent mechanism read off the
+   source did not protect a two-seed effect (journal 464 killed journal 463's), and a
+   count of exposed province-turns did not mean what its name said (journal 462 vs 461).
+   Use at least six seeds before believing any of it, and say in one sentence which
+   decision reads the statistic before measuring it.
+
+150. ~~**Confirm the `pAlloc` difference across eight seeds.**~~
+   **DONE journal 464: FALSIFIED, and it retracts journal 463.** `pAlloc` is lower with
+   aiming ON on **4 of 8 seeds -- exactly the null** -- paired mean **+0.0014**, 95% CI
+   [-0.0336, +0.0364]. Aiming does NOT change how much the AI allocates. The two seeds
+   journal 463 used (606061, 31337) turn out to be the two most negative of the eight.
+   **The null is the sharper result:** same budget, same share of gross, 2.6x the land,
+   so the whole gain is in WHERE the money lands -- which rules out every
+   "aiming frees money and the saving buys something" story at once. The seat effect
+   replicates untouched (ON 34.12% vs OFF 13.14%, better on 7 of 8). Successor: item 151.
+   ORIGINAL:
+   **Confirm the `pAlloc` difference across eight seeds.** Journal 463 identified the
+   mechanism of journal 462's +121 on two seeds: aiming lets the policy head settle on a
+   LOWER pacification allocation (0.212 vs 0.240 and 0.144 vs 0.217), because
+   `AISystem.cpp:8598` raises the budget from `worst = max over provinces of
+   getProvinceRebellionChance` and concentrating the money suppresses exactly that
+   maximum. Two seeds, same sign on all four bearing quantities, mechanism read from the
+   code -- but the seat effect ranges 1.61x to 7.24x, so the SIZE is unknown.
+   **Cheap:** `OD_ACT_HIST=1` on 1914:FRA:rung over journal 462's eight seeds, both arms,
+   and report mean `pAlloc` with a paired difference. Sixteen short runs, no bench.
+   Use `env -u OD_AI_DISTRICTS_OFF` for the control arm -- see item 149.
+   Pre-register on `pAlloc`, which is the moved statistic, and NOT on rebellions, which
+   move the other way and decide nothing (journal 463).
+
+149. **`OD_AI_DISTRICTS_OFF=0` DISABLES DISTRICTS, and so does any other value.**
+   Journal 463. `OD_ENV` (src/util/OdEnv.h) returns the raw `getenv` pointer and the gate
+   is `if (!OD_ENV("OD_AI_DISTRICTS_OFF"))`, so the variable is a presence test: setting
+   it to `0` to mean "leave them on" switches them OFF. I measured off-against-off for a
+   full set of runs and only caught it because both arms returned bit-identical numbers.
+   **Every `OD_*` gate in this tree that is read with bare `if (OD_ENV(...))` behaves the
+   same way** -- there are many, and the ones read with `atoi(OD_ENV(...))` do NOT, which
+   is the part that makes it easy to get wrong.
+   **The rule: a control arm UNSETS the variable (`env -u NAME`); it never sets it to 0.**
+   Worth a line in LOOP.md's known-list next time one is being added. Not worth an
+   iteration; related to item 147 and memory sentinel-defaults-break-emptiness.
+
+148. ~~**BENCH THE SHIPPED AIMING MECHANISM: is `updateAIDistricts` worth its exposure?**~~
+   **DONE journal 462: YES, BY 121 PER-SEED POINTS, and the prediction that filed this
+   item was wrong in sign.** Two seats, eight seeds, 400 turns, pinned binary,
+   `binary_changed_mid_run` False on both arms:
+   per-seed rating **aim ON (shipped) 463 (se 10) vs aim OFF 343 (se 31), difference
+   -121 against a floor of 64 -- CLEARS**. `1914:FRA:rung` land **34.12% -> 13.14%,
+   p = 0.003**, medians agreeing (33.35 -> 13.05). `1939:USA:rung` +5.89pp at p = 0.242
+   and capped in both arms. World land 67.60% -> 52.50%, army 57.58M -> 22.52M.
+   **THE SHIPPED DEFAULT IS CORRECT. DO NOT TOUCH IT, and do not re-open this from
+   journal 461 alone**, whose binding-province-turn count (637x, reading as harm) is the
+   statistic that misled both the prediction and item 120's brief -- a binding province
+   in the CALM district carries a tenth of a point of residual unrest, while the budget
+   reflex at AISystem.cpp:8598 reads `worst = max rebellion chance`, not a count.
+   **MECHANISM: STILL UNKNOWN. Journal 463 thought it had found it; journal 464
+   falsified that on eight paired seeds (`pAlloc` 4 of 8, paired mean +0.0014, CI
+   straddling zero), so this entry's original "unexplained" was right and the paragraph
+   below is RETRACTED and kept only for the record.** What journal 464 adds positively:
+   the budget does not move at all, so the gain is purely spatial. Successor: item 151.
+   RETRACTED (journal 463, falsified by 464): That contradiction came from rush-configuration runs, the wrong ones.
+   On the rung seat that actually moved, `pAlloc` is LOWER with aiming on, on both seeds
+   (0.212 vs 0.240; 0.144 vs 0.217): the reflex at `AISystem.cpp:8598` raises the budget
+   from `worst = max over provinces of getProvinceRebellionChance`, and concentrating the
+   money suppresses precisely that maximum, so the head stops raising the allocation and
+   spends the difference. Aiming buys a cheaper way to satisfy a reflex watching the
+   worst province -- not stability: the rebellion RATE is HIGHER with aiming on, on both
+   seeds and per province-turn. Confirmation across eight seeds is item 150.
+   ORIGINAL BRIEF, kept because its prediction was the wrong one:
+   **BENCH THE SHIPPED AIMING MECHANISM: is `updateAIDistricts` worth its exposure?**
+   **The next iteration's experiment, and it is a ready-made A/B with a flag that already
+   exists.** Journal 461, one seed, 400 turns: `OD_AI_DISTRICTS_OFF=1` leaves **40**
+   binding province-turns against the shipped default's **25,497** -- 637x -- with total
+   suppression need within 4.5% and worst-ever unrest 36.53 -> 43.22. Mechanism confirmed
+   from the source: the calm district sits at the 25% share clamp while holding ~75% of
+   the ground, so `pacificationFactor = budgetShare/groundShare` cuts its dial to ~0.33,
+   and the mean dial where a province binds is 2.78 on against 10.62 off.
+   The hot district does get up to 3x in exchange, so this is a TRADE and not a defect:
+   better protection where risk is measured, exposure everywhere else.
+   **DESIGN, and the cautions are the point.** `od_bench.py --compare`, both arms one
+   pinned binary (memory pin-the-benchmark-binary), `OD_BENCH_TURNS=400`. Judge on the
+   RATING and the per-seat permutation p, not on 1914:FRA:rush, which is a coin flip
+   needing ~128 seeds per arm (item 19) -- journal 461's 0.4 vs 0.3 on that seat is not
+   evidence and must not be quoted as any. Expect a diffuse effect if any, since this
+   touches every country in the world (memory world-rules-redistribute,
+   global-knobs-move-the-world), so the rating is the right instrument rather than one
+   seat. Pre-register before running: on the evidence above I would predict the default
+   (aiming ON) is WORSE, which would make this the rare case where the shipped
+   configuration is the one to change.
+   Guard against the obvious trap: the two arms are different worlds, so do not read
+   journal 461's 637x as an effect size.
+
+147. **A GREP OF ONE DIRECTORY REPORTED A SHIPPED FEATURE ABSENT -- twice, for the user,
+   before it was checked.** Journal 461. `grep -rn m_districts src/ai/` returned nothing
+   and I concluded "the AI never draws a district", then built journal 460's verdict and
+   journal 461's pre-registration on it and wrote it into item 120 as a decision brief.
+   `updateAIDistricts` lives in `Game_Policies.cpp` under `Game::` and is called from
+   `Game_TurnLogic.cpp:1052` -- the AI's BEHAVIOUR is not confined to `src/ai/`, because
+   the per-country reflexes the turn loop runs for AI countries are Game methods.
+   Memory wiring-checks-are-not-execution is the converse error (wiring present,
+   execution absent); this is execution present, search absent.
+   **The rule that would have caught it, and it is cheap:** before reporting that the AI
+   cannot do something, grep the whole of `src/` for the STATE the capability would
+   write -- here `m_districts` -- and not the directory you expect the writer to live in.
+   A capability is absent when nothing writes its state anywhere, not when `src/ai/`
+   does not. Worth a line in LOOP.md's known-list next time one is being added; not
+   worth an iteration of its own.
+
+146. ~~**Route journals 447-458 into LOOP.md's known-list.**~~ **DONE journal 459.**
+   The check: `grep -cE 'war slot|attack order|decided by the draw' docs/ai/LOOP.md`
+   returned **0** after twelve iterations -- not one finding from 447-458 had reached the
+   protocol, which is memory nothing-routes-findings-back-to-the-protocol happening in
+   real time. It nearly cost iteration 13: the next item up was a fourth attempt at
+   gating unrest spending, a shape memory unrest-levers-are-not-savings records failing
+   three times.
+   Added to the factual "do not re-derive" list only -- **no rule changed**: the war
+   system closed as a growth channel; the live-but-worthless limit category; both
+   survival seats unreachable and the reject rule therefore naming a seat that cannot
+   move; five-of-five single-seed dissolutions; od_bench not surfacing server stderr;
+   provinces-per-war-turn being a worse statistic than the rating; income == expenses
+   from turn 25 with pacification at 30-32%; and 801fd20's stranded comments.
+   **Item 30 ("who maintains LOOP.md?") is the standing version of this** and is still
+   open -- this was one agent noticing once, not a mechanism.
+
+145. **FOR THE USER -- the reject rule now rests on a seat no AI change can move.**
+   Journal 458 traced the collapser and the holder turn by turn: they are the same world
+   to the decimal through turn 15 (provinces 83->92 in lockstep, treasury 1772.4 vs
+   1772.3), diverge at turn 20-25 purely in provinces TAKEN, and carry identical standing
+   bills -- policy 21.0 each, pacification ~285 each. One wins its opening war and the
+   other does not, in a world where every country is SCRIPT_BLITZ. **The seat is decided
+   by the draw.**
+   Consequence: journal 439 retired 1939:NOR:hood from LOOP.md's reject rule on the
+   grounds that it ranked nobody, leaving 1914:FRA:rush as the only seat in it. On this
+   evidence rush cannot be moved by an AI change either, so the rule again cannot reject
+   anything. **Either the reject rule needs a seat that responds to AI decisions, or it
+   should say plainly that it guards nothing.** Not editing the protocol on one
+   iteration's reading; this is the user's call, as 439 was.
+
+144. ~~**THE OPENING TREASURY IS SPENT BY TURN 25 AND NEVER RECOVERS -- is that the
+   rush fork?**~~ **NO, journal 458, and the test I wrote for it was tautological.**
+   The discriminator was "does income diverge before provinces" -- but
+   computeCountryIncome iterates provincesOf(), so income is computed FROM provinces and
+   cannot lead them. And the premise was already refuted by journal 457's own data:
+   treasury is under 1.0 from turn 25 in EVERY seed including the holder that finishes
+   with 164 provinces. A condition the holder shares cannot be the fork.
+   **What the trace did find:** from turn 25 `income == expenses` to the decimal in both
+   seeds for 375 turns -- the AI commits every unit of income, permanently -- with
+   pacification at **30-32% of income**, zero before turn 25. Not the fork, but it is
+   where a third of the money goes, and memory where-the-ai-money-goes records
+   pacification as 99.8% wasted. Items 120 and 123 own that money. ORIGINAL: Journal 457's traces: treasury 582 at turn 1, under 1.0 by turn 25, and
+   under 1.0 for the remaining 375 turns in EVERY seed including the one that holds 164
+   provinces. Recruitment is sized at 20% of treasury (journal 438), so from turn ~25 no
+   AI country can rebuild an army it loses -- which explains why that share sweep was a
+   null here: 20% and 50% of 0.3 are both nothing.
+   The collapsing seeds lose an army they cannot replace; the holder's compounds
+   3.8M -> 78.6M off provinces that pay for themselves. **So the fork may be decided in
+   the first 25-40 turns by whether early conquest outruns the treasury drying up.**
+   NOT ESTABLISHED: co-movement is not causation, and the holder's income may be the
+   CONSEQUENCE of surviving rather than its cause. The cheap discriminator is a trace of
+   income and expenses per turn over turns 1-50 on a collapser and a holder -- if the
+   holder's income diverges BEFORE its province count does, the money is upstream.
+   Instruments: OD_SEAT_TRACE exists; income/expense per turn does not and would be the
+   addition.
+
+111. ~~**What kills France between turn 200 and turn 400?**~~ **THE QUESTION IS WRONG,
+   journal 457.** Traced turn by turn: seed 13579 peaks at 7.2% of the world on turn
+   SEVEN, is at 1.9% by turn 100, finished by turn 125, and then sits FROZEN -- provinces,
+   army and treasury byte-identical for 275 consecutive turns. It never holds 8-13% at
+   any point, so there is nothing to explain in the 200-400 window; it contains a rump
+   that is unattacked rather than defended, the same end-state journal 411 found on hood.
+   The 8-13% figure was most likely a mean across seeds including the holders -- the
+   aggregate-vs-seat error. **Both survival seats are now known to be decided EARLY**
+   (hood before turn 40, rush before turn ~100), so no rule acting after turn 100 can
+   reach either. Successor: 144. ORIGINAL:
    **PARTLY ANSWERED, journal 413: NOT rebellion, and not any logged event.** Rebellion
    wars run 10.67 in collapsed runs against 28.00 in held ones -- the opposite of the
    prediction, and best read as rebellion count tracking land held. In seed 13579 the

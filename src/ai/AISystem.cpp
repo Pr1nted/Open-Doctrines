@@ -15,6 +15,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+// Journal 466: the policy net's unrest INPUT f[24], under OD_F24. Nothing reads these
+// unless the variable is set.
+double g_f24Sum = 0.0, g_f24Raw = 0.0, g_f24FactorSum = 0.0;
+long long g_f24N = 0, g_f24FactorN = 0;
+double g_f24BigSum = 0.0, g_f24BigRaw = 0.0;
+long long g_f24BigN = 0;
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -2741,11 +2748,47 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // province map's hash order, not ownership. The index makes it genuinely
     // six lookups.
     float unrestSum = 0; int unrestN = 0;
+    // OD_F24=1 (journal 466): is this INPUT what the aiming reflex actually moves?
+    // Aiming is worth +121 rating (journal 462) while the budget is identical (464),
+    // the rebellion count is within 2% and rebellion location shifts 4 pp (465) -- the
+    // mechanic's own effects are too small to be the channel, so a feature the net
+    // READS is the remaining candidate. pacificationFactor scales the suppression
+    // inside getProvinceRebellionChance, and the six provinces sampled here are the
+    // first six in index order, which should be mostly the starved district.
+    // The factor is accumulated over exactly the provinces sampled, in this loop, so
+    // it describes the sample rather than the country. Meaningful only in the
+    // aiming-on arm: without districts it is 1.0 by definition.
+    static const bool f24Probe = OD_ENV("OD_F24") != nullptr;
     for (int pid : g.provincesOf(cid)) {
         unrestSum += g.getProvinceRebellionChance(pid, cid);
+        if (f24Probe) { g_f24FactorSum += g.pacificationFactor(cid, pid); ++g_f24FactorN; }
         if (++unrestN >= 6) break;
     }
     f[24] = unrestN ? std::tanh(unrestSum / unrestN / 10.0f) : 0.0f;
+    if (f24Probe && unrestN > 0) {
+        g_f24Sum += f[24];
+        g_f24Raw += unrestSum / unrestN;
+        ++g_f24N;
+        // AND THE SAME THING FOR COUNTRIES BIG ENOUGH TO BE DIVIDED.
+        //
+        // The world-wide mean above is nearly useless for this question and the
+        // validation run is what showed it: mean pacificationFactor over the sampled
+        // provinces came out at 0.9952, because AI_DISTRICT_MIN_PROVINCES is 8 and most
+        // country-turns in a 400-turn world belong to countries smaller than that,
+        // which have no districts and therefore a factor of exactly 1. Averaging them
+        // in buries whatever happens to the countries the mechanic actually touches.
+        //
+        // The filter is PROVINCE COUNT and not "has districts", deliberately: with
+        // aiming off no country has districts, so a has-districts bucket would be empty
+        // in one arm and could not carry a comparison. Province count is defined
+        // identically in both arms. Same mistake, avoided, as journal 465's district
+        // membership.
+        if ((int)g.provincesOf(cid).size() >= 8) {
+            g_f24BigSum += f[24];
+            g_f24BigRaw += unrestSum / unrestN;
+            ++g_f24BigN;
+        }
+    }
     auto pacIt = g.m_countryPacification.find(cid);
     f[25] = (cid == g.m_playerCountryId) ? g.m_pacificationAllocation
             : (pacIt != g.m_countryPacification.end() ? pacIt->second : 0.0f);
@@ -6841,6 +6884,16 @@ std::string AISystem::execWar(int cid, int action) {
             static const float ATTACK_MAX_COMMIT = OD_ENV("OD_ATTACK_MAX_COMMIT") ? (float)atof(OD_ENV("OD_ATTACK_MAX_COMMIT")) : 0.85f;
             constexpr int   PRONGS_PER_PROVINCE = 3;
             int issued = 0, blocked = 0;
+            // Journal 456: is the four-orders allowance ever reached? Counted
+            // under OD_ATTACK_CAP_PROBE. A limit nobody reaches cannot be
+            // raised usefully -- the manpower ceiling (item 130) and the war
+            // bar (item 138) are both that mistake already made.
+            static const bool capProbe = OD_ENV("OD_ATTACK_CAP_PROBE") &&
+                                         atoi(OD_ENV("OD_ATTACK_CAP_PROBE")) != 0;
+            if (capProbe) {
+                static const bool reg = (atexit(&AISystem::dumpAttackCap), true);
+                (void)reg;
+            }
             std::unordered_map<int, float> committed;   // fromPid -> fraction of original
             std::unordered_map<int, int>   prongs;      // fromPid -> orders issued
             // Provinces already carrying an order from an earlier decision are
@@ -6852,7 +6905,14 @@ std::string AISystem::execWar(int cid, int action) {
                 if (mo.countryId == cid) preOrdered.insert(mo.fromProvince);
             const AttackCandidate* first = nullptr;
             for (int idx : order) {
-                if (issued >= ATTACK_ORDERS_PER_TURN) break;
+                // OD_ATTACK_ORDERS sweeps the cap. Journal 456 measured it
+                // BINDING on 21.6% of attacking country-turns, with 26.3% of
+                // turns issuing exactly four against a decline that predicts
+                // about 8% -- a censored distribution, so the demand is real.
+                static const int maxOrders = OD_ENV("OD_ATTACK_ORDERS")
+                                           ? atoi(OD_ENV("OD_ATTACK_ORDERS"))
+                                           : ATTACK_ORDERS_PER_TURN;
+                if (issued >= maxOrders) { ++s_atkCapHit; break; }
                 if (idx < 0 || idx >= (int)cands.size()) continue;
                 const AttackCandidate& ch = cands[idx];
                 if (preOrdered.count(ch.fromPid)) { blocked++; continue; }
@@ -6969,6 +7029,11 @@ std::string AISystem::execWar(int cid, int action) {
                 statsFor(cid).attackIssued++;
                 if (!first) first = &ch;
                 issued++;
+            }
+            if (capProbe) {
+                ++s_atkTurns;
+                if (issued >= 0 && issued <= 8) ++s_atkIssuedHist[issued];
+                s_atkIssuedSum += issued;
             }
             if (issued == 0) {
                 statsFor(cid).attackPending += blocked;
@@ -14072,6 +14137,10 @@ long long AISystem::s_reatkRepeats = 0;
 long long AISystem::s_reatkConsecutive = 0;
 std::map<std::pair<int,int>, std::pair<int,float>> AISystem::s_reatkRatio;
 long long AISystem::s_reatkSuppressed = 0;
+long long AISystem::s_atkCapHit = 0;
+long long AISystem::s_atkTurns = 0;
+long long AISystem::s_atkIssuedSum = 0;
+long long AISystem::s_atkIssuedHist[9] = {0};
 int AISystem::s_reatkMax = 0;
 std::vector<int> AISystem::s_warTransfers;
 long long AISystem::s_warStalemates = 0;
@@ -14386,7 +14455,35 @@ void AISystem::dumpActionHistogram() {
                     "  over %lld province-turns\n", g_pacApplied, g_pacNeeded,
                     g_pacApplied > 0 ? 100.0 * (g_pacApplied - g_pacNeeded) / g_pacApplied : 0.0,
                     g_pacN);
+        // WASTED above is in suppression POINTS, not money -- the bill is
+        // income x share and does not depend on this at all (journal 461).
+        // These three lines answer the question that follows from it: is the
+        // need a saturated tail, which concentrating the same budget would
+        // help, or a third of a point everywhere, which nothing but the amount
+        // reaches?
+        extern double g_pacBucketNeed[3]; extern long long g_pacBucketN[3];
+        extern double g_pacWorstPre; extern long long g_pacSupN;
+        if (g_pacSupN > 0) {
+            static const char* bn[3] = {"calm (no unrest)", "partial", "BINDING (>= dial)"};
+            double needTot = g_pacBucketNeed[0] + g_pacBucketNeed[1] + g_pacBucketNeed[2];
+            fprintf(stderr, "[ACTHIST] pacification shape, over %lld SUPPRESSED province-turns"
+                    " (worst unrest seen %.2f):\n", g_pacSupN, g_pacWorstPre);
+            for (int i = 0; i < 3; ++i)
+                fprintf(stderr, "[ACTHIST]   %-20s %9lld (%5.2f%% of turns)   needs %12.1f"
+                        " (%5.1f%% of all need)\n", bn[i], g_pacBucketN[i],
+                        100.0 * g_pacBucketN[i] / (double)g_pacSupN, g_pacBucketNeed[i],
+                        needTot > 0 ? 100.0 * g_pacBucketNeed[i] / needTot : 0.0);
+        }
     }
+    if (g_f24N > 0)
+        fprintf(stderr, "[F24] mean f[24] %.5f   mean raw chance %.4f   over %lld country-turns"
+                "   mean pacificationFactor on sampled provinces %.4f\n",
+                g_f24Sum / (double)g_f24N, g_f24Raw / (double)g_f24N, g_f24N,
+                g_f24FactorN > 0 ? g_f24FactorSum / (double)g_f24FactorN : 1.0);
+    if (g_f24BigN > 0)
+        fprintf(stderr, "[F24] countries with 8+ provinces (the ones districts can touch):"
+                " mean f[24] %.5f   mean raw chance %.4f   over %lld country-turns\n",
+                g_f24BigSum / (double)g_f24BigN, g_f24BigRaw / (double)g_f24BigN, g_f24BigN);
     dumpDecisionHash();
     fprintf(stderr, "[ACTHIST] anchor gate: reached %lld  leagueLoaded %lld  policyValid %lld  emptyFeat %lld\n",
             s_anchorWhy[0].load(), s_anchorWhy[1].load(), s_anchorWhy[2].load(), s_anchorWhy[3].load());
@@ -14908,10 +15005,59 @@ void AISystem::seatTrace() {
     auto w = m_warWith.find(cid);
     if (w != m_warWith.end())
         for (int e : w->second) (e >= Game::REBEL_CID_MIN ? rebel : foreign)++;
+    // Journal 458: income, expenses and the enemy count. Income is computed
+    // FROM provinces (computeCountryIncome iterates provincesOf), so it cannot
+    // lead a province divergence -- it is printed to show the EXPENSE side,
+    // which is not province-determined, and the enemy count, which is the draw.
+    const CountryIncomeSnapshot cs = g.computeCountryIncome(cid);
+    // POPULATION, SUMMED HERE AND NOT TAKEN FROM THE SNAPSHOT (journal 473).
+    //
+    // cs.population is structurally ZERO on this path: it is filled only by
+    // recordIncomeSnapshot() (Game_Economy.cpp:1801), not by computeCountryIncome(),
+    // which is what this trace calls. The first build of this field printed
+    // "people 0" on all 400 turns of all 24 runs, which is the only reason I noticed --
+    // a struct field that is zero rather than absent (memory
+    // sentinel-defaults-break-emptiness).
+    //
+    // Read from m_provincePopArray, which is the array provinceIndustryCapacity
+    // itself reads, so this is the same number the fit term is computed from rather
+    // than a second copy of it (memory expose-the-resolvers-numbers).
+    long long people = 0;
+    for (int pid : g.provincesOf(cid))
+        if (pid > 0 && (size_t)pid < g.m_provincePopArray.size())
+            people += g.m_provincePopArray[pid];
+    // Journal 472: the income DECOMPOSITION, because journal 471 found arm C earning
+    // 56% less on 13% less ground and computeCountryIncome iterates provincesOf, which
+    // cannot produce that on its own. total = gross + resource + pop, so whichever
+    // component carries the fall carries it by construction rather than by guess --
+    // and industryLevels separates "the industrial core was taken" from "something
+    // multiplies income down on ground we still hold".
     fprintf(stderr, "[SEATTRACE] turn %d %s prov %d army %lld treasury %.1f "
-            "wars %d rebelwars %d\n", m_turn, g.m_benchSeatIso.c_str(),
-            it->second.provinces, it->second.army,
-            c ? c->treasury : 0.0, foreign, rebel);
+            "wars %d rebelwars %d income %.1f expenses %.1f army_pay %.1f "
+            "policy %.1f minority %.1f pacify %.1f "
+            "gross %.1f resource %.1f pop %.1f indlevels %d people %lld\n",
+            m_turn, g.m_benchSeatIso.c_str(), it->second.provinces, it->second.army,
+            c ? c->treasury : 0.0, foreign, rebel,
+            cs.total, cs.expenses, cs.armyExpenses, cs.policyCosts,
+            cs.minorityCosts, cs.pacificationCost,
+            cs.gross, cs.resource, cs.pop, cs.industryLevels, people);
+}
+
+void AISystem::dumpAttackCap() {
+    static bool done = false;
+    if (done || s_atkTurns <= 0) return;
+    done = true;
+    const double n = (double)s_atkTurns;
+    fprintf(stderr, "[ATKCAP] attacking country-turns %lld   mean orders issued %.2f   "
+                    "HIT THE CAP OF %d: %lld (%.1f%%)\n",
+            s_atkTurns, (double)s_atkIssuedSum / n, ATTACK_ORDERS_PER_TURN,
+            s_atkCapHit, 100.0 * (double)s_atkCapHit / n);
+    fprintf(stderr, "[ATKCAP] orders issued per turn:");
+    for (int i = 0; i <= 8; ++i)
+        if (s_atkIssuedHist[i])
+            fprintf(stderr, "  %d:%lld(%.1f%%)", i, s_atkIssuedHist[i],
+                    100.0 * (double)s_atkIssuedHist[i] / n);
+    fprintf(stderr, "\n");
 }
 
 void AISystem::dumpReattack() {

@@ -13,6 +13,13 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+
+// Journal 465: where rebellions land, under OD_REBLOC. File scope because the eval
+// walks its maps sequentially in one process; a parallel trainer would need these
+// per-worker, and nothing reads them unless OD_REBLOC is set.
+long long g_reblocTotal = 0, g_reblocRecent = 0;
+long long g_reblocFavoured = 0, g_reblocStarved = 0, g_reblocNoDist = 0;
+long long g_reblocNeverMoved = 0;
 // getpid, to name the throwaway training map per process so two trainers do not
 // delete each other's. POSIX spells it unistd.h/getpid; MSVC spells it
 // process.h/_getpid and has no unistd.h at all.
@@ -1327,10 +1334,90 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
             fflush(stdout);
         }
 
+        // ── WHERE DOES A REBELLION LAND? OD_REBLOC=1 (journal 465) ──
+        //
+        // Aiming the pacification budget is worth +121 rating (journal 462) while
+        // producing MORE rebellions per province-turn (463) and costing nothing at all
+        // (464: pAlloc identical over eight paired seeds). The one story left is that
+        // the extra rebellions land on ground that does not matter.
+        //
+        // Observed by FLIP rather than at the roll in Game_TurnLogic.cpp, which is
+        // another session's file. A rebellion is a province passing from a real country
+        // to a CID at or above REBEL_CID_MIN, and this loop already holds ownership
+        // before and after the turn. The total is cross-checked against
+        // m_rebellionsThisTurnByCid below: if the two disagree the detector is wrong.
+        //
+        // The bucket that CAN be compared across arms is recent conquest. District
+        // membership cannot -- the aiming-off arm has no districts -- so it is recorded
+        // as a within-arm descriptive only.
+        static const bool rebloc = std::getenv("OD_REBLOC") != nullptr;
+        static const int  kReclocWindow = std::getenv("OD_REBLOC_WINDOW")
+                                        ? atoi(std::getenv("OD_REBLOC_WINDOW")) : 20;
+        std::vector<int> reblocPrev;
+        std::unordered_map<int, float> reblocFactor;
+        // OUR OWN recency record, and it has to be ours.
+        //
+        // m_provinceConquestTurn cannot answer this. It is WRITTEN by the ownership
+        // change at Game_TurnLogic.cpp:689 -- and a rebellion flip is an ownership
+        // change, so a rebelling province stamps itself as freshly conquered and the
+        // statistic reads 100% by construction. It is also erased three turns after
+        // conquest (line 8237), so no window wider than 3 was ever expressible.
+        // Measured both of those the hard way: the first build of this instrument
+        // reported 100.0% and the cross-check below is what sent me to read the site.
+        std::unordered_map<int, int> reblocLastChange;
+
         for (int t = 0; t < turnsPerMap; ++t) {
             if (WindowShouldClose()) { aborted = true; break; }
             const auto turnStart = std::chrono::steady_clock::now();
+            if (rebloc) {
+                reblocPrev = m_provinceCountryLookup;
+                reblocFactor.clear();
+                // pacificationFactor() is O(provinces) per CALL because it counts the
+                // country's holdings, so computing it per province would be quadratic.
+                // Same arithmetic, once per district.
+                std::unordered_map<int, long long> rbHeld;
+                for (int o : m_provinceCountryLookup) if (o > 0) ++rbHeld[o];
+                for (const auto& [rbCid, rbDs] : m_districts) {
+                    if (rbDs.empty()) continue;
+                    auto hIt = rbHeld.find(rbCid);
+                    if (hIt == rbHeld.end() || hIt->second <= 0) continue;
+                    int rbShareTotal = 0;
+                    for (const auto& x : rbDs) rbShareTotal += std::max(0, x.sharePct);
+                    if (rbShareTotal <= 0) continue;
+                    for (const auto& d : rbDs) {
+                        if (d.provinces.empty()) continue;
+                        const double bs = (double)std::max(0, d.sharePct) / (double)rbShareTotal;
+                        const double gs = (double)d.provinces.size() / (double)hIt->second;
+                        if (gs <= 0.0) continue;
+                        const float f = (float)std::min(6.0, bs / gs);
+                        for (int pid : d.provinces) reblocFactor[pid] = f;
+                    }
+                }
+            }
             processTurn();
+            if (rebloc) {
+                const size_t rbN = std::min(reblocPrev.size(), m_provinceCountryLookup.size());
+                for (size_t pid = 0; pid < rbN; ++pid) {
+                    const int before = reblocPrev[pid];
+                    const int after  = m_provinceCountryLookup[pid];
+                    if (before <= 0 || before >= REBEL_CID_MIN) continue;
+                    if (after < REBEL_CID_MIN) continue;
+                    ++g_reblocTotal;
+                    auto lc = reblocLastChange.find((int)pid);
+                    if (lc != reblocLastChange.end()
+                        && (m_turnNumber - lc->second) <= kReclocWindow) ++g_reblocRecent;
+                    else if (lc == reblocLastChange.end())                ++g_reblocNeverMoved;
+                    auto fIt = reblocFactor.find((int)pid);
+                    if (fIt == reblocFactor.end())   ++g_reblocNoDist;
+                    else if (fIt->second > 1.0f)     ++g_reblocFavoured;
+                    else                             ++g_reblocStarved;
+                }
+                // AFTER the accounting, so a flip is never its own evidence of
+                // recency -- the mistake m_provinceConquestTurn makes.
+                for (size_t pid = 0; pid < rbN; ++pid)
+                    if (reblocPrev[pid] != m_provinceCountryLookup[pid])
+                        reblocLastChange[(int)pid] = m_turnNumber;
+            }
             if (ojhLines) {
                 printf("OJH turn %d %.6f\n", t + 1,
                        std::chrono::duration<double>(std::chrono::steady_clock::now() - turnStart).count());
@@ -2200,6 +2287,28 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
     printf("[EVAL] fleet          %.2f hulls scrapped per 1k country-turns\n", scrapped / kct);
     printf("[EVAL] unrest         %.2f rebellions, %.2f research nodes per 1k country-turns\n",
            rebels / kct, research / kct);
+    const int kReclocWindowReport = std::getenv("OD_REBLOC_WINDOW")
+                                  ? atoi(std::getenv("OD_REBLOC_WINDOW")) : 20;
+    if (g_reblocTotal > 0) {
+        // The cross-check first: flip-detection against the roll-site counter. A large
+        // disagreement means the detector is wrong and the buckets below mean nothing.
+        // NOT a disagreement: rebellingProvs is grouped into events by ideology and
+        // proximity (Game_TurnLogic.cpp:2829), so one counted rebellion covers several
+        // provinces. Printed as a ratio because it is the sanity check that the
+        // flip detector is finding the same phenomenon, in different units.
+        printf("[REBLOC] province flips %lld   rebellion EVENTS %lld   %.2f provinces per event\n",
+               g_reblocTotal, rebels, rebels > 0 ? (double)g_reblocTotal / (double)rebels : 0.0);
+        printf("[REBLOC] province had changed hands within %d turns BEFORE it rebelled:"
+               " %lld (%.1f%%)   never changed hands at all: %lld (%.1f%%)\n",
+               kReclocWindowReport, g_reblocRecent,
+               100.0 * (double)g_reblocRecent / (double)g_reblocTotal, g_reblocNeverMoved,
+               100.0 * (double)g_reblocNeverMoved / (double)g_reblocTotal);
+        printf("[REBLOC] district (within-arm only -- undefined with aiming off):"
+               " favoured %lld (%.1f%%)  starved %lld (%.1f%%)  none %lld (%.1f%%)\n",
+               g_reblocFavoured, 100.0 * (double)g_reblocFavoured / (double)g_reblocTotal,
+               g_reblocStarved,  100.0 * (double)g_reblocStarved  / (double)g_reblocTotal,
+               g_reblocNoDist,   100.0 * (double)g_reblocNoDist   / (double)g_reblocTotal);
+    }
     // Political distance between governments and their own provinces. Reported
     // because the feature is only worth having if it is ever non-zero: a
     // generated map with no compass data would leave it dead and look

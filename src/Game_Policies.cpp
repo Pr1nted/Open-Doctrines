@@ -1161,6 +1161,31 @@ double g_pacApplied = 0.0;   ///< suppression points actually applied
 double g_pacNeeded  = 0.0;   ///< of those, how many cancelled real unrest
 long long g_pacN    = 0;
 
+// ── IS THE NEED CONCENTRATED OR DIFFUSE? (journal 461) ──
+//
+// g_pacApplied/g_pacNeeded say 97.3% of the suppression POINTS applied buy
+// nothing -- and NOT that 97.3% of the money is wasted, which is what journal
+// 460 said before the units were checked: suppressionPct is `pac * 50` for
+// every AI country (pacificationFactor is 1.0 without districts, and src/ai
+// never draws one), while the bill is `income * pAlloc`, independent of the
+// province count. Every province already gets the whole dial for free.
+//
+// So the live question is not the total, it is the SHAPE. If the need sits in
+// a few saturated provinces, the districts mechanic -- which already exists,
+// budgetShare/groundShare capped at 6x -- would protect them up to six times
+// harder for no extra money. If it is a third of a point spread over
+// everything, nothing saturates, and the only lever is the amount, which
+// memory unrest-levers-are-not-savings closes with three losses.
+//
+// Journal 460's own means bound the binding fraction at 0.32593/12.2395 =
+// 2.66% before any run. These buckets say where inside that bound it lands.
+// Counted only where suppression was actually applied, so the 25 turns before
+// the head first raises the dial do not dilute the denominator.
+double g_pacBucketNeed[3] = {0.0, 0.0, 0.0};   ///< needed points by bucket
+long long g_pacBucketN[3] = {0, 0, 0};         ///< calm / partial / BINDING
+double g_pacWorstPre = 0.0;                    ///< worst unrest seen pre-suppression
+long long g_pacSupN  = 0;                      ///< province-turns with suppression > 0
+
 // ── WHOSE GRIEVANCE IS IT ──
 //
 // A province's ethnic unrest was the SUM of a term per minority group, and
@@ -1391,6 +1416,19 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
             g_pacApplied += suppressionPct;
             g_pacNeeded  += needed;
             ++g_pacN;
+            // Where the need lives (journal 461). Bucket 2 is the one that
+            // decides: a province at or above the dial is one that MORE
+            // suppression would still help, which is what concentrating the
+            // same budget would buy.
+            if (suppressionPct > 0.0f) {
+                ++g_pacSupN;
+                const int b = (preSup <= 0.0f)             ? 0
+                            : (preSup <  suppressionPct)   ? 1
+                                                           : 2;
+                ++g_pacBucketN[b];
+                g_pacBucketNeed[b] += needed;
+                if (preSup > g_pacWorstPre) g_pacWorstPre = preSup;
+            }
         }
     }
 
@@ -2949,6 +2987,25 @@ int Game::districtIndexOf(int countryId, int provinceId) const {
 }
 
 float Game::pacificationFactor(int countryId, int provinceId) const {
+    // ── OD_PACFACTOR_OFF=1: the bisection arm (journal 467) ──
+    //
+    // Returns the undivided answer while leaving the districts drawn, their shares
+    // risk-weighted and every other consequence of having them intact. Aiming the
+    // pacification budget is worth +121 per-seed rating (journal 462) and SIX candidate
+    // consequences of it are measured flat -- exposure (462), rebellion count (463),
+    // the budget (464), rebellion location (465), the policy-net input f[24] (466) and
+    // the recruitment cap, which turned out to be unreachable for an AI country (467).
+    // This line is the only functional caller of this function in the tree, so forcing
+    // it is the one clean cut available: if the +121 survives, the channel is not the
+    // suppression at all.
+    //
+    // atoi and not bare presence, deliberately: OD_PACFACTOR_OFF=0 must mean OFF.
+    // Setting one of this tree's bare if(OD_ENV(..)) gates to 0 switched the feature ON
+    // and cost a full set of runs in journal 463 -- see item 149.
+    static const bool neutralised = OD_ENV("OD_PACFACTOR_OFF") &&
+                                    atoi(OD_ENV("OD_PACFACTOR_OFF")) != 0;
+    if (neutralised) return 1.0f;
+
     auto it = m_districts.find(countryId);
     if (it == m_districts.end() || it->second.empty()) return 1.0f;
 

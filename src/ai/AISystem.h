@@ -318,6 +318,11 @@ public:
     /// Journal 450: last turn and garrison ratio per pair, for the cooldown.
     static std::map<std::pair<int,int>, std::pair<int,float>> s_reatkRatio;
     static long long s_reatkSuppressed;
+    /// Journal 456: is ATTACK_ORDERS_PER_TURN ever reached? Counted under
+    /// OD_ATTACK_CAP_PROBE; a limit nobody reaches cannot be raised usefully.
+    static long long s_atkCapHit, s_atkTurns, s_atkIssuedSum;
+    static long long s_atkIssuedHist[9];
+    static void dumpAttackCap();
     static int s_reatkMax;
     static void dumpReattack();
     static std::vector<int> s_warTransfers;   ///< |net province change|, per war
