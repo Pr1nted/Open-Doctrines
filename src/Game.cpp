@@ -373,7 +373,7 @@ const Setting EXPERIMENTAL_ITEMS[] = {
     // Opt-in only, and only with Goods Economy on: each turn our surplus goods
     // flow to allies who are short, the same redistribution the AI already does.
     // Off by default so a human's goods never leave the country unasked.
-    {"Auto-Trade Surplus", false, -1},
+    {"Trade Surplus with Allies", false, -1},
     {"Back", false, -1},
 };
 const int EXPERIMENTAL_COUNT = 7;

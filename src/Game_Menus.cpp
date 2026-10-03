@@ -3541,7 +3541,7 @@ void Game::updateSettingsFromMenu() {
                 ? T("On — starts with your next new world")
                 : T("Off");
             m_menuFeedbackTimer = 4.0f;
-        } else if (strcmp(s.label, "Auto-Trade Surplus") == 0) {
+        } else if (strcmp(s.label, "Trade Surplus with Allies") == 0) {
             if (!m_config.goodsEconomy) {
                 m_menuFeedback = T("Turn on Goods Economy first");
                 m_menuFeedbackTimer = 4.0f;

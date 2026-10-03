@@ -555,6 +555,28 @@ void Game::processGoodsAutoFlow() {
            "spare_nfresid=%.0f  spare_nf_share=%.4f\n",
            m_turnNumber, spareTot, holders, coverP50, coverP90,
            fpairs, nfpairs, spareFResid, spareNFResid, share);
+
+    // WORLD PRODUCTION VS DEMAND, the number that gates redistribution at all.
+    // A median of zero turns of cover can mean the goods are in the wrong place
+    // OR that the world does not make enough of them -- and redistribution can
+    // only fix the first. So sum what every country made against what it wanted,
+    // per good: if produced < demand in aggregate, the deficit is in production,
+    // and moving stock around relocates the shortage without ending it.
+    double wProd[GOOD_COUNT] = {0}, wDemand[GOOD_COUNT] = {0};
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (!isReal(cid)) continue;
+        auto pit = m_countryProduction.find(cid);
+        if (pit == m_countryProduction.end()) continue;
+        for (int g = 0; g < GOOD_COUNT; ++g) {
+            wProd[g]   += pit->second.produced[g];
+            wDemand[g] += goodNeed(cid, g);
+        }
+    }
+    printf("[GOODSWORLD] turn %d", m_turnNumber);
+    for (int g = 0; g < GOOD_COUNT; ++g)
+        printf("  %s=%.0f/%.0f(%+.0f)", goodKey(g), wProd[g], wDemand[g],
+               wProd[g] - wDemand[g]);
+    printf("\n");
     fflush(stdout);
 }
 
@@ -1684,8 +1706,8 @@ void Game::updateEconomy() {
             printf("[DIAG] Economy X button clicked\n");
             return;
         }
-        const char* tabs[] = {"Global Economy", "Local Economy", "Sector Taxes"};
-        int visibleTabs = 3;
+        const char* tabs[] = {"Global Economy", "Local Economy", "Sector Taxes", "Goods"};
+        int visibleTabs = m_goodsEconomy ? 4 : 3;  // Goods tab only when the economy is on
         int tabStartX = centerX - (visibleTabs * tabSpacing) / 2 + tabSpacing / 2;
         for (int t = 0; t < visibleTabs; ++t) {
             int tx = tabStartX + t * tabSpacing;
@@ -1740,8 +1762,8 @@ void Game::drawEconomy() {
     int tabY = 100;
     int tabSpacing = 200;
 
-    const char* tabs[] = {"Global Economy", "Local Economy", "Sector Taxes"};
-    int visibleTabs = 3;
+    const char* tabs[] = {"Global Economy", "Local Economy", "Sector Taxes", "Goods"};
+    int visibleTabs = m_goodsEconomy ? 4 : 3;  // Goods tab only when the economy is on
     int tabStartX = centerX - (visibleTabs * tabSpacing) / 2 + tabSpacing / 2;
     for (int t = 0; t < visibleTabs; ++t) {
         int tx = tabStartX + t * tabSpacing;
@@ -1765,13 +1787,138 @@ void Game::drawEconomy() {
 
     DrawText(T("ESC to close"), m_screenW - 140, 55, 14, Color{120, 120, 140, 150});
 
+    // The Goods tab exists only in a goods world; a save carried over from one
+    // must not strand the view on a tab that now draws nothing.
+    if (m_economyTab == 3 && !m_goodsEconomy) m_economyTab = 0;
+
     int startY = tabY + 70;
     if (m_economyTab == 0) {
         drawEconomyGlobal(centerX, startY);
     } else if (m_economyTab == 1) {
         drawEconomyLocal(centerX, startY);
-    } else {
+    } else if (m_economyTab == 2) {
         drawEconomySectors(centerX, startY);
+    } else if (m_goodsEconomy) {
+        drawEconomyGoods(centerX, startY);
+    }
+}
+
+// ─── Goods (Economy > Goods) ─────────────────────────────────────────────
+//
+// The one screen that answers "am I keeping up, and on what?" in a goods
+// world. Everything here is read straight from the same CountryProduction and
+// CountryStockpile the turn logic writes -- no second copy that could drift --
+// so what the player reads is what the economy did. Cover is the honest number:
+// not a one-turn flow dressed up as a surplus, but how many turns the pile
+// lasts at the current draw. It is the number the tutorial points at.
+void Game::drawEconomyGoods(int centerX, int startY) {
+    const int cid = m_playerCountryId;
+    if (cid <= 0 || !m_countries.getCountry(cid)) return;
+    const Color dim{150, 150, 165, 255};
+    const Color warn{255, 210, 160, 255};
+    const Color good = odPalette::of(odPalette::Role::Good);
+    const Color bad  = odPalette::of(odPalette::Role::Bad);
+
+    const int panelW = std::min(980, m_screenW - 40);
+    const int x0 = centerX - panelW / 2;
+    int y = startY - 30;
+
+    DrawText(T("Deposits make raw materials; your factories turn them into goods. Goods feed your people and let you build."),
+             x0, y, 16, LIGHTGRAY);
+    y += 22;
+    DrawText(T("Cover is how many turns a pile lasts at your current use. Below two turns is a warning; empty is a shortage."),
+             x0, y, 16, dim);
+    y += 32;
+
+    auto prodIt = m_countryProduction.find(cid);
+    auto spIt   = m_countryStockpiles.find(cid);
+    if (prodIt == m_countryProduction.end() || spIt == m_countryStockpiles.end()) {
+        DrawText(T("No production recorded yet — end a turn to see goods flow."), x0, y, 18, dim);
+        return;
+    }
+    const CountryProduction& pr = prodIt->second;
+    const CountryStockpile&  sp = spIt->second;
+
+    // Living standards banner -- the consumer good, in one line, because it is
+    // the one good that is also a political fact.
+    const float fed = pr.livingStandards;
+    const Color fedCol = fed >= 0.999f ? good : (fed >= 0.75f ? warn : bad);
+    DrawText(TextFormat(T("Living standards: %.0f%%  (consumer goods eaten vs wanted) — low feeds unrest, full feeds growth."),
+                        fed * 100.0f), x0, y, 18, fedCol);
+    y += 34;
+
+    // Column headers.
+    const int cName = x0, cHeld = x0 + 230, cNet = x0 + 360, cCover = x0 + 500, cUse = x0 + 620;
+    DrawText(T("Good"),     cName,  y, 15, dim);
+    DrawText(T("Held"),     cHeld,  y, 15, dim);
+    DrawText(T("Net/turn"), cNet,   y, 15, dim);
+    DrawText(T("Cover"),    cCover, y, 15, dim);
+    DrawText(T("Feeds"),    cUse,   y, 15, dim);
+    y += 24;
+    DrawRectangle(x0, y - 4, panelW, 1, Color{80, 80, 100, 150});
+
+    const char* useOf[GOOD_COUNT] = {
+        T("your population"),
+        T("building industry, forts, ports"),
+        T("moving ships and armies"),
+        T("recruiting and firing artillery"),
+    };
+
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        const float held = sp.goods[g];
+        const float made = pr.produced[g];
+        const float need = goodNeed(cid, g);          // what this turn wants
+        const float net  = made - need;               // pile grows if positive
+        DrawText(goodName(g), cName, y, 18, WHITE);
+        DrawText(TextFormat("%.0f", held), cHeld, y, 18, WHITE);
+        DrawText(TextFormat("%+.1f", net), cNet, y, 18, net >= -0.05f ? good : bad);
+        // Cover: turns the pile lasts at the current draw. No draw and a pile
+        // means "stocked, not consuming"; no draw and no pile means "unused".
+        if (need > 0.5f) {
+            const float cover = held / need;
+            const Color cc = cover >= 5.0f ? good : (cover >= 2.0f ? warn : bad);
+            DrawText(cover >= 99.0f ? "99+ t" : TextFormat("%.1f t", cover), cCover, y, 18, cc);
+        } else {
+            DrawText(held > 0.5f ? T("stocked") : T("unused"), cCover, y, 16, dim);
+        }
+        DrawText(useOf[g], cUse, y, 15, dim);
+        y += 28;
+    }
+    y += 16;
+
+    // Where goods come from -- the raw -> good chain, so a shortage points at a
+    // deposit to take or a factory to redirect rather than at nothing.
+    DrawText(T("Raw materials into goods:"), x0, y, 15, dim);
+    y += 22;
+    DrawText(T("  Rubber + gemstones  ->  consumer goods        Metal  ->  machinery & munitions"),
+             x0, y, 15, LIGHTGRAY);
+    y += 20;
+    DrawText(T("  Oil  ->  fuel        Gold stays money. Direct a province's factories on its panel, or let the AI."),
+             x0, y, 15, LIGHTGRAY);
+    y += 30;
+
+    // Auto-trade status -- the opt-in, shown here because this is where a player
+    // reads whether their surplus is leaving the country.
+    DrawText(TextFormat(T("Trade surplus with allies: %s"),
+                        m_autoTradeSurplus ? T("ON") : T("OFF")),
+             x0, y, 17, m_autoTradeSurplus ? good : dim);
+    y += 22;
+    DrawText(m_autoTradeSurplus
+                 ? T("On: spare goods go to an ally who is short — often none are, so it may sit idle. Set in Settings > Experimental.")
+                 : T("Off: your goods stay home. Turn it on in Settings > Experimental to supply an ally who runs short."),
+             x0, y, 14, dim);
+    y += 30;
+
+    // Fixable bills, named rather than left to be inferred from a low number.
+    if (pr.factoriesTotal > 0 && pr.factoriesIdle > 0) {
+        DrawText(TextFormat(T("%d of %d factories idle — give them a good to make, or supply their inputs."),
+                            pr.factoriesIdle, pr.factoriesTotal), x0, y, 15, warn);
+        y += 22;
+    }
+    if (pr.fuelBought > 0.005f) {
+        DrawText(TextFormat(T("Short of fuel: buying in %.1f/turn at a premium (-%.1f). Build refineries or take oil."),
+                            pr.fuelBought, pr.fuelBought * FUEL_SHORTFALL_PRICE), x0, y, 15, bad);
+        y += 22;
     }
 }
 

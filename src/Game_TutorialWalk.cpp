@@ -74,6 +74,7 @@ const WalkRoute ROUTES[] = {
     {"tut_ships",     true},
     {"tut_research",  true},
     {"tut_economy",   true},
+    {"tut_goods",     true},
     {"tut_unrest",    true},
     {"tut_diplomacy", true},
     {"outro",         false},

@@ -1,0 +1,64 @@
+// Specialised: the goods economy. An opt-in world, so this chapter doubles as
+// its on-ramp -- it says what goods are and how to turn them on, then shows the
+// one screen that reads them. It points only at UI that exists in every game
+// (the economy button, the province panel, settings); the Goods tab itself is
+// goods-only, so it is taught in prose rather than pointed at.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+In a §**goods world**§, a province does not just make money. It digs raw
+materials and its factories turn them into goods -- and goods, not cash, are
+what feed your people and let you build. Open the economy.
+---
+@Signals Officer
+There are four. §**Consumer goods**§ your people eat. §**Machinery**§ builds
+industry, forts and ports. §**Fuel**§ moves ships and armies. §**Munitions**§
+recruit soldiers and fire artillery. Gold stays money.
+---
+@Signals Officer
+And each comes from the ground through a factory. §**Rubber and gemstones**§
+become consumer goods; §**metal**§ becomes machinery and munitions; §**oil**§
+becomes fuel. No deposit, no good -- so a shortage points you at a province to
+take or a factory to redirect.
+---
+@Signals Officer
+In a goods game the economy grows a §**Goods**§ tab along the top. It lists the
+four, side by side: what you hold, what you make against what you need each
+turn, and -- the number that matters -- §**cover**§.
+---
+@Signals Officer
+Cover is how many turns a pile lasts at your current use. Nine turns is
+comfortable; under two is a warning; empty is a shortage happening now. It is
+the honest reading -- not a big pile dressed up as plenty, but how long the pile
+actually buys you.
+---
+@Signals Officer
+Consumer goods are the one good that is also a political fact. Eaten against
+wanted is your §**living standards**§: keep people fed and the country grows;
+let it slip and the hunger comes back as unrest.
+---
+@Signals Officer
+The other three are permissions. Build industry and you spend machinery; sail a
+fleet and you burn fuel; recruit and you draw munitions. Run short and the
+action simply greys out -- the war does not wait for the warehouse.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Where a good is made is set per province. Click one of ours: on its panel you
+direct what its factories build, or leave it and the economy allocates for you,
+sending idle factories at whatever you are shortest of.
+---
+@Signals Officer
+:: point=btn.settings
+Two switches live in §**Settings -> Experimental**§. One turns the goods
+economy on for your next new world. The other, §**Trade Surplus with Allies**§,
+is an opt-in: when an ally runs short, your spare goods go to them. Often none
+are short, so it sits idle -- it is help held ready, not a tax on your stores.
+---
+@Signals Officer
+That is the goods economy: dig, make, feed, and spend. Watch cover, keep your
+people fed, and never start a war your munitions cannot finish.
+
+Anything else?

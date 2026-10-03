@@ -702,6 +702,9 @@ private:
     void drawEconomyGlobal(int centerX, int startY);
     void drawEconomyLocal(int centerX, int startY);
     void drawEconomySectors(int centerX, int startY);
+    /// Goods tab: the four goods, their cover in turns, and what each feeds.
+    /// Shown only in a goods world (m_goodsEconomy).
+    void drawEconomyGoods(int centerX, int startY);
     int drawBreakdownRow(int x, int y, int valX, const char* label, const char* value, Color col, bool highlight);
     void recordIncomeSnapshot();
 

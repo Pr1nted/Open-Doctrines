@@ -1669,7 +1669,7 @@ void Game::update(float dt) {
                 m_config.save(m_configPath);
             }
             const Setting& rs = items[m_settingsIndex];
-            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0 || strcmp(rs.label, "Historical AI") == 0 || strcmp(rs.label, "GDTL") == 0 || strcmp(rs.label, "Goods Economy") == 0 || strcmp(rs.label, "Auto-Trade Surplus") == 0) {
+            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0 || strcmp(rs.label, "Historical AI") == 0 || strcmp(rs.label, "GDTL") == 0 || strcmp(rs.label, "Goods Economy") == 0 || strcmp(rs.label, "Trade Surplus with Allies") == 0) {
                 if (m_settingsTab == 0 && m_settingsIndex == 0) {
                     if (m_config.fullscreen) {
                         setFullscreenAttrs(false, &m_windowedX, &m_windowedY, &m_windowedW, &m_windowedH);
@@ -1918,7 +1918,7 @@ void Game::update(float dt) {
                 if (m_config.goodsEconomy)
                     addNotification(T("On — starts with your next new world"),
                                     Color{210, 200, 150, 255}, 4.0f);
-            } else if (strcmp(s.label, "Auto-Trade Surplus") == 0) {
+            } else if (strcmp(s.label, "Trade Surplus with Allies") == 0) {
                 if (!m_config.goodsEconomy) {
                     addNotification(T("Turn on Goods Economy first"),
                                     Color{230, 160, 140, 255}, 4.0f);
