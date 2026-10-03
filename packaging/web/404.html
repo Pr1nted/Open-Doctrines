@@ -1,8 +1,60 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Not found</title>
-<style>body{margin:0;background:#050813;color:#c8ccd8;font:16px/1.6 system-ui,sans-serif;
-display:grid;place-items:center;height:100vh;text-align:center;padding:6vw}
-h1{color:#ffd700;font-size:1.3em;margin:0 0 .5em}code{color:#9aa4bb;font-size:.85em}</style>
-</head><body><div>
-<h1>There is nothing at this address.</h1>
-<p>The game is at <code>/</code>.</p>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unclaimed territory</title>
+<!-- No requests, deliberately: a 404 that depends on a stylesheet or an image
+     is a 404 that can itself fail. The drawing is inline SVG for the same
+     reason, and because the joke only works if it arrives with the page. -->
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;background:#050813;color:#c8ccd8;
+       font:16px/1.65 system-ui,-apple-system,Segoe UI,sans-serif;
+       display:grid;place-items:center;min-height:100vh;padding:8vh 20px}
+  .wrap{max-width:30em;text-align:center}
+  svg{width:min(360px,80vw);height:auto;margin-bottom:1.6em}
+  h1{color:#ffd700;font-size:1.45em;margin:0 0 .4em;line-height:1.25}
+  p{margin:0 0 1.8em;color:#9aa4bb}
+  .row{display:flex;gap:.7em;justify-content:center;flex-wrap:wrap}
+  a{display:inline-block;padding:.7em 1.3em;border-radius:6px;
+    text-decoration:none;font-weight:600;font-size:.95em}
+  .go{background:#ffd700;color:#1a1400}
+  .go:hover{background:#ffe34d}
+  .alt{background:#161c2e;color:#c8ccd8;border:1px solid #273150}
+  .alt:hover{border-color:#3d4a74}
+  code{color:#7f8aa3;font-size:.85em}
+</style></head><body><div class="wrap">
+
+<!-- A province with nobody in it. The flag is planted and leaning, which is
+     the whole gag: somebody claimed this address and then left. -->
+<svg viewBox="0 0 320 170" role="img"
+     aria-label="An unclaimed province on a map, with a leaning flag planted in it">
+  <g fill="none" stroke="#1d2740" stroke-width="2">
+    <path d="M8 44 L58 20 L104 38 L96 86 L40 96 Z"/>
+    <path d="M104 38 L160 16 L212 40 L198 92 L96 86 Z"/>
+    <path d="M212 40 L270 26 L312 58 L296 104 L198 92 Z"/>
+    <path d="M40 96 L96 86 L112 140 L54 152 Z"/>
+    <path d="M198 92 L296 104 L284 148 L196 146 Z"/>
+  </g>
+  <!-- The empty one, hatched the way the game draws unclaimed ground. -->
+  <defs><pattern id="h" width="7" height="7" patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="7" stroke="#2a3550" stroke-width="3"/>
+  </pattern></defs>
+  <path d="M96 86 L198 92 L196 146 L112 140 Z" fill="#11172a" stroke="#3a4a74"/>
+  <path d="M96 86 L198 92 L196 146 L112 140 Z" fill="url(#h)" opacity=".5"/>
+  <g stroke="#6b7590" stroke-width="2.5" stroke-linecap="round">
+    <line x1="150" y1="118" x2="143" y2="70"/>
+  </g>
+  <path d="M143 70 L182 76 L172 88 L145 84 Z" fill="#ffd700" opacity=".85"/>
+  <text x="152" y="83" font-family="system-ui,sans-serif" font-size="9"
+        font-weight="700" fill="#1a1400">404</text>
+</svg>
+
+<h1>This territory is unclaimed.</h1>
+<p>Nothing has been built at this address. The borders moved, or it never existed.</p>
+
+<div class="row">
+  <a class="go" href="/play/">Play the game</a>
+  <a class="alt" href="/">Main page</a>
+</div>
 </div></body></html>
