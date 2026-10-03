@@ -1669,7 +1669,7 @@ void Game::update(float dt) {
                 m_config.save(m_configPath);
             }
             const Setting& rs = items[m_settingsIndex];
-            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0 || strcmp(rs.label, "Historical AI") == 0 || strcmp(rs.label, "GDTL") == 0) {
+            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0 || strcmp(rs.label, "Historical AI") == 0 || strcmp(rs.label, "GDTL") == 0 || strcmp(rs.label, "Goods Economy") == 0 || strcmp(rs.label, "Auto-Trade Surplus") == 0) {
                 if (m_settingsTab == 0 && m_settingsIndex == 0) {
                     if (m_config.fullscreen) {
                         setFullscreenAttrs(false, &m_windowedX, &m_windowedY, &m_windowedW, &m_windowedH);
@@ -1910,7 +1910,24 @@ void Game::update(float dt) {
                 }
             } else if (strcmp(s.label, "AI Correspondents") == 0) {
                 openLlmSetup();
-} else if (strcmp(s.label, "AI Difficulty") == 0) {
+            } else if (strcmp(s.label, "Goods Economy") == 0) {
+                // Structural: read when a world is built, so toggling mid-game
+                // takes hold on the next new world, not this one.
+                m_config.goodsEconomy = !m_config.goodsEconomy;
+                Audio::get().playSfx(m_config.goodsEconomy ? "toggle_on" : "toggle_off");
+                if (m_config.goodsEconomy)
+                    addNotification(T("On — starts with your next new world"),
+                                    Color{210, 200, 150, 255}, 4.0f);
+            } else if (strcmp(s.label, "Auto-Trade Surplus") == 0) {
+                if (!m_config.goodsEconomy) {
+                    addNotification(T("Turn on Goods Economy first"),
+                                    Color{230, 160, 140, 255}, 4.0f);
+                } else {
+                    m_config.autoTradeSurplus = !m_config.autoTradeSurplus;
+                    m_autoTradeSurplus = m_config.autoTradeSurplus;  // live this turn
+                    Audio::get().playSfx(m_config.autoTradeSurplus ? "toggle_on" : "toggle_off");
+                }
+            } else if (strcmp(s.label, "AI Difficulty") == 0) {
                 m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
             } else if (strcmp(s.label, "Accent Color") == 0) {
                 int curIdx = 0;

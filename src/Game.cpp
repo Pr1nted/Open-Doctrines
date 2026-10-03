@@ -364,9 +364,19 @@ const Setting EXPERIMENTAL_ITEMS[] = {
     // from the balanced one. A map with no history.json shows this as having no
     // effect, because it has none.
     {"Historical AI", false, -1},
+    // The goods economy: deposits produce consumer/machinery/fuel/munitions
+    // goods that feed population and gate building, instead of industry emitting
+    // money directly. Experimental because every price was tuned against the
+    // money economy, so a goods world is a different balance -- and because its
+    // UI and tutorial only mean anything once it is on.
+    {"Goods Economy", false, -1},
+    // Opt-in only, and only with Goods Economy on: each turn our surplus goods
+    // flow to allies who are short, the same redistribution the AI already does.
+    // Off by default so a human's goods never leave the country unasked.
+    {"Auto-Trade Surplus", false, -1},
     {"Back", false, -1},
 };
-const int EXPERIMENTAL_COUNT = 5;
+const int EXPERIMENTAL_COUNT = 7;
 
 // THE LANGUAGE TAB HAS NO ROWS.
 //
@@ -700,6 +710,13 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         // useless, and stuck that way.
         label += Gdtl::available() ? onOff(cfg.gdtl)
                                    : std::string(": ") + od::i18n::tr("Unavailable");
+    } else if (tab == 5 && index == 4) {
+        label += onOff(cfg.goodsEconomy);
+    } else if (tab == 5 && index == 5) {
+        // On is meaningless without the economy it feeds, and saying so in the
+        // row is clearer than a switch that silently does nothing.
+        label += cfg.goodsEconomy ? onOff(cfg.autoTradeSurplus)
+                                  : std::string(": ") + od::i18n::tr("needs Goods Economy");
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);
     } else if (tab == 3) {

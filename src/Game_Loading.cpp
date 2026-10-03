@@ -3490,8 +3490,14 @@ bool Game::replaySaveTurns(const std::string& savePath) {
 // tuned against an economy where industry emitted money, so a world that opts
 // in is a world being measured, not the one a player gets by accident.
 void Game::applyEconomyEnvironment() {
-    m_goodsEconomy = false;
+    // The player's setting is the source of truth; the env var is the bench's
+    // override, so a sweep can measure a goods world without authoring a config.
+    m_goodsEconomy = m_config.goodsEconomy;
     if (const char* e = std::getenv("OD_GOODS")) m_goodsEconomy = (*e && *e != '0');
+    m_autoTradeSurplus = m_config.autoTradeSurplus;
+    // Redistribution ships with the player economy; the bench can split it off.
+    m_goodsAutoFlow = m_config.goodsEconomy;
+    if (const char* e = std::getenv("OD_GOODS_AUTOFLOW")) m_goodsAutoFlow = (*e && *e != '0');
     if (const char* e = std::getenv("OD_AUTOSELL_PCT")) {
         // Clamped rather than rejected: a sweep script that emits 120 should
         // measure "everything sells" rather than silently fall back to the

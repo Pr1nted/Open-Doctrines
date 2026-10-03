@@ -451,10 +451,7 @@ float Game::goodShortfall(int cid, int good) const {
 // the same good. Friendly first and friendly only -- a deal is what reaches a
 // non-friendly country, and that is the AI session's valuation rule, not this.
 void Game::processGoodsAutoFlow() {
-    if (!m_goodsEconomy) return;
-    static const bool on = OD_ENV("OD_GOODS_AUTOFLOW")
-                        && atoi(OD_ENV("OD_GOODS_AUTOFLOW")) != 0;
-    if (!on) return;
+    if (!m_goodsEconomy || !m_goodsAutoFlow) return;
 
     auto friendly = [&](const std::string& a, const std::string& b) -> bool {
         auto ra = m_relations.find(a);
@@ -471,7 +468,12 @@ void Game::processGoodsAutoFlow() {
     // ── THE TRANSFER ──
     for (int g = 0; g < GOOD_COUNT; ++g) {
         for (auto& [srcCid, srcC] : m_countries.getAll()) {
-            if (!isReal(srcCid) || srcCid == m_playerCountryId) continue;  // player keeps its goods
+            if (!isReal(srcCid)) continue;
+            // The player keeps its goods UNLESS it opted into auto-trading
+            // surplus to allies. The opt-in makes the human a source on the
+            // same friendly-only terms as the AI -- never a gift to a rival,
+            // and never without the player having turned it on.
+            if (srcCid == m_playerCountryId && !m_autoTradeSurplus) continue;
             auto sit = m_countryStockpiles.find(srcCid);
             if (sit == m_countryStockpiles.end()) continue;
             float surplus = sit->second.goods[g] - goodNeed(srcCid, g);
@@ -491,40 +493,68 @@ void Game::processGoodsAutoFlow() {
         }
     }
 
-    // ── THE FOUR NUMBERS (OD_GOODS_RESIDUAL) ──
+    // ── TURNS OF COVER, NOT A FLOW OVER A RESERVE (OD_GOODS_RESIDUAL) ──
     //
-    // Drained, not labelled: friendly first (the transfer auto-flow was
-    // entitled to make), then whatever survives is deal-only -- the AI
-    // session's headroom. Summing the two into one hides which is which, and
-    // labelling the whole surplus by its first match biases the deal headroom
-    // to zero exactly when both are non-zero. See the peer's note.
+    // The first cut of this printed stock-minus-one-turn-need and called it
+    // surplus. That is a reserve divided against a flow: a country holding ten
+    // turns of food read as "surplus 9x demand" when it was simply not living
+    // hand to mouth, and the total climbed 93x across a run because stock
+    // accumulated, not because spare goods appeared. (A memory records the same
+    // shape in od_bench: "a flow divided by a reserve".) So:
+    //
+    //   cover            = stock / need, in TURNS. The distribution shows the
+    //                      accumulation directly.
+    //   spare            = stock - COVER_SPARE*need: the part beyond a prudent
+    //                      reserve, which is the only part a deal should move.
+    //   fpairs / nfpairs = how many (spare holder, short neighbour) pairs are
+    //                      friendly vs not. friendly_resid=0 is only evidence
+    //                      auto-flow worked if fpairs was non-zero to begin
+    //                      with; an empty friendly bucket proves nothing.
+    //   spare_nf_share   = non-friendly share of SPARE (friendly-first drain) --
+    //                      the AI session's real headroom, on the spare basis.
     static const bool trace = OD_ENV("OD_GOODS_RESIDUAL") != nullptr;
     if (!trace) return;
-    double totalSurplus = 0.0, friendlyResid = 0.0, nonFriendlyResid = 0.0;
+    constexpr float COVER_SPARE = 5.0f;   // turns of cover kept as prudent reserve
+    double spareTot = 0.0, spareFResid = 0.0, spareNFResid = 0.0;
+    int fpairs = 0, nfpairs = 0, holders = 0;
+    std::vector<float> cover;
     for (int g = 0; g < GOOD_COUNT; ++g) {
         for (auto& [cid, c] : m_countries.getAll()) {
             if (!isReal(cid) || cid == m_playerCountryId) continue;
             auto sit = m_countryStockpiles.find(cid);
             if (sit == m_countryStockpiles.end()) continue;
-            float s0 = sit->second.goods[g] - goodNeed(cid, g);
-            if (s0 <= 1.0f) continue;
-            totalSurplus += s0;
+            const float need = goodNeed(cid, g);
+            const float stock = sit->second.goods[g];
+            if (need > 1.0f) cover.push_back(stock / need);
+            const float spare = stock - COVER_SPARE * need;
+            if (spare <= 1.0f) continue;
+            ++holders;
+            spareTot += spare;
             double fShort = 0.0, nShort = 0.0;
             for (auto& [oc, oo] : m_countries.getAll()) {
                 if (oc == cid || !isReal(oc)) continue;
                 const float sf = goodShortfall(oc, g);
                 if (sf <= 1.0f) continue;
-                if (friendly(c.isoA3, oo.isoA3)) fShort += sf; else nShort += sf;
+                if (friendly(c.isoA3, oo.isoA3)) { fShort += sf; ++fpairs; }
+                else                             { nShort += sf; ++nfpairs; }
             }
-            double s = s0;
-            const double f = std::min(s, fShort); friendlyResid += f; s -= f;
-            const double nf = std::min(s, nShort); nonFriendlyResid += nf;
+            double s = spare;
+            const double f = std::min(s, fShort); spareFResid += f; s -= f;
+            const double nf = std::min(s, nShort); spareNFResid += nf;
         }
     }
-    const double share = totalSurplus > 0.0 ? nonFriendlyResid / totalSurplus : 0.0;
-    printf("[AUTOFLOW] turn %d  total_surplus=%.0f  friendly_resid=%.0f  "
-           "nonfriendly_resid=%.0f  nonfriendly_share=%.4f\n",
-           m_turnNumber, totalSurplus, friendlyResid, nonFriendlyResid, share);
+    float coverP50 = 0.0f, coverP90 = 0.0f;
+    if (!cover.empty()) {
+        std::sort(cover.begin(), cover.end());
+        coverP50 = cover[cover.size() / 2];
+        coverP90 = cover[(cover.size() * 9) / 10];
+    }
+    const double share = spareTot > 0.0 ? spareNFResid / spareTot : 0.0;
+    printf("[AUTOFLOW] turn %d  spare5=%.0f  holders=%d  cover_p50=%.1f  "
+           "cover_p90=%.1f  fpairs=%d  nfpairs=%d  spare_fresid=%.0f  "
+           "spare_nfresid=%.0f  spare_nf_share=%.4f\n",
+           m_turnNumber, spareTot, holders, coverP50, coverP90,
+           fpairs, nfpairs, spareFResid, spareNFResid, share);
     fflush(stdout);
 }
 

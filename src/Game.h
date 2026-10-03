@@ -2749,6 +2749,25 @@ public:
     // It comes out once military costs move too.
     bool m_goodsEconomy = false;
     /**
+     * Player opt-in: auto-trade our surplus to allies.
+     *
+     * Off by default, so a human's goods never leave the country on their own.
+     * When the player turns it on (Experimental settings), their country joins
+     * the AI countries as a source in processGoodsAutoFlow -- on the same terms,
+     * friendly-only and surplus-only, never a gift to a rival. Mirrors
+     * Config::autoTradeSurplus, set in applyEconomyEnvironment.
+     */
+    bool m_autoTradeSurplus = false;
+    /**
+     * Whether AI countries redistribute surplus goods to friendly partners.
+     *
+     * On whenever the goods economy is a player setting -- redistribution is
+     * part of a working economy, not an extra. The bench keeps it separable:
+     * OD_GOODS_AUTOFLOW overrides this, so a sweep can measure goods-on against
+     * goods-on-plus-autoflow as two arms. Set in applyEconomyEnvironment.
+     */
+    bool m_goodsAutoFlow = false;
+    /**
      * The share of each turn's surplus raw materials sold automatically, 0-100.
      *
      * ONE DIAL INSTEAD OF TWO MODES. The question was whether deposits should

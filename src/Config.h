@@ -182,6 +182,22 @@ struct Config {
     bool historicalAi = false;
     bool gdtl = false;
 
+    // The goods economy (Experimental tab).
+    //
+    // Off by default, and the default is load-bearing: every price in the game
+    // was tuned against an economy where industry emitted money, so a world that
+    // opts in is a different balance. OD_GOODS overrides it for the bench. When
+    // on, deposits produce consumer/machinery/fuel/munitions goods that feed
+    // population and gate building, and the goods UI and tutorial become
+    // reachable.
+    bool goodsEconomy = false;
+    // Player opt-in: auto-trade our surplus goods to allies each turn.
+    //
+    // Off by default -- a human's goods never leave the country on their own.
+    // Only meaningful with goodsEconomy on. Friendly-only, surplus-only; the
+    // player's country simply joins the AI countries that already redistribute.
+    bool autoTradeSurplus = false;
+
     // Where Greater Diplomacy 5 lives, if the player has told us.
     //
     // Empty by default and NEVER filled in by guessing: the game does not look

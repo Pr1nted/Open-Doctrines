@@ -3531,6 +3531,25 @@ void Game::updateSettingsFromMenu() {
                 m_menuFeedback = T("On — but this map carries no history, so nothing will change");
                 m_menuFeedbackTimer = 5.0f;
             }
+        } else if (strcmp(s.label, "Goods Economy") == 0) {
+            // A structural choice, read when a world is built. Toggling it does
+            // not re-run the economy under a game already in progress, so say
+            // when it will actually take hold.
+            m_config.goodsEconomy = !m_config.goodsEconomy;
+            Audio::get().playSfx(m_config.goodsEconomy ? "toggle_on" : "toggle_off");
+            m_menuFeedback = m_config.goodsEconomy
+                ? T("On — starts with your next new world")
+                : T("Off");
+            m_menuFeedbackTimer = 4.0f;
+        } else if (strcmp(s.label, "Auto-Trade Surplus") == 0) {
+            if (!m_config.goodsEconomy) {
+                m_menuFeedback = T("Turn on Goods Economy first");
+                m_menuFeedbackTimer = 4.0f;
+            } else {
+                m_config.autoTradeSurplus = !m_config.autoTradeSurplus;
+                m_autoTradeSurplus = m_config.autoTradeSurplus;  // live this turn
+                Audio::get().playSfx(m_config.autoTradeSurplus ? "toggle_on" : "toggle_off");
+            }
         } else if (strcmp(s.label, "GDTL") == 0) {
             // TURNING IT OFF IS ALWAYS ALLOWED. Only turning it ON needs the
             // library: this checked availability before either direction, so a
