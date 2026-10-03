@@ -736,6 +736,8 @@ struct CountryProduction {
     float extracted[RAW_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f};
     float rawSold = 0.0f;        ///< money earned by the auto-sale this turn
     float fuelBought = 0.0f;     ///< fuel the army needed and the country had to buy in
+    float rawBought = 0.0f;      ///< fixed raw bought from the world market for factories
+    float rawBoughtCost = 0.0f;  ///< what that raw cost the treasury this turn
     float livingStandards = 1.0f;///< consumer supply / demand, 0..1+
     int   factoriesIdle = 0;     ///< assigned nothing, or starved of inputs
     int   factoriesTotal = 0;

@@ -511,6 +511,26 @@ inline constexpr float ARMY_FUEL_PER_10K         = 0.02f;
 inline constexpr float FUEL_SHORTFALL_PRICE = 3.0f;
 
 /**
+ * Buying a factory's FIXED input from the world market, as a markup over the
+ * sell floor (RAW_FLOOR_PRICE), so there is always a spread between selling a
+ * surplus and buying a shortfall.
+ *
+ * WHY IT EXISTS. A goods world extracts metal in a handful of countries and
+ * builds factories in dozens -- measured: metal is NEVER in a country without
+ * factories, but ~120 factory-rich countries extract none, so machinery was
+ * produced at ~zero worldwide while the metal to make it was auto-sold for
+ * money. Raw does not cross borders on its own and no friendly pair ever lines a
+ * metal-rich country up with a hungry one. This is the border raw crosses: a
+ * cash-rich, metal-poor country buys the metal in, funded by selling the oil or
+ * rubber it does have. A country is always better off digging its own (the
+ * spread), and a poor one still cannot (treasury-bound), so metal deposits still
+ * matter -- but a factory is no longer idle solely because the ore is abroad.
+ * Only in a goods world, and switchable (OD_RAW_MARKET) so a bench can run the
+ * arm without it.
+ */
+inline constexpr float RAW_MARKET_MARKUP = 2.0f;
+
+/**
  * Standing reserves a country wants on hand, which is what tells the allocator
  * to make these at all.
  *

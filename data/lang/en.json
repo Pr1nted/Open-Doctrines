@@ -698,6 +698,7 @@
  "Extracting map from save...": "Extracting map from save...",
  "FPS": "FPS",
  "FPS: %d": "FPS: %d",
+ "Factories buying raw in: %.1f/turn (-%.0f). Take the deposits to make it at home.": "Factories buying raw in: %.1f/turn (-%.0f). Take the deposits to make it at home.",
  "Factories idle": "Factories idle",
  "Failed": "Failed",
  "Failed to load ": "Failed to load ",

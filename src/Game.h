@@ -3054,6 +3054,20 @@ public:
     void autoAssignOutputs(int countryId, const CountryStockpile& pool);
     /** Units of `good` the pool could make. Asks without spending. */
     float recipeFeasible(const CountryStockpile& pool, int good) const;
+    /// Like recipeFeasible, but a FIXED input the country lacks can be bought from
+    /// the world market with treasury (at RAW_MARKET_MARKUP over the sell floor).
+    /// This is what lets a metal-poor, cash-rich country make machinery. The
+    /// `any` input is NOT bought -- it is never the binding, location-bound one.
+    float recipeFeasibleWithMarket(const CountryStockpile& pool, int good,
+                                   double treasury, int countryId) const;
+    /// Top up `pool`'s FIXED inputs for making `want` units of `good` by buying
+    /// the shortfall from the world market, deducting the cost from the country's
+    /// treasury (bounded by it) and recording it in `prod`. Only in a goods world
+    /// with the raw market on.
+    void buyFixedInputsForGood(int countryId, CountryStockpile& pool, int good,
+                               float want, CountryProduction& prod);
+    /// Raw world market on (OD_RAW_MARKET, default on in a goods world).
+    bool m_rawMarket = true;
     /** Takes the materials for `units` of `good`, substitutables largest-first. */
     void consumeRecipe(CountryStockpile& pool, int good, float units) const;
     /**

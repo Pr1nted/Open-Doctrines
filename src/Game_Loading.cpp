@@ -3498,6 +3498,10 @@ void Game::applyEconomyEnvironment() {
     // Redistribution ships with the player economy; the bench can split it off.
     m_goodsAutoFlow = m_config.goodsEconomy;
     if (const char* e = std::getenv("OD_GOODS_AUTOFLOW")) m_goodsAutoFlow = (*e && *e != '0');
+    // The world raw market lets a metal-poor factory buy its inputs in. On by
+    // default in a goods world; OD_RAW_MARKET=0 runs the control arm without it.
+    m_rawMarket = true;
+    if (const char* e = std::getenv("OD_RAW_MARKET")) m_rawMarket = (*e && *e != '0');
     if (const char* e = std::getenv("OD_AUTOSELL_PCT")) {
         // Clamped rather than rejected: a sweep script that emits 120 should
         // measure "everything sells" rather than silently fall back to the

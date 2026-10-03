@@ -577,6 +577,73 @@ void Game::processGoodsAutoFlow() {
         printf("  %s=%.0f/%.0f(%+.0f)", goodKey(g), wProd[g], wDemand[g],
                wProd[g] - wDemand[g]);
     printf("\n");
+
+    // IS THE WORLD RAW-STARVED? -- the test that decides whether allocation is
+    // the lever at all. If even all the extracted raw could not satisfy the
+    // recipes, no allocator fixes the deficit and the work is in yield or the
+    // demand curve. Metal is the one to watch: machinery (1.0) and munitions
+    // (0.6) both draw it and nothing else can, while consumer takes 0.35 of ANY
+    // raw. So compare extraction against recipe-demand per raw, and call metal
+    // out separately.
+    double wExtract[RAW_COUNT] = {0};
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (!isReal(cid)) continue;
+        auto pit = m_countryProduction.find(cid);
+        if (pit == m_countryProduction.end()) continue;
+        for (int r = 0; r < RAW_COUNT; ++r) wExtract[r] += pit->second.extracted[r];
+    }
+    double metalNeed = 0.0, oilNeed = 0.0, anyNeed = 0.0;
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        const GoodRecipe rc = goodInputs(g);
+        metalNeed += (double)rc.fixed[RAW_METAL] * wDemand[g];
+        oilNeed   += (double)rc.fixed[RAW_OIL]   * wDemand[g];
+        anyNeed   += (double)rc.any              * wDemand[g];
+    }
+    double extractTot = 0.0;
+    for (int r = 0; r < RAW_COUNT; ++r) extractTot += wExtract[r];
+    printf("[GOODSRAW] turn %d  extract_total=%.0f  metal=%.0f/need%.0f  "
+           "oil=%.0f/need%.0f  any_need=%.0f  (oil=%.0f metal=%.0f rubber=%.0f gem=%.0f)\n",
+           m_turnNumber, extractTot, wExtract[RAW_METAL], metalNeed,
+           wExtract[RAW_OIL], oilNeed, anyNeed,
+           wExtract[RAW_OIL], wExtract[RAW_METAL], wExtract[RAW_RUBBER],
+           wExtract[RAW_GEMSTONES]);
+
+    // IS MACHINERY ZERO BECAUSE METAL AND FACTORIES ARE IN DIFFERENT COUNTRIES?
+    // Bucket each country by whether it has an undirected factory to make
+    // machinery with and whether it has the metal to feed it. Metal-available is
+    // this turn's EXTRACTION, not the end-of-turn pool: with autosell=100 the
+    // pool is emptied every turn AFTER allocation, so the pool reads ~0 here even
+    // for a country that had metal when it allocated. extracted[METAL] is what it
+    // actually had to hand.
+    //   A = factory, no metal  -> wants machinery, cannot (the stranded capacity)
+    //   B = factory AND metal   -> should be making machinery (step-3 floor)
+    //   C = metal, no factory   -> the metal that A needed, in the wrong country
+    // If A and C are both large while B is ~0, machinery=0 is location, and the
+    // metal to fix it exists -- it is just never where a factory is.
+    int locA = 0, locB = 0, locC = 0, locNeither = 0;
+    int facStrandedA = 0;
+    double metalStrandedC = 0.0;
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (!isReal(cid)) continue;
+        auto pit = m_countryProduction.find(cid);
+        const float metalAvail = (pit != m_countryProduction.end())
+                                     ? pit->second.extracted[RAW_METAL] : 0.0f;
+        int undir = 0;
+        for (int pid : provincesOf(cid)) {
+            auto ind = m_provinceIndustry.find(pid);
+            if (ind == m_provinceIndustry.end()) continue;
+            if (ind->second.level > 0 && !ind->second.directed) ++undir;
+        }
+        const bool hasFac  = undir > 0;
+        const bool hasMetal = metalAvail >= 1.0f;          // one unit of machinery
+        if (hasFac && !hasMetal)      { ++locA; facStrandedA += undir; }
+        else if (hasFac && hasMetal)  { ++locB; }
+        else if (!hasFac && hasMetal) { ++locC; metalStrandedC += metalAvail; }
+        else                          { ++locNeither; }
+    }
+    printf("[GOODSLOC] turn %d  A_factory_no_metal=%d(fac%d)  B_both=%d  "
+           "C_metal_no_factory=%d(metal%.0f)  neither=%d\n",
+           m_turnNumber, locA, facStrandedA, locB, locC, metalStrandedC, locNeither);
     fflush(stdout);
 }
 
@@ -802,6 +869,64 @@ float Game::recipeFeasible(const CountryStockpile& pool, int good) const {
     return bounded ? std::max(0.0f, feasible) : 0.0f;
 }
 
+// How much of `good` the country could make counting FIXED raw it can buy from
+// the world market with the money it has. The `any` input is met locally only --
+// any-raw is abundant and is never the location-bound input; metal and oil are.
+float Game::recipeFeasibleWithMarket(const CountryStockpile& pool, int good,
+                                     double treasury, int countryId) const {
+    if (!m_goodsEconomy || !m_rawMarket) return recipeFeasible(pool, good);
+    const GoodRecipe r = goodInputs(good);
+    const float discount = std::min(0.8f,
+        monumentEffect(countryId, (int)odmon::Kind::GrandExchange));
+    float feasible = 1e9f;
+    bool bounded = false;
+    for (int i = 0; i < RAW_COUNT; ++i) {
+        if (r.fixed[i] <= 0.0f) continue;
+        bounded = true;
+        const float unitPrice = RAW_FLOOR_PRICE[i] * RAW_MARKET_MARKUP * (1.0f - discount);
+        const float buyable = (unitPrice > 0.0f && treasury > 0.0)
+                                  ? (float)(treasury / unitPrice) : 0.0f;
+        feasible = std::min(feasible, (pool.raw[i] + buyable) / r.fixed[i]);
+    }
+    if (r.any > 0.0f) {
+        float total = 0.0f;
+        for (int i = 0; i < RAW_COUNT; ++i) total += pool.raw[i];
+        feasible = std::min(feasible, total / r.any);   // any-raw: local only
+        bounded = true;
+    }
+    return bounded ? std::max(0.0f, feasible) : 0.0f;
+}
+
+// Buy the FIXED-input shortfall for making `want` units of `good` from the world
+// market, charging the treasury (bounded by it) and topping up the pool so the
+// ordinary consumeRecipe/recipeFeasible path then makes the goods. The treasury
+// depletes across factories in index order, so a country affords its first
+// factories' inputs before its last -- deterministic, and self-limiting.
+void Game::buyFixedInputsForGood(int countryId, CountryStockpile& pool, int good,
+                                 float want, CountryProduction& prod) {
+    if (!m_goodsEconomy || !m_rawMarket || want <= 0.0f) return;
+    const GoodRecipe r = goodInputs(good);
+    auto c = m_countries.getAll().find(countryId);
+    if (c == m_countries.getAll().end()) return;
+    const float discount = std::min(0.8f,
+        monumentEffect(countryId, (int)odmon::Kind::GrandExchange));
+    for (int i = 0; i < RAW_COUNT; ++i) {
+        if (r.fixed[i] <= 0.0f) continue;
+        const float shortRaw = want * r.fixed[i] - pool.raw[i];
+        if (shortRaw <= 0.0f) continue;
+        const float unitPrice = RAW_FLOOR_PRICE[i] * RAW_MARKET_MARKUP * (1.0f - discount);
+        if (unitPrice <= 0.0f || c->second.treasury <= 0.0) continue;
+        const float afford = (float)(c->second.treasury / unitPrice);
+        const float buy = std::min(shortRaw, afford);
+        if (buy <= 0.0f) continue;
+        pool.raw[i] += buy;
+        const float cost = buy * unitPrice;
+        c->second.treasury -= (double)cost;
+        prod.rawBought += buy;
+        prod.rawBoughtCost += cost;
+    }
+}
+
 void Game::consumeRecipe(CountryStockpile& pool, int good, float units) const {
     if (units <= 0.0f) return;
     const GoodRecipe r = goodInputs(good);
@@ -859,11 +984,17 @@ void Game::autoAssignOutputs(int countryId, const CountryStockpile& pool) {
     // factories ended up idle on the first run of this.
     float need[GOOD_COUNT], stock[GOOD_COUNT];
     bool feasible[GOOD_COUNT];
+    // A good is feasible if the country can MAKE it from what it holds, or BUY the
+    // fixed input in (goods world, raw market on). Without the market half a
+    // metal-poor country reads machinery infeasible and the allocator never
+    // assigns it a factory -- which is why machinery was produced at ~zero.
+    const double treasuryNow = (m_countries.getCountry(countryId))
+                                   ? m_countries.getCountry(countryId)->treasury : 0.0;
     for (int g = 0; g < GOOD_COUNT; ++g) {
         need[g]     = (g == GOOD_CONSUMER) ? consumerDemand
                                            : (lastDemand ? lastDemand->demand[g] : 0.0f);
         stock[g]    = pool.goods[g];
-        feasible[g] = (recipeFeasible(pool, g) > 0.0f);
+        feasible[g] = (recipeFeasibleWithMarket(pool, g, treasuryNow, countryId) > 0.0f);
     }
 
     // A factory its government has taken charge of is not the economy's to
@@ -997,6 +1128,11 @@ void Game::processProduction(int countryId) {
         float want = provinceGoodOutput(pid);
         if (want <= 0.0f) { ++prod.factoriesIdle; continue; }
 
+        // Buy in the fixed-input shortfall (metal/oil) from the world market, so
+        // a factory is not idle solely because its ore is in another country.
+        // No-op outside a goods world or with the market off; always bounded by
+        // treasury, so a poor country still cannot.
+        buyFixedInputsForGood(countryId, pool, good, want, prod);
         const float feasible = std::min(want, recipeFeasible(pool, good));
         if (feasible <= 0.0001f) { ++prod.factoriesIdle; continue; }
         consumeRecipe(pool, good, feasible);
@@ -1918,6 +2054,13 @@ void Game::drawEconomyGoods(int centerX, int startY) {
     if (pr.fuelBought > 0.005f) {
         DrawText(TextFormat(T("Short of fuel: buying in %.1f/turn at a premium (-%.1f). Build refineries or take oil."),
                             pr.fuelBought, pr.fuelBought * FUEL_SHORTFALL_PRICE), x0, y, 15, bad);
+        y += 22;
+    }
+    if (pr.rawBought > 0.005f) {
+        // The factories ran on bought-in ore. Named so the treasury drain has a
+        // cause the player can act on — take the deposit and stop paying for it.
+        DrawText(TextFormat(T("Factories buying raw in: %.1f/turn (-%.0f). Take the deposits to make it at home."),
+                            pr.rawBought, pr.rawBoughtCost), x0, y, 15, warn);
         y += 22;
     }
 }
