@@ -57,6 +57,13 @@ GROUPS = [
         # each platform hosts once, with the Mac joining free, is seven. This
         # solves that covering problem against the RAM available.
         "preflight_plan.py",
+        # Three hand-kept lists of platforms -- the updater's asset names, the
+        # release workflows' artifacts, the download page's buttons -- checked
+        # as one, so a new architecture cannot ship un-updatable or un-offered.
+        "check_release_names.py",
+        # The newest Objective Judge Horizon benchmark run, copied in as one
+        # JSON for the website's benchmark tab, which cannot reach that repo.
+        "ojh_snapshot.py",
         # The Flatpak manifest and its AppStream metainfo pin a published URL
         # and a changelog entry by hand, nothing builds from them, and so both
         # sat two releases stale. This says so, every suite run.
@@ -98,6 +105,13 @@ GROUPS = [
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
+        # Does software OpenGL render with no display at all? OSMesa draws a
+        # frame off-screen and the pixels are checked, so a machine with no GPU
+        # driver is qualified rather than assumed.
+        "osmesa_check.sh",
+        # The cross-compile setup CI uses for 32-bit x86, armv7 and riscv64
+        # Linux: multiarch -dev packages, the cross gcc and QEMU for the tests.
+        "ci_cross_deps.sh",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,
@@ -155,6 +169,9 @@ GROUPS = [
         "fuzz.py", "fuzz_parsers.sh",
     ]),
     ("Training the AI", [
+        # A comment in src/ai that quotes a constant must quote THIS tree's
+        # value -- a revert once restored the values and kept the comments.
+        "check_ai_comments.py",
         # Re-deflates the shipped model container with zopfli. Same format,
         # same weights, ~115 KB smaller; miniz inflates it unchanged.
         "shrink_model.py",

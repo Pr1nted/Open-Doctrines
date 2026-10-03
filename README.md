@@ -234,15 +234,24 @@ You also need the runtime libraries raylib links against — X11, ALSA and GL.
 Every mainstream desktop install already has them; a minimal or headless install
 may not.
 
-**x86_64 and arm64** are both published:
+**x86_64 and arm64** are published in every format; **32-bit x86, 32-bit Arm
+(armv7, e.g. a Raspberry Pi running a 32-bit OS) and RISC-V (riscv64)** as the
+tarball:
 
 | | what it is | arches | glibc |
 |---|---|---|---|
-| `.tar.gz` | the binary and its data, unpack anywhere | both | needs 2.35+ |
-| `.deb` | Debian, Ubuntu, Mint — `sudo apt install ./opendoctrines_*.deb` | both | needs 2.35+ |
-| `.rpm` | Fedora, RHEL, openSUSE — `sudo dnf install ./opendoctrines-*.rpm` | both | needs 2.35+ |
-| `.AppImage` | one file, no install — `chmod +x` and run | both | needs 2.35+ |
+| `.tar.gz` | the binary and its data, unpack anywhere | x86_64, arm64, x86, armv7, riscv64 | needs 2.35+ |
+| `.deb` | Debian, Ubuntu, Mint — `sudo apt install ./opendoctrines_*.deb` | x86_64, arm64 | needs 2.35+ |
+| `.rpm` | Fedora, RHEL, openSUSE — `sudo dnf install ./opendoctrines-*.rpm` | x86_64, arm64 | needs 2.35+ |
+| `.AppImage` | one file, no install — `chmod +x` and run | x86_64, arm64 | needs 2.35+ |
 | Flatpak | `flatpak install` — **the only one that works on older glibc** | x86_64 | brings its own |
+
+The x86, armv7 and riscv64 builds are cross-compiled and their test suite runs
+under emulation; none has been played on a physical board yet. On armv7 and
+riscv64 the Tor Project publishes no `tor` to bundle, so Tor connections use an
+installed one (`apt install tor`), as on arm64. riscv64 has no tunnel helper
+(cloudflared builds none), so hosting through a tunnel is unavailable there;
+direct and relayed connections are unaffected.
 
 The AppImage needs **`fusermount`** to mount itself, and several distributions
 ship the FUSE *libraries* without that *binary* — Debian 12 among them, where
@@ -285,9 +294,16 @@ Porting the runtime is a separate piece of work and not scheduled.
 
 ### Windows
 
-Requires **Windows 10 or later**, 64-bit. The build is unsigned, so SmartScreen
-will show *"Windows protected your PC"* on first run — **More info → Run
-anyway**.
+Requires **Windows 10 or later**. Three builds are published:
+
+| download | for |
+|---|---|
+| `windows-x64` | almost every PC — and it also runs on Arm PCs, under emulation |
+| `windows-arm64` | Arm PCs (Snapdragon and similar), natively |
+| `windows-x86` | 32-bit Windows. On 64-bit Windows it can use 4 GB; on a 32-bit Windows, 2 GB |
+
+The build is unsigned, so SmartScreen will show *"Windows protected your PC"*
+on first run — **More info → Run anyway**.
 
 ### Android — experimental
 
@@ -734,7 +750,10 @@ Alpha, and the honest version of that word:
   — a console server with no graphics dependency at all, so it runs on a VPS or
   in a container. It compiles the same simulation as the game against a raylib
   of its own, so the two cannot disagree about the rules. It is packaged for
-  Linux, macOS and Windows by its own workflow on a `server-v*` tag —
+  every architecture the game is — Linux (x86-64, arm64, x86, armv7, riscv64),
+  macOS (Apple Silicon, Intel) and Windows (x64, Arm64, x86) — so it runs on a
+  Raspberry Pi or an Arm VPS without compiling, by its own workflow on a
+  `server-v*` tag —
   deliberately not the game's, since a VPS operator should not download a few
   hundred megabytes of artwork to run something that never draws a pixel. Each
   build is smoke-tested (`tests/server_smoke_test.sh`) on the grounds that a

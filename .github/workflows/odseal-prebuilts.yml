@@ -68,7 +68,21 @@ jobs:
           # and there is no linux-aarch64 directory. GitHub hosts Arm runners
           # now, so this one needs no special machine.
           - { name: linux-aarch64,   os: ubuntu-22.04-arm }
-          - { name: windows-x86_64,  os: windows-2022 }
+          - { name: windows-x86_64,  os: windows-2022,   msvc_arch: x64 }
+          # 32-bit and Arm Windows. x86 is built by the x64 runner's own MSVC
+          # (amd64_x86) and runs there natively under WoW64; Arm64 gets a native
+          # Arm runner. The names are what CMakeLists.txt asks for, from MSVC's
+          # CMAKE_CXX_COMPILER_ARCHITECTURE_ID.
+          - { name: windows-x86,     os: windows-2022,   msvc_arch: amd64_x86 }
+          - { name: windows-arm64,   os: windows-11-arm, msvc_arch: arm64 }
+          # 32-bit x86, 32-bit Arm (armhf) and RISC-V Linux, CROSS-compiled on an
+          # x86-64 runner with Ubuntu's own cross gcc and tested under QEMU user
+          # mode. The directory names are what a native `uname -m` says (i686,
+          # armv7l, riscv64), which is also what CMakeLists.txt normalises a
+          # 32-bit build on a 64-bit kernel to.
+          - { name: linux-i686,      os: ubuntu-22.04, triplet: i686-linux-gnu,      qemu: i386 }
+          - { name: linux-armv7l,    os: ubuntu-22.04, triplet: arm-linux-gnueabihf, qemu: arm }
+          - { name: linux-riscv64,   os: ubuntu-22.04, triplet: riscv64-linux-gnu,   qemu: riscv64 }
           - { name: web-wasm32,      os: ubuntu-22.04 }
           - { name: android-arm64-v8a, os: ubuntu-22.04 }
           # THE BSDs RUN INSIDE A VM ON A LINUX RUNNER, because GitHub hosts
@@ -161,14 +175,43 @@ jobs:
           strip --strip-unneeded odseal.o
           ar rcs out/libodseal.a odseal.o
 
+      # Linux cross targets: Ubuntu's cross gcc for the triplet, and QEMU user
+      # mode to run the test. Same flags as the native Linux builds, character
+      # for character, with the triplet's own strip and ar -- the host's would
+      # either refuse a foreign object or, worse, quietly mangle it.
+      - name: Install the cross toolchain
+        if: matrix.triplet
+        shell: bash
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq g++-${{ matrix.triplet }} qemu-user-static
+
+      - name: Build (Linux cross)
+        if: matrix.triplet
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          T=${{ matrix.triplet }}
+          $T-g++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+              -c guard/odseal.cpp -o odseal.o
+          $T-strip --strip-unneeded odseal.o
+          $T-ar rcs out/libodseal.a odseal.o
+          file odseal.o
+
+      # The target architecture is the msvc_arch the matrix names: amd64, the
+      # x64 runner targeting x86 (amd64_x86), or the Arm runner's own arm64.
       - name: MSVC environment
-        if: matrix.name == 'windows-x86_64'
+        if: startsWith(matrix.name, 'windows-')
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
 
       # MSVC hides symbols unless they are exported, so there is no visibility
       # flag to pass; /GR- is the no-RTTI equivalent. The artifact is a .lib.
-      - name: Build (Windows x86_64)
-        if: matrix.name == 'windows-x86_64'
+      - name: Build (Windows)
+        if: startsWith(matrix.name, 'windows-')
         shell: cmd
         run: |
           mkdir out
@@ -306,12 +349,27 @@ jobs:
           c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
           ./odseal_test
 
+      # Every Windows archive runs here: x64 and x86 natively on the x64 runner
+      # (x86 under WoW64), Arm64 natively on the Arm runner.
       - name: Test the archive (Windows)
-        if: matrix.name == 'windows-x86_64'
+        if: startsWith(matrix.name, 'windows-')
         shell: cmd
         run: |
           cl /nologo /std:c++17 /O2 /EHsc /I third_party\odseal tests\odseal_test.cpp out\odseal.lib /Feodseal_test.exe || exit /b 1
           odseal_test.exe || exit /b 1
+
+      # The real test, not a symbol check: QEMU user mode runs the foreign
+      # binary. Linked -static so it needs no foreign loader or libc on the
+      # runner -- what runs is the archive and the test, nothing borrowed.
+      - name: Test the archive (Linux cross, under QEMU)
+        if: matrix.triplet
+        shell: bash
+        run: |
+          set -e
+          T=${{ matrix.triplet }}
+          $T-g++ -std=c++17 -O1 -static -I third_party/odseal tests/odseal_test.cpp \
+              out/libodseal.a -o odseal_test
+          qemu-${{ matrix.qemu }}-static ./odseal_test
 
       # wasm cannot run natively, but node runs what emscripten emits, so this
       # is the same test rather than a weaker stand-in.

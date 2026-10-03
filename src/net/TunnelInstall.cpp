@@ -45,6 +45,12 @@ struct PlatformAsset {
     bool        archived = false;   // .tgz that must be unpacked
 };
 
+// BY ARCHITECTURE, NOT JUST BY SYSTEM. This chose amd64 for every Linux that
+// was not aarch64 and for every Windows, so a 32-bit or Arm player would have
+// downloaded a tunnel binary their machine cannot execute -- and found out only
+// when hosting failed. The names are cloudflared's own release assets (checked
+// against release 2026.9.3). A platform cloudflared does not build for gets
+// nullptr, which the caller already reports as "no tunnel helper here".
 PlatformAsset platformAsset() {
 #if defined(__APPLE__)
   #if defined(__aarch64__) || defined(__arm64__)
@@ -53,13 +59,31 @@ PlatformAsset platformAsset() {
     return {"cloudflared-darwin-amd64.tgz", true};
   #endif
 #elif defined(__linux__)
-  #if defined(__aarch64__)
-    return {"cloudflared-linux-arm64", false};
-  #else
+  #if defined(__x86_64__)
     return {"cloudflared-linux-amd64", false};
+  #elif defined(__aarch64__)
+    return {"cloudflared-linux-arm64", false};
+  #elif defined(__i386__)
+    return {"cloudflared-linux-386", false};
+  #elif defined(__arm__) && defined(__ARM_PCS_VFP)
+    return {"cloudflared-linux-armhf", false};   // hard-float: armv7 distributions
+  #elif defined(__arm__)
+    return {"cloudflared-linux-arm", false};
+  #else
+    return {nullptr, false};                      // riscv64 and others: none built
   #endif
 #elif defined(_WIN32)
+  #if defined(_M_X64) || defined(__x86_64__)
     return {"cloudflared-windows-amd64.exe", false};
+  #elif defined(_M_IX86) || defined(__i386__)
+    return {"cloudflared-windows-386.exe", false};
+  #elif defined(_M_ARM64) || defined(__aarch64__)
+    // No Arm build exists. The 32-bit x86 one runs under the emulation every
+    // Windows-on-Arm release has (x64 emulation is Windows 11 only).
+    return {"cloudflared-windows-386.exe", false};
+  #else
+    return {nullptr, false};
+  #endif
 #else
     return {nullptr, false};
 #endif

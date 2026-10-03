@@ -380,6 +380,9 @@ check "server raylib stubs vs raylib.h" \
 # Fails if a tool was added without a description or a group, so the
 # index cannot quietly fall behind the directory.
 check "tool index" $PY "$root/tools/help.py" --check
+# The updater's asset names, the release workflows' artifacts and the download
+# page's buttons are three hand-kept lists of platforms; this keeps them one.
+check "release names: updater vs workflows vs page" $PY "$root/tools/check_release_names.py"
 
 # Fails if a generated file was hand-edited or left stale after an ABI
 # change. Regenerate with: python3 tools/gen_bindings.py

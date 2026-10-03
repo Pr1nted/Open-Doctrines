@@ -18,8 +18,8 @@
 # Android. The server core is ready for it -- serverBegin/serverTick/serverEnd
 # exist precisely so a front end can drive it a frame at a time, which is what
 # an Android foreground service needs -- but the app itself (manifest, gradle,
-# the service, the JNI glue) is not written. When it is, it belongs here as a
-# fourth matrix entry building the .so and assembling an APK.
+# the service, the JNI glue) is not written. When it is, it belongs here as
+# another matrix entry building the .so and assembling an APK.
 #
 # THE WINDOWED SERVER IS BUILT AND NOT SHIPPED
 #
@@ -58,6 +58,46 @@ jobs:
             os: windows-2022
             artifact: OpenDoctrinesServer-windows-x64
 
+          # ── EVERY ARCHITECTURE THE GAME SHIPS FOR ──
+          #
+          # A server is exactly the thing people run on a Raspberry Pi, an Arm
+          # VPS or an old 32-bit box in a cupboard, so it ships wherever the
+          # game does. Same runners and toolchains as release-game.yml; see the
+          # notes there. The cross-built Linux servers run their smoke test and
+          # --write-config under QEMU (binfmt, set up by tools/ci_cross_deps.sh).
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            artifact: OpenDoctrinesServer-linux-arm64
+          - name: macos-x64
+            os: macos-15-intel
+            artifact: OpenDoctrinesServer-macos-x64
+          - name: windows-x86
+            os: windows-2022
+            artifact: OpenDoctrinesServer-windows-x86
+            cmake_args: -A Win32
+          - name: windows-arm64
+            os: windows-11-arm
+            artifact: OpenDoctrinesServer-windows-arm64
+            cmake_args: -A ARM64
+          - name: linux-x86
+            os: ubuntu-22.04
+            artifact: OpenDoctrinesServer-linux-x86
+            triplet: i686-linux-gnu
+            deb_arch: i386
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-i686.cmake
+          - name: linux-armv7
+            os: ubuntu-22.04
+            artifact: OpenDoctrinesServer-linux-armv7
+            triplet: arm-linux-gnueabihf
+            deb_arch: armhf
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake
+          - name: linux-riscv64
+            os: ubuntu-22.04
+            artifact: OpenDoctrinesServer-linux-riscv64
+            triplet: riscv64-linux-gnu
+            deb_arch: riscv64
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-riscv64.cmake
+
     steps:
       - uses: actions/checkout@v5
 
@@ -67,7 +107,7 @@ jobs:
       # with a missing -lX11, which reads like a code fault rather than a
       # missing package.
       - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !matrix.deb_arch
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
@@ -75,8 +115,18 @@ jobs:
                                   libxcursor-dev libxinerama-dev libwayland-dev \
                                   libxkbcommon-dev
 
+      # The same, for another architecture -- the one script release-game.yml and
+      # test.yml use, so the apt details live in one place.
+      - name: Install cross-compile dependencies (${{ matrix.deb_arch }})
+        if: runner.os == 'Linux' && matrix.deb_arch
+        run: bash tools/ci_cross_deps.sh "${{ matrix.deb_arch }}" "${{ matrix.triplet }}"
+
+      # matrix.cmake_args on the same line: -A Win32 / -A ARM64 for the other
+      # Windows architectures, the toolchain file for cross Linux, nothing for
+      # the native builds. One line because this step runs in PowerShell on
+      # Windows, where `\` is not a continuation.
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
 
       - name: Build the server
         run: cmake --build build --config Release --target OpenDoctrinesServer -j 4

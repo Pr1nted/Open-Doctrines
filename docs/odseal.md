@@ -18,6 +18,11 @@ one prebuilt per platform, and CMake picks the matching one:
 | OpenBSD amd64 | `openbsd-amd64/` | base clang, `-fPIC`, in a VM on a Linux runner |
 | Web (wasm32) | `web-wasm32/` | emscripten `em++` |
 | Windows x86_64 | `windows-x86_64/` | MSVC, `/O2 /GR-` |
+| Windows x86 (32-bit) | `windows-x86/` | MSVC `amd64_x86`, `/O2 /GR-`, on the x64 runner |
+| Windows Arm64 | `windows-arm64/` | MSVC, `/O2 /GR-`, on an Arm runner |
+| Linux i686 (32-bit) | `linux-i686/` | `i686-linux-gnu-g++` 11, `-fPIC`, tested under QEMU |
+| Linux armv7l (armhf) | `linux-armv7l/` | `arm-linux-gnueabihf-g++` 11, `-fPIC`, tested under QEMU |
+| Linux riscv64 | `linux-riscv64/` | `riscv64-linux-gnu-g++` 11, `-fPIC`, tested under QEMU |
 | Android arm64-v8a | `android-arm64-v8a/` | NDK clang, API 24 |
 
 If a maintainer working tree has `guard/odseal.cpp`, that is used instead and
@@ -32,6 +37,17 @@ lowercased, for everything that is not macOS, Windows, Android or web — so it
 follows the OS rather than assuming Linux. **Note that the BSDs say `amd64`
 where Linux says `x86_64`**, because `CMAKE_SYSTEM_PROCESSOR` follows
 `uname -m`; a directory named `freebsd-x86_64` would simply never be found.
+
+Two corrections on top of that rule, both because `uname -m` names the
+**kernel**, not the compiler:
+
+- **A 32-bit build on a 64-bit kernel** is named by pointer size: `gcc -m32` on
+  x86_64 and Raspberry Pi OS's 32-bit userland on its aarch64 kernel would
+  otherwise ask for a 64-bit archive. They get `linux-i686` and
+  `linux-armv7l` — what a native 32-bit `uname -m` says.
+- **Windows** is named by MSVC's own target (`CMAKE_CXX_COMPILER_ARCHITECTURE_ID`):
+  `windows-x86_64`, `windows-x86` or `windows-arm64`, under the Visual Studio
+  generator and Ninja alike.
 
 ## Keeping them in sync
 
