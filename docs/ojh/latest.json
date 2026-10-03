@@ -1,0 +1,67 @@
+{
+ "run": "matched-20261001",
+ "scenario": "od-1939",
+ "games": [
+  {
+   "key": "opendoctrines",
+   "name": "Open Doctrines",
+   "marker": "circle",
+   "tpm": 603.79,
+   "fps": null,
+   "fps_low": null,
+   "nipm": 28091073,
+   "turns": 250
+  },
+  {
+   "key": "unciv",
+   "name": "Unciv",
+   "marker": "square",
+   "tpm": 136.72,
+   "fps": 1824.08,
+   "fps_low": 229.18,
+   "nipm": 60441965,
+   "turns": 250
+  },
+  {
+   "key": "freecol",
+   "name": "FreeCol",
+   "marker": "triangle",
+   "tpm": 63.6,
+   "fps": null,
+   "fps_low": null,
+   "nipm": null,
+   "turns": 250
+  },
+  {
+   "key": "freeciv",
+   "name": "Freeciv",
+   "marker": "diamond",
+   "tpm": 27.88,
+   "fps": null,
+   "fps_low": null,
+   "nipm": 34501443,
+   "turns": 249
+  },
+  {
+   "key": "gd5",
+   "name": "Greater Diplomacy 5",
+   "marker": "cross",
+   "tpm": 4.3,
+   "fps": 2.61,
+   "fps_low": 0.83,
+   "nipm": 734469023,
+   "turns": 250
+  },
+  {
+   "key": "freeorion",
+   "name": "FreeOrion",
+   "marker": "star",
+   "tpm": 3.37,
+   "fps": null,
+   "fps_low": null,
+   "nipm": null,
+   "turns": 203
+  }
+ ],
+ "machine": "MacBookPro18,1"
+}

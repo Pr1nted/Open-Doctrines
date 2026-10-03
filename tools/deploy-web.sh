@@ -77,6 +77,7 @@ cp packaging/web/_headers "$out/_headers"
 cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/cookies.html packaging/web/site/press.html \
    packaging/web/site/download.html \
+   packaging/web/site/benchmark.html \
    packaging/web/site/mods.html packaging/web/site/publish.html \
    packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
@@ -336,6 +337,11 @@ test -s "$out/play/data/STDmaps/map.odmap" || {
 echo "== policy pages =="
 ( cd packaging/web/policies && npm ci --no-audit --no-fund && npm run build ) \
     || { echo "could not render the policy pages" >&2; exit 1; }
+# The benchmark snapshot the /benchmark page fetches. Committed rather than
+# fetched from the OJH checkout at deploy time: that repository is private,
+# so the numbers have to be in this one to be servable at all.
+[ -f docs/ojh/latest.json ] && cp docs/ojh/latest.json "$out/ojh.json"
+
 cp packaging/web/policies/privacy.html packaging/web/policies/terms.html \
    packaging/web/policies/dmca.html packaging/web/policies/eula.html "$out/"
 # /mods/guidelines, the path the game and MOD_GUIDELINES itself already name.
