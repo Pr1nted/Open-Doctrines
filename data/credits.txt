@@ -77,6 +77,10 @@ $ Flag artwork from Wikimedia Commons. Per-file licences and required attributio
 - nanosvg (zlib)
 - miniz (MIT)
 - stb_image / stb_image_write (Public domain (Unlicense/MIT dual))
+- Tor (Tor Expert Bundle) (BSD-3-Clause (tor, libevent), Apache-2.0 (OpenSSL))
+- Simple Icons (CC0-1.0)
+- Tabler Icons (MIT)
+- Lucide (ISC)
 @
 @Fonts
 ---

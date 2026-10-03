@@ -156,6 +156,37 @@ p.write_text(s2, encoding="utf-8")
 print(f"  stamped {len(rels)} release(s) into download.html, newest {rels[0]['ver']}")
 RELS
 
+# ── WHICH ASSETS THE RELEASES ACTUALLY CARRY ──
+#
+# So a download card is shown only when there is a file behind it. FreeBSD and
+# OpenBSD are authored hidden and turn themselves on the day bsd-game.yml's
+# output is attached to a release; nothing on the page has to change to let
+# them in. Needs gh and network -- if either is missing the list is left empty
+# and the page keeps the visibility it was written with, which is the safe way
+# round.
+assets=""
+if command -v gh >/dev/null 2>&1; then
+    for t in "v$ver" "templeos-v$ver"; do
+        a=$(gh release view "$t" --json assets -q '.assets[].name' 2>/dev/null) || continue
+        assets="$assets$a
+"
+    done
+fi
+python3 - "$out" "$assets" <<'ASSETS'
+import json, pathlib, re, sys
+out, raw = pathlib.Path(sys.argv[1]), sys.argv[2]
+names = sorted({l.strip() for l in raw.splitlines() if l.strip()})
+p = out / "download.html"
+s = p.read_text(encoding="utf-8")
+s2, n = re.subn(r"/\*__ASSETS__\*/\[.*?\];",
+                "/*__ASSETS__*/" + json.dumps(names) + ";", s, flags=re.S)
+if n != 1:
+    raise SystemExit(f"download.html: expected one asset marker, found {n}")
+p.write_text(s2, encoding="utf-8")
+print(f"  stamped {len(names)} release asset(s) into download.html"
+      + ("" if names else "  (gh unavailable -- cards keep their authored visibility)"))
+ASSETS
+
 # ANALYTICS ARE SITE-ONLY, AND THAT IS A PROMISE MADE IN WRITING. The cookie
 # policy and net/PRIVACY.md both say /play/ is excluded, so a stray copy of
 # analytics.js into the game directory would make a published policy false.
