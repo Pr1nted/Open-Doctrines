@@ -244,6 +244,21 @@ for p in sorted(out.glob("*.html")):
 STRIP
 fi
 
+# ── THE ANIMAL STAGE STILL ──
+#
+# AFTER the Open Fly if/else and outside both of its branches. That block is
+# stripped when open-fly.pages.dev is not serving, and the stage does not
+# depend on it: the stage links to itch.io, which is up whether the fly's own
+# page is or not. Putting the copy inside the "live" branch would have made
+# one side project's outage hide the other's picture.
+if [ -f docs/img/open-animal-stage-thumbnail.webp ]; then
+    mkdir -p "$out/img"
+    cp docs/img/open-animal-stage-thumbnail.webp "$out/img/open-animal-stage-thumbnail.webp"
+else
+    echo "docs/img/open-animal-stage-thumbnail.webp is missing" >&2
+    exit 1
+fi
+
 # ── THE LINK CARD, SERVED FROM THE ROOT FOR EVERY PAGE ──
 #
 # One image for the whole site: the og:image tags in every page point at this

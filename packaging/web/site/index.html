@@ -185,6 +185,7 @@
       <a href="/benchmark">Benchmark</a>
       <a href="/classroom">For teachers</a>
       <!-- OPEN-FLY:BEGIN --><a href="/#open-fly">Open Fly</a><!-- OPEN-FLY:END -->
+      <a href="/#open-animal-stage">Animal Stage</a>
       <a href="/mods">Mods</a>
       <a href="https://github.com/Pr1nted/Open-Doctrines">Source</a>
       <a href="https://discord.gg/wqS65jzVv5">Discord</a>
@@ -303,20 +304,8 @@
       <a href="https://pr1nted.itch.io/open-fly" rel="noopener">itch.io</a> ·
       <a href="https://open-fly.pages.dev/devlog/" rel="noopener">Devlog</a>
     </p>
-    <!-- Open Animal Stage: itch only. It has no pages.dev of its own, so it
-         is a link rather than a second embedded frame -- the fly's iframe
-         points at open-fly.pages.dev and there is no equivalent to point at
-         here. Three of its seven brains are local-only for licence reasons
-         and its own page explains which; this does not repeat the list. -->
-    <p class="note stage-note">
-      <strong>Open Animal Stage</strong> takes the same idea further: seven
-      mapped brains, from a 302-neuron roundworm to a zebrafish larva, taking
-      seats in the same world and playing against each other rather than one
-      at a time.
-      <a href="https://pr1nted.itch.io/open-animal-stage" rel="noopener">Play it on itch.io</a> ·
-      <a href="https://github.com/Pr1nted/Open-Animal-Stage" rel="noopener">Source</a>
-    </p>
   </section>
+
   <script>
   /* Swap the still for the page only on a click. Nothing downloads for the
      visitor who scrolls past, which is most of them. */
@@ -332,6 +321,38 @@
   });
   </script>
   <!-- OPEN-FLY:END -->
+  <!-- A SISTER SECTION, not a line inside Open Fly's. Same shape -- label,
+       heading, still, one button -- but the button is a link: Open Fly's frame
+       loads open-fly.pages.dev inline, and the stage has no page of its own to
+       load. It plays on itch, and itch embedding needs a per-game setting and
+       an upload id the public page does not expose until you press Run. The
+       day the stage has a URL of its own this becomes a .fly-frame like the
+       fly's and nothing else changes. -->
+  <section class="narrow" id="open-animal-stage">
+    <p class="label">Side project · Open Animal Stage</p>
+    <h2>Seven mapped brains, one world, playing each other</h2>
+    <p>
+      Open Fly sat one fruit fly in front of the game. This seats seven animals
+      at the same world — two flies, two roundworms, a sea squirt, a zebrafish
+      larva — and lets them play against each other, with a mouse's visual
+      cortex watching. Every brain is a published wiring diagram, running on
+      your machine, giving the orders its own spikes produce.
+    </p>
+    <div class="fly-frame">
+      <a href="https://pr1nted.itch.io/open-animal-stage" rel="noopener">
+        <img src="/img/open-animal-stage-thumbnail.webp" width="1280" height="720" loading="lazy"
+             alt="The Open Animal Stage roster: two fruit flies, a zebrafish, a sea squirt, two roundworms, a fly larva and a mouse, each with its neuron count">
+        <span class="play">Play it on itch.io</span>
+      </a>
+    </div>
+    <p class="note">
+      Three of the seven are local-only: the roundworms and the fly larva come
+      from datasets published with no licence to redistribute them, so that page
+      lists them and says why. ·
+      <a href="https://github.com/Pr1nted/Open-Animal-Stage" rel="noopener">Source</a>
+    </p>
+  </section>
+
 
   <section class="narrow">
     <h2>It is an alpha, and says so</h2>
