@@ -35,8 +35,16 @@ if [ -d /etc/apt/sources.list.d ] && [ ! -d /etc/apt/sources.list.d.off ]; then
 fi
 main=http://azure.archive.ubuntu.com/ubuntu
 ports=http://ports.ubuntu.com/ubuntu-ports
+# THE RUNNER'S OWN RELEASE, not a hardcoded one. riscv64 cross-builds on 24.04
+# (noble) and the rest on 22.04 (jammy): jammy's riscv64 port never got the
+# ncurses security update the amd64 and armhf ports did (libtinfo6 0.1 vs 0.3),
+# and multiarch needs one version of each shared library across architectures,
+# so Mesa's LLVM dependency could not be installed at all ("held broken
+# packages"). Noble's riscv64 port is complete.
+. /etc/os-release
+codename="${VERSION_CODENAME:?no VERSION_CODENAME in /etc/os-release}"
 {
-    for s in jammy jammy-updates jammy-security; do
+    for s in "$codename" "$codename-updates" "$codename-security"; do
         echo "deb [arch=amd64,i386] $main $s main restricted universe multiverse"
         echo "deb [arch=armhf,arm64,riscv64] $ports $s main restricted universe multiverse"
     done

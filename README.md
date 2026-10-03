@@ -240,7 +240,7 @@ tarball:
 
 | | what it is | arches | glibc |
 |---|---|---|---|
-| `.tar.gz` | the binary and its data, unpack anywhere | x86_64, arm64, x86, armv7, riscv64 | needs 2.35+ |
+| `.tar.gz` | the binary and its data, unpack anywhere | x86_64, arm64, x86, armv7, riscv64 | needs 2.35+ (riscv64: 2.39+, e.g. Ubuntu 24.04, Debian 13) |
 | `.deb` | Debian, Ubuntu, Mint — `sudo apt install ./opendoctrines_*.deb` | x86_64, arm64 | needs 2.35+ |
 | `.rpm` | Fedora, RHEL, openSUSE — `sudo dnf install ./opendoctrines-*.rpm` | x86_64, arm64 | needs 2.35+ |
 | `.AppImage` | one file, no install — `chmod +x` and run | x86_64, arm64 | needs 2.35+ |

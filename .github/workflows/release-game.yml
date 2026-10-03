@@ -91,10 +91,12 @@ jobs:
             artifact: OpenDoctrines-windows-arm64
             cmake_args: -A ARM64
           # 32-bit x86, 32-bit Arm (Raspberry Pi on a 32-bit OS) and RISC-V
-          # Linux. CROSS-compiled on an x86-64 runner against Ubuntu 22.04's own
-          # multiarch libraries -- the same glibc the x64 and arm64 builds are
-          # made against, so they run on the same range of distributions. The
-          # toolchain files in tools/cmake/ say how; deb_arch is Debian's name.
+          # Linux. CROSS-compiled on an x86-64 runner against Ubuntu's own
+          # multiarch libraries -- 22.04 for x86 and armv7, the same glibc the
+          # x64 and arm64 builds use; 24.04 for riscv64, because 22.04's riscv64
+          # port is missing an update the multiarch install needs (see
+          # tools/ci_cross_deps.sh), and riscv64 boards ship newer distributions
+          # anyway. The toolchain files in tools/cmake/ say how.
           - name: linux-x86
             os: ubuntu-22.04
             artifact: OpenDoctrines-linux-x86
@@ -108,7 +110,7 @@ jobs:
             deb_arch: armhf
             cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake
           - name: linux-riscv64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             artifact: OpenDoctrines-linux-riscv64
             triplet: riscv64-linux-gnu
             deb_arch: riscv64

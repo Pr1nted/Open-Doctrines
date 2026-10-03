@@ -175,7 +175,11 @@ endif()
 # copy would compute the simulation slightly differently from x64. SSE2 makes
 # float and double round exactly as on x64; MSVC's 32-bit default has been SSE2
 # since 2012, so only GCC and Clang need telling. Every x86 CPU since 2003 has it.
-if(NOT MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
+#
+# NOT EMSCRIPTEN: wasm32 also has 4-byte pointers, and Emscripten's toolchain
+# reports CMAKE_SYSTEM_PROCESSOR as "x86" for historical reasons -- so without
+# this the web build was handed -msse2, which em++ refuses without -msimd128.
+if(NOT MSVC AND NOT EMSCRIPTEN AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|x86_64|amd64|AMD64)$")
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-msse2> $<$<COMPILE_LANGUAGE:C,CXX>:-mfpmath=sse>)
 endif()
@@ -695,6 +699,17 @@ if(OD_ENABLE_MODS)
         endif()
         message(STATUS "WAMR target architecture: ${WAMR_BUILD_TARGET} (from ${od_wamr_arch})")
 
+        # THE ARM TRAMPOLINE NEEDS ITS FPU NAMED. invokeNative_arm_vfp.s loads
+        # float arguments with vldr, and whether gcc tells the assembler there
+        # is a VFP unit depends on how that gcc was configured: Debian 12's
+        # arm-linux-gnueabihf-gcc 12 does, Ubuntu 22.04's gcc 11 (the CI cross
+        # compiler) does not, and the build stopped at "selected processor does
+        # not support `vldr s0,[r4,#0]' in ARM mode". vfpv3-d16 is the armhf ABI
+        # baseline, which is what the C code is compiled for anyway.
+        if(WAMR_BUILD_TARGET STREQUAL "ARMV7_VFP" AND NOT MSVC)
+            add_compile_options($<$<COMPILE_LANGUAGE:ASM>:-mfpu=vfpv3-d16>)
+        endif()
+
         # MSVC ON ARM64 GETS ITS OWN invokeNative. WAMR ships the trampoline the
         # interpreter calls host functions through as GAS syntax for AArch64
         # (invokeNative_aarch64.s) and as MASM only for x64 and ia32, and
@@ -825,7 +840,12 @@ if(OD_ENABLE_MODS)
             # on its interface, so everything that links the runtime links this.
             add_library(od_invokenative_arm64 STATIC "${od_inv_obj}")
             set_target_properties(od_invokenative_arm64 PROPERTIES LINKER_LANGUAGE C)
-            target_link_libraries(vmlib INTERFACE od_invokenative_arm64)
+            # BUILD_INTERFACE because WAMR's own CMakeLists puts vmlib in an
+            # install(EXPORT "iwasmTargets") set, and a plain interface link made
+            # generation fail: "vmlib ... requires target od_invokenative_arm64
+            # that is not in any export set". This project never installs WAMR;
+            # the wrapper keeps the link for the build and out of the export.
+            target_link_libraries(vmlib INTERFACE $<BUILD_INTERFACE:od_invokenative_arm64>)
             message(STATUS "WAMR: armasm64 = ${OD_ARMASM64}")
         endif()
 

@@ -393,7 +393,7 @@ jobs:
           - { name: windows-arm64, os: windows-11-arm, msvc_arch: arm64,     expect: aarch64 }
           - { name: linux-x86,     os: ubuntu-22.04, deb_arch: i386,    triplet: i686-linux-gnu,      toolchain: linux-i686,    expect: i686 }
           - { name: linux-armv7,   os: ubuntu-22.04, deb_arch: armhf,   triplet: arm-linux-gnueabihf, toolchain: linux-armv7,   expect: armv7 }
-          - { name: linux-riscv64, os: ubuntu-22.04, deb_arch: riscv64, triplet: riscv64-linux-gnu,   toolchain: linux-riscv64, expect: riscv64 }
+          - { name: linux-riscv64, os: ubuntu-24.04, deb_arch: riscv64, triplet: riscv64-linux-gnu,   toolchain: linux-riscv64, expect: riscv64 }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

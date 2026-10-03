@@ -92,7 +92,7 @@ jobs:
             deb_arch: armhf
             cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake
           - name: linux-riscv64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             artifact: OpenDoctrinesServer-linux-riscv64
             triplet: riscv64-linux-gnu
             deb_arch: riscv64
