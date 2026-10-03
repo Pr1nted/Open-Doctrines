@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Game_Gdtl.h"   // Gdtl::available() for the GDTL toggle
 #include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -1668,7 +1669,7 @@ void Game::update(float dt) {
                 m_config.save(m_configPath);
             }
             const Setting& rs = items[m_settingsIndex];
-            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0) {
+            if (rs.isValue || strcmp(rs.label, "Fullscreen") == 0 || strcmp(rs.label, "Show Actual Flags") == 0 || strcmp(rs.label, "Debug Mode") == 0 || strcmp(rs.label, "FPS") == 0 || strcmp(rs.label, "Accent Color") == 0 || strcmp(rs.label, "AI Difficulty") == 0 || strcmp(rs.label, "Display FPS") == 0 || strcmp(rs.label, "Display Zoom") == 0 || strcmp(rs.label, "Console Window") == 0 || strcmp(rs.label, "AI Debug") == 0 || strcmp(rs.label, "AI Learning") == 0 || strcmp(rs.label, "Historical AI") == 0 || strcmp(rs.label, "GDTL") == 0) {
                 if (m_settingsTab == 0 && m_settingsIndex == 0) {
                     if (m_config.fullscreen) {
                         setFullscreenAttrs(false, &m_windowedX, &m_windowedY, &m_windowedW, &m_windowedH);
@@ -1694,6 +1695,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
             } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
                 m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId];
                 m_config.save(m_configPath);
@@ -1807,6 +1809,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 4 && m_settingsIndex == 3) { m_config.aiDebug = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
                 else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                     if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                         *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -1878,7 +1881,36 @@ void Game::update(float dt) {
                 } else {
                     m_config.aiLearning = !m_config.aiLearning;
                 }
-            } else if (strcmp(s.label, "AI Difficulty") == 0) {
+            // ── THE THREE EXPERIMENTAL ROWS THAT HAD NO HANDLER HERE ──
+            //
+            // Historical AI, GDTL and AI Correspondents each toggle in the
+            // MAIN-menu settings (Game_Menus.cpp) and did nothing in THIS one,
+            // the in-game pause settings: clicking the row fell through the
+            // strcmp chain and no config changed. Reported as "Historical AI
+            // does not turn on, and another experimental option also does not".
+            // The two settings screens are separate code and only AI Learning
+            // had been mirrored across. These three now match it.
+            } else if (strcmp(s.label, "Historical AI") == 0) {
+                m_config.historicalAi = !m_config.historicalAi;
+                Audio::get().playSfx(m_config.historicalAi ? "toggle_on" : "toggle_off");
+                if (m_config.historicalAi && m_countryDoctrines.empty())
+                    addNotification(T("On — but this map carries no history, so nothing will change"),
+                                    Color{210, 200, 150, 255}, 5.0f);
+            } else if (strcmp(s.label, "GDTL") == 0) {
+                // Turning it OFF is always allowed; only ON needs the library.
+                if (m_config.gdtl) {
+                    m_config.gdtl = false;
+                    Audio::get().playSfx("toggle_off");
+                } else if (!Gdtl::available()) {
+                    addNotification(T("This build has no translation layer — rebuild with -DOD_ENABLE_GDTL=ON"),
+                                    Color{230, 160, 140, 255}, 5.0f);
+                } else {
+                    m_config.gdtl = true;
+                    Audio::get().playSfx("toggle_on");
+                }
+            } else if (strcmp(s.label, "AI Correspondents") == 0) {
+                openLlmSetup();
+} else if (strcmp(s.label, "AI Difficulty") == 0) {
                 m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
             } else if (strcmp(s.label, "Accent Color") == 0) {
                 int curIdx = 0;
