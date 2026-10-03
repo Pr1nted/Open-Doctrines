@@ -14813,11 +14813,29 @@ void AISystem::warLifeCensus() {
     static const bool on = OD_ENV("OD_WARLIFE") &&
                            atoi(OD_ENV("OD_WARLIFE")) != 0;
     if (!on) return;
+    // ── SEAT-SCOPED, BECAUSE THE WORLD-WIDE FIGURE ANSWERED THE WRONG
+    //    QUESTION (journal 455) ──
+    //
+    // Journal 448 reported 114 wars, 0 stalemates and a median of 8 provinces
+    // moved, then concluded that France growing eight provinces a war is what
+    // its 27.6% of the world looks like. Those counts are across 53 countries;
+    // the conclusion was about one. OD_WARLIFE_CID=<cid> restricts the census
+    // to wars that country is party to, and with it unset the bench seat is
+    // used when there is one -- so the default answers the question the bench
+    // is asking. Set it to 0 for the old world-wide behaviour.
+    static const int seatOnly = OD_ENV("OD_WARLIFE_CID")
+                              ? atoi(OD_ENV("OD_WARLIFE_CID")) : -1;
+    int only = seatOnly;
+    if (only < 0) {
+        only = m_g->m_benchSeatIso.empty() ? 0 : m_g->cidForIso(m_g->m_benchSeatIso);
+        if (only < 0) only = 0;
+    }
     std::set<std::pair<int,int>> now;
     for (const auto& [cid, enemies] : m_warWith) {
         if (cid <= 0 || cid >= Game::REBEL_CID_MIN) continue;
         for (int e : enemies) {
             if (e <= 0 || e >= Game::REBEL_CID_MIN) continue;
+            if (only > 0 && cid != only && e != only) continue;
             now.insert({std::min(cid, e), std::max(cid, e)});
         }
     }

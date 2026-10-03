@@ -34008,3 +34008,72 @@ NOT FIXED HERE, because the options are a design choice and this is one iteratio
 My recommendation is (a), with (c) documented as the interim. Item 141.
 
 PATHS TOUCHED: tests/advisor_test.cpp (size guard, prints the number), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.
+
+## 455 — scope the war census to the seat, and check journal 448's arithmetic
+
+PRE-REGISTERED. Journal 448 measured what a war achieves and drew a conclusion from it:
+
+    "one slot, mean 36.6 turns a war, 400 turns -- about ten sequential wars, each taking a median 8 provinces.
+     That IS what 27.6% of the world looks like."
+
+**Those numbers are WORLD-WIDE across 53 countries, and the conclusion is about FRANCE.** Journal 448 said so in its
+own limits section and the loose end was never closed. The arithmetic does not survive a glance: France ends holding
+27.6% of 1,247 provinces, about 344, and ten wars at a median 8 provinces is 80. So either France starts with ~264
+provinces -- it does not, a 1914 France is a few dozen with colonies -- or **France's wars are nothing like the world
+median**, and journal 448's "that IS what 27.6% looks like" is arithmetic laid over the wrong distribution.
+
+THE CHANGE: `OD_WARLIFE_CID=<cid>`, or the bench seat when unset, scopes the census to wars that country is party to.
+Same counters, same caveats, one filter. In AISystem only, so the resolver -- still held by the peer -- is not needed.
+
+PREDICTION, committed: **France's wars are much more productive than the world median.** I expect a median well
+above 8, plausibly 20-40, because the world-wide figure is dominated by the many small countries whose wars move one
+or two provinces and whose eliminations (88 of 114) are exactly those small countries dying. If so journal 448's
+closing arithmetic is WRONG and its conclusion -- that France grows at the rate one war slot allows and is not
+hitting a wall -- loses its support, because the support was a median that does not describe France.
+
+What would hold 448 up: a France median near 8 with ~10 wars, which would mean it really does grow eight provinces at
+a time and the ceiling is the slot.
+
+**EITHER WAY 448'S CONCLUSION NEEDS RE-STATING, AND THAT IS THE POINT.** I wrote a confident sentence about the growth
+ceiling from a statistic that was not about the seat. [[aggregate-vs-seat-measurement]] is the memory for exactly this
+and I had already cited it in 448's own limits -- then built the conclusion on the aggregate anyway.
+
+RESULT. Inert unset -- hash still 14336312219319526770/109360.
+
+                        France's own wars      world-wide (journal 448)
+  wars started/ended         14 / 13               127 / 114
+  mean length              24.3 turns              36.6 turns
+  provinces moved, median        19                        8
+                    mean      30.85                    15.78
+                     max          79                       86
+  stalemates                 0 of 13                 0 of 114
+  eliminations                     9                       88
+  MEAN CONCURRENT               0.84                    16.85
+
+**PREDICTION CONFIRMED AND JOURNAL 448'S ARITHMETIC IS WRONG.** I predicted France's median "well above 8, plausibly
+20-40": it is 19, with a mean of 30.85. Journal 448 wrote "about ten sequential wars, each taking a median 8
+provinces. That IS what 27.6% of the world looks like." Both numbers are wrong for the seat -- 14 wars, not ten;
+median 19, not 8 -- and the sentence was arithmetic laid over a distribution dominated by the small countries whose
+wars move one province and which supply 88 of the 114 eliminations.
+
+**THE NUMBER I SHOULD HAVE LOOKED AT IS MEAN CONCURRENT: 0.84.** France has a war open on 84% of turns. That is the
+growth ceiling stated properly, and it is a much tighter statement than 448 managed:
+
+  - More wars is nearly exhausted as a channel. There is 16% of slot-time left, not a queue of unfought wars. The
+    87.2% of declare-war mask calls that exit at the cap (journal 447) are not a backlog -- they are the same war
+    being re-offered every turn while it runs.
+  - So growth has to come from wars being SHORTER or MORE PRODUCTIVE, not more numerous. Journal 450 tried shorter
+    and the duration effect did not replicate (journal 451). Nobody has tried more productive.
+  - And journal 447's result now reads differently: lifting the war cap to 2 cost 101.9 rung points not because two
+    wars are unaffordable in the abstract, but because France is ALREADY at war 84% of the time with one army. The
+    second slot had nothing spare to fill it with.
+
+SO 448'S CONCLUSION SURVIVES AND ITS REASONING DOES NOT. "France is not hitting a wall, it grows at the rate one war
+slot allows" is right; "ten wars at eight provinces is what that looks like" is not, and the honest version is "the
+slot is full 84% of the time". I cited [[aggregate-vs-seat-measurement]] in 448's own limits section and then built
+the conclusion on the aggregate anyway, which is worse than not knowing the memory.
+
+VERDICT: **instrument KEPT and now seat-scoped by default** (OD_WARLIFE_CID=0 restores world-wide). No behaviour
+change; hash proved unchanged. Item 105's figures corrected, item 142 filed for the one channel left.
+
+PATHS TOUCHED: src/ai/AISystem.cpp (census scope only), docs/ai/LOOP_JOURNAL.md, docs/ai/BACKLOG.md.

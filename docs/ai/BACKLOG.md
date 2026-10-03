@@ -1106,7 +1106,8 @@ opponent is not a league.
    (Ran as it367-rusher8-s2, stored.)
 
 105. ~~**Separate "the winner wins faster" from "the loser is annexed."**~~ **DONE
-   journal 448, and the answer is BOTH, emphatically.** OD_WARLIFE now records each
+   journal 448 (figures CORRECTED by journal 455: those were world-wide; France's own
+   wars are median 19 provinces, 24.3 turns, slot 84% full -- see item 142).** OD_WARLIFE now records each
    belligerent's provinces at a war's open and the net change at its close. 1914:FRA, 400
    turns: 114 wars ended, **0 stalemates**, median 8 provinces moved, **88 eliminations**.
    Wars are decisive and the war slot is not wasted -- which refutes the standing guess
@@ -1320,6 +1321,19 @@ opponent is not a league.
    says pair it with growth or expect to pay on the rung seats.~~ **BUILT AND SCREENED,
    journal 415: OD_RECRUIT_RESERVE=K, inert when unset, and it works on the seat it was
    built for.** Successor: 115.
+
+142. **THE WAR SLOT IS 84% FULL -- "more wars" is not the growth channel.** Journal
+   455 scoped OD_WARLIFE to the seat and corrected journal 448's figures, which were
+   world-wide: **France's own wars are 13 ended, mean length 24.3 turns, median 19
+   provinces moved (not 8), mean concurrent 0.84.** So 84% of turns have a war open and
+   only 16% of slot-time is spare -- journal 447's 87.2% of declare-war calls exiting at
+   the cap is the SAME war being re-offered, not a backlog of unfought ones. That also
+   explains why lifting the cap to 2 cost 101.9 points: France was already at war 84% of
+   the time with one army, so the second slot had nothing to fill it.
+   **The only channel left is wars being MORE PRODUCTIVE per turn.** Shorter was tried
+   (items 139/140, duration effect did not replicate). More productive has not been.
+   Anyone taking it should pre-register on provinces-moved-per-war-turn from the
+   seat-scoped census, not on the rating, which has resolved nothing in nine iterations.
 
 141. **THE ADVISOR'S PROMPT IS TRUNCATED IN PLAY -- ~1,000 tokens off the front on
    the tools path.** Journal 454. Measured payload: system 1,658 + tools 982 + briefing
