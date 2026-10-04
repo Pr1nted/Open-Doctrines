@@ -21,13 +21,19 @@ repository records them.
 | Store item id | 1345390 — NOT the appid; see below |
 | Packages | 1843321 dev comp, 1843322 beta, 1843323 + 1843324 retail |
 | Store admin | `/admin/game/edit/1345390` · Steamworks admin `/apps/view/5334460` |
-| App created | **26 Sep 2026** — the 30-day wall runs from here, so **26 Oct** at the earliest |
+| App created | **26 Sep 2026** — see the wall below |
 | `STEAM_APPID` / `STEAM_USERNAME` | set |
 | Builder account | `od_builder`, isolated HOME |
 | `STEAM_CONFIG_VDF` | set; `check-steam.yml` green 26 Sep 2026 |
 | Depots | not verified; do not assume appid+1 / appid+2 |
 | Store page | not built |
 | Trailer | **missing.** See section 4 |
+
+**The wall is 21 days, not 30.** The app's landing page states it: at least
+21 days from the purchase of the first app credit, and the earliest release
+date is two weeks after the store page goes up as "coming soon". So the page
+being public is the longer pole, not the credit. This file said 30 days,
+which no page in Steamworks says.
 
 **The number the app-creation dialog prints is not the appid.** It says
 "Created store item '1345390'", and that is the STORE ITEM. The appid is
