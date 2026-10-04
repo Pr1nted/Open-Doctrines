@@ -140,6 +140,86 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# --- 32-bit and non-x86 targets ---
+#
+# Set here, ahead of every FetchContent dependency, so the game and everything
+# it links are compiled the same way.
+#
+# 32-BIT WINDOWS GETS ITS WHOLE ADDRESS SPACE. A 32-bit process is capped at
+# 2 GB unless it says it can use addresses above that; with the flag, 64-bit
+# Windows gives it 4 GB. Measured on the 32-bit build: loading the full modern
+# map (1,642 provinces) peaks at 278 MB of address space, 97 MB resident -- so
+# this is headroom for the renderer's textures and a long session, not a fix
+# for a known shortfall. Safe because nothing in the source does signed
+# arithmetic on pointers (audited for this port).
+if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    add_link_options(/LARGEADDRESSAWARE)
+endif()
+
+# 32-BIT LINUX GETS 64-BIT FILE OFFSETS, the standard flag every 32-bit build
+# carries, so a save, model or archive past 2 GB is a size and not an error.
+# NOT _TIME_BITS=64: that changes time_t's ABI against the system libraries,
+# and Ubuntu's 32-bit Arm and x86 releases disagree on it. The one place a
+# 32-bit time_t mattered (announcement dates after 2038) is handled in code.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    add_compile_definitions(_FILE_OFFSET_BITS=64)
+endif()
+
+# 32-BIT x86 DOES ITS FLOATING POINT IN SSE2, LIKE EVERY OTHER BUILD. GCC's
+# default for i686 is the x87 FPU, which keeps intermediates at 80 bits: a value
+# held in a register and the same value stored to a float differ in the last
+# bits, so the same calculation can give two answers depending on where the
+# compiler spilled it. Measured, not theorised: NationalisationTest's
+# `outputMul(5.0f) == outputMul(1.0f)` -- two calls to one clamped function --
+# failed on the i686 build and nowhere else. It also means a 32-bit x86 Linux
+# copy would compute the simulation slightly differently from x64. SSE2 makes
+# float and double round exactly as on x64; MSVC's 32-bit default has been SSE2
+# since 2012, so only GCC and Clang need telling. Every x86 CPU since 2003 has it.
+#
+# NOT EMSCRIPTEN: wasm32 also has 4-byte pointers, and Emscripten's toolchain
+# reports CMAKE_SYSTEM_PROCESSOR as "x86" for historical reasons -- so without
+# this the web build was handed -msse2, which em++ refuses without -msimd128.
+if(NOT MSVC AND NOT EMSCRIPTEN AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|x86_64|amd64|AMD64)$")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-msse2> $<$<COMPILE_LANGUAGE:C,CXX>:-mfpmath=sse>)
+endif()
+
+# NO EXECUTABLE STACK FROM HAND-WRITTEN ASSEMBLY. GNU ld marks the whole
+# program's stack executable if any object lacks a .note.GNU-stack section, and
+# WAMR's invokeNative_ia32.s (and the Arm and RISC-V ones) carry none -- the
+# 32-bit build linked with "missing .note.GNU-stack section implies executable
+# stack". An executable stack is a hardening loss, and SELinux or a hardened
+# kernel can refuse to start such a binary at all. The assembler flag adds the
+# note to every .s it builds. Apple's assembler has no such flag and no such
+# problem; MSVC does not use GNU sections.
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|BSD|DragonFly" AND NOT EMSCRIPTEN)
+    add_compile_options($<$<COMPILE_LANGUAGE:ASM>:-Wa,--noexecstack>)
+endif()
+
+# SOME TARGETS NEED libatomic FOR std::atomic. x86 and AArch64 do every size
+# inline; riscv64 with GCC 12 or older does not for 1- and 2-byte operations
+# (std::atomic<bool>), and the link fails with undefined __atomic_* symbols
+# that do not mention atomics. Probe instead of guessing by architecture.
+include(CheckCXXSourceCompiles)
+set(od_atomic_probe "
+#include <atomic>
+#include <cstdint>
+std::atomic<bool> b; std::atomic<std::uint8_t> c; std::atomic<std::int64_t> i;
+int main() { b.exchange(true); c.fetch_add(1); return (int)i.fetch_add(1); }")
+check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+if(NOT OD_ATOMIC_INLINE)
+    set(CMAKE_REQUIRED_LIBRARIES atomic)
+    check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_WITH_LIB)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    if(OD_ATOMIC_WITH_LIB)
+        link_libraries(atomic)
+        message(STATUS "std::atomic needs libatomic on this target -- linking it")
+    else()
+        message(FATAL_ERROR "std::atomic does not link on this target, with or "
+                            "without libatomic. Install the toolchain's libatomic.")
+    endif()
+endif()
+
 # --- Raylib: try system first, fall back to FetchContent ---
 #
 # ...except when cross-compiling, where a system copy is the wrong answer. A
@@ -402,7 +482,19 @@ else()
         set(ODSEAL_PLATFORM "macos-universal")
         set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(MSVC)
-        set(ODSEAL_PLATFORM "windows-x86_64")
+        # By the COMPILER's architecture, not the machine's. This was a fixed
+        # "windows-x86_64", so a 32-bit (-A Win32) or Arm (-A ARM64) build linked
+        # the x64 archive and failed at link with unresolved od_* symbols that
+        # said nothing about architecture. MSVC reports x64 / X86 / ARM64 here
+        # under both the Visual Studio generator and Ninja-with-vcvars.
+        string(TOUPPER "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}" ODSEAL_MSVC_ARCH)
+        if(ODSEAL_MSVC_ARCH STREQUAL "ARM64")
+            set(ODSEAL_PLATFORM "windows-arm64")
+        elseif(ODSEAL_MSVC_ARCH STREQUAL "X86" OR CMAKE_SIZEOF_VOID_P EQUAL 4)
+            set(ODSEAL_PLATFORM "windows-x86")
+        else()
+            set(ODSEAL_PLATFORM "windows-x86_64")
+        endif()
         set(ODSEAL_LIBNAME  "odseal.lib")
     elseif(UNIX)
         # The OS name, not a hardcoded "linux-". FreeBSD and OpenBSD reach
@@ -411,7 +503,21 @@ else()
         # could not have linked it if it were there -- a confusing way to fail,
         # because the path named a platform the build was not running on.
         string(TOLOWER "${CMAKE_SYSTEM_NAME}" ODSEAL_OS)
-        set(ODSEAL_PLATFORM "${ODSEAL_OS}-${CMAKE_SYSTEM_PROCESSOR}")
+        set(ODSEAL_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+        # A 32-BIT BUILD ON A 64-BIT KERNEL. CMAKE_SYSTEM_PROCESSOR follows
+        # `uname -m`, which names the KERNEL: `gcc -m32` on an x86_64 host says
+        # x86_64, and Raspberry Pi OS's 32-bit userland on its 64-bit kernel says
+        # aarch64. Both would pick a 64-bit archive a 32-bit link cannot use. The
+        # pointer size is the compiler's own answer, so it decides; the names are
+        # the ones a native 32-bit `uname -m` gives (i686, armv7l).
+        if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+            if(ODSEAL_ARCH MATCHES "^(x86_64|amd64|i[3-6]86|x86)$")
+                set(ODSEAL_ARCH "i686")
+            elseif(ODSEAL_ARCH MATCHES "^(aarch64|arm64|armv[78].*|armhf|arm)$")
+                set(ODSEAL_ARCH "armv7l")
+            endif()
+        endif()
+        set(ODSEAL_PLATFORM "${ODSEAL_OS}-${ODSEAL_ARCH}")
         set(ODSEAL_LIBNAME  "libodseal.a")
     else()
         set(ODSEAL_PLATFORM "unknown")
@@ -552,51 +658,74 @@ if(OD_ENABLE_MODS)
             # a universal build of it is not something this project produces, so
             # the first entry is the one that decides.
             list(GET CMAKE_OSX_ARCHITECTURES 0 od_wamr_arch)
+        elseif(MSVC AND CMAKE_CXX_COMPILER_ARCHITECTURE_ID)
+            # The compiler's own target: x64, X86 or ARM64. Right under the
+            # Visual Studio generator AND under Ninja with vcvars -- where there is
+            # no -A, CMAKE_SYSTEM_PROCESSOR names the HOST (AMD64), and a 32-bit
+            # build was told X86_64.
+            set(od_wamr_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
         elseif(CMAKE_GENERATOR_PLATFORM)
             # Visual Studio generators: -A x64 / -A ARM64 / -A Win32.
             set(od_wamr_arch "${CMAKE_GENERATOR_PLATFORM}")
         endif()
 
+        # BY POINTER SIZE FIRST. CMAKE_SYSTEM_PROCESSOR follows `uname -m`, the
+        # KERNEL: gcc -m32 on x86_64 says x86_64, and a 32-bit Arm userland on a
+        # 64-bit kernel (Raspberry Pi OS) says aarch64 -- and each picked a
+        # 64-bit invokeNative a 32-bit build cannot link. The same correction the
+        # odseal block makes. Before it, 32-bit Arm matched nothing and became
+        # X86_32, so WAMR assembled the x86 trampoline for an Arm compiler, and
+        # riscv64 fell through to X86_64.
+        #
         # x64 and Win32 are spellings only the Visual Studio generators use, so
         # they have to be matched here or -A x64 falls through to the default and
         # the whole exercise silently does nothing.
-        if(od_wamr_arch MATCHES "arm64|aarch64|ARM64")
+        if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+            if(od_wamr_arch MATCHES "^([Aa][Rr][Mm]|aarch64)")
+                # armhf: hard-float VFP calling convention -> invokeNative_arm_vfp.s
+                set(WAMR_BUILD_TARGET "ARMV7_VFP")
+            else()
+                set(WAMR_BUILD_TARGET "X86_32")
+            endif()
+        elseif(od_wamr_arch MATCHES "arm64|aarch64|ARM64")
             set(WAMR_BUILD_TARGET "AARCH64")
+        elseif(od_wamr_arch MATCHES "^riscv64")
+            # lp64d: the double-float ABI every riscv64 Linux distribution uses.
+            set(WAMR_BUILD_TARGET "RISCV64_LP64D")
         elseif(od_wamr_arch MATCHES "x86_64|AMD64|amd64|x64|X64")
             set(WAMR_BUILD_TARGET "X86_64")
-        elseif(od_wamr_arch MATCHES "Win32|win32|X86|x86|i386|i686")
-            set(WAMR_BUILD_TARGET "X86_32")
-        elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-            set(WAMR_BUILD_TARGET "X86_32")
         else()
             set(WAMR_BUILD_TARGET "X86_64")
         endif()
         message(STATUS "WAMR target architecture: ${WAMR_BUILD_TARGET} (from ${od_wamr_arch})")
 
-        # MSVC cannot build the mod runtime for ARM64, and there is no way around
-        # it here: WAMR ships invokeNative -- the assembly trampoline the
-        # interpreter calls host functions through -- as GAS syntax for AArch64
-        # (invokeNative_aarch64.s) and as MASM only for x64 and ia32. armasm64
-        # cannot assemble GAS, so the symbol is simply never defined.
+        # THE ARM TRAMPOLINE NEEDS ITS FPU NAMED. invokeNative_arm_vfp.s loads
+        # float arguments with vldr, and whether gcc tells the assembler there
+        # is a VFP unit depends on how that gcc was configured: Debian 12's
+        # arm-linux-gnueabihf-gcc 12 does, Ubuntu 22.04's gcc 11 (the CI cross
+        # compiler) does not, and the build stopped at "selected processor does
+        # not support `vldr s0,[r4,#0]' in ARM mode". vfpv3-d16 is the armhf ABI
+        # baseline, which is what the C code is compiled for anyway.
+        if(WAMR_BUILD_TARGET STREQUAL "ARMV7_VFP" AND NOT MSVC)
+            add_compile_options($<$<COMPILE_LANGUAGE:ASM>:-mfpu=vfpv3-d16>)
+        endif()
+
+        # MSVC ON ARM64 GETS ITS OWN invokeNative. WAMR ships the trampoline the
+        # interpreter calls host functions through as GAS syntax for AArch64
+        # (invokeNative_aarch64.s) and as MASM only for x64 and ia32, and
+        # armasm64 cannot read GAS -- so the symbol was never defined and the
+        # link failed twenty minutes in. This configure used to stop here.
         #
-        # Left alone, that costs a full twenty-minute build and then reports
-        # "unresolved external symbol invokeNative", which mentions neither the
-        # architecture, nor the file, nor the fact that this combination has
-        # never been buildable. Both ways out are real, so name them.
+        # src/mods/invokeNative_arm64_msvc.asm is the same routine translated to
+        # armasm64 syntax (Windows on Arm64 uses AAPCS64 for ordinary calls). It
+        # is assembled and added to vmlib below, once vmlib exists. WAMR still
+        # lists its .s file, but under MSVC .s has no enabled language, so CMake
+        # drops it and there is exactly one invokeNative.
+        set(od_wamr_msvc_arm64 OFF)
         if(MSVC AND WAMR_BUILD_TARGET STREQUAL "AARCH64")
-            message(FATAL_ERROR
-                "The Gearbox mod runtime cannot be built with MSVC for ARM64.\n"
-                "  WAMR provides invokeNative as MASM for x64 and ia32 only; the\n"
-                "  AArch64 version is GAS assembly, which armasm64 cannot build.\n"
-                "  This fails at LINK, not here, so it is stopped here instead.\n"
-                "\n"
-                "  Build the architecture you ship, which does work:\n"
-                "      cmake -S . -B build-x64 -A x64\n"
-                "  On an ARM64 Windows machine the x64 test binaries then run\n"
-                "  under emulation, which is how this gets qualified in a VM.\n"
-                "\n"
-                "  Or, if you only want the game and not the mod system:\n"
-                "      cmake -S . -B build -DOD_ENABLE_MODS=OFF")
+            set(od_wamr_msvc_arm64 ON)
+            message(STATUS "WAMR: MSVC Arm64 -- invokeNative from "
+                           "src/mods/invokeNative_arm64_msvc.asm (armasm64)")
         endif()
 
         # WAMR picks its platform layer the same way it picked its architecture:
@@ -674,8 +803,55 @@ if(OD_ENABLE_MODS)
             EXCLUDE_FROM_ALL          # keep WAMR's install() rules out of ours
             PATCH_COMMAND ${CMAKE_COMMAND} -DWAMR_SRC=<SOURCE_DIR>
                           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wamr_fast_interp_metering.cmake
+                  # Windows on Arm64 gets AAPCS64 argument packing, not the x64
+                  # rules WAMR applies to every _WIN32. See the script.
+                  COMMAND ${CMAKE_COMMAND} -DWAMR_SRC=<SOURCE_DIR>
+                          -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wamr_windows_arm64_abi.cmake
         )
         FetchContent_MakeAvailable(wamr)
+
+        # The MSVC Arm64 trampoline (see od_wamr_msvc_arm64 above). Assembled by
+        # armasm64 directly, through a custom command rather than the ASM_MARMASM
+        # language, which needs CMake 3.26 -- this project asks for 3.20. armasm64
+        # sits beside cl.exe in every Arm64-targeting MSVC toolset.
+        if(od_wamr_msvc_arm64 AND TARGET vmlib)
+            get_filename_component(od_cl_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            find_program(OD_ARMASM64 armasm64 HINTS "${od_cl_dir}" NO_DEFAULT_PATH)
+            if(NOT OD_ARMASM64)
+                find_program(OD_ARMASM64 armasm64)
+            endif()
+            if(NOT OD_ARMASM64)
+                message(FATAL_ERROR
+                    "MSVC Arm64 build of the mod runtime needs armasm64.exe, and it "
+                    "is not beside ${CMAKE_CXX_COMPILER} or on PATH. Install the "
+                    "\"MSVC ARM64 build tools\" component, or configure with "
+                    "-DOD_ENABLE_MODS=OFF for a build without the mod system.")
+            endif()
+            set(od_inv_src "${CMAKE_CURRENT_SOURCE_DIR}/src/mods/invokeNative_arm64_msvc.asm")
+            set(od_inv_obj "${CMAKE_CURRENT_BINARY_DIR}/invokeNative_arm64_msvc.obj")
+            add_custom_command(
+                OUTPUT  "${od_inv_obj}"
+                COMMAND "${OD_ARMASM64}" -nologo -o "${od_inv_obj}" "${od_inv_src}"
+                DEPENDS "${od_inv_src}"
+                COMMENT "armasm64 invokeNative_arm64_msvc.asm"
+                VERBATIM)
+            set_source_files_properties("${od_inv_obj}" PROPERTIES
+                EXTERNAL_OBJECT TRUE GENERATED TRUE)
+            # A library of its own, in THIS directory. A custom command's output
+            # only has a build rule for targets in the directory that declared
+            # it, and vmlib lives in WAMR's -- adding the object to vmlib directly
+            # would name a file nothing knows how to make. vmlib then carries it
+            # on its interface, so everything that links the runtime links this.
+            add_library(od_invokenative_arm64 STATIC "${od_inv_obj}")
+            set_target_properties(od_invokenative_arm64 PROPERTIES LINKER_LANGUAGE C)
+            # BUILD_INTERFACE because WAMR's own CMakeLists puts vmlib in an
+            # install(EXPORT "iwasmTargets") set, and a plain interface link made
+            # generation fail: "vmlib ... requires target od_invokenative_arm64
+            # that is not in any export set". This project never installs WAMR;
+            # the wrapper keeps the link for the build and out of the export.
+            target_link_libraries(vmlib INTERFACE $<BUILD_INTERFACE:od_invokenative_arm64>)
+            message(STATUS "WAMR: armasm64 = ${OD_ARMASM64}")
+        endif()
 
         # WAMR's own CMakeLists ends vmlib's link line with
         #     target_link_libraries(vmlib PUBLIC ... -lm -ldl ...)
@@ -2532,10 +2708,18 @@ add_executable(NetAccountTest EXCLUDE_FROM_ALL
     src/net/ServerBook.cpp
     src/net/TurnStore.cpp
     src/net/TurnStoreRunner.cpp
+    # AccountClient puts its status messages through T() (cca1a1f), so this
+    # target needs the translation table, as ModManagerTest and LocaleTest do.
+    # Without it the link fails on od::i18n::tr and the suite never runs.
+    src/i18n/Locale.cpp
+    src/i18n/Normalize.cpp
+    src/i18n/Arabic.cpp
 )
 target_include_directories(NetAccountTest PRIVATE src tests)
 find_package(Threads REQUIRED)
-target_link_libraries(NetAccountTest Threads::Threads)
+# odseal because src/i18n/Normalize.cpp includes it -- the same reason
+# LocaleTest links it.
+target_link_libraries(NetAccountTest Threads::Threads odseal)
 
 # --- multiplayer wire format ---
 # Pure bytes in, bytes out: no raylib, no game headers, no sockets. This is the
@@ -3312,6 +3496,15 @@ elseif(WIN32)
         "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\OpenDoctrines.lnk' '$INSTDIR\\\\OpenDoctrines.exe'")
     set(CPACK_NSIS_DELETE_ICONS_EXTRA
         "Delete '$SMPROGRAMS\\\\$START_MENU\\\\OpenDoctrines.lnk'")
+    # The installer's name says its architecture. CPack names it by POINTER SIZE
+    # -- win32 or win64 -- so an Arm64 installer would be called ...-win64.exe,
+    # the same file name as the x64 one, and the two would collide as release
+    # assets. x64 keeps win64 (tools/windows_installer_test.sh looks for it);
+    # x86 is already win32.
+    string(TOUPPER "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}" OD_CPACK_ARCH)
+    if(OD_CPACK_ARCH STREQUAL "ARM64")
+        set(CPACK_SYSTEM_NAME "win-arm64")
+    endif()
 else()
     set(CPACK_GENERATOR "TGZ")
 endif()

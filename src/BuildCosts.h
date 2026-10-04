@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>   // uint8_t for TroopType -- GCC 13 no longer brings it in transitively
 #include <string>
 
 /**

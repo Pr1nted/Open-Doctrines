@@ -110,6 +110,12 @@ Item::TimeStyle timeStyleFromName(const std::string& name) {
 
 std::string formatLocal(long long unixSeconds) {
     if (unixSeconds <= 0) return {};
+    // A 32-bit time_t (32-bit Linux; MSVC's is 64-bit everywhere) ends in
+    // January 2038, and casting a later date to it wraps to 1901. localtime
+    // cannot place such a date in the player's timezone at all, so print
+    // nothing rather than a confident wrong one. The countdown is 64-bit maths
+    // and unaffected.
+    if (sizeof(std::time_t) < 8 && unixSeconds > 0x7FFFFFFFLL) return {};
     const std::time_t when = (std::time_t)unixSeconds;
     std::tm tmv{};
 #ifdef _WIN32

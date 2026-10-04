@@ -76,11 +76,51 @@ jobs:
             os: ubuntu-22.04-arm
             artifact: OpenDoctrines-linux-arm64
 
+          # ── MORE ARCHITECTURES, SO NOBODY HAS TO COMPILE ──
+          #
+          # 32-bit Windows: the x64 runner's own MSVC with the Win32 platform.
+          # It runs there natively (WoW64), so the installer test below runs it.
+          - name: windows-x86
+            os: windows-2022
+            artifact: OpenDoctrines-windows-x86
+            cmake_args: -A Win32
+          # Arm Windows (Snapdragon laptops): a native Arm runner, native MSVC.
+          # The mod runtime's trampoline is src/mods/invokeNative_arm64_msvc.asm.
+          - name: windows-arm64
+            os: windows-11-arm
+            artifact: OpenDoctrines-windows-arm64
+            cmake_args: -A ARM64
+          # 32-bit x86, 32-bit Arm (Raspberry Pi on a 32-bit OS) and RISC-V
+          # Linux. CROSS-compiled on an x86-64 runner against Ubuntu's own
+          # multiarch libraries -- 22.04 for x86 and armv7, the same glibc the
+          # x64 and arm64 builds use; 24.04 for riscv64, because 22.04's riscv64
+          # port is missing an update the multiarch install needs (see
+          # tools/ci_cross_deps.sh), and riscv64 boards ship newer distributions
+          # anyway. The toolchain files in tools/cmake/ say how.
+          - name: linux-x86
+            os: ubuntu-22.04
+            artifact: OpenDoctrines-linux-x86
+            triplet: i686-linux-gnu
+            deb_arch: i386
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-i686.cmake
+          - name: linux-armv7
+            os: ubuntu-22.04
+            artifact: OpenDoctrines-linux-armv7
+            triplet: arm-linux-gnueabihf
+            deb_arch: armhf
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake
+          - name: linux-riscv64
+            os: ubuntu-24.04
+            artifact: OpenDoctrines-linux-riscv64
+            triplet: riscv64-linux-gnu
+            deb_arch: riscv64
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-riscv64.cmake
+
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !matrix.deb_arch
         run: |
           sudo apt-get update
           # raylib's X11 backend. Without these CMake configures and then fails
@@ -88,6 +128,14 @@ jobs:
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
             libxinerama-dev libwayland-dev libxkbcommon-dev
+
+      # The same libraries, for another architecture: multiarch -dev packages
+      # beside the host's, the cross gcc, and QEMU for anything built that the
+      # build runs. tools/ci_cross_deps.sh explains the apt details; test.yml
+      # uses the same script, so the two cannot drift.
+      - name: Install cross-compile dependencies (${{ matrix.deb_arch }})
+        if: runner.os == 'Linux' && matrix.deb_arch
+        run: bash tools/ci_cross_deps.sh "${{ matrix.deb_arch }}" "${{ matrix.triplet }}"
 
       - name: Configure
         # OD_ACCOUNT_ISSUER is what makes sign-in exist in a shipped copy.
@@ -124,7 +172,11 @@ jobs:
         # wrong for a release, which would then only be reproducible against
         # whatever that branch was on the day. Bump this to the tag a release is
         # meant to carry; see the option's own comment in CMakeLists.txt.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.5.2"
+        #
+        # matrix.cmake_args goes LAST, on the same line: -A Win32 / -A ARM64 for
+        # the other Windows architectures, the toolchain file for cross Linux,
+        # and nothing for the native builds.
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.5.2" ${{ matrix.cmake_args }}
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.

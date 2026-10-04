@@ -257,17 +257,67 @@ std::string GameUpdates::sha256Hex(const std::string& bytes) {
     return ::sha256Hex(bytes);
 }
 
+// ── THE ASSET THIS BUILD IS, BY OPERATING SYSTEM AND ARCHITECTURE ──
+//
+// This used to name the OS and assume the architecture: every Windows build
+// asked for windows-x64, and everything that was not Windows or macOS asked for
+// linux-x64. That was already wrong before 32-bit and Arm Windows existed -- a
+// Linux arm64 player who accepted an update had the x86-64 build installed over
+// a working game, and FreeBSD and OpenBSD fell into the same branch and would
+// have fetched a LINUX binary.
+//
+// Each name here must equal a release artifact's basename exactly (parseRelease
+// matches `<key>.zip`). A platform with no artifact gets a key that can match
+// nothing, so beginUpdate() reports "no download for ..." instead of installing
+// the nearest-looking file -- the safe failure the updater already has.
 std::string GameUpdates::platformKey() {
 #if defined(_WIN32)
+  #if defined(_M_ARM64) || defined(__aarch64__)
+    return "OpenDoctrines-windows-arm64";
+  #elif defined(_M_X64) || defined(__x86_64__)
     return "OpenDoctrines-windows-x64";
+  #elif defined(_M_IX86) || defined(__i386__)
+    return "OpenDoctrines-windows-x86";
+  #else
+    return "OpenDoctrines-windows-unknown";
+  #endif
 #elif defined(__APPLE__)
   #if defined(__aarch64__)
     return "OpenDoctrines-macos-arm64";
   #else
     return "OpenDoctrines-macos-x64";
   #endif
-#else
+#elif defined(__ANDROID__)
+    // An APK is replaced by reinstalling it, never by unpacking a zip over it.
+    return "OpenDoctrines-android-none";
+#elif defined(__linux__)
+  #if defined(__x86_64__)
     return "OpenDoctrines-linux-x64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-linux-arm64";
+  #elif defined(__i386__)
+    return "OpenDoctrines-linux-x86";
+  #elif defined(__arm__)
+    return "OpenDoctrines-linux-armv7";
+  #elif defined(__riscv) && __riscv_xlen == 64
+    return "OpenDoctrines-linux-riscv64";
+  #else
+    return "OpenDoctrines-linux-unknown";
+  #endif
+#elif defined(__FreeBSD__)
+  #if defined(__x86_64__)
+    return "OpenDoctrines-freebsd-amd64";
+  #else
+    return "OpenDoctrines-freebsd-unknown";
+  #endif
+#elif defined(__OpenBSD__)
+  #if defined(__x86_64__)
+    return "OpenDoctrines-openbsd-amd64";
+  #else
+    return "OpenDoctrines-openbsd-unknown";
+  #endif
+#else
+    return "OpenDoctrines-unknown";
 #endif
 }
 

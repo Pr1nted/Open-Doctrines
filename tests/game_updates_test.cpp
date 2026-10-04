@@ -29,6 +29,7 @@
   #define OD_POPEN  popen
   #define OD_PCLOSE pclose
 #endif
+#include <algorithm>   // std::sort -- GCC 12's libstdc++ no longer brings it in transitively
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>

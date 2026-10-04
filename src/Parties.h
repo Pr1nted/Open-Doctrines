@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>   // uint32_t -- GCC 13 no longer brings it in transitively
 #include <string>
 #include <vector>
 

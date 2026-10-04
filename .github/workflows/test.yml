@@ -361,6 +361,103 @@ jobs:
           path: reader-out/*
           if-no-files-found: error
 
+  # ── THE OTHER ARCHITECTURES ──
+  #
+  # 32-bit and Arm Windows, and 32-bit x86, 32-bit Arm and RISC-V Linux are
+  # released, and the confirm gate before a release is a person playing each
+  # download -- which nobody can do for armv7 or riscv64 without the board.
+  # So this is their real check: the game builds and links for the target, and
+  # the whole suite passes there. That covers what changes with the CPU: saves
+  # and the network protocol byte for byte, the AI model's weights, and the mod
+  # runtime's invokeNative trampoline, which is hand-written assembly per
+  # architecture (and, for MSVC Arm64, ours -- src/mods/invokeNative_arm64_msvc.asm).
+  #
+  # Not qualify.sh: that also plays a real game through software OpenGL, which
+  # under QEMU is hours, and would need a Mesa per architecture. The native
+  # x64/arm64 qualify jobs above are where playing is proven.
+  #
+  # Windows runs natively (x86 under WoW64 on the x64 runner; Arm64 on an Arm
+  # runner). Linux is cross-compiled on x86-64 and the tests run under QEMU
+  # user mode via binfmt -- natively, for i686. Both need the platform's odseal
+  # prebuilt in third_party/odseal (see docs/odseal.md); without it configure
+  # stops and says so, which is the right failure.
+  other-arch:
+    name: ${{ matrix.name }} (build + suite)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x86,   os: windows-2022,   msvc_arch: amd64_x86, expect: i686 }
+          - { name: windows-arm64, os: windows-11-arm, msvc_arch: arm64,     expect: aarch64 }
+          - { name: linux-x86,     os: ubuntu-22.04, deb_arch: i386,    triplet: i686-linux-gnu,      toolchain: linux-i686,    expect: i686 }
+          - { name: linux-armv7,   os: ubuntu-22.04, deb_arch: armhf,   triplet: arm-linux-gnueabihf, toolchain: linux-armv7,   expect: armv7 }
+          - { name: linux-riscv64, os: ubuntu-24.04, deb_arch: riscv64, triplet: riscv64-linux-gnu,   toolchain: linux-riscv64, expect: riscv64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: "22" }
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: python -m pip install --quiet Pillow numpy
+
+      - name: Cross toolchain (${{ matrix.deb_arch }})
+        if: runner.os == 'Linux'
+        run: bash tools/ci_cross_deps.sh "${{ matrix.deb_arch }}" "${{ matrix.triplet }}"
+
+      - name: MSVC environment (${{ matrix.msvc_arch }})
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      # Ninja on Windows, so the architecture is the MSVC environment's above
+      # rather than a -A flag, and the binaries land in build/ where the suite
+      # looks -- the same arrangement as the qualify job.
+      - name: Configure
+        shell: bash
+        run: |
+          set -e
+          args=(-S . -B build -DCMAKE_BUILD_TYPE=Release)
+          if [ "$RUNNER_OS" = Windows ]; then args+=(-G Ninja); fi
+          if [ -n "${{ matrix.toolchain }}" ]; then
+            args+=(-DCMAKE_TOOLCHAIN_FILE=tools/cmake/${{ matrix.toolchain }}.cmake)
+          fi
+          cmake "${args[@]}"
+
+      - name: Build the game
+        shell: bash
+        run: cmake --build build --config Release --target OpenDoctrines -j 4
+
+      # The binary is the architecture it claims, not the runner's. A cross
+      # build that quietly picked the host compiler would pass everything below.
+      - name: The game is built for ${{ matrix.name }}
+        shell: bash
+        run: |
+          set -e
+          exe=build/OpenDoctrines; [ -f build/OpenDoctrines.exe ] && exe=build/OpenDoctrines.exe
+          python3 - "$exe" "${{ matrix.expect }}" <<'EOF'
+          import sys
+          path, want = sys.argv[1], sys.argv[2]
+          pe = {0x014C: "i686", 0x8664: "x86_64", 0xAA64: "aarch64"}
+          elf = {3: "i686", 62: "x86_64", 40: "armv7", 183: "aarch64", 243: "riscv64"}
+          b = open(path, "rb").read(4096)
+          if b[:2] == b"MZ":
+              off = int.from_bytes(b[0x3C:0x40], "little")
+              got = pe.get(int.from_bytes(b[off + 4:off + 6], "little"))
+          elif b[:4] == b"\x7fELF":
+              got = elf.get(int.from_bytes(b[18:20], "little" if b[5] == 1 else "big"))
+          else:
+              got = None
+          print(f"{path}: {got} (want {want})")
+          sys.exit(0 if got == want else 1)
+          EOF
+
+      - name: The whole suite
+        shell: bash
+        run: tests/run_all.sh build
+
   # The web build is a platform too, and the one where "it compiled" is least
   # informative: it is the only target that links against different backends
   # (WsWeb rather than WsNative, PeerLinkWeb rather than PeerLinkNative), so it
