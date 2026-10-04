@@ -97,10 +97,29 @@ Cue sheet, mapped to the cut above:
 
 ## What this needs that does not exist yet
 
-1. **A 1920x960 timelapse.** The only one in the repo is 640x320 and four
-   seconds. `exportTimelapseHeadless()` exists and has no caller, so the
-   current route is the in-game history screen. Several shots above are
-   timelapse, including both held beats.
+1. ~~A 1920x960 timelapse.~~ **Done, and it was never missing.**
+   `--export-timelapse` has been in `main.cpp` all along -- at the repo root,
+   not under `src/`, which is why a search for callers of
+   `exportTimelapseHeadless()` came up empty and this document originally
+   called it a blocker. It is fully headless: no window, no display, no audio.
+
+   ```
+   build/OpenDoctrines.app/Contents/MacOS/OpenDoctrines \
+       --export-timelapse "data/saves/<a 120-turn bench save>.odsv" \
+       out.gif 1920x960 --no-watermark
+   ```
+
+   Takes about two minutes and writes 721 frames. `population` or `troops` as
+   a further argument renders those map modes instead. Then, because Steam and
+   YouTube want video rather than a 102 MB GIF:
+
+   ```
+   ffmpeg -i out.gif -vf "fps=30,scale=1920:960:flags=lanczos,format=yuv420p" \
+          -c:v libx264 -preset slow -crf 18 -movflags +faststart out.mp4
+   ```
+
+   102 MB becomes 6.6 MB at 58 seconds. `data/saves/` holds hundreds of
+   finished bench games to choose a collapse from.
 2. **Screen capture of real play** — panels, orders, a battle resolving. The
    timelapse cannot show the interface, and this is the part a player
    recognises. Has to be recorded by a person.
