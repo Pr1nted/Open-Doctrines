@@ -1,5 +1,7 @@
 # OpenDoctrines
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N2C128735I)
+
 **A free, source-available grand strategy game that runs in a browser.**
 
 It works the way Hearts of Iron IV and Victoria do: provinces with population
