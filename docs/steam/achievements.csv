@@ -1,0 +1,110 @@
+api_name,display_name,description,hidden,icon,icon_locked
+ACH_FIRST_STEPS,"Mr. President, Wake Up",Pick a country and take charge of it. Nobody asked if you were qualified.,0,achievements/ACH_FIRST_STEPS.png,achievements/ACH_FIRST_STEPS_locked.png
+ACH_END_TURN_1,It Builds Character,End your first turn. Everything that happens next is technically your fault.,0,achievements/ACH_END_TURN_1.png,achievements/ACH_END_TURN_1_locked.png
+ACH_END_TURN_100,"Five-Year Plan, Twenty Times Over",End 100 turns across all your games.,0,achievements/ACH_END_TURN_100.png,achievements/ACH_END_TURN_100_locked.png
+ACH_END_TURN_1000,Touch Grass? Never Heard of It,"End 1,000 turns. Your chair has a permanent impression of you now.",0,achievements/ACH_END_TURN_1000.png,achievements/ACH_END_TURN_1000_locked.png
+ACH_END_TURN_5000,Eternal Regime,"End 5,000 turns. Historians have stopped counting your terms in office.",0,achievements/ACH_END_TURN_5000.png,achievements/ACH_END_TURN_5000_locked.png
+ACH_LONG_REIGN,Term Limits Are a Suggestion,Reach turn 200 in a single world with the same country.,0,achievements/ACH_LONG_REIGN.png,achievements/ACH_LONG_REIGN_locked.png
+ACH_VERY_LONG_REIGN,President for Life (and Then Some),Reach turn 500 in a single world.,0,achievements/ACH_VERY_LONG_REIGN.png,achievements/ACH_VERY_LONG_REIGN_locked.png
+ACH_MANY_COUNTRIES,Serial Head of State,"Start games as 10 different countries. Commitment issues, diplomatically speaking.",0,achievements/ACH_MANY_COUNTRIES.png,achievements/ACH_MANY_COUNTRIES_locked.png
+ACH_MANY_COUNTRIES_50,Geography Teacher's Dream,Start games as 50 different countries.,0,achievements/ACH_MANY_COUNTRIES_50.png,achievements/ACH_MANY_COUNTRIES_50_locked.png
+ACH_TINY_NATION,Small but Extremely Loud,Start a game as a country with only one province.,0,achievements/ACH_TINY_NATION.png,achievements/ACH_TINY_NATION_locked.png
+ACH_HUGE_NATION,Playing on Easy Mode,Start a game as the country with the most provinces on the map.,0,achievements/ACH_HUGE_NATION.png,achievements/ACH_HUGE_NATION_locked.png
+ACH_SPECTATOR,Just Here for the Popcorn,Watch a world as a spectator for 25 turns without lifting a finger.,0,achievements/ACH_SPECTATOR.png,achievements/ACH_SPECTATOR_locked.png
+ACH_QUICK_START,No Time for Menus,Use Quick Start. Who needs to read the briefing anyway?,0,achievements/ACH_QUICK_START.png,achievements/ACH_QUICK_START_locked.png
+ACH_TUTORIAL_DONE,Actually Read the Manual,Finish the tutorial. A rare and noble breed.,0,achievements/ACH_TUTORIAL_DONE.png,achievements/ACH_TUTORIAL_DONE_locked.png
+ACH_POLYGLOT,Lost in Translation,Play in 3 different languages. Does 'declare war' sound friendlier in Esperanto?,0,achievements/ACH_POLYGLOT.png,achievements/ACH_POLYGLOT_locked.png
+ACH_POLYGLOT_10,Babel Speedrun,Play in 10 different languages.,0,achievements/ACH_POLYGLOT_10.png,achievements/ACH_POLYGLOT_10_locked.png
+ACH_SAVE_SCUMMER,Quicksave Enjoyer,Save your game 50 times. Just in case. You never know.,0,achievements/ACH_SAVE_SCUMMER.png,achievements/ACH_SAVE_SCUMMER_locked.png
+ACH_ODSTATE,Everything I Own in One Box,Export your whole game as a .odstate file.,0,achievements/ACH_ODSTATE.png,achievements/ACH_ODSTATE_locked.png
+ACH_VIA_LAUNCHER,Proper Channels,"Launch the game from Unifico, the official launcher.",0,achievements/ACH_VIA_LAUNCHER.png,achievements/ACH_VIA_LAUNCHER_locked.png
+ACH_ACHIEVEMENT_HUNTER,Achievement Unlocked: Looking at Achievements,"Open the achievements screen. Yes, this counts.",1,achievements/ACH_ACHIEVEMENT_HUNTER.png,achievements/ACH_ACHIEVEMENT_HUNTER_locked.png
+ACH_FIRST_BLOOD,Diplomacy by Other Means,Declare your first war.,0,achievements/ACH_FIRST_BLOOD.png,achievements/ACH_FIRST_BLOOD_locked.png
+ACH_WAR_TURN_ONE,Hit the Ground Running,Declare war on the very first turn of a world. Subtle.,1,achievements/ACH_WAR_TURN_ONE.png,achievements/ACH_WAR_TURN_ONE_locked.png
+ACH_WARMONGER,Professional Warmonger,Declare 25 wars across all your games.,0,achievements/ACH_WARMONGER.png,achievements/ACH_WARMONGER_locked.png
+ACH_EVERYONE_HATES_YOU,Everyone Hates You,Be at war with 5 countries at the same time.,0,achievements/ACH_EVERYONE_HATES_YOU.png,achievements/ACH_EVERYONE_HATES_YOU_locked.png
+ACH_WORLD_WAR,So It Was You All Along,Be at war with 10 countries at the same time.,0,achievements/ACH_WORLD_WAR.png,achievements/ACH_WORLD_WAR_locked.png
+ACH_DECLARED_ON,Rude!,Have someone declare war on you.,0,achievements/ACH_DECLARED_ON.png,achievements/ACH_DECLARED_ON_locked.png
+ACH_CONQUER_1,Mine Now,Conquer your first province.,0,achievements/ACH_CONQUER_1.png,achievements/ACH_CONQUER_1_locked.png
+ACH_CONQUER_50,Borders Are a Social Construct,Conquer 50 provinces across all your games.,0,achievements/ACH_CONQUER_50.png,achievements/ACH_CONQUER_50_locked.png
+ACH_CONQUER_500,Cartographers Hate This One Trick,Conquer 500 provinces across all your games.,0,achievements/ACH_CONQUER_500.png,achievements/ACH_CONQUER_500_locked.png
+ACH_CONQUER_2500,The Map Is Mostly You,"Conquer 2,500 provinces across all your games.",0,achievements/ACH_CONQUER_2500.png,achievements/ACH_CONQUER_2500_locked.png
+ACH_LOSE_PROVINCE,Strategic Withdrawal,Lose a province. It was ugly anyway.,0,achievements/ACH_LOSE_PROVINCE.png,achievements/ACH_LOSE_PROVINCE_locked.png
+ACH_LOSE_50,We Meant to Do That,Lose 50 provinces across all your games.,0,achievements/ACH_LOSE_50.png,achievements/ACH_LOSE_50_locked.png
+ACH_ELIMINATE_1,Wiped Off the Map,Be at war with a country when it loses its last province.,0,achievements/ACH_ELIMINATE_1.png,achievements/ACH_ELIMINATE_1_locked.png
+ACH_ELIMINATE_10,"Gone, Reduced to Atoms",Outlast 10 enemies who were at war with you when they vanished.,0,achievements/ACH_ELIMINATE_10.png,achievements/ACH_ELIMINATE_10_locked.png
+ACH_GOT_ELIMINATED,Press F to Pay Respects,Lose your last province. You will be remembered. Briefly.,1,achievements/ACH_GOT_ELIMINATED.png,achievements/ACH_GOT_ELIMINATED_locked.png
+ACH_FOREVER_WAR,Are We Still Fighting?,Stay at war for 50 turns in a row.,0,achievements/ACH_FOREVER_WAR.png,achievements/ACH_FOREVER_WAR_locked.png
+ACH_ARMY_100K,A Respectable Army,"Command 100,000 troops at once.",0,achievements/ACH_ARMY_100K.png,achievements/ACH_ARMY_100K_locked.png
+ACH_ARMY_1M,Conscription Speedrun,"Command 1,000,000 troops at once.",0,achievements/ACH_ARMY_1M.png,achievements/ACH_ARMY_1M_locked.png
+ACH_ARMY_10M,Everyone Is in the Army Now,"Command 10,000,000 troops at once.",0,achievements/ACH_ARMY_10M.png,achievements/ACH_ARMY_10M_locked.png
+ACH_RECRUIT_1M,Uncle Sam Wants Everyone,"Recruit 1,000,000 soldiers across all your games.",0,achievements/ACH_RECRUIT_1M.png,achievements/ACH_RECRUIT_1M_locked.png
+ACH_REBELLION,Ungrateful Peasants,Have a rebellion break out in your country.,0,achievements/ACH_REBELLION.png,achievements/ACH_REBELLION_locked.png
+ACH_REBELLION_10,The People Have Opinions,Suffer 10 rebellions across all your games.,0,achievements/ACH_REBELLION_10.png,achievements/ACH_REBELLION_10_locked.png
+ACH_MORTAR,Indirect Communication,Fire a mortar.,0,achievements/ACH_MORTAR.png,achievements/ACH_MORTAR_locked.png
+ACH_LIGHT_ARTY,Light Conversation,Fire light artillery.,0,achievements/ACH_LIGHT_ARTY.png,achievements/ACH_LIGHT_ARTY_locked.png
+ACH_HEAVY_ARTY,Heavy Conversation,Fire heavy artillery.,0,achievements/ACH_HEAVY_ARTY.png,achievements/ACH_HEAVY_ARTY_locked.png
+ACH_NAPALM,Love the Smell in the Morning,Drop napalm on somebody.,0,achievements/ACH_NAPALM.png,achievements/ACH_NAPALM_locked.png
+ACH_CARPET,Interior Redecoration,Order a carpet bombing.,0,achievements/ACH_CARPET.png,achievements/ACH_CARPET_locked.png
+ACH_CHEMICAL,Geneva Who?,Use chemical weapons. The Hague would like a word.,1,achievements/ACH_CHEMICAL.png,achievements/ACH_CHEMICAL_locked.png
+ACH_NUKE,Now I Am Become Death,Launch a nuclear strike.,0,achievements/ACH_NUKE.png,achievements/ACH_NUKE_locked.png
+ACH_BIO,Patient Zero,Release a biological weapon. This is why we can't have nice things.,1,achievements/ACH_BIO.png,achievements/ACH_BIO_locked.png
+ACH_FULL_ARSENAL,Collect Them All,Fire every one of the eight kinds of artillery at least once.,0,achievements/ACH_FULL_ARSENAL.png,achievements/ACH_FULL_ARSENAL_locked.png
+ACH_FRIENDLY_FIRE,Friendly Fire Isn't,Shell one of your own provinces.,1,achievements/ACH_FRIENDLY_FIRE.png,achievements/ACH_FRIENDLY_FIRE_locked.png
+ACH_NUKE_10,Mutually Assured Enthusiasm,Launch 10 nuclear strikes across all your games.,0,achievements/ACH_NUKE_10.png,achievements/ACH_NUKE_10_locked.png
+ACH_FIRST_ALLY,Friends with Benefits,Form an alliance.,0,achievements/ACH_FIRST_ALLY.png,achievements/ACH_FIRST_ALLY_locked.png
+ACH_ALLIES_5,The Popular Kid,Have 5 allies at the same time.,0,achievements/ACH_ALLIES_5.png,achievements/ACH_ALLIES_5_locked.png
+ACH_ALLIES_15,Basically NATO,Have 15 allies at the same time.,0,achievements/ACH_ALLIES_15.png,achievements/ACH_ALLIES_15_locked.png
+ACH_PEACE,Let's Never Do That Again,Make peace with an enemy.,0,achievements/ACH_PEACE.png,achievements/ACH_PEACE_locked.png
+ACH_PEACE_20,Nobel Committee Is Watching,Make peace 20 times across all your games.,0,achievements/ACH_PEACE_20.png,achievements/ACH_PEACE_20_locked.png
+ACH_PACIFIST,Hippie Superpower,Reach turn 100 without ever being at war in that world.,0,achievements/ACH_PACIFIST.png,achievements/ACH_PACIFIST_locked.png
+ACH_NAP,You Stay Over There,Sign a non-aggression pact.,0,achievements/ACH_NAP.png,achievements/ACH_NAP_locked.png
+ACH_GUARANTEE,I've Got Your Back (Probably),Guarantee another country's independence.,0,achievements/ACH_GUARANTEE.png,achievements/ACH_GUARANTEE_locked.png
+ACH_PEN_PAL,Strongly Worded Letter,Send a letter to another head of state.,0,achievements/ACH_PEN_PAL.png,achievements/ACH_PEN_PAL_locked.png
+ACH_PEN_PAL_50,Reply All,Send 50 letters across all your games.,0,achievements/ACH_PEN_PAL_50.png,achievements/ACH_PEN_PAL_50_locked.png
+ACH_CLAIM,"That's Ours, Actually",Lay claim to a province you don't own.,0,achievements/ACH_CLAIM.png,achievements/ACH_CLAIM_locked.png
+ACH_CLAIM_25,"Historically, Everything Was Ours",Lay 25 claims across all your games.,0,achievements/ACH_CLAIM_25.png,achievements/ACH_CLAIM_25_locked.png
+ACH_RICH,Money Printer Goes Brrr,"Hold 10,000 in your treasury.",0,achievements/ACH_RICH.png,achievements/ACH_RICH_locked.png
+ACH_VERY_RICH,Scrooge McNation,"Hold 100,000 in your treasury.",0,achievements/ACH_VERY_RICH.png,achievements/ACH_VERY_RICH_locked.png
+ACH_OBSCENELY_RICH,Swimming in a Vault,"Hold 1,000,000 in your treasury.",0,achievements/ACH_OBSCENELY_RICH.png,achievements/ACH_OBSCENELY_RICH_locked.png
+ACH_DEBT,We'll Pay It Back Next Turn,Run your treasury below zero.,0,achievements/ACH_DEBT.png,achievements/ACH_DEBT_locked.png
+ACH_BANKRUPT_10,Fiscal Policy: Vibes,Spend 10 turns bankrupt across all your games.,0,achievements/ACH_BANKRUPT_10.png,achievements/ACH_BANKRUPT_10_locked.png
+ACH_EXACT_CHANGE,Exact Change,End a turn with less than 1 coin but not in debt. Perfectly balanced.,1,achievements/ACH_EXACT_CHANGE.png,achievements/ACH_EXACT_CHANGE_locked.png
+ACH_INDUSTRY_5,Smokestacks as Far as the Eye Can See,Own a province with level 5 industry.,0,achievements/ACH_INDUSTRY_5.png,achievements/ACH_INDUSTRY_5_locked.png
+ACH_INDUSTRY_10,Peak Industrial Revolution,Own a province with level 10 industry.,0,achievements/ACH_INDUSTRY_10.png,achievements/ACH_INDUSTRY_10_locked.png
+ACH_NATIONALISE,It Belongs to the People Now,Nationalise a resource.,0,achievements/ACH_NATIONALISE.png,achievements/ACH_NATIONALISE_locked.png
+ACH_MONUMENT,Compensating for Something,Build a monument.,0,achievements/ACH_MONUMENT.png,achievements/ACH_MONUMENT_locked.png
+ACH_MONUMENT_10,Ozymandias Starter Pack,Build 10 monuments across all your games.,0,achievements/ACH_MONUMENT_10.png,achievements/ACH_MONUMENT_10_locked.png
+ACH_GROW_25,Middle Power,Own 25 provinces at once.,0,achievements/ACH_GROW_25.png,achievements/ACH_GROW_25_locked.png
+ACH_GROW_100,Regional Power,Own 100 provinces at once.,0,achievements/ACH_GROW_100.png,achievements/ACH_GROW_100_locked.png
+ACH_GROW_250,Great Power,Own 250 provinces at once.,0,achievements/ACH_GROW_250.png,achievements/ACH_GROW_250_locked.png
+ACH_WORLD_SHARE_25,Superpower,Own a quarter of all the provinces in a world.,0,achievements/ACH_WORLD_SHARE_25.png,achievements/ACH_WORLD_SHARE_25_locked.png
+ACH_WORLD_SHARE_50,Is This What Winning Feels Like?,Own half of all the provinces in a world.,0,achievements/ACH_WORLD_SHARE_50.png,achievements/ACH_WORLD_SHARE_50_locked.png
+ACH_POP_100M,Lots of Mouths to Feed,Rule 100 million people.,0,achievements/ACH_POP_100M.png,achievements/ACH_POP_100M_locked.png
+ACH_POP_1B,One Billion Taxpayers,Rule a billion people.,0,achievements/ACH_POP_1B.png,achievements/ACH_POP_1B_locked.png
+ACH_POP_3B,The Census Bureau Gave Up,Rule three billion people.,0,achievements/ACH_POP_3B.png,achievements/ACH_POP_3B_locked.png
+ACH_LAST_SURVIVORS,There Can Be Only a Few,Be alive when fewer than 10 countries remain in a world.,0,achievements/ACH_LAST_SURVIVORS.png,achievements/ACH_LAST_SURVIVORS_locked.png
+ACH_FORTRESS,You Shall Not Pass,Own a province with level 5 fortifications.,0,achievements/ACH_FORTRESS.png,achievements/ACH_FORTRESS_locked.png
+ACH_RESEARCH_1,"Science, Baby",Complete a research project.,0,achievements/ACH_RESEARCH_1.png,achievements/ACH_RESEARCH_1_locked.png
+ACH_RESEARCH_25,Nerd Nation,Know 25 technologies at once.,0,achievements/ACH_RESEARCH_25.png,achievements/ACH_RESEARCH_25_locked.png
+ACH_RESEARCH_60,Sufficiently Advanced,Know 60 technologies at once.,0,achievements/ACH_RESEARCH_60.png,achievements/ACH_RESEARCH_60_locked.png
+ACH_RESEARCH_200,Peer Reviewed by Nobody,Complete 200 research projects across all your games.,0,achievements/ACH_RESEARCH_200.png,achievements/ACH_RESEARCH_200_locked.png
+ACH_POLICY_1,Bold New Direction,Enact a policy.,0,achievements/ACH_POLICY_1.png,achievements/ACH_POLICY_1_locked.png
+ACH_POLICY_50,Legislative Hyperactivity,Enact 50 policies across all your games.,0,achievements/ACH_POLICY_50.png,achievements/ACH_POLICY_50_locked.png
+ACH_MINORITY_POLICY,Have You Considered Asking Them?,Change how your state treats a minority.,0,achievements/ACH_MINORITY_POLICY.png,achievements/ACH_MINORITY_POLICY_locked.png
+ACH_COMPASS_EXTREME,Horseshoe Theory Enthusiast,Push your political compass to an extreme on either axis.,0,achievements/ACH_COMPASS_EXTREME.png,achievements/ACH_COMPASS_EXTREME_locked.png
+ACH_COMPASS_CENTRE,Aggressively Moderate,Keep your political compass within 5 of dead centre on turn 50.,1,achievements/ACH_COMPASS_CENTRE.png,achievements/ACH_COMPASS_CENTRE_locked.png
+ACH_ADMIRAL,I'm on a Boat,Command 10 ships at once.,0,achievements/ACH_ADMIRAL.png,achievements/ACH_ADMIRAL_locked.png
+ACH_ARMADA,Invincible Armada (Terms Apply),Command 50 ships at once.,0,achievements/ACH_ARMADA.png,achievements/ACH_ARMADA_locked.png
+ACH_SINK_ENEMY,Davy Jones Sends His Regards,Have an enemy ship sunk while you are at war with its owner.,0,achievements/ACH_SINK_ENEMY.png,achievements/ACH_SINK_ENEMY_locked.png
+ACH_LOST_SHIP,Titanic Moment,Lose one of your own ships.,0,achievements/ACH_LOST_SHIP.png,achievements/ACH_LOST_SHIP_locked.png
+ACH_PORT_5,Harbour Master,Own a level 3 port.,0,achievements/ACH_PORT_5.png,achievements/ACH_PORT_5_locked.png
+ACH_MP_JOIN,Other Humans Exist,Join a multiplayer game.,0,achievements/ACH_MP_JOIN.png,achievements/ACH_MP_JOIN_locked.png
+ACH_MP_10,Regular at the Table,Join 10 multiplayer games.,0,achievements/ACH_MP_10.png,achievements/ACH_MP_10_locked.png
+ACH_MP_TURNS_100,Waiting for Dave to End His Turn,Play 100 multiplayer turns.,0,achievements/ACH_MP_TURNS_100.png,achievements/ACH_MP_TURNS_100_locked.png
+ACH_MAP_EDITOR,I Can Do Better Than God,Save a project in the map editor.,0,achievements/ACH_MAP_EDITOR.png,achievements/ACH_MAP_EDITOR_locked.png
+ACH_MAP_EDITOR_20,"Continental Drift, Manual Edition",Save 20 map editor projects.,0,achievements/ACH_MAP_EDITOR_20.png,achievements/ACH_MAP_EDITOR_20_locked.png
+ACH_TIMELAPSE,Director's Cut,Export a timelapse of your world.,0,achievements/ACH_TIMELAPSE.png,achievements/ACH_TIMELAPSE_locked.png
+ACH_TRANSLATOR,Dragoman's Apprentice,Translate a map to another game with the launcher's map translator.,0,achievements/ACH_TRANSLATOR.png,achievements/ACH_TRANSLATOR_locked.png
+ACH_TEMPLEOS,Divine Intellect,Run Open Doctrines on TempleOS from the launcher.,1,achievements/ACH_TEMPLEOS.png,achievements/ACH_TEMPLEOS_locked.png
+ACH_COMPLETIONIST,Get a Life (Affectionate),Earn 75 other achievements.,0,achievements/ACH_COMPLETIONIST.png,achievements/ACH_COMPLETIONIST_locked.png
