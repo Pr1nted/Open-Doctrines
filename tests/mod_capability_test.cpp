@@ -129,6 +129,26 @@ int main(int argc, char** argv) {
     nlohmann::json desc;
     df >> desc;
 
+    // NO WASM TOOLCHAIN IS A SKIP, NOT A FAILURE -- the rule mod_runtime_test.cpp
+    // already states for its own fixtures ("skipped loudly"). When
+    // build_capability_mods.sh finds no wasm32-capable clang it builds nothing,
+    // which is the macOS CI runners' situation, and every capability then read
+    // "the fixture was built  FAIL" -- a red suite about the machine, not the
+    // code. So: if NOT ONE fixture exists, the toolchain is absent and the whole
+    // test is skipped, loudly. If some exist and one is missing, a fixture
+    // failed to build, and that is still the failure it was, below.
+    {
+        int built = 0;
+        for (const auto& m : desc["modules"])
+            if (!readFile(dir + "/cap_" + m.value("slug", "") + ".wasm").empty()) ++built;
+        if (built == 0) {
+            printf("  SKIP  no capability fixture was built in %s\n", dir.c_str());
+            printf("        no wasm32-capable clang here -- see tests/build_capability_mods.sh\n");
+            printf("\n%d checks, %d failed (skipped)\n", g_checks, g_failures);
+            return 0;
+        }
+    }
+
     ModRuntime& rt = ModRuntime::get();
     // Headless, and a world that answers "nothing" to everything. The point
     // here is that each call REACHES the host and returns -- an empty world
