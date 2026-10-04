@@ -109,6 +109,9 @@ GROUPS = [
         # Run a dedicated campaign as a service that survives reboots
         # (docs/hosting-a-week.md).
         "host_campaign.sh",
+        # Keeps that campaign in a private git repository, so the machine
+        # hosting it can be switched off or replaced; host_campaign.sh calls it.
+        "campaign_sync.sh",
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
@@ -305,6 +308,10 @@ GROUPS = [
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.
         "check_palette.py",
+        # The achievement catalog: one edited file, every copy generated from
+        # it -- the table compiled into the game, the icons, the launcher's
+        # copy. --check fails when any of them has drifted.
+        "gen_achievements.py",
     ]),
     ("The communication window", [
         "kra_export.py", "comms_signal.py", "comms_derive.py", "make_voices.py",
