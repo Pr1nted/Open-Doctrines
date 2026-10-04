@@ -11,7 +11,8 @@ them.
 
 [**Play it in your browser**](https://pr1nted.itch.io/open-doctrines) ·
 [Downloads](https://github.com/Pr1nted/Open-Doctrines/releases) ·
-[Discord](https://discord.gg/wqS65jzVv5)
+[Discord](https://discord.gg/wqS65jzVv5) ·
+[Ko-fi](https://ko-fi.com/pr1nted)
 
 A grand strategy game about running a country: its industry, its armies, its
 research, its politics and its neighbours. Ten scenarios — six historical,

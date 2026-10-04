@@ -1,6 +1,6 @@
 # The Sponsor button on the repository header.
 #
-# GitHub Sponsors takes no cut, which is why it is the only entry here. The
+# GitHub Sponsors takes no cut, which is why it is first. The
 # cost of that is that this line does nothing until the account behind it is
 # enrolled: GitHub hides the button entirely for a username with no active
 # Sponsors profile, so a missing enrolment looks exactly like a missing file
@@ -12,3 +12,7 @@
 # Licensor, so this is the funding path -- Steam has no donate button at all,
 # and itch's "Donate" pricing is the only other one.
 github: Pr1nted
+# Ko-fi alongside it, because the Sponsors button is invisible until that
+# enrolment completes and this one works today. Ko-fi takes no cut on a tip
+# either; the difference is that it needs no identity check to start.
+ko_fi: pr1nted

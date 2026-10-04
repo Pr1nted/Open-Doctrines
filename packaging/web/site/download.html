@@ -79,6 +79,35 @@
       install, the same worlds and the same saves.
     </p>
 
+    <!-- THE LAUNCHER FIRST. Unifico installs the game, keeps it up to date,
+         keeps older versions beside the new one, and signs you in once. Its
+         zips are attached to every game release (release-game.yml, "Fetch
+         Unifico"), so the same HAVE list below hides a button whose build is
+         missing, exactly as it does for the game's own. -->
+    <div class="launcher" id="launcher">
+      <img src="/unifico.png" alt="" width="72" height="72">
+      <div>
+        <p class="label">Recommended</p>
+        <h2>Get Unifico, the launcher</h2>
+        <p>One small download. It installs Open Doctrines, keeps it up to date and lets you switch
+           between versions. It also manages your worlds and mods, shows your achievements,
+           and signs you in once for everything.</p>
+        <div class="launcher-get">
+          <a class="get primary" data-asset="Unifico-windows-x64.zip" data-os="windows" href="#">Windows</a>
+          <a class="get primary" data-asset="Unifico-macos-arm64.zip" data-os="macos" href="#">macOS · Apple Silicon</a>
+          <a class="get" data-asset="Unifico-macos-x64.zip" data-os="macos" href="#">macOS · Intel</a>
+          <a class="get primary" data-asset="Unifico-linux-x64.zip" data-os="linux" href="#">Linux</a>
+          <a class="get" data-asset="Unifico-windows-arm64.zip" href="#">Windows Arm64</a>
+          <a class="get" data-asset="Unifico-linux-arm64.zip" href="#">Linux Arm64</a>
+          <a class="get" data-asset="Unifico-freebsd-x64.zip" href="#">FreeBSD</a>
+          <a class="get" data-asset="Unifico-openbsd-x64.zip" href="#">OpenBSD</a>
+        </div>
+        <p class="note">Already have the game? Unifico finds your copy and plays it where it is, worlds included.</p>
+      </div>
+    </div>
+
+    <h2 class="or-direct">Or download the game on its own</h2>
+
     <div class="dl-grid" id="grid">
 
       <div class="dl" data-os="windows">
@@ -190,6 +219,7 @@
       <a href="/press">Press</a>
       <a href="https://pr1nted.itch.io/open-doctrines">itch.io</a>
       <a href="https://github.com/Pr1nted/Open-Doctrines">GitHub</a>
+      <a href="https://ko-fi.com/pr1nted" rel="noopener">Ko-fi</a>
       <a href="https://discord.gg/wqS65jzVv5">Discord</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
@@ -233,6 +263,9 @@ document.querySelectorAll("a.get").forEach(function (a) {
   a.href = BASE + "/download/" + tag + "/" + file;
   if (HAVE.length) a.hidden = HAVE.indexOf(file) < 0;
 });
+if (HAVE.length && !document.querySelector("#launcher a.get:not([hidden])")) {
+  document.getElementById("launcher").hidden = true;   // no launcher on this release yet
+}
 if (HAVE.length) {
   document.querySelectorAll(".dl").forEach(function (card) {
     var live = card.querySelectorAll("a.get:not([hidden])").length;
@@ -253,6 +286,7 @@ if (HAVE.length) {
          : /mac/i.test(p) || /Mac OS X/i.test(ua) ? "macos"
          : /Linux|X11/i.test(p + ua) ? "linux" : null;
   if (!os) return;
+  document.querySelectorAll('#launcher a.get[data-os="' + os + '"]').forEach(function (a) { a.classList.add("mine"); });
   var card = document.querySelector('.dl[data-os="' + os + '"]');
   if (!card) return;
   card.classList.add("pick");
