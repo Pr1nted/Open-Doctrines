@@ -1,0 +1,180 @@
+# The test character: a skeleton with no art on it.
+#
+# Every bone here exists to exercise one thing the rig has to do. It is drawn
+# by RigDraw's debug mode -- one colour per bone -- so the system can be built
+# and checked long before a character is drawn to hang on it.
+#
+# ── THE ANGLE CONVENTION, because getting it wrong is invisible in the file ──
+#
+# Screen space: 0 = right, +90 = DOWN, -90 = up. Angles are LOCAL to the
+# parent, so a bone's world angle is its parent's plus its own.
+#
+# The chest sits at -90 (straight up). A CLAVICLE runs out sideways from the
+# top of it, and the arm hangs off the clavicle -- so arm angles are measured
+# from the shoulder, not from the spine:
+#
+#     arm hanging straight down .... local  90 from a sideways clavicle
+#     arm straight out ............. local   0
+#     arm raised above the shoulder  local -90
+#
+# ── WHY SHOULDERS AND HIPS ARE BONES ──
+#
+# Arms used to hang off the chest directly, which meant a shrug could only
+# rotate the upper arm: the shoulder itself could not rise, and a shrug that
+# does not lift the shoulders is not a shrug. The clavicle also gives the coat
+# somewhere honest to hang from.
+#
+# The pelvis is the same argument from the other end. Sway rotates the hips,
+# and with no hip bones there was nothing between the spine and the ground for
+# it to rotate -- the whole body pivoted about a point instead of the weight
+# moving from one leg to the other.
+
+# ── WHAT `facing` IS NUMERICALLY, because -0.3 does not mean what it looks like ──
+#
+# facing is the COSINE of how far the hand has rolled about its own length, not
+# a fraction of "turned-ness". So:
+#
+#     +-1.0   palm (or back) square to the viewer -- full width
+#     +-0.7   rolled 45 degrees
+#     +-0.3   rolled 73 degrees -- very nearly EDGE-ON
+#      0.0    edge-on: no width at all, only the hand's thickness
+#
+# The first draft of these poses read -0.3 as "backs of the hands, mostly" and
+# got a hand seen almost end-on: a sliver, with the fingers curling sideways out
+# of the palm plane into a claw. A hand hanging at somebody's side shows the
+# BACK of the hand to a viewer in front of them, which is -0.85, not -0.3.
+
+# ── Spine ──
+bone root    len 0   angle 0
+bone hips    parent root  len 0   angle 0    sway 1.0
+bone chest   parent hips  len 46  angle -90  breath 1.0  sway 0.5
+bone neck    parent chest len 12  angle 0    breath 0.4  gaze 0.3
+head head    parent neck  len 20  angle 0    size 40     gaze 1.0  breath 0.2
+
+# ── Pelvis, and enough leg to see it working. The box crops the legs; they are
+#    here so sway has something to move and the stance reads as weight. ──
+bone hipL    parent hips len 13 angle 180  sway 0.6
+bone hipR    parent hips len 13 angle 0    sway 0.6
+bone legL    parent hipL len 40 angle -90
+bone legR    parent hipR len 40 angle 90
+
+# ── Shoulders. A clavicle out from the top of the spine, then the arm. ──
+bone clavL   parent chest len 16 angle 90   breath 0.6
+bone armL.up parent clavL len 34 angle 90   breath 0.2
+bone armL.fore parent armL.up len 30 angle 10
+hand handL   parent armL.fore len 0 angle 0 atlas hands size 22
+
+bone clavR   parent chest len 16 angle -90  breath 0.6
+bone armR.up parent clavR len 34 angle -90  breath 0.2
+bone armR.fore parent armR.up len 30 angle -10
+hand handR   parent armR.fore len 0 angle 0 atlas hands size 22
+
+# ── Cloth: a coat hanging off the clavicles, so it moves when the shoulders do ──
+cloth coatL parent clavL segs 5 len 13 stiff 0.62 damp 0.93 gravity 430 drag 1.2
+cloth coatR parent clavR segs 5 len 13 stiff 0.62 damp 0.93 gravity 430 drag 1.2
+
+# ─────────────────────────────────────────────────────────────────────────
+# Poses. The ease is inoutquad throughout: a limb accelerates out of rest and
+# decelerates into place. "outquad" and "outback" leave at full speed, which on
+# a big arm swing puts a sixth of the travel in the first frame and reads as a
+# snap -- keep them for a gesture that is meant to be sharp.
+#
+# A pose says only what it changes; every bone it does not name goes back to
+# rest, so poses cannot silently compose.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Arms down, a little away from the body, shoulders level.
+pose idle 0.5s inoutquad
+  chest      -90
+  clavL      90
+  clavR      -90
+  armL.up    80
+  armL.fore  10
+  armR.up    -80
+  armR.fore  -10
+  handL      relaxed facing -0.85
+  handR      relaxed facing -0.85
+
+# Shoulders UP -- which is the half a shrug was missing -- forearms out, palms
+# turned to the viewer. The hands travel from backs-out to palms-out, which is
+# the transition the facing scalar exists for.
+# A shrug is a MOVEMENT, not a posture, which is why it is the pose with
+# keyframes on it. The shoulders go up fast, are seen up, and come back down;
+# arriving somewhere and staying there is a person standing oddly.
+#
+# The arms go fully out to the sides -- upper arms out and a little down,
+# forearms carrying on outward and a little up, palms turned over. The snap up
+# is outback on purpose: the note above warns that "out" easings leave at full
+# speed, and that is exactly what a shrug wants and what an arm swing does not.
+pose shrug 0.22s outback hold 0.45s then idle
+  chest      -86
+  neck       6
+  clavL      54
+  clavR      -54
+  armL.up    52
+  armL.fore  -18
+  armR.up    -52
+  armR.fore  18
+  handL      open facing 0.9
+  handR      open facing 0.9
+
+# ...and down again. A keyframe inherits everything it does not name, so the
+# arms stay out while only the shoulders drop.
+# The arms stay out for a beat before `then idle` drops them: a shrug that
+# snaps straight back has not been seen.
+key 0.5s inoutquad hold 1.1s
+  clavL      72
+  clavR      -72
+  armL.up    38
+  armL.fore  -18
+  armR.up    -38
+  armR.fore  18
+
+# Right arm out toward the map, left arm at rest.
+pose point 0.4s inoutquad
+  chest      -92
+  neck       -8
+  clavL      90
+  clavR      -84
+  armL.up    80
+  armL.fore  10
+  armR.up    -12
+  armR.fore  -8
+  handL      relaxed facing -0.85
+  handR      point facing -0.85
+  head       -4
+
+# Both arms raised, palms fully to the viewer. The ABSOLUTE CINEMA pose.
+#
+# THE ELBOWS BREAK OUTWARD, not inward. Raising your arms with the palms turned
+# to somebody rotates the whole arm at the shoulder, and the elbow goes with it
+# -- so the forearm angles are the opposite sign to the upper arms', and the
+# hand turning about its own axis (facing runs to +1) is the end of a movement
+# the elbow is already making. With the elbows bent the same way as the upper
+# arms the arm is nearly straight, the rotation has nowhere to show, and the
+# hands look stuck on.
+pose hands_up 0.55s inoutquad
+  chest      -90
+  neck       -4
+  clavL      74
+  clavR      -74
+  armL.up    -46
+  armL.fore  -36
+  armR.up    46
+  armR.fore  36
+  handL      open facing 1.0
+  handR      open facing 1.0
+
+# Right hand up to the chin, head tilted onto it.
+pose think 0.6s inoutquad
+  chest      -88
+  neck       10
+  head       8
+  clavL      90
+  clavR      -80
+  armL.up    80
+  armL.fore  10
+  armR.up    -150
+  armR.fore  -133
+  handL      relaxed facing -0.85
+  handR      fist facing -0.6
