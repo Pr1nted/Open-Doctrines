@@ -2406,7 +2406,7 @@ void Game::drawUiHint() {
 }
 
 void Game::drawNotifications() {
-    if (m_notifications.empty()) return;
+    if (m_notifications.empty() || fullScreenViewOpen()) return;   // held; see updateNotifications
     int y = 60;
     int maxW = 500;
     for (auto& n : m_notifications) {

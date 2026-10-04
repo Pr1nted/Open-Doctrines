@@ -25,7 +25,19 @@ void Game::addNotification(const std::string& msg, Color color, float duration) 
     Audio::get().playSfx("notify");
 }
 
+bool Game::fullScreenViewOpen() const {
+    return m_inPolitics || m_inEconomy || m_inClaims || m_inResearch || m_inMonuments;
+}
+
 void Game::updateNotifications() {
+    // HELD, NOT DROPPED, while a full-screen view is open. Those views put
+    // their tab row across the top of the screen, which is exactly where the
+    // stack is drawn -- "X has become Y" sat over the economy's Goods tab and
+    // the first lines of its help. Nothing in those views raises a
+    // notification of its own (they are turn events), so holding them hides
+    // no feedback: the clock stops, and they play out on the map once the
+    // view closes, for their full time.
+    if (fullScreenViewOpen()) return;
     for (auto it = m_notifications.begin(); it != m_notifications.end(); ) {
         it->timer -= GetFrameTime();
         if (it->timer <= 0) {

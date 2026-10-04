@@ -1705,6 +1705,9 @@ public:
     std::vector<Notification> m_notifications;
     void addNotification(const std::string& msg, Color color = WHITE, float duration = 6.0f);
     void updateNotifications();
+    /// Economy, politics, research, claims or monuments covering the map.
+    /// Notifications wait while one is open; see updateNotifications.
+    bool fullScreenViewOpen() const;
 
     std::vector<PopupEntry> m_popupQueue;
     // Ceasefire popup: whether the itemised terms panel is expanded. Reset

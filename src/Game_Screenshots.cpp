@@ -65,6 +65,8 @@ const Shot SHOTS[] = {
     {"language",      20, false},
     // ...and the same list where a player already in a game finds it.
     {"language-settings", 20, false},
+    // Where a player switches the goods economy on: Experimental, as it ships.
+    {"goods-settings", 20, false},
     // The menu in a language that is not English, which is the only way to see
     // whether the table, the atlas and the layout actually work together.
     {"menu-de",       20, false},
@@ -297,6 +299,12 @@ const Shot SHOTS[] = {
     // the income figures in every shot taken after it. One tax and one
     // subsidy, so the rows show what a rate does rather than dashes.
     {"economy-sectors", 20, true},
+    // The goods economy's two screens: the Goods tab, and the factory button
+    // on a province panel. The tour's world is a money world, so these LEND it
+    // a goods economy for the player and give it back before the next shot --
+    // see "goods" below. Leaves nothing behind, so placement does not matter.
+    {"goods",         20, true},
+    {"goods-factory", 20, true},
     // The keyboard the game draws for itself, which on Android is the only one
     // there is. Last two, because it is switched on for the shot and stays on.
     {"keyboard",      20, false},
@@ -603,6 +611,39 @@ bool Game::tickScreenshotTour() {
         m_activeSidebarTab = 0;
         m_inSettings = false;
 
+        // THE GOODS SHOTS BORROW A GOODS ECONOMY AND GIVE IT BACK. Switching it
+        // on and running production passes writes four things -- factory
+        // outputs, stockpiles, production, and the treasury (auto-sale, the raw
+        // market) -- so all four are kept and restored by the first shot that
+        // is not a goods one. Otherwise every later shot would be of a
+        // different world, with a different balance in its corner.
+        static bool goodsLent = false;
+        static bool savedGoods = false;
+        static double savedTreasury = 0.0;
+        static std::decay_t<decltype(m_provinceIndustry)> savedIndustry;
+        static std::decay_t<decltype(m_countryStockpiles)> savedStockpiles;
+        static std::decay_t<decltype(m_countryProduction)> savedProduction;
+        const bool goodsShot = std::string(shot.name).rfind("goods", 0) == 0 && shot.needsWorld;
+        if (goodsShot && !goodsLent && m_countries.getCountry(m_playerCountryId)) {
+            savedGoods = m_goodsEconomy;
+            savedTreasury = m_countries.getAll()[m_playerCountryId].treasury;
+            savedIndustry = m_provinceIndustry;
+            savedStockpiles = m_countryStockpiles;
+            savedProduction = m_countryProduction;
+            m_goodsEconomy = true;
+            // Three passes, so the piles hold something and Cover reads as a
+            // number rather than every row at zero.
+            for (int i = 0; i < 3; ++i) processProduction(m_playerCountryId);
+            goodsLent = true;
+        } else if (!goodsShot && goodsLent) {
+            m_goodsEconomy = savedGoods;
+            m_countries.getAll()[m_playerCountryId].treasury = savedTreasury;
+            m_provinceIndustry = std::move(savedIndustry);
+            m_countryStockpiles = std::move(savedStockpiles);
+            m_countryProduction = std::move(savedProduction);
+            goodsLent = false;
+        }
+
         // Which province the panels talk about. Cleared for the map shot,
         // because that one is meant to show the map and nothing over it.
         //
@@ -668,6 +709,14 @@ bool Game::tickScreenshotTour() {
             m_inSettings = true;
             m_settingsTab = LANGUAGE_TAB;
             m_settingsIndex = 0;
+            m_settingsScroll = 0;
+        } else if (name == "goods-settings") {
+            // The row a player is sent to, as they find it: the tour's config
+            // leaves the goods economy off, which is how it ships.
+            m_currentScreen = SCREEN_MENU;
+            m_inSettings = true;
+            m_settingsTab = 5;      // Experimental
+            m_settingsIndex = 4;    // Goods Economy -- see EXPERIMENTAL_ITEMS
             m_settingsScroll = 0;
         } else if (name == "world-map-uk" || name == "world-map-ja") {
             applyLanguageForShot(name == "world-map-uk" ? "uk" : "ja");
@@ -1336,6 +1385,27 @@ bool Game::tickScreenshotTour() {
             setSpecTaxPct(m_playerCountryId, specResourceIndex("Metal"), -15.0f);
             // Four turns in, so both rows are still on their way and show it.
             for (int t = 0; t < 4; ++t) advanceSpecTaxes();
+        } else if (name == "goods") {
+            // The goods economy was lent above; this only opens the tab.
+            m_activeSidebarTab = 2;
+            m_inEconomy = true;
+            m_economyTab = 3;   // Goods
+            m_turnState = TURN_NORMAL;
+        } else if (name == "goods-factory") {
+            // The Industry view of the player's most industrial province, where
+            // the "Direct this factory" button sits under Specialize.
+            m_activeViewTab = 2;
+            int best = 0, bestLevel = 0;
+            for (const auto& [pid, ind] : m_provinceIndustry) {
+                if (pid <= 0 || (size_t)pid >= m_provinceCountryLookup.size()) continue;
+                if (m_provinceCountryLookup[pid] != m_playerCountryId) continue;
+                if (ind.level > bestLevel) { bestLevel = ind.level; best = pid; }
+            }
+            if (best > 0) {
+                if (m_renderer) m_renderer->setSelectedProvince(best);
+                m_lastSelectedProvince = best;
+                buildCountryProvinceList(best);
+            }
         } else if (name == "economy-local") {
             // The half with the country's own books in it -- the breakdown, the
             // two pies and the three graphs. The tour only ever photographed
