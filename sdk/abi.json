@@ -28,6 +28,7 @@
   "1.3 adds Render, deliberately narrow: a mod may tint a province and label one, and may not take over drawing. A mod that tints wrongly makes the map ugly and can be switched off; a mod that owns the render loop can make the screen it would be switched off from unreadable.",
   "1.3 adds Content: one registry for every catalogue rather than an API per catalogue, with the definition crossing as the same JSON the data file uses. AI visibility is opt-in, because content the AI was never trained against should not appear in its options -- and a visible research node changes the model's input shape.",
   "1.4 opens because 1.3 shipped: sdk/compat/abi-1.3.json is its frozen surface, and nothing in it may be renamed, re-signed or re-gated. Everything since carries \"since\": \"1.4\". The \"gearbox\" version field still reads 1.3 until tools/release.py sdk bumps it at release, which it does only once the 1.3 tag exists -- so a mod that uses a 1.4 import must declare \"gearbox\": \"1.4\" and will load only on a host that says so.",
+  "1.4 also completes Diplomacy: alliances, non-aggression pacts and guarantees proposed and broken through the request queue the player's own buttons use, ceasefires and trades with their terms -- goods included -- through the deal screen's own path, and claims. Military.Write gains a withdrawal order, refused unless the country has a battle of its own there.",
   "1.4 adds monuments to the reads (province_monument, _level, _active under GameState.Read) and, under Economy.Read and Economy.Write, the economy surface that grew around them: building, upgrading, moving and switching monuments; sector taxes and subsidies; the goods economy's stockpiles, demand, shortfall and living standards, with \"good\" and \"raw\" enums mirroring the game's own; directed factories; and state industry. Military.Read gains combat width and who is attacking a province. EVERY WRITE TAKES THE ACTING COUNTRY EXPLICITLY and goes through the rule the player's click goes through, so cost, research, ownership and the compass-set limits bind a mod exactly as they bind a player -- a mod cannot do anything a player governing that country could not."
  ],
  "gearbox": "1.3",
@@ -7062,6 +7063,314 @@
     "sentinel": "0 means no battle is being fought there"
    },
    "doc": "The country attacking this province in a standing battle, or 0 when there is none. If more than one country is attacking it, the first battle opened is the one reported."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "propose_alliance",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "break_alliance",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Give notice that `country` is breaking the alliance with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "propose_non_aggression",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "break_non_aggression",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Give notice that `country` is breaking the non-aggression pact with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "propose_guarantee",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "break_guarantee",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Give notice that `country` is breaking the guarantee with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "propose_ceasefire",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(iiii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "terms",
+     "type": "i32",
+     "role": "ptr"
+    },
+    {
+     "name": "terms_len",
+     "type": "i32",
+     "role": "len"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Offer `other` a ceasefire, with terms, on behalf of `country`. They must be at war. Sent through the same path as the deal screen's offer and answered at the end of the turn; accepted, the war ends and the terms are carried out. Terms are a JSON object, every key optional: our_money and their_money (numbers), our_provinces and their_provinces (province ids; ours must belong to `country`, theirs to `other`), our_drop_claims and their_drop_claims (province ids), our_goods and their_goods (objects keyed by good: consumer, machinery, fuel, munitions). `our` is what `country` gives, `their` what it asks for. An unknown key, a malformed value or a province on the wrong side refuses the whole offer. Money is clamped to what each side holds and offered goods to what `country` holds, as the deal screen clamps them. Goods change hands only in a goods world. Returns 0 if the offer cannot be made."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "propose_trade",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(iiii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "other",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "terms",
+     "type": "i32",
+     "role": "ptr"
+    },
+    {
+     "name": "terms_len",
+     "type": "i32",
+     "role": "len"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Offer `other` a trade on behalf of `country`: the same terms as a ceasefire, between countries at PEACE, and no war ends. Terms are a JSON object, every key optional: our_money and their_money (numbers), our_provinces and their_provinces (province ids; ours must belong to `country`, theirs to `other`), our_drop_claims and their_drop_claims (province ids), our_goods and their_goods (objects keyed by good: consumer, machinery, fuel, munitions). `our` is what `country` gives, `their` what it asks for. An unknown key, a malformed value or a province on the wrong side refuses the whole offer. Money is clamped to what each side holds and offered goods to what `country` holds, as the deal screen clamps them. Goods change hands only in a goods world. Returns 0 if the offer cannot be made."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "country_claims_province",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Whether `country` holds a claim on `province`. 0 for an unknown country or province."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "grant_claim",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Give `country` a claim on `province`, through the game's own grant (the same one conquest and events use). Returns 0 for an unknown country or province."
+  },
+  {
+   "module": "gearbox:diplomacy",
+   "name": "revoke_claim",
+   "capability": "Diplomacy",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Withdraw `country`'s claim on `province`, through the game's own revoke. Returns 0 for an unknown country or province; 1 when there was nothing to withdraw."
+  },
+  {
+   "module": "gearbox:military.write",
+   "name": "order_withdraw",
+   "capability": "Military.Write",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Withdraw `country`'s attack on `province` at the next resolution: the survivors go home if the country still holds the province they came from. The check the multiplayer host makes of a player's order: refused (0) unless a battle of THIS country's stands there. Ordering it twice is the same as once."
   }
  ],
  "exports": [

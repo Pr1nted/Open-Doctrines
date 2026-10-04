@@ -2012,4 +2012,136 @@ public final class GearboxRaw {
     @Import(module = "gearbox:military.read", name = "province_battle_attacker")
     public static native int provinceBattleAttacker(int province);
 
+    // Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST,
+    // exactly as the diplomacy panel's button does; the other side answers at
+    // the end of the turn and may refuse. Returns 0 if the request cannot be
+    // made: an unknown country, a war between them, the treaty already
+    // standing, or another offer between the pair still awaiting an answer.
+    // gearbox:diplomacy "propose_alliance"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "propose_alliance")
+    public static native int proposeAlliance(int country, int other);
+
+    // Give notice that `country` is breaking the alliance with `other`. Queued
+    // like the panel's button, and applied at the end of the turn with the
+    // same consequences: breaking an alliance absorbs each side's troops
+    // standing on the other's soil, and breaking a pact costs credibility.
+    // Returns 0 if there is no such treaty to break or an offer between the
+    // pair is already waiting.
+    // gearbox:diplomacy "break_alliance"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "break_alliance")
+    public static native int breakAlliance(int country, int other);
+
+    // Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A
+    // REQUEST, exactly as the diplomacy panel's button does; the other side
+    // answers at the end of the turn and may refuse. Returns 0 if the request
+    // cannot be made: an unknown country, a war between them, the treaty
+    // already standing, or another offer between the pair still awaiting an
+    // answer.
+    // gearbox:diplomacy "propose_non_aggression"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "propose_non_aggression")
+    public static native int proposeNonAggression(int country, int other);
+
+    // Give notice that `country` is breaking the non-aggression pact with
+    // `other`. Queued like the panel's button, and applied at the end of the
+    // turn with the same consequences: breaking an alliance absorbs each
+    // side's troops standing on the other's soil, and breaking a pact costs
+    // credibility. Returns 0 if there is no such treaty to break or an offer
+    // between the pair is already waiting.
+    // gearbox:diplomacy "break_non_aggression"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "break_non_aggression")
+    public static native int breakNonAggression(int country, int other);
+
+    // Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST,
+    // exactly as the diplomacy panel's button does; the other side answers at
+    // the end of the turn and may refuse. Returns 0 if the request cannot be
+    // made: an unknown country, a war between them, the treaty already
+    // standing, or another offer between the pair still awaiting an answer.
+    // gearbox:diplomacy "propose_guarantee"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "propose_guarantee")
+    public static native int proposeGuarantee(int country, int other);
+
+    // Give notice that `country` is breaking the guarantee with `other`.
+    // Queued like the panel's button, and applied at the end of the turn with
+    // the same consequences: breaking an alliance absorbs each side's troops
+    // standing on the other's soil, and breaking a pact costs credibility.
+    // Returns 0 if there is no such treaty to break or an offer between the
+    // pair is already waiting.
+    // gearbox:diplomacy "break_guarantee"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "break_guarantee")
+    public static native int breakGuarantee(int country, int other);
+
+    // Offer `other` a ceasefire, with terms, on behalf of `country`. They must
+    // be at war. Sent through the same path as the deal screen's offer and
+    // answered at the end of the turn; accepted, the war ends and the terms
+    // are carried out. Terms are a JSON object, every key optional: our_money
+    // and their_money (numbers), our_provinces and their_provinces (province
+    // ids; ours must belong to `country`, theirs to `other`), our_drop_claims
+    // and their_drop_claims (province ids), our_goods and their_goods (objects
+    // keyed by good: consumer, machinery, fuel, munitions). `our` is what
+    // `country` gives, `their` what it asks for. An unknown key, a malformed
+    // value or a province on the wrong side refuses the whole offer. Money is
+    // clamped to what each side holds and offered goods to what `country`
+    // holds, as the deal screen clamps them. Goods change hands only in a
+    // goods world. Returns 0 if the offer cannot be made.
+    // gearbox:diplomacy "propose_ceasefire"
+    // `(iiii)i`
+    @Import(module = "gearbox:diplomacy", name = "propose_ceasefire")
+    public static native int proposeCeasefire(int country, int other, int terms, int termsLen);
+
+    // Offer `other` a trade on behalf of `country`: the same terms as a
+    // ceasefire, between countries at PEACE, and no war ends. Terms are a JSON
+    // object, every key optional: our_money and their_money (numbers),
+    // our_provinces and their_provinces (province ids; ours must belong to
+    // `country`, theirs to `other`), our_drop_claims and their_drop_claims
+    // (province ids), our_goods and their_goods (objects keyed by good:
+    // consumer, machinery, fuel, munitions). `our` is what `country` gives,
+    // `their` what it asks for. An unknown key, a malformed value or a
+    // province on the wrong side refuses the whole offer. Money is clamped to
+    // what each side holds and offered goods to what `country` holds, as the
+    // deal screen clamps them. Goods change hands only in a goods world.
+    // Returns 0 if the offer cannot be made.
+    // gearbox:diplomacy "propose_trade"
+    // `(iiii)i`
+    @Import(module = "gearbox:diplomacy", name = "propose_trade")
+    public static native int proposeTrade(int country, int other, int terms, int termsLen);
+
+    // Whether `country` holds a claim on `province`. 0 for an unknown country
+    // or province.
+    // gearbox:diplomacy "country_claims_province"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "country_claims_province")
+    public static native int countryClaimsProvince(int country, int province);
+
+    // Give `country` a claim on `province`, through the game's own grant (the
+    // same one conquest and events use). Returns 0 for an unknown country or
+    // province.
+    // gearbox:diplomacy "grant_claim"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "grant_claim")
+    public static native int grantClaim(int country, int province);
+
+    // Withdraw `country`'s claim on `province`, through the game's own revoke.
+    // Returns 0 for an unknown country or province; 1 when there was nothing
+    // to withdraw.
+    // gearbox:diplomacy "revoke_claim"
+    // `(ii)i`
+    @Import(module = "gearbox:diplomacy", name = "revoke_claim")
+    public static native int revokeClaim(int country, int province);
+
+    // Withdraw `country`'s attack on `province` at the next resolution: the
+    // survivors go home if the country still holds the province they came
+    // from. The check the multiplayer host makes of a player's order: refused
+    // (0) unless a battle of THIS country's stands there. Ordering it twice is
+    // the same as once.
+    // gearbox:military.write "order_withdraw"
+    // `(ii)i`
+    @Import(module = "gearbox:military.write", name = "order_withdraw")
+    public static native int orderWithdraw(int country, int province);
+
 }

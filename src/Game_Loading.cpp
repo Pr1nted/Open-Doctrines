@@ -2969,25 +2969,9 @@ bool Game::loadGameDataStep2() {
             if (pt != m_provincePorts.end() && pt->second.level > maxPort)
                 maxPort = pt->second.level;
         }
-        // Recursively unlock a node and all its dependencies (respects mutexGroup)
-        std::function<void(const std::string&)> unlockRecursive;
-        unlockRecursive = [&](const std::string& nodeId) {
-            for (auto& n : m_researchNodes) {
-                if (n.id == nodeId) {
-                    if (m_countryResearched[cid].count(n.id)) return;
-                    if (n.mutexGroup > 0) {
-                        for (auto& sib : m_researchNodes) {
-                            if (sib.id != nodeId && sib.mutexGroup == n.mutexGroup && m_countryResearched[cid].count(sib.id))
-                                return;
-                        }
-                    }
-                    m_countryResearched[cid].insert(n.id);
-                    for (auto& depId : n.deps)
-                        unlockRecursive(depId);
-                    break;
-                }
-            }
-        };
+        // Each node with everything it depends on, respecting mutex groups.
+        // See grantResearch -- a map script's starting research is the same walk.
+        auto unlockRecursive = [&](const std::string& nodeId) { grantResearch(cid, nodeId); };
         for (auto& n : m_researchNodes) {
             if (n.industryLevel > 0 && n.industryLevel <= maxInd)
                 unlockRecursive(n.id);

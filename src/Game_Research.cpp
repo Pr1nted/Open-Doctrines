@@ -703,6 +703,25 @@ void Game::initResearchTrees() {
     LoadLog() << "  Applied per-country starting research" << std::endl;
 }
 
+bool Game::grantResearch(int countryId, const std::string& nodeId) {
+    // The walk the load-time unlock always did, as a function so a scenario's
+    // starting research takes the same one: the node, then what it depends
+    // on, each refused if a sibling in its mutex group is already held.
+    for (const auto& n : m_researchNodes) {
+        if (n.id != nodeId) continue;
+        auto& done = m_countryResearched[countryId];
+        if (done.count(n.id)) return true;
+        if (n.mutexGroup > 0)
+            for (const auto& sib : m_researchNodes)
+                if (sib.id != nodeId && sib.mutexGroup == n.mutexGroup && done.count(sib.id))
+                    return false;
+        done.insert(n.id);
+        for (const auto& depId : n.deps) grantResearch(countryId, depId);
+        return true;
+    }
+    return false;   // no such node
+}
+
 bool Game::hasResearched(const std::string& nodeId, int countryId) const {
     int cid = (countryId >= 0) ? countryId : m_playerCountryId;
     // Check per-country state first

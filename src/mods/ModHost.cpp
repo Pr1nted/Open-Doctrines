@@ -1821,6 +1821,45 @@ int64_t mil_province_combat_width(ExecEnv e, uint32_t p) {
 uint32_t mil_province_battle_attacker(ExecEnv e, uint32_t p) {
     MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->provinceBattleAttacker(p);
 }
+uint32_t milw_order_withdraw(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_WRITE, 0) return g_modGame->orderWithdraw(c, p) ? 1u : 0u;
+}
+
+// ---- diplomacy, 1.4 additions ----
+#define OD_TREATY_THUNK(fn, action)                                            \
+    uint32_t fn(ExecEnv e, uint32_t a, uint32_t b) {                            \
+        MOD_GUARD(MODULE_DIPLOMACY, 0)                                          \
+        return g_modGame->proposeTreaty(a, b, action) ? 1u : 0u;                \
+    }
+OD_TREATY_THUNK(dip_propose_alliance,       "request_alliance")
+OD_TREATY_THUNK(dip_break_alliance,         "break_alliance")
+OD_TREATY_THUNK(dip_propose_non_aggression, "request_nap")
+OD_TREATY_THUNK(dip_break_non_aggression,   "break_nap")
+OD_TREATY_THUNK(dip_propose_guarantee,      "request_guarantee")
+OD_TREATY_THUNK(dip_break_guarantee,        "break_guarantee")
+#undef OD_TREATY_THUNK
+
+static uint32_t dipDeal(ExecEnv e, uint32_t a, uint32_t b, uint32_t tPtr, uint32_t tLen, bool trade) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0)
+    std::string terms;
+    if (tLen > 0 && !mi->readString(tPtr, tLen, terms)) return 0;
+    return g_modGame->proposeDeal(a, b, trade, terms) ? 1u : 0u;
+}
+uint32_t dip_propose_ceasefire(ExecEnv e, uint32_t a, uint32_t b, uint32_t p, uint32_t l) {
+    return dipDeal(e, a, b, p, l, false);
+}
+uint32_t dip_propose_trade(ExecEnv e, uint32_t a, uint32_t b, uint32_t p, uint32_t l) {
+    return dipDeal(e, a, b, p, l, true);
+}
+uint32_t dip_country_claims_province(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0) return g_modGame->countryClaimsProvince(c, p) ? 1u : 0u;
+}
+uint32_t dip_grant_claim(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0) return g_modGame->setCountryClaim(c, p, true) ? 1u : 0u;
+}
+uint32_t dip_revoke_claim(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0) return g_modGame->setCountryClaim(c, p, false) ? 1u : 0u;
+}
 
 // ---- map, 1.1 additions ----
 
@@ -2240,6 +2279,19 @@ const ModHostFn kHostFunctions[] = {
     // ABI 1.4: what a front looks like.
     {"gearbox:military.read", "province_combat_width",         "(i)I",    (void*)mil_province_combat_width,          MODULE_MILITARY_READ},
     {"gearbox:military.read", "province_battle_attacker",      "(i)i",    (void*)mil_province_battle_attacker,       MODULE_MILITARY_READ},
+    {"gearbox:military.write", "order_withdraw",               "(ii)i",   (void*)milw_order_withdraw,                MODULE_MILITARY_WRITE},
+    // ABI 1.4: the rest of diplomacy.
+    {"gearbox:diplomacy", "propose_alliance",                  "(ii)i",   (void*)dip_propose_alliance,               MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "break_alliance",                    "(ii)i",   (void*)dip_break_alliance,                 MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_non_aggression",            "(ii)i",   (void*)dip_propose_non_aggression,         MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "break_non_aggression",              "(ii)i",   (void*)dip_break_non_aggression,           MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_guarantee",                 "(ii)i",   (void*)dip_propose_guarantee,              MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "break_guarantee",                   "(ii)i",   (void*)dip_break_guarantee,                MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_ceasefire",                 "(iiii)i", (void*)dip_propose_ceasefire,              MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_trade",                     "(iiii)i", (void*)dip_propose_trade,                  MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "country_claims_province",           "(ii)i",   (void*)dip_country_claims_province,        MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "grant_claim",                       "(ii)i",   (void*)dip_grant_claim,                    MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "revoke_claim",                      "(ii)i",   (void*)dip_revoke_claim,                   MODULE_DIPLOMACY},
 
     {"gearbox:map", "province_is_coastal", "(i)i",     (void*)map_province_is_coastal, MODULE_MAP},
     {"gearbox:map", "sea_route_exists",    "(FFFF)i",  (void*)map_sea_route_exists,    MODULE_MAP},

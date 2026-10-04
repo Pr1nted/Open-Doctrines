@@ -4092,8 +4092,7 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
     each("pendingWithdraws", [&](const nlohmann::json& e) {
         const int pid = (int)intIn(e, "provinceId", 1, kMaxProvinceId, 0);
         if (rejected) return;
-        if (!battleAt(pid, countryId)) return;      // nothing of theirs is fighting there
-        if (!hasPendingWithdraw(pid)) m_pendingWithdraws.push_back(pid);
+        orderWithdraw(countryId, pid);              // refused if nothing of theirs fights there
     });
 
     // A hull costs money and needs a port big enough to lay it down in: $15 and

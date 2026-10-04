@@ -21,11 +21,11 @@ into your memory after a call returns.
 - **WasiStub** (`wasi_snapshot_preview1`): [fd_write](#fd-write), [proc_exit](#proc-exit), [random_get](#random-get), [clock_time_get](#clock-time-get), [environ_sizes_get](#environ-sizes-get), [environ_get](#environ-get), [args_sizes_get](#args-sizes-get), [args_get](#args-get), [fd_close](#fd-close), [fd_fdstat_get](#fd-fdstat-get), [fd_prestat_get](#fd-prestat-get), [fd_prestat_dir_name](#fd-prestat-dir-name), [fd_read](#fd-read), [fd_seek](#fd-seek), [path_open](#path-open), [clock_res_get](#clock-res-get), [sched_yield](#sched-yield), [fd_advise](#fd-advise), [fd_allocate](#fd-allocate), [fd_datasync](#fd-datasync), [fd_sync](#fd-sync), [fd_fdstat_set_flags](#fd-fdstat-set-flags), [fd_filestat_get](#fd-filestat-get), [fd_tell](#fd-tell), [fd_renumber](#fd-renumber), [fd_filestat_set_size](#fd-filestat-set-size), [fd_filestat_set_times](#fd-filestat-set-times), [fd_pread](#fd-pread), [fd_pwrite](#fd-pwrite), [fd_readdir](#fd-readdir), [path_create_directory](#path-create-directory), [path_remove_directory](#path-remove-directory), [path_unlink_file](#path-unlink-file), [path_filestat_get](#path-filestat-get), [path_symlink](#path-symlink), [path_readlink](#path-readlink), [path_rename](#path-rename), [path_link](#path-link), [path_filestat_set_times](#path-filestat-set-times), [poll_oneoff](#poll-oneoff), [sock_accept](#sock-accept), [sock_recv](#sock-recv), [sock_send](#sock-send), [sock_shutdown](#sock-shutdown)
 - **Storage** (`gearbox:storage`): [get](#get), [set](#set), [remove](#remove)
 - **Map** (`gearbox:map`): [width](#width), [height](#height), [province_count](#province-count), [province_at](#province-at), [province_name](#province-name), [province_center_x](#province-center-x), [province_center_y](#province-center-y), [province_is_land](#province-is-land), [province_neighbor_count](#province-neighbor-count), [province_neighbor_at](#province-neighbor-at), [province_is_coastal](#province-is-coastal), [sea_route_exists](#sea-route-exists), [point_is_land](#point-is-land)
-- **Diplomacy** (`gearbox:diplomacy`): [at_war](#at-war), [allied](#allied), [non_aggression](#non-aggression), [guaranteed](#guaranteed), [propose_war](#propose-war)
+- **Diplomacy** (`gearbox:diplomacy`): [at_war](#at-war), [allied](#allied), [non_aggression](#non-aggression), [guaranteed](#guaranteed), [propose_war](#propose-war), [propose_alliance](#propose-alliance), [break_alliance](#break-alliance), [propose_non_aggression](#propose-non-aggression), [break_non_aggression](#break-non-aggression), [propose_guarantee](#propose-guarantee), [break_guarantee](#break-guarantee), [propose_ceasefire](#propose-ceasefire), [propose_trade](#propose-trade), [country_claims_province](#country-claims-province), [grant_claim](#grant-claim), [revoke_claim](#revoke-claim)
 - **GameState.Write** (`gearbox:gamestate.write`): [set_country_treasury](#set-country-treasury), [add_country_treasury](#add-country-treasury), [set_province_owner](#set-province-owner), [set_province_population](#set-province-population)
 - **Neural** (`gearbox:neural`): [feature_count](#feature-count), [features](#features), [reward_count](#reward-count), [reward_mean](#reward-mean), [module_count](#module-count), [module_name](#module-name), [action_count](#action-count), [action_name](#action-name), [country_is_ai](#country-is-ai), [update_count](#update-count), [model_loaded](#model-loaded), [ai_version](#ai-version), [ai_arch](#ai-arch), [country_stance](#country-stance), [stance_name](#stance-name), [stance_count](#stance-count)
 - **Military.Read** (`gearbox:military.read`): [ship_count](#ship-count), [ship_at](#ship-at), [ship_exists](#ship-exists), [ship_owner](#ship-owner), [ship_type](#ship-type), [ship_lon](#ship-lon), [ship_lat](#ship-lat), [ship_health](#ship-health), [ship_crew](#ship-crew), [ship_range](#ship-range), [army_stack_count](#army-stack-count), [army_stack_owner](#army-stack-owner), [army_stack_size](#army-stack-size), [country_army](#country-army), [province_fortification](#province-fortification), [province_port_level](#province-port-level), [troop_type_count](#troop-type-count), [troop_type_id](#troop-type-id), [country_army_of_type](#country-army-of-type), [province_troops_of_type](#province-troops-of-type), [province_combat_width](#province-combat-width), [province_battle_attacker](#province-battle-attacker)
-- **Military.Write** (`gearbox:military.write`): [order_army_move](#order-army-move), [order_ship_move](#order-ship-move), [order_ship_engage](#order-ship-engage), [order_ship_bombard](#order-ship-bombard)
+- **Military.Write** (`gearbox:military.write`): [order_army_move](#order-army-move), [order_ship_move](#order-ship-move), [order_ship_engage](#order-ship-engage), [order_ship_bombard](#order-ship-bombard), [order_withdraw](#order-withdraw)
 - **Research.Read** (`gearbox:research.read`): [node_count](#node-count), [node_id](#node-id), [node_name](#node-name), [node_category](#node-category), [node_cost](#node-cost), [country_has_researched](#country-has-researched), [country_funding](#country-funding), [country_research_groups](#country-research-groups)
 - **Research.Write** (`gearbox:research.write`): [set_country_funding](#set-country-funding), [set_country_research_groups](#set-country-research-groups)
 - **Politics.Read** (`gearbox:politics.read`): [country_compass_econ](#country-compass-econ), [country_compass_social](#country-compass-social), [province_unrest](#province-unrest), [policy_count](#policy-count), [policy_id](#policy-id), [policy_name](#policy-name), [country_has_policy](#country-has-policy), [province_minority_count](#province-minority-count), [province_minority_name](#province-minority-name), [province_minority_share](#province-minority-share), [country_district_count](#country-district-count), [country_district_name](#country-district-name), [country_district_share](#country-district-share), [country_district_province_count](#country-district-province-count), [country_district_province](#country-district-province), [country_district_law_count](#country-district-law-count), [country_district_law](#country-district-law), [district_law_count](#district-law-count), [district_law_id](#district-law-id), [district_law_name](#district-law-name), [country_discloses](#country-discloses), [country_party_count](#country-party-count), [country_party_name](#country-party-name), [country_party_short_name](#country-party-short-name), [country_party_support](#country-party-support), [country_party_compass_econ](#country-party-compass-econ), [country_party_compass_social](#country-party-compass-social), [country_party_is_historical](#country-party-is-historical), [country_ruling_party](#country-ruling-party)
@@ -1801,6 +1801,175 @@ Import module `gearbox:diplomacy`. Requires the `Diplomacy` capability in your m
 
 PROPOSES a declaration of war, and returns 1 only if the game accepted it. It is routed through the same code path any other actor uses, so guarantee chains and war consequences follow exactly as normal -- a mod cannot produce a diplomatic state the game itself could not reach. Refused (0) if either country is unknown, they are the same country, or they are already at war. Either outcome is written to your mod log, so a player can see after the fact that a mod started a war.
 
+### propose_alliance
+
+```wat
+(import "gearbox:diplomacy" "propose_alliance" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+
+**Returns:** `i32`
+
+Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer.
+
+### break_alliance
+
+```wat
+(import "gearbox:diplomacy" "break_alliance" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+
+**Returns:** `i32`
+
+Give notice that `country` is breaking the alliance with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting.
+
+### propose_non_aggression
+
+```wat
+(import "gearbox:diplomacy" "propose_non_aggression" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+
+**Returns:** `i32`
+
+Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer.
+
+### break_non_aggression
+
+```wat
+(import "gearbox:diplomacy" "break_non_aggression" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+
+**Returns:** `i32`
+
+Give notice that `country` is breaking the non-aggression pact with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting.
+
+### propose_guarantee
+
+```wat
+(import "gearbox:diplomacy" "propose_guarantee" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+
+**Returns:** `i32`
+
+Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer.
+
+### break_guarantee
+
+```wat
+(import "gearbox:diplomacy" "break_guarantee" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+
+**Returns:** `i32`
+
+Give notice that `country` is breaking the guarantee with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting.
+
+### propose_ceasefire
+
+```wat
+(import "gearbox:diplomacy" "propose_ceasefire" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+| `terms` | `i32` | pointer into your memory |
+| `terms_len` | `i32` | byte length |
+
+**Returns:** `i32`
+
+Offer `other` a ceasefire, with terms, on behalf of `country`. They must be at war. Sent through the same path as the deal screen's offer and answered at the end of the turn; accepted, the war ends and the terms are carried out. Terms are a JSON object, every key optional: our_money and their_money (numbers), our_provinces and their_provinces (province ids; ours must belong to `country`, theirs to `other`), our_drop_claims and their_drop_claims (province ids), our_goods and their_goods (objects keyed by good: consumer, machinery, fuel, munitions). `our` is what `country` gives, `their` what it asks for. An unknown key, a malformed value or a province on the wrong side refuses the whole offer. Money is clamped to what each side holds and offered goods to what `country` holds, as the deal screen clamps them. Goods change hands only in a goods world. Returns 0 if the offer cannot be made.
+
+### propose_trade
+
+```wat
+(import "gearbox:diplomacy" "propose_trade" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `other` | `i32` |  |
+| `terms` | `i32` | pointer into your memory |
+| `terms_len` | `i32` | byte length |
+
+**Returns:** `i32`
+
+Offer `other` a trade on behalf of `country`: the same terms as a ceasefire, between countries at PEACE, and no war ends. Terms are a JSON object, every key optional: our_money and their_money (numbers), our_provinces and their_provinces (province ids; ours must belong to `country`, theirs to `other`), our_drop_claims and their_drop_claims (province ids), our_goods and their_goods (objects keyed by good: consumer, machinery, fuel, munitions). `our` is what `country` gives, `their` what it asks for. An unknown key, a malformed value or a province on the wrong side refuses the whole offer. Money is clamped to what each side holds and offered goods to what `country` holds, as the deal screen clamps them. Goods change hands only in a goods world. Returns 0 if the offer cannot be made.
+
+### country_claims_province
+
+```wat
+(import "gearbox:diplomacy" "country_claims_province" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Whether `country` holds a claim on `province`. 0 for an unknown country or province.
+
+### grant_claim
+
+```wat
+(import "gearbox:diplomacy" "grant_claim" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Give `country` a claim on `province`, through the game's own grant (the same one conquest and events use). Returns 0 for an unknown country or province.
+
+### revoke_claim
+
+```wat
+(import "gearbox:diplomacy" "revoke_claim" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Withdraw `country`'s claim on `province`, through the game's own revoke. Returns 0 for an unknown country or province; 1 when there was nothing to withdraw.
+
 ## GameState.Write
 
 Import module `gearbox:gamestate.write`. Requires the `GameState.Write` capability in your manifest.
@@ -2457,6 +2626,21 @@ Attack another ship. Requires that you are at war with its owner and that it is 
 **Returns:** `i32`
 
 Bombard a coastal province. `ammo` names the shell type; pass an empty string for the default. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright.
+
+### order_withdraw
+
+```wat
+(import "gearbox:military.write" "order_withdraw" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Withdraw `country`'s attack on `province` at the next resolution: the survivors go home if the country still holds the province they came from. The check the multiplayer host makes of a player's order: refused (0) unless a battle of THIS country's stands there. Ordering it twice is the same as once.
 
 ## Research.Read
 

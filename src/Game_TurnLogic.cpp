@@ -5062,6 +5062,18 @@ bool Game::hasRelation(const std::string& isoA, const std::string& isoB,
     return false;
 }
 
+// A white peace: the war ends and nothing changes hands. The same two steps a
+// ceasefire with no terms takes -- the flags in both rows, and the armies sent
+// home, since a peace that left both armies standing in each other's provinces
+// would leave them there for good.
+void Game::makePeace(const std::string& isoA, const std::string& isoB) {
+    if (isoA.empty() || isoB.empty() || isoA == isoB) return;
+    const bool wasAtWar = hasRelation(isoA, isoB, &CountryRelation::war);
+    m_relations[isoA][isoB].war = false;
+    m_relations[isoB][isoA].war = false;
+    if (wasAtWar) withdrawArmiesAfterPeace(cidForIso(isoA), cidForIso(isoB));
+}
+
 void Game::declareWar(const std::string& attackerIso, const std::string& defenderIso,
                       bool chainGuarantees, int statedGoal) {
     if (attackerIso.empty() || defenderIso.empty() || attackerIso == defenderIso) return;
@@ -5461,6 +5473,43 @@ int Game::warDeclarationLimit(int countryId) const {
     return std::max(1, limit);
 }
 
+bool Game::submitDealOffer(int srcCid, int tgtCid, bool trade, CeasefireTerms terms) {
+    Country* src = m_countries.getCountry(srcCid);
+    const Country* tgt = m_countries.getCountry(tgtCid);
+    if (!src || !tgt || srcCid == tgtCid) return false;
+    // Asked BEFORE anything is paid: the offered money leaves the player's
+    // treasury when the offer is sent, and an offer the queue then refused
+    // would be money burnt.
+    if (hasPendingDiplomacy(src->isoA3, tgt->isoA3)) return false;
+
+    // What each side can actually pay, and what the sender actually holds.
+    const int srcCash = std::max(0, (int)src->treasury);
+    const int tgtCash = std::max(0, (int)tgt->treasury);
+    terms.ourMoney   = std::clamp(terms.ourMoney, 0, srcCash);
+    terms.theirMoney = std::clamp(terms.theirMoney, 0, tgtCash);
+    auto sIt = m_countryStockpiles.find(srcCid);
+    for (int g = 0; g < GOOD_COUNT; ++g) {
+        const float held = (sIt != m_countryStockpiles.end()) ? sIt->second.goods[g] : 0.0f;
+        if (!(terms.ourGoods[g] > 0.0f))   terms.ourGoods[g] = 0.0f;     // also NaN
+        if (!(terms.theirGoods[g] > 0.0f)) terms.theirGoods[g] = 0.0f;
+        terms.ourGoods[g] = std::min(terms.ourGoods[g], held);
+    }
+
+    PendingDiplomaticAction da;
+    da.sourceIso = src->isoA3;
+    da.targetIso = tgt->isoA3;
+    // Same terms, different word on the wire: the resolution branches on it to
+    // decide whether a war ends.
+    da.action = trade ? "propose_trade" : "request_ceasefire";
+    da.turnsRemaining = 2;
+    if (!queueDiplomaticAction(da)) return false;
+    // The player pays now and is refunded on a refusal; everyone else pays at
+    // resolution (applyCeasefireTerms is told which by the same test).
+    if (srcCid == m_playerCountryId) src->treasury -= terms.ourMoney;
+    m_pendingCeasefireTerms[src->isoA3 + "|" + tgt->isoA3] = terms;
+    return true;
+}
+
 bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
     if (da.sourceIso.empty() || da.targetIso.empty() ||
         da.sourceIso == da.targetIso) return false;
@@ -5498,6 +5547,81 @@ bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
         if (me && me->isoA3 == da.sourceIso) achNoteWarDeclared(da.targetIso);
     }
     m_pendingDiplomaticActions.push_back(std::move(da));
+    return true;
+}
+
+// === applyTreatyAction ===
+//
+// What a treaty does once it is agreed -- or broken. Lifted out of
+// processDiplomaticRequests so that the one other thing allowed to make or
+// break a treaty, a map script, makes and breaks the SAME one: an alliance
+// broken by a script absorbs the foreign troops on each side's soil exactly as
+// one broken across the table does, and a pact broken by a script costs the
+// same credibility. Returns false for an action that is not a treaty.
+bool Game::applyTreatyAction(const std::string& sourceIso, const std::string& targetIso,
+                             const std::string& action) {
+    if (sourceIso.empty() || targetIso.empty() || sourceIso == targetIso) return false;
+    auto& rt = m_relations[sourceIso][targetIso];
+    if (action == "request_alliance") {
+        rt.alliance = true;
+        m_relations[targetIso][sourceIso].alliance = true;
+    } else if (action == "break_alliance") {
+        rt.alliance = false;
+        m_relations[targetIso][sourceIso].alliance = false;
+        // Find country IDs, protect player's troops from conversion
+        int srcCid = -1, tgtCid = -1;
+        for (auto& [cid, c] : m_countries.getAll()) {
+            if (c.isoA3 == sourceIso) srcCid = cid;
+            if (c.isoA3 == targetIso) tgtCid = cid;
+        }
+        // Absorb foreign troops on each side's soil (player's troops never convert)
+        auto absorbForeign = [&](int localCid, int foreignCid) {
+            if (localCid < 0 || foreignCid < 0) return;
+            if (foreignCid == m_playerCountryId) return;
+            for (auto& [pid, units] : m_provinceArmies) {
+                Province* pp = m_provinces.getProvinceById(pid);
+                if (!pp || pp->countryId != localCid) continue;
+                // MERGED, not relabelled. Retagging the stack left the
+                // host with two stacks of its own in one province, and
+                // a move order reads the FIRST one and moves a share of
+                // that -- so half the garrison was invisible to every
+                // order given afterwards.
+                long long absorbed = 0;
+                for (auto it = units.begin(); it != units.end(); ) {
+                    if (it->countryId == foreignCid) {
+                        absorbed += it->count;
+                        it = units.erase(it);
+                    } else ++it;
+                }
+                if (absorbed <= 0) continue;
+                bool merged = false;
+                for (auto& u : units)
+                    if (u.countryId == localCid) { u.count += (int)absorbed; merged = true; break; }
+                if (!merged) units.push_back({localCid, (int)absorbed});
+            }
+        };
+        absorbForeign(srcCid, tgtCid);
+        absorbForeign(tgtCid, srcCid);
+    } else if (action == "request_guarantee") {
+        // Mirrored — guarantee was the only relation written one-way,
+        // which made guarantor lookups direction-dependent.
+        rt.guarantee = true;
+        m_relations[targetIso][sourceIso].guarantee = true;
+    } else if (action == "break_guarantee") {
+        rt.guarantee = false;
+        m_relations[targetIso][sourceIso].guarantee = false;
+    } else if (action == "request_nap") {
+        rt.nonAggression = true;
+        m_relations[targetIso][sourceIso].nonAggression = true;
+    } else if (action == "break_nap") {
+        // Breaking it openly costs the same as breaking it by attack:
+        // the promise is the thing being broken either way.
+        if (rt.nonAggression) loseCredibility(sourceIso, targetIso, CRED_HIT_PACT);
+        rt.nonAggression = false;
+        m_relations[targetIso][sourceIso].nonAggression = false;
+    } else {
+        return false;
+    }
     return true;
 }
 
@@ -5916,63 +6040,9 @@ void Game::processDiplomaticRequests() {
             // Apply the diplomatic action
             auto& rels = m_relations[da.sourceIso];
             auto& rt = rels[da.targetIso];
-            if (da.action == "request_alliance") {
-                rt.alliance = true;
-                m_relations[da.targetIso][da.sourceIso].alliance = true;
-            } else if (da.action == "break_alliance") {
-                rt.alliance = false;
-                m_relations[da.targetIso][da.sourceIso].alliance = false;
-                // Find country IDs, protect player's troops from conversion
-                int srcCid = -1, tgtCid = -1;
-                for (auto& [cid, c] : m_countries.getAll()) {
-                    if (c.isoA3 == da.sourceIso) srcCid = cid;
-                    if (c.isoA3 == da.targetIso) tgtCid = cid;
-                }
-                // Absorb foreign troops on each side's soil (player's troops never convert)
-                auto absorbForeign = [&](int localCid, int foreignCid) {
-                    if (localCid < 0 || foreignCid < 0) return;
-                    if (foreignCid == m_playerCountryId) return;
-                    for (auto& [pid, units] : m_provinceArmies) {
-                        Province* pp = m_provinces.getProvinceById(pid);
-                        if (!pp || pp->countryId != localCid) continue;
-                        // MERGED, not relabelled. Retagging the stack left the
-                        // host with two stacks of its own in one province, and
-                        // a move order reads the FIRST one and moves a share of
-                        // that -- so half the garrison was invisible to every
-                        // order given afterwards.
-                        long long absorbed = 0;
-                        for (auto it = units.begin(); it != units.end(); ) {
-                            if (it->countryId == foreignCid) {
-                                absorbed += it->count;
-                                it = units.erase(it);
-                            } else ++it;
-                        }
-                        if (absorbed <= 0) continue;
-                        bool merged = false;
-                        for (auto& u : units)
-                            if (u.countryId == localCid) { u.count += (int)absorbed; merged = true; break; }
-                        if (!merged) units.push_back({localCid, (int)absorbed});
-                    }
-                };
-                absorbForeign(srcCid, tgtCid);
-                absorbForeign(tgtCid, srcCid);
-            } else if (da.action == "request_guarantee") {
-                // Mirrored — guarantee was the only relation written one-way,
-                // which made guarantor lookups direction-dependent.
-                rt.guarantee = true;
-                m_relations[da.targetIso][da.sourceIso].guarantee = true;
-            } else if (da.action == "break_guarantee") {
-                rt.guarantee = false;
-                m_relations[da.targetIso][da.sourceIso].guarantee = false;
-            } else if (da.action == "request_nap") {
-                rt.nonAggression = true;
-                m_relations[da.targetIso][da.sourceIso].nonAggression = true;
-            } else if (da.action == "break_nap") {
-                // Breaking it openly costs the same as breaking it by attack:
-                // the promise is the thing being broken either way.
-                if (rt.nonAggression) loseCredibility(da.sourceIso, da.targetIso, CRED_HIT_PACT);
-                rt.nonAggression = false;
-                m_relations[da.targetIso][da.sourceIso].nonAggression = false;
+            // The treaties apply through applyTreatyAction, which map scripts
+            // use too; the rest of this chain is ceasefires and trades.
+            if (applyTreatyAction(da.sourceIso, da.targetIso, da.action)) {
             } else if (da.action == "request_ceasefire") {
                 // AI decides whether to accept the ceasefire offer.
                 // Simple heuristic: AI always accepts if the player is stronger
@@ -7355,6 +7425,15 @@ void Game::queueWithdraw(int provinceId) {
     auto it = std::find(m_pendingWithdraws.begin(), m_pendingWithdraws.end(), provinceId);
     if (it != m_pendingWithdraws.end()) m_pendingWithdraws.erase(it);   // a second press cancels
     else m_pendingWithdraws.push_back(provinceId);
+}
+
+bool Game::orderWithdraw(int countryId, int provinceId) {
+    // What authorises a withdrawal is a battle of THIS country's standing in
+    // that province -- the check the multiplayer host has always made of a
+    // client's order. No toggle: an order says what it wants.
+    if (!battleAt(provinceId, countryId)) return false;
+    if (!hasPendingWithdraw(provinceId)) m_pendingWithdraws.push_back(provinceId);
+    return true;
 }
 
 void Game::withdrawFromBattle(int provinceId, int attackerCid) {

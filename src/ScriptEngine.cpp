@@ -929,7 +929,9 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 std::count(ref.begin(), ref.end(), '.') == 2) {
                 const std::string tailProp = ref.substr(ref.rfind('.') + 1);
                 const size_t vsp = valStr.find_first_of(" \t");
-                if ((tailProp == "at_war_with" || tailProp == "allied_with") &&
+                if ((tailProp == "at_war_with" || tailProp == "allied_with" ||
+                     tailProp == "non_aggression" || tailProp == "guaranteed" ||
+                     tailProp == "claims_province") &&
                     vsp != std::string::npos) {
                     // The other country may be a loop variable -- `foreach item
                     // in array.targets` / `set country.USA.at_war_with item
@@ -1604,7 +1606,8 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
         // word, not a fourth segment, so the read was always false. Folded into
         // the dotted form, which is the one implementation.
         if (dots.size() == 3 && parts.size() >= 2 &&
-            (prop == "at_war_with" || prop == "allied_with" || prop == "claims_province")) {
+            (prop == "at_war_with" || prop == "allied_with" || prop == "claims_province" ||
+             prop == "non_aggression" || prop == "guaranteed")) {
             auto lv = localVars.find(parts[1]);
             dots.push_back(lv != localVars.end() ? lv->second.asString() : parts[1]);
         }
@@ -1650,25 +1653,20 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             return ScriptValue::makeBool(rp->historical);
         }
 
-        // country.ISO.at_war_with ISO
-        if (prop == "at_war_with" && dots.size() >= 4) {
-            std::string otherIso = dots[3];
-            auto it = m_game->m_relations.find(iso);
-            if (it != m_game->m_relations.end()) {
-                auto jt = it->second.find(otherIso);
-                if (jt != it->second.end()) return ScriptValue::makeBool(jt->second.war);
-            }
-            return ScriptValue::makeBool(false);
-        }
-        // country.ISO.allied_with ISO
-        if (prop == "allied_with" && dots.size() >= 4) {
-            std::string otherIso = dots[3];
-            auto it = m_game->m_relations.find(iso);
-            if (it != m_game->m_relations.end()) {
-                auto jt = it->second.find(otherIso);
-                if (jt != it->second.end()) return ScriptValue::makeBool(jt->second.alliance);
-            }
-            return ScriptValue::makeBool(false);
+        // country.ISO.at_war_with.OTHER / allied_with / non_aggression / guaranteed
+        //
+        // Through hasRelation, which reads both rows: a scenario's relations
+        // file often records a treaty for one side only, and the game treats
+        // that as binding both. Reading one row made a script disagree with
+        // the game about whether two countries were allied.
+        if ((prop == "at_war_with" || prop == "allied_with" ||
+             prop == "non_aggression" || prop == "guaranteed") && dots.size() >= 4) {
+            bool CountryRelation::*flag =
+                prop == "at_war_with" ? &CountryRelation::war
+              : prop == "allied_with" ? &CountryRelation::alliance
+              : prop == "non_aggression" ? &CountryRelation::nonAggression
+              : &CountryRelation::guarantee;
+            return ScriptValue::makeBool(m_game->hasRelation(iso, dots[3], flag));
         }
         // country.ISO.claims_province ID
         if (prop == "claims_province" && dots.size() >= 4) {
@@ -1786,6 +1784,10 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
         // ── Monuments, nationally ──
         if (prop == "monument_slots") return ScriptValue::makeInt(m_game->monumentSlotsUsed(cid));
         if (prop == "monument_upkeep") return ScriptValue::makeFloat(m_game->monumentUpkeep(cid));
+
+        // ── Research: country.ISO.researched.<node id> ──
+        if (prop == "researched" && dots.size() >= 4)
+            return ScriptValue::makeBool(m_game->hasResearched(dots[3], cid));
 
         // ── Doctrines in force: country.ISO.policy.<id> ──
         if (prop == "policy" && dots.size() >= 4)
@@ -2053,21 +2055,66 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             else        m_game->m_scriptResearchGroups[cid] = (int)n;
             return true;
         }
-        // set country.ISO.at_war_with ISO true/false
-        if (prop == "at_war_with" && dots.size() >= 4) {
-            std::string otherIso = dots[3];
-            bool war = val.asBool();
-            m_game->m_relations[iso][otherIso].war = war;
-            m_game->m_relations[otherIso][iso].war = war;
+        // ── WARS AND TREATIES GO THROUGH THE RULES ──
+        //
+        // These used to flip the flags, which produced states the game itself
+        // never could: a declared war that skipped the guarantee chain and the
+        // broken pact's credibility cost, a peace that left both armies
+        // standing in each other's provinces for ever, an alliance broken with
+        // the other side's troops still garrisoned on your soil. Now a war is
+        // DECLARED (guarantors join, as they would), a peace is MADE (armies go
+        // home), and a treaty is applied the way an agreed one is.
+        if ((prop == "at_war_with" || prop == "allied_with" ||
+             prop == "non_aggression" || prop == "guaranteed") && dots.size() >= 4) {
+            const std::string& other = dots[3];
+            if (other == iso || !m_game->m_countries.getCountryByCode(other)) {
+                addError("", 0, prop + ": no other country called '" + other + "'");
+                return false;
+            }
+            const bool on = val.asBool();
+            if (prop == "at_war_with") {
+                if (on) m_game->declareWar(iso, other, true);
+                else    m_game->makePeace(iso, other);
+                return true;
+            }
+            if (on && m_game->hasRelation(iso, other, &CountryRelation::war)) {
+                addError("", 0, prop + ": " + iso + " and " + other +
+                                " are at war; make peace first");
+                return false;
+            }
+            const char* action =
+                prop == "allied_with"    ? (on ? "request_alliance"  : "break_alliance")
+              : prop == "non_aggression" ? (on ? "request_nap"       : "break_nap")
+              :                            (on ? "request_guarantee" : "break_guarantee");
+            return m_game->applyTreatyAction(iso, other, action);
+        }
+
+        // set country.ISO.claims_province.ID true/false -- the game's own grant
+        // and revoke, which keep the claim lists and their UI in step.
+        if (prop == "claims_province" && dots.size() >= 4) {
+            int pid = 0;
+            try { pid = std::stoi(dots[3]); } catch (...) { return false; }
+            if (!m_game->m_provinces.getProvinceById(pid)) {
+                addError("", 0, "claims_province: no province " + dots[3]);
+                return false;
+            }
+            if (val.asBool()) m_game->grantClaim(iso, pid);
+            else              m_game->revokeClaim(iso, pid);
             return true;
         }
-        // set country.ISO.allied_with ISO true/false
-        if (prop == "allied_with" && dots.size() >= 4) {
-            std::string otherIso = dots[3];
-            bool ally = val.asBool();
-            m_game->m_relations[iso][otherIso].alliance = ally;
-            m_game->m_relations[otherIso][iso].alliance = ally;
-            return true;
+
+        // set country.ISO.researched.<node> true -- with everything it depends
+        // on, as the game unlocks a country's built infrastructure at load.
+        // Research is not taken back: nothing in the game un-learns.
+        if (prop == "researched" && dots.size() >= 4) {
+            if (!val.asBool()) {
+                addError("", 0, "researched: research cannot be taken back");
+                return false;
+            }
+            if (m_game->grantResearch(cid, dots[3])) return true;
+            addError("", 0, "researched." + dots[3] +
+                            ": no such node, or a rival in its group is already researched");
+            return false;
         }
         return false;
     }
@@ -2092,13 +2139,11 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             for (auto& [id, c] : m_game->m_countries.getAll())
                 if (c.isoA3 == iso) { newCid = id; break; }
             if (newCid < 0) return false;
-            const int oldCid = p->countryId; // read before the write: the index needs both sides
-            p->countryId = newCid;
-            if ((size_t)pid < m_game->m_provinceCountryLookup.size())
-                m_game->m_provinceCountryLookup[pid] = newCid;
-            m_game->reindexProvinceOwner(pid, oldCid, newCid);
-            // Pixels follow the province; nothing per-pixel to update.
-            return true;
+            if (newCid == p->countryId) return true;   // already theirs
+            // The transfer a ceasefire and a mod use: districts reconciled,
+            // claims settled, and the old owner's troops sent off the ground
+            // they no longer hold.
+            return m_game->modSetProvinceOwner(pid, newCid);
         }
         // Through the mod door's setter, which keeps the province's income in
         // step with its level; writing the level alone left the old income.

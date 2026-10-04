@@ -101,6 +101,11 @@ public:
     bool setCountryNationalised(uint32_t c, const std::string& r, bool on) override { return m_game->modSetCountryNationalised((int)c, r, on); }
     int64_t provinceCombatWidth(uint32_t p) override { return m_game->modProvinceCombatWidth((int)p); }
     uint32_t provinceBattleAttacker(uint32_t p) override { return (uint32_t)m_game->modProvinceBattleAttacker((int)p); }
+    bool proposeTreaty(uint32_t a, uint32_t b, const std::string& act) override { return m_game->modProposeTreaty((int)a, (int)b, act); }
+    bool proposeDeal(uint32_t a, uint32_t b, bool trade, const std::string& j) override { return m_game->modProposeDeal((int)a, (int)b, trade, j); }
+    bool countryClaimsProvince(uint32_t c, uint32_t p) override { return m_game->modCountryClaimsProvince((int)c, (int)p); }
+    bool setCountryClaim(uint32_t c, uint32_t p, bool on) override { return m_game->modSetCountryClaim((int)c, (int)p, on); }
+    bool orderWithdraw(uint32_t c, uint32_t p) override { return m_game->modOrderWithdraw((int)c, (int)p); }
 
 private:
     Game* m_game;
@@ -742,6 +747,115 @@ bool Game::modProposeWar(int attacker, int defender) {
     // game itself could never reach.
     declareWar(*ia, *ib, true);
     return true;
+}
+
+// ── ABI 1.4: the rest of diplomacy ──────────────────────────────────────
+//
+// A mod speaks for a country the way the diplomacy panel does: by QUEUEING a
+// request, which the other side answers at the end of the turn. Nothing here
+// makes a treaty exist; it asks for one, through queueDiplomaticAction and its
+// one-offer-per-pair rule. The breaks are queued too, as the panel queues them.
+bool Game::modProposeTreaty(int a, int b, const std::string& action) {
+    const std::string* ia = modIsoFor(a);
+    const std::string* ib = modIsoFor(b);
+    if (!ia || !ib || ia->empty() || ib->empty() || *ia == *ib) return false;
+    bool CountryRelation::*flag = nullptr;
+    bool making = false;
+    if      (action == "request_alliance")  { flag = &CountryRelation::alliance;      making = true; }
+    else if (action == "break_alliance")    { flag = &CountryRelation::alliance; }
+    else if (action == "request_nap")       { flag = &CountryRelation::nonAggression; making = true; }
+    else if (action == "break_nap")         { flag = &CountryRelation::nonAggression; }
+    else if (action == "request_guarantee") { flag = &CountryRelation::guarantee;     making = true; }
+    else if (action == "break_guarantee")   { flag = &CountryRelation::guarantee; }
+    else return false;
+    const bool has = hasRelation(*ia, *ib, flag);
+    if (making && (has || hasRelation(*ia, *ib, &CountryRelation::war))) return false;
+    if (!making && !has) return false;
+    return queueDiplomaticAction(PendingDiplomaticAction{*ia, *ib, action, 1});
+}
+
+// Terms cross as JSON -- the same choice Content made -- because a deal is a
+// record with lists in it, and a dozen positional arguments would be a call no
+// modder gets right. Unknown keys are REFUSED: a misspelt "our_good" silently
+// offering nothing is exactly the bug a strict reader exists to catch.
+bool Game::modProposeDeal(int a, int b, bool trade, const std::string& termsJson) {
+    const Country* ca = m_countries.getCountry(a);
+    const Country* cb = m_countries.getCountry(b);
+    if (!ca || !cb || a == b) return false;
+    const bool atWar = hasRelation(ca->isoA3, cb->isoA3, &CountryRelation::war);
+    if (trade == atWar) return false;   // a ceasefire ends a war; a trade is made in peace
+    nlohmann::json j;
+    try { j = nlohmann::json::parse(termsJson.empty() ? std::string("{}") : termsJson); }
+    catch (...) { return false; }
+    if (!j.is_object()) return false;
+    static const char* kKeys[] = {"our_money", "their_money", "our_provinces", "their_provinces",
+                                  "our_drop_claims", "their_drop_claims", "our_goods", "their_goods"};
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        bool known = false;
+        for (const char* k : kKeys) if (it.key() == k) known = true;
+        if (!known) return false;
+    }
+    CeasefireTerms t;
+    auto money = [&](const char* k, int& out) {
+        if (!j.contains(k)) return true;
+        if (!j[k].is_number()) return false;
+        const double v = j[k].get<double>();
+        if (!(v >= 0.0) || v > 1e9) return false;
+        out = (int)v;
+        return true;
+    };
+    auto ids = [&](const char* k, std::vector<int>& out, int mustBeOwnedBy) {
+        if (!j.contains(k)) return true;
+        if (!j[k].is_array()) return false;
+        for (const auto& v : j[k]) {
+            if (!v.is_number_integer()) return false;
+            const int pid = v.get<int>();
+            const Province* p = m_provinces.getProvinceById(pid);
+            if (!p) return false;
+            if (mustBeOwnedBy > 0 && p->countryId != mustBeOwnedBy) return false;
+            out.push_back(pid);
+        }
+        return true;
+    };
+    auto goods = [&](const char* k, float (&out)[4]) {
+        if (!j.contains(k)) return true;
+        if (!j[k].is_object()) return false;
+        for (auto it = j[k].begin(); it != j[k].end(); ++it) {
+            int g = -1;
+            for (int i = 0; i < GOOD_COUNT; ++i) if (it.key() == goodKey(i)) g = i;
+            if (g < 0 || !it.value().is_number()) return false;
+            const double v = it.value().get<double>();
+            if (!(v >= 0.0) || v > 1e9) return false;
+            out[g] = (float)v;
+        }
+        return true;
+    };
+    if (!money("our_money", t.ourMoney) || !money("their_money", t.theirMoney) ||
+        !ids("our_provinces", t.ourProvs, a) || !ids("their_provinces", t.theirProvs, b) ||
+        !ids("our_drop_claims", t.ourDropClaims, 0) || !ids("their_drop_claims", t.theirDropClaims, 0) ||
+        !goods("our_goods", t.ourGoods) || !goods("their_goods", t.theirGoods))
+        return false;
+    return submitDealOffer(a, b, trade, t);
+}
+
+bool Game::modCountryClaimsProvince(int cid, int pid) const {
+    const std::string* iso = modIsoFor(cid);
+    if (!iso) return false;
+    auto it = m_claims.find(*iso);
+    return it != m_claims.end() && std::find(it->second.begin(), it->second.end(), pid) != it->second.end();
+}
+
+bool Game::modSetCountryClaim(int cid, int pid, bool on) {
+    const std::string* iso = modIsoFor(cid);
+    if (!iso || iso->empty() || !m_provinces.getProvinceById(pid)) return false;
+    if (on) grantClaim(*iso, pid);
+    else    revokeClaim(*iso, pid);
+    return true;
+}
+
+bool Game::modOrderWithdraw(int cid, int pid) {
+    if (!m_countries.getCountry(cid)) return false;
+    return orderWithdraw(cid, pid);
 }
 
 // ----------------------------------------------------- GameState.Write ----

@@ -500,6 +500,117 @@ extern "C" {
     /// `(ii)i`
     pub fn propose_war(attacker: u32, defender: u32) -> u32;
 
+    /// Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST,
+    /// exactly as the diplomacy panel's button does; the other side answers at
+    /// the end of the turn and may refuse. Returns 0 if the request cannot be
+    /// made: an unknown country, a war between them, the treaty already
+    /// standing, or another offer between the pair still awaiting an answer.
+    /// gearbox:diplomacy "propose_alliance"
+    /// `(ii)i`
+    pub fn propose_alliance(country: u32, other: u32) -> u32;
+
+    /// Give notice that `country` is breaking the alliance with `other`. Queued
+    /// like the panel's button, and applied at the end of the turn with the
+    /// same consequences: breaking an alliance absorbs each side's troops
+    /// standing on the other's soil, and breaking a pact costs credibility.
+    /// Returns 0 if there is no such treaty to break or an offer between the
+    /// pair is already waiting.
+    /// gearbox:diplomacy "break_alliance"
+    /// `(ii)i`
+    pub fn break_alliance(country: u32, other: u32) -> u32;
+
+    /// Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A
+    /// REQUEST, exactly as the diplomacy panel's button does; the other side
+    /// answers at the end of the turn and may refuse. Returns 0 if the request
+    /// cannot be made: an unknown country, a war between them, the treaty
+    /// already standing, or another offer between the pair still awaiting an
+    /// answer.
+    /// gearbox:diplomacy "propose_non_aggression"
+    /// `(ii)i`
+    pub fn propose_non_aggression(country: u32, other: u32) -> u32;
+
+    /// Give notice that `country` is breaking the non-aggression pact with
+    /// `other`. Queued like the panel's button, and applied at the end of the
+    /// turn with the same consequences: breaking an alliance absorbs each
+    /// side's troops standing on the other's soil, and breaking a pact costs
+    /// credibility. Returns 0 if there is no such treaty to break or an offer
+    /// between the pair is already waiting.
+    /// gearbox:diplomacy "break_non_aggression"
+    /// `(ii)i`
+    pub fn break_non_aggression(country: u32, other: u32) -> u32;
+
+    /// Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST,
+    /// exactly as the diplomacy panel's button does; the other side answers at
+    /// the end of the turn and may refuse. Returns 0 if the request cannot be
+    /// made: an unknown country, a war between them, the treaty already
+    /// standing, or another offer between the pair still awaiting an answer.
+    /// gearbox:diplomacy "propose_guarantee"
+    /// `(ii)i`
+    pub fn propose_guarantee(country: u32, other: u32) -> u32;
+
+    /// Give notice that `country` is breaking the guarantee with `other`.
+    /// Queued like the panel's button, and applied at the end of the turn with
+    /// the same consequences: breaking an alliance absorbs each side's troops
+    /// standing on the other's soil, and breaking a pact costs credibility.
+    /// Returns 0 if there is no such treaty to break or an offer between the
+    /// pair is already waiting.
+    /// gearbox:diplomacy "break_guarantee"
+    /// `(ii)i`
+    pub fn break_guarantee(country: u32, other: u32) -> u32;
+
+    /// Offer `other` a ceasefire, with terms, on behalf of `country`. They must
+    /// be at war. Sent through the same path as the deal screen's offer and
+    /// answered at the end of the turn; accepted, the war ends and the terms
+    /// are carried out. Terms are a JSON object, every key optional: our_money
+    /// and their_money (numbers), our_provinces and their_provinces (province
+    /// ids; ours must belong to `country`, theirs to `other`), our_drop_claims
+    /// and their_drop_claims (province ids), our_goods and their_goods (objects
+    /// keyed by good: consumer, machinery, fuel, munitions). `our` is what
+    /// `country` gives, `their` what it asks for. An unknown key, a malformed
+    /// value or a province on the wrong side refuses the whole offer. Money is
+    /// clamped to what each side holds and offered goods to what `country`
+    /// holds, as the deal screen clamps them. Goods change hands only in a
+    /// goods world. Returns 0 if the offer cannot be made.
+    /// gearbox:diplomacy "propose_ceasefire"
+    /// `(iiii)i`
+    pub fn propose_ceasefire(country: u32, other: u32, terms: *const u8, terms_len: u32) -> u32;
+
+    /// Offer `other` a trade on behalf of `country`: the same terms as a
+    /// ceasefire, between countries at PEACE, and no war ends. Terms are a JSON
+    /// object, every key optional: our_money and their_money (numbers),
+    /// our_provinces and their_provinces (province ids; ours must belong to
+    /// `country`, theirs to `other`), our_drop_claims and their_drop_claims
+    /// (province ids), our_goods and their_goods (objects keyed by good:
+    /// consumer, machinery, fuel, munitions). `our` is what `country` gives,
+    /// `their` what it asks for. An unknown key, a malformed value or a
+    /// province on the wrong side refuses the whole offer. Money is clamped to
+    /// what each side holds and offered goods to what `country` holds, as the
+    /// deal screen clamps them. Goods change hands only in a goods world.
+    /// Returns 0 if the offer cannot be made.
+    /// gearbox:diplomacy "propose_trade"
+    /// `(iiii)i`
+    pub fn propose_trade(country: u32, other: u32, terms: *const u8, terms_len: u32) -> u32;
+
+    /// Whether `country` holds a claim on `province`. 0 for an unknown country
+    /// or province.
+    /// gearbox:diplomacy "country_claims_province"
+    /// `(ii)i`
+    pub fn country_claims_province(country: u32, province: u32) -> u32;
+
+    /// Give `country` a claim on `province`, through the game's own grant (the
+    /// same one conquest and events use). Returns 0 for an unknown country or
+    /// province.
+    /// gearbox:diplomacy "grant_claim"
+    /// `(ii)i`
+    pub fn grant_claim(country: u32, province: u32) -> u32;
+
+    /// Withdraw `country`'s claim on `province`, through the game's own revoke.
+    /// Returns 0 for an unknown country or province; 1 when there was nothing
+    /// to withdraw.
+    /// gearbox:diplomacy "revoke_claim"
+    /// `(ii)i`
+    pub fn revoke_claim(country: u32, province: u32) -> u32;
+
 }
 
 #[link(wasm_import_module = "gearbox:gamestate.write")]
@@ -841,6 +952,15 @@ extern "C" {
     /// gearbox:military.write "order_ship_bombard"
     /// `(iiii)i`
     pub fn order_ship_bombard(ship: u32, province: u32, ammo: *const u8, ammo_len: u32) -> u32;
+
+    /// Withdraw `country`'s attack on `province` at the next resolution: the
+    /// survivors go home if the country still holds the province they came
+    /// from. The check the multiplayer host makes of a player's order: refused
+    /// (0) unless a battle of THIS country's stands there. Ordering it twice is
+    /// the same as once.
+    /// gearbox:military.write "order_withdraw"
+    /// `(ii)i`
+    pub fn order_withdraw(country: u32, province: u32) -> u32;
 
 }
 

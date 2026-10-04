@@ -1392,25 +1392,6 @@ void Game::updateCeasefireScreen() {
             m_ceasefireSelectMode = 0;
             return;
         }
-        // Clamp offer to what the player can actually pay (treasury >= 0)
-        double& pTreas = m_countries.getAll()[m_playerCountryId].treasury;
-        if (m_ceasefireOurMoney > (int)pTreas) m_ceasefireOurMoney = (int)pTreas;
-        if (m_ceasefireOurMoney < 0) m_ceasefireOurMoney = 0;
-        // Deduct offered money from treasury immediately (refunded if rejected)
-        pTreas -= m_ceasefireOurMoney;
-
-        // Clamp demand to what target can actually pay
-        if (m_ceasefireTheirMoney > (int)targetC->treasury) m_ceasefireTheirMoney = (int)targetC->treasury;
-        if (m_ceasefireTheirMoney < 0) m_ceasefireTheirMoney = 0;
-
-        PendingDiplomaticAction da;
-        da.sourceIso = playerC->isoA3;
-        da.targetIso = targetC->isoA3;
-        // Same screen, same terms, different word on the wire. The resolution
-        // in Game_TurnLogic branches on this to decide whether a war ends.
-        da.action = m_tradeMode ? "propose_trade" : "request_ceasefire";
-        da.turnsRemaining = 2;
-        queueDiplomaticAction(da);
         CeasefireTerms terms;
         terms.ourMoney = m_ceasefireOurMoney;
         terms.theirMoney = m_ceasefireTheirMoney;
@@ -1435,8 +1416,16 @@ void Game::updateCeasefireScreen() {
                 terms.theirReleaseProvs = m_ceasefireTheirReleaseProvs;
             }
         }
-        std::string key = playerC->isoA3 + "|" + targetC->isoA3;
-        m_pendingCeasefireTerms[key] = terms;
+        // Clamped, paid for and queued in one place, the one a mod's offer
+        // goes through too. The figures logged are what was actually sent.
+        submitDealOffer(m_playerCountryId, targetC->id, m_tradeMode, terms);
+        {
+            auto sent = m_pendingCeasefireTerms.find(playerC->isoA3 + "|" + targetC->isoA3);
+            if (sent != m_pendingCeasefireTerms.end()) {
+                m_ceasefireOurMoney = sent->second.ourMoney;
+                m_ceasefireTheirMoney = sent->second.theirMoney;
+            }
+        }
         printf("[%s] Offer sent: %s -> %s (offer=$%d demand=$%d)\n",
                m_tradeMode ? "TRADE" : "CEASEFIRE",
                playerC->isoA3.c_str(), targetC->isoA3.c_str(),

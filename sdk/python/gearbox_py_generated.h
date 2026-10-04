@@ -413,7 +413,7 @@ static PyObject *gbxpy_get_text(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_COUNTRY */
 
-/* ---- Diplomacy (5) ---- */
+/* ---- Diplomacy (16) ---- */
 #if GBX_WITH_DIPLOMACY
 
 /* gearbox:diplomacy "at_war" */
@@ -482,6 +482,196 @@ static PyObject *gbxpy_propose_war(PyObject *self, PyObject *args) {
     unsigned int a1 = 0;
     if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
     return PyBool_FromLong((long)gearbox_propose_war((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_alliance" */
+/* Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST, */
+/* exactly as the diplomacy panel's button does; the other side answers at */
+/* the end of the turn and may refuse. Returns 0 if the request cannot be */
+/* made: an unknown country, a war between them, the treaty already */
+/* standing, or another offer between the pair still awaiting an answer. */
+/* gearbox:diplomacy "propose_alliance" */
+/* `(ii)i` */
+static PyObject *gbxpy_propose_alliance(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_alliance((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "break_alliance" */
+/* Give notice that `country` is breaking the alliance with `other`. Queued */
+/* like the panel's button, and applied at the end of the turn with the */
+/* same consequences: breaking an alliance absorbs each side's troops */
+/* standing on the other's soil, and breaking a pact costs credibility. */
+/* Returns 0 if there is no such treaty to break or an offer between the */
+/* pair is already waiting. */
+/* gearbox:diplomacy "break_alliance" */
+/* `(ii)i` */
+static PyObject *gbxpy_break_alliance(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_break_alliance((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_non_aggression" */
+/* Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A */
+/* REQUEST, exactly as the diplomacy panel's button does; the other side */
+/* answers at the end of the turn and may refuse. Returns 0 if the request */
+/* cannot be made: an unknown country, a war between them, the treaty */
+/* already standing, or another offer between the pair still awaiting an */
+/* answer. */
+/* gearbox:diplomacy "propose_non_aggression" */
+/* `(ii)i` */
+static PyObject *gbxpy_propose_non_aggression(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_non_aggression((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "break_non_aggression" */
+/* Give notice that `country` is breaking the non-aggression pact with */
+/* `other`. Queued like the panel's button, and applied at the end of the */
+/* turn with the same consequences: breaking an alliance absorbs each */
+/* side's troops standing on the other's soil, and breaking a pact costs */
+/* credibility. Returns 0 if there is no such treaty to break or an offer */
+/* between the pair is already waiting. */
+/* gearbox:diplomacy "break_non_aggression" */
+/* `(ii)i` */
+static PyObject *gbxpy_break_non_aggression(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_break_non_aggression((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_guarantee" */
+/* Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST, */
+/* exactly as the diplomacy panel's button does; the other side answers at */
+/* the end of the turn and may refuse. Returns 0 if the request cannot be */
+/* made: an unknown country, a war between them, the treaty already */
+/* standing, or another offer between the pair still awaiting an answer. */
+/* gearbox:diplomacy "propose_guarantee" */
+/* `(ii)i` */
+static PyObject *gbxpy_propose_guarantee(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_guarantee((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "break_guarantee" */
+/* Give notice that `country` is breaking the guarantee with `other`. */
+/* Queued like the panel's button, and applied at the end of the turn with */
+/* the same consequences: breaking an alliance absorbs each side's troops */
+/* standing on the other's soil, and breaking a pact costs credibility. */
+/* Returns 0 if there is no such treaty to break or an offer between the */
+/* pair is already waiting. */
+/* gearbox:diplomacy "break_guarantee" */
+/* `(ii)i` */
+static PyObject *gbxpy_break_guarantee(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_break_guarantee((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_ceasefire" */
+/* Offer `other` a ceasefire, with terms, on behalf of `country`. They must */
+/* be at war. Sent through the same path as the deal screen's offer and */
+/* answered at the end of the turn; accepted, the war ends and the terms */
+/* are carried out. Terms are a JSON object, every key optional: our_money */
+/* and their_money (numbers), our_provinces and their_provinces (province */
+/* ids; ours must belong to `country`, theirs to `other`), our_drop_claims */
+/* and their_drop_claims (province ids), our_goods and their_goods (objects */
+/* keyed by good: consumer, machinery, fuel, munitions). `our` is what */
+/* `country` gives, `their` what it asks for. An unknown key, a malformed */
+/* value or a province on the wrong side refuses the whole offer. Money is */
+/* clamped to what each side holds and offered goods to what `country` */
+/* holds, as the deal screen clamps them. Goods change hands only in a */
+/* goods world. Returns 0 if the offer cannot be made. */
+/* gearbox:diplomacy "propose_ceasefire" */
+/* `(iiii)i` */
+static PyObject *gbxpy_propose_ceasefire(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    const char *a2 = NULL; Py_ssize_t a2_n = 0;
+    if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_ceasefire((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:diplomacy "propose_trade" */
+/* Offer `other` a trade on behalf of `country`: the same terms as a */
+/* ceasefire, between countries at PEACE, and no war ends. Terms are a JSON */
+/* object, every key optional: our_money and their_money (numbers), */
+/* our_provinces and their_provinces (province ids; ours must belong to */
+/* `country`, theirs to `other`), our_drop_claims and their_drop_claims */
+/* (province ids), our_goods and their_goods (objects keyed by good: */
+/* consumer, machinery, fuel, munitions). `our` is what `country` gives, */
+/* `their` what it asks for. An unknown key, a malformed value or a */
+/* province on the wrong side refuses the whole offer. Money is clamped to */
+/* what each side holds and offered goods to what `country` holds, as the */
+/* deal screen clamps them. Goods change hands only in a goods world. */
+/* Returns 0 if the offer cannot be made. */
+/* gearbox:diplomacy "propose_trade" */
+/* `(iiii)i` */
+static PyObject *gbxpy_propose_trade(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    const char *a2 = NULL; Py_ssize_t a2_n = 0;
+    if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_trade((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:diplomacy "country_claims_province" */
+/* Whether `country` holds a claim on `province`. 0 for an unknown country */
+/* or province. */
+/* gearbox:diplomacy "country_claims_province" */
+/* `(ii)i` */
+static PyObject *gbxpy_country_claims_province(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_country_claims_province((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "grant_claim" */
+/* Give `country` a claim on `province`, through the game's own grant (the */
+/* same one conquest and events use). Returns 0 for an unknown country or */
+/* province. */
+/* gearbox:diplomacy "grant_claim" */
+/* `(ii)i` */
+static PyObject *gbxpy_grant_claim(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_grant_claim((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "revoke_claim" */
+/* Withdraw `country`'s claim on `province`, through the game's own revoke. */
+/* Returns 0 for an unknown country or province; 1 when there was nothing */
+/* to withdraw. */
+/* gearbox:diplomacy "revoke_claim" */
+/* `(ii)i` */
+static PyObject *gbxpy_revoke_claim(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_revoke_claim((uint32_t)a0, (uint32_t)a1));
 }
 #endif /* GBX_WITH_DIPLOMACY */
 
@@ -2046,7 +2236,7 @@ static PyObject *gbxpy_province_battle_attacker(PyObject *self, PyObject *args) 
 }
 #endif /* GBX_WITH_MILITARY_READ */
 
-/* ---- Military.Write (4) ---- */
+/* ---- Military.Write (5) ---- */
 #if GBX_WITH_MILITARY_WRITE
 
 /* gearbox:military.write "order_army_move" */
@@ -2120,6 +2310,22 @@ static PyObject *gbxpy_order_ship_bombard(PyObject *self, PyObject *args) {
     const char *a2 = NULL; Py_ssize_t a2_n = 0;
     if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
     return PyBool_FromLong((long)gearbox_order_ship_bombard((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:military.write "order_withdraw" */
+/* Withdraw `country`'s attack on `province` at the next resolution: the */
+/* survivors go home if the country still holds the province they came */
+/* from. The check the multiplayer host makes of a player's order: refused */
+/* (0) unless a battle of THIS country's stands there. Ordering it twice is */
+/* the same as once. */
+/* gearbox:military.write "order_withdraw" */
+/* `(ii)i` */
+static PyObject *gbxpy_order_withdraw(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_order_withdraw((uint32_t)a0, (uint32_t)a1));
 }
 #endif /* GBX_WITH_MILITARY_WRITE */
 

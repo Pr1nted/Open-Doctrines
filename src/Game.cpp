@@ -4740,6 +4740,12 @@ std::string flagPatternToJsonString(const FlagPattern& fp) {
 
 void Game::runMapScripts() {
     if (!m_loadedMapHasScripts) return;
+    // The new-game loader runs scripts BEFORE buildPopulationLookups builds the
+    // code -> id index, and the rules a script now goes through look countries
+    // up by code: a war declared at turn zero found no guarantors and a peace
+    // sent no armies home, silently. The countries are final here, so the
+    // index is built here -- in the one place every loader passes through.
+    rebuildIsoIndex();
     if (m_scriptEngine) delete m_scriptEngine;
     m_scriptEngine = new ScriptEngine(this);
     m_scriptErrors.clear();

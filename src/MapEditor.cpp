@@ -7883,6 +7883,9 @@ static const ScriptHint SCRIPT_HINTS[] = {
     {"country.ISO.sector_tax_target.", "the rate the country is walking toward, % (settable)"},
     {"country.ISO.nationalised.", "is that sector nationalised (settable, within the cap)"},
     {"country.ISO.policy.", "is that doctrine in force (settable; costs as a click would)"},
+    {"country.ISO.non_aggression.", "non-aggression pact with OTHER (settable)"},
+    {"country.ISO.guaranteed.", "guarantee with OTHER (settable)"},
+    {"country.ISO.researched.", "has researched NODE (settable to true)"},
     {"country.ISO.district.", "district.N.name/.share/.law.<id> (share and law settable)"},
     {"province.",       "province.ID.population/.owner/.industry/.fortification/.name/.troops/.monument/.output"},
     {"province.ID.monument", "monument key, \"\" for none (settable: placed, not bought)"},
@@ -8000,7 +8003,12 @@ static const DocEntry SCRIPT_DOCS[] = {
      "country.ISO.province_count        (int)\n"
      "country.ISO.at_war_with.OTHER     (bool, writable via `set ... at_war_with OTHER true`)\n"
      "country.ISO.allied_with.OTHER     (bool, writable)\n"
-     "country.ISO.claims_province.ID    (bool)\n"
+     "country.ISO.claims_province.ID    (bool, writable)\n"
+     "country.ISO.non_aggression.OTHER  (bool, writable)\n"
+     "country.ISO.guaranteed.OTHER      (bool, writable)\n"
+     "country.ISO.researched.NODE       (bool, writable: true grants it and its prerequisites)\n"
+     "  wars are DECLARED (guarantors join) and peace sends armies home; treaties\n"
+     "  apply as agreed ones do; owner changes transfer as a ceasefire does\n"
      "country.ISO.troops[.KIND] / .income / .expenses / .population (read)\n"
      "country.ISO.goods.<good>          (float, writable in a goods world)\n"
      "     goods: consumer machinery fuel munitions\n"

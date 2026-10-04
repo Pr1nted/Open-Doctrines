@@ -221,4 +221,9 @@ struct StubWorld : ModGameAccess {
     bool setCountryNationalised(uint32_t, const std::string&, bool) override { return false; }
     int64_t provinceCombatWidth(uint32_t) override { return 0; }
     uint32_t provinceBattleAttacker(uint32_t) override { return 0; }
+    bool proposeTreaty(uint32_t, uint32_t, const std::string&) override { return false; }
+    bool proposeDeal(uint32_t, uint32_t, bool, const std::string&) override { return false; }
+    bool countryClaimsProvince(uint32_t, uint32_t) override { return false; }
+    bool setCountryClaim(uint32_t, uint32_t, bool) override { return false; }
+    bool orderWithdraw(uint32_t, uint32_t) override { return false; }
 };

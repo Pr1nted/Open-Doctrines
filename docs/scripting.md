@@ -78,9 +78,14 @@ country.ISO.treasury           → (float) country's gold reserve
 country.ISO.name               → (string) country display name
 country.ISO.iso                 → (string) the ISO code itself
 country.ISO.province_count      → (int) number of provinces owned
-country.ISO.at_war_with.OTHER   → (bool) is at war with OTHER country
-country.ISO.allied_with.OTHER   → (bool) has alliance with OTHER
-country.ISO.claims_province.ID  → (bool) claims province number ID
+country.ISO.at_war_with.OTHER   → (bool) is at war with OTHER — WRITABLE
+country.ISO.allied_with.OTHER   → (bool) has alliance with OTHER — WRITABLE
+country.ISO.non_aggression.OTHER→ (bool) has a non-aggression pact — WRITABLE
+country.ISO.guaranteed.OTHER    → (bool) a guarantee stands between them —
+                                  WRITABLE
+country.ISO.claims_province.ID  → (bool) claims province number ID — WRITABLE
+country.ISO.researched.NODE     → (bool) has researched that node — WRITABLE
+                                  (true only: research is not taken back)
 country.ISO.troops              → (int) every soldier it has, everywhere
 country.ISO.troops.TYPE         → (int) only that kind — line, militia,
                                   assault, mech (the ids in TROOP_TYPES,
@@ -129,6 +134,22 @@ country.ISO.monument_upkeep     → (float) what they cost a turn
 ```
 
 SECTOR is one of oil, gold, metal, rubber, gemstones (any case).
+
+The relations may be written with a space instead of the last dot —
+`set country.USA.at_war_with RUS true`, `if country.USA.allied_with CAN` — and
+the other country may be a loop variable. They read both countries' rows, as
+the game does, so a treaty recorded for one side only still counts.
+
+**Wars and treaties go through the game's rules.** `at_war_with true` DECLARES
+the war, so anyone guaranteeing the defender joins it and a broken pact costs
+credibility; `at_war_with false` makes a white peace and sends both armies home.
+Alliances, pacts and guarantees are made and broken the way an agreed treaty
+is: breaking an alliance absorbs each side's troops standing on the other's
+soil. A treaty cannot be made between countries at war. Setting
+`province.ID.owner` transfers the province the way a ceasefire does: districts
+reconciled, and the old owner's troops leave it. Research granted with
+`set country.ISO.researched.NODE true` brings its prerequisites with it, and is
+refused if a rival choice in the same group is already researched.
 
 `income` and `expenses` read the same per-turn snapshot the economy screen and
 the country profile draw, so a script and the screen can never disagree. Both
@@ -679,7 +700,8 @@ Two kinds of write, on purpose:
   the tax room a country's doctrines allow, a coastal monument's coast, one
   monument per province.
 - **Decisions** — `sector_tax_target`, `nationalised`, `policy`, `output`,
-  `monument_active`, district laws and shares. These go through the same rule
+  `monument_active`, district laws and shares, wars, treaties, claims and
+  province owners. These go through the same rule
   a player's click goes through, so the caps bind and a doctrine costs what it
   costs. A refusal is reported as a script error naming the reason.
 

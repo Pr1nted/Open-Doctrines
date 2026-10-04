@@ -139,4 +139,83 @@ if country.USA.policy.no_such_policy == false
   print "ok unknown policy reads false"
 endif
 
+# ── wars and treaties go through the rules ──
+set country.MEX.at_war_with GTM true
+if country.MEX.at_war_with GTM and country.GTM.at_war_with.MEX
+  print "ok war declared through the rule"
+else
+  print "FAIL war declared"
+endif
+set country.MEX.at_war_with GTM false
+if country.MEX.at_war_with.GTM == false
+  print "ok peace made through the rule"
+else
+  print "FAIL peace"
+endif
+set country.MEX.allied_with GTM true
+set country.MEX.non_aggression BLZ true
+set country.MEX.guaranteed.HND true
+if country.GTM.allied_with.MEX and country.BLZ.non_aggression.MEX and country.HND.guaranteed.MEX
+  print "ok alliance, pact and guarantee made, read from either side"
+else
+  print "FAIL treaties {country.GTM.allied_with.MEX} {country.BLZ.non_aggression.MEX} {country.HND.guaranteed.MEX}"
+endif
+set country.MEX.allied_with GTM false
+set country.MEX.non_aggression BLZ false
+if country.MEX.allied_with.GTM == false and country.MEX.non_aggression.BLZ == false
+  print "ok alliance and pact broken"
+else
+  print "FAIL treaties not broken"
+endif
+
+# ── only the rule can do these: a guarantor joins, an owner's troops leave ──
+set country.SLV.guaranteed NIC true
+set country.CRI.at_war_with NIC true
+if country.SLV.at_war_with.CRI
+  print "ok a guarantor honours its guarantee (the war was declared, not flagged)"
+else
+  print "FAIL the guarantee chain did not run"
+endif
+set country.CRI.at_war_with NIC false
+set country.SLV.at_war_with CRI false
+
+# ── claims, ownership and research ──
+set var.claimDone = 0
+foreach province in country.USA
+  if var.claimDone == 0
+    set var.pid = province
+    set country.MEX.claims_province province true
+    if country.MEX.claims_province province
+      print "ok claim granted (spaced form, loop variable)"
+    else
+      print "FAIL claim not granted on {var.pid}"
+    endif
+    set country.MEX.claims_province province false
+    if country.MEX.claims_province province == false
+      print "ok claim revoked"
+    endif
+    set province.troops 5000
+    set province.owner MEX
+    if province.owner == "MEX" and province.troops == 0
+      print "ok owner changed through the transfer; the old owner's troops left"
+    else
+      print "FAIL owner {province.owner} troops {province.troops}"
+    endif
+    set province.owner USA
+    set var.claimDone = 1
+  endif
+next
+set var.resDone = 0
+foreach country in world
+  if var.resDone == 0 and country.researched.fort6 == false
+    set country.researched.fort6 true
+    if country.researched.fort6 and country.researched.fort5
+      print "ok research granted with its prerequisites"
+    else
+      print "FAIL research {country.iso}"
+    endif
+    set var.resDone = 1
+  endif
+next
+
 print "done"

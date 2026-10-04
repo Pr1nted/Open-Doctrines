@@ -45,13 +45,24 @@
     {"getText", gbxpy_get_text, METH_VARARGS, "A country's text value, or empty. Two-call sizing."},
 #endif /* GBX_WITH_COUNTRY */
 
-/* ---- Diplomacy (5) ---- */
+/* ---- Diplomacy (16) ---- */
 #if GBX_WITH_DIPLOMACY
     {"atWar", gbxpy_at_war, METH_VARARGS, "1 if the two countries are at war. Relations are symmetric, so the argument order does not matter. 0 for unknown countries or for a country with itself."},
     {"allied", gbxpy_allied, METH_VARARGS, "1 if the two countries are allied."},
     {"nonAggression", gbxpy_non_aggression, METH_VARARGS, "1 if the two countries have a non-aggression pact."},
     {"guaranteed", gbxpy_guaranteed, METH_VARARGS, "1 if the first country guarantees the second."},
     {"proposeWar", gbxpy_propose_war, METH_VARARGS, "PROPOSES a declaration of war, and returns 1 only if the game accepted it. It is routed through the same code path any other actor uses, so guarantee chains and war consequences fo"},
+    {"proposeAlliance", gbxpy_propose_alliance, METH_VARARGS, "Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. R"},
+    {"breakAlliance", gbxpy_break_alliance, METH_VARARGS, "Give notice that `country` is breaking the alliance with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an allianc"},
+    {"proposeNonAggression", gbxpy_propose_non_aggression, METH_VARARGS, "Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may"},
+    {"breakNonAggression", gbxpy_break_non_aggression, METH_VARARGS, "Give notice that `country` is breaking the non-aggression pact with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking"},
+    {"proposeGuarantee", gbxpy_propose_guarantee, METH_VARARGS, "Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. R"},
+    {"breakGuarantee", gbxpy_break_guarantee, METH_VARARGS, "Give notice that `country` is breaking the guarantee with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an allian"},
+    {"proposeCeasefire", gbxpy_propose_ceasefire, METH_VARARGS, "Offer `other` a ceasefire, with terms, on behalf of `country`. They must be at war. Sent through the same path as the deal screen's offer and answered at the end of the turn; accep"},
+    {"proposeTrade", gbxpy_propose_trade, METH_VARARGS, "Offer `other` a trade on behalf of `country`: the same terms as a ceasefire, between countries at PEACE, and no war ends. Terms are a JSON object, every key optional: our_money and"},
+    {"countryClaimsProvince", gbxpy_country_claims_province, METH_VARARGS, "Whether `country` holds a claim on `province`. 0 for an unknown country or province."},
+    {"grantClaim", gbxpy_grant_claim, METH_VARARGS, "Give `country` a claim on `province`, through the game's own grant (the same one conquest and events use). Returns 0 for an unknown country or province."},
+    {"revokeClaim", gbxpy_revoke_claim, METH_VARARGS, "Withdraw `country`'s claim on `province`, through the game's own revoke. Returns 0 for an unknown country or province; 1 when there was nothing to withdraw."},
 #endif /* GBX_WITH_DIPLOMACY */
 
 /* ---- Economy.Read (32) ---- */
@@ -195,12 +206,13 @@
     {"provinceBattleAttacker", gbxpy_province_battle_attacker, METH_VARARGS, "The country attacking this province in a standing battle, or 0 when there is none. If more than one country is attacking it, the first battle opened is the one reported."},
 #endif /* GBX_WITH_MILITARY_READ */
 
-/* ---- Military.Write (4) ---- */
+/* ---- Military.Write (5) ---- */
 #if GBX_WITH_MILITARY_WRITE
     {"orderArmyMove", gbxpy_order_army_move, METH_VARARGS, "Move `percent` (0..100) of the troops in `from` into the adjacent province `to`. Into an enemy province this is an attack; into your own or an ally's it is a transfer. Non-adjacent"},
     {"orderShipMove", gbxpy_order_ship_move, METH_VARARGS, "Sail a ship toward (lon,lat). The resolver routes around land and clamps to ship_range, so a destination on land or beyond range moves the ship as far as it legally can rather than"},
     {"orderShipEngage", gbxpy_order_ship_engage, METH_VARARGS, "Attack another ship. Requires that you are at war with its owner and that it is within range; both are checked by the resolver. QUEUES AN ORDER; it does not move anything. It lands"},
     {"orderShipBombard", gbxpy_order_ship_bombard, METH_VARARGS, "Bombard a coastal province. `ammo` names the shell type; pass an empty string for the default. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's o"},
+    {"orderWithdraw", gbxpy_order_withdraw, METH_VARARGS, "Withdraw `country`'s attack on `province` at the next resolution: the survivors go home if the country still holds the province they came from. The check the multiplayer host makes"},
 #endif /* GBX_WITH_MILITARY_WRITE */
 
 /* ---- Net (7) ---- */

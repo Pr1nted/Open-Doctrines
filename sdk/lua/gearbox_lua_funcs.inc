@@ -45,13 +45,24 @@
     {"getText", gbxlua_get_text},
 #endif /* GBX_WITH_COUNTRY */
 
-/* ---- Diplomacy (5) ---- */
+/* ---- Diplomacy (16) ---- */
 #if GBX_WITH_DIPLOMACY
     {"atWar", gbxlua_at_war},
     {"allied", gbxlua_allied},
     {"nonAggression", gbxlua_non_aggression},
     {"guaranteed", gbxlua_guaranteed},
     {"proposeWar", gbxlua_propose_war},
+    {"proposeAlliance", gbxlua_propose_alliance},
+    {"breakAlliance", gbxlua_break_alliance},
+    {"proposeNonAggression", gbxlua_propose_non_aggression},
+    {"breakNonAggression", gbxlua_break_non_aggression},
+    {"proposeGuarantee", gbxlua_propose_guarantee},
+    {"breakGuarantee", gbxlua_break_guarantee},
+    {"proposeCeasefire", gbxlua_propose_ceasefire},
+    {"proposeTrade", gbxlua_propose_trade},
+    {"countryClaimsProvince", gbxlua_country_claims_province},
+    {"grantClaim", gbxlua_grant_claim},
+    {"revokeClaim", gbxlua_revoke_claim},
 #endif /* GBX_WITH_DIPLOMACY */
 
 /* ---- Economy.Read (32) ---- */
@@ -195,12 +206,13 @@
     {"provinceBattleAttacker", gbxlua_province_battle_attacker},
 #endif /* GBX_WITH_MILITARY_READ */
 
-/* ---- Military.Write (4) ---- */
+/* ---- Military.Write (5) ---- */
 #if GBX_WITH_MILITARY_WRITE
     {"orderArmyMove", gbxlua_order_army_move},
     {"orderShipMove", gbxlua_order_ship_move},
     {"orderShipEngage", gbxlua_order_ship_engage},
     {"orderShipBombard", gbxlua_order_ship_bombard},
+    {"orderWithdraw", gbxlua_order_withdraw},
 #endif /* GBX_WITH_MILITARY_WRITE */
 
 /* ---- Net (7) ---- */

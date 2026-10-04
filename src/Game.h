@@ -1790,6 +1790,11 @@ public:
     // chains and every other consequence happen exactly as they would for any
     // other actor. Returns false when the game refuses it.
     bool        modProposeWar(int attacker, int defender);
+    bool        modProposeTreaty(int a, int b, const std::string& action);
+    bool        modProposeDeal(int a, int b, bool trade, const std::string& termsJson);
+    bool        modCountryClaimsProvince(int cid, int pid) const;
+    bool        modSetCountryClaim(int cid, int pid, bool on);
+    bool        modOrderWithdraw(int cid, int pid);
 
     // Backing for GameState.Write. Every one of these goes through the same
     // code the game itself uses, so a mod cannot reach a state the game could
@@ -4164,6 +4169,14 @@ public:
     void drawResearchTab();
     void updateResearch(int countryId);
     bool hasResearched(const std::string& nodeId, int countryId = -1) const;
+    /**
+     * Mark a node researched, with everything it depends on. A sibling in the
+     * same mutex group already researched blocks it (and stops the walk there),
+     * as it would block a researcher. The load-time unlock of built
+     * infrastructure and a map script's starting research both use this.
+     * Returns whether the node is researched afterwards.
+     */
+    bool grantResearch(int countryId, const std::string& nodeId);
     void addResearchPoints(int countryId);
     void dumpResearchCapacity();
     
@@ -4719,6 +4732,23 @@ private:
     // delayed or made more expensive for want of one.
     void declareWar(const std::string& attackerIso, const std::string& defenderIso,
                     bool chainGuarantees = true, int statedGoal = WAR_GOAL_NONE);
+    /** A white peace now: the war flags in both rows, and both armies sent home. */
+    void makePeace(const std::string& isoA, const std::string& isoB);
+    /**
+     * Apply an agreed (or broken) treaty: request_alliance, break_alliance,
+     * request_guarantee, break_guarantee, request_nap, break_nap. False for any
+     * other action. The single place these happen -- see the definition.
+     */
+    bool applyTreatyAction(const std::string& sourceIso, const std::string& targetIso,
+                           const std::string& action);
+    /**
+     * Send a ceasefire (trade = false) or trade offer exactly as the deal screen
+     * sends one: one offer per pair at a time, money clamped to what each side
+     * holds, goods to what the sender holds, the player's offered money paid
+     * up front (the resolution pays everyone else's). The deal screen and the
+     * Gearbox Diplomacy capability both come through here.
+     */
+    bool submitDealOffer(int srcCid, int tgtCid, bool trade, CeasefireTerms terms);
     void applyWarKinPenalty(const std::string& attackerIso, const std::string& defenderIso);
     // A treaty binds both signatories, but scenario relations.json writes one
     // row per country and authors routinely fill in only one of them. Reads
@@ -5041,6 +5071,8 @@ private:
      * client cannot act between turns.
      */
     void queueWithdraw(int provinceId);
+    /** Withdraw THIS country's attack at the next resolution. False if it has none there. */
+    bool orderWithdraw(int countryId, int provinceId);
     bool hasPendingWithdraw(int provinceId) const;
 
     /**

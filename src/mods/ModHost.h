@@ -443,6 +443,15 @@ struct ModGameAccess {
     virtual int64_t  provinceCombatWidth(uint32_t pid) = 0;
     virtual uint32_t provinceBattleAttacker(uint32_t pid) = 0;      // 0 for none
 
+    // ABI 1.4 Diplomacy: treaties proposed and broken through the request
+    // queue the player's own buttons use; deals with goods; claims.
+    virtual bool     proposeTreaty(uint32_t a, uint32_t b, const std::string& action) = 0;
+    virtual bool     proposeDeal(uint32_t a, uint32_t b, bool trade, const std::string& termsJson) = 0;
+    virtual bool     countryClaimsProvince(uint32_t cid, uint32_t pid) = 0;
+    virtual bool     setCountryClaim(uint32_t cid, uint32_t pid, bool on) = 0;
+    // ABI 1.4 Military.Write
+    virtual bool     orderWithdraw(uint32_t cid, uint32_t pid) = 0;
+
     // ── Map, beyond the geometry the 1.0 module already exposes ──────────────
     virtual bool     provinceIsCoastal(uint32_t pid) = 0;
     // The sea-route query the navy itself uses. Answers "could a fleet get from

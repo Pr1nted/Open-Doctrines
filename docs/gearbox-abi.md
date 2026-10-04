@@ -1829,6 +1829,175 @@ Requires the **Diplomacy** capability.
 
 PROPOSES a declaration of war, and returns 1 only if the game accepted it. It is routed through the same code path any other actor uses, so guarantee chains and war consequences follow exactly as normal -- a mod cannot produce a diplomatic state the game itself could not reach. Refused (0) if either country is unknown, they are the same country, or they are already at war. Either outcome is written to your mod log, so a player can see after the fact that a mod started a war.
 
+#### `propose_alliance`
+
+```wat
+(import "gearbox:diplomacy" "propose_alliance" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer.
+
+#### `break_alliance`
+
+```wat
+(import "gearbox:diplomacy" "break_alliance" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Give notice that `country` is breaking the alliance with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting.
+
+#### `propose_non_aggression`
+
+```wat
+(import "gearbox:diplomacy" "propose_non_aggression" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer.
+
+#### `break_non_aggression`
+
+```wat
+(import "gearbox:diplomacy" "break_non_aggression" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Give notice that `country` is breaking the non-aggression pact with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting.
+
+#### `propose_guarantee`
+
+```wat
+(import "gearbox:diplomacy" "propose_guarantee" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST, exactly as the diplomacy panel's button does; the other side answers at the end of the turn and may refuse. Returns 0 if the request cannot be made: an unknown country, a war between them, the treaty already standing, or another offer between the pair still awaiting an answer.
+
+#### `break_guarantee`
+
+```wat
+(import "gearbox:diplomacy" "break_guarantee" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Give notice that `country` is breaking the guarantee with `other`. Queued like the panel's button, and applied at the end of the turn with the same consequences: breaking an alliance absorbs each side's troops standing on the other's soil, and breaking a pact costs credibility. Returns 0 if there is no such treaty to break or an offer between the pair is already waiting.
+
+#### `propose_ceasefire`
+
+```wat
+(import "gearbox:diplomacy" "propose_ceasefire" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+| `terms` | `i32` | pointer into your linear memory |
+| `terms_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Offer `other` a ceasefire, with terms, on behalf of `country`. They must be at war. Sent through the same path as the deal screen's offer and answered at the end of the turn; accepted, the war ends and the terms are carried out. Terms are a JSON object, every key optional: our_money and their_money (numbers), our_provinces and their_provinces (province ids; ours must belong to `country`, theirs to `other`), our_drop_claims and their_drop_claims (province ids), our_goods and their_goods (objects keyed by good: consumer, machinery, fuel, munitions). `our` is what `country` gives, `their` what it asks for. An unknown key, a malformed value or a province on the wrong side refuses the whole offer. Money is clamped to what each side holds and offered goods to what `country` holds, as the deal screen clamps them. Goods change hands only in a goods world. Returns 0 if the offer cannot be made.
+
+#### `propose_trade`
+
+```wat
+(import "gearbox:diplomacy" "propose_trade" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `other` | `i32` | — |
+| `terms` | `i32` | pointer into your linear memory |
+| `terms_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+Offer `other` a trade on behalf of `country`: the same terms as a ceasefire, between countries at PEACE, and no war ends. Terms are a JSON object, every key optional: our_money and their_money (numbers), our_provinces and their_provinces (province ids; ours must belong to `country`, theirs to `other`), our_drop_claims and their_drop_claims (province ids), our_goods and their_goods (objects keyed by good: consumer, machinery, fuel, munitions). `our` is what `country` gives, `their` what it asks for. An unknown key, a malformed value or a province on the wrong side refuses the whole offer. Money is clamped to what each side holds and offered goods to what `country` holds, as the deal screen clamps them. Goods change hands only in a goods world. Returns 0 if the offer cannot be made.
+
+#### `country_claims_province`
+
+```wat
+(import "gearbox:diplomacy" "country_claims_province" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Whether `country` holds a claim on `province`. 0 for an unknown country or province.
+
+#### `grant_claim`
+
+```wat
+(import "gearbox:diplomacy" "grant_claim" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Give `country` a claim on `province`, through the game's own grant (the same one conquest and events use). Returns 0 for an unknown country or province.
+
+#### `revoke_claim`
+
+```wat
+(import "gearbox:diplomacy" "revoke_claim" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Withdraw `country`'s claim on `province`, through the game's own revoke. Returns 0 for an unknown country or province; 1 when there was nothing to withdraw.
+
 ### `gearbox:gamestate.write`
 
 Requires the **GameState.Write** capability.
@@ -2485,6 +2654,21 @@ Attack another ship. Requires that you are at war with its owner and that it is 
 **Returns** `i32` — 0 or 1.
 
 Bombard a coastal province. `ammo` names the shell type; pass an empty string for the default. QUEUES AN ORDER; it does not move anything. It lands in the same queue the player's own click writes to and is validated by the same resolver at end of turn, so a mod cannot teleport, cheat range, or attack across an ocean. Returns 0 if the order is rejected outright.
+
+#### `order_withdraw`
+
+```wat
+(import "gearbox:military.write" "order_withdraw" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Withdraw `country`'s attack on `province` at the next resolution: the survivors go home if the country still holds the province they came from. The check the multiplayer host makes of a player's order: refused (0) unless a battle of THIS country's stands there. Ordering it twice is the same as once.
 
 ### `gearbox:research.read`
 

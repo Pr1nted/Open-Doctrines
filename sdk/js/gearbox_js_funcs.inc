@@ -45,13 +45,24 @@
     JS_CFUNC_DEF("getText", 2, gbxjs_get_text),
 #endif /* GBX_WITH_COUNTRY */
 
-/* ---- Diplomacy (5) ---- */
+/* ---- Diplomacy (16) ---- */
 #if GBX_WITH_DIPLOMACY
     JS_CFUNC_DEF("atWar", 2, gbxjs_at_war),
     JS_CFUNC_DEF("allied", 2, gbxjs_allied),
     JS_CFUNC_DEF("nonAggression", 2, gbxjs_non_aggression),
     JS_CFUNC_DEF("guaranteed", 2, gbxjs_guaranteed),
     JS_CFUNC_DEF("proposeWar", 2, gbxjs_propose_war),
+    JS_CFUNC_DEF("proposeAlliance", 2, gbxjs_propose_alliance),
+    JS_CFUNC_DEF("breakAlliance", 2, gbxjs_break_alliance),
+    JS_CFUNC_DEF("proposeNonAggression", 2, gbxjs_propose_non_aggression),
+    JS_CFUNC_DEF("breakNonAggression", 2, gbxjs_break_non_aggression),
+    JS_CFUNC_DEF("proposeGuarantee", 2, gbxjs_propose_guarantee),
+    JS_CFUNC_DEF("breakGuarantee", 2, gbxjs_break_guarantee),
+    JS_CFUNC_DEF("proposeCeasefire", 3, gbxjs_propose_ceasefire),
+    JS_CFUNC_DEF("proposeTrade", 3, gbxjs_propose_trade),
+    JS_CFUNC_DEF("countryClaimsProvince", 2, gbxjs_country_claims_province),
+    JS_CFUNC_DEF("grantClaim", 2, gbxjs_grant_claim),
+    JS_CFUNC_DEF("revokeClaim", 2, gbxjs_revoke_claim),
 #endif /* GBX_WITH_DIPLOMACY */
 
 /* ---- Economy.Read (32) ---- */
@@ -195,12 +206,13 @@
     JS_CFUNC_DEF("provinceBattleAttacker", 1, gbxjs_province_battle_attacker),
 #endif /* GBX_WITH_MILITARY_READ */
 
-/* ---- Military.Write (4) ---- */
+/* ---- Military.Write (5) ---- */
 #if GBX_WITH_MILITARY_WRITE
     JS_CFUNC_DEF("orderArmyMove", 3, gbxjs_order_army_move),
     JS_CFUNC_DEF("orderShipMove", 3, gbxjs_order_ship_move),
     JS_CFUNC_DEF("orderShipEngage", 2, gbxjs_order_ship_engage),
     JS_CFUNC_DEF("orderShipBombard", 3, gbxjs_order_ship_bombard),
+    JS_CFUNC_DEF("orderWithdraw", 2, gbxjs_order_withdraw),
 #endif /* GBX_WITH_MILITARY_WRITE */
 
 /* ---- Net (7) ---- */
