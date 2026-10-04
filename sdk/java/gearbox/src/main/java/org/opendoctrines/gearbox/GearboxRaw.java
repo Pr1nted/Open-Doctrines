@@ -1733,4 +1733,283 @@ public final class GearboxRaw {
     @Import(module = "gearbox:content", name = "remove")
     public static native int contentRemove(int kind, int id, int idLen);
 
+    // 1 when this country could build a monument of this kind in this province
+    // right now, 0 otherwise. The SAME test build_monument makes before it
+    // spends anything: the province is the country's, has no monument yet (one
+    // per province), the unlocking research is done, a coastal kind stands on
+    // the coast, and the treasury covers the build. 0 for an unknown country,
+    // province or kind.
+    // gearbox:economy.read "can_build_monument"
+    // `(iii)i`
+    @Import(module = "gearbox:economy.read", name = "can_build_monument")
+    public static native int canBuildMonument(int country, int province, int kind);
+
+    // How many of this country's monuments are switched on, which is how many
+    // slots it is paying for. 0 for an unknown country.
+    // gearbox:economy.read "country_monument_slots_used"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "country_monument_slots_used")
+    public static native int countryMonumentSlotsUsed(int country);
+
+    // What those slots cost per turn, all summed. The n-th active slot costs
+    // more than the one before it (50, 75, 125, 200, ...), so this is not
+    // slots_used times a price. 0 for an unknown country.
+    // gearbox:economy.read "country_monument_upkeep"
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_monument_upkeep")
+    public static native double countryMonumentUpkeep(int country);
+
+    // What switching on one more monument would add to the per-turn upkeep --
+    // the price of the next slot. 0 for an unknown country.
+    // gearbox:economy.read "country_monument_next_slot_cost"
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_monument_next_slot_cost")
+    public static native double countryMonumentNextSlotCost(int country);
+
+    // The sector tax IN FORCE on a speciality, in percent: positive is a tax,
+    // negative a subsidy. It walks toward the target a few points a turn
+    // rather than jumping, and it is clamped to what the country's doctrines
+    // allow today. `resource` is one of the five speciality sectors -- "oil",
+    // "gold", "metal", "rubber", "gemstones", the spelling province_resource
+    // uses; case does not matter. 0 for an unknown country or sector.
+    // gearbox:economy.read "country_sector_tax"
+    // `(iii)F`
+    @Import(module = "gearbox:economy.read", name = "country_sector_tax")
+    public static native double countrySectorTax(int country, int resource, int resourceLen);
+
+    // The sector tax the country has SET, in percent, which the rate in force
+    // is moving toward. It can sit outside today's room if a doctrine narrowed
+    // it since; the rate in force is what is charged. `resource` is one of the
+    // five speciality sectors -- "oil", "gold", "metal", "rubber",
+    // "gemstones", the spelling province_resource uses; case does not matter.
+    // 0 for an unknown country or sector.
+    // gearbox:economy.read "country_sector_tax_target"
+    // `(iii)F`
+    @Import(module = "gearbox:economy.read", name = "country_sector_tax_target")
+    public static native double countrySectorTaxTarget(int country, int resource, int resourceLen);
+
+    // The highest sector tax this country's doctrines allow, in percent. 0 for
+    // an unknown country.
+    // gearbox:economy.read "country_sector_tax_room"
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_sector_tax_room")
+    public static native double countrySectorTaxRoom(int country);
+
+    // The deepest sector subsidy this country's doctrines allow, in percent,
+    // as a positive number: a subsidy may go down to minus this. 0 for an
+    // unknown country.
+    // gearbox:economy.read "country_sector_subsidy_room"
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_sector_subsidy_room")
+    public static native double countrySectorSubsidyRoom(int country);
+
+    // 1 when this world runs the goods economy -- factories make goods,
+    // deposits yield raw materials, and both are stockpiled. 0 when it is the
+    // money economy, in which case every stock, demand and shortfall read is 0
+    // and living standards read 1.
+    // gearbox:economy.read "goods_economy_on"
+    // `()i`
+    @Import(module = "gearbox:economy.read", name = "goods_economy_on")
+    public static native int goodsEconomyOn();
+
+    // How much of a good this country has stockpiled. 0 for an unknown country
+    // or good, and outside the goods economy.
+    // gearbox:economy.read "country_good_stock"
+    // `(ii)F`
+    @Import(module = "gearbox:economy.read", name = "country_good_stock")
+    public static native double countryGoodStock(int country, int good);
+
+    // How much of a raw material this country has stockpiled. Gold is not a
+    // raw material -- it stays money. 0 for an unknown country or material,
+    // and outside the goods economy.
+    // gearbox:economy.read "country_raw_stock"
+    // `(ii)F`
+    @Import(module = "gearbox:economy.read", name = "country_raw_stock")
+    public static native double countryRawStock(int country, int raw);
+
+    // What this country needs of a good this turn: for consumer goods, what
+    // its population wants; for the other three, the reserve the economy
+    // recorded last turn. The same figure country_good_shortfall subtracts the
+    // stock from. 0 for an unknown country or good, and outside the goods
+    // economy.
+    // gearbox:economy.read "country_good_demand"
+    // `(ii)F`
+    @Import(module = "gearbox:economy.read", name = "country_good_demand")
+    public static native double countryGoodDemand(int country, int good);
+
+    // How short this country is of a good this turn: demand minus stock, never
+    // below 0. The number the economy's own allocator and the AI's trade
+    // valuation read. 0 for an unknown country or good, and outside the goods
+    // economy.
+    // gearbox:economy.read "country_good_shortfall"
+    // `(ii)F`
+    @Import(module = "gearbox:economy.read", name = "country_good_shortfall")
+    public static native double countryGoodShortfall(int country, int good);
+
+    // Consumer supply over consumer demand last turn: 1 means fed, below 1
+    // short, above 1 a surplus. It feeds unrest and population growth. 1 for a
+    // real country with no production record (the money economy, or before the
+    // first turn); 0 for an unknown country.
+    // gearbox:economy.read "country_living_standards"
+    // `(i)F`
+    @Import(module = "gearbox:economy.read", name = "country_living_standards")
+    public static native double countryLivingStandards(int country);
+
+    // The good this province's factories are making, as a good -- whether its
+    // government directed it or the economy allocated it
+    // (province_output_directed tells the two apart). -1 when nothing is
+    // assigned, for a province with no industry, and for an unknown province.
+    // gearbox:economy.read "province_output"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "province_output")
+    public static native int provinceOutput(int province);
+
+    // 1 when a government chose this province's output by hand and it keeps
+    // that order until changed; 0 when the economy allocates it each turn, the
+    // province has no industry, or it is unknown.
+    // gearbox:economy.read "province_output_directed"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "province_output_directed")
+    public static native int provinceOutputDirected(int province);
+
+    // How many factories this country's government may direct by hand. Its
+    // economic compass sets it: a planned economy directs every factory, a
+    // free market none. 0 for an unknown country.
+    // gearbox:economy.read "country_directable_factories"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "country_directable_factories")
+    public static native int countryDirectableFactories(int country);
+
+    // How many of its factories are directed right now. set_province_output
+    // refuses a new one once this reaches country_directable_factories. 0 for
+    // an unknown country.
+    // gearbox:economy.read "country_directed_factories"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "country_directed_factories")
+    public static native int countryDirectedFactories(int country);
+
+    // The share of this country's surplus raw materials sold automatically
+    // each turn, 0-100: the world's setting scaled down by how planned its
+    // economy is. 0 for an unknown country.
+    // gearbox:economy.read "country_auto_sell_pct"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "country_auto_sell_pct")
+    public static native int countryAutoSellPct(int country);
+
+    // 1 when this country holds a speciality sector in state hands. A released
+    // sector winds down over turns but reads 0 here from the moment it is
+    // released. `resource` is one of the five speciality sectors -- "oil",
+    // "gold", "metal", "rubber", "gemstones", the spelling province_resource
+    // uses; case does not matter. 0 for an unknown country or sector, and when
+    // the nationalisation rules are switched off.
+    // gearbox:economy.read "country_nationalised"
+    // `(iii)i`
+    @Import(module = "gearbox:economy.read", name = "country_nationalised")
+    public static native int countryNationalised(int country, int resource, int resourceLen);
+
+    // How many speciality sectors this country may hold in state hands, from
+    // its economic compass: 5 at the command end down to 0 at the market end.
+    // 0 for an unknown country, and when the rules are off.
+    // gearbox:economy.read "country_nationalisation_cap"
+    // `(i)i`
+    @Import(module = "gearbox:economy.read", name = "country_nationalisation_cap")
+    public static native int countryNationalisationCap(int country);
+
+    // Build a monument for this country, through the game's own buildMonument:
+    // the checks can_build_monument reports, the price taken from the
+    // treasury, active on arrival. 1 if it was built, 0 if anything refused
+    // it.
+    // gearbox:economy.write "build_monument"
+    // `(iii)i`
+    @Import(module = "gearbox:economy.write", name = "build_monument")
+    public static native int buildMonument(int country, int province, int kind);
+
+    // Raise this country's monument in a province one level, paying for it. 0
+    // if the province holds no monument of this country's, it is at its top
+    // level, or the treasury cannot cover it.
+    // gearbox:economy.write "upgrade_monument"
+    // `(ii)i`
+    @Import(module = "gearbox:economy.write", name = "upgrade_monument")
+    public static native int upgradeMonument(int country, int province);
+
+    // Take down this country's monument in a province. That costs money too --
+    // a flat 50 -- so 0 if the treasury cannot cover it, or the province holds
+    // no monument of this country's.
+    // gearbox:economy.write "dismantle_monument"
+    // `(ii)i`
+    @Import(module = "gearbox:economy.write", name = "dismantle_monument")
+    public static native int dismantleMonument(int country, int province);
+
+    // Switch this country's monument on or off. Off frees its slot and stops
+    // its effect entirely; on takes a slot again. 1 if it is now in the
+    // requested state (including already being so), 0 if the province holds no
+    // monument of this country's.
+    // gearbox:economy.write "set_monument_active"
+    // `(iii)i`
+    @Import(module = "gearbox:economy.write", name = "set_monument_active")
+    public static native int setMonumentActive(int country, int province, int active);
+
+    // Move one of the movable kinds (defence_corporation, signals_directorate)
+    // to any province this country holds that has none, paying the move price.
+    // 0 for a kind that cannot move, a destination that is taken, not the
+    // country's or (for a coastal kind) inland, or a treasury that cannot
+    // cover it.
+    // gearbox:economy.write "move_monument"
+    // `(iii)i`
+    @Import(module = "gearbox:economy.write", name = "move_monument")
+    public static native int moveMonument(int country, int fromProvince, int toProvince);
+
+    // Set the TARGET sector tax on a speciality, in percent; negative is a
+    // subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of
+    // 5 and clamped to the doctrine room, and the rate in force then walks
+    // toward it a few points a turn -- nothing is charged differently this
+    // turn. `resource` is one of the five speciality sectors -- "oil", "gold",
+    // "metal", "rubber", "gemstones", the spelling province_resource uses;
+    // case does not matter. 1 when accepted, 0 for an unknown country or
+    // sector or a percent that is not a finite number.
+    // gearbox:economy.write "set_country_sector_tax"
+    // `(iiiF)i`
+    @Import(module = "gearbox:economy.write", name = "set_country_sector_tax")
+    public static native int setCountrySectorTax(int country, int resource, int resourceLen, double percent);
+
+    // Direct a province's factories to make a good, or pass -1 to hand them
+    // back to the economy. Through the game's own setProvinceOutput: the
+    // province must be this country's and have industry, and directing a new
+    // one is refused once country_directed_factories reaches
+    // country_directable_factories (re-directing one already directed is
+    // always allowed, and handing back always is). 1 on success.
+    // gearbox:economy.write "set_province_output"
+    // `(iii)i`
+    @Import(module = "gearbox:economy.write", name = "set_province_output")
+    public static native int setProvinceOutput(int country, int province, int good);
+
+    // Take a speciality sector into state hands, or release it, through the
+    // game's own nationalise / releaseNationalised. Taking one is refused when
+    // the country is at its cap; a released one winds down over turns rather
+    // than stopping. `resource` is one of the five speciality sectors --
+    // "oil", "gold", "metal", "rubber", "gemstones", the spelling
+    // province_resource uses; case does not matter. 1 if it is now in the
+    // requested state (including already being so); 0 for an unknown country
+    // or sector, a full cap, or when the rules are switched off.
+    // gearbox:economy.write "set_country_nationalised"
+    // `(iiii)i`
+    @Import(module = "gearbox:economy.write", name = "set_country_nationalised")
+    public static native int setCountryNationalised(int country, int resource, int resourceLen, int held);
+
+    // How many men either side can bring to bear in one assault on this
+    // province: its frontage, from its area, narrowed by fortification. Beyond
+    // it, numbers add depth rather than strength. 0 for an unknown province.
+    // gearbox:military.read "province_combat_width"
+    // `(i)I`
+    @Import(module = "gearbox:military.read", name = "province_combat_width")
+    public static native long provinceCombatWidth(int province);
+
+    // The country attacking this province in a standing battle, or 0 when
+    // there is none. If more than one country is attacking it, the first
+    // battle opened is the one reported.
+    // gearbox:military.read "province_battle_attacker"
+    // `(i)i`
+    @Import(module = "gearbox:military.read", name = "province_battle_attacker")
+    public static native int provinceBattleAttacker(int province);
+
 }

@@ -1729,3 +1729,282 @@ func rawContentOwnerOf(kind uint32, id unsafe.Pointer, id_len uint32, buf unsafe
 // `(iii)i`
 //go:wasmimport gearbox:content remove
 func rawContentRemove(kind uint32, id unsafe.Pointer, id_len uint32) uint32
+
+// 1 when this country could build a monument of this kind in this province
+// right now, 0 otherwise. The SAME test build_monument makes before it
+// spends anything: the province is the country's, has no monument yet (one
+// per province), the unlocking research is done, a coastal kind stands on
+// the coast, and the treasury covers the build. 0 for an unknown country,
+// province or kind.
+// gearbox:economy.read "can_build_monument"
+// `(iii)i`
+//go:wasmimport gearbox:economy.read can_build_monument
+func rawCanBuildMonument(country uint32, province uint32, kind uint32) uint32
+
+// How many of this country's monuments are switched on, which is how many
+// slots it is paying for. 0 for an unknown country.
+// gearbox:economy.read "country_monument_slots_used"
+// `(i)i`
+//go:wasmimport gearbox:economy.read country_monument_slots_used
+func rawCountryMonumentSlotsUsed(country uint32) uint32
+
+// What those slots cost per turn, all summed. The n-th active slot costs
+// more than the one before it (50, 75, 125, 200, ...), so this is not
+// slots_used times a price. 0 for an unknown country.
+// gearbox:economy.read "country_monument_upkeep"
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_monument_upkeep
+func rawCountryMonumentUpkeep(country uint32) float64
+
+// What switching on one more monument would add to the per-turn upkeep --
+// the price of the next slot. 0 for an unknown country.
+// gearbox:economy.read "country_monument_next_slot_cost"
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_monument_next_slot_cost
+func rawCountryMonumentNextSlotCost(country uint32) float64
+
+// The sector tax IN FORCE on a speciality, in percent: positive is a tax,
+// negative a subsidy. It walks toward the target a few points a turn
+// rather than jumping, and it is clamped to what the country's doctrines
+// allow today. `resource` is one of the five speciality sectors -- "oil",
+// "gold", "metal", "rubber", "gemstones", the spelling province_resource
+// uses; case does not matter. 0 for an unknown country or sector.
+// gearbox:economy.read "country_sector_tax"
+// `(iii)F`
+//go:wasmimport gearbox:economy.read country_sector_tax
+func rawCountrySectorTax(country uint32, resource unsafe.Pointer, resource_len uint32) float64
+
+// The sector tax the country has SET, in percent, which the rate in force
+// is moving toward. It can sit outside today's room if a doctrine narrowed
+// it since; the rate in force is what is charged. `resource` is one of the
+// five speciality sectors -- "oil", "gold", "metal", "rubber",
+// "gemstones", the spelling province_resource uses; case does not matter.
+// 0 for an unknown country or sector.
+// gearbox:economy.read "country_sector_tax_target"
+// `(iii)F`
+//go:wasmimport gearbox:economy.read country_sector_tax_target
+func rawCountrySectorTaxTarget(country uint32, resource unsafe.Pointer, resource_len uint32) float64
+
+// The highest sector tax this country's doctrines allow, in percent. 0 for
+// an unknown country.
+// gearbox:economy.read "country_sector_tax_room"
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_sector_tax_room
+func rawCountrySectorTaxRoom(country uint32) float64
+
+// The deepest sector subsidy this country's doctrines allow, in percent,
+// as a positive number: a subsidy may go down to minus this. 0 for an
+// unknown country.
+// gearbox:economy.read "country_sector_subsidy_room"
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_sector_subsidy_room
+func rawCountrySectorSubsidyRoom(country uint32) float64
+
+// 1 when this world runs the goods economy -- factories make goods,
+// deposits yield raw materials, and both are stockpiled. 0 when it is the
+// money economy, in which case every stock, demand and shortfall read is 0
+// and living standards read 1.
+// gearbox:economy.read "goods_economy_on"
+// `()i`
+//go:wasmimport gearbox:economy.read goods_economy_on
+func rawGoodsEconomyOn() uint32
+
+// How much of a good this country has stockpiled. 0 for an unknown country
+// or good, and outside the goods economy.
+// gearbox:economy.read "country_good_stock"
+// `(ii)F`
+//go:wasmimport gearbox:economy.read country_good_stock
+func rawCountryGoodStock(country uint32, good uint32) float64
+
+// How much of a raw material this country has stockpiled. Gold is not a
+// raw material -- it stays money. 0 for an unknown country or material,
+// and outside the goods economy.
+// gearbox:economy.read "country_raw_stock"
+// `(ii)F`
+//go:wasmimport gearbox:economy.read country_raw_stock
+func rawCountryRawStock(country uint32, raw uint32) float64
+
+// What this country needs of a good this turn: for consumer goods, what
+// its population wants; for the other three, the reserve the economy
+// recorded last turn. The same figure country_good_shortfall subtracts the
+// stock from. 0 for an unknown country or good, and outside the goods
+// economy.
+// gearbox:economy.read "country_good_demand"
+// `(ii)F`
+//go:wasmimport gearbox:economy.read country_good_demand
+func rawCountryGoodDemand(country uint32, good uint32) float64
+
+// How short this country is of a good this turn: demand minus stock, never
+// below 0. The number the economy's own allocator and the AI's trade
+// valuation read. 0 for an unknown country or good, and outside the goods
+// economy.
+// gearbox:economy.read "country_good_shortfall"
+// `(ii)F`
+//go:wasmimport gearbox:economy.read country_good_shortfall
+func rawCountryGoodShortfall(country uint32, good uint32) float64
+
+// Consumer supply over consumer demand last turn: 1 means fed, below 1
+// short, above 1 a surplus. It feeds unrest and population growth. 1 for a
+// real country with no production record (the money economy, or before the
+// first turn); 0 for an unknown country.
+// gearbox:economy.read "country_living_standards"
+// `(i)F`
+//go:wasmimport gearbox:economy.read country_living_standards
+func rawCountryLivingStandards(country uint32) float64
+
+// The good this province's factories are making, as a good -- whether its
+// government directed it or the economy allocated it
+// (province_output_directed tells the two apart). -1 when nothing is
+// assigned, for a province with no industry, and for an unknown province.
+// gearbox:economy.read "province_output"
+// `(i)i`
+//go:wasmimport gearbox:economy.read province_output
+func rawProvinceOutput(province uint32) uint32
+
+// 1 when a government chose this province's output by hand and it keeps
+// that order until changed; 0 when the economy allocates it each turn, the
+// province has no industry, or it is unknown.
+// gearbox:economy.read "province_output_directed"
+// `(i)i`
+//go:wasmimport gearbox:economy.read province_output_directed
+func rawProvinceOutputDirected(province uint32) uint32
+
+// How many factories this country's government may direct by hand. Its
+// economic compass sets it: a planned economy directs every factory, a
+// free market none. 0 for an unknown country.
+// gearbox:economy.read "country_directable_factories"
+// `(i)i`
+//go:wasmimport gearbox:economy.read country_directable_factories
+func rawCountryDirectableFactories(country uint32) uint32
+
+// How many of its factories are directed right now. set_province_output
+// refuses a new one once this reaches country_directable_factories. 0 for
+// an unknown country.
+// gearbox:economy.read "country_directed_factories"
+// `(i)i`
+//go:wasmimport gearbox:economy.read country_directed_factories
+func rawCountryDirectedFactories(country uint32) uint32
+
+// The share of this country's surplus raw materials sold automatically
+// each turn, 0-100: the world's setting scaled down by how planned its
+// economy is. 0 for an unknown country.
+// gearbox:economy.read "country_auto_sell_pct"
+// `(i)i`
+//go:wasmimport gearbox:economy.read country_auto_sell_pct
+func rawCountryAutoSellPct(country uint32) uint32
+
+// 1 when this country holds a speciality sector in state hands. A released
+// sector winds down over turns but reads 0 here from the moment it is
+// released. `resource` is one of the five speciality sectors -- "oil",
+// "gold", "metal", "rubber", "gemstones", the spelling province_resource
+// uses; case does not matter. 0 for an unknown country or sector, and when
+// the nationalisation rules are switched off.
+// gearbox:economy.read "country_nationalised"
+// `(iii)i`
+//go:wasmimport gearbox:economy.read country_nationalised
+func rawCountryNationalised(country uint32, resource unsafe.Pointer, resource_len uint32) uint32
+
+// How many speciality sectors this country may hold in state hands, from
+// its economic compass: 5 at the command end down to 0 at the market end.
+// 0 for an unknown country, and when the rules are off.
+// gearbox:economy.read "country_nationalisation_cap"
+// `(i)i`
+//go:wasmimport gearbox:economy.read country_nationalisation_cap
+func rawCountryNationalisationCap(country uint32) uint32
+
+// Build a monument for this country, through the game's own buildMonument:
+// the checks can_build_monument reports, the price taken from the
+// treasury, active on arrival. 1 if it was built, 0 if anything refused
+// it.
+// gearbox:economy.write "build_monument"
+// `(iii)i`
+//go:wasmimport gearbox:economy.write build_monument
+func rawBuildMonument(country uint32, province uint32, kind uint32) uint32
+
+// Raise this country's monument in a province one level, paying for it. 0
+// if the province holds no monument of this country's, it is at its top
+// level, or the treasury cannot cover it.
+// gearbox:economy.write "upgrade_monument"
+// `(ii)i`
+//go:wasmimport gearbox:economy.write upgrade_monument
+func rawUpgradeMonument(country uint32, province uint32) uint32
+
+// Take down this country's monument in a province. That costs money too --
+// a flat 50 -- so 0 if the treasury cannot cover it, or the province holds
+// no monument of this country's.
+// gearbox:economy.write "dismantle_monument"
+// `(ii)i`
+//go:wasmimport gearbox:economy.write dismantle_monument
+func rawDismantleMonument(country uint32, province uint32) uint32
+
+// Switch this country's monument on or off. Off frees its slot and stops
+// its effect entirely; on takes a slot again. 1 if it is now in the
+// requested state (including already being so), 0 if the province holds no
+// monument of this country's.
+// gearbox:economy.write "set_monument_active"
+// `(iii)i`
+//go:wasmimport gearbox:economy.write set_monument_active
+func rawSetMonumentActive(country uint32, province uint32, active uint32) uint32
+
+// Move one of the movable kinds (defence_corporation, signals_directorate)
+// to any province this country holds that has none, paying the move price.
+// 0 for a kind that cannot move, a destination that is taken, not the
+// country's or (for a coastal kind) inland, or a treasury that cannot
+// cover it.
+// gearbox:economy.write "move_monument"
+// `(iii)i`
+//go:wasmimport gearbox:economy.write move_monument
+func rawMoveMonument(country uint32, from_province uint32, to_province uint32) uint32
+
+// Set the TARGET sector tax on a speciality, in percent; negative is a
+// subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of
+// 5 and clamped to the doctrine room, and the rate in force then walks
+// toward it a few points a turn -- nothing is charged differently this
+// turn. `resource` is one of the five speciality sectors -- "oil", "gold",
+// "metal", "rubber", "gemstones", the spelling province_resource uses;
+// case does not matter. 1 when accepted, 0 for an unknown country or
+// sector or a percent that is not a finite number.
+// gearbox:economy.write "set_country_sector_tax"
+// `(iiiF)i`
+//go:wasmimport gearbox:economy.write set_country_sector_tax
+func rawSetCountrySectorTax(country uint32, resource unsafe.Pointer, resource_len uint32, percent float64) uint32
+
+// Direct a province's factories to make a good, or pass -1 to hand them
+// back to the economy. Through the game's own setProvinceOutput: the
+// province must be this country's and have industry, and directing a new
+// one is refused once country_directed_factories reaches
+// country_directable_factories (re-directing one already directed is
+// always allowed, and handing back always is). 1 on success.
+// gearbox:economy.write "set_province_output"
+// `(iii)i`
+//go:wasmimport gearbox:economy.write set_province_output
+func rawSetProvinceOutput(country uint32, province uint32, good uint32) uint32
+
+// Take a speciality sector into state hands, or release it, through the
+// game's own nationalise / releaseNationalised. Taking one is refused when
+// the country is at its cap; a released one winds down over turns rather
+// than stopping. `resource` is one of the five speciality sectors --
+// "oil", "gold", "metal", "rubber", "gemstones", the spelling
+// province_resource uses; case does not matter. 1 if it is now in the
+// requested state (including already being so); 0 for an unknown country
+// or sector, a full cap, or when the rules are switched off.
+// gearbox:economy.write "set_country_nationalised"
+// `(iiii)i`
+//go:wasmimport gearbox:economy.write set_country_nationalised
+func rawSetCountryNationalised(country uint32, resource unsafe.Pointer, resource_len uint32, held uint32) uint32
+
+// How many men either side can bring to bear in one assault on this
+// province: its frontage, from its area, narrowed by fortification. Beyond
+// it, numbers add depth rather than strength. 0 for an unknown province.
+// gearbox:military.read "province_combat_width"
+// `(i)I`
+//go:wasmimport gearbox:military.read province_combat_width
+func rawProvinceCombatWidth(province uint32) int64
+
+// The country attacking this province in a standing battle, or 0 when
+// there is none. If more than one country is attacking it, the first
+// battle opened is the one reported.
+// gearbox:military.read "province_battle_attacker"
+// `(i)i`
+//go:wasmimport gearbox:military.read province_battle_attacker
+func rawProvinceBattleAttacker(province uint32) uint32

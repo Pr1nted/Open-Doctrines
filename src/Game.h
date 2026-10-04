@@ -1725,6 +1725,46 @@ public:
     int         modProvinceMonumentLevel(int pid) const;
     bool        modProvinceMonumentActive(int pid) const;
 
+    // ── ABI 1.4: monuments, sector taxes, goods, directed factories,
+    // nationalisation, battles ──
+    //
+    // EVERY WRITE HERE CALLS THE RULE THE PLAYER'S OWN CLICK CALLS --
+    // buildMonument, setSpecTaxPct, setProvinceOutput, nationalise -- and takes
+    // the country explicitly. Several of those rules read "-1" as "the local
+    // player"; these refuse any id that is not a real country first, so a mod
+    // can never act as whoever happens to be sitting at this machine.
+    bool        modCanBuildMonument(int cid, int pid, int kind) const;
+    int         modCountryMonumentSlotsUsed(int cid) const;
+    double      modCountryMonumentUpkeep(int cid) const;
+    double      modCountryMonumentNextSlotCost(int cid) const;
+    bool        modBuildMonument(int cid, int pid, int kind);
+    bool        modUpgradeMonument(int cid, int pid);
+    bool        modDismantleMonument(int cid, int pid);
+    bool        modSetMonumentActive(int cid, int pid, bool on);
+    bool        modMoveMonument(int cid, int fromPid, int toPid);
+    double      modCountrySectorTax(int cid, const std::string& res) const;
+    double      modCountrySectorTaxTarget(int cid, const std::string& res) const;
+    double      modCountrySectorTaxRoom(int cid) const;
+    double      modCountrySectorSubsidyRoom(int cid) const;
+    bool        modSetCountrySectorTax(int cid, const std::string& res, double pct);
+    bool        modGoodsEconomyOn() const;
+    double      modCountryGoodStock(int cid, int good) const;
+    double      modCountryRawStock(int cid, int raw) const;
+    double      modCountryGoodDemand(int cid, int good) const;
+    double      modCountryGoodShortfall(int cid, int good) const;
+    double      modCountryLivingStandards(int cid) const;
+    int         modProvinceOutput(int pid) const;
+    bool        modProvinceOutputDirected(int pid) const;
+    int         modCountryDirectableFactories(int cid) const;
+    int         modCountryDirectedFactories(int cid) const;
+    int         modCountryAutoSellPct(int cid) const;
+    bool        modSetProvinceOutput(int cid, int pid, int good);
+    bool        modCountryNationalised(int cid, const std::string& res) const;
+    int         modCountryNationalisationCap(int cid) const;
+    bool        modSetCountryNationalised(int cid, const std::string& res, bool on);
+    long long   modProvinceCombatWidth(int pid) const;
+    int         modProvinceBattleAttacker(int pid) const;
+
     // Backing for the Map capability. Geometry only, and read-only: adjacency
     // and centres are already computed at load (m_provinceNeighbors,
     // m_provinceCenters), so none of this costs anything to expose.
@@ -3013,6 +3053,13 @@ public:
     float livingStandards(int countryId) const;
     /** Assign a province's factories to a good. -1 clears. Rules, not UI. */
     bool setProvinceOutput(int pid, int good, int countryId = -1);
+    /**
+     * Set what a country holds of one good (raw=false) or raw material
+     * (raw=true). Finite and non-negative, or refused. Only in a goods world:
+     * a stockpile nothing reads would be a number that means nothing. For a
+     * map's starting state; play changes stockpiles through production.
+     */
+    bool setStockpile(int cid, bool raw, int index, double amount);
 
     // ── WHO RUNS THE ECONOMY, AND HOW MUCH OF IT ────────────────────
     //
@@ -5729,6 +5776,13 @@ private:
     void setSpecTaxPct(int cid, int res, float pct);
     /** The target, as set (percent, unclamped by a later doctrine). */
     float specTaxTargetPct(int cid, int res) const;
+    /**
+     * Set a sector rate AND put it in force at once, skipping the walk.
+     * Clamped and stepped exactly as setSpecTaxPct is. For a map's starting
+     * state: a scenario that opens with an oil tax has had it for years, and
+     * a rate that walked in over its first turns would be a different start.
+     */
+    void setSpecTaxInForce(int cid, int res, float pct);
     /** Turn step: every rate in force moves kSpecTaxDrift points to its target. */
     void advanceSpecTaxes();
     /** Turns until the rate in force reaches the target as it stands now. */
@@ -5833,6 +5887,16 @@ private:
     bool  setMonumentActive(int countryId, int pid, bool active);
     /** The two movable kinds, to any land the country holds. */
     bool  moveMonument(int countryId, int fromPid, int toPid);
+    /**
+     * A scenario's monument: PLACED, not bought. Applies where one may stand
+     * (an owned province, one per province, the coast when the kind needs a
+     * port) and none of what buying costs -- no treasury, no research -- because
+     * a map that starts 1962 with a missile silo in place is describing the
+     * world, not playing it. Replaces whatever stood there. Map scripts only.
+     */
+    bool  placeMonument(int pid, int kindIndex, int level, std::string& whyNot);
+    /** Remove a province's monument without the dismantling bill. Map scripts only. */
+    bool  clearMonument(int pid);
     /** Ordnance heavier than heavy artillery, on a fragile one. True if it went. */
     bool  destroyMonumentByOrdnance(int pid);
 

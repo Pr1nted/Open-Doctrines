@@ -633,7 +633,7 @@ static JSValue gbxjs_propose_war(JSContext *ctx, JSValueConst this_val,
 }
 #endif /* GBX_WITH_DIPLOMACY */
 
-/* ---- Economy.Read (11) ---- */
+/* ---- Economy.Read (32) ---- */
 #if GBX_WITH_ECONOMY_READ
 
 /* gearbox:economy.read "country_income_gross" */
@@ -813,9 +813,380 @@ static JSValue gbxjs_country_population(JSContext *ctx, JSValueConst this_val,
     uint64_t r = (uint64_t)gearbox_country_population((uint32_t)a0);
     return JS_NewFloat64(ctx, (double)r);
 }
+
+/* gearbox:economy.read "can_build_monument" */
+/* 1 when this country could build a monument of this kind in this province */
+/* right now, 0 otherwise. The SAME test build_monument makes before it */
+/* spends anything: the province is the country's, has no monument yet (one */
+/* per province), the unlocking research is done, a coastal kind stands on */
+/* the coast, and the treasury covers the build. 0 for an unknown country, */
+/* province or kind. */
+/* gearbox:economy.read "can_build_monument" */
+/* `(iii)i` */
+static JSValue gbxjs_can_build_monument(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "canBuildMonument expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_can_build_monument((uint32_t)a0, (uint32_t)a1, (uint32_t)a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.read "country_monument_slots_used" */
+/* How many of this country's monuments are switched on, which is how many */
+/* slots it is paying for. 0 for an unknown country. */
+/* gearbox:economy.read "country_monument_slots_used" */
+/* `(i)i` */
+static JSValue gbxjs_country_monument_slots_used(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryMonumentSlotsUsed expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_monument_slots_used((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:economy.read "country_monument_upkeep" */
+/* What those slots cost per turn, all summed. The n-th active slot costs */
+/* more than the one before it (50, 75, 125, 200, ...), so this is not */
+/* slots_used times a price. 0 for an unknown country. */
+/* gearbox:economy.read "country_monument_upkeep" */
+/* `(i)F` */
+static JSValue gbxjs_country_monument_upkeep(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryMonumentUpkeep expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_monument_upkeep((uint32_t)a0);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_monument_next_slot_cost" */
+/* What switching on one more monument would add to the per-turn upkeep -- */
+/* the price of the next slot. 0 for an unknown country. */
+/* gearbox:economy.read "country_monument_next_slot_cost" */
+/* `(i)F` */
+static JSValue gbxjs_country_monument_next_slot_cost(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryMonumentNextSlotCost expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_monument_next_slot_cost((uint32_t)a0);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_sector_tax" */
+/* The sector tax IN FORCE on a speciality, in percent: positive is a tax, */
+/* negative a subsidy. It walks toward the target a few points a turn */
+/* rather than jumping, and it is clamped to what the country's doctrines */
+/* allow today. `resource` is one of the five speciality sectors -- "oil", */
+/* "gold", "metal", "rubber", "gemstones", the spelling province_resource */
+/* uses; case does not matter. 0 for an unknown country or sector. */
+/* gearbox:economy.read "country_sector_tax" */
+/* `(iii)F` */
+static JSValue gbxjs_country_sector_tax(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countrySectorTax expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    double r = (double)gearbox_country_sector_tax((uint32_t)a0, a1, (uint32_t)a1_n);
+    JS_FreeCString(ctx, a1);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_sector_tax_target" */
+/* The sector tax the country has SET, in percent, which the rate in force */
+/* is moving toward. It can sit outside today's room if a doctrine narrowed */
+/* it since; the rate in force is what is charged. `resource` is one of the */
+/* five speciality sectors -- "oil", "gold", "metal", "rubber", */
+/* "gemstones", the spelling province_resource uses; case does not matter. */
+/* 0 for an unknown country or sector. */
+/* gearbox:economy.read "country_sector_tax_target" */
+/* `(iii)F` */
+static JSValue gbxjs_country_sector_tax_target(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countrySectorTaxTarget expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    double r = (double)gearbox_country_sector_tax_target((uint32_t)a0, a1, (uint32_t)a1_n);
+    JS_FreeCString(ctx, a1);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_sector_tax_room" */
+/* The highest sector tax this country's doctrines allow, in percent. 0 for */
+/* an unknown country. */
+/* gearbox:economy.read "country_sector_tax_room" */
+/* `(i)F` */
+static JSValue gbxjs_country_sector_tax_room(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countrySectorTaxRoom expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_sector_tax_room((uint32_t)a0);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_sector_subsidy_room" */
+/* The deepest sector subsidy this country's doctrines allow, in percent, */
+/* as a positive number: a subsidy may go down to minus this. 0 for an */
+/* unknown country. */
+/* gearbox:economy.read "country_sector_subsidy_room" */
+/* `(i)F` */
+static JSValue gbxjs_country_sector_subsidy_room(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countrySectorSubsidyRoom expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_sector_subsidy_room((uint32_t)a0);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "goods_economy_on" */
+/* 1 when this world runs the goods economy -- factories make goods, */
+/* deposits yield raw materials, and both are stockpiled. 0 when it is the */
+/* money economy, in which case every stock, demand and shortfall read is 0 */
+/* and living standards read 1. */
+/* gearbox:economy.read "goods_economy_on" */
+/* `()i` */
+static JSValue gbxjs_goods_economy_on(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;  (void)argc; (void)argv;
+    uint64_t r = (uint64_t)gearbox_goods_economy_on();
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.read "country_good_stock" */
+/* How much of a good this country has stockpiled. 0 for an unknown country */
+/* or good, and outside the goods economy. */
+/* gearbox:economy.read "country_good_stock" */
+/* `(ii)F` */
+static JSValue gbxjs_country_good_stock(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countryGoodStock expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_good_stock((uint32_t)a0, (uint32_t)a1);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_raw_stock" */
+/* How much of a raw material this country has stockpiled. Gold is not a */
+/* raw material -- it stays money. 0 for an unknown country or material, */
+/* and outside the goods economy. */
+/* gearbox:economy.read "country_raw_stock" */
+/* `(ii)F` */
+static JSValue gbxjs_country_raw_stock(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countryRawStock expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_raw_stock((uint32_t)a0, (uint32_t)a1);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_good_demand" */
+/* What this country needs of a good this turn: for consumer goods, what */
+/* its population wants; for the other three, the reserve the economy */
+/* recorded last turn. The same figure country_good_shortfall subtracts the */
+/* stock from. 0 for an unknown country or good, and outside the goods */
+/* economy. */
+/* gearbox:economy.read "country_good_demand" */
+/* `(ii)F` */
+static JSValue gbxjs_country_good_demand(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countryGoodDemand expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_good_demand((uint32_t)a0, (uint32_t)a1);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_good_shortfall" */
+/* How short this country is of a good this turn: demand minus stock, never */
+/* below 0. The number the economy's own allocator and the AI's trade */
+/* valuation read. 0 for an unknown country or good, and outside the goods */
+/* economy. */
+/* gearbox:economy.read "country_good_shortfall" */
+/* `(ii)F` */
+static JSValue gbxjs_country_good_shortfall(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countryGoodShortfall expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_good_shortfall((uint32_t)a0, (uint32_t)a1);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "country_living_standards" */
+/* Consumer supply over consumer demand last turn: 1 means fed, below 1 */
+/* short, above 1 a surplus. It feeds unrest and population growth. 1 for a */
+/* real country with no production record (the money economy, or before the */
+/* first turn); 0 for an unknown country. */
+/* gearbox:economy.read "country_living_standards" */
+/* `(i)F` */
+static JSValue gbxjs_country_living_standards(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryLivingStandards expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    double r = (double)gearbox_country_living_standards((uint32_t)a0);
+    return JS_NewFloat64(ctx, r);
+}
+
+/* gearbox:economy.read "province_output" */
+/* The good this province's factories are making, as a good -- whether its */
+/* government directed it or the economy allocated it */
+/* (province_output_directed tells the two apart). -1 when nothing is */
+/* assigned, for a province with no industry, and for an unknown province. */
+/* gearbox:economy.read "province_output" */
+/* `(i)i` */
+static JSValue gbxjs_province_output(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "provinceOutput expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_output((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:economy.read "province_output_directed" */
+/* 1 when a government chose this province's output by hand and it keeps */
+/* that order until changed; 0 when the economy allocates it each turn, the */
+/* province has no industry, or it is unknown. */
+/* gearbox:economy.read "province_output_directed" */
+/* `(i)i` */
+static JSValue gbxjs_province_output_directed(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "provinceOutputDirected expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_output_directed((uint32_t)a0);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.read "country_directable_factories" */
+/* How many factories this country's government may direct by hand. Its */
+/* economic compass sets it: a planned economy directs every factory, a */
+/* free market none. 0 for an unknown country. */
+/* gearbox:economy.read "country_directable_factories" */
+/* `(i)i` */
+static JSValue gbxjs_country_directable_factories(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryDirectableFactories expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_directable_factories((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:economy.read "country_directed_factories" */
+/* How many of its factories are directed right now. set_province_output */
+/* refuses a new one once this reaches country_directable_factories. 0 for */
+/* an unknown country. */
+/* gearbox:economy.read "country_directed_factories" */
+/* `(i)i` */
+static JSValue gbxjs_country_directed_factories(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryDirectedFactories expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_directed_factories((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:economy.read "country_auto_sell_pct" */
+/* The share of this country's surplus raw materials sold automatically */
+/* each turn, 0-100: the world's setting scaled down by how planned its */
+/* economy is. 0 for an unknown country. */
+/* gearbox:economy.read "country_auto_sell_pct" */
+/* `(i)i` */
+static JSValue gbxjs_country_auto_sell_pct(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryAutoSellPct expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_auto_sell_pct((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:economy.read "country_nationalised" */
+/* 1 when this country holds a speciality sector in state hands. A released */
+/* sector winds down over turns but reads 0 here from the moment it is */
+/* released. `resource` is one of the five speciality sectors -- "oil", */
+/* "gold", "metal", "rubber", "gemstones", the spelling province_resource */
+/* uses; case does not matter. 0 for an unknown country or sector, and when */
+/* the nationalisation rules are switched off. */
+/* gearbox:economy.read "country_nationalised" */
+/* `(iii)i` */
+static JSValue gbxjs_country_nationalised(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "countryNationalised expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_nationalised((uint32_t)a0, a1, (uint32_t)a1_n);
+    JS_FreeCString(ctx, a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.read "country_nationalisation_cap" */
+/* How many speciality sectors this country may hold in state hands, from */
+/* its economic compass: 5 at the command end down to 0 at the market end. */
+/* 0 for an unknown country, and when the rules are off. */
+/* gearbox:economy.read "country_nationalisation_cap" */
+/* `(i)i` */
+static JSValue gbxjs_country_nationalisation_cap(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "countryNationalisationCap expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_country_nationalisation_cap((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
 #endif /* GBX_WITH_ECONOMY_READ */
 
-/* ---- Economy.Write (1) ---- */
+/* ---- Economy.Write (9) ---- */
 #if GBX_WITH_ECONOMY_WRITE
 
 /* gearbox:economy.write "set_province_industry_level" */
@@ -833,6 +1204,183 @@ static JSValue gbxjs_set_province_industry_level(JSContext *ctx, JSValueConst th
     int32_t a1 = 0;
     if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
     uint64_t r = (uint64_t)gearbox_set_province_industry_level((uint32_t)a0, (uint32_t)a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "build_monument" */
+/* Build a monument for this country, through the game's own buildMonument: */
+/* the checks can_build_monument reports, the price taken from the */
+/* treasury, active on arrival. 1 if it was built, 0 if anything refused */
+/* it. */
+/* gearbox:economy.write "build_monument" */
+/* `(iii)i` */
+static JSValue gbxjs_build_monument(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "buildMonument expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_build_monument((uint32_t)a0, (uint32_t)a1, (uint32_t)a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "upgrade_monument" */
+/* Raise this country's monument in a province one level, paying for it. 0 */
+/* if the province holds no monument of this country's, it is at its top */
+/* level, or the treasury cannot cover it. */
+/* gearbox:economy.write "upgrade_monument" */
+/* `(ii)i` */
+static JSValue gbxjs_upgrade_monument(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "upgradeMonument expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_upgrade_monument((uint32_t)a0, (uint32_t)a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "dismantle_monument" */
+/* Take down this country's monument in a province. That costs money too -- */
+/* a flat 50 -- so 0 if the treasury cannot cover it, or the province holds */
+/* no monument of this country's. */
+/* gearbox:economy.write "dismantle_monument" */
+/* `(ii)i` */
+static JSValue gbxjs_dismantle_monument(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 2) return JS_ThrowTypeError(ctx, "dismantleMonument expects 2 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_dismantle_monument((uint32_t)a0, (uint32_t)a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "set_monument_active" */
+/* Switch this country's monument on or off. Off frees its slot and stops */
+/* its effect entirely; on takes a slot again. 1 if it is now in the */
+/* requested state (including already being so), 0 if the province holds no */
+/* monument of this country's. */
+/* gearbox:economy.write "set_monument_active" */
+/* `(iii)i` */
+static JSValue gbxjs_set_monument_active(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "setMonumentActive expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_set_monument_active((uint32_t)a0, (uint32_t)a1, (uint32_t)a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "move_monument" */
+/* Move one of the movable kinds (defence_corporation, signals_directorate) */
+/* to any province this country holds that has none, paying the move price. */
+/* 0 for a kind that cannot move, a destination that is taken, not the */
+/* country's or (for a coastal kind) inland, or a treasury that cannot */
+/* cover it. */
+/* gearbox:economy.write "move_monument" */
+/* `(iii)i` */
+static JSValue gbxjs_move_monument(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "moveMonument expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_move_monument((uint32_t)a0, (uint32_t)a1, (uint32_t)a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "set_country_sector_tax" */
+/* Set the TARGET sector tax on a speciality, in percent; negative is a */
+/* subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of */
+/* 5 and clamped to the doctrine room, and the rate in force then walks */
+/* toward it a few points a turn -- nothing is charged differently this */
+/* turn. `resource` is one of the five speciality sectors -- "oil", "gold", */
+/* "metal", "rubber", "gemstones", the spelling province_resource uses; */
+/* case does not matter. 1 when accepted, 0 for an unknown country or */
+/* sector or a percent that is not a finite number. */
+/* gearbox:economy.write "set_country_sector_tax" */
+/* `(iiiF)i` */
+static JSValue gbxjs_set_country_sector_tax(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "setCountrySectorTax expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    double a2 = 0;
+    if (JS_ToFloat64(ctx, &a2, argv[2])) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_set_country_sector_tax((uint32_t)a0, a1, (uint32_t)a1_n, a2);
+    JS_FreeCString(ctx, a1);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "set_province_output" */
+/* Direct a province's factories to make a good, or pass -1 to hand them */
+/* back to the economy. Through the game's own setProvinceOutput: the */
+/* province must be this country's and have industry, and directing a new */
+/* one is refused once country_directed_factories reaches */
+/* country_directable_factories (re-directing one already directed is */
+/* always allowed, and handing back always is). 1 on success. */
+/* gearbox:economy.write "set_province_output" */
+/* `(iii)i` */
+static JSValue gbxjs_set_province_output(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "setProvinceOutput expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_set_province_output((uint32_t)a0, (uint32_t)a1, (uint32_t)a2);
+    return JS_NewBool(ctx, (int)r);
+}
+
+/* gearbox:economy.write "set_country_nationalised" */
+/* Take a speciality sector into state hands, or release it, through the */
+/* game's own nationalise / releaseNationalised. Taking one is refused when */
+/* the country is at its cap; a released one winds down over turns rather */
+/* than stopping. `resource` is one of the five speciality sectors -- */
+/* "oil", "gold", "metal", "rubber", "gemstones", the spelling */
+/* province_resource uses; case does not matter. 1 if it is now in the */
+/* requested state (including already being so); 0 for an unknown country */
+/* or sector, a full cap, or when the rules are switched off. */
+/* gearbox:economy.write "set_country_nationalised" */
+/* `(iiii)i` */
+static JSValue gbxjs_set_country_nationalised(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "setCountryNationalised expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    size_t a1_n = 0;
+    const char *a1 = JS_ToCStringLen(ctx, &a1_n, argv[1]);
+    if (!a1) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_set_country_nationalised((uint32_t)a0, a1, (uint32_t)a1_n, (uint32_t)a2);
+    JS_FreeCString(ctx, a1);
     return JS_NewBool(ctx, (int)r);
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
@@ -1697,7 +2245,7 @@ static JSValue gbxjs_editor_set_license(JSContext *ctx, JSValueConst this_val,
 }
 #endif /* GBX_WITH_MAPEDITOR */
 
-/* ---- Military.Read (20) ---- */
+/* ---- Military.Read (22) ---- */
 #if GBX_WITH_MILITARY_READ
 
 /* gearbox:military.read "ship_count" */
@@ -2027,6 +2575,38 @@ static JSValue gbxjs_province_troops_of_type(JSContext *ctx, JSValueConst this_v
     uint64_t r = (uint64_t)gearbox_province_troops_of_type((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n);
     JS_FreeCString(ctx, a2);
     return JS_NewFloat64(ctx, (double)r);
+}
+
+/* gearbox:military.read "province_combat_width" */
+/* How many men either side can bring to bear in one assault on this */
+/* province: its frontage, from its area, narrowed by fortification. Beyond */
+/* it, numbers add depth rather than strength. 0 for an unknown province. */
+/* gearbox:military.read "province_combat_width" */
+/* `(i)I` */
+static JSValue gbxjs_province_combat_width(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "provinceCombatWidth expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_combat_width((uint32_t)a0);
+    return JS_NewFloat64(ctx, (double)r);
+}
+
+/* gearbox:military.read "province_battle_attacker" */
+/* The country attacking this province in a standing battle, or 0 when */
+/* there is none. If more than one country is attacking it, the first */
+/* battle opened is the one reported. */
+/* gearbox:military.read "province_battle_attacker" */
+/* `(i)i` */
+static JSValue gbxjs_province_battle_attacker(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 1) return JS_ThrowTypeError(ctx, "provinceBattleAttacker expects 1 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_province_battle_attacker((uint32_t)a0);
+    return JS_NewUint32(ctx, (uint32_t)r);
 }
 #endif /* GBX_WITH_MILITARY_READ */
 

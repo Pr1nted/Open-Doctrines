@@ -7855,7 +7855,11 @@ static const ScriptHint SCRIPT_HINTS[] = {
     {"if ",             "if <a> <op> <b> ... else ... endif   (ops: == != > < >= <=)"},
     {"else",            "alternative branch of an if"},
     {"endif",           "closes an if"},
-    {"foreach province in country.", "loop a country's provinces (locals: province.id/.population/.industry/...)"},
+    {"foreach province in country.", "loop a country's provinces; province.<any property> reads and sets this one"},
+    {"foreach country in world", "loop every country; country.<any property> reads and sets this one"},
+    {"foreach district in country.", "loop a country's districts (district.name/.share/.index)"},
+    {"wait ",           "wait N turns -- suspend, then carry on (top level only)"},
+    {"print ",          "print <expr> -- to the console; {ref} inside text is filled in"},
     {"foreach item in array.",       "loop array values (locals: item, item.index)"},
     {"foreach item in list.",        "loop list values (locals: item, item.index)"},
     {"next",            "closes a foreach"},
@@ -7872,8 +7876,19 @@ static const ScriptHint SCRIPT_HINTS[] = {
     {"list pushback ",  "list pushback NAME <value>"},
     {"list popfront ",  "list popfront NAME"},
     {"list popback ",   "list popback NAME"},
-    {"country.",        "country.ISO.treasury/.name/.province_count/.at_war_with.ISO/.allied_with.ISO"},
-    {"province.",       "province.ID.population/.owner/.industry/.fortification/.name"},
+    {"country.",        "country.ISO.treasury/.name/.province_count/.at_war_with.ISO/.allied_with.ISO/.troops/.income"},
+    {"country.ISO.goods.", "goods held: consumer/machinery/fuel/munitions (settable; goods world)"},
+    {"country.ISO.raw.",   "raw held: oil/metal/rubber/gemstones (settable; goods world)"},
+    {"country.ISO.sector_tax.", "sector rate in force, % (oil/gold/metal/rubber/gemstones); set = at once"},
+    {"country.ISO.sector_tax_target.", "the rate the country is walking toward, % (settable)"},
+    {"country.ISO.nationalised.", "is that sector nationalised (settable, within the cap)"},
+    {"country.ISO.policy.", "is that doctrine in force (settable; costs as a click would)"},
+    {"country.ISO.district.", "district.N.name/.share/.law.<id> (share and law settable)"},
+    {"province.",       "province.ID.population/.owner/.industry/.fortification/.name/.troops/.monument/.output"},
+    {"province.ID.monument", "monument key, \"\" for none (settable: placed, not bought)"},
+    {"province.ID.output", "good its factories are directed to make (settable; goods world)"},
+    {"map.goods_economy", "whether this world runs the goods economy (read-only)"},
+    {"rules.rebellions", "rebellions on/off (settable)"},
     {"map.turn",        "current turn number (read-only)"},
     {"map.date",        "current date string, e.g. \"January 2000\" (settable)"},
     {"map.name",        "map name (read-only)"},
@@ -7882,7 +7897,7 @@ static const ScriptHint SCRIPT_HINTS[] = {
     {"list.",           "list.NAME.length / .front / .back"},
     {"item",            "current foreach value"},
     {"item.index",      "current foreach index"},
-    {"#OD/MapEngine/1", "entrypoint header: files carrying it auto-run; without it = library"},
+    {"#OD/MapEngine/3", "entrypoint header: files carrying it auto-run; without it = library"},
 };
 
 // Full in-IDE documentation, keyword by keyword. Mirrors docs/scripting.md
@@ -7891,7 +7906,7 @@ static const ScriptHint SCRIPT_HINTS[] = {
 struct DocEntry { const char* keyword; const char* body; };
 static const DocEntry SCRIPT_DOCS[] = {
     {"Execution model",
-     "A script file whose first non-blank line is the #OD/MapEngine/1 header is an\n"
+     "A script file whose first non-blank line is the #OD/MapEngine/ header is an\n"
      "ENTRYPOINT: it runs automatically once all map data is loaded. A file WITHOUT\n"
      "that header is a LIBRARY: it never runs on its own, only when pulled in with\n"
      "`include`. A script may contain waitUntil statements; when one's condition is\n"
@@ -7900,9 +7915,10 @@ static const DocEntry SCRIPT_DOCS[] = {
      "on the next line. Suspension is NOT saved into save games: reloading a save\n"
      "re-runs entry scripts from the top and they re-suspend at their first false\n"
      "waitUntil, so code before a waitUntil should be safe to run more than once."},
-    {"#OD/MapEngine/1",
+    {"#OD/MapEngine/3",
      "Must be the first non-blank line of a file for it to be treated as an\n"
-     "entrypoint (auto-run on map load). The trailing number is the engine version;\n"
+     "entrypoint (auto-run on map load). The trailing number is the engine version\n"
+     "(3 is current; 1 and 2 still run, with the language of their version);\n"
      "scripts declaring an unsupported version are rejected with an error. Files\n"
      "without this header are libraries and are only reachable via `include`."},
     {"# comment",
@@ -7921,14 +7937,19 @@ static const DocEntry SCRIPT_DOCS[] = {
      "  set map.date \"January 1960\""},
     {"if / else / endif",
      "if <a> <op> <b>\n    ...\nelse\n    ...\nendif\n\n"
-     "Conditional branch. <op> is one of == != > < >= <=. Only a single comparison\n"
-     "is supported per condition — there is no nested parentheses, and/or, or\n"
-     "arithmetic. `else` and its body are optional."},
+     "Conditional branch. <op> is one of == != > < >= <=. Conditions combine\n"
+     "with and / or / not and parentheses, and take arithmetic:\n"
+     "  if country.USA.treasury > 1000 and not country.USA.at_war_with.RUS\n"
+     "`elseif` and `else` are optional; `unless X` is `if not X`."},
     {"foreach / next (provinces)",
      "foreach province in country.ISO\n    ...\nnext\n\n"
-     "Iterates every province owned by the given country. Inside the body these\n"
-     "locals are available: province / province.id, province.population,\n"
-     "province.industry, province.fortification, province.owner."},
+     "Iterates every province owned by the given country. Inside the body\n"
+     "`province` is the id, and province.<property> is THIS province's property --\n"
+     "every one, readable and settable, exactly as province.<id>.<property>:\n"
+     "  foreach province in country.USA\n"
+     "    set province.population 50000\n"
+     "  next\n"
+     "`foreach country in world` works the same way for country.<property>."},
     {"foreach / next (array/list)",
      "foreach item in array.NAME\n    ...\nnext\n\nforeach item in list.NAME\n    ...\nnext\n\n"
      "Iterates every element of an array or linked list. Inside the body: `item`\n"
@@ -7979,17 +8000,42 @@ static const DocEntry SCRIPT_DOCS[] = {
      "country.ISO.province_count        (int)\n"
      "country.ISO.at_war_with.OTHER     (bool, writable via `set ... at_war_with OTHER true`)\n"
      "country.ISO.allied_with.OTHER     (bool, writable)\n"
-     "country.ISO.claims_province.ID    (bool)"},
+     "country.ISO.claims_province.ID    (bool)\n"
+     "country.ISO.troops[.KIND] / .income / .expenses / .population (read)\n"
+     "country.ISO.goods.<good>          (float, writable in a goods world)\n"
+     "     goods: consumer machinery fuel munitions\n"
+     "country.ISO.raw.<raw>             (float, writable in a goods world)\n"
+     "     raw: oil metal rubber gemstones\n"
+     "country.ISO.living_standards      (0..1, goods world)\n"
+     "country.ISO.directable_factories / .directed_factories (int)\n"
+     "country.ISO.sector_tax.<sector>   (%, writable: in force at once)\n"
+     "country.ISO.sector_tax_target.<sector> (%, writable: walks a turn at a time)\n"
+     "     sectors: oil gold metal rubber gemstones; negative = subsidy;\n"
+     "     clamped to .sector_tax_room / .sector_subsidy_room\n"
+     "country.ISO.nationalised.<sector> (bool, writable within .nationalisation_cap)\n"
+     "country.ISO.policy.<id>           (bool, writable: enacted as a click would)\n"
+     "country.ISO.monument_slots / .monument_upkeep (read)\n"
+     "country.ISO.district.N.name/.share/.provinces/.law.<id> (share, law writable)"},
     {"province.* references",
      "province.ID.population      (int, writable)\n"
      "province.ID.owner           (string ISO, writable — set province.ID.owner CAN)\n"
      "province.ID.name            (string)\n"
      "province.ID.industry        (int 0-10, writable)\n"
-     "province.ID.fortification   (int 0-5, writable)"},
+     "province.ID.fortification   (int 0-5, writable)\n"
+     "province.ID.troops[.KIND]   (int, writable)\n"
+     "province.ID.monument        (key or \"\", writable: placed, not bought; \"\" clears)\n"
+     "province.ID.monument_level  (int, writable)\n"
+     "province.ID.monument_active (bool, writable)\n"
+     "province.ID.output          (good key or \"\", writable in a goods world)\n"
+     "province.ID.district        (string)\n"
+     "province.ID.contested       (bool: a battle is being fought over it)\n"
+     "province.ID.rebellion_chance (read)"},
     {"map.* references",
      "map.turn    (int, read-only) — current turn number\n"
      "map.date    (string, WRITABLE) — e.g. \"January 2000\" / \"44 BC\" style dates\n"
-     "map.name    (string, read-only) — the map's display name"},
+     "map.name    (string, read-only) — the map's display name\n"
+     "map.goods_economy (bool, read-only) — goods are produced and eaten here\n"
+     "map.country_count (int, read-only)"},
     {"Value types",
      "Integers: 42  -5  0\n"
      "Floats:   3.14  -1.5\n"
@@ -8011,7 +8057,7 @@ static bool isWordChar(char c) {
 static bool isScriptKeyword(const std::string& t) {
     static const char* kws[] = {"set","if","else","elseif","unless","endif","foreach","in","next",
                                 "while","endwhile","for","to","repeat","break","continue","print",
-                                "waitUntil","include","array","list","create","push","remove",
+                                "waitUntil","wait","turns","include","array","list","create","push","remove",
                                 "label","jump","spawn","stop","try","catch","endtry","mod",
                                 "dialog","rules","world",
                                 "pushfront","pushback","popfront","popback","true","false",

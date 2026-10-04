@@ -54,7 +54,7 @@
     {"proposeWar", gbxlua_propose_war},
 #endif /* GBX_WITH_DIPLOMACY */
 
-/* ---- Economy.Read (11) ---- */
+/* ---- Economy.Read (32) ---- */
 #if GBX_WITH_ECONOMY_READ
     {"countryIncomeGross", gbxlua_country_income_gross},
     {"countryIncomeNet", gbxlua_country_income_net},
@@ -67,11 +67,40 @@
     {"countryExpenses", gbxlua_country_expenses},
     {"countryNationalValue", gbxlua_country_national_value},
     {"countryPopulation", gbxlua_country_population},
+    {"canBuildMonument", gbxlua_can_build_monument},
+    {"countryMonumentSlotsUsed", gbxlua_country_monument_slots_used},
+    {"countryMonumentUpkeep", gbxlua_country_monument_upkeep},
+    {"countryMonumentNextSlotCost", gbxlua_country_monument_next_slot_cost},
+    {"countrySectorTax", gbxlua_country_sector_tax},
+    {"countrySectorTaxTarget", gbxlua_country_sector_tax_target},
+    {"countrySectorTaxRoom", gbxlua_country_sector_tax_room},
+    {"countrySectorSubsidyRoom", gbxlua_country_sector_subsidy_room},
+    {"goodsEconomyOn", gbxlua_goods_economy_on},
+    {"countryGoodStock", gbxlua_country_good_stock},
+    {"countryRawStock", gbxlua_country_raw_stock},
+    {"countryGoodDemand", gbxlua_country_good_demand},
+    {"countryGoodShortfall", gbxlua_country_good_shortfall},
+    {"countryLivingStandards", gbxlua_country_living_standards},
+    {"provinceOutput", gbxlua_province_output},
+    {"provinceOutputDirected", gbxlua_province_output_directed},
+    {"countryDirectableFactories", gbxlua_country_directable_factories},
+    {"countryDirectedFactories", gbxlua_country_directed_factories},
+    {"countryAutoSellPct", gbxlua_country_auto_sell_pct},
+    {"countryNationalised", gbxlua_country_nationalised},
+    {"countryNationalisationCap", gbxlua_country_nationalisation_cap},
 #endif /* GBX_WITH_ECONOMY_READ */
 
-/* ---- Economy.Write (1) ---- */
+/* ---- Economy.Write (9) ---- */
 #if GBX_WITH_ECONOMY_WRITE
     {"setProvinceIndustryLevel", gbxlua_set_province_industry_level},
+    {"buildMonument", gbxlua_build_monument},
+    {"upgradeMonument", gbxlua_upgrade_monument},
+    {"dismantleMonument", gbxlua_dismantle_monument},
+    {"setMonumentActive", gbxlua_set_monument_active},
+    {"moveMonument", gbxlua_move_monument},
+    {"setCountrySectorTax", gbxlua_set_country_sector_tax},
+    {"setProvinceOutput", gbxlua_set_province_output},
+    {"setCountryNationalised", gbxlua_set_country_nationalised},
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
 /* ---- GameState.Read (13) ---- */
@@ -140,7 +169,7 @@
     {"editorSetLicense", gbxlua_editor_set_license},
 #endif /* GBX_WITH_MAPEDITOR */
 
-/* ---- Military.Read (20) ---- */
+/* ---- Military.Read (22) ---- */
 #if GBX_WITH_MILITARY_READ
     {"shipCount", gbxlua_ship_count},
     {"shipAt", gbxlua_ship_at},
@@ -162,6 +191,8 @@
     {"troopTypeId", gbxlua_troop_type_id},
     {"countryArmyOfType", gbxlua_country_army_of_type},
     {"provinceTroopsOfType", gbxlua_province_troops_of_type},
+    {"provinceCombatWidth", gbxlua_province_combat_width},
+    {"provinceBattleAttacker", gbxlua_province_battle_attacker},
 #endif /* GBX_WITH_MILITARY_READ */
 
 /* ---- Military.Write (4) ---- */

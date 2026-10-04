@@ -1,0 +1,142 @@
+#OD/MapEngine/3
+# Map-script coverage of the mechanics, checked from inside the language.
+# Run by tests/script_mechanics_test.sh, which fails on any line starting
+# "FAIL" and on any script error. Each check prints "ok <what>" or
+# "FAIL <what> ..." so a failure names itself.
+
+# ── goods ──
+if map.goods_economy
+  print "ok goods world"
+else
+  print "FAIL goods world: the test must run with OD_GOODS=1"
+endif
+set country.USA.goods.fuel 500
+set country.USA.raw.metal 40
+if country.USA.goods.fuel == 500 and country.USA.raw.metal == 40
+  print "ok stockpile set and read"
+else
+  print "FAIL stockpile {country.USA.goods.fuel} {country.USA.raw.metal}"
+endif
+if country.USA.living_standards >= 0
+  print "ok living standards read"
+endif
+
+# ── sector taxes ──
+# A country's room comes from its doctrines and may be zero -- the rule clamps
+# to it, as a click would -- so test on the first country with room for 5%.
+set var.taxDone = 0
+foreach country in world
+  if var.taxDone == 0 and country.sector_tax_room >= 5 and country.sector_subsidy_room >= 5
+    set country.sector_tax.oil 5
+    if country.sector_tax.oil == 5 and country.sector_tax_target.oil == 5
+      print "ok sector tax in force at once"
+    else
+      print "FAIL sector tax {country.iso} {country.sector_tax.oil} target {country.sector_tax_target.oil}"
+    endif
+    set country.sector_tax_target.gold -5
+    if country.sector_tax_target.Gold == -5 and country.sector_tax.gold == 0
+      print "ok sector subsidy target walks rather than jumps"
+    else
+      print "FAIL sector target {country.sector_tax_target.gold} now {country.sector_tax.gold}"
+    endif
+    set var.taxDone = 1
+  endif
+next
+if var.taxDone == 0
+  print "FAIL no country on this map has room for a 5% sector tax"
+endif
+set country.USA.sector_tax.oil 1000
+if country.USA.sector_tax.oil <= country.USA.sector_tax_room
+  print "ok sector tax clamped to the country's room"
+else
+  print "FAIL sector tax not clamped: {country.USA.sector_tax.oil} over {country.USA.sector_tax_room}"
+endif
+
+# ── the documented spaced form, set and read ──
+set country.USA.at_war_with CAN true
+if country.USA.at_war_with CAN and country.CAN.at_war_with.USA
+  print "ok spaced at_war_with"
+else
+  print "FAIL spaced at_war_with"
+endif
+set country.USA.at_war_with CAN false
+if country.USA.at_war_with.CAN
+  print "FAIL spaced at_war_with did not clear"
+endif
+
+# ── the other country can be a loop variable (the docs' own example) ──
+array create targets
+array push targets MEX
+foreach item in array.targets
+  set country.USA.at_war_with item true
+next
+if country.USA.at_war_with MEX
+  print "ok at_war_with a loop variable"
+else
+  print "FAIL at_war_with a loop variable"
+endif
+set country.USA.at_war_with MEX false
+
+# ── a loop body can read and SET any property of its province ──
+set var.done = 0
+foreach province in country.USA
+  if var.done == 0
+    set province.population 1234
+    set province.industry 3
+    set province.monument university
+    set province.monument_level 2
+    set province.monument_active false
+    if province.population == 1234 and province.industry == 3
+      print "ok loop set population and industry"
+    else
+      print "FAIL loop set {province.population} {province.industry}"
+    endif
+    if province.monument == "university" and province.monument_level == 2 and province.monument_active == false
+      print "ok monument placed, levelled, idled"
+    else
+      print "FAIL monument {province.monument} {province.monument_level} {province.monument_active}"
+    endif
+    if province.output == ""
+      print "ok undirected output reads empty"
+    endif
+    set province.monument none
+    if province.monument == ""
+      print "ok monument cleared"
+    else
+      print "FAIL monument not cleared: {province.monument}"
+    endif
+    set var.done = 1
+  endif
+next
+
+# ── a country loop can set through its loop variable too ──
+set var.natDone = 0
+foreach country in world
+  if var.natDone == 0 and country.nationalisation_cap > 0
+    set country.nationalised.oil true
+    if country.nationalised.Oil
+      print "ok nationalised through the rule"
+    else
+      print "FAIL nationalised {country.iso}"
+    endif
+    set var.natDone = 1
+  endif
+next
+if var.natDone == 0
+  print "ok nationalisation: no country has a cap on this map (nothing to test)"
+endif
+
+# ── districts and their laws ──
+set country.USA.district.0.law.curfew true
+if country.USA.district.0.law.curfew
+  print "ok district law passed"
+else
+  print "FAIL district law"
+endif
+
+# ── doctrines read as booleans ──
+if country.USA.policy.no_such_policy == false
+  print "ok unknown policy reads false"
+endif
+
+print "done"

@@ -54,7 +54,7 @@
     JS_CFUNC_DEF("proposeWar", 2, gbxjs_propose_war),
 #endif /* GBX_WITH_DIPLOMACY */
 
-/* ---- Economy.Read (11) ---- */
+/* ---- Economy.Read (32) ---- */
 #if GBX_WITH_ECONOMY_READ
     JS_CFUNC_DEF("countryIncomeGross", 1, gbxjs_country_income_gross),
     JS_CFUNC_DEF("countryIncomeNet", 1, gbxjs_country_income_net),
@@ -67,11 +67,40 @@
     JS_CFUNC_DEF("countryExpenses", 1, gbxjs_country_expenses),
     JS_CFUNC_DEF("countryNationalValue", 1, gbxjs_country_national_value),
     JS_CFUNC_DEF("countryPopulation", 1, gbxjs_country_population),
+    JS_CFUNC_DEF("canBuildMonument", 3, gbxjs_can_build_monument),
+    JS_CFUNC_DEF("countryMonumentSlotsUsed", 1, gbxjs_country_monument_slots_used),
+    JS_CFUNC_DEF("countryMonumentUpkeep", 1, gbxjs_country_monument_upkeep),
+    JS_CFUNC_DEF("countryMonumentNextSlotCost", 1, gbxjs_country_monument_next_slot_cost),
+    JS_CFUNC_DEF("countrySectorTax", 2, gbxjs_country_sector_tax),
+    JS_CFUNC_DEF("countrySectorTaxTarget", 2, gbxjs_country_sector_tax_target),
+    JS_CFUNC_DEF("countrySectorTaxRoom", 1, gbxjs_country_sector_tax_room),
+    JS_CFUNC_DEF("countrySectorSubsidyRoom", 1, gbxjs_country_sector_subsidy_room),
+    JS_CFUNC_DEF("goodsEconomyOn", 0, gbxjs_goods_economy_on),
+    JS_CFUNC_DEF("countryGoodStock", 2, gbxjs_country_good_stock),
+    JS_CFUNC_DEF("countryRawStock", 2, gbxjs_country_raw_stock),
+    JS_CFUNC_DEF("countryGoodDemand", 2, gbxjs_country_good_demand),
+    JS_CFUNC_DEF("countryGoodShortfall", 2, gbxjs_country_good_shortfall),
+    JS_CFUNC_DEF("countryLivingStandards", 1, gbxjs_country_living_standards),
+    JS_CFUNC_DEF("provinceOutput", 1, gbxjs_province_output),
+    JS_CFUNC_DEF("provinceOutputDirected", 1, gbxjs_province_output_directed),
+    JS_CFUNC_DEF("countryDirectableFactories", 1, gbxjs_country_directable_factories),
+    JS_CFUNC_DEF("countryDirectedFactories", 1, gbxjs_country_directed_factories),
+    JS_CFUNC_DEF("countryAutoSellPct", 1, gbxjs_country_auto_sell_pct),
+    JS_CFUNC_DEF("countryNationalised", 2, gbxjs_country_nationalised),
+    JS_CFUNC_DEF("countryNationalisationCap", 1, gbxjs_country_nationalisation_cap),
 #endif /* GBX_WITH_ECONOMY_READ */
 
-/* ---- Economy.Write (1) ---- */
+/* ---- Economy.Write (9) ---- */
 #if GBX_WITH_ECONOMY_WRITE
     JS_CFUNC_DEF("setProvinceIndustryLevel", 2, gbxjs_set_province_industry_level),
+    JS_CFUNC_DEF("buildMonument", 3, gbxjs_build_monument),
+    JS_CFUNC_DEF("upgradeMonument", 2, gbxjs_upgrade_monument),
+    JS_CFUNC_DEF("dismantleMonument", 2, gbxjs_dismantle_monument),
+    JS_CFUNC_DEF("setMonumentActive", 3, gbxjs_set_monument_active),
+    JS_CFUNC_DEF("moveMonument", 3, gbxjs_move_monument),
+    JS_CFUNC_DEF("setCountrySectorTax", 3, gbxjs_set_country_sector_tax),
+    JS_CFUNC_DEF("setProvinceOutput", 3, gbxjs_set_province_output),
+    JS_CFUNC_DEF("setCountryNationalised", 3, gbxjs_set_country_nationalised),
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
 /* ---- GameState.Read (13) ---- */
@@ -140,7 +169,7 @@
     JS_CFUNC_DEF("editorSetLicense", 1, gbxjs_editor_set_license),
 #endif /* GBX_WITH_MAPEDITOR */
 
-/* ---- Military.Read (20) ---- */
+/* ---- Military.Read (22) ---- */
 #if GBX_WITH_MILITARY_READ
     JS_CFUNC_DEF("shipCount", 0, gbxjs_ship_count),
     JS_CFUNC_DEF("shipAt", 1, gbxjs_ship_at),
@@ -162,6 +191,8 @@
     JS_CFUNC_DEF("troopTypeId", 1, gbxjs_troop_type_id),
     JS_CFUNC_DEF("countryArmyOfType", 2, gbxjs_country_army_of_type),
     JS_CFUNC_DEF("provinceTroopsOfType", 3, gbxjs_province_troops_of_type),
+    JS_CFUNC_DEF("provinceCombatWidth", 1, gbxjs_province_combat_width),
+    JS_CFUNC_DEF("provinceBattleAttacker", 1, gbxjs_province_battle_attacker),
 #endif /* GBX_WITH_MILITARY_READ */
 
 /* ---- Military.Write (4) ---- */

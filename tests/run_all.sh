@@ -331,6 +331,7 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
 # Needs no build: it reads the C++ source and the HolyC beside it.
 run "templeos in sync with C++" "$root/tests/templeos_sync_test.sh"
 run "a damaged save is refused" "$root/tests/save_corrupt_test.sh" "$build"
+run "map scripts reach the mechanics" "$root/tests/script_mechanics_test.sh" "$build"
 run "neural net gradients" "$bin/NeuralNetTest"
 # The model container, against the shipped model when it is there: the file
 # is the only copy of every hour of training, so "it round-trips" is checked

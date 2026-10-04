@@ -187,4 +187,38 @@ struct StubWorld : ModGameAccess {
     uint32_t stanceCount() override { return 0; }
     uint32_t countryResearchGroups(uint32_t) override { return 1; }
     bool setCountryResearchGroups(uint32_t, int32_t) override { return false; }
+
+    // ABI 1.4. The ABI's neutral answers: 0 for a quantity, -1 for "no good
+    // assigned", false for every write -- an empty world refuses them all.
+    bool canBuildMonument(uint32_t, uint32_t, int32_t) override { return false; }
+    int32_t countryMonumentSlotsUsed(uint32_t) override { return 0; }
+    double countryMonumentUpkeep(uint32_t) override { return 0.0; }
+    double countryMonumentNextSlotCost(uint32_t) override { return 0.0; }
+    bool buildMonument(uint32_t, uint32_t, int32_t) override { return false; }
+    bool upgradeMonument(uint32_t, uint32_t) override { return false; }
+    bool dismantleMonument(uint32_t, uint32_t) override { return false; }
+    bool setMonumentActive(uint32_t, uint32_t, bool) override { return false; }
+    bool moveMonument(uint32_t, uint32_t, uint32_t) override { return false; }
+    double countrySectorTax(uint32_t, const std::string&) override { return 0.0; }
+    double countrySectorTaxTarget(uint32_t, const std::string&) override { return 0.0; }
+    double countrySectorTaxRoom(uint32_t) override { return 0.0; }
+    double countrySectorSubsidyRoom(uint32_t) override { return 0.0; }
+    bool setCountrySectorTax(uint32_t, const std::string&, double) override { return false; }
+    bool goodsEconomyOn() override { return false; }
+    double countryGoodStock(uint32_t, int32_t) override { return 0.0; }
+    double countryRawStock(uint32_t, int32_t) override { return 0.0; }
+    double countryGoodDemand(uint32_t, int32_t) override { return 0.0; }
+    double countryGoodShortfall(uint32_t, int32_t) override { return 0.0; }
+    double countryLivingStandards(uint32_t) override { return 0.0; }
+    int32_t provinceOutput(uint32_t) override { return -1; }
+    bool provinceOutputDirected(uint32_t) override { return false; }
+    int32_t countryDirectableFactories(uint32_t) override { return 0; }
+    int32_t countryDirectedFactories(uint32_t) override { return 0; }
+    int32_t countryAutoSellPct(uint32_t) override { return 0; }
+    bool setProvinceOutput(uint32_t, uint32_t, int32_t) override { return false; }
+    bool countryNationalised(uint32_t, const std::string&) override { return false; }
+    int32_t countryNationalisationCap(uint32_t) override { return 0; }
+    bool setCountryNationalised(uint32_t, const std::string&, bool) override { return false; }
+    int64_t provinceCombatWidth(uint32_t) override { return 0; }
+    uint32_t provinceBattleAttacker(uint32_t) override { return 0; }
 };

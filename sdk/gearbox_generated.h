@@ -1978,6 +1978,316 @@ uint32_t gearbox_content_owner_of(uint32_t kind, const char* id, uint32_t id_len
 GEARBOX_IMPORT("content", "remove")
 uint32_t gearbox_content_remove(uint32_t kind, const char* id, uint32_t id_len);
 
+/* 1 when this country could build a monument of this kind in this province
+ * right now, 0 otherwise. The SAME test build_monument makes before it
+ * spends anything: the province is the country's, has no monument yet (one
+ * per province), the unlocking research is done, a coastal kind stands on
+ * the coast, and the treasury covers the build. 0 for an unknown country,
+ * province or kind.
+ * gearbox:economy.read "can_build_monument"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.read", "can_build_monument")
+uint32_t gearbox_can_build_monument(uint32_t country, uint32_t province, uint32_t kind);
+
+/* How many of this country's monuments are switched on, which is how many
+ * slots it is paying for. 0 for an unknown country.
+ * gearbox:economy.read "country_monument_slots_used"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_monument_slots_used")
+uint32_t gearbox_country_monument_slots_used(uint32_t country);
+
+/* What those slots cost per turn, all summed. The n-th active slot costs
+ * more than the one before it (50, 75, 125, 200, ...), so this is not
+ * slots_used times a price. 0 for an unknown country.
+ * gearbox:economy.read "country_monument_upkeep"
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_monument_upkeep")
+double gearbox_country_monument_upkeep(uint32_t country);
+
+/* What switching on one more monument would add to the per-turn upkeep --
+ * the price of the next slot. 0 for an unknown country.
+ * gearbox:economy.read "country_monument_next_slot_cost"
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_monument_next_slot_cost")
+double gearbox_country_monument_next_slot_cost(uint32_t country);
+
+/* The sector tax IN FORCE on a speciality, in percent: positive is a tax,
+ * negative a subsidy. It walks toward the target a few points a turn
+ * rather than jumping, and it is clamped to what the country's doctrines
+ * allow today. `resource` is one of the five speciality sectors -- "oil",
+ * "gold", "metal", "rubber", "gemstones", the spelling province_resource
+ * uses; case does not matter. 0 for an unknown country or sector.
+ * gearbox:economy.read "country_sector_tax"
+ * `(iii)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_sector_tax")
+double gearbox_country_sector_tax(uint32_t country, const char* resource, uint32_t resource_len);
+
+/* The sector tax the country has SET, in percent, which the rate in force
+ * is moving toward. It can sit outside today's room if a doctrine narrowed
+ * it since; the rate in force is what is charged. `resource` is one of the
+ * five speciality sectors -- "oil", "gold", "metal", "rubber",
+ * "gemstones", the spelling province_resource uses; case does not matter.
+ * 0 for an unknown country or sector.
+ * gearbox:economy.read "country_sector_tax_target"
+ * `(iii)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_sector_tax_target")
+double gearbox_country_sector_tax_target(uint32_t country, const char* resource, uint32_t resource_len);
+
+/* The highest sector tax this country's doctrines allow, in percent. 0 for
+ * an unknown country.
+ * gearbox:economy.read "country_sector_tax_room"
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_sector_tax_room")
+double gearbox_country_sector_tax_room(uint32_t country);
+
+/* The deepest sector subsidy this country's doctrines allow, in percent,
+ * as a positive number: a subsidy may go down to minus this. 0 for an
+ * unknown country.
+ * gearbox:economy.read "country_sector_subsidy_room"
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_sector_subsidy_room")
+double gearbox_country_sector_subsidy_room(uint32_t country);
+
+/* 1 when this world runs the goods economy -- factories make goods,
+ * deposits yield raw materials, and both are stockpiled. 0 when it is the
+ * money economy, in which case every stock, demand and shortfall read is 0
+ * and living standards read 1.
+ * gearbox:economy.read "goods_economy_on"
+ * `()i`
+ */
+GEARBOX_IMPORT("economy.read", "goods_economy_on")
+uint32_t gearbox_goods_economy_on(void);
+
+/* How much of a good this country has stockpiled. 0 for an unknown country
+ * or good, and outside the goods economy.
+ * gearbox:economy.read "country_good_stock"
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_good_stock")
+double gearbox_country_good_stock(uint32_t country, uint32_t good);
+
+/* How much of a raw material this country has stockpiled. Gold is not a
+ * raw material -- it stays money. 0 for an unknown country or material,
+ * and outside the goods economy.
+ * gearbox:economy.read "country_raw_stock"
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_raw_stock")
+double gearbox_country_raw_stock(uint32_t country, uint32_t raw);
+
+/* What this country needs of a good this turn: for consumer goods, what
+ * its population wants; for the other three, the reserve the economy
+ * recorded last turn. The same figure country_good_shortfall subtracts the
+ * stock from. 0 for an unknown country or good, and outside the goods
+ * economy.
+ * gearbox:economy.read "country_good_demand"
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_good_demand")
+double gearbox_country_good_demand(uint32_t country, uint32_t good);
+
+/* How short this country is of a good this turn: demand minus stock, never
+ * below 0. The number the economy's own allocator and the AI's trade
+ * valuation read. 0 for an unknown country or good, and outside the goods
+ * economy.
+ * gearbox:economy.read "country_good_shortfall"
+ * `(ii)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_good_shortfall")
+double gearbox_country_good_shortfall(uint32_t country, uint32_t good);
+
+/* Consumer supply over consumer demand last turn: 1 means fed, below 1
+ * short, above 1 a surplus. It feeds unrest and population growth. 1 for a
+ * real country with no production record (the money economy, or before the
+ * first turn); 0 for an unknown country.
+ * gearbox:economy.read "country_living_standards"
+ * `(i)F`
+ */
+GEARBOX_IMPORT("economy.read", "country_living_standards")
+double gearbox_country_living_standards(uint32_t country);
+
+/* The good this province's factories are making, as a good -- whether its
+ * government directed it or the economy allocated it
+ * (province_output_directed tells the two apart). -1 when nothing is
+ * assigned, for a province with no industry, and for an unknown province.
+ * gearbox:economy.read "province_output"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "province_output")
+uint32_t gearbox_province_output(uint32_t province);
+
+/* 1 when a government chose this province's output by hand and it keeps
+ * that order until changed; 0 when the economy allocates it each turn, the
+ * province has no industry, or it is unknown.
+ * gearbox:economy.read "province_output_directed"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "province_output_directed")
+uint32_t gearbox_province_output_directed(uint32_t province);
+
+/* How many factories this country's government may direct by hand. Its
+ * economic compass sets it: a planned economy directs every factory, a
+ * free market none. 0 for an unknown country.
+ * gearbox:economy.read "country_directable_factories"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_directable_factories")
+uint32_t gearbox_country_directable_factories(uint32_t country);
+
+/* How many of its factories are directed right now. set_province_output
+ * refuses a new one once this reaches country_directable_factories. 0 for
+ * an unknown country.
+ * gearbox:economy.read "country_directed_factories"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_directed_factories")
+uint32_t gearbox_country_directed_factories(uint32_t country);
+
+/* The share of this country's surplus raw materials sold automatically
+ * each turn, 0-100: the world's setting scaled down by how planned its
+ * economy is. 0 for an unknown country.
+ * gearbox:economy.read "country_auto_sell_pct"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_auto_sell_pct")
+uint32_t gearbox_country_auto_sell_pct(uint32_t country);
+
+/* 1 when this country holds a speciality sector in state hands. A released
+ * sector winds down over turns but reads 0 here from the moment it is
+ * released. `resource` is one of the five speciality sectors -- "oil",
+ * "gold", "metal", "rubber", "gemstones", the spelling province_resource
+ * uses; case does not matter. 0 for an unknown country or sector, and when
+ * the nationalisation rules are switched off.
+ * gearbox:economy.read "country_nationalised"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_nationalised")
+uint32_t gearbox_country_nationalised(uint32_t country, const char* resource, uint32_t resource_len);
+
+/* How many speciality sectors this country may hold in state hands, from
+ * its economic compass: 5 at the command end down to 0 at the market end.
+ * 0 for an unknown country, and when the rules are off.
+ * gearbox:economy.read "country_nationalisation_cap"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("economy.read", "country_nationalisation_cap")
+uint32_t gearbox_country_nationalisation_cap(uint32_t country);
+
+/* Build a monument for this country, through the game's own buildMonument:
+ * the checks can_build_monument reports, the price taken from the
+ * treasury, active on arrival. 1 if it was built, 0 if anything refused
+ * it.
+ * gearbox:economy.write "build_monument"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.write", "build_monument")
+uint32_t gearbox_build_monument(uint32_t country, uint32_t province, uint32_t kind);
+
+/* Raise this country's monument in a province one level, paying for it. 0
+ * if the province holds no monument of this country's, it is at its top
+ * level, or the treasury cannot cover it.
+ * gearbox:economy.write "upgrade_monument"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("economy.write", "upgrade_monument")
+uint32_t gearbox_upgrade_monument(uint32_t country, uint32_t province);
+
+/* Take down this country's monument in a province. That costs money too --
+ * a flat 50 -- so 0 if the treasury cannot cover it, or the province holds
+ * no monument of this country's.
+ * gearbox:economy.write "dismantle_monument"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("economy.write", "dismantle_monument")
+uint32_t gearbox_dismantle_monument(uint32_t country, uint32_t province);
+
+/* Switch this country's monument on or off. Off frees its slot and stops
+ * its effect entirely; on takes a slot again. 1 if it is now in the
+ * requested state (including already being so), 0 if the province holds no
+ * monument of this country's.
+ * gearbox:economy.write "set_monument_active"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.write", "set_monument_active")
+uint32_t gearbox_set_monument_active(uint32_t country, uint32_t province, uint32_t active);
+
+/* Move one of the movable kinds (defence_corporation, signals_directorate)
+ * to any province this country holds that has none, paying the move price.
+ * 0 for a kind that cannot move, a destination that is taken, not the
+ * country's or (for a coastal kind) inland, or a treasury that cannot
+ * cover it.
+ * gearbox:economy.write "move_monument"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.write", "move_monument")
+uint32_t gearbox_move_monument(uint32_t country, uint32_t from_province, uint32_t to_province);
+
+/* Set the TARGET sector tax on a speciality, in percent; negative is a
+ * subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of
+ * 5 and clamped to the doctrine room, and the rate in force then walks
+ * toward it a few points a turn -- nothing is charged differently this
+ * turn. `resource` is one of the five speciality sectors -- "oil", "gold",
+ * "metal", "rubber", "gemstones", the spelling province_resource uses;
+ * case does not matter. 1 when accepted, 0 for an unknown country or
+ * sector or a percent that is not a finite number.
+ * gearbox:economy.write "set_country_sector_tax"
+ * `(iiiF)i`
+ */
+GEARBOX_IMPORT("economy.write", "set_country_sector_tax")
+uint32_t gearbox_set_country_sector_tax(uint32_t country, const char* resource, uint32_t resource_len, double percent);
+
+/* Direct a province's factories to make a good, or pass -1 to hand them
+ * back to the economy. Through the game's own setProvinceOutput: the
+ * province must be this country's and have industry, and directing a new
+ * one is refused once country_directed_factories reaches
+ * country_directable_factories (re-directing one already directed is
+ * always allowed, and handing back always is). 1 on success.
+ * gearbox:economy.write "set_province_output"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("economy.write", "set_province_output")
+uint32_t gearbox_set_province_output(uint32_t country, uint32_t province, uint32_t good);
+
+/* Take a speciality sector into state hands, or release it, through the
+ * game's own nationalise / releaseNationalised. Taking one is refused when
+ * the country is at its cap; a released one winds down over turns rather
+ * than stopping. `resource` is one of the five speciality sectors --
+ * "oil", "gold", "metal", "rubber", "gemstones", the spelling
+ * province_resource uses; case does not matter. 1 if it is now in the
+ * requested state (including already being so); 0 for an unknown country
+ * or sector, a full cap, or when the rules are switched off.
+ * gearbox:economy.write "set_country_nationalised"
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("economy.write", "set_country_nationalised")
+uint32_t gearbox_set_country_nationalised(uint32_t country, const char* resource, uint32_t resource_len, uint32_t held);
+
+/* How many men either side can bring to bear in one assault on this
+ * province: its frontage, from its area, narrowed by fortification. Beyond
+ * it, numbers add depth rather than strength. 0 for an unknown province.
+ * gearbox:military.read "province_combat_width"
+ * `(i)I`
+ */
+GEARBOX_IMPORT("military.read", "province_combat_width")
+int64_t gearbox_province_combat_width(uint32_t province);
+
+/* The country attacking this province in a standing battle, or 0 when
+ * there is none. If more than one country is attacking it, the first
+ * battle opened is the one reported.
+ * gearbox:military.read "province_battle_attacker"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("military.read", "province_battle_attacker")
+uint32_t gearbox_province_battle_attacker(uint32_t province);
+
 /* --------------------------------------------------- exports -- */
 
 /* Called once when your mod is enabled, before anything else. Return 0 to

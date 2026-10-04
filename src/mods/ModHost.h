@@ -401,6 +401,48 @@ struct ModGameAccess {
     virtual uint32_t countryResearchGroups(uint32_t cid) = 0;
     virtual bool     setCountryResearchGroups(uint32_t cid, int32_t groups) = 0;
 
+    // ── Economy and battles, ABI 1.4 ─────────────────────────────────────────
+    //
+    // Monuments, sector taxes, the goods economy, directed factories and state
+    // industry, plus two battle reads under Military.Read. Every write takes
+    // the acting country EXPLICITLY and goes through the rule the player's own
+    // click goes through (buildMonument, setSpecTaxPct, setProvinceOutput,
+    // nationalise / releaseNationalised), so cost, research, ownership and the
+    // compass-set limits all still bind. `kind` is a monument_kind, `good` a
+    // good and `raw` a raw in sdk/abi.json; a sector (`res`) is one of the five
+    // speciality resources, case-insensitive ("oil" or "Oil").
+    virtual bool     canBuildMonument(uint32_t cid, uint32_t pid, int32_t kind) = 0;
+    virtual int32_t  countryMonumentSlotsUsed(uint32_t cid) = 0;
+    virtual double   countryMonumentUpkeep(uint32_t cid) = 0;
+    virtual double   countryMonumentNextSlotCost(uint32_t cid) = 0;
+    virtual bool     buildMonument(uint32_t cid, uint32_t pid, int32_t kind) = 0;
+    virtual bool     upgradeMonument(uint32_t cid, uint32_t pid) = 0;
+    virtual bool     dismantleMonument(uint32_t cid, uint32_t pid) = 0;
+    virtual bool     setMonumentActive(uint32_t cid, uint32_t pid, bool on) = 0;
+    virtual bool     moveMonument(uint32_t cid, uint32_t fromPid, uint32_t toPid) = 0;
+    virtual double   countrySectorTax(uint32_t cid, const std::string& res) = 0;        // percent in force
+    virtual double   countrySectorTaxTarget(uint32_t cid, const std::string& res) = 0;  // percent set
+    virtual double   countrySectorTaxRoom(uint32_t cid) = 0;
+    virtual double   countrySectorSubsidyRoom(uint32_t cid) = 0;
+    virtual bool     setCountrySectorTax(uint32_t cid, const std::string& res, double pct) = 0;
+    virtual bool     goodsEconomyOn() = 0;
+    virtual double   countryGoodStock(uint32_t cid, int32_t good) = 0;
+    virtual double   countryRawStock(uint32_t cid, int32_t raw) = 0;
+    virtual double   countryGoodDemand(uint32_t cid, int32_t good) = 0;
+    virtual double   countryGoodShortfall(uint32_t cid, int32_t good) = 0;
+    virtual double   countryLivingStandards(uint32_t cid) = 0;
+    virtual int32_t  provinceOutput(uint32_t pid) = 0;              // a good, or -1
+    virtual bool     provinceOutputDirected(uint32_t pid) = 0;
+    virtual int32_t  countryDirectableFactories(uint32_t cid) = 0;
+    virtual int32_t  countryDirectedFactories(uint32_t cid) = 0;
+    virtual int32_t  countryAutoSellPct(uint32_t cid) = 0;
+    virtual bool     setProvinceOutput(uint32_t cid, uint32_t pid, int32_t good) = 0;
+    virtual bool     countryNationalised(uint32_t cid, const std::string& res) = 0;
+    virtual int32_t  countryNationalisationCap(uint32_t cid) = 0;
+    virtual bool     setCountryNationalised(uint32_t cid, const std::string& res, bool on) = 0;
+    virtual int64_t  provinceCombatWidth(uint32_t pid) = 0;
+    virtual uint32_t provinceBattleAttacker(uint32_t pid) = 0;      // 0 for none
+
     // ── Map, beyond the geometry the 1.0 module already exposes ──────────────
     virtual bool     provinceIsCoastal(uint32_t pid) = 0;
     // The sea-route query the navy itself uses. Answers "could a fleet get from

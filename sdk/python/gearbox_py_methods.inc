@@ -54,7 +54,7 @@
     {"proposeWar", gbxpy_propose_war, METH_VARARGS, "PROPOSES a declaration of war, and returns 1 only if the game accepted it. It is routed through the same code path any other actor uses, so guarantee chains and war consequences fo"},
 #endif /* GBX_WITH_DIPLOMACY */
 
-/* ---- Economy.Read (11) ---- */
+/* ---- Economy.Read (32) ---- */
 #if GBX_WITH_ECONOMY_READ
     {"countryIncomeGross", gbxpy_country_income_gross, METH_VARARGS, "Income per turn before upkeep."},
     {"countryIncomeNet", gbxpy_country_income_net, METH_VARARGS, "Income per turn after army and navy upkeep. Negative means the treasury is draining."},
@@ -67,11 +67,40 @@
     {"countryExpenses", gbxpy_country_expenses, METH_VARARGS, "What this country spent last turn, in total. The same figure its profile publishes and the economy screen draws."},
     {"countryNationalValue", gbxpy_country_national_value, METH_VARARGS, "What the whole country is worth: every industry level, fort, port and division at what it cost to raise. A stock, where the income figures are flows."},
     {"countryPopulation", gbxpy_country_population, METH_VARARGS, "How many people live in this country."},
+    {"canBuildMonument", gbxpy_can_build_monument, METH_VARARGS, "1 when this country could build a monument of this kind in this province right now, 0 otherwise. The SAME test build_monument makes before it spends anything: the province is the c"},
+    {"countryMonumentSlotsUsed", gbxpy_country_monument_slots_used, METH_VARARGS, "How many of this country's monuments are switched on, which is how many slots it is paying for. 0 for an unknown country."},
+    {"countryMonumentUpkeep", gbxpy_country_monument_upkeep, METH_VARARGS, "What those slots cost per turn, all summed. The n-th active slot costs more than the one before it (50, 75, 125, 200, ...), so this is not slots_used times a price. 0 for an unknow"},
+    {"countryMonumentNextSlotCost", gbxpy_country_monument_next_slot_cost, METH_VARARGS, "What switching on one more monument would add to the per-turn upkeep -- the price of the next slot. 0 for an unknown country."},
+    {"countrySectorTax", gbxpy_country_sector_tax, METH_VARARGS, "The sector tax IN FORCE on a speciality, in percent: positive is a tax, negative a subsidy. It walks toward the target a few points a turn rather than jumping, and it is clamped to"},
+    {"countrySectorTaxTarget", gbxpy_country_sector_tax_target, METH_VARARGS, "The sector tax the country has SET, in percent, which the rate in force is moving toward. It can sit outside today's room if a doctrine narrowed it since; the rate in force is what"},
+    {"countrySectorTaxRoom", gbxpy_country_sector_tax_room, METH_VARARGS, "The highest sector tax this country's doctrines allow, in percent. 0 for an unknown country."},
+    {"countrySectorSubsidyRoom", gbxpy_country_sector_subsidy_room, METH_VARARGS, "The deepest sector subsidy this country's doctrines allow, in percent, as a positive number: a subsidy may go down to minus this. 0 for an unknown country."},
+    {"goodsEconomyOn", gbxpy_goods_economy_on, METH_NOARGS, "1 when this world runs the goods economy -- factories make goods, deposits yield raw materials, and both are stockpiled. 0 when it is the money economy, in which case every stock, "},
+    {"countryGoodStock", gbxpy_country_good_stock, METH_VARARGS, "How much of a good this country has stockpiled. 0 for an unknown country or good, and outside the goods economy."},
+    {"countryRawStock", gbxpy_country_raw_stock, METH_VARARGS, "How much of a raw material this country has stockpiled. Gold is not a raw material -- it stays money. 0 for an unknown country or material, and outside the goods economy."},
+    {"countryGoodDemand", gbxpy_country_good_demand, METH_VARARGS, "What this country needs of a good this turn: for consumer goods, what its population wants; for the other three, the reserve the economy recorded last turn. The same figure country"},
+    {"countryGoodShortfall", gbxpy_country_good_shortfall, METH_VARARGS, "How short this country is of a good this turn: demand minus stock, never below 0. The number the economy's own allocator and the AI's trade valuation read. 0 for an unknown country"},
+    {"countryLivingStandards", gbxpy_country_living_standards, METH_VARARGS, "Consumer supply over consumer demand last turn: 1 means fed, below 1 short, above 1 a surplus. It feeds unrest and population growth. 1 for a real country with no production record"},
+    {"provinceOutput", gbxpy_province_output, METH_VARARGS, "The good this province's factories are making, as a good -- whether its government directed it or the economy allocated it (province_output_directed tells the two apart). -1 when n"},
+    {"provinceOutputDirected", gbxpy_province_output_directed, METH_VARARGS, "1 when a government chose this province's output by hand and it keeps that order until changed; 0 when the economy allocates it each turn, the province has no industry, or it is un"},
+    {"countryDirectableFactories", gbxpy_country_directable_factories, METH_VARARGS, "How many factories this country's government may direct by hand. Its economic compass sets it: a planned economy directs every factory, a free market none. 0 for an unknown country"},
+    {"countryDirectedFactories", gbxpy_country_directed_factories, METH_VARARGS, "How many of its factories are directed right now. set_province_output refuses a new one once this reaches country_directable_factories. 0 for an unknown country."},
+    {"countryAutoSellPct", gbxpy_country_auto_sell_pct, METH_VARARGS, "The share of this country's surplus raw materials sold automatically each turn, 0-100: the world's setting scaled down by how planned its economy is. 0 for an unknown country."},
+    {"countryNationalised", gbxpy_country_nationalised, METH_VARARGS, "1 when this country holds a speciality sector in state hands. A released sector winds down over turns but reads 0 here from the moment it is released. `resource` is one of the five"},
+    {"countryNationalisationCap", gbxpy_country_nationalisation_cap, METH_VARARGS, "How many speciality sectors this country may hold in state hands, from its economic compass: 5 at the command end down to 0 at the market end. 0 for an unknown country, and when th"},
 #endif /* GBX_WITH_ECONOMY_READ */
 
-/* ---- Economy.Write (1) ---- */
+/* ---- Economy.Write (9) ---- */
 #if GBX_WITH_ECONOMY_WRITE
     {"setProvinceIndustryLevel", gbxpy_set_province_industry_level, METH_VARARGS, "Set a province's industry level, clamped to 0..10. This writes the built level directly and does not charge for it -- it is a scenario-authoring tool, not a build order."},
+    {"buildMonument", gbxpy_build_monument, METH_VARARGS, "Build a monument for this country, through the game's own buildMonument: the checks can_build_monument reports, the price taken from the treasury, active on arrival. 1 if it was bu"},
+    {"upgradeMonument", gbxpy_upgrade_monument, METH_VARARGS, "Raise this country's monument in a province one level, paying for it. 0 if the province holds no monument of this country's, it is at its top level, or the treasury cannot cover it"},
+    {"dismantleMonument", gbxpy_dismantle_monument, METH_VARARGS, "Take down this country's monument in a province. That costs money too -- a flat 50 -- so 0 if the treasury cannot cover it, or the province holds no monument of this country's."},
+    {"setMonumentActive", gbxpy_set_monument_active, METH_VARARGS, "Switch this country's monument on or off. Off frees its slot and stops its effect entirely; on takes a slot again. 1 if it is now in the requested state (including already being so"},
+    {"moveMonument", gbxpy_move_monument, METH_VARARGS, "Move one of the movable kinds (defence_corporation, signals_directorate) to any province this country holds that has none, paying the move price. 0 for a kind that cannot move, a d"},
+    {"setCountrySectorTax", gbxpy_set_country_sector_tax, METH_VARARGS, "Set the TARGET sector tax on a speciality, in percent; negative is a subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of 5 and clamped to the doctrine room, and"},
+    {"setProvinceOutput", gbxpy_set_province_output, METH_VARARGS, "Direct a province's factories to make a good, or pass -1 to hand them back to the economy. Through the game's own setProvinceOutput: the province must be this country's and have in"},
+    {"setCountryNationalised", gbxpy_set_country_nationalised, METH_VARARGS, "Take a speciality sector into state hands, or release it, through the game's own nationalise / releaseNationalised. Taking one is refused when the country is at its cap; a released"},
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
 /* ---- GameState.Read (13) ---- */
@@ -140,7 +169,7 @@
     {"editorSetLicense", gbxpy_editor_set_license, METH_VARARGS, "Set the licence recorded in the exported .odmap. Up to 96 bytes."},
 #endif /* GBX_WITH_MAPEDITOR */
 
-/* ---- Military.Read (20) ---- */
+/* ---- Military.Read (22) ---- */
 #if GBX_WITH_MILITARY_READ
     {"shipCount", gbxpy_ship_count, METH_NOARGS, "How many ships exist in the world, across all owners."},
     {"shipAt", gbxpy_ship_at, METH_VARARGS, "The ship id at `index` in 0..ship_count-1, or 0xFFFFFFFF past the end. Ids are stable within a turn and not across turns -- do not store one."},
@@ -162,6 +191,8 @@
     {"troopTypeId", gbxpy_troop_type_id, METH_VARARGS, "The stable id of troop type `index` -- line, militia, assault, mech. Never translated. Two-call sizing: call with cap 0 to learn the length, allocate, call again. Returns the full "},
     {"countryArmyOfType", gbxpy_country_army_of_type, METH_VARARGS, "How many soldiers of that kind this country has, everywhere. 0 for a troop type that does not exist."},
     {"provinceTroopsOfType", gbxpy_province_troops_of_type, METH_VARARGS, "How many soldiers of that kind this country has standing in that province."},
+    {"provinceCombatWidth", gbxpy_province_combat_width, METH_VARARGS, "How many men either side can bring to bear in one assault on this province: its frontage, from its area, narrowed by fortification. Beyond it, numbers add depth rather than strengt"},
+    {"provinceBattleAttacker", gbxpy_province_battle_attacker, METH_VARARGS, "The country attacking this province in a standing battle, or 0 when there is none. If more than one country is attacking it, the first battle opened is the one reported."},
 #endif /* GBX_WITH_MILITARY_READ */
 
 /* ---- Military.Write (4) ---- */

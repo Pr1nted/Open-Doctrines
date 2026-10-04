@@ -217,6 +217,39 @@ bool Game::moveMonument(int countryId, int fromPid, int toPid) {
     return true;
 }
 
+bool Game::placeMonument(int pid, int kindIndex, int level, std::string& whyNot) {
+    whyNot.clear();
+    if (kindIndex < 0 || kindIndex >= odmon::kKindCount) { whyNot = "no such monument"; return false; }
+    const odmon::Kind kind = (odmon::Kind)kindIndex;
+    const Province* p = m_provinces.getProvinceById(pid);
+    if (!p) { whyNot = "no such province"; return false; }
+    if (p->countryId <= 0 || p->countryId >= REBEL_CID_MIN) {
+        whyNot = "nobody holds that province";
+        return false;
+    }
+    // The placement half of canBuildMonument and nothing of its purse: one per
+    // province is guaranteed by replacing, and the coast is a fact about the
+    // ground that no scenario can wish away.
+    if (odmon::spec(kind).needsPort && !isProvinceCoastal(pid)) {
+        whyNot = "it has to stand on the coast";
+        return false;
+    }
+    odmon::Holding h;
+    h.provinceId = pid;
+    h.kind = kind;
+    h.level = std::clamp(level, 1, odmon::spec(kind).maxLevel);
+    h.active = true;
+    m_monuments[pid] = h;
+    rebuildMonumentEffects();
+    return true;
+}
+
+bool Game::clearMonument(int pid) {
+    if (!m_monuments.erase(pid)) return false;
+    rebuildMonumentEffects();
+    return true;
+}
+
 bool Game::destroyMonumentByOrdnance(int pid) {
     auto it = m_monuments.find(pid);
     if (it == m_monuments.end()) return false;

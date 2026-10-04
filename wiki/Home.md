@@ -2,7 +2,7 @@
 # Gearbox — the OpenDoctrines mod API
 
 Gearbox v1.3. A mod is a WebAssembly module that imports
-263 host functions and exports up to 7 of its own. That is
+294 host functions and exports up to 7 of its own. That is
 the whole contract — there is no framework and no runtime to learn.
 
 Mods are sandboxed with **no ambient authority**: no filesystem, no network, no

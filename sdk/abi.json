@@ -21,12 +21,14 @@
   "exactly as it did. tests/mod_abi_test.cpp enforces that in both directions,",
   "and the abi-compat CI step re-checks every 1.0 symbol against the committed",
   "1.0 baseline so a future edit cannot quietly drop one.",
-  "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 has not shipped -- sdk/compat has baselines for 1.0, 1.1 and 1.2 and none for 1.3 -- so no minor is burned and a mod declaring \"gearbox\": \"1.3\" keeps meaning one thing.",
+  "1.3 adds the party surface under Politics.Read: who governs each country, where they stand, and whether the name is a matter of record or was generated. Appended to 1.3 rather than opening 1.4 because 1.3 had not shipped yet, so no minor was burned and a mod declaring \"gearbox\": \"1.3\" means one thing.",
   "1.3 also adds Core.Protected: resident memory, executable size and the installed mod list. It is the only capability that reports the MACHINE rather than the game, so it is a separate bit a player can refuse, the mod menu warns when a mod asks for it, and every call is logged for the debug console -- unconditionally, so a mod cannot tell whether anyone is looking.",
   "1.3 adds Country: a mod declares fields on countries, persisted into the save or hollow and redeclared each load. A PERSISTED field survives its mod being uninstalled -- the values are held and written back out, so removing a mod is reversible rather than destructive.",
   "1.3 adds Scripts: a mod claims a command name and a map script line beginning with it is handed to the mod. Names are first-come and the language's own keywords are refused, so a mod can extend the language and cannot redefine it.",
   "1.3 adds Render, deliberately narrow: a mod may tint a province and label one, and may not take over drawing. A mod that tints wrongly makes the map ugly and can be switched off; a mod that owns the render loop can make the screen it would be switched off from unreadable.",
-  "1.3 adds Content: one registry for every catalogue rather than an API per catalogue, with the definition crossing as the same JSON the data file uses. AI visibility is opt-in, because content the AI was never trained against should not appear in its options -- and a visible research node changes the model's input shape."
+  "1.3 adds Content: one registry for every catalogue rather than an API per catalogue, with the definition crossing as the same JSON the data file uses. AI visibility is opt-in, because content the AI was never trained against should not appear in its options -- and a visible research node changes the model's input shape.",
+  "1.4 opens because 1.3 shipped: sdk/compat/abi-1.3.json is its frozen surface, and nothing in it may be renamed, re-signed or re-gated. Everything since carries \"since\": \"1.4\". The \"gearbox\" version field still reads 1.3 until tools/release.py sdk bumps it at release, which it does only once the 1.3 tag exists -- so a mod that uses a 1.4 import must declare \"gearbox\": \"1.4\" and will load only on a host that says so.",
+  "1.4 adds monuments to the reads (province_monument, _level, _active under GameState.Read) and, under Economy.Read and Economy.Write, the economy surface that grew around them: building, upgrading, moving and switching monuments; sector taxes and subsidies; the goods economy's stockpiles, demand, shortfall and living standards, with \"good\" and \"raw\" enums mirroring the game's own; directed factories; and state industry. Military.Read gains combat width and who is attacking a province. EVERY WRITE TAKES THE ACTING COUNTRY EXPLICITLY and goes through the rule the player's click goes through, so cost, research, ownership and the compass-set limits bind a mod exactly as they bind a player -- a mod cannot do anything a player governing that country could not."
  ],
  "gearbox": "1.3",
  "schema": 1,
@@ -461,6 +463,7 @@
    "module": "gearbox:gamestate.read",
    "name": "province_monument",
    "capability": "GameState.Read",
+   "since": "1.4",
    "signature": "(i)i",
    "params": [
     {
@@ -479,6 +482,7 @@
    "module": "gearbox:gamestate.read",
    "name": "province_monument_level",
    "capability": "GameState.Read",
+   "since": "1.4",
    "signature": "(i)i",
    "params": [
     {
@@ -495,6 +499,7 @@
    "module": "gearbox:gamestate.read",
    "name": "province_monument_active",
    "capability": "GameState.Read",
+   "since": "1.4",
    "signature": "(i)i",
    "params": [
     {
@@ -6345,6 +6350,718 @@
     "role": "bool"
    },
    "doc": "Remove one of your own entries. False if it was not yours."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "can_build_monument",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(iii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    },
+    {
+     "name": "kind",
+     "type": "i32",
+     "role": "enum:monument_kind"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "1 when this country could build a monument of this kind in this province right now, 0 otherwise. The SAME test build_monument makes before it spends anything: the province is the country's, has no monument yet (one per province), the unlocking research is done, a coastal kind stands on the coast, and the treasury covers the build. 0 for an unknown country, province or kind."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_monument_slots_used",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32"
+   },
+   "doc": "How many of this country's monuments are switched on, which is how many slots it is paying for. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_monument_upkeep",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "What those slots cost per turn, all summed. The n-th active slot costs more than the one before it (50, 75, 125, 200, ...), so this is not slots_used times a price. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_monument_next_slot_cost",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "What switching on one more monument would add to the per-turn upkeep -- the price of the next slot. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_sector_tax",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(iii)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "resource",
+     "type": "i32",
+     "role": "ptr",
+     "dir": "in"
+    },
+    {
+     "name": "resource_len",
+     "type": "i32",
+     "role": "len"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "The sector tax IN FORCE on a speciality, in percent: positive is a tax, negative a subsidy. It walks toward the target a few points a turn rather than jumping, and it is clamped to what the country's doctrines allow today. `resource` is one of the five speciality sectors -- \"oil\", \"gold\", \"metal\", \"rubber\", \"gemstones\", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_sector_tax_target",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(iii)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "resource",
+     "type": "i32",
+     "role": "ptr",
+     "dir": "in"
+    },
+    {
+     "name": "resource_len",
+     "type": "i32",
+     "role": "len"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "The sector tax the country has SET, in percent, which the rate in force is moving toward. It can sit outside today's room if a doctrine narrowed it since; the rate in force is what is charged. `resource` is one of the five speciality sectors -- \"oil\", \"gold\", \"metal\", \"rubber\", \"gemstones\", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_sector_tax_room",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "The highest sector tax this country's doctrines allow, in percent. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_sector_subsidy_room",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "The deepest sector subsidy this country's doctrines allow, in percent, as a positive number: a subsidy may go down to minus this. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "goods_economy_on",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "()i",
+   "params": [],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "1 when this world runs the goods economy -- factories make goods, deposits yield raw materials, and both are stockpiled. 0 when it is the money economy, in which case every stock, demand and shortfall read is 0 and living standards read 1."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_good_stock",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(ii)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "good",
+     "type": "i32",
+     "role": "enum:good"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "How much of a good this country has stockpiled. 0 for an unknown country or good, and outside the goods economy."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_raw_stock",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(ii)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "raw",
+     "type": "i32",
+     "role": "enum:raw"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "How much of a raw material this country has stockpiled. Gold is not a raw material -- it stays money. 0 for an unknown country or material, and outside the goods economy."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_good_demand",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(ii)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "good",
+     "type": "i32",
+     "role": "enum:good"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "What this country needs of a good this turn: for consumer goods, what its population wants; for the other three, the reserve the economy recorded last turn. The same figure country_good_shortfall subtracts the stock from. 0 for an unknown country or good, and outside the goods economy."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_good_shortfall",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(ii)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "good",
+     "type": "i32",
+     "role": "enum:good"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "How short this country is of a good this turn: demand minus stock, never below 0. The number the economy's own allocator and the AI's trade valuation read. 0 for an unknown country or good, and outside the goods economy."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_living_standards",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)F",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "f64"
+   },
+   "doc": "Consumer supply over consumer demand last turn: 1 means fed, below 1 short, above 1 a surplus. It feeds unrest and population growth. 1 for a real country with no production record (the money economy, or before the first turn); 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "province_output",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "enum:good",
+    "sentinel": "-1 means no good is assigned"
+   },
+   "doc": "The good this province's factories are making, as a good -- whether its government directed it or the economy allocated it (province_output_directed tells the two apart). -1 when nothing is assigned, for a province with no industry, and for an unknown province."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "province_output_directed",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "1 when a government chose this province's output by hand and it keeps that order until changed; 0 when the economy allocates it each turn, the province has no industry, or it is unknown."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_directable_factories",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32"
+   },
+   "doc": "How many factories this country's government may direct by hand. Its economic compass sets it: a planned economy directs every factory, a free market none. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_directed_factories",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32"
+   },
+   "doc": "How many of its factories are directed right now. set_province_output refuses a new one once this reaches country_directable_factories. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_auto_sell_pct",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32"
+   },
+   "doc": "The share of this country's surplus raw materials sold automatically each turn, 0-100: the world's setting scaled down by how planned its economy is. 0 for an unknown country."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_nationalised",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(iii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "resource",
+     "type": "i32",
+     "role": "ptr",
+     "dir": "in"
+    },
+    {
+     "name": "resource_len",
+     "type": "i32",
+     "role": "len"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "1 when this country holds a speciality sector in state hands. A released sector winds down over turns but reads 0 here from the moment it is released. `resource` is one of the five speciality sectors -- \"oil\", \"gold\", \"metal\", \"rubber\", \"gemstones\", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector, and when the nationalisation rules are switched off."
+  },
+  {
+   "module": "gearbox:economy.read",
+   "name": "country_nationalisation_cap",
+   "capability": "Economy.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    }
+   ],
+   "result": {
+    "type": "i32"
+   },
+   "doc": "How many speciality sectors this country may hold in state hands, from its economic compass: 5 at the command end down to 0 at the market end. 0 for an unknown country, and when the rules are off."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "build_monument",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(iii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    },
+    {
+     "name": "kind",
+     "type": "i32",
+     "role": "enum:monument_kind"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Build a monument for this country, through the game's own buildMonument: the checks can_build_monument reports, the price taken from the treasury, active on arrival. 1 if it was built, 0 if anything refused it."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "upgrade_monument",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Raise this country's monument in a province one level, paying for it. 0 if the province holds no monument of this country's, it is at its top level, or the treasury cannot cover it."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "dismantle_monument",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(ii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Take down this country's monument in a province. That costs money too -- a flat 50 -- so 0 if the treasury cannot cover it, or the province holds no monument of this country's."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "set_monument_active",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(iii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    },
+    {
+     "name": "active",
+     "type": "i32",
+     "role": "bool"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Switch this country's monument on or off. Off frees its slot and stops its effect entirely; on takes a slot again. 1 if it is now in the requested state (including already being so), 0 if the province holds no monument of this country's."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "move_monument",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(iii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "from_province",
+     "type": "i32",
+     "role": "id:province"
+    },
+    {
+     "name": "to_province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Move one of the movable kinds (defence_corporation, signals_directorate) to any province this country holds that has none, paying the move price. 0 for a kind that cannot move, a destination that is taken, not the country's or (for a coastal kind) inland, or a treasury that cannot cover it."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "set_country_sector_tax",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(iiiF)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "resource",
+     "type": "i32",
+     "role": "ptr",
+     "dir": "in"
+    },
+    {
+     "name": "resource_len",
+     "type": "i32",
+     "role": "len"
+    },
+    {
+     "name": "percent",
+     "type": "f64"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Set the TARGET sector tax on a speciality, in percent; negative is a subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of 5 and clamped to the doctrine room, and the rate in force then walks toward it a few points a turn -- nothing is charged differently this turn. `resource` is one of the five speciality sectors -- \"oil\", \"gold\", \"metal\", \"rubber\", \"gemstones\", the spelling province_resource uses; case does not matter. 1 when accepted, 0 for an unknown country or sector or a percent that is not a finite number."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "set_province_output",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(iii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    },
+    {
+     "name": "good",
+     "type": "i32",
+     "role": "enum:good"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Direct a province's factories to make a good, or pass -1 to hand them back to the economy. Through the game's own setProvinceOutput: the province must be this country's and have industry, and directing a new one is refused once country_directed_factories reaches country_directable_factories (re-directing one already directed is always allowed, and handing back always is). 1 on success."
+  },
+  {
+   "module": "gearbox:economy.write",
+   "name": "set_country_nationalised",
+   "capability": "Economy.Write",
+   "since": "1.4",
+   "signature": "(iiii)i",
+   "params": [
+    {
+     "name": "country",
+     "type": "i32",
+     "role": "id:country"
+    },
+    {
+     "name": "resource",
+     "type": "i32",
+     "role": "ptr",
+     "dir": "in"
+    },
+    {
+     "name": "resource_len",
+     "type": "i32",
+     "role": "len"
+    },
+    {
+     "name": "held",
+     "type": "i32",
+     "role": "bool"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "bool"
+   },
+   "doc": "Take a speciality sector into state hands, or release it, through the game's own nationalise / releaseNationalised. Taking one is refused when the country is at its cap; a released one winds down over turns rather than stopping. `resource` is one of the five speciality sectors -- \"oil\", \"gold\", \"metal\", \"rubber\", \"gemstones\", the spelling province_resource uses; case does not matter. 1 if it is now in the requested state (including already being so); 0 for an unknown country or sector, a full cap, or when the rules are switched off."
+  },
+  {
+   "module": "gearbox:military.read",
+   "name": "province_combat_width",
+   "capability": "Military.Read",
+   "since": "1.4",
+   "signature": "(i)I",
+   "params": [
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i64"
+   },
+   "doc": "How many men either side can bring to bear in one assault on this province: its frontage, from its area, narrowed by fortification. Beyond it, numbers add depth rather than strength. 0 for an unknown province."
+  },
+  {
+   "module": "gearbox:military.read",
+   "name": "province_battle_attacker",
+   "capability": "Military.Read",
+   "since": "1.4",
+   "signature": "(i)i",
+   "params": [
+    {
+     "name": "province",
+     "type": "i32",
+     "role": "id:province"
+    }
+   ],
+   "result": {
+    "type": "i32",
+    "role": "id:country",
+    "sentinel": "0 means no battle is being fought there"
+   },
+   "doc": "The country attacking this province in a standing battle, or 0 when there is none. If more than one country is attacking it, the first battle opened is the one reported."
   }
  ],
  "exports": [
@@ -6517,6 +7234,20 @@
    "admiralty_yard": 8,
    "ministry_of_enlightenment": 9,
    "signals_directorate": 10
+  },
+  "good": {
+   "$comment": "Appended to, never reordered. Mirrors GoodId in src/GameStructs.h; a static_assert in src/Game_Mods.cpp fails the build if the two disagree.",
+   "consumer": 0,
+   "machinery": 1,
+   "fuel": 2,
+   "munitions": 3
+  },
+  "raw": {
+   "$comment": "Appended to, never reordered. Mirrors RawId in src/GameStructs.h. Gold is not here on purpose: it is money, not an input to anything.",
+   "oil": 0,
+   "metal": 1,
+   "rubber": 2,
+   "gemstones": 3
   }
  },
  "constants": {

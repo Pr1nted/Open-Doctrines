@@ -67,6 +67,12 @@ const char* kindKey(Kind k) {
 
 // NOT T() here: this file is linked by tests that have no translation layer,
 // and a monument's name is drawn in about four places. The callers translate.
+int kindFromKey(const std::string& key) {
+    for (int k = 0; k < kKindCount; ++k)
+        if (key == kindKey((Kind)k)) return k;
+    return -1;
+}
+
 const char* kindName(Kind k) {
     switch (k) {
         case Kind::University:              return "University";

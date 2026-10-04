@@ -1,8 +1,9 @@
 # OpenDoctrines Map Scripting Engine
 
-## Version: 2 (OD/MapEngine/2)
+## Version: 3 (OD/MapEngine/3)
 
-Version 1 files still run: everything version 2 ADDS is backward compatible.
+Version 1 and 2 files still run: everything a later version ADDS is backward
+compatible.
 The header is not decoration, though — a file that declares version 1 gets
 version 1's language, and version 2 statements (`for`, `repeat`, `break`,
 `continue`, `print`, `elseif`, `unless`, `label`, `jump`, `spawn`, `stop`,
@@ -104,7 +105,30 @@ country.ISO.district_count      → (int) how many districts it is cut into
 country.ISO.district.N.name     → (string) that district's name
 country.ISO.district.N.share    → (int) its share of the pacification budget
 country.ISO.district.N.provinces→ (int) how much ground it holds
+country.ISO.district.N.law.ID   → (bool) that regional law is passed there —
+                                  WRITABLE, as is .share
+country.ISO.goods.GOOD          → (float) held: consumer, machinery, fuel,
+                                  munitions — WRITABLE in a goods world
+country.ISO.raw.RAW             → (float) held: oil, metal, rubber, gemstones —
+                                  WRITABLE in a goods world
+country.ISO.living_standards    → (float) 0..1, consumer goods eaten vs wanted
+country.ISO.directable_factories→ (int) how many factories it may direct
+country.ISO.directed_factories  → (int) how many it directs now
+country.ISO.sector_tax.SECTOR   → (float) the rate IN FORCE, in percent;
+                                  negative is a subsidy — WRITABLE
+country.ISO.sector_tax_target.SECTOR
+                                → (float) the rate it is walking toward —
+                                  WRITABLE
+country.ISO.sector_tax_room     → (float) the highest tax it may set
+country.ISO.sector_subsidy_room → (float) the deepest subsidy it may set
+country.ISO.nationalised.SECTOR → (bool) — WRITABLE, within the cap
+country.ISO.nationalisation_cap → (int) how many sectors it may hold
+country.ISO.policy.ID           → (bool) that doctrine is in force — WRITABLE
+country.ISO.monument_slots      → (int) monuments it is running
+country.ISO.monument_upkeep     → (float) what they cost a turn
 ```
+
+SECTOR is one of oil, gold, metal, rubber, gemstones (any case).
 
 `income` and `expenses` read the same per-turn snapshot the economy screen and
 the country profile draw, so a script and the screen can never disagree. Both
@@ -134,6 +158,14 @@ province.ID.troops        → (int) soldiers standing here — WRITABLE
 province.ID.troops.TYPE   → (int) only that kind — WRITABLE
 province.ID.district      → (string) the district governing it, "" if undivided
 province.ID.rebellion_chance → (float) the resolver's own risk figure
+province.ID.monument      → (string) its monument's key, "" for none —
+                            WRITABLE (see below)
+province.ID.monument_level→ (int) — WRITABLE
+province.ID.monument_active→ (bool) — WRITABLE
+province.ID.output        → (string) the good its factories are directed to
+                            make, "" when the economy decides — WRITABLE in a
+                            goods world
+province.ID.contested     → (bool) a battle is being fought over it
 ```
 
 Setting a garrison:
@@ -150,6 +182,10 @@ reduction lands on the mass rather than wiping out a small specialist one.
 map.date  → (string) current date, e.g. "January 2000" — WRITABLE via set
 map.name  → (string) map name (from metadata.json)
 map.turn  → (int) current turn number (0 when entry scripts first run)
+map.goods_economy → (bool) goods are produced and eaten in this world
+map.country_count → (int) countries on the map
+map.llm_diplomacy → (bool) a language model is answering diplomacy
+map.mail_enabled  → (bool) the mail system is available
 ```
 
 The map's starting date is set in the editor's **Metadata** tab
@@ -234,12 +270,11 @@ foreach province in country.USA
 next
 ```
 
-Inside a foreach loop, these variables are available:
-- `province` / `province.id` → current province ID (int)
-- `province.population` → population (int)
-- `province.industry` → industry level (int)
-- `province.fortification` → fortification level (int)
-- `province.owner` → ISO code of owner (string)
+Inside the loop, `province` (and `province.id`) is the current province's
+id, and `province.<anything>` is that province's property — every one in
+**Province References**, readable and settable, exactly as if you had written
+`province.<id>.<anything>`. Inside `foreach country in world`, `country.<anything>`
+works the same way. An explicit id or country code still means what it says.
 
 `foreach` also iterates arrays and lists; the loop variable is `item`:
 
@@ -616,6 +651,45 @@ with `{values}`. Each template is a line the parser already understands, so a
 block dropped from the palette is ordinary script text from the moment it
 lands.
 
+## Economy, monuments and doctrines
+
+```
+#OD/MapEngine/3
+if map.turn == 0
+  # A starting state, so guarded: entry scripts run again on every load.
+  set country.GER.sector_tax.oil 15            # in force from turn one
+  set country.GER.nationalised.metal true       # within its cap, or refused
+  set province.412.monument university          # placed, not bought
+  set province.412.monument_level 2
+  set country.GER.policy.total_war_economy true # costs what a click costs
+  if map.goods_economy
+    set country.GER.goods.fuel 300
+    set province.412.output machinery
+  endif
+endif
+```
+
+Two kinds of write, on purpose:
+
+- **Starting state** — `goods`, `raw`, `sector_tax`, `monument`,
+  `monument_level`. These describe the world rather than play it: a stockpile
+  is simply what the country holds, a sector tax is in force at once rather
+  than walking in over the opening turns, and a monument is placed without its
+  price or its research. They still respect what no scenario can wish away:
+  the tax room a country's doctrines allow, a coastal monument's coast, one
+  monument per province.
+- **Decisions** — `sector_tax_target`, `nationalised`, `policy`, `output`,
+  `monument_active`, district laws and shares. These go through the same rule
+  a player's click goes through, so the caps bind and a doctrine costs what it
+  costs. A refusal is reported as a script error naming the reason.
+
+Goods writes need a goods world (`map.goods_economy`) and are refused, with an
+error, in one without; goods reads answer 0 there.
+
+**Guard starting state with `if map.turn == 0`.** Entry scripts run again from
+the top whenever a save is loaded, and an unguarded `set` would put the opening
+stockpile back in the middle of a war.
+
 ## Value Types
 
 - Integers: `42`, `-5`, `0`
@@ -696,7 +770,7 @@ extension when displaying error messages.
 ## Limitations
 
 - Conditions are full expressions (see **Expressions**). What is still missing
-  is user-defined functions and a `for i = 1 to N` counting loop.
+  is user-defined functions.
 - `waitUntil` must be at top level.
 - Suspended scripts are **not** saved into save games: when a save is loaded,
   entry scripts run again from the top and re-suspend at their first false

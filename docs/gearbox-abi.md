@@ -237,6 +237,48 @@ Population of a province. 0 for an unknown province.
 
 Owning country, or GEARBOX_INVALID if unowned or unknown.
 
+#### `province_monument`
+
+```wat
+(import "gearbox:gamestate.read" "province_monument" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32` — see [monument_kind](#enums).
+
+Which monument stands in a province, as a monument_kind, or -1 for none. One per province is the rule. A map script gets the key instead (province.<id>.monument), because a script is text.
+
+#### `province_monument_level`
+
+```wat
+(import "gearbox:gamestate.read" "province_monument_level" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+The level of the monument in a province, 1 upwards, or 0 when there is none.
+
+#### `province_monument_active`
+
+```wat
+(import "gearbox:gamestate.read" "province_monument_active" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+1 when the monument is switched on and so taking one of the country's paid slots, 0 when it is off or absent. An inactive monument has no effect at all.
+
 #### `country_exists`
 
 ```wat
@@ -2348,6 +2390,34 @@ How many soldiers of that kind this country has, everywhere. 0 for a troop type 
 
 How many soldiers of that kind this country has standing in that province.
 
+#### `province_combat_width`
+
+```wat
+(import "gearbox:military.read" "province_combat_width" (func $x (param i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i64`.
+
+How many men either side can bring to bear in one assault on this province: its frontage, from its area, narrowed by fortification. Beyond it, numbers add depth rather than strength. 0 for an unknown province.
+
+#### `province_battle_attacker`
+
+```wat
+(import "gearbox:military.read" "province_battle_attacker" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32`.
+
+The country attacking this province in a standing battle, or 0 when there is none. If more than one country is attacking it, the first battle opened is the one reported.
+
 ### `gearbox:military.write`
 
 Requires the **Military.Write** capability.
@@ -3242,6 +3312,308 @@ What the whole country is worth: every industry level, fort, port and division a
 
 How many people live in this country.
 
+#### `can_build_monument`
+
+```wat
+(import "gearbox:economy.read" "can_build_monument" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+| `kind` | `i32` | see [monument_kind](#enums) |
+
+**Returns** `i32` — 0 or 1.
+
+1 when this country could build a monument of this kind in this province right now, 0 otherwise. The SAME test build_monument makes before it spends anything: the province is the country's, has no monument yet (one per province), the unlocking research is done, a coastal kind stands on the coast, and the treasury covers the build. 0 for an unknown country, province or kind.
+
+#### `country_monument_slots_used`
+
+```wat
+(import "gearbox:economy.read" "country_monument_slots_used" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many of this country's monuments are switched on, which is how many slots it is paying for. 0 for an unknown country.
+
+#### `country_monument_upkeep`
+
+```wat
+(import "gearbox:economy.read" "country_monument_upkeep" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+What those slots cost per turn, all summed. The n-th active slot costs more than the one before it (50, 75, 125, 200, ...), so this is not slots_used times a price. 0 for an unknown country.
+
+#### `country_monument_next_slot_cost`
+
+```wat
+(import "gearbox:economy.read" "country_monument_next_slot_cost" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+What switching on one more monument would add to the per-turn upkeep -- the price of the next slot. 0 for an unknown country.
+
+#### `country_sector_tax`
+
+```wat
+(import "gearbox:economy.read" "country_sector_tax" (func $x (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `resource` | `i32` | pointer into your linear memory |
+| `resource_len` | `i32` | byte length |
+
+**Returns** `f64`.
+
+The sector tax IN FORCE on a speciality, in percent: positive is a tax, negative a subsidy. It walks toward the target a few points a turn rather than jumping, and it is clamped to what the country's doctrines allow today. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector.
+
+#### `country_sector_tax_target`
+
+```wat
+(import "gearbox:economy.read" "country_sector_tax_target" (func $x (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `resource` | `i32` | pointer into your linear memory |
+| `resource_len` | `i32` | byte length |
+
+**Returns** `f64`.
+
+The sector tax the country has SET, in percent, which the rate in force is moving toward. It can sit outside today's room if a doctrine narrowed it since; the rate in force is what is charged. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector.
+
+#### `country_sector_tax_room`
+
+```wat
+(import "gearbox:economy.read" "country_sector_tax_room" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+The highest sector tax this country's doctrines allow, in percent. 0 for an unknown country.
+
+#### `country_sector_subsidy_room`
+
+```wat
+(import "gearbox:economy.read" "country_sector_subsidy_room" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+The deepest sector subsidy this country's doctrines allow, in percent, as a positive number: a subsidy may go down to minus this. 0 for an unknown country.
+
+#### `goods_economy_on`
+
+```wat
+(import "gearbox:economy.read" "goods_economy_on" (func $x (result i32)))
+```
+
+**Returns** `i32` — 0 or 1.
+
+1 when this world runs the goods economy -- factories make goods, deposits yield raw materials, and both are stockpiled. 0 when it is the money economy, in which case every stock, demand and shortfall read is 0 and living standards read 1.
+
+#### `country_good_stock`
+
+```wat
+(import "gearbox:economy.read" "country_good_stock" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `good` | `i32` | see [good](#enums) |
+
+**Returns** `f64`.
+
+How much of a good this country has stockpiled. 0 for an unknown country or good, and outside the goods economy.
+
+#### `country_raw_stock`
+
+```wat
+(import "gearbox:economy.read" "country_raw_stock" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `raw` | `i32` | see [raw](#enums) |
+
+**Returns** `f64`.
+
+How much of a raw material this country has stockpiled. Gold is not a raw material -- it stays money. 0 for an unknown country or material, and outside the goods economy.
+
+#### `country_good_demand`
+
+```wat
+(import "gearbox:economy.read" "country_good_demand" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `good` | `i32` | see [good](#enums) |
+
+**Returns** `f64`.
+
+What this country needs of a good this turn: for consumer goods, what its population wants; for the other three, the reserve the economy recorded last turn. The same figure country_good_shortfall subtracts the stock from. 0 for an unknown country or good, and outside the goods economy.
+
+#### `country_good_shortfall`
+
+```wat
+(import "gearbox:economy.read" "country_good_shortfall" (func $x (param i32 i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `good` | `i32` | see [good](#enums) |
+
+**Returns** `f64`.
+
+How short this country is of a good this turn: demand minus stock, never below 0. The number the economy's own allocator and the AI's trade valuation read. 0 for an unknown country or good, and outside the goods economy.
+
+#### `country_living_standards`
+
+```wat
+(import "gearbox:economy.read" "country_living_standards" (func $x (param i32) (result f64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `f64`.
+
+Consumer supply over consumer demand last turn: 1 means fed, below 1 short, above 1 a surplus. It feeds unrest and population growth. 1 for a real country with no production record (the money economy, or before the first turn); 0 for an unknown country.
+
+#### `province_output`
+
+```wat
+(import "gearbox:economy.read" "province_output" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32` — see [good](#enums).
+
+The good this province's factories are making, as a good -- whether its government directed it or the economy allocated it (province_output_directed tells the two apart). -1 when nothing is assigned, for a province with no industry, and for an unknown province.
+
+#### `province_output_directed`
+
+```wat
+(import "gearbox:economy.read" "province_output_directed" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+1 when a government chose this province's output by hand and it keeps that order until changed; 0 when the economy allocates it each turn, the province has no industry, or it is unknown.
+
+#### `country_directable_factories`
+
+```wat
+(import "gearbox:economy.read" "country_directable_factories" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many factories this country's government may direct by hand. Its economic compass sets it: a planned economy directs every factory, a free market none. 0 for an unknown country.
+
+#### `country_directed_factories`
+
+```wat
+(import "gearbox:economy.read" "country_directed_factories" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many of its factories are directed right now. set_province_output refuses a new one once this reaches country_directable_factories. 0 for an unknown country.
+
+#### `country_auto_sell_pct`
+
+```wat
+(import "gearbox:economy.read" "country_auto_sell_pct" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+The share of this country's surplus raw materials sold automatically each turn, 0-100: the world's setting scaled down by how planned its economy is. 0 for an unknown country.
+
+#### `country_nationalised`
+
+```wat
+(import "gearbox:economy.read" "country_nationalised" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `resource` | `i32` | pointer into your linear memory |
+| `resource_len` | `i32` | byte length |
+
+**Returns** `i32` — 0 or 1.
+
+1 when this country holds a speciality sector in state hands. A released sector winds down over turns but reads 0 here from the moment it is released. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector, and when the nationalisation rules are switched off.
+
+#### `country_nationalisation_cap`
+
+```wat
+(import "gearbox:economy.read" "country_nationalisation_cap" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+
+**Returns** `i32`.
+
+How many speciality sectors this country may hold in state hands, from its economic compass: 5 at the command end down to 0 at the market end. 0 for an unknown country, and when the rules are off.
+
 ### `gearbox:economy.write`
 
 Requires the **Economy.Write** capability.
@@ -3260,6 +3632,134 @@ Requires the **Economy.Write** capability.
 **Returns** `i32` — 0 or 1.
 
 Set a province's industry level, clamped to 0..10. This writes the built level directly and does not charge for it -- it is a scenario-authoring tool, not a build order.
+
+#### `build_monument`
+
+```wat
+(import "gearbox:economy.write" "build_monument" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+| `kind` | `i32` | see [monument_kind](#enums) |
+
+**Returns** `i32` — 0 or 1.
+
+Build a monument for this country, through the game's own buildMonument: the checks can_build_monument reports, the price taken from the treasury, active on arrival. 1 if it was built, 0 if anything refused it.
+
+#### `upgrade_monument`
+
+```wat
+(import "gearbox:economy.write" "upgrade_monument" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Raise this country's monument in a province one level, paying for it. 0 if the province holds no monument of this country's, it is at its top level, or the treasury cannot cover it.
+
+#### `dismantle_monument`
+
+```wat
+(import "gearbox:economy.write" "dismantle_monument" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Take down this country's monument in a province. That costs money too -- a flat 50 -- so 0 if the treasury cannot cover it, or the province holds no monument of this country's.
+
+#### `set_monument_active`
+
+```wat
+(import "gearbox:economy.write" "set_monument_active" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+| `active` | `i32` | 0 or 1 |
+
+**Returns** `i32` — 0 or 1.
+
+Switch this country's monument on or off. Off frees its slot and stops its effect entirely; on takes a slot again. 1 if it is now in the requested state (including already being so), 0 if the province holds no monument of this country's.
+
+#### `move_monument`
+
+```wat
+(import "gearbox:economy.write" "move_monument" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `from_province` | `i32` | — |
+| `to_province` | `i32` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Move one of the movable kinds (defence_corporation, signals_directorate) to any province this country holds that has none, paying the move price. 0 for a kind that cannot move, a destination that is taken, not the country's or (for a coastal kind) inland, or a treasury that cannot cover it.
+
+#### `set_country_sector_tax`
+
+```wat
+(import "gearbox:economy.write" "set_country_sector_tax" (func $x (param i32 i32 i32 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `resource` | `i32` | pointer into your linear memory |
+| `resource_len` | `i32` | byte length |
+| `percent` | `f64` | — |
+
+**Returns** `i32` — 0 or 1.
+
+Set the TARGET sector tax on a speciality, in percent; negative is a subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of 5 and clamped to the doctrine room, and the rate in force then walks toward it a few points a turn -- nothing is charged differently this turn. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 1 when accepted, 0 for an unknown country or sector or a percent that is not a finite number.
+
+#### `set_province_output`
+
+```wat
+(import "gearbox:economy.write" "set_province_output" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `province` | `i32` | — |
+| `good` | `i32` | see [good](#enums) |
+
+**Returns** `i32` — 0 or 1.
+
+Direct a province's factories to make a good, or pass -1 to hand them back to the economy. Through the game's own setProvinceOutput: the province must be this country's and have industry, and directing a new one is refused once country_directed_factories reaches country_directable_factories (re-directing one already directed is always allowed, and handing back always is). 1 on success.
+
+#### `set_country_nationalised`
+
+```wat
+(import "gearbox:economy.write" "set_country_nationalised" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | — |
+| `resource` | `i32` | pointer into your linear memory |
+| `resource_len` | `i32` | byte length |
+| `held` | `i32` | 0 or 1 |
+
+**Returns** `i32` — 0 or 1.
+
+Take a speciality sector into state hands, or release it, through the game's own nationalise / releaseNationalised. Taking one is refused when the country is at its cap; a released one winds down over turns rather than stopping. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 1 if it is now in the requested state (including already being so); 0 for an unknown country or sector, a full cap, or when the rules are switched off.
 
 ### `gearbox:mapeditor`
 
@@ -4185,6 +4685,12 @@ struct is safe against a newer host that has appended fields.
 **`content_kind`** — `doctrine` = 0, `research` = 1, `troop` = 2, `artillery` = 3, `district_law` = 4
 
 **`content_mode`** — `hollow` = 0, `persist` = 1
+
+**`monument_kind`** — `$comment` = Appended to, never reordered: a save and this ABI both store the index., `university` = 0, `megacity` = 1, `missile_silo` = 2, `defence_corporation` = 3, `factory_conglomerate` = 4, `air_defence` = 5, `strategic_reserve` = 6, `grand_exchange` = 7, `admiralty_yard` = 8, `ministry_of_enlightenment` = 9, `signals_directorate` = 10
+
+**`good`** — `$comment` = Appended to, never reordered. Mirrors GoodId in src/GameStructs.h; a static_assert in src/Game_Mods.cpp fails the build if the two disagree., `consumer` = 0, `machinery` = 1, `fuel` = 2, `munitions` = 3
+
+**`raw`** — `$comment` = Appended to, never reordered. Mirrors RawId in src/GameStructs.h. Gold is not here on purpose: it is money, not an input to anything., `oil` = 0, `metal` = 1, `rubber` = 2, `gemstones` = 3
 
 ## Constants
 

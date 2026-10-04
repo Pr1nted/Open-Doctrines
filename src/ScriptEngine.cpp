@@ -920,6 +920,28 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             // Trim
             size_t s = valStr.find_first_not_of(" \t");
             if (s != std::string::npos) valStr = valStr.substr(s);
+            // ── `set country.RUS.at_war_with UKR true`, as documented ──
+            //
+            // The other code arrived as the first word of the VALUE, so the
+            // documented form set nothing and failed with "cannot set". Moved
+            // into the reference, which is the dotted form that always worked.
+            if (ref.rfind("country.", 0) == 0 &&
+                std::count(ref.begin(), ref.end(), '.') == 2) {
+                const std::string tailProp = ref.substr(ref.rfind('.') + 1);
+                const size_t vsp = valStr.find_first_of(" \t");
+                if ((tailProp == "at_war_with" || tailProp == "allied_with") &&
+                    vsp != std::string::npos) {
+                    // The other country may be a loop variable -- `foreach item
+                    // in array.targets` / `set country.USA.at_war_with item
+                    // true` is the docs' own example -- so a local is read.
+                    std::string other = valStr.substr(0, vsp);
+                    if (auto lv = localVars.find(other); lv != localVars.end())
+                        other = lv->second.asString();
+                    ref += "." + other;
+                    const size_t v0 = valStr.find_first_not_of(" \t", vsp);
+                    valStr = (v0 == std::string::npos) ? "" : valStr.substr(v0);
+                }
+            }
             // ── `set x = <expr>` AND `set x += <expr>` ──
             //
             // The `=` is what makes the value an EXPRESSION rather than a
@@ -1270,8 +1292,86 @@ static int troopTypeIndexFromId(const std::string& id) {
     return -1;
 }
 
+// The goods and raw materials by their save keys ("fuel", "metal"), never by
+// display name: a script must mean the same thing in every language.
+static int goodIndexFromKey(const std::string& k) {
+    for (int g = 0; g < GOOD_COUNT; ++g) if (k == goodKey(g)) return g;
+    return -1;
+}
+static int rawIndexFromKey(const std::string& k) {
+    for (int r = 0; r < RAW_COUNT; ++r) if (k == rawKey(r)) return r;
+    return -1;
+}
+
+// A sector -- one of Game::SPEC_RESOURCES -- named in any case, so a script
+// may write `sector_tax.oil` as it writes every other key, lowercase.
+// `sectors` is Game::SPEC_RESOURCES, passed in because only the engine itself,
+// as Game's friend, may name it.
+static int sectorIndexFromName(const std::string& name, const char* const* sectors) {
+    for (int i = 0; i < 5; ++i) {
+        const char* s = sectors[i];
+        if (name.size() != std::strlen(s)) continue;
+        bool same = true;
+        for (size_t k = 0; k < name.size(); ++k)
+            if (std::tolower((unsigned char)name[k]) != std::tolower((unsigned char)s[k])) {
+                same = false;
+                break;
+            }
+        if (same) return i;
+    }
+    return -1;
+}
+
+// ── INSIDE A LOOP, `province.X` IS THIS PROVINCE'S X ──
+//
+// The loops bind a handful of fields as literal locals -- province.population,
+// country.treasury -- and nothing else, so a loop body could read five fields
+// and set none: `set province.population ...` inside `foreach province`, the
+// docs' own example, failed with "cannot set". Rewriting to the id form here
+// makes every property readable AND settable in a loop, through the one
+// implementation the id form already has, and reads are live rather than a
+// snapshot a write inside the same body would leave stale.
+//
+// Only while the loop variable is bound, and never over an explicit id or a
+// real country code: `province.42.x` and `country.USA.x` mean what they say
+// inside a loop as well as outside it.
+static bool loopRedirect(Game* game, const std::string& ref,
+                         const std::unordered_map<std::string, ScriptValue>& lv,
+                         std::string& out) {
+    const size_t sp = ref.find(' ');
+    const std::string head = ref.substr(0, sp);
+    const std::string tail = (sp == std::string::npos) ? "" : ref.substr(sp);
+    if (head.rfind("province.", 0) == 0) {
+        auto it = lv.find("province");
+        if (it == lv.end()) return false;
+        const std::string rest = head.substr(9);
+        if (rest.empty() || rest == "id" || std::isdigit((unsigned char)rest[0])) return false;
+        out = "province." + std::to_string(it->second.asInt()) + "." + rest + tail;
+        return true;
+    }
+    if (head.rfind("country.", 0) == 0) {
+        auto it = lv.find("country");
+        if (it == lv.end()) return false;
+        const std::string rest = head.substr(8);
+        const std::string first = rest.substr(0, rest.find('.'));
+        if (first.empty() || first == "of_province" || first == "largest" || first == "player")
+            return false;
+        for (const auto& [id, c] : game->m_countries.getAll()) {
+            (void)id;
+            if (c.isoA3 == first) return false;
+        }
+        out = "country." + it->second.asString() + "." + rest + tail;
+        return true;
+    }
+    return false;
+}
+
 ScriptValue ScriptEngine::resolveRef(const std::string& ref,
                                      const std::unordered_map<std::string, ScriptValue>& localVars) {
+    {
+        std::string redirected;
+        if (loopRedirect(m_game, ref, localVars, redirected)) return resolveRef(redirected, localVars);
+    }
     // Check local variables first
     auto vit = localVars.find(ref);
     if (vit != localVars.end()) return vit->second;
@@ -1428,6 +1528,10 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
         // False whenever the module is absent, so a map that branches on this
         // still runs -- it simply takes the other branch.
         if (prop == "llm_diplomacy") return ScriptValue::makeBool(m_game->m_llmAvailable);
+        // Whether goods are produced and eaten in this world. The goods
+        // references read 0 without it, which is true and is not the same
+        // thing as a country that has run out.
+        if (prop == "goods_economy") return ScriptValue::makeBool(m_game->m_goodsEconomy);
         if (prop == "mail_enabled") return ScriptValue::makeBool(m_game->mailAvailable());
         if (prop == "country_count") {
             long long n = 0;
@@ -1492,6 +1596,18 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
         if (cid < 0) return ScriptValue{};
         const Country* c = m_game->m_countries.getCountry(cid);
         if (!c) return ScriptValue{};
+
+        // ── `country.USA.at_war_with RUS`, as documented ──
+        //
+        // The spaced form has been in the docs and the editor's hints since the
+        // first version, and never worked: the other code arrives as a second
+        // word, not a fourth segment, so the read was always false. Folded into
+        // the dotted form, which is the one implementation.
+        if (dots.size() == 3 && parts.size() >= 2 &&
+            (prop == "at_war_with" || prop == "allied_with" || prop == "claims_province")) {
+            auto lv = localVars.find(parts[1]);
+            dots.push_back(lv != localVars.end() ? lv->second.asString() : parts[1]);
+        }
 
         if (prop == "treasury") return ScriptValue::makeFloat(c->treasury);
         if (prop == "name") return ScriptValue::makeStr(c->name);
@@ -1611,6 +1727,70 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             return ScriptValue::makeFloat(prop == "income" ? now.total : now.expenses);
         }
 
+        // ── The goods economy ──
+        //
+        // What it holds, by key: country.ISO.goods.fuel, country.ISO.raw.metal.
+        // Zero in a world without goods, which map.goods_economy tells apart.
+        if ((prop == "goods" || prop == "raw") && dots.size() >= 4) {
+            const bool raw = prop == "raw";
+            const int i = raw ? rawIndexFromKey(dots[3]) : goodIndexFromKey(dots[3]);
+            if (i < 0) {
+                addError("", 0, "country." + iso + "." + prop + ": no " +
+                                (raw ? "raw material" : "good") + " called '" + dots[3] + "'");
+                return {};
+            }
+            auto sIt = m_game->m_countryStockpiles.find(cid);
+            if (sIt == m_game->m_countryStockpiles.end()) return ScriptValue::makeFloat(0.0);
+            return ScriptValue::makeFloat(raw ? sIt->second.raw[i] : sIt->second.goods[i]);
+        }
+        if (prop == "living_standards")
+            return ScriptValue::makeFloat(m_game->m_goodsEconomy ? m_game->livingStandards(cid) : 0.0f);
+        if (prop == "directable_factories")
+            return ScriptValue::makeInt(m_game->directableFactories(cid));
+        if (prop == "directed_factories")
+            return ScriptValue::makeInt(m_game->directedFactories(cid));
+
+        // ── Sector taxes, in percent; negative is a subsidy ──
+        //
+        // sector_tax.oil is the rate IN FORCE, the one being charged;
+        // sector_tax_target.oil is where the country has set it, which the rate
+        // in force walks toward a couple of points a turn.
+        if ((prop == "sector_tax" || prop == "sector_tax_target") && dots.size() >= 4) {
+            const int r = sectorIndexFromName(dots[3], Game::SPEC_RESOURCES);
+            if (r < 0) {
+                addError("", 0, "country." + iso + "." + prop + ": no sector called '" + dots[3] + "'");
+                return {};
+            }
+            return ScriptValue::makeFloat(prop == "sector_tax" ? m_game->specTaxRate(cid, r) * 100.0f
+                                                               : m_game->specTaxTargetPct(cid, r));
+        }
+        if (prop == "sector_tax_room")    return ScriptValue::makeFloat(m_game->specTaxRoom(cid));
+        if (prop == "sector_subsidy_room") return ScriptValue::makeFloat(m_game->specSubsidyRoom(cid));
+
+        // ── Nationalised sectors ──
+        if (prop == "nationalised" && dots.size() >= 4) {
+            const int r = sectorIndexFromName(dots[3], Game::SPEC_RESOURCES);
+            if (r < 0) {
+                addError("", 0, "country." + iso + ".nationalised: no sector called '" + dots[3] + "'");
+                return {};
+            }
+            auto nIt = m_game->m_nationalised.find(cid);
+            if (nIt != m_game->m_nationalised.end())
+                for (const auto& h : nIt->second)
+                    if (h.resource == Game::SPEC_RESOURCES[r]) return ScriptValue::makeBool(h.held);
+            return ScriptValue::makeBool(false);
+        }
+        if (prop == "nationalisation_cap")
+            return ScriptValue::makeInt(m_game->nationalisationCap(cid));
+
+        // ── Monuments, nationally ──
+        if (prop == "monument_slots") return ScriptValue::makeInt(m_game->monumentSlotsUsed(cid));
+        if (prop == "monument_upkeep") return ScriptValue::makeFloat(m_game->monumentUpkeep(cid));
+
+        // ── Doctrines in force: country.ISO.policy.<id> ──
+        if (prop == "policy" && dots.size() >= 4)
+            return ScriptValue::makeBool(m_game->modCountryHasPolicy(cid, dots[3]));
+
         // How many research programmes it can run -- the effective number,
         // including anything a script forced.
         if (prop == "research_groups")
@@ -1634,6 +1814,10 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             if (dots[4] == "name")      return ScriptValue::makeStr(d.name);
             if (dots[4] == "share")     return ScriptValue::makeInt(d.sharePct);
             if (dots[4] == "provinces") return ScriptValue::makeInt((long long)d.provinces.size());
+            // country.ISO.district.<n>.law.<id> -- whether that regional law is passed here
+            if (dots[4] == "law" && dots.size() >= 6)
+                return ScriptValue::makeBool(std::find(d.policies.begin(), d.policies.end(), dots[5]) !=
+                                             d.policies.end());
             return {};
         }
     }
@@ -1678,6 +1862,16 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
             return ScriptValue::makeInt(m_game->monumentLevelAt(pid));
         if (prop == "monument_active")
             return ScriptValue::makeBool(m_game->monumentActiveAt(pid));
+        // What its factories are directed to make, by good key; "" when the
+        // economy decides. Only a goods world directs anything.
+        if (prop == "output") {
+            auto it = m_game->m_provinceIndustry.find(pid);
+            const int g = (it != m_game->m_provinceIndustry.end() && it->second.directed)
+                              ? it->second.output : -1;
+            return ScriptValue::makeStr(g >= 0 && g < GOOD_COUNT ? goodKey(g) : "");
+        }
+        // Whether a battle is being fought over it this turn.
+        if (prop == "contested") return ScriptValue::makeBool(m_game->anyBattleAt(pid) != nullptr);
         // province.ID.troops[.TYPE] -- everyone standing here, or one kind.
         if (prop == "troops") {
             const int wantType = (dots.size() >= 4) ? troopTypeIndexFromId(dots[3]) : -1;
@@ -1721,6 +1915,10 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
 
 bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
                            const std::unordered_map<std::string, ScriptValue>& localVars) {
+    {
+        std::string redirected;
+        if (loopRedirect(m_game, ref, localVars, redirected)) return setRef(redirected, val, localVars);
+    }
     auto parts = tokenize(ref);
     if (parts.empty()) return false;
     std::string root = parts[0];
@@ -1753,7 +1951,94 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             if (c.isoA3 == iso) { cid = id; break; }
         if (cid < 0) return false;
 
-        if (prop == "treasury") { m_game->m_countries.getAll()[cid].treasury = (float)val.asFloat(); return true; }
+        // Through the same guard a mod's write has: NaN or infinity would poison
+        // every later sum, so they are refused rather than stored.
+        if (prop == "treasury") {
+            if (m_game->modSetCountryTreasury(cid, val.asFloat())) return true;
+            addError("", 0, "treasury: not a usable number");
+            return false;
+        }
+
+        // set country.ISO.goods.fuel 500 / country.ISO.raw.metal 40
+        if ((prop == "goods" || prop == "raw") && dots.size() >= 4) {
+            const bool raw = prop == "raw";
+            const int i = raw ? rawIndexFromKey(dots[3]) : goodIndexFromKey(dots[3]);
+            if (i < 0) {
+                addError("", 0, prop + ": no " + (raw ? "raw material" : "good") +
+                                " called '" + dots[3] + "'");
+                return false;
+            }
+            if (!m_game->m_goodsEconomy) {
+                addError("", 0, prop + ": this world has no goods economy (see map.goods_economy)");
+                return false;
+            }
+            if (m_game->setStockpile(cid, raw, i, val.asFloat())) return true;
+            addError("", 0, prop + ": expected a number from 0 to 1000000000");
+            return false;
+        }
+
+        // set country.ISO.sector_tax.oil 20 -- in force at once, for a starting
+        // state; set country.ISO.sector_tax_target.oil 20 -- the country's own
+        // decision, which the rate walks toward as it would after a click.
+        if ((prop == "sector_tax" || prop == "sector_tax_target") && dots.size() >= 4) {
+            const int r = sectorIndexFromName(dots[3], Game::SPEC_RESOURCES);
+            if (r < 0) {
+                addError("", 0, prop + ": no sector called '" + dots[3] + "'");
+                return false;
+            }
+            const double pct = val.asFloat();
+            if (!std::isfinite(pct)) return false;
+            if (prop == "sector_tax") m_game->setSpecTaxInForce(cid, r, (float)pct);
+            else                      m_game->setSpecTaxPct(cid, r, (float)pct);
+            return true;
+        }
+
+        // set country.ISO.nationalised.oil true -- through the rule, so the cap
+        // the economic compass sets still binds.
+        if (prop == "nationalised" && dots.size() >= 4) {
+            const int r = sectorIndexFromName(dots[3], Game::SPEC_RESOURCES);
+            if (r < 0) {
+                addError("", 0, "nationalised: no sector called '" + dots[3] + "'");
+                return false;
+            }
+            const std::string res = Game::SPEC_RESOURCES[r];
+            if (val.asBool()) {
+                if (m_game->nationalise(cid, res)) return true;
+                auto nIt = m_game->m_nationalised.find(cid);
+                if (nIt != m_game->m_nationalised.end())
+                    for (const auto& h : nIt->second)
+                        if (h.resource == res && h.held) return true;   // already held
+                addError("", 0, "nationalised: refused -- over this country's cap (" +
+                                std::to_string(m_game->nationalisationCap(cid)) + ")");
+                return false;
+            }
+            m_game->releaseNationalised(cid, res);
+            return true;
+        }
+
+        // set country.ISO.policy.<id> true -- enacted the way the player's
+        // own click enacts it, cost and prerequisites included, so a scenario
+        // cannot hand out a doctrine the country could never have afforded.
+        if (prop == "policy" && dots.size() >= 4) {
+            if (m_game->modSetCountryPolicy(cid, dots[3], val.asBool())) return true;
+            addError("", 0, "policy." + dots[3] + ": refused (unknown, or the country cannot enact it now)");
+            return false;
+        }
+
+        // set country.ISO.district.<n>.share 40 / .law.<id> true
+        if (prop == "district" && dots.size() >= 5) {
+            m_game->ensureDefaultDistrict(cid);
+            long long n = -1;
+            try { n = std::stoll(dots[3]); } catch (...) { return false; }
+            if (dots[4] == "share")
+                return m_game->modSetCountryDistrictShare(cid, (int)n, (int)val.asInt());
+            if (dots[4] == "law" && dots.size() >= 6) {
+                if (m_game->modSetCountryDistrictLaw(cid, (int)n, dots[5], val.asBool())) return true;
+                addError("", 0, "district law: no district " + dots[3] + " or no law '" + dots[5] + "'");
+                return false;
+            }
+            return false;
+        }
         if (prop == "name") { m_game->m_countries.getAll()[cid].name = val.asString(); return true; }
         // set country.ISO.research_groups N  -- 0 hands the decision back to
         // the economy, which is how a scenario un-forces what it forced.
@@ -1815,12 +2100,57 @@ bool ScriptEngine::setRef(const std::string& ref, const ScriptValue& val,
             // Pixels follow the province; nothing per-pixel to update.
             return true;
         }
+        // Through the mod door's setter, which keeps the province's income in
+        // step with its level; writing the level alone left the old income.
         if (prop == "industry") {
-            auto it = m_game->m_provinceIndustry.find(pid);
-            if (it != m_game->m_provinceIndustry.end()) {
-                it->second.level = (int)val.asInt();
-                return true;
+            if (m_game->m_provinceIndustry.find(pid) == m_game->m_provinceIndustry.end()) return false;
+            return m_game->modSetProvinceIndustryLevel(pid, (int)val.asInt());
+        }
+
+        // set province.42.monument university  (or "" to clear it)
+        if (prop == "monument") {
+            const std::string key = val.asString();
+            if (key.empty() || key == "none") { m_game->clearMonument(pid); return true; }
+            const int k = odmon::kindFromKey(key);
+            if (k < 0) {
+                addError("", 0, "monument: no monument called '" + key + "'");
+                return false;
             }
+            const int level = std::max(1, m_game->monumentLevelAt(pid));
+            std::string why;
+            if (m_game->placeMonument(pid, k, level, why)) return true;
+            addError("", 0, "monument: " + why);
+            return false;
+        }
+        if (prop == "monument_level") {
+            const int k = m_game->monumentKindAt(pid);
+            if (k < 0) {
+                addError("", 0, "monument_level: province " + dots[1] + " has no monument");
+                return false;
+            }
+            std::string why;
+            return m_game->placeMonument(pid, k, (int)val.asInt(), why);
+        }
+        if (prop == "monument_active") {
+            if (m_game->monumentKindAt(pid) < 0) return false;
+            return m_game->setMonumentActive(p->countryId, pid, val.asBool());
+        }
+
+        // set province.42.output machinery (or "" to hand it back) -- through
+        // the rule, so the economic system's cap on directed factories binds.
+        if (prop == "output") {
+            const std::string key = val.asString();
+            const int g = (key.empty() || key == "none") ? -1 : goodIndexFromKey(key);
+            if (g < 0 && !(key.empty() || key == "none")) {
+                addError("", 0, "output: no good called '" + key + "'");
+                return false;
+            }
+            if (!m_game->m_goodsEconomy) {
+                addError("", 0, "output: this world has no goods economy (see map.goods_economy)");
+                return false;
+            }
+            if (m_game->setProvinceOutput(pid, g, p->countryId)) return true;
+            addError("", 0, "output: refused -- no factory there, or the country directs all it may");
             return false;
         }
         if (prop == "fortification") {

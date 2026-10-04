@@ -16,6 +16,8 @@
 #include "net/Lobby.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include "ai/AISystem.h"
 #include "ai/AIVersion.h"
 #include <cstdio>
@@ -66,6 +68,39 @@ public:
     bool provinceMonumentActive(uint32_t pid) override {
         return m_game->modProvinceMonumentActive((int)pid);
     }
+
+    // ── ABI 1.4 ── Each one line through to a Game::mod* that calls the rule.
+    bool canBuildMonument(uint32_t c, uint32_t p, int32_t k) override { return m_game->modCanBuildMonument((int)c, (int)p, k); }
+    int32_t countryMonumentSlotsUsed(uint32_t c) override { return m_game->modCountryMonumentSlotsUsed((int)c); }
+    double countryMonumentUpkeep(uint32_t c) override { return m_game->modCountryMonumentUpkeep((int)c); }
+    double countryMonumentNextSlotCost(uint32_t c) override { return m_game->modCountryMonumentNextSlotCost((int)c); }
+    bool buildMonument(uint32_t c, uint32_t p, int32_t k) override { return m_game->modBuildMonument((int)c, (int)p, k); }
+    bool upgradeMonument(uint32_t c, uint32_t p) override { return m_game->modUpgradeMonument((int)c, (int)p); }
+    bool dismantleMonument(uint32_t c, uint32_t p) override { return m_game->modDismantleMonument((int)c, (int)p); }
+    bool setMonumentActive(uint32_t c, uint32_t p, bool on) override { return m_game->modSetMonumentActive((int)c, (int)p, on); }
+    bool moveMonument(uint32_t c, uint32_t f, uint32_t t) override { return m_game->modMoveMonument((int)c, (int)f, (int)t); }
+    double countrySectorTax(uint32_t c, const std::string& r) override { return m_game->modCountrySectorTax((int)c, r); }
+    double countrySectorTaxTarget(uint32_t c, const std::string& r) override { return m_game->modCountrySectorTaxTarget((int)c, r); }
+    double countrySectorTaxRoom(uint32_t c) override { return m_game->modCountrySectorTaxRoom((int)c); }
+    double countrySectorSubsidyRoom(uint32_t c) override { return m_game->modCountrySectorSubsidyRoom((int)c); }
+    bool setCountrySectorTax(uint32_t c, const std::string& r, double pct) override { return m_game->modSetCountrySectorTax((int)c, r, pct); }
+    bool goodsEconomyOn() override { return m_game->modGoodsEconomyOn(); }
+    double countryGoodStock(uint32_t c, int32_t g) override { return m_game->modCountryGoodStock((int)c, g); }
+    double countryRawStock(uint32_t c, int32_t r) override { return m_game->modCountryRawStock((int)c, r); }
+    double countryGoodDemand(uint32_t c, int32_t g) override { return m_game->modCountryGoodDemand((int)c, g); }
+    double countryGoodShortfall(uint32_t c, int32_t g) override { return m_game->modCountryGoodShortfall((int)c, g); }
+    double countryLivingStandards(uint32_t c) override { return m_game->modCountryLivingStandards((int)c); }
+    int32_t provinceOutput(uint32_t p) override { return m_game->modProvinceOutput((int)p); }
+    bool provinceOutputDirected(uint32_t p) override { return m_game->modProvinceOutputDirected((int)p); }
+    int32_t countryDirectableFactories(uint32_t c) override { return m_game->modCountryDirectableFactories((int)c); }
+    int32_t countryDirectedFactories(uint32_t c) override { return m_game->modCountryDirectedFactories((int)c); }
+    int32_t countryAutoSellPct(uint32_t c) override { return m_game->modCountryAutoSellPct((int)c); }
+    bool setProvinceOutput(uint32_t c, uint32_t p, int32_t g) override { return m_game->modSetProvinceOutput((int)c, (int)p, g); }
+    bool countryNationalised(uint32_t c, const std::string& r) override { return m_game->modCountryNationalised((int)c, r); }
+    int32_t countryNationalisationCap(uint32_t c) override { return m_game->modCountryNationalisationCap((int)c); }
+    bool setCountryNationalised(uint32_t c, const std::string& r, bool on) override { return m_game->modSetCountryNationalised((int)c, r, on); }
+    int64_t provinceCombatWidth(uint32_t p) override { return m_game->modProvinceCombatWidth((int)p); }
+    uint32_t provinceBattleAttacker(uint32_t p) override { return (uint32_t)m_game->modProvinceBattleAttacker((int)p); }
 
 private:
     Game* m_game;
@@ -428,6 +463,178 @@ int Game::modProvinceOwner(int pid) const {
 int  Game::modProvinceMonument(int pid) const      { return monumentKindAt(pid); }
 int  Game::modProvinceMonumentLevel(int pid) const { return monumentLevelAt(pid); }
 bool Game::modProvinceMonumentActive(int pid) const { return monumentActiveAt(pid); }
+
+// ---------------------------------------------------------- ABI 1.4 -----
+//
+// Monuments, sector taxes, the goods economy, directed factories,
+// nationalisation and two battle reads. The rule for every function below:
+//
+//   * A READ answers through the accessor the panel uses, and gives the ABI's
+//     neutral value (0, or -1 where 0 is a real answer) for an id that is not
+//     a country or province -- several accessors would otherwise answer an
+//     unknown id with a default that looks like data (livingStandards says
+//     1.0, autoSellPctFor says half the world setting, combatWidth says the
+//     minimum frontage).
+//   * A WRITE calls the rule the player's click calls, and refuses an id that
+//     is not a real country BEFORE it gets there. That matters more than it
+//     looks: setProvinceOutput reads -1 as "the local player", and an
+//     unchecked 0xFFFFFFFF from a mod becomes exactly -1.
+
+// The ABI's enums are the game's. sdk/abi.json "good" and "raw" carry these
+// numbers to modders, so moving one here without moving it there is a silent
+// renumbering of every mod that reads a stockpile.
+static_assert(GOOD_CONSUMER == 0 && GOOD_MACHINERY == 1 && GOOD_FUEL == 2 &&
+              GOOD_MUNITIONS == 3 && GOOD_COUNT == 4,
+              "GoodId moved: update the \"good\" enum in sdk/abi.json too");
+static_assert(RAW_OIL == 0 && RAW_METAL == 1 && RAW_RUBBER == 2 &&
+              RAW_GEMSTONES == 3 && RAW_COUNT == 4,
+              "RawId moved: update the \"raw\" enum in sdk/abi.json too");
+
+namespace {
+// A sector by the spelling the rest of the ABI uses -- province_resource takes
+// "oil", the game's table (Game::SPEC_RESOURCES) says "Oil" -- so the case is
+// folded to the table's and either is accepted. Whether the result IS one of
+// the five is still the table's to say: every caller passes it through
+// specResourceIndex, which refuses anything else.
+std::string modSectorName(const std::string& res) {
+    std::string s = res;
+    for (char& ch : s) ch = (char)std::tolower((unsigned char)ch);
+    if (!s.empty()) s[0] = (char)std::toupper((unsigned char)s[0]);
+    return s;
+}
+}  // namespace
+
+bool Game::modCanBuildMonument(int cid, int pid, int kind) const {
+    if (!m_countries.getCountry(cid)) return false;
+    std::string whyNot;
+    return canBuildMonument(cid, pid, kind, whyNot);
+}
+int Game::modCountryMonumentSlotsUsed(int cid) const {
+    return m_countries.getCountry(cid) ? monumentSlotsUsed(cid) : 0;
+}
+double Game::modCountryMonumentUpkeep(int cid) const {
+    return m_countries.getCountry(cid) ? (double)monumentUpkeep(cid) : 0.0;
+}
+double Game::modCountryMonumentNextSlotCost(int cid) const {
+    return m_countries.getCountry(cid) ? (double)monumentNextSlotCost(cid) : 0.0;
+}
+bool Game::modBuildMonument(int cid, int pid, int kind) {
+    return m_countries.getCountry(cid) && buildMonument(cid, pid, kind);
+}
+bool Game::modUpgradeMonument(int cid, int pid) {
+    return m_countries.getCountry(cid) && upgradeMonument(cid, pid);
+}
+bool Game::modDismantleMonument(int cid, int pid) {
+    return m_countries.getCountry(cid) && dismantleMonument(cid, pid);
+}
+bool Game::modSetMonumentActive(int cid, int pid, bool on) {
+    return m_countries.getCountry(cid) && setMonumentActive(cid, pid, on);
+}
+bool Game::modMoveMonument(int cid, int fromPid, int toPid) {
+    return m_countries.getCountry(cid) && moveMonument(cid, fromPid, toPid);
+}
+
+double Game::modCountrySectorTax(int cid, const std::string& res) const {
+    const int r = specResourceIndex(modSectorName(res));
+    if (r < 0 || !m_countries.getCountry(cid)) return 0.0;
+    return (double)specTaxRate(cid, r) * 100.0;   // the rule answers a fraction
+}
+double Game::modCountrySectorTaxTarget(int cid, const std::string& res) const {
+    const int r = specResourceIndex(modSectorName(res));
+    if (r < 0 || !m_countries.getCountry(cid)) return 0.0;
+    return (double)specTaxTargetPct(cid, r);
+}
+double Game::modCountrySectorTaxRoom(int cid) const {
+    return m_countries.getCountry(cid) ? (double)specTaxRoom(cid) : 0.0;
+}
+double Game::modCountrySectorSubsidyRoom(int cid) const {
+    return m_countries.getCountry(cid) ? (double)specSubsidyRoom(cid) : 0.0;
+}
+bool Game::modSetCountrySectorTax(int cid, const std::string& res, double pct) {
+    const int r = specResourceIndex(modSectorName(res));
+    if (r < 0 || cid <= 0 || !m_countries.getCountry(cid)) return false;
+    if (!std::isfinite(pct) || !std::isfinite((float)pct)) return false;
+    setSpecTaxPct(cid, r, (float)pct);   // snaps and clamps; see Game_Economy.cpp
+    return true;
+}
+
+bool Game::modGoodsEconomyOn() const { return m_goodsEconomy; }
+double Game::modCountryGoodStock(int cid, int good) const {
+    if (good < 0 || good >= GOOD_COUNT || !m_countries.getCountry(cid)) return 0.0;
+    auto it = m_countryStockpiles.find(cid);
+    return it == m_countryStockpiles.end() ? 0.0 : (double)it->second.goods[good];
+}
+double Game::modCountryRawStock(int cid, int raw) const {
+    if (raw < 0 || raw >= RAW_COUNT || !m_countries.getCountry(cid)) return 0.0;
+    auto it = m_countryStockpiles.find(cid);
+    return it == m_countryStockpiles.end() ? 0.0 : (double)it->second.raw[raw];
+}
+// goodNeed rather than countryGoodsDemand: the latter answers consumer goods
+// only, and goodNeed is the one figure goodShortfall subtracts the stock from,
+// so demand - stock here is exactly what the shortfall read says.
+double Game::modCountryGoodDemand(int cid, int good) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)goodNeed(cid, good);
+}
+double Game::modCountryGoodShortfall(int cid, int good) const {
+    if (!m_countries.getCountry(cid)) return 0.0;
+    return (double)goodShortfall(cid, good);
+}
+double Game::modCountryLivingStandards(int cid) const {
+    return m_countries.getCountry(cid) ? (double)livingStandards(cid) : 0.0;
+}
+int Game::modProvinceOutput(int pid) const {
+    auto it = m_provinceIndustry.find(pid);
+    if (it == m_provinceIndustry.end() || it->second.level <= 0) return -1;
+    return it->second.output;
+}
+bool Game::modProvinceOutputDirected(int pid) const {
+    auto it = m_provinceIndustry.find(pid);
+    return it != m_provinceIndustry.end() && it->second.level > 0 && it->second.directed;
+}
+int Game::modCountryDirectableFactories(int cid) const {
+    return m_countries.getCountry(cid) ? directableFactories(cid) : 0;
+}
+int Game::modCountryDirectedFactories(int cid) const {
+    return m_countries.getCountry(cid) ? directedFactories(cid) : 0;
+}
+int Game::modCountryAutoSellPct(int cid) const {
+    return m_countries.getCountry(cid) ? autoSellPctFor(cid) : 0;
+}
+bool Game::modSetProvinceOutput(int cid, int pid, int good) {
+    // cid > 0 FIRST: setProvinceOutput reads a negative country as the local
+    // player, which a mod must never get to be.
+    if (cid <= 0 || !m_countries.getCountry(cid)) return false;
+    return setProvinceOutput(pid, good, cid);
+}
+
+bool Game::modCountryNationalised(int cid, const std::string& res) const {
+    const std::string name = modSectorName(res);
+    if (specResourceIndex(name) < 0 || !nationalisationOn()) return false;
+    auto it = m_nationalised.find(cid);
+    if (it == m_nationalised.end()) return false;
+    for (const odnat::Holding& h : it->second)
+        if (h.resource == name) return h.held;
+    return false;
+}
+int Game::modCountryNationalisationCap(int cid) const {
+    return m_countries.getCountry(cid) ? nationalisationCap(cid) : 0;
+}
+bool Game::modSetCountryNationalised(int cid, const std::string& res, bool on) {
+    const std::string name = modSectorName(res);
+    if (specResourceIndex(name) < 0 || !nationalisationOn() || !m_countries.getCountry(cid))
+        return false;
+    if (modCountryNationalised(cid, name) == on) return true;   // already so
+    return on ? nationalise(cid, name) : releaseNationalised(cid, name);
+}
+
+long long Game::modProvinceCombatWidth(int pid) const {
+    return m_provinces.getProvinceById(pid) ? combatWidth(pid) : 0;
+}
+int Game::modProvinceBattleAttacker(int pid) const {
+    const Battle* b = anyBattleAt(pid);
+    return b ? b->attackerCid : 0;
+}
 
 // ---------------------------------------------------------------- Map -----
 //

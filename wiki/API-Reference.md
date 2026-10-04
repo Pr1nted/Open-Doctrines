@@ -24,14 +24,14 @@ into your memory after a call returns.
 - **Diplomacy** (`gearbox:diplomacy`): [at_war](#at-war), [allied](#allied), [non_aggression](#non-aggression), [guaranteed](#guaranteed), [propose_war](#propose-war)
 - **GameState.Write** (`gearbox:gamestate.write`): [set_country_treasury](#set-country-treasury), [add_country_treasury](#add-country-treasury), [set_province_owner](#set-province-owner), [set_province_population](#set-province-population)
 - **Neural** (`gearbox:neural`): [feature_count](#feature-count), [features](#features), [reward_count](#reward-count), [reward_mean](#reward-mean), [module_count](#module-count), [module_name](#module-name), [action_count](#action-count), [action_name](#action-name), [country_is_ai](#country-is-ai), [update_count](#update-count), [model_loaded](#model-loaded), [ai_version](#ai-version), [ai_arch](#ai-arch), [country_stance](#country-stance), [stance_name](#stance-name), [stance_count](#stance-count)
-- **Military.Read** (`gearbox:military.read`): [ship_count](#ship-count), [ship_at](#ship-at), [ship_exists](#ship-exists), [ship_owner](#ship-owner), [ship_type](#ship-type), [ship_lon](#ship-lon), [ship_lat](#ship-lat), [ship_health](#ship-health), [ship_crew](#ship-crew), [ship_range](#ship-range), [army_stack_count](#army-stack-count), [army_stack_owner](#army-stack-owner), [army_stack_size](#army-stack-size), [country_army](#country-army), [province_fortification](#province-fortification), [province_port_level](#province-port-level), [troop_type_count](#troop-type-count), [troop_type_id](#troop-type-id), [country_army_of_type](#country-army-of-type), [province_troops_of_type](#province-troops-of-type)
+- **Military.Read** (`gearbox:military.read`): [ship_count](#ship-count), [ship_at](#ship-at), [ship_exists](#ship-exists), [ship_owner](#ship-owner), [ship_type](#ship-type), [ship_lon](#ship-lon), [ship_lat](#ship-lat), [ship_health](#ship-health), [ship_crew](#ship-crew), [ship_range](#ship-range), [army_stack_count](#army-stack-count), [army_stack_owner](#army-stack-owner), [army_stack_size](#army-stack-size), [country_army](#country-army), [province_fortification](#province-fortification), [province_port_level](#province-port-level), [troop_type_count](#troop-type-count), [troop_type_id](#troop-type-id), [country_army_of_type](#country-army-of-type), [province_troops_of_type](#province-troops-of-type), [province_combat_width](#province-combat-width), [province_battle_attacker](#province-battle-attacker)
 - **Military.Write** (`gearbox:military.write`): [order_army_move](#order-army-move), [order_ship_move](#order-ship-move), [order_ship_engage](#order-ship-engage), [order_ship_bombard](#order-ship-bombard)
 - **Research.Read** (`gearbox:research.read`): [node_count](#node-count), [node_id](#node-id), [node_name](#node-name), [node_category](#node-category), [node_cost](#node-cost), [country_has_researched](#country-has-researched), [country_funding](#country-funding), [country_research_groups](#country-research-groups)
 - **Research.Write** (`gearbox:research.write`): [set_country_funding](#set-country-funding), [set_country_research_groups](#set-country-research-groups)
 - **Politics.Read** (`gearbox:politics.read`): [country_compass_econ](#country-compass-econ), [country_compass_social](#country-compass-social), [province_unrest](#province-unrest), [policy_count](#policy-count), [policy_id](#policy-id), [policy_name](#policy-name), [country_has_policy](#country-has-policy), [province_minority_count](#province-minority-count), [province_minority_name](#province-minority-name), [province_minority_share](#province-minority-share), [country_district_count](#country-district-count), [country_district_name](#country-district-name), [country_district_share](#country-district-share), [country_district_province_count](#country-district-province-count), [country_district_province](#country-district-province), [country_district_law_count](#country-district-law-count), [country_district_law](#country-district-law), [district_law_count](#district-law-count), [district_law_id](#district-law-id), [district_law_name](#district-law-name), [country_discloses](#country-discloses), [country_party_count](#country-party-count), [country_party_name](#country-party-name), [country_party_short_name](#country-party-short-name), [country_party_support](#country-party-support), [country_party_compass_econ](#country-party-compass-econ), [country_party_compass_social](#country-party-compass-social), [country_party_is_historical](#country-party-is-historical), [country_ruling_party](#country-ruling-party)
 - **Politics.Write** (`gearbox:politics.write`): [set_country_policy](#set-country-policy), [set_country_district_share](#set-country-district-share), [set_country_district_law](#set-country-district-law), [set_country_disclosure](#set-country-disclosure)
-- **Economy.Read** (`gearbox:economy.read`): [country_income_gross](#country-income-gross), [country_income_net](#country-income-net), [country_army_upkeep](#country-army-upkeep), [country_navy_upkeep](#country-navy-upkeep), [country_is_bankrupt](#country-is-bankrupt), [province_industry_level](#province-industry-level), [province_industry_specialization](#province-industry-specialization), [province_resource](#province-resource), [country_expenses](#country-expenses), [country_national_value](#country-national-value), [country_population](#country-population)
-- **Economy.Write** (`gearbox:economy.write`): [set_province_industry_level](#set-province-industry-level)
+- **Economy.Read** (`gearbox:economy.read`): [country_income_gross](#country-income-gross), [country_income_net](#country-income-net), [country_army_upkeep](#country-army-upkeep), [country_navy_upkeep](#country-navy-upkeep), [country_is_bankrupt](#country-is-bankrupt), [province_industry_level](#province-industry-level), [province_industry_specialization](#province-industry-specialization), [province_resource](#province-resource), [country_expenses](#country-expenses), [country_national_value](#country-national-value), [country_population](#country-population), [can_build_monument](#can-build-monument), [country_monument_slots_used](#country-monument-slots-used), [country_monument_upkeep](#country-monument-upkeep), [country_monument_next_slot_cost](#country-monument-next-slot-cost), [country_sector_tax](#country-sector-tax), [country_sector_tax_target](#country-sector-tax-target), [country_sector_tax_room](#country-sector-tax-room), [country_sector_subsidy_room](#country-sector-subsidy-room), [goods_economy_on](#goods-economy-on), [country_good_stock](#country-good-stock), [country_raw_stock](#country-raw-stock), [country_good_demand](#country-good-demand), [country_good_shortfall](#country-good-shortfall), [country_living_standards](#country-living-standards), [province_output](#province-output), [province_output_directed](#province-output-directed), [country_directable_factories](#country-directable-factories), [country_directed_factories](#country-directed-factories), [country_auto_sell_pct](#country-auto-sell-pct), [country_nationalised](#country-nationalised), [country_nationalisation_cap](#country-nationalisation-cap)
+- **Economy.Write** (`gearbox:economy.write`): [set_province_industry_level](#set-province-industry-level), [build_monument](#build-monument), [upgrade_monument](#upgrade-monument), [dismantle_monument](#dismantle-monument), [set_monument_active](#set-monument-active), [move_monument](#move-monument), [set_country_sector_tax](#set-country-sector-tax), [set_province_output](#set-province-output), [set_country_nationalised](#set-country-nationalised)
 - **MapEditor** (`gearbox:mapeditor`): [editor_active](#editor-active), [editor_province_count](#editor-province-count), [editor_province_at](#editor-province-at), [editor_province_population](#editor-province-population), [editor_province_industry_level](#editor-province-industry-level), [editor_province_fortification](#editor-province-fortification), [editor_province_port_level](#editor-province-port-level), [editor_province_resource](#editor-province-resource), [editor_province_compass_econ](#editor-province-compass-econ), [editor_province_compass_social](#editor-province-compass-social), [editor_set_province_population](#editor-set-province-population), [editor_set_province_industry_level](#editor-set-province-industry-level), [editor_set_province_fortification](#editor-set-province-fortification), [editor_set_province_port_level](#editor-set-province-port-level), [editor_set_province_resource](#editor-set-province-resource), [editor_set_province_compass](#editor-set-province-compass), [editor_map_name](#editor-map-name), [editor_set_map_name](#editor-set-map-name), [editor_set_author](#editor-set-author), [editor_set_license](#editor-set-license)
 - **Neural.Decide** (`gearbox:neural.decide`): [action_valid](#action-valid)
 - **Core.Protected** (`gearbox:core.protected`): [process_bytes](#process-bytes), [image_bytes](#image-bytes), [mod_count](#mod-count), [mod_id](#mod-id), [mod_name](#mod-name)
@@ -2362,6 +2362,34 @@ How many soldiers of that kind this country has, everywhere. 0 for a troop type 
 
 How many soldiers of that kind this country has standing in that province.
 
+### province_combat_width
+
+```wat
+(import "gearbox:military.read" "province_combat_width" (func (param i32) (result i64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i64`
+
+How many men either side can bring to bear in one assault on this province: its frontage, from its area, narrowed by fortification. Beyond it, numbers add depth rather than strength. 0 for an unknown province.
+
+### province_battle_attacker
+
+```wat
+(import "gearbox:military.read" "province_battle_attacker" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+The country attacking this province in a standing battle, or 0 when there is none. If more than one country is attacking it, the first battle opened is the one reported.
+
 ## Military.Write
 
 Import module `gearbox:military.write`. Requires the `Military.Write` capability in your manifest.
@@ -3256,6 +3284,308 @@ What the whole country is worth: every industry level, fort, port and division a
 
 How many people live in this country.
 
+### can_build_monument
+
+```wat
+(import "gearbox:economy.read" "can_build_monument" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+| `kind` | `i32` |  |
+
+**Returns:** `i32`
+
+1 when this country could build a monument of this kind in this province right now, 0 otherwise. The SAME test build_monument makes before it spends anything: the province is the country's, has no monument yet (one per province), the unlocking research is done, a coastal kind stands on the coast, and the treasury covers the build. 0 for an unknown country, province or kind.
+
+### country_monument_slots_used
+
+```wat
+(import "gearbox:economy.read" "country_monument_slots_used" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+How many of this country's monuments are switched on, which is how many slots it is paying for. 0 for an unknown country.
+
+### country_monument_upkeep
+
+```wat
+(import "gearbox:economy.read" "country_monument_upkeep" (func (param i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `f64`
+
+What those slots cost per turn, all summed. The n-th active slot costs more than the one before it (50, 75, 125, 200, ...), so this is not slots_used times a price. 0 for an unknown country.
+
+### country_monument_next_slot_cost
+
+```wat
+(import "gearbox:economy.read" "country_monument_next_slot_cost" (func (param i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `f64`
+
+What switching on one more monument would add to the per-turn upkeep -- the price of the next slot. 0 for an unknown country.
+
+### country_sector_tax
+
+```wat
+(import "gearbox:economy.read" "country_sector_tax" (func (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `resource` | `i32` | pointer into your memory |
+| `resource_len` | `i32` | byte length |
+
+**Returns:** `f64`
+
+The sector tax IN FORCE on a speciality, in percent: positive is a tax, negative a subsidy. It walks toward the target a few points a turn rather than jumping, and it is clamped to what the country's doctrines allow today. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector.
+
+### country_sector_tax_target
+
+```wat
+(import "gearbox:economy.read" "country_sector_tax_target" (func (param i32 i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `resource` | `i32` | pointer into your memory |
+| `resource_len` | `i32` | byte length |
+
+**Returns:** `f64`
+
+The sector tax the country has SET, in percent, which the rate in force is moving toward. It can sit outside today's room if a doctrine narrowed it since; the rate in force is what is charged. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector.
+
+### country_sector_tax_room
+
+```wat
+(import "gearbox:economy.read" "country_sector_tax_room" (func (param i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `f64`
+
+The highest sector tax this country's doctrines allow, in percent. 0 for an unknown country.
+
+### country_sector_subsidy_room
+
+```wat
+(import "gearbox:economy.read" "country_sector_subsidy_room" (func (param i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `f64`
+
+The deepest sector subsidy this country's doctrines allow, in percent, as a positive number: a subsidy may go down to minus this. 0 for an unknown country.
+
+### goods_economy_on
+
+```wat
+(import "gearbox:economy.read" "goods_economy_on" (func (result i32)))
+```
+
+**Returns:** `i32`
+
+1 when this world runs the goods economy -- factories make goods, deposits yield raw materials, and both are stockpiled. 0 when it is the money economy, in which case every stock, demand and shortfall read is 0 and living standards read 1.
+
+### country_good_stock
+
+```wat
+(import "gearbox:economy.read" "country_good_stock" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `good` | `i32` |  |
+
+**Returns:** `f64`
+
+How much of a good this country has stockpiled. 0 for an unknown country or good, and outside the goods economy.
+
+### country_raw_stock
+
+```wat
+(import "gearbox:economy.read" "country_raw_stock" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `raw` | `i32` |  |
+
+**Returns:** `f64`
+
+How much of a raw material this country has stockpiled. Gold is not a raw material -- it stays money. 0 for an unknown country or material, and outside the goods economy.
+
+### country_good_demand
+
+```wat
+(import "gearbox:economy.read" "country_good_demand" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `good` | `i32` |  |
+
+**Returns:** `f64`
+
+What this country needs of a good this turn: for consumer goods, what its population wants; for the other three, the reserve the economy recorded last turn. The same figure country_good_shortfall subtracts the stock from. 0 for an unknown country or good, and outside the goods economy.
+
+### country_good_shortfall
+
+```wat
+(import "gearbox:economy.read" "country_good_shortfall" (func (param i32 i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `good` | `i32` |  |
+
+**Returns:** `f64`
+
+How short this country is of a good this turn: demand minus stock, never below 0. The number the economy's own allocator and the AI's trade valuation read. 0 for an unknown country or good, and outside the goods economy.
+
+### country_living_standards
+
+```wat
+(import "gearbox:economy.read" "country_living_standards" (func (param i32) (result f64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `f64`
+
+Consumer supply over consumer demand last turn: 1 means fed, below 1 short, above 1 a surplus. It feeds unrest and population growth. 1 for a real country with no production record (the money economy, or before the first turn); 0 for an unknown country.
+
+### province_output
+
+```wat
+(import "gearbox:economy.read" "province_output" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+The good this province's factories are making, as a good -- whether its government directed it or the economy allocated it (province_output_directed tells the two apart). -1 when nothing is assigned, for a province with no industry, and for an unknown province.
+
+### province_output_directed
+
+```wat
+(import "gearbox:economy.read" "province_output_directed" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+1 when a government chose this province's output by hand and it keeps that order until changed; 0 when the economy allocates it each turn, the province has no industry, or it is unknown.
+
+### country_directable_factories
+
+```wat
+(import "gearbox:economy.read" "country_directable_factories" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+How many factories this country's government may direct by hand. Its economic compass sets it: a planned economy directs every factory, a free market none. 0 for an unknown country.
+
+### country_directed_factories
+
+```wat
+(import "gearbox:economy.read" "country_directed_factories" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+How many of its factories are directed right now. set_province_output refuses a new one once this reaches country_directable_factories. 0 for an unknown country.
+
+### country_auto_sell_pct
+
+```wat
+(import "gearbox:economy.read" "country_auto_sell_pct" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+The share of this country's surplus raw materials sold automatically each turn, 0-100: the world's setting scaled down by how planned its economy is. 0 for an unknown country.
+
+### country_nationalised
+
+```wat
+(import "gearbox:economy.read" "country_nationalised" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `resource` | `i32` | pointer into your memory |
+| `resource_len` | `i32` | byte length |
+
+**Returns:** `i32`
+
+1 when this country holds a speciality sector in state hands. A released sector winds down over turns but reads 0 here from the moment it is released. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 0 for an unknown country or sector, and when the nationalisation rules are switched off.
+
+### country_nationalisation_cap
+
+```wat
+(import "gearbox:economy.read" "country_nationalisation_cap" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+
+**Returns:** `i32`
+
+How many speciality sectors this country may hold in state hands, from its economic compass: 5 at the command end down to 0 at the market end. 0 for an unknown country, and when the rules are off.
+
 ## Economy.Write
 
 Import module `gearbox:economy.write`. Requires the `Economy.Write` capability in your manifest.
@@ -3274,6 +3604,134 @@ Import module `gearbox:economy.write`. Requires the `Economy.Write` capability i
 **Returns:** `i32`
 
 Set a province's industry level, clamped to 0..10. This writes the built level directly and does not charge for it -- it is a scenario-authoring tool, not a build order.
+
+### build_monument
+
+```wat
+(import "gearbox:economy.write" "build_monument" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+| `kind` | `i32` |  |
+
+**Returns:** `i32`
+
+Build a monument for this country, through the game's own buildMonument: the checks can_build_monument reports, the price taken from the treasury, active on arrival. 1 if it was built, 0 if anything refused it.
+
+### upgrade_monument
+
+```wat
+(import "gearbox:economy.write" "upgrade_monument" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Raise this country's monument in a province one level, paying for it. 0 if the province holds no monument of this country's, it is at its top level, or the treasury cannot cover it.
+
+### dismantle_monument
+
+```wat
+(import "gearbox:economy.write" "dismantle_monument" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+
+**Returns:** `i32`
+
+Take down this country's monument in a province. That costs money too -- a flat 50 -- so 0 if the treasury cannot cover it, or the province holds no monument of this country's.
+
+### set_monument_active
+
+```wat
+(import "gearbox:economy.write" "set_monument_active" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+| `active` | `i32` | 0 or 1 |
+
+**Returns:** `i32`
+
+Switch this country's monument on or off. Off frees its slot and stops its effect entirely; on takes a slot again. 1 if it is now in the requested state (including already being so), 0 if the province holds no monument of this country's.
+
+### move_monument
+
+```wat
+(import "gearbox:economy.write" "move_monument" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `from_province` | `i32` |  |
+| `to_province` | `i32` |  |
+
+**Returns:** `i32`
+
+Move one of the movable kinds (defence_corporation, signals_directorate) to any province this country holds that has none, paying the move price. 0 for a kind that cannot move, a destination that is taken, not the country's or (for a coastal kind) inland, or a treasury that cannot cover it.
+
+### set_country_sector_tax
+
+```wat
+(import "gearbox:economy.write" "set_country_sector_tax" (func (param i32 i32 i32 f64) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `resource` | `i32` | pointer into your memory |
+| `resource_len` | `i32` | byte length |
+| `percent` | `f64` |  |
+
+**Returns:** `i32`
+
+Set the TARGET sector tax on a speciality, in percent; negative is a subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of 5 and clamped to the doctrine room, and the rate in force then walks toward it a few points a turn -- nothing is charged differently this turn. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 1 when accepted, 0 for an unknown country or sector or a percent that is not a finite number.
+
+### set_province_output
+
+```wat
+(import "gearbox:economy.write" "set_province_output" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `province` | `i32` |  |
+| `good` | `i32` |  |
+
+**Returns:** `i32`
+
+Direct a province's factories to make a good, or pass -1 to hand them back to the economy. Through the game's own setProvinceOutput: the province must be this country's and have industry, and directing a new one is refused once country_directed_factories reaches country_directable_factories (re-directing one already directed is always allowed, and handing back always is). 1 on success.
+
+### set_country_nationalised
+
+```wat
+(import "gearbox:economy.write" "set_country_nationalised" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` |  |
+| `resource` | `i32` | pointer into your memory |
+| `resource_len` | `i32` | byte length |
+| `held` | `i32` | 0 or 1 |
+
+**Returns:** `i32`
+
+Take a speciality sector into state hands, or release it, through the game's own nationalise / releaseNationalised. Taking one is refused when the country is at its cap; a released one winds down over turns rather than stopping. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 1 if it is now in the requested state (including already being so); 0 for an unknown country or sector, a full cap, or when the rules are switched off.
 
 ## MapEditor
 
@@ -4178,3 +4636,7 @@ that many bytes, so an older mod is safe against a newer host.
 **`content_mode`** — `hollow`=0, `persist`=1
 
 **`monument_kind`** — `$comment`=Appended to, never reordered: a save and this ABI both store the index., `university`=0, `megacity`=1, `missile_silo`=2, `defence_corporation`=3, `factory_conglomerate`=4, `air_defence`=5, `strategic_reserve`=6, `grand_exchange`=7, `admiralty_yard`=8, `ministry_of_enlightenment`=9, `signals_directorate`=10
+
+**`good`** — `$comment`=Appended to, never reordered. Mirrors GoodId in src/GameStructs.h; a static_assert in src/Game_Mods.cpp fails the build if the two disagree., `consumer`=0, `machinery`=1, `fuel`=2, `munitions`=3
+
+**`raw`** — `$comment`=Appended to, never reordered. Mirrors RawId in src/GameStructs.h. Gold is not here on purpose: it is money, not an input to anything., `oil`=0, `metal`=1, `rubber`=2, `gemstones`=3
