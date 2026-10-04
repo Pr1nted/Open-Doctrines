@@ -15,7 +15,7 @@
        occupied a quarter of its own box and sat in the top-left corner of it:
        rasterised into a flag it came out a third of the size of every other
        symbol and off-centre. The viewBox frames the content the way the rest
-       of data/symbols/ does -- about 92% of the box, centred -- and the paths
+       of data/symbols/ does - about 92% of the box, centred - and the paths
        are untouched. -->
   <metadata
           id="metadata16">
