@@ -953,6 +953,7 @@ void Game::addResearchPoints(int countryId) {
             if (countryId == m_playerCountryId) {
                 Audio::get().playSfx("research_complete");
                 printf("[RESEARCH] %s completed!\n", node.name.c_str());
+                achNote("research_done");
                 m_researchAlert = true;
             }
             // And walk on, if it was told to and there is only one way to walk.

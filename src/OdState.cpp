@@ -311,6 +311,34 @@ bool load(const std::string& dataDir, const std::string& archivePath,
         if (!data) continue;
 
         fs::path dest = root / name;
+
+        // ACHIEVEMENTS ARE NOT RESTORED BY COPYING. An archive is a file the
+        // player picked, and anybody can build one, so nothing in it is
+        // allowed to BE an achievement:
+        //
+        //   grants.json   goes to grants.import.json, never over the real one.
+        //                 odach::Tracker merges it grant by grant, verifying
+        //                 each signature, and deletes it -- a grant that does
+        //                 not verify is dropped, and one that does is a fact
+        //                 whichever file it arrived in.
+        //   progress.json is only counters, which yield claims the account
+        //                 service still has to accept. Restored only where
+        //                 there is none yet (the web build waking up with an
+        //                 empty MEMFS); an install with its own keeps its own.
+        //
+        // Anything else under achievements/ is not something this game writes,
+        // and is refused like an unsafe path.
+        if (name.rfind("achievements/", 0) == 0) {
+            if (name == "achievements/grants.json") {
+                dest = root / "achievements" / "grants.import.json";
+            } else if (name == "achievements/progress.json") {
+                if (fs::exists(dest, ec)) { mz_free(data); continue; }
+            } else {
+                refused++;
+                mz_free(data);
+                continue;
+            }
+        }
         fs::create_directories(dest.parent_path(), ec);
         std::ofstream out(dest, std::ios::binary | std::ios::trunc);
         if (out) {

@@ -114,6 +114,7 @@ function readBody(req) {
 // Each ticket gets its own name and pseudonym so a test can tell two joiners
 // apart, and so "everyone ended up with the same seat" cannot pass by accident.
 let issued = 0;
+let sessionOpens = 0, sessionReopens = 0, tokenRefreshes = 0, lastSessionBody = null;
 
 const server = createServer(async (req, res) => {
     const url = new URL(req.url, ISSUER);
@@ -152,17 +153,47 @@ const server = createServer(async (req, res) => {
                            players: room ? room.players.size : 0 });
     }
 
+    // Cut the host's relay socket, as a redeploy or a dropped NAT entry
+    // would. Only a test asks: it checks the host dials back in by itself.
+    if (req.method === "POST" && path.startsWith("/relay-drop/")) {
+        const room = relayRooms.get(path.slice("/relay-drop/".length));
+        if (room?.host) { room.host.socket.destroy(); room.host = null; }
+        return json(res, { dropped: true });
+    }
+
     if (req.method === "POST" && path === "/server/register") {
         return json(res, { serverCredential: "mock-server-credential" });
     }
 
-    // A host opening a session.
+    // A host opening a session, or reopening the one it had. The stand-in has
+    // one code, so a reopen always succeeds; what the test checks is that the
+    // host ASKED, and the count lets it see renewals happen.
     if (req.method === "POST" && path === "/session") {
         await slowHost();
+        const body = await readBody(req);
+        sessionOpens += 1;
+        if (body.reopen) sessionReopens += 1;
+        lastSessionBody = body;
         return json(res, {
             code: CODE,
+            descriptor: `descriptor-for-${CODE}`,
             hostPsid: devPsid || "psid_host_aaaaaaaaaaaa",
+            ...(body.reopen ? { reopened: body.reopen === CODE } : {}),
         });
+    }
+
+    // What the host has asked of /session so far. Only a test asks.
+    if (req.method === "GET" && path === "/session-stats") {
+        return json(res, { opens: sessionOpens, reopens: sessionReopens,
+                           refreshes: tokenRefreshes, last: lastSessionBody });
+    }
+
+    // A sliding session. The dev token never expires here, so it is handed
+    // straight back; the count is what proves the game asked.
+    if (req.method === "POST" && path === "/auth/refresh") {
+        if (!devName) return json(res, { error: "unauthorized" }, 401);
+        tokenRefreshes += 1;
+        return json(res, { token: bearer, account: { id: devPsid, nickname: devLabel } });
     }
 
     // What a joiner asks about a session before minting a ticket. The
@@ -330,9 +361,20 @@ server.on("upgrade", async (req, socket) => {
         conn.peerId = peerId;
         room.players.set(peerId, conn);
         wsSend(conn, 0x1, Buffer.from(JSON.stringify({ ok: true, peerId, role: "player" })));
+        // Who it is, as the real relay would say after checking the ticket:
+        // taken from the ticket's claims, so a player reconnecting through the
+        // relay is the same player. A hello without a readable ticket gets a
+        // made-up identity, as before.
+        let who = { psid: "psid-relay-" + peerId, name: "Relayed " + peerId };
+        try {
+            const ticket = JSON.parse(text).ticket || "";
+            const claims = JSON.parse(Buffer.from(ticket.split(".")[1]
+                .replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+            if (claims.psid) who = { psid: claims.psid, name: claims.name || who.name };
+        } catch { /* keep the made-up one */ }
         if (room.host) {
             const head = Buffer.from([ToHost.PeerJoined, peerId & 0xff, (peerId >> 8) & 0xff]);
-            wsSend(room.host, 0x2, Buffer.concat([head, Buffer.from(JSON.stringify({ psid: "psid-relay-" + peerId, name: "Relayed " + peerId, issuer: ISSUER }))]));
+            wsSend(room.host, 0x2, Buffer.concat([head, Buffer.from(JSON.stringify({ ...who, issuer: ISSUER }))]));
         }
     };
 

@@ -298,6 +298,10 @@ void Game::processArtilleryOrders(int countryId) {
         if (!srcP || srcP->countryId != countryId) { ++i; continue; }
         Province* tgtP = m_provinces.getProvinceById(ao.targetProvince);
         if (!tgtP) { ++i; continue; }
+        // Counted as it LANDS, so an order placed and then cancelled is not a
+        // strike. (A multiplayer client never resolves orders; it counts when
+        // it places one -- see Game_Update.cpp.)
+        if (countryId == m_playerCountryId) achNoteArtillery(ao.ammoType, ao.targetProvince);
         ArtyEffect eff = getEffect(ao.ammoType);
 
         // ── AIR DEFENCE ──
@@ -965,6 +969,10 @@ void Game::processTurn() {
     // GameProcess post-turn hook. This also services a reload that was asked
     // for mid-turn: reloads happen between turns, never inside one.
     ModManager::get().postTurn(m_turnNumber);
+
+    // After everything the turn does, before the bench may end the run. The
+    // host of a multiplayer game resolves its own turns through here too.
+    achTurnSnapshot(m_netHost != nullptr);
 
     // ── THE BENCHMARK ENDS ITSELF ──
     //
@@ -4823,6 +4831,8 @@ void Game::processNavyCombat(int countryId) {
             // scored on them. See AISystem::noteShipSunk.
             if (tgt.crew > 0) { m_navTransportsSunk++; m_navCrewDrowned += tgt.crew; }
             if (m_ai) m_ai->noteShipSunk(countryId, tgt.countryId, tgt.crew);
+            if (tgt.countryId == m_playerCountryId) achNote("own_ships_lost");
+            else if (atWarCids(m_playerCountryId, tgt.countryId)) achNote("enemy_ships_sunk");
             printf("[NAVY] Ship %d (%s) SUNK ship %d (%s)%s!\n",
                    eo.shipIndex, src.type.c_str(), eo.targetIndex, tgt.type.c_str(),
                    tgt.crew > 0 ? " -- loaded, crew lost" : "");
@@ -5481,6 +5491,12 @@ bool Game::queueDiplomaticAction(PendingDiplomaticAction da) {
     // processDiplomaticRequests), and it is not what this rule is for: the
     // confusion comes from one country speaking twice, not from two countries
     // speaking at once.
+    // The player's own declaration, counted when it is made. A war that
+    // appears without one is a war declared ON them (Game::achTurnSnapshot).
+    if (da.action == "declare_war") {
+        const Country* me = m_countries.getCountry(m_playerCountryId);
+        if (me && me->isoA3 == da.sourceIso) achNoteWarDeclared(da.targetIso);
+    }
     m_pendingDiplomaticActions.push_back(std::move(da));
     return true;
 }
@@ -5799,8 +5815,13 @@ void Game::processDiplomaticRequests() {
                     noteRefusalStatement(da.targetIso, da.sourceIso, callStated);
                     if (m_ai) { m_ai->noteCallRefused(allyCid);
                                 m_ai->noteDiploRejected(cidForIso(da.sourceIso), allyCid); }
-                    printf("[WAR] %s refuses %s's call to arms; the alliance is over\n",
-                           da.targetIso.c_str(), da.sourceIso.c_str());
+                    // The turn is printed because journal 429 confirmed that an ally
+                    // refusing a call to arms separates the rushed seat's collapses
+                    // (4 of 12) from its survivals (0 of 20, p 0.014) and could not
+                    // say which way it runs. Without a turn number nothing can be
+                    // lined up against the per-turn seat trace. Log text only.
+                    printf("[WAR] turn %d %s refuses %s's call to arms; the alliance is over\n",
+                           m_turnNumber, da.targetIso.c_str(), da.sourceIso.c_str());
                     if (!playerIso.empty() && da.sourceIso == playerIso) {
                         // The refusal that costs the most, so the one most
                         // worth explaining -- truthfully or otherwise.

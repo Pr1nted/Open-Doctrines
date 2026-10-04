@@ -24,3 +24,8 @@
 // PUBLIC identifier -- it travels in every presence payload -- so unlike a
 // secret it belongs in the build.
 #define OD_DISCORD_APP_ID_BAKED "@OD_DISCORD_APP_ID@"
+
+// Achievement-grant public keys, base64url, comma-separated, newest first.
+// Public by definition: they let anyone CHECK a grant and nobody MAKE one.
+// See src/achievements/Achievements.cpp.
+#define OD_ACHIEVEMENT_KEYS_BAKED "@OD_ACHIEVEMENT_KEYS@"

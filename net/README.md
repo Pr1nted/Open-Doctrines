@@ -262,8 +262,10 @@ already have — R2 does the same job, but Cloudflare wants a card on file befor
 it will switch R2 on.
 
 Turn data lives in the session's own Durable Object, alongside the lobby state,
-and dies with it: 90 days idle for a long-form session, immediately for a rapid
-one. Four routes, and the URL shapes are the game's rather than ours — they are
+and dies with it: immediately for a rapid session once its host's 90-second
+grace runs out. A long-form session is never deleted for its host being away:
+the 90-day idle alarm closes any sockets still waiting and keeps everything.
+Four routes, and the URL shapes are the game's rather than ours — they are
 built in `src/net/TurnStore.cpp`:
 
 | Route | Who | What it does |
@@ -306,6 +308,28 @@ existing `broadcastDelta`, and players submit orders sealed with the session key
 with nothing connected, which is the point of the mode. The client half lives in
 the long-form section of `src/Game_Multiplayer.cpp`, and it has not yet been
 played through a real multi-day campaign — see the root README's Status section.
+
+### Reopening a session under the same code
+
+Players save the join code, and turns are stored under it, so a restarted host
+must not be handed a new one. `POST /session` takes an optional
+`"reopen": "<code>"` beside `serverCredential` and `settings`:
+
+- **Granted** only if that code's lobby exists and was created for the same
+  server id (`srv` in the credential). The reply is the usual one — `code` (the
+  same), a **fresh** `descriptor` with a new 24-hour expiry, `wsUrl`,
+  `settings`, `hostPsid`, `issuer` — plus `"reopened": true`. Settings are
+  replaced; stored turns and orders, bans and connected peers are untouched,
+  and `GET /session/<code>` hands joiners the new descriptor from then on.
+- **Refused** otherwise, and not as an error: a fresh code is issued exactly as
+  without `reopen`, with `"reopened": false` and `"reopenRefused"` set to
+  `bad_code`, `no_session` or `not_your_session`. Another operator cannot
+  take a code by knowing it; registering a new credential is a new server and
+  cannot reopen the old one's codes either.
+
+It is also how a long-running host renews its descriptor: call it again with
+its own code before the 24 hours are up (every ~12 h), with the host still
+connected. Absent, `null` and `""` all mean no reopen was asked for.
 
 ## Abuse and rate limits
 

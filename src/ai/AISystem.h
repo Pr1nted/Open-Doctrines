@@ -175,6 +175,15 @@ public:
     static long long s_stanceSwitch;
     static long long s_stancePick;
     static long long s_portCapSeen[4];
+    // Journal 509 / backlog 201: WHY embark is absent from the naval menu.
+    // The policy takes embark on 120 of 120 offers, so the mask is the whole
+    // story -- but bestEmbarkPort is a conjunction of eight tests and two bare
+    // constants, and no dump said which one refuses. Counted FIRST-FAILURE per
+    // call so the shares sum to the calls and name the binding test; the port
+    // array counts rejections across every harbour examined by a call that
+    // then found no candidate. Under OD_ACT_HIST only.
+    static long long s_embWhy[12];
+    static long long s_embPort[8];
     static long long s_fleetUseful[2];
     /// Journal 337: is OD_WAR_BAR_RESEARCH live? 0 evaluations, 1 pass under
     /// the shipped headcount test, 2 pass under the research-scaled one,
@@ -281,7 +290,18 @@ public:
     // 3-11% of the world's doctrines, so the gain is what the WORLD does with
     // them. This counts the turnover the slot story predicts.
     void warLifeCensus();
+    /** Journal 504: per-turn bookkeeping for the war-age and war-progress features.
+     *  Unconditional and read-only as far as the game is concerned -- it records when
+     *  each war opened and how much ground each side held then. Kept out of
+     *  buildFeatures, which has five callers including a partner-features path. */
+    void warAgeCensus();
+    /** (cid, enemy) -> turn the war opened. Directed, so a lookup never has to work
+     *  out which side of an unordered pair the asking country is. */
+    std::map<std::pair<int,int>, int> m_warOpenTurn;
+    /** (cid, enemy) -> cid's province count when that war opened. */
+    std::map<std::pair<int,int>, int> m_warProvAtOpen;
     void seatTrace();           ///< OD_SEAT_TRACE, off by default. Journal 414.
+    static void dumpFeatStat(); ///< OD_FEATSTAT, off by default. Journal 482.
     /// Turn the bankruptcy cascade last zeroed a country's pacification, and
     /// its value last turn. OD_PAC_COOLDOWN reads them. Journal 424.
     std::unordered_map<int,int>   m_pacZeroedTurn;
@@ -3475,6 +3495,13 @@ private:
         // apart from navalTargets (which counts only not-yet-engaged foes)
         // because embarking is only worth doing when one of the two is nonzero.
         int navalWarTargets = 0;
+        // Journal 510 / backlog 202. Same count, but NOT excluding countries we
+        // share a land frontier with. Read by exactly one line -- validNavy's
+        // embark mask, under OD_NAVAL_LAND_NBR -- because navalWarTargets is
+        // also read by the SCRIPTED opponent's naval priority and by f[76], and
+        // widening it there would move the opponent and a feature rather than
+        // the thing under test.
+        int navalWarTargetsLand = 0;
         struct Frontier { int pid; int enemyCid; };
         std::vector<Frontier> frontiers;
 

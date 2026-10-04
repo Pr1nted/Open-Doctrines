@@ -155,6 +155,22 @@ public:
      */
     bool bootstrap();
 
+    /**
+     * Trade the session token for a fresh one, and keep it.
+     *
+     * A session token lives twelve hours and the service re-signs a live one
+     * on request (POST /auth/refresh), so anything that runs longer than that
+     * -- a dedicated server hosting a month-long campaign -- stays signed in
+     * only by asking. Nothing in the game ever asked, so a server restarted
+     * the next morning could not open its session at all.
+     *
+     * Blocking, and safe from any thread: a server calls it from a worker on a
+     * schedule. False with `why` when the service refused or could not be
+     * reached; the stored token is left alone either way, because an outage
+     * is not evidence that it is bad.
+     */
+    bool refreshSession(std::string* why = nullptr);
+
     bool beginSignIn(AuthProvider provider);
 
     /**

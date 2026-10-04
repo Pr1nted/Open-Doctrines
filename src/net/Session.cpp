@@ -1,4 +1,5 @@
 #include "Session.h"
+#include "NetZip.h"
 #include "RelayLink.h"
 
 #include "HttpClient.h"
@@ -164,6 +165,8 @@ struct NetSession::Impl {
 
     /** What the host said this world has. Empty until the catalogue arrives. */
     std::vector<NetCountryList::Entry> countries;
+    std::vector<uint8_t> lobbyMap;
+    NetSessionInfo sessionInfo;
     NetTurnStoreInfo turnStore;
 
     // Everything needed to answer a challenge once one arrives.
@@ -207,6 +210,16 @@ const std::vector<NetPeer>& NetSession::roster() const { return m_impl->roster; 
 std::vector<NetCountryList::Entry> NetSession::countries() const {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     return m_impl->countries;
+}
+
+std::vector<uint8_t> NetSession::lobbyMap() const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    return m_impl->lobbyMap;
+}
+
+NetSessionInfo NetSession::sessionInfo() const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    return m_impl->sessionInfo;
 }
 
 NetTurnStoreInfo NetSession::turnStore() const {
@@ -450,6 +463,7 @@ void NetSession::Impl::answerChallenge(const std::string& challenge) {
             // discovered as a desync three turns in.
             pendingHello = "{\"ticket\":\"" + httpJsonEscape(ticket) + "\"" +
                            ",\"protocol\":" + std::to_string(claimedProtocol()) +
+                           ",\"caps\":\"" + kNetClientCaps + "\"" +
                            ",\"mods\":\"" + httpJsonEscape(modAttestation) + "\"}";
         }
     };
@@ -757,6 +771,19 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
             push(std::move(e));
             return;
         }
+        case NetMsg::SnapshotZ: {
+            NetSnapshotZ z;
+            if (!NetSnapshotZ::decode(body, size, z)) return;
+            NetSessionEvent e{NetSessionEvent::Kind::Snapshot};
+            // Bounded before allocating: four times the largest frame is far
+            // beyond any world, and far short of what a lying header could ask.
+            if (!netInflate(z.deflated.data(), z.deflated.size(), z.rawSize,
+                            (size_t)kNetMaxFrameBytes * 4, e.payload))
+                return;
+            e.turnNumber = z.turnNumber;
+            push(std::move(e));
+            return;
+        }
         case NetMsg::TurnOrders: {
             NetTurnOrders to;
             if (!NetTurnOrders::decode(body, size, to)) return;
@@ -774,6 +801,27 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
                 countries = std::move(list.countries);
             }
             push(NetSessionEvent{NetSessionEvent::Kind::CountriesKnown});
+            return;
+        }
+        case NetMsg::LobbyMap: {
+            // Kept encoded: the game decodes it once into a texture, and a
+            // copy here per frame would be the whole raster every frame.
+            if (size > (size_t)4 << 20) return;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                lobbyMap.assign(body, body + size);
+            }
+            push(NetSessionEvent{NetSessionEvent::Kind::LobbyMapKnown});
+            return;
+        }
+        case NetMsg::SessionInfo: {
+            NetSessionInfo info;
+            if (!NetSessionInfo::decode(body, size, info)) return;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                sessionInfo = std::move(info);
+            }
+            push(NetSessionEvent{NetSessionEvent::Kind::SessionInfoKnown});
             return;
         }
         case NetMsg::TurnStoreInfo: {
@@ -807,7 +855,8 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
         case NetMsg::Kick: {
             NetRejectMsg r;
             NetRejectMsg::decode(body, size, r);
-            fail(r.text.empty() ? "You were removed from that game." : r.text);
+            fail(r.text.empty() ? "You were removed from that game." : r.text,
+                 NetReject::Kicked);
             return;
         }
         default:

@@ -957,10 +957,12 @@ void MapRenderer::buildProvinceData(
     // CENTRES DO NOT NEED THE BORDER RASTER, only the glow does. This used to
     // return here without one, and the turn logic reads the centres -- so a
     // load that skips the raster (Game::m_agentLoad) still gets them.
-    const bool glow = m_bordersComputed;
-
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
-    if (!provPixels) return;
+    // The centres come from province ids, which a dedicated server holds as a
+    // compact index with no image at all (ProvinceMap::compact). The glow is
+    // a picture and needs the image; without one there is simply no glow.
+    if (!provinces.hasPixels()) return;
+    const bool glow = m_bordersComputed && provPixels;
 
     auto& all = provinces.getAllProvinces();
 
@@ -1001,9 +1003,8 @@ void MapRenderer::buildProvinceData(
         int rowOff = y * stride;
         const uint8_t* cov = glow ? coverage.row(y) : nullptr;
         for (int x = 0; x < m_mapW; ++x) {
-            int pi = rowOff + x * 4;
-            int r = provPixels[pi], g = provPixels[pi + 1], b = provPixels[pi + 2];
-            int pid = Province::colorToId(r, g, b);
+            (void)rowOff;
+            int pid = provinces.idAt(x, y);
 
             // Accumulate center/bbox data
             if (pid > 0 && (size_t)pid < nPid && known[(size_t)pid]) {
@@ -1034,8 +1035,7 @@ void MapRenderer::buildProvinceData(
                     if (pass == 3) { nx = x; ny = y - 1; }
                     if (pass == 4) { nx = x; ny = y + 1; }
                     if (ny < 0 || ny >= m_mapH) continue;
-                    int ni = ny * stride + nx * 4;
-                    int nid = Province::colorToId(provPixels[ni], provPixels[ni + 1], provPixels[ni + 2]);
+                    int nid = provinces.idAt(nx, ny);
                     if (nid > 0) foundPid = nid;
                 }
                 if (foundPid > 0)

@@ -85,6 +85,7 @@ export function describeDeletion(account: Account): Record<string, unknown> {
             `your account (${account.nick})`,
             `${account.identities.length} linked sign-in ${account.identities.length === 1 ? "method" : "methods"}`,
             account.badges.length ? `your badges (${account.badges.join(", ")})` : null,
+            "your achievements, and the record of when you first played",
         ].filter(Boolean),
         willKeep: [
             "Your nickname stays unclaimable for 30 days so nobody can take it " +
@@ -92,6 +93,9 @@ export function describeDeletion(account: Account): Record<string, unknown> {
             "nickname and a date, with nothing linking it to you.",
         ],
         cannotReach: [
+            "Achievements already copied into a .odstate file are signed " +
+            "statements and stay readable there; they name an account that will " +
+            "no longer exist.",
             "Game servers you joined are run by other people and are separate " +
             "data controllers. Anything they recorded is theirs to delete, not ours.",
         ],

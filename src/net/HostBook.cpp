@@ -2,6 +2,8 @@
 
 #include "HttpClient.h"
 
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -74,6 +76,14 @@ std::string HostBook::encode() const {
       << ", \"bindAll\": " << (settings.bindAll ? "true" : "false")
       << ", \"listed\": " << (settings.listed ? "true" : "false")
       << ", \"port\": " << settings.port
+      << ", \"voiceLink\": \"" << jsonEscape(settings.voiceLink) << "\""
+      << "},\n";
+
+    o << "  \"campaign\": {"
+      << "\"inGame\": " << (campaign.inGame ? "true" : "false")
+      << ", \"openTurn\": " << campaign.openTurn
+      << ", \"turnDeadlineMs\": " << campaign.turnDeadlineMs
+      << ", \"sessionCode\": \"" << jsonEscape(campaign.sessionCode) << "\""
       << "}\n}\n";
     return o.str();
 }
@@ -132,6 +142,17 @@ bool HostBook::decode(const std::string& json, HostBook& out) {
         out.settings.port        = (uint16_t)num("port", 27015, 0, 65535);
         out.settings.bindAll     = httpJsonBool(json, "bindAll", false, setAt);
         out.settings.listed      = httpJsonBool(json, "listed", false, setAt);
+        out.settings.voiceLink   = httpJsonString(json, "voiceLink", 200, setAt);
+    }
+
+    const size_t campAt = json.find("\"campaign\"");
+    if (campAt != std::string::npos) {
+        out.campaign.inGame = httpJsonBool(json, "inGame", false, campAt);
+        const long long open = httpJsonNumber(json, "openTurn", 0, campAt);
+        out.campaign.openTurn = (open > 0 && open < 0xFFFFFFFFLL) ? (uint32_t)open : 0;
+        const long long due = httpJsonNumber(json, "turnDeadlineMs", 0, campAt);
+        out.campaign.turnDeadlineMs = due > 0 ? (int64_t)due : 0;
+        out.campaign.sessionCode = httpJsonString(json, "sessionCode", 32, campAt);
     }
     return true;
 }
@@ -140,13 +161,29 @@ std::string HostBook::pathFor(const std::string& savePath) {
     return savePath + ".odhost";
 }
 
+bool hostBookWriteAtomic(const std::string& path, const std::string& text) {
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f) return false;
+        f.write(text.data(), (std::streamsize)text.size());
+        f.flush();
+        if (!f.good()) return false;
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        // Windows will not rename over a file some other process has open. The
+        // old file is the safer thing to keep than a missing one.
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+    return true;
+}
+
 bool HostBook::save(const std::string& savePath) const {
     if (savePath.empty()) return false;
-    std::ofstream f(pathFor(savePath), std::ios::binary | std::ios::trunc);
-    if (!f) return false;
-    const std::string text = encode();
-    f.write(text.data(), (std::streamsize)text.size());
-    return f.good();
+    return hostBookWriteAtomic(pathFor(savePath), encode());
 }
 
 bool HostBook::load(const std::string& savePath, HostBook& out) {
@@ -157,4 +194,106 @@ bool HostBook::load(const std::string& savePath, HostBook& out) {
     std::stringstream ss;
     ss << f.rdbuf();
     return decode(ss.str(), out);
+}
+
+// ---------------------------------------------------------- pending orders --
+
+namespace {
+
+/** Bounded so a corrupt file cannot make us allocate freely. */
+constexpr size_t kMaxOrderBytes = 4u << 20;
+
+std::string toHex(const std::vector<uint8_t>& bytes) {
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (uint8_t b : bytes) { out += hex[b >> 4]; out += hex[b & 0xF]; }
+    return out;
+}
+
+bool fromHex(const std::string& text, std::vector<uint8_t>& out) {
+    out.clear();
+    if (text.size() % 2 != 0 || text.size() / 2 > kMaxOrderBytes) return false;
+    auto nib = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    out.reserve(text.size() / 2);
+    for (size_t i = 0; i < text.size(); i += 2) {
+        const int hi = nib(text[i]), lo = nib(text[i + 1]);
+        if (hi < 0 || lo < 0) { out.clear(); return false; }
+        out.push_back((uint8_t)(hi << 4 | lo));
+    }
+    return true;
+}
+
+}  // namespace
+
+// One line per entry, not JSON: the payload is opaque bytes, and a line
+// format needs no escaping to round-trip them.
+//
+//   odorders 1
+//   turn <n>
+//   order <psid> <0|1 malformed> <hex>
+std::string PendingOrdersBook::encode() const {
+    std::string out = "odorders 1\nturn " + std::to_string(turn) + "\n";
+    size_t n = 0;
+    for (const PendingOrder& e : entries) {
+        if (e.psid.empty() || e.psid.find_first_of(" \n\r") != std::string::npos) continue;
+        if (n++ >= kMaxSeats) break;
+        out += "order " + e.psid + " " + (e.malformed ? "1" : "0") + " " +
+               toHex(e.orders) + "\n";
+    }
+    return out;
+}
+
+bool PendingOrdersBook::decode(const std::string& text, PendingOrdersBook& out) {
+    out = PendingOrdersBook{};
+    std::istringstream in(text);
+    std::string line;
+    if (!std::getline(in, line) || line != "odorders 1") return false;
+    if (!std::getline(in, line) || line.compare(0, 5, "turn ") != 0) return false;
+    const long long turn = std::atoll(line.c_str() + 5);
+    if (turn <= 0 || turn > 0xFFFFFFFFLL) return false;
+    out.turn = (uint32_t)turn;
+    while (std::getline(in, line) && out.entries.size() < kMaxSeats) {
+        if (line.compare(0, 6, "order ") != 0) continue;
+        std::istringstream f(line.substr(6));
+        PendingOrder e;
+        std::string flag, hex;
+        if (!(f >> e.psid >> flag)) continue;
+        f >> hex;   // empty orders are a legitimate "ready, nothing to do"
+        if (flag != "0" && flag != "1") continue;
+        e.malformed = flag == "1";
+        if (!fromHex(hex, e.orders)) continue;
+        out.entries.push_back(std::move(e));
+    }
+    return true;
+}
+
+std::string PendingOrdersBook::pathFor(const std::string& savePath) {
+    return savePath + ".odorders";
+}
+
+bool PendingOrdersBook::save(const std::string& savePath) const {
+    if (savePath.empty()) return false;
+    return hostBookWriteAtomic(pathFor(savePath), encode());
+}
+
+bool PendingOrdersBook::load(const std::string& savePath, PendingOrdersBook& out) {
+    out = PendingOrdersBook{};
+    if (savePath.empty()) return false;
+    std::ifstream f(pathFor(savePath), std::ios::binary);
+    if (!f) return false;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return decode(ss.str(), out);
+}
+
+void PendingOrdersBook::remove(const std::string& savePath) {
+    if (savePath.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(pathFor(savePath), ec);
 }

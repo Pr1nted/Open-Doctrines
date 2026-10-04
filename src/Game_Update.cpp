@@ -180,12 +180,18 @@ void Game::handlePauseMenu() {
             }
         }
         else if (m_menuIndex == 4) {
+            // The collection, mid-game. Closing it comes back here, still
+            // paused, rather than to the main menu.
+            Audio::get().playSfx("click_light");
+            openAchievements(SCREEN_PLAYING);
+        }
+        else if (m_menuIndex == 5) {
             // Straight into the form. The pause menu stays up behind it, so
             // closing the report puts the player back where they were rather
             // than into a game they did not mean to resume.
             openFeedbackForm(feedback::Kind::Bug, feedback::Category::Other);
         }
-        else if (m_menuIndex == 5) {
+        else if (m_menuIndex == 6) {
             if (m_unsavedChanges) {
                 m_showUnsavedWarning = true;
                 m_unsavedChoice = 0;
@@ -1270,6 +1276,7 @@ void Game::update(float dt) {
                                     treasury -= price.money;
                                     payWarMaterials(m_playerCountryId, price);
                                     m_pendingArtilleryOrders.push_back({m_artillerySourceProvince, hp->id, m_artillerySelectedType});
+                                    if (m_netSession) achNoteArtillery(m_artillerySelectedType, hp->id);
                                     // The shells land turns later; paying for
                                     // them is the only feedback at this end.
                                     Audio::get().playSfx("coin");

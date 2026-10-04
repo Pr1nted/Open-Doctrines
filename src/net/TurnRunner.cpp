@@ -10,6 +10,15 @@ void TurnRunner::beginTurn(uint32_t turnNumber, long long nowMs) {
         : nowMs + static_cast<long long>(m_config.turnSeconds) * 1000;
 }
 
+void TurnRunner::beginTurnWithRemaining(uint32_t turnNumber, long long nowMs,
+                                        long long remainingMs) {
+    m_turnNumber = turnNumber;
+    m_running = true;
+    m_deadlineMs = m_config.turnSeconds == 0
+        ? 0
+        : nowMs + (remainingMs > 0 ? remainingMs : 0);
+}
+
 bool TurnRunner::due(long long nowMs) const {
     if (!m_running || m_config.turnSeconds == 0) return false;
     return nowMs >= m_deadlineMs;

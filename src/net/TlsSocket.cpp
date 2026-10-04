@@ -1,4 +1,6 @@
 #include "TlsSocket.h"
+#include "Socks5.h"
+#include "TorClient.h"
 
 #if !defined(__EMSCRIPTEN__) && defined(OD_ENABLE_NET)
 
@@ -336,6 +338,107 @@ int connectWithin(const std::string& host, const std::string& port, int timeoutM
     return fd;
 }
 
+// All of a buffer, or false. For the SOCKS exchange, which is a handful of
+// bytes each way on a blocking socket with a receive timeout set.
+bool sendAllRaw(int fd, const uint8_t* p, size_t n) {
+    while (n > 0) {
+        const auto w = ::send(fd, (const char*)p, (int)n, 0);
+        if (w <= 0) return false;
+        p += w;
+        n -= (size_t)w;
+    }
+    return true;
+}
+
+bool recvAllRaw(int fd, uint8_t* p, size_t n) {
+    while (n > 0) {
+        const auto r = ::recv(fd, (char*)p, (int)n, 0);
+        if (r <= 0) return false;
+        p += r;
+        n -= (size_t)r;
+    }
+    return true;
+}
+
+/**
+ * A connection to `host`:`port` through the local Tor client, or -1.
+ *
+ * Generous with time: building a circuit, and for an onion service finding
+ * and meeting it, takes tens of seconds on a bad day. The usual 15-second
+ * connect timeout would fail most first joins to an onion.
+ */
+int socksConnect(const std::string& host, uint16_t port, std::string& error) {
+    std::vector<int> ports;
+    if (socks5::port() > 0) ports.push_back(socks5::port());
+    else ports = {9050, 9150};          // the tor service, then Tor Browser
+
+    int fd = -1;
+    for (int p : ports) {
+        std::string ignored;
+        fd = connectWithin("127.0.0.1", std::to_string(p), 3000, ignored);
+        if (fd >= 0) break;
+    }
+    if (fd < 0) {
+        // Nobody's Tor is running: start the game's own (TorClient.h). This
+        // is a worker thread -- every caller of TlsSocket::open is -- so
+        // waiting the minute it can take to connect blocks nothing on screen.
+        std::string why;
+        const int p = torclient::ensure(why);
+        if (p > 0) {
+            std::string ignored;
+            fd = connectWithin("127.0.0.1", std::to_string(p), 3000, ignored);
+        }
+        if (fd < 0) {
+            error = why.empty() ? "Tor did not answer on this computer." : why;
+            return -1;
+        }
+    }
+
+#if defined(_WIN32)
+    DWORD tv = 90000;
+#else
+    timeval tv{90, 0};
+#endif
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+    const std::vector<uint8_t> hello = socks5::greeting();
+    uint8_t answer[2] = {0, 0};
+    if (!sendAllRaw(fd, hello.data(), hello.size()) || !recvAllRaw(fd, answer, 2) ||
+        answer[0] != 0x05 || answer[1] != 0x00) {
+        closeFd(fd);
+        error = "the program on the Tor port did not answer as Tor does";
+        return -1;
+    }
+    const std::vector<uint8_t> req = socks5::connectRequest(host, port);
+    uint8_t head[5] = {0, 0, 0, 0, 0};
+    if (!sendAllRaw(fd, req.data(), req.size()) || !recvAllRaw(fd, head, 5)) {
+        closeFd(fd);
+        error = "Tor gave no answer for " + host + " in time";
+        return -1;
+    }
+    if (head[1] != 0x00) {
+        closeFd(fd);
+        error = "could not reach " + host + " through Tor: " + socks5::replyText(head[1]);
+        return -1;
+    }
+    const int rest = socks5::replyRemainder(head);
+    std::vector<uint8_t> skip((size_t)std::max(0, rest));
+    if (rest < 0 || !recvAllRaw(fd, skip.data(), skip.size())) {
+        closeFd(fd);
+        error = "Tor's answer for " + host + " was cut short";
+        return -1;
+    }
+    // The receive timeout stays at the default from here: the game's own read
+    // loops set what they want (TlsSocket::setReadTimeoutMs).
+#if defined(_WIN32)
+    DWORD none = 0;
+#else
+    timeval none{0, 0};
+#endif
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&none, sizeof(none));
+    return fd;
+}
+
 }  // namespace
 
 namespace odnet {
@@ -419,7 +522,17 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
 
     const std::string portText = std::to_string(port);
     int rc = 0;
-    if (connectTimeoutMs > 0) {
+    if (socks5::wanted(host)) {
+        // ── THROUGH TOR ──
+        //
+        // To the Tor client on this machine, then a SOCKS5 CONNECT naming the
+        // destination by hostname. TLS, when wanted, runs over the result
+        // exactly as it would over a direct connection -- Tor only carries
+        // the bytes. See Socks5.h.
+        const int fd = socksConnect(host, port, error);
+        if (fd < 0) return false;
+        m_impl->net.fd = fd;
+    } else if (connectTimeoutMs > 0) {
         const int fd = connectWithin(host, portText, connectTimeoutMs, error);
         if (fd < 0) return false;
         m_impl->net.fd = fd;

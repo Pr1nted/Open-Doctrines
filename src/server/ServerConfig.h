@@ -55,6 +55,8 @@ enum class ServerTunnelMode : uint8_t {
     Auto,
     Cloudflared,
     LocalhostRun,
+    /** A Tor onion service. Players need Tor; see TunnelProvider::Tor. */
+    Tor,
 };
 
 const char* serverTunnelModeName(ServerTunnelMode m);
@@ -136,6 +138,31 @@ struct ServerConfig {
     uint32_t maxPlayers = 8;
     /** Rule turn length in seconds. 0 = long-form, no countdown. */
     uint32_t turnSeconds = 0;
+    /**
+     * Resolve on a fixed daily grid -- "18:00" means turns are due at 18:00
+     * UTC (every day, for a 24-hour turn). Empty: each turn lasts turnSeconds
+     * from whenever it opened. See src/net/TurnClock.h.
+     */
+    std::string turnAt;
+    /**
+     * A turn whose deadline passed while the server was down is resolved this
+     * many seconds after it comes back, not instantly, so players and their
+     * orders have a moment to reconnect.
+     */
+    uint32_t resumeGraceSeconds = 120;
+    /**
+     * A voice chat (or any community) link offered to every player, e.g. a
+     * Discord invite. The game opens it in the player's browser; nothing about
+     * the call passes through the game. https only. Empty for none.
+     */
+    std::string voiceLink;
+    /**
+     * A shell command run after every turn resolves and every time orders
+     * arrive (at most once a minute), and on shutdown. It is how a server on a
+     * machine without a durable disk keeps its campaign somewhere that is --
+     * see tools/campaign_sync.sh. Empty for none.
+     */
+    std::string checkpointCommand;
     /** "host" or "players": who picks countries. */
     std::string assignment = "players";
     /** "refuse" or "spectate": what happens to someone arriving mid-game. */

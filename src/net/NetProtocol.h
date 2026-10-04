@@ -128,6 +128,31 @@ enum class NetMsg : uint16_t {
      * that carried the key would be a store that could read everything in it.
      */
     TurnStoreInfo = 79,
+
+    /**
+     * Things about the session that are not rules: today, the voice chat link
+     * the host offers. See NetSessionInfo.
+     *
+     * Additive, and its payload is read leniently -- trailing bytes a newer
+     * host appends are ignored rather than refused -- so it can grow without
+     * the next field needing an id of its own.
+     */
+    SessionInfo = 81,
+
+    /**
+     * A small political map of the world, for picking a country in the lobby
+     * by clicking it. See src/net/LobbyMap.h. Display only: a claim still goes
+     * through ClaimCountry and is decided by the server.
+     */
+    LobbyMap = 82,
+
+    /**
+     * The world for a joiner, deflated: a NetSnapshotZ. Sent instead of
+     * Snapshot to a client that said in its hello it can read one ("caps"
+     * containing "snapz"), and to nobody else -- so an older client, which
+     * never says so, still gets the plain Snapshot it understands.
+     */
+    SnapshotZ = 83,
 };
 
 const char* netMsgName(NetMsg m);
@@ -154,6 +179,12 @@ enum class NetReject : uint16_t {
      * evening. Hosting anonymously is fine, but it has to be STATED.
      */
     HostNotDeclared    = 10,
+    /**
+     * LOCAL ONLY, never sent: the host removed this player with a Kick. Kept
+     * apart from Unknown so the client does not dial straight back in -- a
+     * reconnect loop after a kick is the kick not working.
+     */
+    Kicked             = 11,
 };
 
 const char* netRejectName(NetReject r);
@@ -456,6 +487,39 @@ struct NetTurnOrders {
     std::vector<uint8_t> encode() const;
     static bool decode(const uint8_t* data, size_t size, NetTurnOrders& out);
 };
+
+/**
+ * Whether a voice link is one the game will offer to open.
+ *
+ * https only, printable ASCII, no spaces, at most 200 characters. The game
+ * hands it to the player's browser, so a `file:` or `javascript:` link, or a
+ * string with a newline that a shell might split, must never get that far.
+ * The host chooses the link; the player is shown its domain before it opens.
+ */
+bool netVoiceLinkValid(const std::string& url);
+
+/** "discord.gg" from "https://discord.gg/abc" -- what a player is shown. */
+std::string netVoiceLinkHost(const std::string& url);
+
+struct NetSessionInfo {
+    std::string voiceLink;     // empty: none offered
+
+    std::vector<uint8_t> encode() const;
+    /** Lenient: a newer host's trailing fields are ignored, not refused. */
+    static bool decode(const uint8_t* data, size_t size, NetSessionInfo& out);
+};
+
+struct NetSnapshotZ {
+    uint32_t turnNumber = 0;
+    uint32_t rawSize = 0;              // the Snapshot payload's size, inflated
+    std::vector<uint8_t> deflated;
+
+    std::vector<uint8_t> encode() const;
+    static bool decode(const uint8_t* data, size_t size, NetSnapshotZ& out);
+};
+
+/** What this build's hello says it can read beyond protocol version 1. */
+inline constexpr const char* kNetClientCaps = "snapz";
 
 struct NetTurnBegin {
     uint32_t turnNumber = 0;

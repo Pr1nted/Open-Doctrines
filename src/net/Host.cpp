@@ -8,6 +8,7 @@
 #include "ChatRules.h"
 #include "RateLimit.h"
 #include "WsServer.h"
+#include "NetZip.h"
 
 #include <atomic>
 #include <deque>
@@ -21,6 +22,12 @@
 namespace {
 
 constexpr int kOpenTimeoutMs = 20000;
+
+// The dedicated host's seat id: one no connection is ever given.
+constexpr uint16_t kNoHostSeat = 0xFFFF;
+
+// Disconnected spectators remembered at most. See Lobby::pruneSpectators.
+constexpr size_t kKeptSpectators = 32;
 
 // How long a connection may sit without presenting a valid ticket. Generous
 // enough for a slow link and a round trip to the account service, short enough
@@ -121,6 +128,11 @@ struct NetHost::Impl {
     /** The opener has a seat to hand over; update() takes it. See takeHostSeat. */
     bool seatHostPending = false;
     uint32_t turnNumber = 0;
+    // The open turn's deadline on this process's clock, so somebody who
+    // reconnects mid-turn is told how long is left rather than seeing no timer
+    // at all until the next turn begins -- a day later, on a daily campaign.
+    bool   turnOpen = false;
+    double turnDeadlineAt = 0.0;   // 0 = no deadline (long-form)
 
     WsServer  server;
 
@@ -138,10 +150,39 @@ struct NetHost::Impl {
     // identical is everything after admission: the lobby, the frames, the turn
     // logic. That is the point -- one set of rules, two ways in.
     bool      viaRelay = false;
-    WebSocket relaySock;
+    // A pointer so it can be REPLACED: a WebSocket is single-use, and a relay
+    // that drops in the third week of a campaign has to be dialled afresh
+    // rather than ending the server. See pumpRelay.
+    std::unique_ptr<WebSocket> relaySock = std::make_unique<WebSocket>();
     bool      relaySaidHello = false;
     bool      relaySeated = false;
     std::string relayHello;          ///< minted at open, sent once connected
+
+    // ── KEEPING A SESSION ALIVE FOR WEEKS ──
+    //
+    // Two things the account service hands out expire: the session descriptor
+    // (a day) that joiners mint tickets against, and the relay ticket the host
+    // presented once. A host that never restarts outlives both, so a keeper
+    // thread renews the first on a schedule and re-mints the second whenever
+    // the relay socket is lost. Neither touches the lobby: players already
+    // seated over a direct socket never notice, and relayed ones are marked
+    // disconnected and come back through the ordinary reconnect path.
+    std::string descriptor;          ///< under mutex
+    std::thread keeper;
+    std::atomic<bool> relayWanted{false};
+    std::atomic<bool> relayRecovering{false};
+    double relayLostAt = 0.0;
+    void keeperLoop();
+    bool mintRelayHello(const Config& c, const std::string& code,
+                        const std::string& descriptor, std::string& why);
+    bool renewSession(const Config& c);
+    std::string currentToken(const Config& c) const {
+        if (c.freshToken) {
+            std::string t = c.freshToken();
+            if (!t.empty()) return t;
+        }
+        return c.token;
+    }
 
     /**
      * Relay peer ids live in a tagged range of the WsConnId space.
@@ -169,7 +210,7 @@ struct NetHost::Impl {
             const auto wrapped = netrelay::encodeFromHost(
                 netrelay::FromHost::ToPeer, relayOfConn(conn),
                 frame.data(), frame.size());
-            relaySock.send(wrapped);
+            relaySock->send(wrapped);
             return;
         }
         server.send(conn, frame);
@@ -184,7 +225,7 @@ struct NetHost::Impl {
             const auto wrapped = netrelay::encodeFromHost(
                 netrelay::FromHost::Kick, relayOfConn(conn),
                 (const uint8_t*)reason.data(), reason.size());
-            relaySock.send(wrapped);
+            relaySock->send(wrapped);
             return;
         }
         server.closeConn(conn, why);
@@ -232,6 +273,8 @@ struct NetHost::Impl {
         long long lastPinged = 0;
     };
     std::vector<Seated> seated;
+    /** Sockets whose hello said they read a deflated snapshot. */
+    std::vector<WsConnId> snapzConns;
 
     /** Mod messages addressed to the host's own copy. */
     std::deque<NetModMsg> modInbox;
@@ -264,6 +307,28 @@ struct NetHost::Impl {
     void admitRelayPeer(uint16_t relayPeerId, const std::string& identityJson);
     uint16_t nextPeerId = 1;        // 0 is "nobody"
 
+    /**
+     * A routing handle nobody holds.
+     *
+     * `nextPeerId++` wrapped after 65,535 connections -- to 0, which admit()
+     * refuses, and then through ids still held by members, which it would hand
+     * a second person. A month-long server with clients reconnecting through
+     * flaky links gets through a lot of connections; it should not depend on
+     * how many.
+     */
+    uint16_t allocPeerId() {
+        for (int tries = 0; tries < 0x10000; ++tries) {
+            const uint16_t id = nextPeerId++;
+            if (nextPeerId == 0 || nextPeerId == kNoHostSeat) nextPeerId = 1;
+            if (id == 0 || id == kNoHostSeat) continue;
+            if (lobby.find(id)) continue;
+            bool live = false;
+            for (const auto& s2 : seated) if (s2.peerId == id) { live = true; break; }
+            if (!live) return id;
+        }
+        return 0;   // admit() refuses 0: a full house, said as one
+    }
+
     std::vector<NetHostEvent> events;
     /** Peer id -> the mod set it declared, for the attestation check. */
     std::vector<ModAttestEntry> required;
@@ -271,6 +336,8 @@ struct NetHost::Impl {
     /** Sent to every peer after its WELCOME, including late ones. */
     NetCountryList countries;
     std::string    mapName;
+    std::vector<uint8_t> lobbyMap;     // encoded; empty for none
+    std::vector<uint8_t> sessionInfo;  // encoded; empty for none
 
     Pending* findPending(WsConnId c) {
         for (Pending& p : pending) if (p.conn == c) return &p;
@@ -370,6 +437,7 @@ bool NetHost::nextEvent(NetHostEvent& out) {
 void NetHost::close() {
     m_impl->abandon.store(true);
     if (m_impl->opener.joinable()) m_impl->opener.join();
+    if (m_impl->keeper.joinable()) m_impl->keeper.join();
     // Closes every player's socket and the listening port with it.
     m_impl->server.stop();
     m_impl->pending.clear();
@@ -387,7 +455,8 @@ std::string NetHost::listenNote() const {
 NetHost::RelayState NetHost::relayState() const {
     if (!m_impl->viaRelay) return RelayState::NotUsed;
     if (m_impl->relaySeated) return RelayState::Connected;
-    if (m_impl->relaySock.state() == WsState::Closed) return RelayState::Failed;
+    if (m_impl->relayRecovering.load()) return RelayState::Connecting;
+    if (m_impl->relaySock->state() == WsState::Closed) return RelayState::Failed;
     return RelayState::Connecting;
 }
 
@@ -461,12 +530,7 @@ bool NetHost::open(const Config& config) {
         const bool local = c.issuer.rfind("http://localhost", 0) == 0 ||
                            c.issuer.rfind("http://127.0.0.1", 0) == 0;
 
-        std::string body = "{\"serverCredential\":\"" + httpJsonEscape(c.serverCredential) +
-                           "\",\"settings\":{\"name\":\"" + httpJsonEscape(c.sessionName) +
-                           "\",\"listed\":" + (c.listed ? "true" : "false") +
-                           ",\"maxPlayers\":" + std::to_string(c.lobby.maxPlayers) +
-                           ",\"showBadges\":" + (c.showBadges ? "true" : "false") +
-                           ",\"requiredMods\":[]}}";
+        const std::string body = netHostSessionBody(c, c.reopenCode);
 
         HttpRequest req;
         req.method = "POST";
@@ -496,6 +560,16 @@ bool NetHost::open(const Config& config) {
             std::lock_guard<std::mutex> lock(impl->mutex);
             impl->code = code;
             impl->hostPsid = psid;
+            impl->descriptor = descriptor;
+            // Said once, so a host whose players saved the old code knows to
+            // hand out the new one. An older account service that has never
+            // heard of reopening says nothing at all, which reads the same.
+            if (!c.reopenCode.empty() && code != c.reopenCode) {
+                const std::string why = httpJsonString(res.body, "reopenRefused", 64);
+                impl->listenNote = "The invite code changed from " + c.reopenCode +
+                    " to " + code + (why.empty() ? std::string("") : " (" + why + ")") +
+                    ". Players who saved the old one need the new one.";
+            }
         }
 
         // The key every join is checked against. Fetched ONCE, here, and then
@@ -553,38 +627,10 @@ bool NetHost::open(const Config& config) {
         // Minted HERE rather than there because this is already a worker: the
         // frame thread must not block on two round trips.
         if (impl->viaRelay) {
-            HttpRequest info;
-            info.url = c.issuer + "/session/" + code;
-            info.allowInsecure = local;
-            info.timeoutMs = kOpenTimeoutMs;
-            const HttpResponse infoRes = httpRequest(info);
-            if (impl->abandon.load()) return;
-            const std::string nonce = httpJsonString(infoRes.body, "nonce", 128);
-            if (!infoRes.ok() || nonce.empty()) {
-                impl->fail("The relay would not issue a challenge for this session.");
+            std::string why;
+            if (!impl->mintRelayHello(c, code, descriptor, why)) {
+                if (!impl->abandon.load()) impl->fail(why);
                 return;
-            }
-
-            HttpRequest mint;
-            mint.method = "POST";
-            mint.url = c.issuer + "/ticket";
-            mint.bearer = c.token;
-            mint.allowInsecure = local;
-            mint.timeoutMs = kOpenTimeoutMs;
-            mint.body = "{\"descriptor\":\"" + httpJsonEscape(descriptor) +
-                        "\",\"nonce\":\"" + httpJsonEscape(nonce) + "\"}";
-            const HttpResponse tRes = httpRequest(mint);
-            if (impl->abandon.load()) return;
-            const std::string ticket = httpJsonString(tRes.body, "ticket", 4096);
-            if (!tRes.ok() || ticket.empty()) {
-                const std::string why = httpJsonString(tRes.body, "message", 512);
-                impl->fail(why.empty() ? "The relay refused this server's own ticket."
-                                       : why);
-                return;
-            }
-            {
-                std::lock_guard<std::mutex> lock(impl->mutex);
-                impl->relayHello = netrelay::helloFrame(ticket);
             }
             // NOT Live yet: a relayed host is not open for business until the
             // relay has accepted it. update() finishes the job.
@@ -595,6 +641,7 @@ bool NetHost::open(const Config& config) {
         impl->phase.store(Phase::Live);
         impl->push({NetHostEvent::Kind::Opened, 0, code, {}});
     });
+    m_impl->keeper = std::thread([impl = m_impl.get()] { impl->keeperLoop(); });
     return true;
 }
 
@@ -610,8 +657,11 @@ void NetHost::Impl::takeHostSeat() {
         name = hostName;
         badges = hostBadges;
     }
-    const uint16_t seat = c.dedicated ? 0 : nextPeerId++;
-    if (seat) {
+    // A dedicated host has no seat, and its id must not be one a member could
+    // hold: held seats from a resumed campaign all carry 0 until their player
+    // returns, and a host that was also 0 was every one of them at once.
+    const uint16_t seat = c.dedicated ? kNoHostSeat : allocPeerId();
+    if (seat != kNoHostSeat) {
         lobby.admit(seat, psid, c.anonymous ? "" : name, c.anonymous ? "" : badges,
                     c.issuer, true);
     }
@@ -620,6 +670,158 @@ void NetHost::Impl::takeHostSeat() {
 }
 
 // ---------------------------------------------------------------- update ----
+
+// ── THE SESSION, AS THE ACCOUNT SERVICE IS ASKED FOR IT ──
+//
+// One body for opening and for renewing, so the two cannot drift. `longForm`
+// is what tells the service to hold a session for its long grace when the
+// host goes away; it was never sent, so every session -- including a
+// tournament's -- was deleted ninety seconds after its host closed the lid.
+std::string netHostSessionBody(const NetHost::Config& c, const std::string& reopenCode) {
+    const bool longForm = c.turnSeconds == 0 || c.durable;
+    std::string body = "{\"serverCredential\":\"" + httpJsonEscape(c.serverCredential) +
+                       "\",\"settings\":{\"name\":\"" + httpJsonEscape(c.sessionName) +
+                       "\",\"listed\":" + (c.listed ? "true" : "false") +
+                       ",\"maxPlayers\":" + std::to_string(c.lobby.maxPlayers) +
+                       ",\"showBadges\":" + (c.showBadges ? "true" : "false") +
+                       ",\"longForm\":" + (longForm ? "true" : "false") +
+                       ",\"requiredMods\":[]}";
+    if (!reopenCode.empty())
+        body += ",\"reopen\":\"" + httpJsonEscape(reopenCode) + "\"";
+    return body + "}";
+}
+
+bool NetHost::Impl::mintRelayHello(const Config& c, const std::string& code,
+                                   const std::string& desc, std::string& why) {
+    const bool local = c.issuer.rfind("http://localhost", 0) == 0 ||
+                       c.issuer.rfind("http://127.0.0.1", 0) == 0;
+    HttpRequest info;
+    info.url = c.issuer + "/session/" + code;
+    info.allowInsecure = local;
+    info.timeoutMs = kOpenTimeoutMs;
+    const HttpResponse infoRes = httpRequest(info);
+    if (abandon.load()) return false;
+    const std::string nonce = httpJsonString(infoRes.body, "nonce", 128);
+    if (!infoRes.ok() || nonce.empty()) {
+        why = "The relay would not issue a challenge for this session.";
+        return false;
+    }
+
+    HttpRequest mint;
+    mint.method = "POST";
+    mint.url = c.issuer + "/ticket";
+    mint.bearer = currentToken(c);
+    mint.allowInsecure = local;
+    mint.timeoutMs = kOpenTimeoutMs;
+    mint.body = "{\"descriptor\":\"" + httpJsonEscape(desc) +
+                "\",\"nonce\":\"" + httpJsonEscape(nonce) + "\"}";
+    const HttpResponse tRes = httpRequest(mint);
+    if (abandon.load()) return false;
+    const std::string ticket = httpJsonString(tRes.body, "ticket", 4096);
+    if (!tRes.ok() || ticket.empty()) {
+        const std::string msg = httpJsonString(tRes.body, "message", 512);
+        why = msg.empty() ? "The relay refused this server's own ticket." : msg;
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex);
+    relayHello = netrelay::helloFrame(ticket);
+    return true;
+}
+
+bool NetHost::Impl::renewSession(const Config& c) {
+    std::string current;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        current = code;
+    }
+    if (current.empty()) return false;
+    HttpRequest req;
+    req.method = "POST";
+    req.url = c.issuer + "/session";
+    req.bearer = currentToken(c);
+    req.body = netHostSessionBody(c, current);
+    req.allowInsecure = c.issuer.rfind("http://localhost", 0) == 0 ||
+                        c.issuer.rfind("http://127.0.0.1", 0) == 0;
+    req.timeoutMs = kOpenTimeoutMs;
+    const HttpResponse res = httpRequest(req);
+    if (!res.ok()) return false;
+    const std::string desc = httpJsonString(res.body, "descriptor", 4096);
+    const std::string got  = httpJsonString(res.body, "code", 32);
+    if (got.empty()) return false;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!desc.empty()) descriptor = desc;
+        if (got != code) {
+            // The service would not reopen this code and issued another. The
+            // session is still ours, under a new name -- which every player who
+            // saved the old one needs telling, so it is an event and not a log.
+            code = got;
+            listenNote = "The account service would not renew invite code " + current +
+                         " and issued " + got + " instead. Share the new one.";
+        }
+    }
+    if (got != current) push({NetHostEvent::Kind::CodeChanged, 0, got, {}});
+    return true;
+}
+
+void NetHost::Impl::keeperLoop() {
+    // How often the descriptor is renewed. Half its 24-hour life, so a single
+    // failed attempt still leaves a whole retry before joins start failing.
+    // The environment override exists for tests, which cannot wait 12 hours.
+    double renewEvery = 12.0 * 3600.0;
+    if (const char* e = std::getenv("OD_SESSION_RENEW_SECONDS")) {
+        const double v = std::atof(e);
+        if (v >= 1.0) renewEvery = v;
+    }
+    double lastRenew = nowMonotonic();
+    double nextRelayTry = 0.0;
+    double relayBackoff = 2.0;
+
+    while (!abandon.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        if (abandon.load()) return;
+        const Phase p = phase.load();
+        if (p == Phase::Closed) return;
+        if (p != Phase::Live && !relayRecovering.load()) continue;
+
+        Config c;
+        std::string currentCode, desc;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            c = config;
+            currentCode = code;
+            desc = descriptor;
+        }
+        const double now = nowMonotonic();
+
+        if (now - lastRenew >= renewEvery) {
+            // A failure is retried in ten minutes rather than a whole period.
+            lastRenew = renewSession(c) ? now : now - renewEvery + 600.0;
+        }
+
+        if (relayWanted.load() && now >= nextRelayTry) {
+            std::string why;
+            // The descriptor may be the reason the relay refused us: renew it
+            // first when it is old, so a server that lost its relay on day two
+            // does not retry forever with a ticket for a dead descriptor.
+            if (now - lastRenew > 6.0 * 3600.0 && renewSession(c)) {
+                lastRenew = now;
+                std::lock_guard<std::mutex> lock(mutex);
+                currentCode = code;
+                desc = descriptor;
+            }
+            if (mintRelayHello(c, currentCode, desc, why)) {
+                relayWanted.store(false);
+                relayBackoff = 2.0;
+            } else {
+                // Backed off to a minute: the service may be redeploying, and
+                // hammering it would only make that slower.
+                nextRelayTry = now + relayBackoff;
+                relayBackoff = std::min(60.0, relayBackoff * 2.0);
+            }
+        }
+    }
+}
 
 void NetHost::update() {
     Impl& impl = *m_impl;
@@ -687,7 +889,7 @@ void NetHost::Impl::seatPeer(WsConnId conn, const std::string& psid,
     // A returning player keeps their seat: Lobby matches on the pseudonym and
     // moves the handle, so a reconnect does not cost a country or submitted
     // orders. That is why the psid and not the socket is the identity.
-    const uint16_t peerId = nextPeerId++;
+    const uint16_t peerId = allocPeerId();
     const LobbyDenial denial = lobby.admit(peerId, psid, name, badges,
                                            issuer, issuer == config.issuer);
     if (denial != LobbyDenial::None) {
@@ -710,6 +912,11 @@ void NetHost::Impl::seatPeer(WsConnId conn, const std::string& psid,
         closeAfterRefusal(conn, "refused");
         return;
     }
+
+    // Spectators who came once and left are forgotten past a few dozen, so a
+    // server watched by hundreds over a month does not carry them all in
+    // every lobby update. Players are never pruned. See Lobby::pruneSpectators.
+    lobby.pruneSpectators(kKeptSpectators);
 
     // Whatever seat the lobby settled on -- a fresh one, or the one this
     // pseudonym already held -- is the seat this socket now speaks for.
@@ -747,6 +954,10 @@ void NetHost::Impl::seatPeer(WsConnId conn, const std::string& psid,
     // having to load the map first.
     if (!countries.countries.empty())
         sendToConn(conn, netEncodeFrame(NetMsg::Countries, countries.encode()));
+    if (!lobbyMap.empty())
+        sendToConn(conn, netEncodeFrame(NetMsg::LobbyMap, lobbyMap));
+    if (!sessionInfo.empty())
+        sendToConn(conn, netEncodeFrame(NetMsg::SessionInfo, sessionInfo));
 
     // Long-form: where the turns live, and the key to seal orders with. Sent
     // here so a returning player has it before they do anything else -- and
@@ -758,6 +969,14 @@ void NetHost::Impl::seatPeer(WsConnId conn, const std::string& psid,
         info.sessionCode = code;
         info.sealKey     = config.sealKey;
         sendToConn(conn, netEncodeFrame(NetMsg::TurnStoreInfo, info.encode()));
+    }
+
+    // Mid-turn: the turn that is open, and how long it has left.
+    if (turnOpen && lobby.state() == NetSessionState::Game) {
+        const double left = turnDeadlineAt > 0.0 ? turnDeadlineAt - nowMonotonic() : 0.0;
+        NetTurnBegin t{turnNumber, turnDeadlineAt > 0.0
+                                       ? (uint32_t)std::max(1.0, left * 1000.0) : 0u};
+        sendToConn(conn, netEncodeFrame(NetMsg::TurnBegin, t.encode()));
     }
 
     push({NetHostEvent::Kind::PeerJoined, settled, name, {}});
@@ -826,8 +1045,8 @@ void NetHost::Impl::pumpRelay() {
     }
     if (hello.empty()) return;              // the opener has not minted it yet
 
-    // One connect, from this thread, once.
-    if (relaySock.state() == WsState::Idle) {
+    // One connect per hello, from this thread.
+    if (relaySock->state() == WsState::Idle) {
         std::string iss, c;
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -836,33 +1055,63 @@ void NetHost::Impl::pumpRelay() {
         const std::string url = netrelay::relayUrl(iss, c, "host");
         if (url.empty()) { fail("This service's address cannot carry a relay."); return; }
         const bool insecure = url.rfind("ws://", 0) == 0;
-        if (!relaySock.connect(url, insecure)) {
-            fail(relaySock.error().empty() ? "Could not reach the relay."
-                                           : relaySock.error());
+        if (!relaySock->connect(url, insecure)) {
+            if (relayRecovering.load()) {
+                // Try again with a fresh ticket rather than giving up a
+                // session that is otherwise intact.
+                relaySock = std::make_unique<WebSocket>();
+                { std::lock_guard<std::mutex> lock(mutex); relayHello.clear(); }
+                relayWanted.store(true);
+                return;
+            }
+            fail(relaySock->error().empty() ? "Could not reach the relay."
+                                            : relaySock->error());
         }
         return;
     }
 
-    if (relaySock.state() == WsState::Closed) {
-        if (phase.load() == Phase::Live) {
-            // Losing the relay mid-game is losing every player at once, and
-            // pretending otherwise would leave a lobby full of ghosts.
-            fail(relaySock.error().empty() ? "The relay connection was lost."
-                                           : relaySock.error());
+    if (relaySock->state() == WsState::Closed) {
+        if (phase.load() == Phase::Live || relayRecovering.load()) {
+            // ── THE RELAY WENT AWAY. THE SESSION DID NOT. ──
+            //
+            // This used to end the server: a dropped relay socket was a failed
+            // session, and a dedicated host exited with code 4. On a campaign
+            // that runs for weeks that is not an edge case, it is a certainty
+            // -- the account service redeploys, a NAT entry expires, a laptop
+            // changes networks -- and every one of them cost the tournament.
+            //
+            // Every relayed player IS gone for now, so they are marked
+            // disconnected, which keeps their seats and orders. Then a fresh
+            // ticket is minted off the frame thread (the keeper) and the relay
+            // is dialled again; players reconnect through the ordinary path.
+            if (!relayRecovering.load()) {
+                relayRecovering.store(true);
+                relayLostAt = nowMonotonic();
+                for (size_t i = seated.size(); i-- > 0;)
+                    if (isRelayConn(seated[i].conn)) handleDisconnected(seated[i].conn);
+                push({NetHostEvent::Kind::RelayLost, 0,
+                      relaySock->error().empty() ? std::string("connection closed")
+                                                 : relaySock->error(), {}});
+            }
+            relaySock = std::make_unique<WebSocket>();
+            relaySaidHello = false;
+            relaySeated = false;
+            { std::lock_guard<std::mutex> lock(mutex); relayHello.clear(); }
+            relayWanted.store(true);
         }
         return;
     }
-    if (relaySock.state() != WsState::Open) return;
+    if (relaySock->state() != WsState::Open) return;
 
     if (!relaySaidHello) {
         relaySaidHello = true;
-        relaySock.sendText(hello);
+        relaySock->sendText(hello);
         return;                              // the answer arrives next frame
     }
 
     // The relay answers the hello as text, and says nothing else in text ever.
     std::string text;
-    while (relaySock.pollText(text)) {
+    while (relaySock->pollText(text)) {
         uint16_t assigned = 0;
         std::string role;
         if (!netrelay::parseHelloReply(text, assigned, role)) {
@@ -885,11 +1134,13 @@ void NetHost::Impl::pumpRelay() {
         if (!relaySeated) {
             relaySeated = true;
             phase.store(Phase::Live);
+            if (relayRecovering.exchange(false))
+                push({NetHostEvent::Kind::RelayRestored, 0, "", {}});
         }
     }
 
     std::vector<uint8_t> frame;
-    while (relaySock.poll(frame)) {
+    while (relaySock->poll(frame)) {
         netrelay::Inbound in;
         if (!netrelay::decodeToHost(frame.data(), frame.size(), in)) continue;
         switch (in.kind) {
@@ -941,7 +1192,7 @@ void NetHost::Impl::broadcast(NetMsg type, const std::vector<uint8_t>& payload) 
         if (anyRelayed) {
             const auto wrapped = netrelay::encodeFromHost(
                 netrelay::FromHost::Broadcast, 0, frame.data(), frame.size());
-            relaySock.send(wrapped);
+            relaySock->send(wrapped);
         }
         return;
     }
@@ -1055,6 +1306,8 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         badges += b;
     }
 
+    if (httpJsonString(text, "caps", 256).find("snapz") != std::string::npos)
+        snapzConns.push_back(conn);
     seatPeer(conn, ticket.psid, ticket.name, badges, ticket.issuer);
 }
 
@@ -1127,6 +1380,7 @@ void NetHost::Impl::checkLiveness() {
 
 void NetHost::Impl::handleDisconnected(WsConnId conn) {
     dropPending(conn);
+    snapzConns.erase(std::remove(snapzConns.begin(), snapzConns.end(), conn), snapzConns.end());
 
     const uint16_t peerId = peerFor(conn);
     if (!peerId) return;         // never got a seat: nothing to announce
@@ -1485,25 +1739,48 @@ void NetHost::setCountries(const NetCountryList& list) {
     for (const auto& s : m_impl->seated) m_impl->sendToConn(s.conn, frame);
 }
 
+void NetHost::setLobbyMap(std::vector<uint8_t> encoded) {
+    m_impl->lobbyMap = std::move(encoded);
+    if (m_impl->lobbyMap.empty()) return;
+    const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::LobbyMap, m_impl->lobbyMap);
+    for (const auto& s : m_impl->seated) m_impl->sendToConn(s.conn, frame);
+}
+
+void NetHost::setSessionInfo(const NetSessionInfo& info) {
+    m_impl->sessionInfo = info.encode();
+    const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::SessionInfo, m_impl->sessionInfo);
+    for (const auto& s : m_impl->seated) m_impl->sendToConn(s.conn, frame);
+}
+
 void NetHost::setMapName(const std::string& name) {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     m_impl->mapName = name;
 }
 
 void NetHost::returnToLobby() {
+    m_impl->turnOpen = false;
     m_impl->lobby.returnToLobby();
     m_impl->broadcastLobbyInternal();
 }
 
 void NetHost::beginTurn(uint32_t turnNumber, uint32_t deadlineMs) {
     m_impl->turnNumber = turnNumber;
+    m_impl->turnOpen = true;
+    m_impl->turnDeadlineAt = deadlineMs ? nowMonotonic() + deadlineMs / 1000.0 : 0.0;
     m_impl->lobby.clearSubmissions();
     NetTurnBegin t{turnNumber, deadlineMs};
     m_impl->broadcast(NetMsg::TurnBegin, t.encode());
     m_impl->broadcastLobbyInternal();
 }
 
+void NetHost::announceDeadline(uint32_t turnNumber, uint32_t deadlineMs) {
+    m_impl->turnDeadlineAt = deadlineMs ? nowMonotonic() + deadlineMs / 1000.0 : 0.0;
+    NetTurnBegin t{turnNumber, deadlineMs};
+    m_impl->broadcast(NetMsg::TurnBegin, t.encode());
+}
+
 void NetHost::broadcastDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
+    m_impl->turnOpen = false;
     NetWorld w;
     w.turnNumber = turnNumber;
     w.payload = payload;
@@ -1520,10 +1797,30 @@ void NetHost::broadcastTurnOrders(uint32_t turnNumber,
 
 bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
                            const std::vector<uint8_t>& payload) {
-    NetWorld w;
-    w.turnNumber = turnNumber;
-    w.payload = payload;
-    const std::vector<uint8_t> frame = w.encode();
+    // Deflated for a client that reads it: a campaign's world grows by every
+    // turn played, and uncompressed it would outgrow the relay's frame after a
+    // year of daily turns. Several times smaller this way.
+    const WsConnId conn = m_impl->connFor(peerId);
+    const bool zipped = conn && std::find(m_impl->snapzConns.begin(), m_impl->snapzConns.end(),
+                                          conn) != m_impl->snapzConns.end();
+    std::vector<uint8_t> frame;
+    NetMsg type = NetMsg::Snapshot;
+    if (zipped) {
+        NetSnapshotZ z;
+        z.turnNumber = turnNumber;
+        z.rawSize = (uint32_t)payload.size();
+        z.deflated = netDeflate(payload);
+        if (!z.deflated.empty()) {
+            frame = z.encode();
+            type = NetMsg::SnapshotZ;
+        }
+    }
+    if (type == NetMsg::Snapshot) {
+        NetWorld w;
+        w.turnNumber = turnNumber;
+        w.payload = payload;
+        frame = w.encode();
+    }
     // The frame carries a 6-byte header on top of this, and the ceiling is on
     // the whole frame. Checked here rather than at the socket because this is
     // the last place that knows WHO it was for -- and against the RELAY's
@@ -1538,7 +1835,7 @@ bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
                       " MB is the most that can be sent). They cannot be let in.", {}});
         return false;
     }
-    m_impl->toPeer(peerId, NetMsg::Snapshot, frame);
+    m_impl->toPeer(peerId, type, frame);
     return true;
 }
 

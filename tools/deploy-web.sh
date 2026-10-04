@@ -81,7 +81,8 @@ cp packaging/web/site/index.html packaging/web/site/classroom.html \
    packaging/web/site/mods.html packaging/web/site/publish.html \
    packaging/web/site/site.css \
    packaging/web/site/analytics.js packaging/web/site/robots.txt \
-   packaging/web/site/sitemap.xml packaging/web/site/llms.txt "$out/"
+   packaging/web/site/sitemap.xml packaging/web/site/llms.txt \
+   packaging/web/site/unifico.png "$out/"
 
 # ── THE VERSION THE SITE STATES IS THE VERSION BEING DEPLOYED ──
 #

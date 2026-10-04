@@ -259,11 +259,11 @@ is how it is looked at.
 The session, the orders, the lobby, the turn loop and the menu are all built —
 what remains is one thing and two shapes that landed differently from the plan.
 
-- **Dedicated server** — `--host [--dedicated] [--mode=rapid|longform]` is
-  designed in [multiplayer-hosting.md](multiplayer-hosting.md) and not
-  implemented. Hosting today means a running copy of the game with a window; a
-  host that closes it ends the session. The headless path `--train-ai` and
-  `--simulate` use is what this would reuse.
+- ~~**Dedicated server**~~ — built: `OpenDoctrinesServer`, configured by
+  `server.json` rather than the `--host --dedicated --mode` flags the design
+  named. It survives being killed, keeps its invite code, deadlines and
+  submitted orders across restarts, and can run on a free container host. See
+  [tournaments.md](tournaments.md), which is the page for running a long game.
 - **A long-form campaign played for real** — the mode is built and tested, but
   nobody has yet run one across two machines and several days. See *Turn modes*
   above.

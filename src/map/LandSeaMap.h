@@ -41,6 +41,14 @@ public:
      */
     void dropPixels();
 
+    /**
+     * Read only the land mask, a row at a time: what dropPixels() leaves,
+     * without the 128 MB image ever existing. For a process that never draws.
+     * Falls back to loadFromMemory + dropPixels for a PNG the row decoder
+     * will not read.
+     */
+    bool loadMaskFromMemory(const void* data, int size);
+
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
 

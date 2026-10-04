@@ -943,6 +943,15 @@ set(OD_DISCORD_APP_ID "" CACHE STRING
     "Discord application id baked into the build (empty = no rich presence)")
 message(STATUS "Discord presence: ${OD_DISCORD_APP_ID}")
 
+# The public keys achievement grants verify against: base64url raw Ed25519
+# keys, comma-separated, newest first. NOT the session-token key -- see
+# net/src/achievements/grant.ts for why the two have different lifetimes.
+# Empty means achievements are still counted and claimed, but no grant can be
+# verified, so the collection shows them as waiting. net/setup-achievement-key.sh
+# prints the value to put here.
+set(OD_ACHIEVEMENT_KEYS "" CACHE STRING
+    "Achievement-grant public keys baked into the build (empty = cannot verify grants)")
+
 # Into a generated header rather than a -D; see src/AccountIssuer.h.in for
 # what went wrong when it was a define.
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/AccountIssuer.h.in"
@@ -1137,7 +1146,14 @@ set(GAME_SOURCES
     # file that compiles only under Emscripten is a file that breaks without
     # anyone noticing until a web build is attempted.
     src/OdState.cpp
+    # Achievements: counted here, signed by the account service, verified
+    # against keys baked below. See src/achievements/Achievements.h.
+    src/achievements/Achievements.cpp
+    src/achievements/GrantVerify.cpp
+    # Steam, loaded at runtime if the depot shipped steam_api. Links nothing.
+    src/platform/SteamBridge.cpp
     src/Game_Account.cpp
+    src/Game_Achievements.cpp
     src/Game_Browsers.cpp
     # Built on every platform. Without OD_ENABLE_GDTL it compiles to stubs that
     # report the feature as unavailable, so the call sites in the browsers do
@@ -1239,6 +1255,7 @@ set(GAME_SOURCES
     src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
+    src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
     src/renderer/GlobeView.cpp
@@ -1266,8 +1283,13 @@ set(GAME_SOURCES
     src/net/PeerLinkUnavailable.cpp
     src/net/ServerBook.cpp
     src/net/Session.cpp
+    src/net/NetZip.cpp
     src/net/TlsSocket.cpp
+    src/net/Socks5.cpp
+    src/net/TorClient.cpp
     src/net/TurnRunner.cpp
+    src/net/TurnClock.cpp
+    src/net/LobbyMap.cpp
     src/net/Tunnel.cpp
     src/net/TunnelInstall.cpp
     src/net/HostBook.cpp
@@ -2361,6 +2383,20 @@ if(OD_GDTL_BACKEND STREQUAL "dragoman")
     endif()
 endif()
 
+# Achievement grants against vectors from another Ed25519, and the .odstate
+# rule that an archive can only OFFER grants. See tests/achievements_test.cpp.
+add_executable(AchievementsTest EXCLUDE_FROM_ALL
+    tests/achievements_test.cpp
+    src/achievements/GrantVerify.cpp
+    src/util/Ed25519.cpp
+    src/OdState.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(AchievementsTest PRIVATE src tests tools/map_generator)
+
 add_executable(NetCryptoTest EXCLUDE_FROM_ALL
     tests/net_crypto_test.cpp
     src/util/Ed25519.cpp
@@ -2399,8 +2435,15 @@ target_include_directories(NetHostBookTest PRIVATE src tests)
 add_executable(NetTunnelTest EXCLUDE_FROM_ALL
     tests/net_tunnel_test.cpp
     src/net/Tunnel.cpp
+    src/net/TorClient.cpp
+    src/net/Socks5.cpp
 )
 target_include_directories(NetTunnelTest PRIVATE src tests)
+# TorClient.cpp opens loopback sockets to find a free port and to probe Tor,
+# so on Windows this target needs Winsock like NetWsServerTest does.
+if(WIN32)
+    target_link_libraries(NetTunnelTest ws2_32)
+endif()
 
 # --- the on-screen keyboard's layout ---
 # No window: what is tested is where the keys are and what they type, which is
@@ -2437,6 +2480,8 @@ add_executable(LongformPasteTest EXCLUDE_FROM_ALL
     src/net/HttpClient.cpp
     src/net/NetUrl.cpp
     src/net/TlsSocket.cpp
+    src/net/Socks5.cpp
+    src/net/TorClient.cpp
 )
 target_include_directories(LongformPasteTest PRIVATE src tests)
 target_compile_definitions(LongformPasteTest PRIVATE OD_ENABLE_NET=1)
@@ -2456,6 +2501,10 @@ add_executable(NetConnectTest EXCLUDE_FROM_ALL
     tests/net_connect_test.cpp
     src/net/Host.cpp
     src/net/Session.cpp
+    src/net/NetZip.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
     src/net/RelayLink.cpp
     src/net/Lobby.cpp
     src/net/JoinTicket.cpp
@@ -2465,6 +2514,8 @@ add_executable(NetConnectTest EXCLUDE_FROM_ALL
     src/net/TurnRunner.cpp
     src/net/HttpClient.cpp
     src/net/TlsSocket.cpp
+    src/net/Socks5.cpp
+    src/net/TorClient.cpp
     src/net/WorldSync.cpp
     src/net/WsCommon.cpp
     src/net/WsHandshake.cpp
@@ -2472,7 +2523,7 @@ add_executable(NetConnectTest EXCLUDE_FROM_ALL
     src/net/WsServer.cpp
     src/util/Ed25519.cpp
 )
-target_include_directories(NetConnectTest PRIVATE src tests)
+target_include_directories(NetConnectTest PRIVATE src tests tools/map_generator)
 target_compile_definitions(NetConnectTest PRIVATE OD_ENABLE_NET=1)
 # BOTH SIDES OF THIS TEST RUN A THREAD -- NetHost and NetSession each start
 # one -- and this target never said so. It linked anyway on Linux and macOS
@@ -2484,6 +2535,91 @@ find_package(Threads REQUIRED)
 target_link_libraries(NetConnectTest PRIVATE Threads::Threads)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_link_libraries(NetConnectTest PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+
+# --- the pure rules of a long tournament ---
+# Turn clock, campaign book and pending orders, seats over a long campaign,
+# one-click saved servers, the lobby picker's map and search, the voice link.
+add_executable(TournamentTest EXCLUDE_FROM_ALL
+    tests/tournament_test.cpp
+    src/net/TurnClock.cpp
+    src/net/HostBook.cpp
+    src/net/Lobby.cpp
+    src/net/LobbyMap.cpp
+    src/net/ServerBook.cpp
+    src/net/HttpClient.cpp
+    src/net/NetUrl.cpp
+    src/net/NetProtocol.cpp
+)
+target_include_directories(TournamentTest PRIVATE src tests)
+
+# --- connecting through Tor, against a stand-in SOCKS5 server ---
+if(NOT WIN32 AND NOT EMSCRIPTEN)
+add_executable(Socks5Test EXCLUDE_FROM_ALL
+    tests/socks5_test.cpp
+    src/net/Socks5.cpp
+    src/net/TorClient.cpp
+    src/net/TlsSocket.cpp
+    src/net/WsCommon.cpp
+    src/net/WsHandshake.cpp
+    src/net/WsNative.cpp
+    src/net/WsServer.cpp
+    src/net/NetUrl.cpp
+)
+target_include_directories(Socks5Test PRIVATE src tests)
+target_compile_definitions(Socks5Test PRIVATE OD_ENABLE_NET=1)
+target_link_libraries(Socks5Test PRIVATE Threads::Threads)
+if(OD_ENABLE_NET)
+    target_link_libraries(Socks5Test PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+endif()
+
+# --- the row-by-row PNG decoder against stb_image ---
+add_executable(PngRowsTest EXCLUDE_FROM_ALL
+    tests/png_rows_test.cpp
+    src/util/PngRows.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(PngRowsTest PRIVATE src tests tools/map_generator)
+
+# --- a scripted player, for driving the real dedicated server ---
+# tests/campaign_restart_test.sh runs OpenDoctrinesServer, kills it, restarts
+# it, and uses this to check a returning player gets their own country, their
+# orders and the turn's original deadline back. See tests/campaign_client.cpp.
+add_executable(CampaignClient EXCLUDE_FROM_ALL
+    tests/campaign_client.cpp
+    src/net/Session.cpp
+    src/net/NetZip.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    src/net/RelayLink.cpp
+    src/net/LobbyMap.cpp
+    src/net/JoinTicket.cpp
+    src/net/ModAttest.cpp
+    src/net/NetProtocol.cpp
+    src/net/NetUrl.cpp
+    src/net/HttpClient.cpp
+    src/net/TlsSocket.cpp
+    src/net/Socks5.cpp
+    src/net/TorClient.cpp
+    src/net/WorldSync.cpp
+    src/net/WsCommon.cpp
+    src/net/WsHandshake.cpp
+    src/net/WsNative.cpp
+    src/util/Ed25519.cpp
+)
+target_include_directories(CampaignClient PRIVATE src tests tools/map_generator)
+target_compile_definitions(CampaignClient PRIVATE OD_ENABLE_NET=1)
+target_link_libraries(CampaignClient PRIVATE Threads::Threads)
+if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
+    target_link_libraries(CampaignClient PRIVATE MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+endif()
+if(WIN32)
+    target_link_libraries(CampaignClient PRIVATE ws2_32)
 endif()
 
 # --- websocket server ---
@@ -2619,7 +2755,7 @@ target_include_directories(RelayLinkTest PRIVATE src tests)
 
 add_executable(AnnouncementsTest EXCLUDE_FROM_ALL tests/announcements_test.cpp
                src/net/Announcements.cpp src/net/HttpClient.cpp
-               src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(AnnouncementsTest PRIVATE src tests)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_compile_definitions(AnnouncementsTest PRIVATE OD_ENABLE_NET=1)
@@ -2635,7 +2771,7 @@ endif()
 # parser is tested the same way the board's is.
 add_executable(ModDirTest EXCLUDE_FROM_ALL tests/mod_dir_test.cpp
                src/net/ModDir.cpp src/net/Announcements.cpp src/net/HttpClient.cpp
-               src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(ModDirTest PRIVATE src tests)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_compile_definitions(ModDirTest PRIVATE OD_ENABLE_NET=1)
@@ -2645,7 +2781,7 @@ endif()
 
 add_executable(LfgTest EXCLUDE_FROM_ALL tests/lfg_test.cpp
                src/net/Lfg.cpp src/net/HostAddress.cpp src/net/Announcements.cpp
-               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(LfgTest PRIVATE src tests)
 if(OD_ENABLE_NET AND NOT EMSCRIPTEN)
     target_compile_definitions(LfgTest PRIVATE OD_ENABLE_NET=1)
@@ -3073,7 +3209,7 @@ add_executable(CountryProfileTest EXCLUDE_FROM_ALL tests/country_profile_test.cp
 add_executable(FeedbackClientTest EXCLUDE_FROM_ALL tests/feedback_client_test.cpp)
 add_executable(MailRulesTest EXCLUDE_FROM_ALL tests/mail_rules_test.cpp src/Mail.cpp)
 add_executable(ToolReleaseTest EXCLUDE_FROM_ALL tests/tool_release_test.cpp
-               src/net/ToolRelease.cpp src/net/HttpClient.cpp src/net/TlsSocket.cpp
+               src/net/ToolRelease.cpp src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp
                src/net/NetUrl.cpp)
 target_include_directories(ToolReleaseTest PRIVATE src src/net)
 target_compile_definitions(ToolReleaseTest PRIVATE OD_ENABLE_NET=1)
@@ -3087,7 +3223,7 @@ endif()
 
 add_executable(LlmRoundTripTest EXCLUDE_FROM_ALL tests/llm_roundtrip_test.cpp
                src/llm/Advisor.cpp src/Mail.cpp
-               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(LlmRoundTripTest PRIVATE src src/llm)
 target_compile_definitions(LlmRoundTripTest PRIVATE OD_ENABLE_NET=1)
 # mbedTLS is not built for the browser; these are host-side tests that need
@@ -3100,7 +3236,7 @@ endif()
 
 add_executable(AdvisorTest EXCLUDE_FROM_ALL tests/advisor_test.cpp
                src/llm/Advisor.cpp src/llm/Runner.cpp src/Mail.cpp
-               src/net/ToolRelease.cpp src/net/HttpClient.cpp src/net/TlsSocket.cpp
+               src/net/ToolRelease.cpp src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp
                src/net/NetUrl.cpp src/util/RunCurl.cpp)
 target_include_directories(AdvisorTest PRIVATE src src/llm)
 target_compile_definitions(AdvisorTest PRIVATE OD_ENABLE_NET=1)
@@ -3120,7 +3256,7 @@ target_include_directories(MailRulesTest PRIVATE src)
 # not us -- whether one actually reaches for the tools that steer a country.
 add_executable(LlmToolsLiveCheck EXCLUDE_FROM_ALL tests/llm_tools_live_check.cpp
                src/llm/Advisor.cpp src/Mail.cpp
-               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(LlmToolsLiveCheck PRIVATE src src/llm)
 target_compile_definitions(LlmToolsLiveCheck PRIVATE OD_ENABLE_NET=1)
 # mbedTLS is not built for the browser; these are host-side tests that need
@@ -3133,7 +3269,7 @@ endif()
 
 # Needs the internet, so NOT in run_all.sh. Run by hand after touching connect.
 add_executable(NetLiveCheck EXCLUDE_FROM_ALL tests/net_live_check.cpp
-               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(NetLiveCheck PRIVATE src)
 target_compile_definitions(NetLiveCheck PRIVATE OD_ENABLE_NET=1)
 # mbedTLS is not built for the browser; these are host-side tests that need
@@ -3145,7 +3281,7 @@ endif()
 
 add_executable(NetConnectTimeoutTest EXCLUDE_FROM_ALL
                tests/net_connect_timeout_test.cpp
-               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/NetUrl.cpp)
+               src/net/HttpClient.cpp src/net/TlsSocket.cpp src/net/Socks5.cpp src/net/TorClient.cpp src/net/NetUrl.cpp)
 target_include_directories(NetConnectTimeoutTest PRIVATE src)
 target_compile_definitions(NetConnectTimeoutTest PRIVATE OD_ENABLE_NET=1)
 # mbedTLS is not built for the browser; these are host-side tests that need

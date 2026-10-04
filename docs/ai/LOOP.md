@@ -522,8 +522,28 @@ three times.
   recruitment cap by `1 - getProvinceRebellionChance` -- the only unexamined consumer of unrest. Item 153, and the
   first thing it must do is COUNT whether the cap ever clips, because memory ai-recruitment-is-money-bound says the
   treasury binds and not the ceiling.
-  Side finding worth knowing before building anything on unrest features: **`f[24]` uses 1.3% of its [0,1] span**
-  (0.005-0.018 across every seed and arm, mean raw chance 0.08%) and is close to a dead input (item 154).
+  Side finding, **and it was WRONG -- corrected journal 482, read this before quoting it.** I reported that `f[24]`
+  "uses 1.3% of its [0,1] span" and is close to a dead input. Measured per SAMPLE rather than per run, over 263,780
+  samples: mean 0.0053, **sd 0.0461, min 0.000, max 0.9933.** It is a SPARSE SPIKE feature, not a constant. The
+  "1.3%" was the spread of per-run MEANS and I read it as the feature's range -- **averaging within a run and then
+  reasoning about variation between runs says nothing about whether a feature moves.**
+  What the same cross DID find (journal 482): **`f[10] = nlog(population, 5.0)` is pinned in [0.849, 0.9996]** --
+  tenfold real variation compressed into the top 15% of the range, at the 61st percentile of weight, so the net
+  cannot tell a 90M France from a 600M China (item 170). And `f[80..84]` are **never assigned at all** (item 168),
+  which is what a genuinely dead input looks like: the five smallest weight columns of 143.
+  `OD_FEATSTAT` prints per-feature mean/sd/cv/min/max; cross it against the model's own weight columns
+  (`ModelPack unpack`, trunk at offset 10, row-major `[out][in]`, in = 143).
+  **AND `nlog` IS THE WRONG FORM FOR POPULATION AND ARMY (journal 483, algebra).**
+  `nlog(v, scale) = tanh(log1p(v)/scale)`. `log1p` of a population spans 13.8-21.1 over the whole realistic range --
+  a factor of **1.52** -- so dividing by any `scale` leaves it 1.52-fold: **the constant is not the bug, the form
+  is.** Measured: `f[10]`'s band above 1e6 people is **0.0075** wide and the 90M-vs-600M signal is 3.2% of the
+  feature's own sd; `f[11]`'s band above 1e5 men is **0.006**, its apparent full range existing only because some
+  countries have zero army. `f[0]` (treasury) works by luck -- small numbers, so its log varies 12.8-fold.
+  A floor-subtracting form (`tanh((log1p(v) - 13) / 4)`) gives a 0.764 band. **Needs a retrain, so it rides a
+  training run** (item 171).
+  Methodological note from the same entry: I tested "is it saturated" as "is the measured MINIMUM above 0.9", and a
+  single country with zero army set that minimum to 0 and hid the flattest feature of the three. **Test the working
+  range, not the extremes.**
   **AND THE RECRUITMENT-CAP LEAD WAS DEAD CODE (journal 467).** `recruitCap` returns `pool/5` for any non-player
   country before the unrest line runs, `OD_AI_RECRUIT_CAP` is off by default, and `--eval-ai` sets
   `m_playerCountryId = 0` -- so unrest never touches an AI's recruitment ceiling in any benched world, and the army
@@ -610,8 +630,44 @@ three times.
   survivors, and only then are dismantled, crossing half their peak at turns 214/284/296/340.
   **Journals 462-474 all measured turns 50-120, so every channel they closed is closed for THAT window and untested
   for 110-340.** Before measuring anything about this collapse again, check that the window contains the decline:
-  take each run's own peak turn as the start, because the peaks are up to 224 turns apart. Item 163, and it is
-  backlog item 111's question arriving from another direction.
+  take each run's own peak turn as the start, because the peaks are up to 224 turns apart.
+  **MEASURED IN THAT WINDOW (journal 476): it is a slow grind by ONE opponent, and the four collapses are NOT one
+  phenomenon.** Mean simultaneous enemies over each run's own decline window: collapsing 0.99 / 1.07 / 2.24 / 7.49
+  against survivors' 2.05 / 3.24 / 3.06 / 5.46 over the same turns -- **three of four collapsing runs face FEWER
+  enemies than the survivors, who are attacked more and come through.** Loss rates are 0.33-0.59 provinces per turn
+  over 133-185 turns. And seed 31337 is a rebellion cascade (6.73 rebel wars) rather than a grind, so **a rule aimed
+  at "the collapse" will fit three cases or one, never four** -- separate them before proposing anything.
+  A caution on the statistic, learned by getting it wrong: enemy count is **confounded with success**, because
+  AI_MAX_CONCURRENT_WARS caps what a country STARTS, so a large winning power attracts more declarations and survives
+  them. Journal 476 pre-registered it as a quantity that "cannot be downstream" and that reasoning was simply false.
+  **AND WHO IT FIGHTS IS ABSURD (journal 477, `[WARWHO]` under OD_WARLIFE).** No common opponent across seeds --
+  CHE+GER, GER+ARG, CHE+CHN+ITA -- and France, holding 86-156 provinces, spends **94 turns at war with SWITZERLAND**
+  (8 provinces, losing 6 net, then re-opening the same war five turns later), 110 turns against CHE on another seed,
+  and **113 turns against ARGENTINA while losing 47 provinces.** Its one war slot is held throughout: memory
+  stalled-wars-lock-the-war-slot, which was filed as a GROWTH problem and here is costing absolute ground.
+  **War length cannot be the discriminator** -- the surviving control holds a 134-turn war and GAINS in it (+13, +3,
+  +39) -- so do not propose a rule gated on war length. Two limits of the instrument: the aggressor is NOT
+  identifiable (`s_warOpen` is keyed on `{min cid, max cid}`, so print order is by id, not by who declared), and its
+  ground figure is a NET change per side, never a transfer between the two.
+  **AND THE GROUND GOES TO THE OPPONENT, WHO IS SWITZERLAND (journal 479, `OD_LOSTTO`).** 0.0% of the seat's lost
+  provinces go to a non-belligerent in any of four runs -- there is no hidden transfer path -- and in the decline
+  window ONE country takes 91%, 75% and 45% of all losses. By turn overlap and cid consistency across seeds,
+  **cid 38 is Switzerland, taking 164 and 72 provinces off a France holding 86-156**, and cid 20 is Argentina,
+  taking 183 across two consecutive 113- and 112-turn wars. The surviving control's largest receiver is a REBEL
+  faction instead: the France that lives bleeds to revolts it absorbs, not to a conqueror.
+  **So the question is now the combat resolver, not war selection**, and memory width-makes-numbers-irrelevant
+  predicts the answer: `resolveAssault` caps both sides at `combatWidth(pid)`, so above the frontage France's size
+  buys nothing, and od_bench already reports 23.8% of 1.96M assaults hitting that cap.
+  **DERIVED, journal 480, and it ends this line for the loop.** `depthFactor = min(1.5, 1 + 0.20*log2(troops/width))`
+  caps at **5.66x the combat width = 113,137 men**; above the frontage both sides engage exactly `width`, so the
+  engaged terms are EQUAL whatever the armies; and a **level-5 fort multiplies the defender by 1.50, exactly
+  cancelling the attacker's maximum depth advantage.** So **a defender with 113k men behind a level-5 fort cannot be
+  beaten by an army of any size**, and France's 6.79M is sixty times past the last man that matters. That is a
+  BALANCE fact, not an AI defect: the loop cannot fix the arithmetic the AI plays inside, and the knobs
+  (DEPTH_MAX, DEPTH_PER_DOUBLING, COMBAT_WIDTH_PER_AREA, the fort multiplier) change the game for the human too.
+  Item 167, for the user.
+  Memory width-makes-numbers-irrelevant was right and understated: **the bar is only 113k men and the ceiling only
+  1.5x.**
   Two seeds are worth naming: **606061 has now supplied two mechanisms that did not survive** (463's budget story,
   465's location effect, where it reads -16.1 against the other seven's -2.4). Treat a result that rests on it as
   unreplicated.
@@ -642,6 +698,91 @@ three times.
   does not bind (backlog item 97) -- so the claim is about that league only. A binary for a long run must be PINNED
   (a copy beside a `data` symlink -- the server resolves `<exe dir>/../data/`),
   because this tree has a concurrent editor who rebuilds.
+### Added 2026-10-04 from journals 476-496. Eight of these ten were missing when audited; two were already in.
+
+- **`OD_*` GATES ARE PRESENCE TESTS: `OD_X=0` SWITCHES X ON.** `OD_ENV` returns the raw `getenv` pointer, and many
+  gates are written `if (!OD_ENV("OD_SOMETHING_OFF"))`, so setting the variable to `0` to mean "leave it alone"
+  disables the feature exactly as `1` would. Gates read through `atoi(OD_ENV(...))` do NOT behave this way, and both
+  styles sit in the same files. **A control arm UNSETS the variable (`env -u NAME`); it never sets it to 0** --
+  journal 463 measured off-against-off for a full set of runs and only noticed because both arms returned
+  bit-identical numbers. **Treat two arms with identical output as a harness bug until proven otherwise.**
+  Also: `env` takes its options BEFORE assignments, so `env VAR=1 -u OTHER cmd` runs `-u` as the command (exit 127,
+  journal 467); and zsh does not word-split, so a `case`-built `$FLAGS` is one argument (journals 467, and
+  zsh-does-not-word-split).
+
+- **A SINGLE-SEED FEATURE READING HAS NOW FAILED TO REPLICATE TWICE OUT OF TWICE.** journal 501 measured
+  `OD_FEAT_RESCALE` at 23.8 -> 31.3 on one seed and journal 502 nulled it over eight; journal 506 measured
+  `OD_FEAT_EFFARMY` at 23.8 -> 36.6 on the same seed and journal 507 nulled it (France -3.95, better on 3 of 8).
+  **The temptation came both times from the number being large** -- +7.5 and +12.8 on a seat whose spread is
+  23.8 to 50.1. Treat a one-seed feature result as a reason to bench, never as a direction.
+  And the reason they null is worth keeping: **a frozen net's weights encode the OLD feature distribution**, so
+  making a heavily-weighted input TRUTHFUL is a distribution shift that generically does not help without a
+  retrain -- which is where items 171, 180, 196 and the effective-army gate all ended, coherently rather than as
+  four separate disappointments.
+
+- **CHOOSE A SQUASH SCALE AT THE VALUES THE FEATURE MUST DISTINGUISH, NOT AT THE RANGE'S ENDS.** journal 504 built a
+  war-age feature as `tanh(age/50)`, which reads 0.954 at 94 turns and 1.000 at 304 -- **a band of 0.046 across
+  exactly the 94-to-304-turn grind range the feature existed to expose** (journals 477, 489). `/150` spans
+  0.556-0.966 there. This is the same defect journal 483 diagnosed in `nlog`, rebuilt by hand one iteration after the
+  known-list entry warning about it was written. **A band that looks wide overall can be flat where it matters:
+  tabulate the feature at the real values before picking the constant.**
+
+- **DO NOT PRICE A TRAINING RUN FROM A SHORT PROBE. Turn cost rises with the world.** journal 499 measured
+  0.1496 s/turn over turns 1-200 of one map and priced the 8-map recipe at 33 min per arm; journal 500's real run
+  reached **turn 600 of map 1 in 23 minutes -- 2.30 s/turn, 15.4x slower** -- which projects to **~8.5 hours per
+  arm.** Backlog item 91's 168 min over 13,236 turns (1 thread) is the only completed-run figure anyone has.
+  **Extrapolating from the first 200 turns of a 13,000-turn run is an invalid extrapolation, not a caveat.**
+  What IS verified and reusable: `--data <isolated dir>` protects `data/ai/model.bin` (md5 identical across two
+  training attempts) -- **the protection is `--data`, NOT the `--worker` suffix**, which writes `ai/model.bin` inside
+  whatever tree `--data` names. And a retrain must be scoped to ONE variable: of items 168/171/180 only 180 is
+  gated, so bundling them would measure none of them.
+
+- **A GREP OF ONE DIRECTORY CAN REPORT A SHIPPED FEATURE ABSENT.** `grep -rn m_districts src/ai/` returned nothing
+  and I concluded "the AI never draws a district" -- then built two journal verdicts and a user-facing brief on it.
+  `updateAIDistricts` is in `Game_Policies.cpp` under `Game::`, called from `Game_TurnLogic.cpp:1052`. **The AI's
+  behaviour is not confined to `src/ai/`: the per-country reflexes the turn loop runs are `Game::` methods.** Before
+  reporting that the AI cannot do something, grep all of `src/` for the STATE the capability would write.
+
+- **THE ACTION SPACE: 35 REAL ACTIONS, 40% OF THEM DEAD (journals 493-494).** ECON 11, POLITICS 11, WAR 7, NAVY 6 --
+  the 12-slots-per-module space is format padding with no executors above those counts (`execNavy` stops at
+  `case 6:`, `execWar` at `case 7:`), so **do not count unused slot numbers as dead features.** Of the 35:
+  **1 is mask-unreachable (2.9%)**, **13 are offered with pi = 0 (37.1%)**, 21 are live. A retrain targets the 13.
+  The single unreachable one is the ceasefire on 1914:FRA (WAR 6) -- the only gate defect in the whole space.
+
+- **THE WAR HEAD HAS TWO HARD ZEROS: IT NEVER PASSES AND NEVER OFFERS PEACE.** Its pass action is offered on all
+  3,200 decisions of a 400-turn run and taken **0** times at pi = 0.00e+00; the ceasefire likewise (journals
+  492-493). ECON and POLITICS pass at pi 0.12-0.53, NAVY at ~1e-07. **This is a collapsed output, not an untrained
+  one** -- on 1939:USA the ceasefire has been legal for ~15% of war decisions throughout training and still gets
+  nothing.
+
+- **A MASK OPENED ON A COLLAPSED HEAD CHANGES NOTHING: 224 offers and 472 offers, both taken 0 times at
+  pi = 0.00e+00** (journals 491-492). So **a gate fix is not testable on a frozen model** when the head has no mass
+  on the action -- and the right response is to cancel the bench rather than measure RNG. Distinct from
+  masking-waste-costs, which is about mass MOVING; here there is none to move.
+
+- **`OD_RESEARCH_BAR` IS SWEPT (journals 485-488), and it is a TRADE.** `0.30` is catastrophic: -125 rating and the
+  USA below 10% of the world on five of eight seeds against zero of eight. `0.60` gains 1914:FRA about **+16 pp of
+  world share across 16 seeds in two sets** (14 of 16, sign p 0.002) -- and costs 1939:USA **-14.8 pp on a second
+  model** while costing it nothing on the shipped one. Do not substitute `0.50`: same allocation ceiling, a third of
+  the gain, because the bar also governs how often `fund up` is OFFERED. Item 176, for the user.
+
+- **UNEQUAL GRADED COUNTS VOID A RATING COMPARISON -- check them in BOTH arms first.** Standing point 3 says two
+  models that saturate different seats are incomparable; journals 486-488 show two ARMS of one model doing it
+  (6/16 vs 3/16, and 8/16 vs 11/16), because a gain that pushes a seat past the 5x cap removes it from the graded
+  set. **The per-seat LAND figures survive this; the rating does not.** Quote land.
+
+- **PICK A SECOND MODEL BY ITS GRADED COUNT, NOT BY CONVENIENCE.** Journal 487 spent 32 runs on
+  `model.loop-base.bin` and learned nothing: it saturates at the FLOOR (1939:USA land 0.00 on 8 of 8 in both arms)
+  where the shipped model saturates at the cap. **Run ONE control arm, read `N/M observations GRADED`, and only then
+  run the treatment.** `build/loop/model.i14-final.bin` passes (8/16, pinning at the cap, no zeros).
+
+- **A RULE THAT ENDS WARS ENDS WINNABLE ONES -- four instances now.** journal 496 measured `OD_PEACE_REFLEX=1` on
+  the shipped model over 8 fresh seeds: 1914:FRA land **37.54 -> 31.46**, better on **1 of 8** (so 7 of 8 worse,
+  sign p 0.035), no USA benefit, and **mean war length ROSE 25.0 -> 27.7 turns**. It joins
+  caution-rules-trade-growth, withdrawing-loses-battles and passivity-is-load-bearing. **The AI's refusal to sue for
+  peace is not obviously a defect**, even though it accepts ~85 ceasefires a run and offers zero (journal 495) and
+  sits in 94-, 110- and 304-turn grinds (journals 477, 489). Measure before calling that a bug again.
+
 - **Passivity is load-bearing.** The war head declines most attacks; a reflex
   taking only the "free" 2.5x-margin assaults collapsed France 6.5 → 0.5. The
   AI is not losing because it is passive, it is passive because it is losing.
@@ -716,3 +857,57 @@ STAGNATION_TURNS (400 turns without progress; `OD_STAGNATION_TURNS`), and
 with one map that ends the session -- gated play (fewer assaults) freezes a
 world sooner, so N55 trained 855 turns. Tickets now use three maps
 (`--train-ai 3 3000 ...`) so a frozen world rotates instead of ending.
+- **Instrument before widening a mask, always.** Backlog 201 named two bare
+  constants in embark's mask as levers; a census showed both refuse ZERO calls
+  in 400 turns, so benching either would have produced a bit-identical arm and
+  a null indistinguishable from a real null (journal 509). The binding test was
+  a different conjunct two frames upstream. Code-reading found the constants;
+  only counting found which one binds.
+- **Print the parts next to the whole, so the arithmetic can fail out loud.**
+  Journal 509's first dump said 1515 refusals + 240 passes against a 1635
+  denominator. 1515+240 > 1635 was the only reason the bug surfaced: the
+  function was called by the mask AND the executor, and two populations were
+  being shown as shares of one. A dump that had printed only percentages, or
+  only the binding row, would have read as a clean result.
+- **A mask widening is judgeable on a frozen model; a feature change is not.**
+  Everything that moved a frozen net was a mask on an action the policy already
+  took (research bar, +16pp). Everything that changed an INPUT nulled, because
+  the weights encode the old distribution (journals 501-507, five arms). So when
+  the loop looks out of frozen-model work, look for actions with a high
+  take-when-offered rate and a low offer rate -- not for better features.
+- **Pin `--binary` on every bench, and verify the TREATMENT arm moved.**
+  `od_bench.py`'s `find_binary()` returns `build/OpenDoctrinesServer`
+  (Release); AGENTS.md tells you to build `cmake-build-debug/`. Journal 510
+  built a gate the documented way, benched it, and got two byte-identical arms
+  -- which read as "the gate does nothing" and was actually "the gate was never
+  in the binary". **A correctly inert gate cannot fail loudly**: the control arm
+  is right, the treatment arm is the control, and nothing in the output names
+  the binary. The only defence is pinning the path and requiring the treatment
+  arm to move a mechanism counter before any outcome is believed.
+- **Honour the falsifier you wrote, especially when the headline is large.**
+  Journal 510 moved 1914:FRA +27.2pp on 8 of 8 fresh seeds and removed the
+  seat's collapse -- and its own pre-registered reject condition (a collapse the
+  control does not have) fired on the other seat. The default stayed off. A rule
+  that only binds when the result is disappointing is not a rule.
+- **A code comment's causal claim is evidence about the build it was written
+  for, not this one.** Item 203 was filed straight out of `bestEmbarkPort`'s
+  comment ("it was shipping out the defence of its own harbours ... survival
+  fell 62% -> 48%") and proposed adding a garrison floor. A census on the
+  failing seat found a garrison floor ALREADY refusing 15.1% of calls and the
+  national share another 24.1% -- both brakes landed after that comment was
+  written. Re-measure the mechanism before building on a comment's diagnosis.
+- **A world-wide gate changes the opponents too, so a seat's loss may be the
+  neighbours' gain.** Journal 510's USA collapse came with largest_pct
+  45.7 -> 33.4 and herfindahl 0.250 -> 0.159: the gate made the whole world
+  less consolidated, and a seat score is a share. Before "fixing" the seat,
+  run the gate for the seat ALONE and for everyone EXCEPT the seat.
+- **Ask who ELSE got the change before blaming the seat.** A world-wide gate
+  reaches the opponents. Journal 512 split one into "seat only" and "everyone
+  except the seat": both were mildly POSITIVE (+2.6, +3.3), while both together
+  were negative with a collapse (−4.4) — a −10.3pp non-additive gap. Neither
+  "the seat misplays it" nor "the neighbours take its share" was true.
+- **Check how many games a rejection rests on.** Journal 510 rejected a
+  +27.2pp, 8-of-8 gain over ONE collapse in ONE game on another seat, whose
+  mean was a null (p 0.73) and which no other arm reproduced. A falsifier is
+  still binding when it fires on thin evidence — but then replicating that
+  evidence becomes the top item, not an afterthought.

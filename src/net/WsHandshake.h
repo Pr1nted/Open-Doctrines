@@ -46,3 +46,12 @@ bool wsParseUpgrade(const std::string& request, WsUpgradeRequest& out);
 
 /** The 101 response, or a 400 when the request was not usable. */
 std::string wsUpgradeResponse(const WsUpgradeRequest& request);
+
+/**
+ * A plain HTTP GET for "/healthz" that is not asking to upgrade: a
+ * hosting platform's health check or an uptime pinger. See WsServer.cpp.
+ */
+bool wsIsHealthCheck(const std::string& request);
+
+/** The 200 sent back to one. Closes the connection. */
+std::string wsHealthResponse();

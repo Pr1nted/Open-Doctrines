@@ -182,6 +182,36 @@ anywhere in the game.
 There is one piece of usage reporting, and it is **off unless you turn it on**
 — see "Telling us how long you played", below.
 
+## Launcher statistics
+
+**Unifico, the launcher, asks you once whether it may send statistics. The
+answer is no unless you say yes**, and you can change it any time in the
+launcher's Settings.
+
+If you say yes, the launcher sends short, fixed messages about how it is used:
+that it was opened; which game version was started, installed or removed;
+which page of the launcher was opened; that the map translator or another game
+was used; and, when a game ends, its version and roughly how long it ran, as a
+range. Each message carries the launcher's version, your platform (for
+example "macos-arm64") and the language the launcher is in. **Nothing you
+typed or named** — no world names, no nickname, no file paths, no account —
+can be sent, because the service accepts only a fixed list of event names and
+short values and drops everything else.
+
+To tell one installation's messages from another's, the launcher makes up a
+**random identifier when you say yes**, and **deletes it when you say no**.
+It is not your account and is not derived from anything about you or your
+computer. It does mean we can see that an installation came back, which is the
+point of asking.
+
+The messages go to Google Analytics **through this service**: your computer
+talks to us, and we pass the message on. Google therefore never receives your
+address. We keep nothing ourselves. To have Google delete what it holds for
+your installation, say no in Settings (which deletes the identifier, so
+nothing further can be linked to it) and write to us with the date you
+started; we can request deletion by identifier only if you send it to us
+before saying no, which is shown under Settings → Privacy.
+
 ## Telling us how long you played
 
 **Off by default. Nothing is sent unless you switch it on** in Settings, and
@@ -202,6 +232,14 @@ installation id, no device details and no address kept**. Nothing links one
 report to another, so we cannot tell whether two reports came from the same
 person or from two different people — and we cannot tell that anyone is a
 returning player, which is a real thing we gave up on purpose.
+
+### Where these reports also go
+
+Each report is also counted in **Google Analytics**, so that we can read it
+alongside the website's figures. It is sent there **by this service, not by
+your computer**, so Google receives Cloudflare's address and never yours, and
+it is sent under an identifier made up for that one report and thrown away —
+so in Google's records, as in ours, no two reports can be connected.
 
 ### Deleting it
 
@@ -430,8 +468,10 @@ beyond being signed in.
   nickname, nothing about you. It is a hash of somebody's file; it says nothing
   about anybody who downloads it.
 
-There are no analytics, no advertising networks, no third-party scripts and no
-cookies in the game, or on any page **this service** serves. That includes
+There are no advertising networks, no third-party scripts and no cookies in the
+game, or on any page **this service** serves. The only analytics are the
+opt-in launcher statistics and session reports described above, which this
+service relays to Google Analytics without your address. That includes
 everything you reach while playing: the game itself sets nothing, whether you
 play in a browser, on itch.io or inside Discord.
 

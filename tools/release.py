@@ -147,6 +147,11 @@ KNOWN_USER_DATA = [
     "llm",            # the local advisor runtime (ollama and a model), which
                       # the game downloads for itself -- hundreds of MB and
                       # per-platform, like tools/ below.
+    "tor",            # a developer's copy of the Tor bundle. Releases get theirs
+                      # from tools/fetch_tor.py (package.py --tor), pinned by
+                      # checksum, never from whatever is in this directory.
+    "tor-client",     # the game's own Tor's cache (src/net/TorClient.cpp)
+    "onion-service",  # an onion host's keys -- the address itself. Never ship.
     ".DS_Store",      # macOS leaves these everywhere
     "Icon\r",         # macOS custom-folder-icon marker; the name really does
     "Icon",           # end in a carriage return, so both spellings are listed

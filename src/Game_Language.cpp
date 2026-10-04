@@ -201,6 +201,8 @@ bool Game::updateLanguageList(Rectangle area, bool withHeading) {
         Audio::get().playSfx("click_light");
         if (!applyLanguage(ls[i].code))
             addNotification(T("That language could not be loaded."), RED);
+        else
+            achNoteSet("languages_used", ls[i].code);
         return true;
     }
     return false;

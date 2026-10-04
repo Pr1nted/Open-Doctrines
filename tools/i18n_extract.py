@@ -247,6 +247,16 @@ def literals_in(line):
     return [unescape(m) for m in re.findall(r'"((?:[^"\\]|\\.)*)"', line)]
 
 
+# The category headings on the achievements screen. Kept beside the catalog's
+# reader so the two cannot disagree about what a category is called.
+CATEGORY_LABELS = {
+    "meta": "Head of State", "war": "Warfare", "artillery": "Artillery",
+    "diplomacy": "Diplomacy", "economy": "Economy", "empire": "Empire",
+    "science": "Science", "society": "Society", "navy": "Navy",
+    "social": "Multiplayer", "creator": "Creator",
+}
+
+
 def data_strings():
     """Visible text that lives in data files rather than in the source.
 
@@ -293,6 +303,21 @@ def data_strings():
             heading = line[1:].strip()
             if heading:
                 out.setdefault(heading, []).append("data/credits.txt")
+
+    # Achievements. Their names and descriptions are compiled into the game from
+    # tools/achievements/catalog.json (so editing a shipped file cannot change
+    # one), which puts them out of the source scanner's sight: the generated
+    # table is a struct of literals, the shape this extractor cannot read.
+    ach = os.path.join(ROOT, "tools", "achievements", "catalog.json")
+    if os.path.exists(ach):
+        d = json.load(open(ach, encoding="utf-8"))
+        for entry in d.get("achievements", []):
+            for field in ("name", "desc"):
+                v = entry.get(field)
+                if v:
+                    out.setdefault(v, []).append("tools/achievements/catalog.json")
+        for v in CATEGORY_LABELS.values():
+            out.setdefault(v, []).append("tools/achievements/catalog.json")
 
     tips = os.path.join(ROOT, "data", "tips.json")
     if os.path.exists(tips):

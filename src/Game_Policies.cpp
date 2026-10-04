@@ -466,6 +466,7 @@ void Game::enactPolicy(int countryId, const std::string& policyId, int targetPro
     int idx = (int)m_activePolicies.size();
     m_activePolicies.push_back(ap);
     m_countryActivePolicyIndices[countryId].push_back(idx);
+    if (countryId == m_playerCountryId) achNote("policies_enacted");
 }
  
 void Game::cancelPolicy(int activePolicyIndex) {
@@ -1042,6 +1043,7 @@ void Game::updatePolicies() {
             // the Claims tab never showed up under "Claimed by" and never
             // stirred any unrest in the province it was staked on.
             for (int pid : m_claimsPendingAdd) grantClaim(pc2->isoA3, pid);
+            achNote("claims_made", (double)m_claimsPendingAdd.size());
             if (m_renderer && m_showClaims && m_playerCountryId > 0) {
                 m_lastClaimsCountryId = m_playerCountryId;
                 generateClaimsTexture();
@@ -2702,7 +2704,7 @@ void Game::drawStateIndustry() {
             // starts it decaying -- and the tooltip below says so before the
             // click rather than after it.
             if (isHeld) releaseNationalised(m_playerCountryId, res);
-            else nationalise(m_playerCountryId, res);
+            else { nationalise(m_playerCountryId, res); achNote("nationalised"); }
         }
         if (hov) {
             const char* tip = isHeld
@@ -2882,6 +2884,7 @@ void Game::updateEthnicTab() {
                         // world's. setEthnicPolicyOption fills a defaulted row
                         // on first touch, which is what the open-coded resize
                         // here was doing.
+                        achNote("ethnic_policy_changes");
                         setEthnicPolicyOption(m_playerCountryId, entries[ei].name,
                                               ci, (int)oi);
                         return;

@@ -19,8 +19,10 @@
 // would mean `config` in the console editing one object while the loop read
 // another, which is the bug this shape exists to make impossible.
 
+#include <atomic>
 #include <cstdint>
 #include <string>
+#include <thread>
 
 struct ServerConfig;
 class ServerConsole;
@@ -55,4 +57,17 @@ struct ServerRuntime {
      */
     int exitCode = 0;
     bool announcedTunnel = false;
+
+    /** The account token refresher, one at a time. See Game::srvKeepSignedIn. */
+    std::thread       refresher;
+    std::atomic<bool> refreshing{false};
+    double            lastRefreshAt = 0.0;
+
+    /** The checkpoint command, one at a time. See Game::srvCheckpoint. */
+    std::thread       checkpointer;
+    std::atomic<bool> checkpointing{false};
+    double            lastCheckpointAt = 0.0;
+
+    /** When commands.txt was last looked at. See serverTick. */
+    double            lastCommandPoll = 0.0;
 };

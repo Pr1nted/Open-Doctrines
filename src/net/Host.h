@@ -31,6 +31,7 @@
 #include "TurnStore.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -53,6 +54,9 @@ struct NetHostEvent {
          * layer does not know what a world is. See NetMsg::ResyncRequest.
          */
         WorldWanted,
+        RelayLost,       // the relay socket dropped; reconnecting by itself
+        RelayRestored,   // and it is back
+        CodeChanged,     // the service issued a new invite code; text is it
         Failed,          // error() says why
         Closed,
     } kind = Kind::LobbyChanged;
@@ -115,6 +119,20 @@ public:
          * seating players with the service down; this one cannot.
          */
         bool viaRelay = false;
+        /**
+         * Keep this session for the account service's LONG grace when the host
+         * goes away, whatever the turn length. A tournament's 24-hour timed
+         * turns are not long-form, but the session must outlive a restart.
+         */
+        bool durable = false;
+        /** A code this server held before: asks the service to reopen it. */
+        std::string reopenCode;
+        /**
+         * Where a current session token comes from, for renewals made days
+         * after open(). The one in `token` expires in twelve hours. Called on
+         * the keeper thread, so it must be thread-safe; empty uses `token`.
+         */
+        std::function<std::string()> freshToken;
         bool showBadges = true;
         uint32_t turnSeconds = 0;       // 0 = long-form, no countdown
         TurnStoreKind store = TurnStoreKind::DurableObject;
@@ -211,6 +229,8 @@ public:
 
     /** Begin a turn: tells everyone the number and the deadline. */
     void beginTurn(uint32_t turnNumber, uint32_t deadlineMs);
+    /** Tell everyone a moved deadline for the OPEN turn; submissions stand. */
+    void announceDeadline(uint32_t turnNumber, uint32_t deadlineMs);
 
     /** Send a turn's changes to everyone. `payload` is an .odsv delta. */
     void broadcastDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload);
@@ -233,6 +253,10 @@ public:
 
     /** The map this game is played on, by name. Carried in every WELCOME. */
     void setMapName(const std::string& name);
+    /** The lobby picker's map (LobbyMap::encode). Sent to everyone, now and on joining. */
+    void setLobbyMap(std::vector<uint8_t> encoded);
+    /** The voice link and the like. Sent to everyone, now and on joining. */
+    void setSessionInfo(const NetSessionInfo& info);
 
     /** Send the whole world to one peer, for a joiner or a spectator. */
     /**
@@ -298,3 +322,6 @@ private:
 };
 
 const char* netHostPhaseName(NetHost::Phase p);
+
+/** The JSON a host POSTs to /session, to open or to renew. Exposed for tests. */
+std::string netHostSessionBody(const NetHost::Config& c, const std::string& reopenCode);

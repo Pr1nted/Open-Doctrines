@@ -203,6 +203,49 @@ LobbyDenial Lobby::seatSpectator(uint16_t peerId, uint16_t countryId) {
     return LobbyDenial::None;
 }
 
+LobbyDenial Lobby::unseat(uint16_t peerId) {
+    if (peerId == m_hostPeerId) return LobbyDenial::HostOnly;
+    LobbyMember* me = mutableFind(peerId);
+    if (!me) return LobbyDenial::NoSuchPeer;
+    if (me->spectator) return LobbyDenial::Spectator;
+    dropOffers(peerId);
+    me->spectator = true;
+    me->countryId = 0;
+    me->submitted = false;
+    me->malformed = false;
+    me->orders.clear();
+    return LobbyDenial::None;
+}
+
+bool Lobby::restoreSubmission(const std::string& psid, uint32_t turnNumber,
+                              const std::vector<uint8_t>& orders, bool malformed) {
+    for (auto& m : m_members) {
+        if (m.psid != psid) continue;
+        if (m.spectator || m.countryId == 0) return false;
+        m.orders = malformed ? std::vector<uint8_t>{} : orders;
+        m.submitted = !malformed;
+        m.submittedTurn = turnNumber;
+        m.malformed = malformed;
+        return true;
+    }
+    return false;
+}
+
+void Lobby::pruneSpectators(size_t keep) {
+    size_t gone = 0;
+    for (const auto& m : m_members)
+        if (m.spectator && !m.connected) gone++;
+    // m_members is in arrival order, so the first ones met are the oldest.
+    for (auto it = m_members.begin(); gone > keep && it != m_members.end();) {
+        if (it->spectator && !it->connected) {
+            it = m_members.erase(it);
+            gone--;
+        } else {
+            ++it;
+        }
+    }
+}
+
 void Lobby::disconnect(uint16_t peerId) {
     if (LobbyMember* m = mutableFind(peerId)) m->connected = false;
     dropOffers(peerId);

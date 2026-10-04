@@ -135,3 +135,25 @@ std::string wsUpgradeResponse(const WsUpgradeRequest& request) {
            "Connection: Upgrade\r\n"
            "Sec-WebSocket-Accept: " + wsAcceptFor(request.key) + "\r\n\r\n";
 }
+
+bool wsIsHealthCheck(const std::string& request) {
+    const size_t eol = request.find("\r\n");
+    if (eol == std::string::npos) return false;
+    const std::string line = request.substr(0, eol);
+    // Only the named path: a browser that wanders onto the port at "/" still
+    // gets the plain refusal it always has.
+    const bool get = line.rfind("GET /healthz ", 0) == 0 || line.rfind("HEAD /healthz ", 0) == 0;
+    if (!get) return false;
+    // An upgrade that failed to parse is a broken client, not a health check.
+    std::string lower = request.substr(0, request.find("\r\n\r\n"));
+    for (char& ch : lower) if (ch >= 'A' && ch <= 'Z') ch = (char)(ch - 'A' + 'a');
+    return lower.find("upgrade: websocket") == std::string::npos;
+}
+
+std::string wsHealthResponse() {
+    return "HTTP/1.1 200 OK\r\n"
+           "Content-Type: text/plain\r\n"
+           "Content-Length: 3\r\n"
+           "Connection: close\r\n\r\n"
+           "ok\n";
+}

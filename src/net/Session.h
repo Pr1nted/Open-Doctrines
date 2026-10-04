@@ -53,6 +53,8 @@ struct NetSessionEvent {
     enum class Kind : uint8_t {
         Welcomed,        // handshake done; welcome() is populated
         CountriesKnown,  // the host sent the country catalogue
+        LobbyMapKnown,   // the host sent a map to pick a country from
+        SessionInfoKnown,// the host said something about the session (voice link)
         LobbyChanged,    // roster or assignment moved
         SwapProposed,    // someone offered you their country
         TurnBegan,
@@ -153,6 +155,10 @@ public:
      * populate a list would cost seconds and tens of megabytes.
      */
     std::vector<NetCountryList::Entry> countries() const;
+    /** The host's political map for the picker, encoded. Empty until sent. */
+    std::vector<uint8_t> lobbyMap() const;
+    /** What the host said about the session. Default until sent. */
+    NetSessionInfo sessionInfo() const;
     NetSessionState    state() const;
     NetAssignment      assignment() const;
 

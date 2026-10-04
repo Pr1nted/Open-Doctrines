@@ -354,6 +354,15 @@ struct Config {
      * lives in LobbySettings on the host.
      */
     bool        lobbyChatShown = true;
+    /**
+     * Route every connection the game makes through Tor, so a host (and the
+     * account service) sees a Tor relay instead of this player's IP. Needs a
+     * Tor client running here; see src/net/Socks5.h. Onion addresses go
+     * through Tor whether or not this is set.
+     */
+    bool        torRouteAll = false;
+    /** Tor's SOCKS port; 0 tries 9050 (the tor service) then 9150 (Tor Browser). */
+    int         torSocksPort = 0;
 
     bool        llmEnabled = false;
     /**

@@ -17,8 +17,10 @@ repository records them.
 | | |
 |---|---|
 | Partner account | **443196**, verified 26 Sep 2026 |
-| appid | **1345390** |
+| appid | **5334460** |
+| Store item id | 1345390 — NOT the appid; see below |
 | Packages | 1843321 dev comp, 1843322 beta, 1843323 + 1843324 retail |
+| Store admin | `/admin/game/edit/1345390` · Steamworks admin `/apps/view/5334460` |
 | App created | **26 Sep 2026** — the 30-day wall runs from here, so **26 Oct** at the earliest |
 | `STEAM_APPID` / `STEAM_USERNAME` | set |
 | Builder account | `od_builder`, isolated HOME |
@@ -26,6 +28,14 @@ repository records them.
 | Depots | not verified; do not assume appid+1 / appid+2 |
 | Store page | not built |
 | Trailer | **missing.** See section 4 |
+
+**The number the app-creation dialog prints is not the appid.** It says
+"Created store item '1345390'", and that is the STORE ITEM. The appid is
+5334460 and the dialog never shows it; it is in the title of
+`/apps/view/5334460` and in the "Steamworks admin" link on the applications
+list. STEAM_APPID was set to the store item id for a week on the strength of
+that dialog. A depot id is derived from the appid, and an appid that is not
+yours belongs to somebody else's app.
 
 The page has to be public a fortnight before release, so it must be submitted
 and through review well inside October for the 26th to be real.

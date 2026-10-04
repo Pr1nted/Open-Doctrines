@@ -20,6 +20,8 @@
 long long g_reblocTotal = 0, g_reblocRecent = 0;
 long long g_reblocFavoured = 0, g_reblocStarved = 0, g_reblocNoDist = 0;
 long long g_reblocNeverMoved = 0;
+// Journal 478: who receives ground the seat loses, under OD_LOSTTO.
+long long g_lostTotal = 0, g_lostFoe = 0, g_lostRebel = 0, g_lostNeither = 0;
 // getpid, to name the throwaway training map per process so two trainers do not
 // delete each other's. POSIX spells it unistd.h/getpid; MSVC spells it
 // process.h/_getpid and has no unistd.h at all.
@@ -1369,6 +1371,33 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         for (int t = 0; t < turnsPerMap; ++t) {
             if (WindowShouldClose()) { aborted = true; break; }
             const auto turnStart = std::chrono::steady_clock::now();
+            // ── WHERE DOES LOST GROUND GO? OD_LOSTTO=1 (journal 478) ──
+            //
+            // OD_WARLIFE reports a NET change per side and says so: it cannot tell
+            // "France lost 47 provinces" from "Argentina took 47 provinces". This
+            // classifies the RECEIVER of every province that leaves the seat, so the
+            // locked-war-slot story (pinned by a minor power while eaten elsewhere) can
+            // be separated from the simpler one (losing the war it is actually in).
+            //
+            // The enemy set is captured BEFORE the turn: a war that ends on the same
+            // turn as a conquest would otherwise make the conqueror look like a
+            // non-belligerent.
+            static const bool lostTo = std::getenv("OD_LOSTTO") != nullptr;
+            std::vector<int> lostPrev;
+            std::set<int> lostFoes;
+            int lostSeat = -1;
+            if (lostTo && !m_benchSeatIso.empty()) {
+                lostSeat = cidForIso(m_benchSeatIso);
+                if (lostSeat > 0) {
+                    lostPrev = m_provinceCountryLookup;
+                    for (const auto& [iso, inner] : m_relations) {
+                        const int a2 = cidForIso(iso);
+                        if (a2 != lostSeat) continue;
+                        for (const auto& [iso2, rel] : inner)
+                            if (rel.war) { const int b2 = cidForIso(iso2); if (b2 > 0) lostFoes.insert(b2); }
+                    }
+                }
+            }
             if (rebloc) {
                 reblocPrev = m_provinceCountryLookup;
                 reblocFactor.clear();
@@ -1395,6 +1424,23 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                 }
             }
             processTurn();
+            if (lostTo && lostSeat > 0 && !lostPrev.empty()) {
+                const size_t n2 = std::min(lostPrev.size(), m_provinceCountryLookup.size());
+                for (size_t pid = 0; pid < n2; ++pid) {
+                    if (lostPrev[pid] != lostSeat) continue;
+                    const int after = m_provinceCountryLookup[pid];
+                    if (after == lostSeat) continue;
+                    ++g_lostTotal;
+                    if (after >= REBEL_CID_MIN)            ++g_lostRebel;
+                    else if (lostFoes.count(after))        ++g_lostFoe;
+                    else                                   ++g_lostNeither;
+                    if (t + 1 <= 400)
+                        fprintf(stderr, "[LOSTTO] turn %d province %zu -> cid %d (%s)\n",
+                                t + 1, pid, after,
+                                after >= REBEL_CID_MIN ? "rebel"
+                                : lostFoes.count(after) ? "war opponent" : "NEITHER");
+                }
+            }
             if (rebloc) {
                 const size_t rbN = std::min(reblocPrev.size(), m_provinceCountryLookup.size());
                 for (size_t pid = 0; pid < rbN; ++pid) {
@@ -2289,6 +2335,12 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
            rebels / kct, research / kct);
     const int kReclocWindowReport = std::getenv("OD_REBLOC_WINDOW")
                                   ? atoi(std::getenv("OD_REBLOC_WINDOW")) : 20;
+    if (g_lostTotal > 0)
+        printf("[LOSTTO] seat lost %lld provinces: to a war opponent %lld (%.1f%%)  "
+               "to rebels %lld (%.1f%%)  to NEITHER %lld (%.1f%%)\n",
+               g_lostTotal, g_lostFoe, 100.0 * (double)g_lostFoe / (double)g_lostTotal,
+               g_lostRebel, 100.0 * (double)g_lostRebel / (double)g_lostTotal,
+               g_lostNeither, 100.0 * (double)g_lostNeither / (double)g_lostTotal);
     if (g_reblocTotal > 0) {
         // The cross-check first: flip-detection against the roll-site counter. A large
         // disagreement means the detector is wrong and the buckets below mean nothing.

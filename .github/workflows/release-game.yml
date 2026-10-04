@@ -176,7 +176,7 @@ jobs:
         # matrix.cmake_args goes LAST, on the same line: -A Win32 / -A ARM64 for
         # the other Windows architectures, the toolchain file for cross Linux,
         # and nothing for the native builds.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.5.2" ${{ matrix.cmake_args }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.5.2" ${{ matrix.cmake_args }}
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
@@ -189,7 +189,7 @@ jobs:
           BIN=build/OpenDoctrines
           [ -d "build/OpenDoctrines.app" ] && BIN=build/OpenDoctrines.app
           [ -f "build/Release/OpenDoctrines.exe" ] && BIN=build/Release/OpenDoctrines.exe
-          python3 tools/package.py --binary "$BIN" \
+          python3 tools/package.py --binary "$BIN" --tor \
                                    --out "dist/${{ matrix.artifact }}" --zip
 
       # THE ARTIFACT ABOUT TO BE UPLOADED, not a build made to test with.
@@ -397,6 +397,7 @@ jobs:
           # Same reason as the desktop configure above.
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release \
             -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
             -DOD_DISCORD_APP_ID=1547303703370014830
           emmake cmake --build build-web -j 4
 
@@ -684,6 +685,29 @@ jobs:
           awk -v kind=game '/^## (game|sdk) [0-9]/{ if (p) exit; p = ($2 == kind) } p' CHANGELOG.md > notes.md
           echo "Release notes:"; cat notes.md
 
+      # ── THE LAUNCHER SHIPS WITH EVERY RELEASE ──
+      #
+      # Unifico is built and released from its own repository
+      # (Pr1nted/Unifico); this takes its newest release and attaches it to the
+      # game's, so the game release page offers the launcher first. Into
+      # launcher/, NOT artifacts/: the itch loop below treats every zip under
+      # artifacts/ as a game build and writes a MANAGED marker into it.
+      #
+      # UNIFICO_TOKEN only matters while that repository is private; public, the
+      # workflow's own token reads its releases. Missing either way, this warns
+      # and the game release goes ahead without the launcher.
+      - name: Fetch Unifico
+        env:
+          GH_TOKEN: ${{ secrets.UNIFICO_TOKEN || github.token }}
+        run: |
+          mkdir -p launcher
+          if gh release download --repo Pr1nted/Unifico --pattern 'Unifico-*.zip' --dir launcher; then
+            ls -lh launcher
+          else
+            echo "::warning title=No launcher::Could not download Unifico's latest release; \
+            this game release ships without it. Release Unifico first (tag vX.Y.Z there)."
+          fi
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -706,6 +730,7 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/**/*.flatpak
+            launcher/*.zip
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}
@@ -772,6 +797,27 @@ jobs:
             echo "::warning title=No APK::No .apk among the artifacts, so \
             nothing was pushed to the itch android channel."
           fi
+
+      # The launcher on itch, as its own channels: launcher-macos-arm64 and so
+      # on. Set them as the itch page's recommended downloads once, in the
+      # itch dashboard (Edit game -> Uploads); butler cannot mark a channel as
+      # the primary one. No MANAGED marker: Unifico updates itself, and the
+      # versions it installs carry their own marker.
+      - name: Push the launcher to itch.io
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+        run: |
+          if [ -z "$BUTLER_API_KEY" ] || [ -z "$ITCH_TARGET" ] || ! ls launcher/*.zip >/dev/null 2>&1; then
+            echo "::warning title=Launcher not pushed::no butler key, no ITCH_TARGET, or no launcher zips."
+            exit 0
+          fi
+          [ -x ./butler ] || { curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default && unzip -q -o butler.zip && chmod +x butler; }
+          for z in launcher/*.zip; do
+            channel="launcher-$(basename "$z" .zip | sed 's/^Unifico-//')"
+            echo "pushing $z -> $ITCH_TARGET:$channel"
+            ./butler push "$z" "$ITCH_TARGET:$channel"
+          done
 
       - name: Tell Open Fly
         # Open Fly (Pr1nted/Open-Fly) rebuilds the browser fly against every game

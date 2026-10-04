@@ -104,6 +104,7 @@ void ServerBook::load(const std::string& path) {
         // Absent in books written before this existed, which is every book on
         // disk today: an entry without one simply behaves as it used to.
         e.address      = clamp(httpJsonString(obj, "address", 256), 256);
+        e.ipConsent    = httpJsonBool(obj, "ipConsent", false) && !e.address.empty();
 
         if (!e.valid()) continue;
         if (!e.code.empty() && !validCode(e.code)) e.code.clear();
@@ -126,7 +127,8 @@ bool ServerBook::save() const {
             << "\",\"lastJoined\":" << e.lastJoined
             << ",\"lastHostName\":\"" << httpJsonEscape(e.lastHostName)
             << "\",\"address\":\"" << httpJsonEscape(e.address)
-            << "\"}" << (i + 1 < m_entries.size() ? "," : "") << "\n";
+            << "\",\"ipConsent\":" << (e.ipConsent ? "true" : "false")
+            << "}" << (i + 1 < m_entries.size() ? "," : "") << "\n";
     }
     out << "  ]\n}\n";
     return static_cast<bool>(out);
@@ -176,8 +178,22 @@ bool ServerBook::setCode(size_t index, const std::string& code) {
 
 bool ServerBook::setAddress(size_t index, const std::string& address) {
     if (index >= m_entries.size()) return false;
-    m_entries[index].address = address.size() > 256 ? address.substr(0, 256) : address;
+    const std::string a = address.size() > 256 ? address.substr(0, 256) : address;
+    if (a != m_entries[index].address) m_entries[index].ipConsent = false;
+    m_entries[index].address = a;
     return true;
+}
+
+bool ServerBook::setIpConsent(size_t index, bool consent) {
+    if (index >= m_entries.size()) return false;
+    m_entries[index].ipConsent = consent && !m_entries[index].address.empty();
+    return true;
+}
+
+int ServerBook::find(const std::string& issuer, const std::string& name) const {
+    for (size_t i = 0; i < m_entries.size(); ++i)
+        if (m_entries[i].issuer == issuer && m_entries[i].name == name) return (int)i;
+    return -1;
 }
 
 void ServerBook::markJoined(size_t index, const std::string& hostName, long long nowUnix) {

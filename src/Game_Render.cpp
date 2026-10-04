@@ -1862,6 +1862,7 @@ void Game::drawCountryPanel() {
                                !can, Color{28, 44, 60, 220}, Color{90, 140, 190, 200},
                                can ? nullptr : whyNot.c_str()) && can) {
                     buildMonument(m_playerCountryId, selPid, i);
+                    achNote("monuments_built");
                 }
                 listY += 30;
                 ++shown;
@@ -2560,6 +2561,7 @@ if (drawActBtn(panelX + pad, recruitBtnY, btnW * 2 + btnGap, btnH,
                 treasury -= recruitCost;
                 payWarMaterials(m_playerCountryId, recruitPr);
                 m_pendingRecruitments.push_back({selPid, recruitCount, 1, m_recruitType});
+                achNote("troops_recruited", (double)recruitCount);
             }
         }
 
@@ -5105,7 +5107,11 @@ void Game::drawInner() {
         // The tutorial decides when a turn may be ended. Drawn greyed to
         // match; see the button itself for why.
         if (CheckCollisionPointRec(sm, ptRect) && tutorialAllowsEndTurn()) {
-            if (mpIsClient()) {
+            if (mpRejoining()) {
+                // Off the server for the moment. Resolving here would be the
+                // singleplayer path, and this world would stop being the
+                // host's; the turn waits for the connection instead.
+            } else if (mpIsClient()) {
                 // A client never resolves a turn: it submits and waits for the
                 // world the host produced. Resolving locally would compute a
                 // second answer, and the two machines would diverge.
@@ -6093,7 +6099,8 @@ void Game::drawInner() {
         // What the button actually does depends on who you are: a client says
         // "ready", the host says "my orders are in" -- and neither resolves
         // anything by itself.
-        const char* ptLabel = (mpIsClient() || mpIsHost())
+        const char* ptLabel = mpRejoining() ? "Reconnecting"
+                            : (mpIsClient() || mpIsHost())
                             ? (mpAmReady() ? "Not ready" : "Ready")
                             : "Process Turn";
         int ptw = MeasureText(ptLabel, 16);
@@ -6176,6 +6183,7 @@ void Game::drawInner() {
         if (mpIsHost() || mpIsClient()) {
             drawMpTurnPanel(sbX, sbY - 12);
         }
+        drawMpRejoinBanner();
     }
     // ─── (TURN_PROCESSED removed — not used) ───
     if (m_inPolitics || m_inEconomy || m_inClaims || m_inResearch || m_inMonuments) {

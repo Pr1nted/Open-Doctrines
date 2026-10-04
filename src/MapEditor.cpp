@@ -10,6 +10,7 @@
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_WRITE_STATIC
 #include "MapEditor.h"
+#include "achievements/Achievements.h"
 // ── THE SAME INPUT EVERY OTHER SCREEN SEES ──
 //
 // Without this the editor read raylib directly, and on Android raylib's wheel
@@ -3851,6 +3852,10 @@ bool MapEditor::saveProject() {
     m_saveStatus = "Saved " + name + ".uodmap";
     m_saveStatusTimer = 3.0f;
     LoadLog() << "  Saved project to " << path << "\n";
+    // A saved project is one of the things the collection counts. The tracker
+    // is a singleton precisely so the editor need not know about Game.
+    odach::Tracker::get().add("map_projects_saved", 1);
+    odach::Tracker::get().evaluate();
     return true;
 }
 

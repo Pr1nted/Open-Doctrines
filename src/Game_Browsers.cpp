@@ -87,6 +87,7 @@ bool Game::trySaveGame() {
     m_saveFeedback = "Game saved successfully!";
     m_saveFeedbackTimer = 2.0f;
     LoadLog() << "Game saved: " << m_currentSavePath << std::endl;
+    achNote("saves_made");
     return true;
 }
 

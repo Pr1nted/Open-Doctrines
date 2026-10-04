@@ -329,6 +329,7 @@ bool Game::mailSendDraft() {
     }
     m_mailDraft.clear();
     Audio::get().playSfx("confirm");
+    achNote("mail_sent");
     return true;
 }
 

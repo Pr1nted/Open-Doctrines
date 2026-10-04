@@ -37,6 +37,9 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::ModMsg:       return "ModMsg";
         case NetMsg::ModMsgFrom:   return "ModMsgFrom";
         case NetMsg::TurnStoreInfo: return "TurnStoreInfo";
+        case NetMsg::SessionInfo:   return "SessionInfo";
+        case NetMsg::LobbyMap:      return "LobbyMap";
+        case NetMsg::SnapshotZ:     return "SnapshotZ";
     }
     return "Unknown";
 }
@@ -466,6 +469,67 @@ bool NetOrdersMsg::decode(const uint8_t* data, size_t size, NetOrdersMsg& out) {
     NetReader r(data, size);
     out.turnNumber = r.u32();
     out.payload    = r.blob(NetLimits::kOrders);
+    return r.done();
+}
+
+bool netVoiceLinkValid(const std::string& url) {
+    if (url.size() < 9 || url.size() > 200) return false;
+    if (url.compare(0, 8, "https://") != 0) return false;
+    for (const char c : url)
+        if (c <= 0x20 || c >= 0x7F || c == '"' || c == '\\' || c == '<' || c == '>' ||
+            c == '`')
+            return false;
+    // Something after the scheme that could be a host.
+    const std::string host = netVoiceLinkHost(url);
+    return !host.empty() && host.find('.') != std::string::npos;
+}
+
+std::string netVoiceLinkHost(const std::string& url) {
+    if (url.compare(0, 8, "https://") != 0) return "";
+    const size_t start = 8;
+    size_t end = url.find_first_of("/?#", start);
+    if (end == std::string::npos) end = url.size();
+    std::string host = url.substr(start, end - start);
+    // user@host would show the player a domain that is not the one opened.
+    if (host.find('@') != std::string::npos) return "";
+    const size_t colon = host.find(':');
+    if (colon != std::string::npos) host = host.substr(0, colon);
+    return host;
+}
+
+std::vector<uint8_t> NetSessionInfo::encode() const {
+    NetWriter w;
+    w.u8(1);                 // layout version, for a reader to skip what it lacks
+    w.str(voiceLink);
+    return w.take();
+}
+
+bool NetSessionInfo::decode(const uint8_t* data, size_t size, NetSessionInfo& out) {
+    NetReader r(data, size);
+    out = NetSessionInfo{};
+    const uint8_t version = r.u8();
+    if (!r.ok() || version == 0) return false;
+    out.voiceLink = r.str(256);
+    if (!r.ok()) return false;
+    // A link that does not pass is dropped, not shown: the host's UI should
+    // have refused it, and a client is not obliged to trust that it did.
+    if (!out.voiceLink.empty() && !netVoiceLinkValid(out.voiceLink)) out.voiceLink.clear();
+    return true;
+}
+
+std::vector<uint8_t> NetSnapshotZ::encode() const {
+    NetWriter w;
+    w.u32(turnNumber);
+    w.u32(rawSize);
+    w.blob(deflated);
+    return w.take();
+}
+
+bool NetSnapshotZ::decode(const uint8_t* data, size_t size, NetSnapshotZ& out) {
+    NetReader r(data, size);
+    out.turnNumber = r.u32();
+    out.rawSize = r.u32();
+    out.deflated = r.blob(kNetMaxFrameBytes);
     return r.done();
 }
 

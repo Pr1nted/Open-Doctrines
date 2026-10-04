@@ -649,6 +649,14 @@ bool AccountClient::bootstrap() {
 
         if (res.ok()) {
             impl->applyAccountJson(res.body);
+            // Each launch slides the twelve-hour window forward, so somebody
+            // who plays every evening is never asked to sign in again.
+            {
+                HttpRequest r = impl->baseRequest("POST", "/auth/refresh", true);
+                const HttpResponse rr = httpRequest(r);
+                const std::string fresh = httpJsonString(rr.body, "token", 4096);
+                if (rr.ok() && !fresh.empty()) impl->saveToken(fresh);
+            }
             impl->post([impl] {
                 std::lock_guard<std::mutex> lock(impl->mutex);
                 impl->status = Status::SignedIn;
@@ -675,6 +683,26 @@ bool AccountClient::bootstrap() {
         });
     });
     return true;
+}
+
+bool AccountClient::refreshSession(std::string* why) {
+    if (!configured() || m_impl->tokenCopy().empty()) {
+        if (why) *why = "not signed in";
+        return false;
+    }
+    HttpRequest req = m_impl->baseRequest("POST", "/auth/refresh", true);
+    const HttpResponse res = httpRequest(req);
+    const std::string fresh = httpJsonString(res.body, "token", 4096);
+    if (res.ok() && !fresh.empty()) {
+        m_impl->saveToken(fresh);
+        return true;
+    }
+    if (why) {
+        *why = !res.error.empty() ? res.error : httpJsonString(res.body, "message", 512);
+        if (why->empty()) *why = "the account service refused (HTTP " +
+                                 std::to_string(res.status) + ")";
+    }
+    return false;
 }
 
 bool AccountClient::beginSignIn(AuthProvider provider) { return beginFlow(provider, false); }

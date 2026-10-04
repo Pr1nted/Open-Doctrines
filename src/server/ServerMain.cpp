@@ -31,6 +31,7 @@
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include "Config.h"
 #include <string>
 
 namespace fs = std::filesystem;
@@ -94,6 +95,7 @@ void usage() {
         "                    with \"advisors only\" has to be able to install one.\n"
         "\n"
         "  --write-config    write a commented default config file and exit\n"
+        "  --print-issuer    the account service this build uses by default\n"
         "  --help            this text\n"
         "\n"
         "Once running, type `help` at the console for the commands.\n";
@@ -514,6 +516,10 @@ int main(int argc, char** argv) {
             return argv[++i];
         };
         if (a == "--help" || a == "-h")      { usage(); return 0; }
+        // The account service this build talks to unless config.json says
+        // otherwise. A container writing account.json needs it: a token is
+        // only presented to the issuer that minted it, matched exactly.
+        else if (a == "--print-issuer")      { std::cout << bakedAccountIssuer() << "\n"; return 0; }
         else if (a == "--config")            configPath = next("a file path");
         else if (a == "--data")              dataOverride = next("a directory");
         else if (a == "--map")               mapOverride = next("a map id or path");

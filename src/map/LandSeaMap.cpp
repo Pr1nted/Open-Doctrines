@@ -1,4 +1,5 @@
 #include "LandSeaMap.h"
+#include "util/PngRows.h"
 #include <cstring>
 #include <cmath>
 
@@ -23,6 +24,38 @@ void LandSeaMap::rebuildMask() {
     const size_t n = (size_t)m_width * m_height;
     for (size_t i = 0; i < n; ++i)
         if (pixels[i * 4] > 128) m_landMask[i >> 3] |= (unsigned char)(1u << (i & 7));
+}
+
+bool LandSeaMap::loadMaskFromMemory(const void* data, int size) {
+    int w = 0, h = 0;
+    std::vector<unsigned char> mask;
+    const bool ok = pngForEachRow(static_cast<const uint8_t*>(data), (size_t)size,
+        [&](int ww, int hh) {
+            w = ww; h = hh;
+            mask.assign(((size_t)w * h + 7) / 8, 0);
+            return true;
+        },
+        [&](int y, const uint8_t* rgba) {
+            // The rule rebuildMask() applies: red above 128 is land.
+            const size_t base = (size_t)y * (size_t)w;
+            for (int x = 0; x < w; ++x)
+                if (rgba[(size_t)x * 4] > 128) {
+                    const size_t i = base + (size_t)x;
+                    mask[i >> 3] |= (unsigned char)(1u << (i & 7));
+                }
+        });
+    if (!ok) {
+        if (!loadFromMemory(data, size, /*withTexture=*/false)) return false;
+        dropPixels();
+        return true;
+    }
+    if (m_loaded && m_image.data) UnloadImage(m_image);
+    m_image = Image{};
+    m_width = w;
+    m_height = h;
+    m_landMask.swap(mask);
+    m_loaded = true;
+    return true;
 }
 
 void LandSeaMap::dropPixels() {

@@ -59,7 +59,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest FuzzParsersTest MonumentsTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest MonumentsTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -163,6 +163,14 @@ run "join tickets"     "$bin/NetTicketTest"
 run "sealed orders"    "$bin/NetSealTest"
 run "play by paste"    "$bin/LongformPasteTest"
 run "seats remembered" "$bin/NetHostBookTest"
+run "tournament rules" "$bin/TournamentTest"
+run "map rows decode"  "$bin/PngRowsTest" "$root/data/"
+# Through Tor, against a stand-in SOCKS5 server on loopback. The stand-in is
+# POSIX sockets, so not on Windows; the client code it tests is the same there.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *)
+    cmake --build "$build" --config Release --target Socks5Test >> "$build/test-targets-build.log" 2>&1 \
+        && run "through tor" "$bin/Socks5Test" || note_fail "Socks5Test build" ;;
+esac
 run "tunnel parsing"   "$bin/NetTunnelTest"
 # Android has no keyboard this game can reach, so it draws one. What is
 # checked here is the layout: where the keys are and what they type.
@@ -302,6 +310,12 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
       -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       >> "$build/test-targets-build.log" 2>&1 \
     && run "dedicated server starts" "$root/tests/server_smoke_test.sh" "$build" \
+    && { ! command -v node >/dev/null ||
+         { cmake --build "$build" --config Release --target CampaignClient \
+                 >> "$build/test-targets-build.log" 2>&1 &&
+           run "campaign survives restarts" "$root/tests/campaign_restart_test.sh" "$build" &&
+           run "relayed campaign survives" "$root/tests/campaign_relay_test.sh" "$build" &&
+           run "campaign soak (60 turns)" "$root/tests/campaign_soak_test.sh" "$build" 60; }; } \
     && run "agent protocol" "$root/tests/agent_protocol_test.sh" "$build" \
     && run "templeos bridge" "$root/tests/templeos_bridge_test.sh" "$build" \
     && run "templeos client" "$root/tests/templeos_client_test.sh" "$build" \
@@ -344,6 +358,26 @@ run "menu splash"      "$bin/SplashTest"
 # into a player-visible freeze -- how much work it does to write it. See the
 # file's own header.
 run "web state archive" "$bin/OdStateTest"
+
+# Achievement grants against signatures from another Ed25519, and the rule that
+# a .odstate may only OFFER grants. Then the catalog: the game, the Worker and
+# the Steam sheet each carry a generated copy, and they must agree.
+#
+# The launcher carries one too, but it is a separate repository, so it can only
+# be checked when a checkout is beside this one -- this said it was checked long
+# before anything passed --unifico. Unifico's own CI checks it on every push.
+run "achievement grants" "$bin/AchievementsTest" "$root"
+unifico=${UNIFICO_DIR:-}
+if [ -z "$unifico" ]; then
+    for candidate in "$root/../Unifico" "$root/../unifico"; do
+        if [ -f "$candidate/src/gen/catalog.gen.h" ]; then unifico=$candidate; break; fi
+    done
+fi
+if [ -n "$unifico" ]; then
+    run "achievement catalog" python3 "$root/tools/gen_achievements.py" --check --unifico "$unifico"
+else
+    run "achievement catalog" python3 "$root/tools/gen_achievements.py" --check
+fi
 
 # The three places the game reads bytes it did not write: a socket, a map
 # script, a mod off the internet. A few seconds' worth here with a fixed seed;

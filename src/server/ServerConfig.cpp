@@ -1,4 +1,6 @@
 #include "ServerConfig.h"
+#include "net/NetProtocol.h"
+#include "net/TurnClock.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -27,6 +29,7 @@ const char* serverTunnelModeName(ServerTunnelMode m) {
         case ServerTunnelMode::Auto:         return "auto";
         case ServerTunnelMode::Cloudflared:  return "cloudflared";
         case ServerTunnelMode::LocalhostRun: return "localhost.run";
+        case ServerTunnelMode::Tor:          return "tor";
     }
     return "auto";
 }
@@ -37,6 +40,7 @@ bool serverTunnelModeFromName(const std::string& name, ServerTunnelMode& out) {
     if (n == "off" || n == "none" || n == "false") { out = ServerTunnelMode::Off; return true; }
     if (n == "auto" || n == "true")                { out = ServerTunnelMode::Auto; return true; }
     if (n == "cloudflared" || n == "cloudflare")   { out = ServerTunnelMode::Cloudflared; return true; }
+    if (n == "tor" || n == "onion")                { out = ServerTunnelMode::Tor; return true; }
     if (n == "localhost.run" || n == "localhostrun" || n == "ssh") {
         out = ServerTunnelMode::LocalhostRun;
         return true;
@@ -178,6 +182,34 @@ const std::vector<Field>& fields() {
                    "seats in the lobby"),
         UINT_FIELD("turn-seconds", turnSeconds, ServerSettingScope::LobbyOnly,
                    "rule turn length; 0 is long-form with no countdown"),
+        {"turn-at", ServerSettingScope::LobbyOnly,
+         "resolve turns at this UTC time of day (HH:MM); empty for a plain interval",
+         FieldKind::Text,
+         [](const ServerConfig& c) { return c.turnAt; },
+         [](ServerConfig& c, const std::string& v, std::string& why) {
+             if (!v.empty() && turnclock::parseAnchor(v) < 0) {
+                 why = "expects a UTC time as HH:MM, like 18:00, or nothing";
+                 return false;
+             }
+             c.turnAt = v;
+             return true;
+         }},
+        UINT_FIELD("resume-grace-seconds", resumeGraceSeconds, ServerSettingScope::Anytime,
+                   "after a restart, a turn already overdue resolves this long after"),
+        {"voice-link", ServerSettingScope::Anytime,
+         "voice chat link offered to players, e.g. a Discord invite; empty for none",
+         FieldKind::Text,
+         [](const ServerConfig& c) { return c.voiceLink; },
+         [](ServerConfig& c, const std::string& v, std::string& why) {
+             if (!v.empty() && !netVoiceLinkValid(v)) {
+                 why = "expects an https:// link of up to 200 printable characters";
+                 return false;
+             }
+             c.voiceLink = v;
+             return true;
+         }},
+        TEXT_FIELD("checkpoint-command", checkpointCommand, ServerSettingScope::Restart,
+                   "shell command run after each turn to back the campaign up"),
         CHOICE_FIELD("assignment", assignment, ServerSettingScope::LobbyOnly,
                      "who picks countries", "host", "players"),
         CHOICE_FIELD("late-join", lateJoin, ServerSettingScope::LobbyOnly,
@@ -199,12 +231,12 @@ const std::vector<Field>& fields() {
                    "host through the account service; no port, and the only way "
                    "browser players can reach this server"),
         {"tunnel", ServerSettingScope::Restart,
-         "off, auto, cloudflared or localhost.run", FieldKind::Text,
+         "off, auto, cloudflared, localhost.run or tor", FieldKind::Text,
          [](const ServerConfig& c) { return std::string(serverTunnelModeName(c.tunnel)); },
          [](ServerConfig& c, const std::string& v, std::string& why) {
              ServerTunnelMode m{};
              if (!serverTunnelModeFromName(v, m)) {
-                 why = "expects off, auto, cloudflared or localhost.run";
+                 why = "expects off, auto, cloudflared, localhost.run or tor";
                  return false;
              }
              c.tunnel = m;
@@ -409,6 +441,10 @@ std::vector<std::string> ServerConfig::problems() const {
     if (turnSeconds == 0 && automation.advanceEverySeconds == 0)
         out.push_back("note: turn-seconds is 0 and auto.advance-every-seconds is 0, "
                       "so turns only advance when someone types `step-go`.");
+
+    if (!turnAt.empty() && turnSeconds == 0 && automation.advanceEverySeconds == 0)
+        out.push_back("turn-at is set but there is no turn length, so it does nothing. "
+                      "Set turn-seconds, e.g. 86400 for a turn a day.");
 
     if (!loadSave.empty()) {
         // RESOLVED THE WAY THE LOADER RESOLVES IT, not against the working

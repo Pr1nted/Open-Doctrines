@@ -1227,7 +1227,14 @@ int testQuiet(const std::string& issuer, bool onlyIdle = false) {
         // somewhere beyond turn 800. This used to be emitted anyway: the
         // client killed the connection over it, or -- over the relay -- the
         // socket dropped it without a word and the joiner waited forever.
-        std::vector<uint8_t> huge(17u * 1024 * 1024, 0x5A);
+        //
+        // Noise, not one repeated byte: a client that reads a deflated
+        // snapshot is sent one, and 17 MB of 0x5A deflates to almost nothing
+        // and goes through -- which is the compression working, not the
+        // ceiling. What has to be refused is a world that is big AFTER it.
+        std::vector<uint8_t> huge(17u * 1024 * 1024);
+        uint32_t lcg = 12345;
+        for (uint8_t& b : huge) { lcg = lcg * 1664525u + 1013904223u; b = (uint8_t)(lcg >> 24); }
         hostSeen.hostError.clear();
         const bool sent = host.sendSnapshot(peerId, 1, huge);
         check("a world too large to send is refused rather than emitted", !sent);

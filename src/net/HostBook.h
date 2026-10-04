@@ -52,6 +52,28 @@ struct HostSettings {
     bool     bindAll     = false;
     bool     listed      = false;
     uint16_t port        = 27015;
+    /** The voice chat invite the host offers players. Empty for none. */
+    std::string voiceLink;
+};
+
+/**
+ * Where a campaign was when the server last wrote it down.
+ *
+ * Everything a restarted server needs to carry on as if it had never stopped,
+ * rather than to start over: whether the game was running, when the open turn
+ * is due in WALL-CLOCK time (see TurnClock.h for why not a monotonic one), and
+ * the session code players have saved, so it can be reopened instead of
+ * replaced. A file written by an older build has none of this, and reads as a
+ * campaign in its lobby -- which is exactly how that build would have resumed.
+ */
+struct CampaignState {
+    bool        inGame = false;
+    /** Turn the deadline belongs to. 0 when no turn is open. */
+    uint32_t    openTurn = 0;
+    /** Unix epoch milliseconds. 0 means no deadline (long-form, or no turn). */
+    int64_t     turnDeadlineMs = 0;
+    /** The code players saved. Reopened, if the account service allows it. */
+    std::string sessionCode;
 };
 
 struct HostBook {
@@ -79,12 +101,53 @@ struct HostBook {
     /** The table's rules, so continuing a campaign continues its settings. */
     HostSettings settings;
 
+    CampaignState campaign;
+
     std::string encode() const;
     static bool decode(const std::string& json, HostBook& out);
 
     /** `<savePath>.odhost` -- beside the save it belongs to. */
     static std::string pathFor(const std::string& savePath);
 
+    /**
+     * Written to a temporary file and renamed over the old one, so a power
+     * cut mid-write leaves the previous book rather than half of a new one.
+     * A server that may be switched off at the wall writes this every turn.
+     */
     bool save(const std::string& savePath) const;
     static bool load(const std::string& savePath, HostBook& out);
 };
+
+/**
+ * Orders submitted for the open turn, kept across a restart.
+ *
+ * Without this a server restarted an hour before the deadline forgot every
+ * order it had been sent that day, and the AI played everybody who had
+ * already done their turn -- the worst possible reward for being on time.
+ *
+ * In its own `<save>.odorders` rather than in `.odhost`: the book is meant to
+ * be safe to keep beside a save somebody shares, and a player's unresolved
+ * orders are exactly what their rivals would like to read. Deleted once the
+ * turn they belong to resolves.
+ */
+struct PendingOrder {
+    std::string          psid;
+    bool                 malformed = false;
+    std::vector<uint8_t> orders;
+};
+
+struct PendingOrdersBook {
+    uint32_t                  turn = 0;
+    std::vector<PendingOrder> entries;
+
+    std::string encode() const;
+    static bool decode(const std::string& text, PendingOrdersBook& out);
+
+    static std::string pathFor(const std::string& savePath);
+    bool save(const std::string& savePath) const;
+    static bool load(const std::string& savePath, PendingOrdersBook& out);
+    static void remove(const std::string& savePath);
+};
+
+/** Write `text` to `path` via a temporary file and a rename. */
+bool hostBookWriteAtomic(const std::string& path, const std::string& text);

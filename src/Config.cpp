@@ -230,6 +230,8 @@ bool Config::load(const std::string& path) {
     agePromptOn       = findBool(json, "agePromptOn", false);
     ageAnswer         = (int)findFloat(json, "ageAnswer", 0.0f);
     lobbyChatShown    = findBool(json, "lobbyChatShown", true);
+    torRouteAll       = findBool(json, "torRouteAll", false);
+    torSocksPort      = findInt(json, "torSocksPort", 0);
     llmEnabled        = findBool(json, "llmEnabled", false);
     llmEndpoint       = findConfigString(json, "llmEndpoint", "");
     llmModel          = findConfigString(json, "llmModel", "");
@@ -374,6 +376,8 @@ bool Config::save(const std::string& path) {
     file << "  \"agePromptOn\": " << (agePromptOn ? "true" : "false") << ",\n";
     file << "  \"ageAnswer\": " << ageAnswer << ",\n";
     file << "  \"lobbyChatShown\": " << (lobbyChatShown ? "true" : "false") << ",\n";
+    file << "  \"torRouteAll\": " << (torRouteAll ? "true" : "false") << ",\n";
+    file << "  \"torSocksPort\": " << torSocksPort << ",\n";
     file << "  \"llmEnabled\": " << (llmEnabled ? "true" : "false") << ",\n";
     file << "  \"llmEndpoint\": \"" << llmEndpoint << "\",\n";
     file << "  \"llmModel\": \"" << llmModel << "\",\n";

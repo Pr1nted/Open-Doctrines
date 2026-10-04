@@ -44,6 +44,10 @@ import {
     discordInteractions, joinPage, lfgClose, lfgCommandDefinition, lfgList, lfgModerate,
     lfgModerationList, lfgPost, lfgReport,
 } from "./lfg/routes.js";
+import {
+    achievementsCatalog, achievementsClaim, wipeAchievements, achievementsKey, achievementsMine, achievementsSession,
+} from "./achievements/claim.js";
+import { analyticsEvent, forward as gaForward, gaConfigured } from "./analytics/ga.js";
 import { createLink, useLink } from "./live/viewerlink.js";
 import { safeChannel } from "./live/platforms.js";
 import {
@@ -98,6 +102,7 @@ export { LobbyDO } from "./lobby/LobbyDO.js";
 export { ModCountsDO } from "./mods/counts.js";
 export { ReviewDO } from "./mods/review.js";
 export { LfgBoardDO } from "./lfg/BoardDO.js";
+export { AchievementsDO } from "./achievements/AchievementsDO.js";
 
 /** Recommended poll interval, seconds. Mirrors RFC 8628's `interval`. */
 const POLL_INTERVAL = 2;
@@ -269,6 +274,14 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // posts here, and a listing made either way expires and is reported the
     // same way. See lfg/board.ts for the rules it must pass.
 
+    // Achievements. A claim is a request; only a signed grant is an
+    // achievement. See achievements/claim.ts for what stands between them.
+    if (get  && path === "/achievements/catalog") return achievementsCatalog();
+    if (get  && path === "/achievements/key") return achievementsKey(env);
+    if (post && path === "/achievements/session") return achievementsSession(request, env);
+    if (post && path === "/achievements/claim") return achievementsClaim(request, env);
+    if (get  && path === "/achievements/mine") return achievementsMine(request, env);
+
     if (get  && path === "/lfg") return lfgList(env);
     if (post && path === "/lfg") return lfgPost(request, env);
     if (post && path === "/lfg/close") return lfgClose(request, env);
@@ -359,6 +372,8 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // meaning here and why the policy says so instead of offering a button
     // that would do nothing. See usageReport().
     if (post && path === "/usage") return usageReport(request, env);
+    // Launcher statistics, for people who agreed to them. See analytics/ga.ts.
+    if (post && path === "/analytics/event") return analyticsEvent(request, env);
 
     // Deleting all of it, which is the only deletion this data admits of.
     // Developer badge only; see usageForget().
@@ -1352,6 +1367,10 @@ async function accountDelete(request: Request, env: Env): Promise<Response> {
     }
     const result = await confirmDeletion(env, account, body.confirm);
     if (!result.ok) return fail(400, "bad_confirmation", "That confirmation expired. Start again.");
+    // Grants name the account id; once it is gone nothing should still hold
+    // them. Grants already copied into a .odstate stay verifiable -- they are
+    // signed statements -- but they name an account that no longer exists.
+    await wipeAchievements(env, account.id);
     return json({ status: "deleted" });
 }
 
@@ -1445,6 +1464,8 @@ async function serverRegister(request: Request, env: Env): Promise<Response> {
 interface SessionBody {
     serverCredential?: string;
     settings?: Partial<SessionSettings>;
+    /** A code this server opened before, to renew instead of replacing. */
+    reopen?: unknown;
 }
 
 async function sessionCreate(request: Request, env: Env): Promise<Response> {
@@ -1473,6 +1494,51 @@ async function sessionCreate(request: Request, env: Env): Promise<Response> {
         ...(body.settings?.authNotice ? { authNotice: String(body.settings.authNotice).slice(0, 400) } : {}),
     };
 
+    const hostPsid = await psidFor(env, account.id, credential.srv);
+    const wsBase = env.ISSUER.replace(/^http/, "ws");
+    const opened = (code: string, descriptor: string, reopen: Record<string, unknown>) => json({
+        code,
+        descriptor,
+        wsUrl: `${wsBase}/session/${code}/ws`,
+        settings,
+        // The host's own pseudonym on its own server. Only we can compute it,
+        // and the host needs it to declare itself in WELCOME -- a server that
+        // cannot say who runs it is refused by every client.
+        hostPsid,
+        issuer: env.ISSUER,
+        ...reopen,
+    });
+
+    // ── REOPEN: SAME CODE, FRESH DESCRIPTOR ──
+    //
+    // A restarted host keeps the code its players saved, and a long-running
+    // one renews its descriptor before the day is up. The lobby decides
+    // whether this server may: only the srv that created the code can reopen
+    // it. A refusal is not an error -- the host still gets a working session,
+    // under a new code, and is told why it did not get the old one.
+    let refused: string | null = null;
+    // Absent, null and "" all mean "no code to keep", so a client can always
+    // send the field.
+    if (body.reopen !== undefined && body.reopen !== null && body.reopen !== "") {
+        const wanted = typeof body.reopen === "string" ? body.reopen : "";
+        // Shape first, for the same reason as the GET route: a code we could
+        // not have issued must not reach the binding at all.
+        if (!isSessionCode(wanted)) {
+            refused = "bad_code";
+        } else {
+            const descriptor = await issueSessionDescriptor(env, wanted, credential.srv);
+            const stub = env.LOBBY.get(env.LOBBY.idFromName(wanted));
+            const renewed = await stub.fetch(new Request("https://lobby/reopen", {
+                method: "POST",
+                body: JSON.stringify({ descriptor, settings, srv: credential.srv }),
+            }));
+            if (renewed.ok) return opened(wanted, descriptor, { reopened: true });
+            const why = await renewed.json<{ error?: string }>().catch(() => null);
+            refused = why?.error === "no_session" || why?.error === "not_your_session"
+                ? why.error : "reopen_failed";
+        }
+    }
+
     const code = newSessionCode();
     const descriptor = await issueSessionDescriptor(env, code, credential.srv);
 
@@ -1484,23 +1550,14 @@ async function sessionCreate(request: Request, env: Env): Promise<Response> {
             // The relay only ever sees pseudonyms, so this is how it will
             // recognise the host later: the same value that account's tickets
             // for this server will carry.
-            hostPsid: await psidFor(env, account.id, credential.srv),
+            hostPsid,
+            srv: credential.srv,
         }),
     }));
     if (!init.ok) return fail(500, "session_failed", "Could not open that session.");
 
-    const wsBase = env.ISSUER.replace(/^http/, "ws");
-    return json({
-        code,
-        descriptor,
-        wsUrl: `${wsBase}/session/${code}/ws`,
-        settings,
-        // The host's own pseudonym on its own server. Only we can compute it,
-        // and the host needs it to declare itself in WELCOME -- a server that
-        // cannot say who runs it is refused by every client.
-        hostPsid: await psidFor(env, account.id, credential.srv),
-        issuer: env.ISSUER,
-    });
+    return opened(code, descriptor,
+                  refused === null ? {} : { reopened: false, reopenRefused: refused });
 }
 
 interface TicketBody {
@@ -1673,6 +1730,12 @@ async function usageReport(request: Request, env: Env): Promise<Response> {
         `usage:${day}:${crypto.randomUUID()}`, JSON.stringify({ b: bucket, f: surface }),
         { expirationTtl: 90 * 24 * 60 * 60 },
     );
+    // Counted in Google Analytics as well, under a client id made for this one
+    // report and thrown away: nothing links it to the next, exactly as the
+    // KV row above. The player already opted in to sending this report.
+    if (gaConfigured(env)) {
+        await gaForward(env, crypto.randomUUID(), [{ name: "session_end", params: { minutes_bucket: bucket, surface } }]);
+    }
     return json({ ok: true });
 }
 

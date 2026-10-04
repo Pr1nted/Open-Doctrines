@@ -392,6 +392,21 @@ void testLoopback() {
               out.compare(0, 12, "HTTP/1.1 400") == 0, out.substr(0, 24));
     }
 
+    // -- a hosting platform's health check is answered, not refused -------
+    {
+        RawClient c;
+        c.connectTo(server.port());
+        c.write("GET /healthz HTTP/1.1\r\nHost: example.onrender.com\r\n\r\n");
+        pump(server);
+        const std::string out = c.read();
+        check("a health check gets a 200",
+              out.compare(0, 15, "HTTP/1.1 200 OK") == 0, out.substr(0, 24));
+        check("and never becomes a connection", server.connectionCount() == 0 ||
+              out.find("Upgrade") == std::string::npos);
+    }
+    check("an upgrade to /healthz is still an upgrade, not a health check",
+          !wsIsHealthCheck("GET /healthz HTTP/1.1\r\nUpgrade: websocket\r\n\r\n"));
+
     // -- a peer that connects and says nothing is dropped, not held --------
     {
         RawClient c;

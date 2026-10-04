@@ -817,6 +817,7 @@ void Game::tutorialAct(const std::string& act) {
     if (act == "end_tutorial") {
         // Already on the menu by now, so this is only the flags and the link.
         m_tutorialMode = false;
+        achNote("tutorial_completed");   // after the flag: the tutorial itself earns nothing
         m_tutorialTrack.clear();
         m_tutorialPending = false;
         m_introRunning = false;

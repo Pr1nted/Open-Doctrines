@@ -80,6 +80,14 @@ Rectangle menuLanguageIconRect(int screenW, int dy) {
     return { gear.x - 16 - kMenuIconSize, gear.y, (float)kMenuIconSize, (float)kMenuIconSize };
 }
 
+// The collection, left of the language flag. An icon and not a menu row: the
+// rows are numbered, and the web build's .odstate rows and the developer-only
+// row at the end are addressed by those numbers.
+Rectangle menuTrophyIconRect(int screenW, int dy) {
+    const Rectangle lang = menuLanguageIconRect(screenW, dy);
+    return { lang.x - 16 - kMenuIconSize, lang.y, (float)kMenuIconSize, (float)kMenuIconSize };
+}
+
 // The tutorial button, bottom right. Not in the list above it: a first-time
 // player looking for help looks in the corner, and a menu entry between
 // "Quick Start" and "Play Singleplayer" is something you only find if you
@@ -1187,6 +1195,33 @@ void Game::drawMainMenu() {
         }
     }
 
+    // Trophy (achievements), with the confirmed count beside it.
+    {
+        const Rectangle r = menuTrophyIconRect(m_screenW, iconDY);
+        const bool hov = m_menuIntro >= 1.0f && CheckCollisionPointRec(mouse, r);
+        DrawRectangleRounded(r, 0.3f, 6, fade(hov ? Color{255, 255, 255, 24} : BLANK));
+        const Color c = fade(hov ? Color{232, 200, 90, 255} : Color{201, 162, 39, 220});
+        const float cx = r.x + r.width / 2, top = r.y + 8;
+        // Cup, handles, stem, base.
+        DrawRectangleRounded({cx - 8, top, 16, 12}, 0.5f, 6, c);
+        DrawRing({cx - 8, top + 5}, 3, 5, 90, 270, 12, c);
+        DrawRing({cx + 8, top + 5}, 3, 5, -90, 90, 12, c);
+        DrawRectangle((int)cx - 2, (int)top + 12, 4, 5, c);
+        DrawRectangle((int)cx - 7, (int)top + 17, 14, 3, c);
+        const int got = odach::Tracker::get().grantedCount();
+        if (got > 0) {
+            const char* n = TextFormat("%d", got);
+            const int tw = MeasureText(n, 12);
+            DrawRectangleRounded({r.x + r.width - tw - 6, r.y + r.height - 14, (float)tw + 8, 14}, 0.5f, 6,
+                                 fade(Color{12, 15, 22, 230}));
+            DrawText(n, (int)(r.x + r.width - tw - 2), (int)(r.y + r.height - 13), 12, c);
+        }
+        if (hov) {
+            const char* tip = T("Achievements");
+            DrawText(tip, (int)(r.x + r.width / 2 - MeasureText(tip, 16) / 2), (int)(r.y + r.height + 6), 16, fade(RAYWHITE));
+        }
+    }
+
     // Gear icon (settings) — reuse style from world browser
     {
         Rectangle gearRect = menuGearIconRect(m_screenW, iconDY);
@@ -1807,6 +1842,7 @@ void Game::updateMainMenu() {
     // hitbox in the corner is worse than the button was.
     bool gearHover = CheckCollisionPointRec(mouse, menuGearIconRect(m_screenW, 0));
     bool langHover = CheckCollisionPointRec(mouse, menuLanguageIconRect(m_screenW, 0));
+    bool trophyHover = CheckCollisionPointRec(mouse, menuTrophyIconRect(m_screenW, 0));
     bool quitHover = kCanQuitToDesktop &&
                      CheckCollisionPointRec(mouse, menuQuitIconRect(m_screenW, 0));
 
@@ -1880,7 +1916,12 @@ void Game::updateMainMenu() {
     }
 
     // Top-right icon actions (mouse-only)
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    // The release only counts if the press happened on THIS screen. A press
+    // that changed the screen hands its release to whatever the new one
+    // draws under the cursor -- which is how leaving the mod menu started
+    // the tutorial, the two buttons being all but on top of each other.
+    // See m_pressScreen in Game::run().
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressScreen == SCREEN_MENU) {
         if (gearHover) {
             m_inSettings = true;
             Audio::get().playSfx("click_light");
@@ -1890,6 +1931,10 @@ void Game::updateMainMenu() {
         if (langHover) {
             m_languageOpen = true;
             Audio::get().playSfx("click_light");
+        }
+        if (trophyHover) {
+            Audio::get().playSfx("click_light");
+            openAchievements(SCREEN_MENU);
         }
         if (quitHover) {
             m_running = false;
@@ -2027,6 +2072,7 @@ void Game::updateOdStatePrompt() {
             // here reaches the player's disk directly.
             const std::string tmp = "/odstate_out.odstate";
             if (OdState::save(m_dataDir, tmp, err, &n)) {
+                achNote("odstate_saved");
                 OdState::webDownload(tmp, name);
                 std::remove(tmp.c_str());
                 setOdStateMsg("Downloaded " + name + "  (" + std::to_string(n) + " files)", false);
@@ -2035,8 +2081,10 @@ void Game::updateOdStatePrompt() {
             }
 #else
             std::string dest = OdState::defaultSaveDir(m_dataDir) + "/" + name;
-            if (OdState::save(m_dataDir, dest, err, &n))
+            if (OdState::save(m_dataDir, dest, err, &n)) {
+                achNote("odstate_saved");
                 setOdStateMsg("Saved " + dest + "  (" + std::to_string(n) + " files)", false);
+            }
             else
                 setOdStateMsg(err, true);
 #endif
@@ -2487,6 +2535,7 @@ void Game::updateCountrySelect() {
             if (CheckCollisionPointRec(mouse, specBtnRect)) {
                 // Spectator mode
                 m_playerCountryId = SPC_CID;
+                achWorldStarted(false);
                 // Sync per-country research
                 for (auto& n : m_researchNodes)
                     n.researched = false;
@@ -2567,6 +2616,7 @@ void Game::updateCountrySelect() {
 // ────────────────────────────────────────────────────────────────────────────
 void Game::commitPlayerCountry(int countryId) {
     m_playerCountryId = countryId;
+    achPlayerChose(countryId);
     const Country* pc = m_countries.getCountry(m_playerCountryId);
     LoadLog() << "[DIAG] Player confirmed country " << m_playerCountryId
               << " (" << (pc ? pc->isoA3 : "?") << ")" << std::endl;
@@ -2835,6 +2885,7 @@ void Game::startBenchSeat(const std::string& spec, int untilTurn) {
 }
 
 void Game::startQuickStart() {
+    achNote("quick_starts");
     // Named for the player, not for the file. Quick Start is the path taken by
     // someone who has not decided to keep anything yet, and "Quick Start" in a
     // world list a week later says what it was.

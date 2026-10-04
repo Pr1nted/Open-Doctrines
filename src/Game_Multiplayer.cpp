@@ -46,6 +46,13 @@
 #include "net/ServerBook.h"
 #include "net/Session.h"
 #include "net/TurnRunner.h"
+#include "net/TurnClock.h"
+#include "net/LobbyMap.h"
+#include "net/Socks5.h"
+#include "net/TorClient.h"
+#include "util/OpenLink.h"
+#include <unordered_set>
+#include "map/Province.h"
 #include "net/HostBook.h"
 #include "net/Tunnel.h"
 #include "net/WebSocket.h"
@@ -286,12 +293,46 @@ void Game::mpSaveSeats() {
     book.settings.bindAll     = m_mpBindAll;
     book.settings.listed      = m_mpListed;
     book.settings.port        = (uint16_t)std::clamp(atoi(m_mpPortField.c_str()), 0, 65535);
+    book.settings.voiceLink   = netVoiceLinkValid(m_mpVoiceLink) ? m_mpVoiceLink : "";
     for (const NetPeer& p : m_netHost->lobby().roster()) {
         if (p.psid.empty() || p.countryId == 0) continue;
         // Written whether or not they are connected right now: somebody who
         // closed the game an hour ago is exactly who this is for.
         book.seats.push_back({p.psid, p.name, p.countryId});
     }
+
+    // Where the campaign is, so a restart carries on rather than starts over.
+    book.campaign.inGame = m_netHost->lobby().state() == NetSessionState::Game;
+    if (book.campaign.inGame && m_mpTurns && m_mpTurns->running()) {
+        book.campaign.openTurn = m_mpTurns->turnNumber();
+        book.campaign.turnDeadlineMs = m_mpTurnDeadlineEpochMs;
+    } else if (m_mpResumeTurn != 0) {
+        // Resumed but the turn has not reopened yet: the deadline read back is
+        // still the one that applies, and must survive another restart now.
+        book.campaign.openTurn = m_mpResumeTurn;
+        book.campaign.turnDeadlineMs = m_mpResumeDeadlineMs;
+    }
+    book.campaign.sessionCode = m_netHost->code().empty() ? m_mpReopenCode
+                                                          : m_netHost->code();
+    book.save(m_currentSavePath);
+    m_mpCheckpointDirty = true;
+}
+
+void Game::mpSavePendingOrders() {
+    if (!m_netHost || m_currentSavePath.empty() || !m_mpTurns || !m_mpTurns->running())
+        return;
+    const uint32_t turn = m_mpTurns->turnNumber();
+    PendingOrdersBook book;
+    book.turn = turn;
+    for (const LobbyMember& m : m_netHost->lobby().members()) {
+        if (m.spectator || m.countryId == 0 || m.psid.empty()) continue;
+        if (m.submittedTurn != turn || (!m.submitted && !m.malformed)) continue;
+        // The host's own seat submits an empty payload: its orders are already
+        // in this world. Kept anyway, so "the host was ready" survives too.
+        book.entries.push_back({m.psid, m.malformed, m.orders});
+    }
+    m_mpCheckpointDirty = true;
+    if (book.entries.empty()) { PendingOrdersBook::remove(m_currentSavePath); return; }
     book.save(m_currentSavePath);
 }
 
@@ -310,6 +351,13 @@ void Game::mpNote(const std::string& text, bool error) {
     m_mpNote = text;
     m_mpNoteError = error;
     m_mpNoteTimer = 6.0f;
+    // A dedicated server has no screen to show this on, and these are exactly
+    // the lines its operator is waiting for: a campaign resumed, a code that
+    // changed, a relay that dropped. Into the log instead.
+    if (m_headless) {
+        std::printf("[%s] %s\n", error ? "host WARN" : "host", text.c_str());
+        std::fflush(stdout);
+    }
 }
 
 // ------------------------------------------------------------------ actions --
@@ -370,6 +418,19 @@ void Game::mpOpenHost() {
     if (!m_netHost) m_netHost = new NetHost();
     m_mpOpenFailed = false;      // a fresh attempt gets a fresh complaint
 
+    // The code this campaign had last time, read BEFORE the session is opened
+    // so the account service can be asked for it again. Players saved it; a
+    // new one every restart is a server nobody can find a second time.
+    {
+        std::string bookPath;
+        if (m_mpWorldPreloaded) bookPath = m_currentSavePath;
+        else if (m_mpResume && m_mpSaveIndex >= 0 && m_mpSaveIndex < (int)m_mpSavePaths.size())
+            bookPath = m_mpSavePaths[(size_t)m_mpSaveIndex];
+        HostBook book;
+        if (!bookPath.empty() && HostBook::load(bookPath, book))
+            m_mpReopenCode = book.campaign.sessionCode;
+    }
+
     NetHost::Config cfg;
     cfg.issuer = account.issuer();
     cfg.token = account.sessionToken();
@@ -400,6 +461,12 @@ void Game::mpOpenHost() {
     cfg.dedicated = m_mpDedicated;
     cfg.viaRelay  = m_mpViaRelay;
     cfg.store = mpStoreKind();
+    // A dedicated server, or anything with turns an hour or longer, is a game
+    // people leave and come back to: the session must survive its host
+    // restarting, and it keeps its code when it does.
+    cfg.durable = m_mpDedicated || cfg.turnSeconds >= 3600;
+    cfg.reopenCode = m_mpReopenCode;
+    cfg.freshToken = [] { return AccountClient::get().sessionToken(); };
 
     // Long-form needs a key to seal orders with, and the SAME key every time
     // this campaign resumes: orders submitted while the host was away were
@@ -452,11 +519,18 @@ void Game::mpOpenHost() {
         return;
     }
     m_netHost->setMapName(m_mpMapId);
+    if (netVoiceLinkValid(m_mpVoiceLink)) {
+        NetSessionInfo info;
+        info.voiceLink = m_mpVoiceLink;
+        m_netHost->setSessionInfo(info);
+        m_mpVoiceLinkSent = m_mpVoiceLink;
+    }
     m_mpPage = MpPage::Lobby;
 
     // A tunnel, if the host wants one and has one. Started here rather than
     // before the listener so it publishes a port that is already accepting.
     tunnelSetToolsDir(mpToolsDir());
+    tunnelSetStateDir(m_dataDir);     // an onion's keys ARE its address; keep them
     const std::vector<TunnelProvider> providers = tunnelProvidersAvailable();
     // A relayed host binds no port, so there is nothing for a tunnel to reach:
     // starting one would publish an address that answers nothing.
@@ -477,8 +551,11 @@ void Game::mpOpenHost() {
     // stops `tunnel: auto` starting two.
     const TunnelWanted want{m_mpUseTunnel, m_headless, m_mpBindAll, m_mpViaRelay};
     if (tunnelWantedByHost(want) && !providers.empty()) {
-        const TunnelProvider p =
-            providers[(size_t)std::clamp(m_mpTunnelChoice, 0, (int)providers.size() - 1)];
+        // Tor only when the host ticked it; otherwise the best of the rest.
+        TunnelProvider p = TunnelProvider::None;
+        for (TunnelProvider q : providers)
+            if (m_mpUseTor ? q == TunnelProvider::Tor : q != TunnelProvider::Tor) { p = q; break; }
+        if (p == TunnelProvider::None) p = providers.front();
 
         // Being installed is not being usable. Starting something that cannot
         // get an address wastes the host half a minute and then fails, so it is
@@ -498,6 +575,20 @@ void Game::mpOpenHost() {
             mpNote(std::string("Opening a tunnel via ") + tunnelProviderName(p) + "...");
         }
         }
+    }
+
+    // ── A WORLD THAT IS ALREADY HERE ──
+    //
+    // The dedicated server loads its world itself, before it opens anything,
+    // so that a bad map or a broken save is found before a session exists.
+    // This function then started a SECOND load of the same map -- which
+    // unloaded the first and was never driven to completion, because nothing
+    // on a server calls updateLoading() after startup. Every dedicated session
+    // ran on an unloaded world and published no countries.
+    if (m_mpWorldPreloaded) {
+        m_mpWorldPreloaded = false;
+        mpHostWorldReady();
+        return;
     }
 
     // Load the world NOW rather than when the game starts: the lobby needs real
@@ -525,6 +616,7 @@ void Game::mpOpenHost() {
             m_mpAssignment = book.settings.assignment;
             m_mpBindAll    = book.settings.bindAll;
             m_mpListed     = book.settings.listed;
+            if (!book.settings.voiceLink.empty()) m_mpVoiceLink = book.settings.voiceLink;
             if (book.settings.port != 0)
                 m_mpPortField = std::to_string(book.settings.port);
         }
@@ -578,8 +670,6 @@ void Game::mpBeginJoin(const std::string& address, const std::string& code) {
         return;
     }
 
-    if (!m_netSession) m_netSession = new NetSession();
-
     // ── AN EMPTY ADDRESS IS NOT A MISTAKE ANY MORE ──
     //
     // It used to be refused with "Enter the server's address.", which made the
@@ -595,21 +685,119 @@ void Game::mpBeginJoin(const std::string& address, const std::string& code) {
         // Every plausible route, in order. A host is often reachable by one
         // address from outside and a different one from the same network, and
         // the player has no way to know which applies to them.
+        const bool schemed = address.rfind("ws://", 0) == 0 || address.rfind("wss://", 0) == 0;
+        const bool onion = address.size() > 6 &&
+                           address.compare(address.size() - 6, 6, ".onion") == 0;
+        if (!schemed && !onion && address.find(':') == std::string::npos &&
+            address.find('.') != std::string::npos &&
+            address.find_first_not_of("0123456789.") != std::string::npos) {
+            // A bare host NAME -- "mygame.onrender.com", a tunnel's address --
+            // is almost always behind TLS on 443. Dialled as plain ws:// on
+            // port 80 it met an HTTPS redirect and failed. Tried first, then
+            // the old guesses, so a LAN name still works.
+            candidates.push_back("wss://" + address);
+        }
         candidates.push_back(address);
-        if (address.find(':') == std::string::npos) {
+        if (!schemed && address.find(':') == std::string::npos) {
             // No port given: try the default before giving up on the address.
             candidates.push_back(address + ":27015");
         }
     }
 
+    m_mpRejoin = MpRejoin{};
+    m_mpWelcomedOnce = false;
+    if (!mpStartSession(candidates, code)) return;
+    m_mpPage = MpPage::Lobby;
+    mpNote(T("Connecting..."));
+}
+
+bool Game::mpStartSession(const std::vector<std::string>& candidates,
+                          const std::string& code) {
+    AccountClient& account = AccountClient::get();
+    // A session is single-use: once it has closed it refuses to join again,
+    // which is why a player whose connection dropped could not get back in
+    // without first pressing Leave on a lobby page they were no longer on.
+    if (m_netSession && m_netSession->phase() != NetSession::Phase::Idle) {
+        m_netSession->leave();
+        delete m_netSession;
+        m_netSession = nullptr;
+    }
+    if (!m_netSession) m_netSession = new NetSession();
+    m_mpLastJoinCandidates = candidates;
+    m_mpLastJoinCode = code;
     if (!m_netSession->join(candidates, account.issuer(), code,
                             account.sessionToken(), OD_VERSION_STRING, "")) {
         mpNote(m_netSession->error().empty() ? "Could not start joining."
                                              : m_netSession->error(), true);
+        return false;
+    }
+    return true;
+}
+
+void Game::mpUpdateRejoin() {
+    if (!m_mpRejoin.active) return;
+    const double now = GetTime();
+    // Still trying the last attempt.
+    if (m_netSession && m_netSession->phase() != NetSession::Phase::Closed &&
+        m_netSession->phase() != NetSession::Phase::Idle)
+        return;
+    if (now < m_mpRejoin.nextAt) return;
+    m_mpRejoin.attempt++;
+    // 2, 4, 8, 16 seconds, then every 30: a server restarting takes a minute,
+    // and a player who walked away should not come back to a thousand tries.
+    m_mpRejoin.nextAt = now + std::min(30.0, 2.0 * (1 << std::min(m_mpRejoin.attempt, 4)));
+    mpStartSession(m_mpLastJoinCandidates, m_mpLastJoinCode);
+}
+
+void Game::mpJoinSaved(size_t index) {
+    if (!m_serverBook || index >= m_serverBook->entries().size()) return;
+    const ServerEntry e = m_serverBook->entries()[index];
+    m_mpCodeField = e.code;
+    m_mpAddressField = e.address;
+    m_mpJoinEntryName = e.name;
+    if (e.oneClick()) {
+        // Nothing to ask: the code is known and either there is no address
+        // (the relay) or the player already accepted showing it their IP.
+        m_mpIpWarningAccepted = true;
+        mpBeginJoin(e.address, e.code);
         return;
     }
-    m_mpPage = MpPage::Lobby;
-    mpNote(T("Connecting..."));
+    // Something is missing -- no code yet, or an address never agreed to --
+    // so the form, filled in, says what.
+    m_mpPage = MpPage::Join;
+    m_mpIpWarningAccepted = false;
+    m_mpFocus = e.code.empty() ? 1 : 0;
+}
+
+void Game::drawMpRejoinBanner() {
+    if (!m_mpRejoin.active) return;
+    const int w = std::min(m_screenW - 40, 720), h = 64;
+    const Rectangle r{(float)(m_screenW - w) / 2, 52.0f, (float)w, (float)h};
+    DrawRectangleRounded(r, 0.15f, 8, Color{52, 30, 26, 240});
+    DrawRectangleRoundedLines(r, 0.15f, 8, Color{210, 140, 110, 230});
+    const double left = std::max(0.0, m_mpRejoin.nextAt - GetTime());
+    const bool trying = m_netSession && m_netSession->phase() != NetSession::Phase::Closed &&
+                        m_netSession->phase() != NetSession::Phase::Idle;
+    const std::string line1 = T("Lost the connection to the server. Your country is kept for you.");
+    const std::string line2 = trying
+        ? std::string(T("Reconnecting..."))
+        : TextFormat(T("Trying again in %d s (attempt %d)."), (int)left + 1, m_mpRejoin.attempt + 1);
+    DrawText(line1.c_str(), (int)r.x + 14, (int)r.y + 10, 16, Color{240, 210, 195, 255});
+    DrawText(line2.c_str(), (int)r.x + 14, (int)r.y + 36, 14, Color{210, 180, 165, 255});
+    const Vector2 mouse = getMouse();
+    const bool click = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+    const MpButton now = buttonAt(r.x + r.width - 250, r.y + 15, 120, 34, mouse);
+    drawButton(now, "Retry now", 14, Color{60, 44, 36, 230}, Color{200, 150, 120, 220});
+    if (click && now.hovered && !trying) m_mpRejoin.nextAt = 0.0;
+    const MpButton leave = buttonAt(r.x + r.width - 122, r.y + 15, 108, 34, mouse);
+    drawButton(leave, "Leave", 14, Color{60, 36, 36, 230}, Color{190, 120, 120, 220});
+    if (click && leave.hovered) {
+        m_mpRejoin = MpRejoin{};
+        mpLeave();
+        unloadGameData();
+        m_paused = false;
+        m_currentScreen = SCREEN_MENU;
+    }
 }
 
 void Game::mpLeave() {
@@ -630,6 +818,14 @@ void Game::mpLeave() {
     // and broadcast whatever delta that number happened to name.
     if (m_mpTurns)    { delete m_mpTurns;    m_mpTurns = nullptr; }
     m_mpDeadlineMs.clear();
+    // What belonged to that session: its map, its voice link, its deadline.
+    m_mpLobbyMap = LobbyMap{};
+    m_mpLobbyMapTexKey.clear();
+    if (m_mpLobbyMapTex.id != 0) { UnloadTexture(m_mpLobbyMapTex); m_mpLobbyMapTex = Texture2D{}; }
+    m_mpVoiceLink.clear();
+    m_mpTurnDeadlineEpochMs = 0;
+    m_mpPickingCountry = false;
+    m_mpAssignTarget = 0;
     m_mpPage = MpPage::Hub;
     m_mpPlayersTab = false;
     m_mpIpWarningAccepted = false;
@@ -640,6 +836,9 @@ void Game::mpShutdown() {
     // declaration -- the destructors would not run at all. They are deleted
     // here, where every type is complete.
     mpLeave();
+    // The game's own Tor, if it started one. It would exit by itself once
+    // this process is gone (__OwningControllerProcess); this is just sooner.
+    torclient::shutdown();
     if (m_mpRegisterThread.joinable()) m_mpRegisterThread.join();
     if (m_serverBook) { delete m_serverBook; m_serverBook = nullptr; }
     if (m_mpTurns)    { delete m_mpTurns;    m_mpTurns = nullptr; }
@@ -748,7 +947,27 @@ void Game::mpDrainEvents() {
                     mpNote(TextFormat(T("%s joined"), e.text.c_str()));
                     break;
 
+                case NetHostEvent::Kind::RelayLost:
+                    mpNote("Lost the relay (" + e.text + "). Reconnecting; players "
+                           "keep their seats.", true);
+                    break;
+                case NetHostEvent::Kind::RelayRestored:
+                    mpNote(T("Relay connection restored."));
+                    break;
+                case NetHostEvent::Kind::CodeChanged:
+                    m_mpReopenCode = e.text;
+                    mpNote("The invite code is now " + e.text + ". Share the new one.", true);
+                    mpSaveSeats();
+                    break;
                 case NetHostEvent::Kind::Opened:
+                    // Remembered beside the save, so the next start asks for
+                    // this same code back.
+                    m_mpReopenCode = e.text;
+                    // Not while a world is still loading: m_currentSavePath is
+                    // the PREVIOUS world's until it lands, and a book written
+                    // beside the wrong save is worse than one written late.
+                    if (m_mpLoad == MpLoad::None) mpSaveSeats();
+                    if (!m_netHost->listenNote().empty()) mpNote(m_netHost->listenNote(), true);
                     mpNote("Game open. Share the code: " + e.text);
                     // The session code only exists once the service has issued
                     // it, so this is the first moment the host can address its
@@ -769,6 +988,9 @@ void Game::mpDrainEvents() {
                         mpNote("A player's orders could not be read; the AI will "
                                "play that turn for them.", true);
                     }
+                    // On disk the moment they arrive: a server switched off an
+                    // hour before the deadline must not forget who was on time.
+                    mpSavePendingOrders();
                     break;
                 case NetHostEvent::Kind::PlayerReport: {
                     // Held for the host to read, not acted on automatically.
@@ -820,11 +1042,20 @@ void Game::mpDrainEvents() {
             switch (e.kind) {
                 case NetSessionEvent::Kind::Welcomed: {
                     const NetWelcome& w = m_netSession->welcome();
+                    m_mpWelcomedOnce = true;
+                    if (m_mpRejoin.active) {
+                        // Back. The host sends the world again, and the game
+                        // reloads it and drops us into our own country.
+                        m_mpRejoin = MpRejoin{};
+                        mpNote(T("Reconnected."));
+                        break;
+                    }
                     mpNote("Joined " + w.sessionName);
                     // Remember where this was, so the next evening is one click.
                     if (m_serverBook) {
                         ServerEntry entry;
-                        entry.name = w.sessionName.empty() ? m_mpAddressField : w.sessionName;
+                        entry.name = !m_mpJoinEntryName.empty() ? m_mpJoinEntryName
+                                   : w.sessionName.empty() ? m_mpAddressField : w.sessionName;
                         entry.issuer = AccountClient::get().issuer();
                         entry.code = m_mpCodeField;
                         entry.lastJoined = (long long)time(nullptr);
@@ -837,14 +1068,44 @@ void Game::mpDrainEvents() {
                         // which is exactly right -- that is where it was.
                         entry.address = m_mpAddressField;
                         m_serverBook->addOrUpdate(entry);
+                        // Set outright, empty included: a server that moved
+                        // from a tunnel to the relay must stop being dialled
+                        // at the tunnel. And the IP warning this player just
+                        // accepted for this address is not asked again.
+                        const int idx = m_serverBook->find(entry.issuer, entry.name);
+                        if (idx >= 0) {
+                            m_serverBook->setAddress((size_t)idx, m_mpAddressField);
+                            m_serverBook->setIpConsent((size_t)idx, m_mpIpWarningAccepted);
+                        }
                         m_serverBook->save();
+                    }
+                    m_mpJoinEntryName.clear();
+                    break;
+                }
+                case NetSessionEvent::Kind::Rejected: {
+                    const NetReject why = m_netSession->rejectReason();
+                    // A connection that was working and then stopped -- the
+                    // server restarting, a laptop changing networks, a relay
+                    // redeploying -- is retried by itself. A refusal on
+                    // purpose (a kick, a ban, a full game) is not.
+                    const bool retry = m_mpWelcomedOnce &&
+                        (why == NetReject::Unknown || why == NetReject::ServerShuttingDown);
+                    if (retry && !m_mpRejoin.active) {
+                        m_mpRejoin.active = true;
+                        m_mpRejoin.attempt = 0;
+                        m_mpRejoin.since = GetTime();
+                        m_mpRejoin.nextAt = GetTime() + 2.0;
+                        m_mpRejoin.why = m_netSession->error();
+                    } else if (m_mpRejoin.active && !retry &&
+                               why != NetReject::Unknown && why != NetReject::ServerShuttingDown) {
+                        // Refused on the way back in: say why, and stop.
+                        m_mpRejoin = MpRejoin{};
+                        mpNote(netRejectAdvice(why, m_netSession->error()), true);
+                    } else if (!m_mpRejoin.active) {
+                        mpNote(netRejectAdvice(why, m_netSession->error()), true);
                     }
                     break;
                 }
-                case NetSessionEvent::Kind::Rejected:
-                    mpNote(netRejectAdvice(m_netSession->rejectReason(),
-                                           m_netSession->error()), true);
-                    break;
                 case NetSessionEvent::Kind::Snapshot:
                     mpApplySnapshot(e.payload);
                     break;
@@ -857,6 +1118,18 @@ void Game::mpDrainEvents() {
                     // one, and is worth no message to the player: they did not
                     // ask for it and nothing about their game changed.
                     mpApplyTurnOrders(e.payload, (int)e.turnNumber);
+                    break;
+                case NetSessionEvent::Kind::LobbyMapKnown: {
+                    const std::vector<uint8_t> bytes = m_netSession->lobbyMap();
+                    LobbyMap map;
+                    if (LobbyMap::decode(bytes.data(), bytes.size(), map)) {
+                        m_mpLobbyMap = std::move(map);
+                        m_mpLobbyMapDirty = true;
+                    }
+                    break;
+                }
+                case NetSessionEvent::Kind::SessionInfoKnown:
+                    m_mpVoiceLink = m_netSession->sessionInfo().voiceLink;
                     break;
                 case NetSessionEvent::Kind::TurnBegan:
                     m_mpWaitingForTurn = false;
@@ -914,14 +1187,25 @@ void Game::mpDrainEvents() {
                     if (!e.notice.text.empty()) mpNote(e.notice.text);
                     break;
                 case NetSessionEvent::Kind::Disconnected:
-                    mpNote(m_netSession->error().empty() ? "Disconnected."
-                                                         : m_netSession->error(), true);
+                    if (m_mpWelcomedOnce && !m_mpRejoin.active) {
+                        m_mpRejoin.active = true;
+                        m_mpRejoin.attempt = 0;
+                        m_mpRejoin.since = GetTime();
+                        m_mpRejoin.nextAt = GetTime() + 2.0;
+                        m_mpRejoin.why = m_netSession->error();
+                    } else if (!m_mpRejoin.active) {
+                        mpNote(m_netSession->error().empty() ? "Disconnected."
+                                                             : m_netSession->error(), true);
+                    }
                     break;
                 default:
                     break;
             }
         }
     }
+
+    // A dropped connection, being dialled again.
+    mpUpdateRejoin();
 
     // The turn store, which answers on its own thread and on its own schedule.
     // Pumped here so a turn or a set of orders that arrived through it is
@@ -995,6 +1279,10 @@ void Game::updateMultiplayerMenu() {
             // itself -- only a tunnel's address is known here.
             case 9: target = &m_lfgDraft.address;
                     limit = odlfg::Limits::kAddressChars; break;
+            // The country picker's search box.
+            case 10: target = &m_mpCountrySearch; limit = 40; break;
+            // The host's voice chat link.
+            case 11: target = &m_mpVoiceLink; limit = 200; break;
             default: break;
         }
         if (target) {
@@ -1018,6 +1306,8 @@ void Game::updateMultiplayerMenu() {
                     m_mpFocus = m_mpFocus == 6 ? 8 : (m_mpFocus == 8 ? 9 : 6);
                 } else if (m_mpPage == MpPage::Board) {
                     m_mpFocus = 7;
+                } else if (m_mpFocus == 10 || m_mpFocus == 11) {
+                    // One box each: nowhere to tab to.
                 } else {
                     m_mpFocus = (m_mpFocus + 1) % 6;
                 }
@@ -1025,7 +1315,13 @@ void Game::updateMultiplayerMenu() {
         }
     }
 
-    if (IsKeyPressed(KEY_ESCAPE)) {
+    if (IsKeyPressed(KEY_ESCAPE) && m_mpPickingCountry && m_mpPage == MpPage::Lobby) {
+        // Esc closes the picker, not the lobby: leaving a game because you
+        // changed your mind about Belgium is not what the key meant.
+        m_mpPickingCountry = false;
+        m_mpAssignTarget = 0;
+        if (m_mpFocus == 10) m_mpFocus = -1;
+    } else if (IsKeyPressed(KEY_ESCAPE)) {
         if (m_mpPage == MpPage::Hub) {
             m_currentScreen = SCREEN_MENU;
         } else if (m_mpPage == MpPage::Lobby) {
@@ -1059,15 +1355,22 @@ void Game::drawMultiplayerMenu() {
         case MpPage::HostSetup: drawMpHostSetup(mouse, click); break;
         case MpPage::Board:     drawMpBoard(mouse, click); break;
         case MpPage::Post:      drawMpPost(mouse, click); break;
-        case MpPage::Lobby:
-            drawMpLobby(mouse, click);
-            // Down the right-hand side, out of the way of the roster. Drawn
-            // after the lobby so its input field takes clicks first.
+        case MpPage::Lobby: {
+            // The country picker is MODAL. Everything under it is drawn but
+            // hears no clicks -- a press meant for a country in the list used
+            // to fall through to whatever lobby widget sat beneath it.
+            const bool under = click && !m_mpPickingCountry;
+            drawMpLobby(mouse, under);
+            // Down the right-hand side, out of the way of the roster.
             if (m_netHost || m_netSession) {
                 const int cw = 300;
-                drawMpChat(m_screenW - cw - 24, 150, cw, m_screenH - 240, mouse, click);
+                drawMpChat(m_screenW - cw - 24, 150, cw, m_screenH - 240, mouse, under);
             }
+            if (m_mpPickingCountry && m_mpPage == MpPage::Lobby &&
+                (m_netHost || m_netSession))
+                drawMpCountryPicker(mouse, click);
             break;
+        }
     }
 
     if (m_mpNoteTimer > 0.0f && !m_mpNote.empty()) {
@@ -1076,6 +1379,8 @@ void Game::drawMultiplayerMenu() {
         const int w = MeasureText(m_mpNote.c_str(), 18);
         DrawText(m_mpNote.c_str(), m_screenW / 2 - w / 2, m_screenH - 96, 18, c);
     }
+
+    drawMpRejoinBanner();
 
     const char* hint = m_mpPage == MpPage::Hub ? "Esc  back to menu" : "Esc  back";
     DrawText(hint, m_screenW / 2 - MeasureText(hint, 15) / 2, m_screenH - 42, 15,
@@ -1092,8 +1397,10 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     DrawText(T("Your servers"), centerX - listW / 2, y, 20, Color{170, 180, 200, 255});
     y += 32;
 
-    const auto& entries = m_serverBook ? m_serverBook->entries()
-                                       : *(new std::vector<ServerEntry>());
+    // A static empty list rather than `new` per frame: that leaked one
+    // vector every frame the hub was open without a book.
+    static const std::vector<ServerEntry> kNone;
+    const auto& entries = m_serverBook ? m_serverBook->entries() : kNone;
     if (entries.empty()) {
         DrawText(T("No servers yet. Join one by code, or host your own."),
                  centerX - listW / 2, y, 17, Color{130, 135, 150, 255});
@@ -1116,16 +1423,42 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
             DrawText(sub.c_str(), (int)row.rect.x + 14, (int)row.rect.y + 27, 14,
                      Color{140, 145, 160, 255});
 
-            if (click && row.hovered) {
+            // Two small actions at the right end: edit (the join form, filled
+            // in -- for a new code) and forget. Tested BEFORE the row, which
+            // covers them, so pressing one does not also join.
+            const MpButton forget = buttonAt(row.rect.x + row.rect.width - 40, row.rect.y + 9,
+                                             30.0f, 28.0f, mouse);
+            const MpButton edit = buttonAt(row.rect.x + row.rect.width - 76, row.rect.y + 9,
+                                           30.0f, 28.0f, mouse);
+            drawButton(edit, "...", 14, Color{36, 40, 52, 220}, Color{100, 110, 130, 200});
+            drawButton(forget, "x", 15, Color{48, 32, 32, 220}, Color{150, 100, 100, 200});
+            const std::string hint = e.oneClick() ? T("click to join")
+                                   : e.code.empty() ? T("needs a code") : T("confirm first");
+            DrawText(hint.c_str(), (int)(edit.rect.x) - MeasureText(hint.c_str(), 13) - 10,
+                     (int)row.rect.y + 16, 13, e.oneClick() ? Color{140, 200, 160, 255}
+                                                            : Color{190, 170, 130, 255});
+            if (click && forget.hovered) {
+                m_serverBook->remove(i);
+                m_serverBook->save();
+                break;    // the vector moved under us
+            }
+            if (click && edit.hovered) {
                 m_mpSelected = (int)i;
                 m_mpCodeField = e.code;
-                // The address it was last reached at, if it had one. See
-                // ServerEntry::address: clearing it sent every rejoin to the
-                // relay.
                 m_mpAddressField = e.address;
+                m_mpJoinEntryName = e.name;
                 m_mpPage = MpPage::Join;
-                m_mpIpWarningAccepted = false;
-                m_mpFocus = 0;
+                m_mpIpWarningAccepted = e.ipConsent;
+                m_mpFocus = 1;
+            } else if (click && row.hovered) {
+                // ONE CLICK. This row used to open the join form with the
+                // fields filled in, so getting back into a game you play every
+                // day was a click, a checkbox and another click -- and the
+                // checkbox reset each time. Now it joins, and only asks when
+                // there is something it genuinely does not know.
+                m_mpSelected = (int)i;
+                mpJoinSaved(i);
+                break;
             }
             y += 52;
         }
@@ -1187,6 +1520,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
     if (click && joinWeb.hovered) {
         m_mpCodeField.clear();
         m_mpAddressField.clear();
+        m_mpJoinEntryName.clear();
         m_mpPage = MpPage::Join;
         m_mpIpWarningAccepted = false;
         m_mpFocus = 0;
@@ -1205,6 +1539,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
                                    (float)btnW, (float)btnH, mouse);
     drawButton(join, T("Join by code"), 20, Color{40, 52, 68, 230}, Color{120, 150, 190, 210});
     if (click && join.hovered) {
+        m_mpJoinEntryName.clear();
         m_mpPage = MpPage::Join;
         m_mpIpWarningAccepted = false;
         m_mpFocus = 0;
@@ -1271,7 +1606,43 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     // the middleman the text below says does not exist. Showing it anyway, and
     // demanding the tickbox, would be asking somebody to accept a disclosure
     // that is not happening.
-    const bool direct = !m_mpAddressField.empty();
+    const bool onionAddr = m_mpAddressField.find(".onion") != std::string::npos;
+    // Through Tor -- by choice, or because an onion can only be reached that
+    // way -- the host sees a Tor relay, and the disclosure below is not made.
+    const bool viaTor = !m_mpAddressField.empty() && (m_config.torRouteAll || onionAddr);
+    const bool direct = !m_mpAddressField.empty() && !viaTor;
+
+#ifndef __EMSCRIPTEN__
+    // ── HIDING THE PLAYER'S OWN ADDRESS ──
+    //
+    // A browser cannot open a SOCKS connection, so this is desktop only.
+    {
+        const MpButton torBox = buttonAt((float)(centerX - fieldW / 2), (float)y,
+                                         24.0f, 24.0f, mouse);
+        DrawRectangleRounded(torBox.rect, 0.2f, 6,
+                             m_config.torRouteAll ? Color{110, 80, 140, 240} : Color{30, 32, 40, 230});
+        DrawRectangleRoundedLines(torBox.rect, 0.2f, 6, Color{150, 160, 175, 200});
+        if (m_config.torRouteAll) DrawText("x", (int)torBox.rect.x + 8, (int)torBox.rect.y + 3, 17, WHITE);
+        DrawText(T("Hide my IP: connect through Tor"), (int)torBox.rect.x + 34,
+                 (int)torBox.rect.y + 4, 15, Color{200, 195, 215, 255});
+        if (click && torBox.hovered) {
+            m_config.torRouteAll = !m_config.torRouteAll;
+            socks5::setRouteAll(m_config.torRouteAll);
+            m_config.save(m_configPath);
+        }
+        y += 30;
+        if (m_config.torRouteAll || onionAddr) {
+            y = drawWrapped(onionAddr && !m_config.torRouteAll
+                    ? "That is an onion address: it is reached through Tor, so the host "
+                      "will not see your IP. The game starts Tor itself if it is not "
+                      "already running; the first connection can take a minute."
+                    : "Everything the game connects to goes through Tor while this is on, "
+                      "sign-in included. The game starts Tor itself if it is not already "
+                      "running. It is slower, and some servers and networks refuse Tor.",
+                    centerX - fieldW / 2, y, fieldW, 13, Color{190, 180, 210, 255}) + 10;
+        }
+    }
+#endif
 
     // The one thing about joining that cannot be taken back afterwards. It is
     // stated here, before connecting, rather than left to the privacy policy.
@@ -1280,7 +1651,11 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
         "design, so we cannot hide it. It roughly indicates where you are and who "
         "your internet provider is. Use a VPN if you would rather the host did "
         "not see it.";
-    if (!direct) {
+    if (viaTor) {
+        DrawText(T("Through Tor: the host sees a Tor relay, not you"),
+                 centerX - fieldW / 2, y, 16, Color{180, 165, 215, 255});
+        y += 30;
+    } else if (!direct) {
         // Said plainly, because "no address" looks like something forgotten.
         DrawText(T("No address: joining through the account service"),
                  centerX - fieldW / 2, y, 16, Color{150, 195, 165, 255});
@@ -1648,7 +2023,7 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         if (!m_mpBindAll) {
             tunnelSetToolsDir(mpToolsDir());
             const std::vector<TunnelProvider> providers = tunnelProvidersAvailable();
-            const bool haveAuto = !providers.empty() &&
+            const bool haveAuto = !providers.empty() && providers[0] != TunnelProvider::Tor &&
                                   tunnelProviderWorksUnattended(providers[0]);
 
             const MpButton use = buttonAt((float)(centerX - fieldW / 2), (float)y,
@@ -1665,9 +2040,42 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
             if (click && use.hovered) m_mpUseTunnel = !m_mpUseTunnel;
             y += 34;
 
-            if (m_mpUseTunnel && haveAuto) {
+            // ── OR TOR, FOR A HOST WHO TRUSTS NOBODY IN THE MIDDLE ──
+            //
+            // Offered only when tor is installed, never chosen by default, and
+            // with its cost said before it is ticked: every player then needs
+            // Tor running to join at all.
+            int torIndex = -1;
+            for (size_t i = 0; i < providers.size(); ++i)
+                if (providers[i] == TunnelProvider::Tor) torIndex = (int)i;
+            const bool torChosen = torIndex >= 0 && m_mpUseTor;
+            if (m_mpUseTunnel && torIndex >= 0) {
+                const MpButton tor = buttonAt((float)(centerX - fieldW / 2 + 24), (float)y,
+                                              22.0f, 22.0f, mouse);
+                DrawRectangleRounded(tor.rect, 0.2f, 6,
+                                     torChosen ? Color{110, 80, 140, 240} : Color{30, 32, 40, 230});
+                DrawRectangleRoundedLines(tor.rect, 0.2f, 6, Color{150, 160, 175, 200});
+                if (torChosen) DrawText("x", (int)tor.rect.x + 7, (int)tor.rect.y + 2, 16, WHITE);
+                DrawText(T("Publish as a Tor onion service instead"), (int)tor.rect.x + 30,
+                         (int)tor.rect.y + 3, 14, Color{200, 195, 215, 255});
+                if (click && tor.hovered) m_mpUseTor = !m_mpUseTor;
+                y += 28;
+                if (torChosen)
+                    y = drawWrapped("Nobody in the middle, and neither you nor any player sees "
+                                    "the other's IP. Every player joins through Tor (the "
+                                    "game starts it for them), which is slower, and some "
+                                    "networks block Tor -- some of your "
+                                    "players may not be able to connect at all. Tell them "
+                                    "before the game.",
+                                    centerX - fieldW / 2, y, fieldW, 13,
+                                    Color{215, 185, 150, 255}) + 6;
+            }
+
+            const TunnelProvider chosen = torChosen ? TunnelProvider::Tor
+                : (providers.empty() ? TunnelProvider::None : providers[0]);
+            if (m_mpUseTunnel && (haveAuto || torChosen)) {
                 const std::string ready = std::string("Ready: ") +
-                    tunnelProviderName(providers[0]) +
+                    tunnelProviderName(chosen) +
                     ". A public address appears in the lobby once you start.";
                 y = drawWrapped(ready, centerX - fieldW / 2, y, fieldW, 13,
                                 Color{150, 200, 165, 255}) + 6;
@@ -1775,6 +2183,30 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
                        : "Nothing sent is passed on, and whoever sent it is told so.",
                    mode, 2);
             m_mpChat = (mode == 0);
+        }
+
+        // ── VOICE, SOMEWHERE ELSE ──
+        //
+        // The game carries no audio and never will: a voice service is a
+        // moderation, privacy and law-enforcement responsibility of its own.
+        // What it can do is hand every player the host's invite to one that
+        // already does that job -- a Discord server, a TeamSpeak link -- one
+        // click from the lobby and the turn panel.
+        {
+            DrawText(T("Voice chat link (optional)"), centerX - fieldW / 2, y, 15,
+                     Color{160, 170, 190, 255});
+            y += 19;
+            const Rectangle vf{(float)(centerX - fieldW / 2), (float)y, (float)fieldW, 34.0f};
+            drawField(vf.x, vf.y, vf.width, vf.height, m_mpVoiceLink,
+                      "https://discord.gg/...", m_mpFocus == 11, 15);
+            if (click && CheckCollisionPointRec(mouse, vf)) m_mpFocus = 11;
+            y += 38;
+            const bool bad = !m_mpVoiceLink.empty() && !netVoiceLinkValid(m_mpVoiceLink);
+            y = drawWrapped(bad ? "That is not an https:// link this game will offer players."
+                                : "Players get a button that opens it in their browser. "
+                                  "The call happens there, not in the game.",
+                            centerX - fieldW / 2, y, fieldW, 13,
+                            bad ? Color{220, 150, 130, 255} : Color{130, 138, 152, 255}) + 8;
         }
 
         const MpButton anon = buttonAt((float)(centerX - fieldW / 2), (float)y, 24.0f, 24.0f, mouse);
@@ -1945,6 +2377,280 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
 }
 
 // -------------------------------------------------------------------- lobby --
+
+void Game::mpPickCountry(uint16_t countryId) {
+    const bool hosting = m_netHost != nullptr;
+    if (hosting) {
+        Lobby& lobby = m_netHost->lobby();
+        const uint16_t me = lobby.hostPeerId();
+        const uint16_t target = m_mpAssignTarget ? m_mpAssignTarget : me;
+        LobbyDenial d;
+        if (target == me) {
+            d = lobby.claimCountry(me, countryId);
+        } else {
+            const LobbyMember* who = lobby.find(target);
+            if (who && who->spectator)
+                d = lobby.seatSpectator(target, countryId);
+            else
+                d = lobby.assignCountry(me, target, countryId);
+        }
+        if (d != LobbyDenial::None) { mpNote(lobbyDenialText(d), true); return; }
+        m_netHost->broadcastLobby();
+        mpSaveSeats();
+    } else if (m_netSession) {
+        // The server decides; a refusal comes back as a notice.
+        m_netSession->claimCountry(countryId);
+    }
+    m_mpPickingCountry = false;
+    m_mpAssignTarget = 0;
+    if (m_mpFocus == 10) m_mpFocus = -1;
+}
+
+void Game::mpRefreshLobbyMapTexture(uint16_t hover, uint16_t mine,
+                                    const std::vector<uint16_t>& taken) {
+    if (m_mpLobbyMap.empty()) return;
+    std::string key = std::to_string(hover) + "/" + std::to_string(mine);
+    for (uint16_t t : taken) key += "," + std::to_string(t);
+    if (!m_mpLobbyMapDirty && key == m_mpLobbyMapTexKey && m_mpLobbyMapTex.id != 0) return;
+    m_mpLobbyMapDirty = false;
+    m_mpLobbyMapTexKey = key;
+
+    const LobbyMap& m = m_mpLobbyMap;
+    Image img = GenImageColor(m.width, m.height, Color{18, 28, 42, 255});
+    auto* px = (Color*)img.data;
+    std::unordered_map<uint16_t, Color> swatch;
+    for (const auto& c : m.colors) swatch[c.countryId] = Color{c.r, c.g, c.b, 255};
+    std::unordered_set<uint16_t> gone(taken.begin(), taken.end());
+    for (int y = 0; y < m.height; ++y) {
+        for (int x = 0; x < m.width; ++x) {
+            const size_t i = (size_t)y * m.width + x;
+            const uint16_t id = m.cells[i];
+            if (id == 0) continue;                       // sea
+            Color c = swatch.count(id) ? swatch[id] : Color{90, 90, 90, 255};
+            if (gone.count(id)) {
+                // Somebody has it: still on the map, so the world reads, but
+                // greyed back so the free countries stand out.
+                const int g = (c.r + c.g + c.b) / 3;
+                c = Color{(uint8_t)(g / 2 + 30), (uint8_t)(g / 2 + 30), (uint8_t)(g / 2 + 34), 255};
+            }
+            if (id == hover || id == mine) {
+                c.r = (uint8_t)std::min(255, c.r + 70);
+                c.g = (uint8_t)std::min(255, c.g + 70);
+                c.b = (uint8_t)std::min(255, c.b + 70);
+            }
+            // A border where the neighbour belongs to someone else, so two
+            // countries in similar colours are still two countries.
+            const bool edge = (x + 1 < m.width && m.cells[i + 1] != id) ||
+                              (y + 1 < m.height && m.cells[i + m.width] != id);
+            if (edge) { c.r = (uint8_t)(c.r * 0.55f); c.g = (uint8_t)(c.g * 0.55f); c.b = (uint8_t)(c.b * 0.55f); }
+            px[i] = c;
+        }
+    }
+    if (m_mpLobbyMapTex.id != 0) UnloadTexture(m_mpLobbyMapTex);
+    m_mpLobbyMapTex = LoadTextureFromImage(img);
+    SetTextureFilter(m_mpLobbyMapTex, TEXTURE_FILTER_POINT);
+    UnloadImage(img);
+}
+
+void Game::drawMpCountryPicker(Vector2 mouse, bool click) {
+    const bool hosting = m_netHost != nullptr;
+
+    // What can be chosen, and who has what.
+    std::vector<std::pair<uint16_t, std::string>> choices;
+    if (hosting) {
+        for (int cid : m_playableCountryIds) {
+            const Country* c = m_countries.getCountry(cid);
+            choices.emplace_back((uint16_t)cid, c ? c->name : std::to_string(cid));
+        }
+    } else if (m_netSession) {
+        for (const auto& e : m_netSession->countries()) choices.emplace_back(e.id, e.name);
+    }
+    const std::vector<NetPeer> roster = hosting ? m_netHost->lobby().roster()
+                                      : m_netSession ? m_netSession->roster()
+                                                     : std::vector<NetPeer>{};
+    const uint16_t myPeer = hosting ? m_netHost->lobby().hostPeerId()
+                          : m_netSession ? m_netSession->welcome().peerId : 0;
+    const uint16_t forPeer = (hosting && m_mpAssignTarget) ? m_mpAssignTarget : myPeer;
+    uint16_t mine = 0;
+    std::string forName;
+    std::vector<uint16_t> taken;
+    std::unordered_map<uint16_t, std::string> holder;
+    for (const NetPeer& p : roster) {
+        if (p.peerId == forPeer) { mine = p.countryId; forName = p.name; }
+        else if (p.countryId != 0) {
+            taken.push_back(p.countryId);
+            holder[p.countryId] = p.name.empty() ? "someone" : p.name;
+        }
+    }
+    std::unordered_map<uint16_t, std::string> nameOf;
+    for (const auto& c : choices) nameOf[c.first] = c.second;
+    auto isTaken = [&](uint16_t id) { return holder.count(id) != 0; };
+
+    // ── the panel ──
+    DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 150});
+    const float W = (float)std::min(m_screenW - 60, 1180);
+    const float H = (float)std::min(m_screenH - 110, 660);
+    const Rectangle panel{(m_screenW - W) / 2, (m_screenH - H) / 2 + 10, W, H};
+    DrawRectangleRounded(panel, 0.03f, 8, Color{20, 23, 30, 248});
+    DrawRectangleRoundedLines(panel, 0.03f, 8, Color{100, 115, 140, 220});
+    const std::string title = (hosting && m_mpAssignTarget)
+        ? "Give " + (forName.empty() ? std::string("this player") : forName) + " a country"
+        : std::string(T("Choose your country"));
+    DrawText(title.c_str(), (int)panel.x + 20, (int)panel.y + 16, 24, RAYWHITE);
+
+    // A click outside the panel closes it and does nothing else.
+    if (click && !CheckCollisionPointRec(mouse, panel)) {
+        m_mpPickingCountry = false;
+        m_mpAssignTarget = 0;
+        if (m_mpFocus == 10) m_mpFocus = -1;
+        return;
+    }
+
+    // ── search and list, on the left ──
+    const float listX = panel.x + 20, listW = 300.0f;
+    const Rectangle search{listX, panel.y + 56, listW, 38};
+    drawField(search.x, search.y, search.width, search.height, m_mpCountrySearch,
+              T("Search countries..."), m_mpFocus == 10, 17);
+    if (click && CheckCollisionPointRec(mouse, search)) m_mpFocus = 10;
+
+    std::vector<std::string> names;
+    names.reserve(choices.size());
+    for (const auto& c : choices) names.push_back(c.second);
+    const std::vector<size_t> shown = lobbyCountryFilter(names, m_mpCountrySearch);
+
+    const int rowH = 26;
+    const Rectangle box{listX, search.y + search.height + 10, listW,
+                        panel.y + panel.height - (search.y + search.height + 10) - 64};
+    const int visible = std::max(1, (int)((box.height - 8) / rowH));
+    const int total = (int)shown.size();
+    if (CheckCollisionPointRec(mouse, box)) {
+        const float wheel = odScrollWheel(box);
+        if (wheel != 0.0f) m_mpCountryScroll -= (int)wheel;
+    }
+    m_mpCountryScroll = std::clamp(m_mpCountryScroll, 0, std::max(0, total - visible));
+    DrawRectangleRounded(box, 0.03f, 8, Color{14, 16, 22, 240});
+    uint16_t listHover = 0;
+    for (int i = 0; i < visible && m_mpCountryScroll + i < total; i++) {
+        const auto& entry = choices[shown[(size_t)(m_mpCountryScroll + i)]];
+        const Rectangle row{box.x + 4, box.y + 4 + i * (float)rowH, box.width - 8, (float)rowH};
+        const bool hovered = CheckCollisionPointRec(mouse, row);
+        const bool gone = isTaken(entry.first);
+        const bool isMine = entry.first == mine;
+        if (hovered) listHover = entry.first;
+        if (hovered && !gone) DrawRectangleRounded(row, 0.2f, 6, Color{40, 52, 68, 220});
+        if (isMine) DrawRectangleRounded(row, 0.2f, 6, Color{36, 64, 48, 220});
+        // The holder's name at the right, and the country's cut to what is
+        // left -- a long name ran straight through it.
+        int nameW = (int)row.width - 16;
+        if (gone) {
+            int hfs = 12;
+            const std::string t = odText::fitToWidth(holder[entry.first], 110, hfs, 10);
+            const int tw = MeasureText(t.c_str(), hfs);
+            DrawText(t.c_str(), (int)(row.x + row.width) - tw - 8, (int)row.y + 7, hfs,
+                     Color{150, 120, 110, 255});
+            nameW -= tw + 10;
+        }
+        int nfs = 15;
+        const std::string shownName = odText::fitToWidth(entry.second, nameW, nfs, 11);
+        DrawText(shownName.c_str(), (int)row.x + 8, (int)row.y + 5, nfs,
+                 gone ? Color{95, 100, 112, 255}
+                      : isMine ? Color{160, 220, 180, 255}
+                               : (hovered ? RAYWHITE : Color{195, 200, 210, 255}));
+        if (click && hovered && !gone) { mpPickCountry(entry.first); return; }
+    }
+    if (total == 0)
+        DrawText(T("No country matches that."), (int)box.x + 10, (int)box.y + 10, 14,
+                 Color{150, 155, 170, 255});
+    const std::string count = std::to_string(total) + " of " + std::to_string(choices.size());
+    DrawText(count.c_str(), (int)box.x, (int)(box.y + box.height) + 6, 13,
+             Color{130, 140, 155, 255});
+
+    // Enter takes the best match, so "fra" + Enter is France.
+    if (m_mpFocus == 10 && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER))) {
+        for (size_t i : shown) {
+            if (!isTaken(choices[i].first)) { mpPickCountry(choices[i].first); return; }
+        }
+    }
+
+    // ── the map, on the right ──
+    const Rectangle area{listX + listW + 20, panel.y + 56,
+                         panel.x + panel.width - (listX + listW + 20) - 20,
+                         panel.height - 56 - 64};
+    uint16_t mapHover = 0;
+    if (!m_mpLobbyMap.empty()) {
+        const float aspect = (float)m_mpLobbyMap.width / (float)m_mpLobbyMap.height;
+        float mw = area.width, mh = area.width / aspect;
+        if (mh > area.height) { mh = area.height; mw = mh * aspect; }
+        const Rectangle dst{area.x + (area.width - mw) / 2, area.y + (area.height - mh) / 2, mw, mh};
+        if (CheckCollisionPointRec(mouse, dst)) {
+            const uint16_t id = m_mpLobbyMap.countryAt((mouse.x - dst.x) / dst.width,
+                                                       (mouse.y - dst.y) / dst.height);
+            if (nameOf.count(id)) mapHover = id;
+        }
+        mpRefreshLobbyMapTexture(mapHover ? mapHover : listHover, mine, taken);
+        DrawTexturePro(m_mpLobbyMapTex,
+                       Rectangle{0, 0, (float)m_mpLobbyMapTex.width, (float)m_mpLobbyMapTex.height},
+                       dst, Vector2{0, 0}, 0.0f, WHITE);
+        DrawRectangleLinesEx(dst, 1.0f, Color{80, 95, 120, 220});
+
+        // Your country's name on it, so where you are reads at a glance.
+        float lu = 0, lv = 0;
+        if (mine && nameOf.count(mine) && m_mpLobbyMap.labelPoint(mine, lu, lv)) {
+            const std::string& n = nameOf[mine];
+            const int tx = (int)(dst.x + lu * dst.width) - MeasureText(n.c_str(), 14) / 2;
+            const int ty = (int)(dst.y + lv * dst.height) - 7;
+            DrawText(n.c_str(), tx + 1, ty + 1, 14, BLACK);
+            DrawText(n.c_str(), tx, ty, 14, Color{220, 255, 230, 255});
+        }
+        if (mapHover) {
+            std::string tip = nameOf[mapHover];
+            if (mapHover == mine) tip += "  (yours)";
+            else if (isTaken(mapHover)) tip += "  (" + holder[mapHover] + ")";
+            const int tw = MeasureText(tip.c_str(), 16) + 16;
+            const float tx = std::min(mouse.x + 14, (float)(m_screenW - tw - 4));
+            DrawRectangleRounded(Rectangle{tx, mouse.y + 12, (float)tw, 26}, 0.3f, 6,
+                                 Color{10, 12, 16, 235});
+            DrawText(tip.c_str(), (int)tx + 8, (int)mouse.y + 17, 16,
+                     isTaken(mapHover) ? Color{200, 160, 150, 255} : RAYWHITE);
+            if (click && !isTaken(mapHover)) { mpPickCountry(mapHover); return; }
+            if (click && isTaken(mapHover) && mapHover != mine)
+                mpNote(T("Somebody already has that country."), true);
+        }
+    } else {
+        const char* t = T("This host did not send a map. Use the list.");
+        DrawText(t, (int)(area.x + area.width / 2) - MeasureText(t, 16) / 2,
+                 (int)(area.y + area.height / 2), 16, Color{150, 155, 170, 255});
+    }
+    m_mpMapHover = mapHover;
+
+    // ── the bottom row ──
+    const float by = panel.y + panel.height - 50;
+    const MpButton cancel = buttonAt(panel.x + panel.width - 160, by, 140, 34, mouse);
+    drawButton(cancel, "Close", 15, Color{50, 40, 40, 230}, Color{160, 120, 120, 200});
+    if (click && cancel.hovered) {
+        m_mpPickingCountry = false;
+        m_mpAssignTarget = 0;
+        if (m_mpFocus == 10) m_mpFocus = -1;
+        return;
+    }
+    if (hosting && m_mpAssignTarget && mine) {
+        const MpButton clear = buttonAt(panel.x + panel.width - 320, by, 150, 34, mouse);
+        drawButton(clear, "Take it away", 15, Color{50, 40, 40, 230}, Color{160, 120, 120, 200});
+        if (click && clear.hovered) {
+            const LobbyDenial d = m_netHost->lobby().assignCountry(
+                m_netHost->lobby().hostPeerId(), m_mpAssignTarget, 0);
+            if (d != LobbyDenial::None) mpNote(lobbyDenialText(d), true);
+            else { m_netHost->broadcastLobby(); mpSaveSeats(); }
+            m_mpPickingCountry = false;
+            m_mpAssignTarget = 0;
+            return;
+        }
+    }
+    const std::string youAre = mine && nameOf.count(mine)
+        ? std::string(T("Currently: ")) + nameOf[mine] : std::string(T("No country chosen yet."));
+    DrawText(youAre.c_str(), (int)listX, (int)by + 9, 16,
+             mine ? Color{160, 220, 180, 255} : Color{200, 180, 140, 255});
+}
 
 void Game::drawMpLobby(Vector2 mouse, bool click) {
     const int centerX = m_screenW / 2;
@@ -2157,6 +2863,14 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
         DrawText(line.c_str(), centerX - MeasureText(line.c_str(), 20) / 2, y, 20,
                  Color{190, 200, 215, 255});
         y += 34;
+        // The game's own Tor connecting can take a minute; say so rather than
+        // sit on "Connecting..." with nothing moving.
+        const std::string tor = torclient::status();
+        if (!tor.empty()) {
+            DrawText(tor.c_str(), centerX - MeasureText(tor.c_str(), 16) / 2, y, 16,
+                     Color{180, 160, 215, 255});
+            y += 26;
+        }
 
         const NetWelcome& w = m_netSession->welcome();
         if (!w.sessionName.empty()) {
@@ -2238,6 +2952,23 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             DrawRectangleRounded(row, 0.12f, 8, Color{24, 26, 34, 190});
             DrawText(p.name.c_str(), (int)row.x + 14, (int)row.y + 10, 18,
                      peerNameColor(p.badges, p.officialIssuer));
+            // What they hold, beside who they are, on the People tab too: the
+            // question a lobby is asked most is "who is France".
+            if (!m_mpPlayersTab && p.countryId != 0) {
+                std::string cname;
+                if (hosting) {
+                    if (const Country* c = m_countries.getCountry((int)p.countryId)) cname = c->name;
+                } else if (m_netSession) {
+                    for (const auto& e : m_netSession->countries())
+                        if (e.id == p.countryId) { cname = e.name; break; }
+                }
+                if (!cname.empty()) {
+                    int cfs = 14;
+                    const std::string fit = odText::fitToWidth(cname, 190, cfs, 10);
+                    DrawText(fit.c_str(), (int)row.x + 24 + MeasureText(p.name.c_str(), 18),
+                             (int)row.y + 12, cfs, Color{150, 200, 170, 255});
+                }
+            }
 
             int rightX = (int)(row.x + row.width) - 14;
             if (!m_mpPlayersTab) {
@@ -2283,6 +3014,33 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                              heldOver ? Color{190, 175, 130, 255}
                                       : Color{200, 140, 130, 255});
                     rightX -= 12;
+                } else if (hosting && m_netHost && lobby && p.peerId != lobby->hostPeerId() &&
+                           lobby->state() == NetSessionState::Lobby) {
+                    // ── THE HOST SEATS PEOPLE ──
+                    //
+                    // "I assign them" was a setting with no way to assign: the
+                    // lobby rule existed and nothing called it, so a host who
+                    // chose it left every player stuck on "only the host can do
+                    // that". This opens the same picker, choosing for them --
+                    // a spectator included, which is how a watcher becomes a
+                    // player.
+                    const MpButton seat = buttonAt((float)(rightX - 92), (float)(row.y + 6),
+                                                   92.0f, 26.0f, mouse);
+                    drawButton(seat, p.countryId ? T("Change...") : T("Give country"), 13,
+                               Color{36, 46, 60, 230}, Color{110, 140, 180, 200});
+                    if (click && seat.hovered) {
+                        m_mpPickingCountry = true;
+                        m_mpAssignTarget = p.peerId;
+                        m_mpCountryScroll = 0;
+                        m_mpCountrySearch.clear();
+                        m_mpFocus = 10;
+                    }
+                    rightX -= 104;
+                    if (p.spectator) {
+                        DrawText("spectating", rightX - MeasureText("spectating", 14),
+                                 (int)row.y + 12, 14, Color{160, 170, 190, 255});
+                        rightX -= MeasureText("spectating", 14) + 12;
+                    }
                 }
             } else {
                 // Which country, and whether a person or the AI is playing it.
@@ -2308,6 +3066,19 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
                      Color{130, 140, 155, 255});
             y += 16;
         }
+    }
+
+    // ---- voice, if the host offers it ---------------------------------------
+    if (!m_mpVoiceLink.empty()) {
+        y += 6;
+        const std::string label = std::string(T("Join voice chat")) + "  (" +
+                                  netVoiceLinkHost(m_mpVoiceLink) + ")";
+        const MpButton v = buttonAt((float)(centerX - panelW / 2), (float)y, 300.0f, 30.0f, mouse);
+        drawButton(v, label.c_str(), 14, Color{40, 38, 66, 230}, Color{140, 130, 200, 210});
+        DrawText(T("opens in your browser; not part of the game"),
+                 centerX - panelW / 2 + 312, y + 9, 13, Color{130, 138, 152, 255});
+        if (click && v.hovered) odlink::open(m_mpVoiceLink);
+        y += 36;
     }
 
     // ---- pick a country -----------------------------------------------------
@@ -2348,106 +3119,38 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
         auto isTaken = [&](uint16_t id) {
             return std::find(taken.begin(), taken.end(), id) != taken.end();
         };
-        auto claim = [&](uint16_t id) {
-            if (isTaken(id)) { mpNote(T("Somebody already has that country."), true); return; }
-            if (hosting) {
-                if (m_netHost->lobby().claimCountry(myPeer, id) == LobbyDenial::None)
-                    m_netHost->broadcastLobby();
-            } else if (m_netSession) {
-                m_netSession->claimCountry(id);
+        const bool spectating = !hosting && m_netSession && m_netSession->spectating();
+        const bool hostAssigns = hosting
+            ? m_netHost->lobby().settings().assignment == NetAssignment::HostAssigns
+            : (m_netSession && m_netSession->assignment() == NetAssignment::HostAssigns);
+        (void)isTaken;
+
+        if (spectating) {
+            DrawText(T("You are watching this game. The host can seat you in a country."),
+                     centerX - panelW / 2, y + 8, 15, Color{170, 180, 200, 255});
+            y += 40;
+        } else if (hostAssigns && !hosting) {
+            DrawText(T("The host assigns countries in this game."),
+                     centerX - panelW / 2, y + 8, 15, Color{170, 180, 200, 255});
+            y += 40;
+        } else {
+            const MpButton pick = buttonAt((float)(centerX - panelW / 2), (float)y,
+                                           220.0f, 32.0f, mouse);
+            drawButton(pick, myCountry == 0 ? "Choose a country" : "Change country",
+                       15, Color{40, 52, 68, 230}, Color{120, 150, 190, 210});
+            if (click && pick.hovered) {
+                m_mpPickingCountry = true;
+                m_mpAssignTarget = 0;
+                m_mpCountryScroll = 0;
+                m_mpCountrySearch.clear();
+                m_mpFocus = 10;
             }
-            m_mpPickingCountry = false;
-        };
-
-        const MpButton pick = buttonAt((float)(centerX - panelW / 2), (float)y,
-                                       200.0f, 32.0f, mouse);
-        drawButton(pick, m_mpPickingCountry ? "Close the list"
-                       : myCountry == 0 ? "Choose a country" : "Change country",
-                   15, Color{40, 52, 68, 230}, Color{120, 150, 190, 210});
-        if (click && pick.hovered) {
-            m_mpPickingCountry = !m_mpPickingCountry;
-            m_mpCountryScroll = 0;
-        }
-
-        // The host has the world open, so it can be pointed at. A joiner has
-        // only the catalogue -- it never loaded the map -- so the list is the
-        // honest option there rather than a map it cannot draw.
-        if (hosting && !m_mpPickingCountry) {
-            DrawText(T("or click the map, either side of this panel"), (int)(centerX - panelW / 2) + 212,
-                     y + 9, 14, Color{140, 150, 165, 255});
-        }
-        y += 40;
-
-        if (m_mpPickingCountry) {
-            const int rowH = 26, visible = 9;
-            const float listW = 300.0f;
-            const int total = (int)choices.size();
-            m_mpCountryScroll = std::clamp(m_mpCountryScroll, 0,
-                                           std::max(0, total - visible));
-            const Rectangle box{(float)(centerX - panelW / 2), (float)y, listW,
-                                (float)(rowH * visible + 8)};
-            DrawRectangleRounded(box, 0.06f, 8, Color{18, 20, 26, 240});
-            DrawRectangleRoundedLines(box, 0.06f, 8, Color{90, 100, 120, 200});
-
-            if (CheckCollisionPointRec(mouse, box)) {
-                const float wheel = odScrollWheel(box);
-                if (wheel != 0.0f) m_mpCountryScroll -= (int)wheel;
-                m_mpCountryScroll = std::clamp(m_mpCountryScroll, 0,
-                                               std::max(0, total - visible));
-            }
-
-            for (int i = 0; i < visible && m_mpCountryScroll + i < total; i++) {
-                const auto& entry = choices[(size_t)(m_mpCountryScroll + i)];
-                const Rectangle row{box.x + 4, box.y + 4 + i * (float)rowH,
-                                    box.width - 8, (float)rowH};
-                const bool hovered = CheckCollisionPointRec(mouse, row);
-                const bool gone = isTaken(entry.first);
-                const bool isMine = entry.first == myCountry;
-                if (hovered && !gone)
-                    DrawRectangleRounded(row, 0.2f, 6, Color{40, 52, 68, 200});
-                DrawText(entry.second.c_str(), (int)row.x + 8, (int)row.y + 5, 15,
-                         gone   ? Color{95, 100, 112, 255}
-                       : isMine ? Color{150, 210, 170, 255}
-                                : (hovered ? RAYWHITE : Color{195, 200, 210, 255}));
-                if (gone) {
-                    const char* t = "taken";
-                    DrawText(t, (int)(row.x + row.width) - MeasureText(t, 13) - 8,
-                             (int)row.y + 6, 13, Color{150, 120, 110, 255});
-                }
-                if (click && hovered && !gone) claim(entry.first);
-            }
-
-            if (total > visible) {
-                const std::string more = std::to_string(m_mpCountryScroll + 1) + "-" +
-                    std::to_string(std::min(total, m_mpCountryScroll + visible)) +
-                    " of " + std::to_string(total) + "   (scroll)";
-                DrawText(more.c_str(), (int)box.x, (int)(box.y + box.height) + 4, 13,
-                         Color{130, 140, 155, 255});
-            }
-            y += (int)box.height + 24;
-        } else if (hosting && click && m_playableCountryIds.size() && m_renderer &&
-                   // NOT anywhere this screen draws. Every lobby widget lives in
-                   // one centred column, and the previous test -- "below the
-                   // panel" -- let the Start game press ALSO claim whatever
-                   // country happened to sit under the button. Picking the
-                   // Soviet Union and starting the game handed you West Africa.
-                   !CheckCollisionPointRec(mouse,
-                       Rectangle{(float)(centerX - panelW / 2 - 24), 90.0f,
-                                 (float)(panelW + 48), (float)(m_screenH - 150)})) {
-            // A click on the map itself. Same lookup the country-select screen
-            // uses, so the two agree about what is playable and what is not.
-            int px = 0, py = 0;
-            m_renderer->screenToPixel(mouse.x, mouse.y, px, py);
-            if (const Province* prov = m_provinces.getProvince(px, py)) {
-                const int cid = prov->countryId;
-                if (cid != UNC_CID && cid != BLC_CID &&
-                    std::find(m_playableCountryIds.begin(), m_playableCountryIds.end(),
-                              cid) != m_playableCountryIds.end()) {
-                    claim((uint16_t)cid);
-                    const Country* c = m_countries.getCountry(cid);
-                    mpNote(std::string("You are playing as ") + (c ? c->name : "that country"));
-                }
-            }
+            const bool haveMap = !m_mpLobbyMap.empty();
+            DrawText(haveMap ? T("search by name, or click it on the map")
+                             : T("search the list by name"),
+                     (int)(centerX - panelW / 2) + 232, y + 9, 14,
+                     Color{140, 150, 165, 255});
+            y += 40;
         }
     }
 
@@ -2585,20 +3288,7 @@ void Game::drawMpLobby(Vector2 mouse, bool click) {
             }
             m_mpConfirmStart = false;
             std::string why;
-            if (!m_netHost->startGame(why, force)) {
-                mpNote(why, true);
-            } else {
-                // Everyone gets the world before the host disappears into it.
-                const std::vector<uint8_t>& snapshot = mpSnapshotForJoiner();
-                for (const NetPeer& p : m_netHost->lobby().roster()) {
-                    if (p.peerId == m_netHost->lobby().hostPeerId()) continue;
-                    m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot);
-                }
-                uint16_t mine = 0;
-                for (const NetPeer& p : m_netHost->lobby().roster())
-                    if (p.peerId == m_netHost->lobby().hostPeerId()) mine = p.countryId;
-                mpEnterGame(mine);
-            }
+            if (!mpHostStartGame(force, why)) mpNote(why, true);
         }
     }
 
@@ -2657,6 +3347,121 @@ void Game::mpPublishCountries() {
         list.countries.push_back(std::move(e));
     }
     m_netHost->setCountries(list);
+
+    // And a map to pick them from. Built from THIS world, so a resumed
+    // campaign shows today's borders, not the scenario's. See LobbyMap.h.
+    m_mpLobbyMap = mpBuildLobbyMap();
+    m_mpLobbyMapDirty = true;
+    if (!m_mpLobbyMap.empty()) m_netHost->setLobbyMap(m_mpLobbyMap.encode());
+}
+
+LobbyMap Game::mpBuildLobbyMap() const {
+    const int iw = m_provinces.getWidth(), ih = m_provinces.getHeight();
+    if (!m_provinces.hasPixels() || iw <= 0 || ih <= 0) return {};
+    std::unordered_set<int> playable(m_playableCountryIds.begin(), m_playableCountryIds.end());
+    // 512 across is enough to click a small country and small enough to send:
+    // tens of kilobytes once run-length encoded.
+    const uint16_t w = 512;
+    const uint16_t h = (uint16_t)std::clamp((int)(512LL * ih / iw), 64,
+                                            (int)LobbyMap::kMaxHeight);
+    return LobbyMap::build(w, h,
+        [&](float u, float v) -> uint16_t {
+            const int x = std::min(iw - 1, (int)(u * iw));
+            const int y = std::min(ih - 1, (int)(v * ih));
+            const int pid = m_provinces.idAt(x, y);
+            if (pid <= 0 || (size_t)pid >= m_provinceCountryLookup.size()) return 0;
+            const int cid = m_provinceCountryLookup[(size_t)pid];
+            // Land nobody can take is drawn, but as nobody's: grey, unclickable.
+            if (cid <= 0 || cid > 0xFFFF) return 0;
+            return playable.count(cid) ? (uint16_t)cid : (uint16_t)0xFFFE;
+        },
+        [&](uint16_t id) -> uint32_t {
+            if (id == 0xFFFE) return 0x5A5A5Au;
+            const Country* c = m_countries.getCountry(id);
+            if (!c) return 0x808080u;
+            return ((uint32_t)c->color.r << 16) | ((uint32_t)c->color.g << 8) | c->color.b;
+        });
+}
+
+void Game::mpHostWorldReady() {
+    // The world is open so the lobby can offer real countries. Back to the
+    // lobby rather than into the game: nobody has joined yet.
+    mpPublishCountries();
+
+    // Whoever was playing before gets their country held for them. This is
+    // not a second way to join: reserveSeat leaves a member that admit()
+    // recognises by psid, so returning after a week and returning after a
+    // dropped packet are the same path through the same code.
+    int held = 0;
+    HostBook book;
+    const bool haveBook = m_netHost && HostBook::load(m_currentSavePath, book);
+    if (haveBook) {
+        // Before any seat is held: somebody barred is not somebody whose
+        // seat should be waiting for them.
+        for (const std::string& psid : book.bans) m_netHost->lobby().ban(psid);
+        for (const SeatRecord& seat : book.seats) {
+            if (m_netHost->lobby().reserveSeat(seat.psid, seat.name, seat.countryId))
+                held++;
+        }
+        if (held) m_netHost->broadcastLobby();
+
+        // The turn that was open when the host stopped: its deadline and the
+        // orders already in. Only if it is still the NEXT turn of this world --
+        // a book from a save that has since moved on describes another turn.
+        const uint32_t next = (uint32_t)m_turnNumber + 1;
+        if (book.campaign.openTurn == next) {
+            m_mpResumeTurn = next;
+            m_mpResumeDeadlineMs = book.campaign.turnDeadlineMs;
+        }
+        auto orders = std::make_unique<PendingOrdersBook>();
+        if (PendingOrdersBook::load(m_currentSavePath, *orders) && orders->turn == next)
+            m_mpResumeOrders = std::move(orders);
+    }
+
+    // ── A CAMPAIGN STOPPED MID-GAME GOES BACK INTO THE GAME ──
+    //
+    // A host at the keyboard presses Start again and that is fine. A server
+    // with nobody at it would sit in a lobby nobody can start -- every seat is
+    // held for somebody who is not connected yet -- so it resumes the game
+    // itself, and players arriving are dropped straight back into their
+    // country with the world sent to them.
+    if (haveBook && book.campaign.inGame && m_mpDedicated && m_netHost) {
+        std::string why;
+        if (mpHostStartGame(/*force=*/true, why)) {
+            mpNote("Resumed the campaign at turn " + std::to_string(m_turnNumber + 1) + ".");
+            return;
+        }
+        mpNote("Could not resume the game: " + why, true);
+    }
+
+    m_currentScreen = SCREEN_MULTIPLAYER;
+    m_mpPage = MpPage::Lobby;
+    if (held) {
+        mpNote(std::to_string(held) + " seat(s) are being held for players from "
+               "last time. They keep their country when they rejoin.");
+    } else {
+        mpNote(T("World loaded. Share the code and start when everyone is ready."));
+    }
+}
+
+bool Game::mpHostStartGame(bool force, std::string& why) {
+    if (!m_netHost || !m_netHost->startGame(why, force)) return false;
+    // Everyone gets the world before the host disappears into it. The
+    // dedicated server's start used to skip this, so everybody connected at
+    // the moment of the start sat on an empty map waiting for a world nothing
+    // was going to send.
+    const std::vector<uint8_t>& snapshot = mpSnapshotForJoiner();
+    for (const NetPeer& p : m_netHost->lobby().roster()) {
+        if (p.peerId == m_netHost->lobby().hostPeerId() || !p.connected || p.peerId == 0)
+            continue;
+        m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot);
+    }
+    uint16_t mine = 0;
+    for (const NetPeer& p : m_netHost->lobby().roster())
+        if (p.peerId == m_netHost->lobby().hostPeerId()) mine = p.countryId;
+    if (!m_headless) mpEnterGame(mine);
+    mpSaveSeats();
+    return true;
 }
 
 void Game::mpOnWorldLoaded() {
@@ -2676,35 +3481,7 @@ void Game::mpOnWorldLoaded() {
     }
 
     if (purpose == MpLoad::HostOpen) {
-        // The world is open so the lobby can offer real countries. Back to the
-        // lobby rather than into the game: nobody has joined yet.
-        mpPublishCountries();
-
-        // Whoever was playing before gets their country held for them. This is
-        // not a second way to join: reserveSeat leaves a member that admit()
-        // recognises by psid, so returning after a week and returning after a
-        // dropped packet are the same path through the same code.
-        int held = 0;
-        HostBook book;
-        if (m_netHost && HostBook::load(m_currentSavePath, book)) {
-            // Before any seat is held: somebody barred is not somebody whose
-            // seat should be waiting for them.
-            for (const std::string& psid : book.bans) m_netHost->lobby().ban(psid);
-            for (const SeatRecord& seat : book.seats) {
-                if (m_netHost->lobby().reserveSeat(seat.psid, seat.name, seat.countryId))
-                    held++;
-            }
-            if (held) m_netHost->broadcastLobby();
-        }
-
-        m_currentScreen = SCREEN_MULTIPLAYER;
-        m_mpPage = MpPage::Lobby;
-        if (held) {
-            mpNote(std::to_string(held) + " seat(s) are being held for players from "
-                   "last time. They keep their country when they rejoin.");
-        } else {
-            mpNote(T("World loaded. Share the code and start when everyone is ready."));
-        }
+        mpHostWorldReady();
         return;
     }
 
@@ -2818,6 +3595,8 @@ void Game::mpApplySnapshot(const std::vector<uint8_t>& payload) {
 }
 
 void Game::mpEnterGame(uint16_t countryId) {
+    achNote("mp_games_joined");
+    achWorldStarted(false);
     if (countryId != 0 && m_countries.getCountry(countryId)) {
         m_playerCountryId = (int)countryId;
         for (auto& n : m_researchNodes) n.researched = hasResearched(n.id, m_playerCountryId);
@@ -3625,15 +4404,50 @@ void Game::mpHostTurnUpdate() {
 
     if (!m_mpTurns->running()) {
         const uint32_t next = (uint32_t)m_turnNumber + 1;
-        m_mpTurns->beginTurn(next, nowMs);
-        m_netHost->beginTurn(next, m_mpTurns->remainingMs(nowMs));
-        // Everyone starts this turn with the full allowance.
-        m_mpDeadlineMs.clear();
         const int secs = mpTurnSeconds();
+
+        // ── HOW LONG THIS TURN GETS, IN REAL TIME ──
+        //
+        // A turn that was open when the server stopped keeps the deadline it
+        // was announced with: a restart gives nobody an extra day. One that
+        // ran out meanwhile gets a short grace for people to reconnect and is
+        // then resolved once. Otherwise the schedule decides -- a plain
+        // interval, or a fixed time of day. See TurnClock.h.
+        const int64_t wallNow = turnclock::nowEpochMs();
+        int64_t remaining = 0;
+        if (secs > 0) {
+            const int64_t resumed = m_mpResumeTurn == next
+                ? turnclock::resumeRemainingMs(m_mpResumeDeadlineMs, wallNow, m_mpResumeGraceMs)
+                : -1;
+            remaining = resumed >= 0
+                ? resumed
+                : turnclock::nextDeadline(wallNow, (uint32_t)secs, m_mpTurnAnchor) - wallNow;
+        }
+        m_mpResumeTurn = 0;
+        m_mpResumeDeadlineMs = 0;
+
+        m_mpTurns->beginTurnWithRemaining(next, nowMs, remaining);
+        m_mpTurnDeadlineEpochMs = secs > 0 ? wallNow + remaining : 0;
+        m_netHost->beginTurn(next, turnclock::clampForWire(m_mpTurns->remainingMs(nowMs)));
+        // Everyone starts this turn with what the turn has.
+        m_mpDeadlineMs.clear();
         if (secs > 0)
             for (const NetPeer& p : m_netHost->lobby().roster())
                 if (!p.spectator && p.countryId != 0)
-                    m_mpDeadlineMs[p.peerId] = nowMs + (long long)secs * 1000;
+                    m_mpDeadlineMs[p.peerId] = nowMs + remaining;
+
+        // Orders that were in before the restart. AFTER beginTurn, which
+        // clears every submission as a new turn should.
+        if (m_mpResumeOrders && m_mpResumeOrders->turn == next) {
+            int restored = 0;
+            for (const PendingOrder& o : m_mpResumeOrders->entries)
+                if (m_netHost->lobby().restoreSubmission(o.psid, next, o.orders, o.malformed))
+                    restored++;
+            if (restored) m_netHost->broadcastLobby();
+        }
+        m_mpResumeOrders.reset();
+        mpSaveSeats();
+        mpSavePendingOrders();
         return;
     }
 
@@ -3718,6 +4532,10 @@ void Game::mpResolveTurn() {
     }
     m_netHost->lobby().clearSubmissions();
     m_mpDeadlineMs.clear();
+    m_mpTurnDeadlineEpochMs = 0;
+    // Those orders are in the world now; keeping them would replay them into
+    // the next turn after a restart.
+    PendingOrdersBook::remove(m_currentSavePath);
 
     // Asked for during the turn, done now: the world has just been written and
     // every player has the same delta, so this is the one moment when going
@@ -3806,6 +4624,8 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
 
     m_turnNumber = (int)turnNumber;
     m_mpWaitingForTurn = false;
+    // A client never runs processTurn; this is its end of turn.
+    achTurnSnapshot(true);
 
     // The orders just resolved; they are not pending any more.
     //
@@ -4028,7 +4848,8 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
 
     const int rowH = 20, w = 320;
     const int headH = 46;
-    const int hostRow = host ? 30 : 0;
+    const bool voice = !m_mpVoiceLink.empty();
+    const int hostRow = (host || voice) ? 30 : 0;
     const int h = headH + (int)players.size() * rowH + 8 + hostRow;
     const int top = bottomY - h;
 
@@ -4104,14 +4925,49 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
     }
     (void)turn;
 
+    // ── the buttons along the bottom ──
+    //
+    // Host: resolve now, and the host tools (kick, ban, release a seat, seat a
+    // spectator) which were written in full and never reachable in game. Every
+    // player: the voice chat the host offers, if any.
+    const Vector2 bm = getMouse();
+    const bool released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !m_paused;
+    float bx = (float)(x + 10);
+    const float bw = host && voice ? (w - 30) / 3.0f : host ? (w - 25) / 2.0f : (float)(w - 20);
+    auto smallButton = [&](const char* label, Color fill, Color line) {
+        const Rectangle r{bx, (float)(ry + 4), bw, 24.0f};
+        const bool hov = CheckCollisionPointRec(bm, r);
+        DrawRectangleRounded(r, 0.15f, 6, hov ? ColorBrightness(fill, 0.25f) : fill);
+        DrawRectangleRoundedLines(r, 0.15f, 6, line);
+        int fs = 12;
+        const std::string fit = odText::fitToWidth(label, (int)r.width - 8, fs, 9);
+        DrawText(fit.c_str(), (int)r.x + ((int)r.width - MeasureText(fit.c_str(), fs)) / 2,
+                 (int)r.y + 6, fs, Color{225, 225, 230, 255});
+        bx += bw + 5;
+        return hov && released;
+    };
+    if (host) {
+        if (smallButton(m_mpHostConsoleOpen ? "Close host tools" : "Host tools",
+                        Color{36, 46, 62, 228}, Color{110, 140, 180, 190}))
+            m_mpHostConsoleOpen = !m_mpHostConsoleOpen;
+    }
+    if (voice) {
+        // Opens the host's own voice server in the browser. The game carries
+        // no audio and has no part in the call -- see docs/tournaments.md.
+        if (smallButton(("Voice: " + netVoiceLinkHost(m_mpVoiceLink)).c_str(),
+                        Color{40, 38, 66, 228}, Color{140, 130, 200, 190}))
+            odlink::open(m_mpVoiceLink);
+    }
+    if (host && m_mpHostConsoleOpen) drawMpHostConsole(x + w + 10, std::max(60, top - 120));
+
     if (host) {
         const Vector2 m = getMouse();
-        const Rectangle go{(float)(x + 10), (float)(ry + 4), (float)(w - 20), 24.0f};
+        const Rectangle go{bx, (float)(ry + 4), bw, 24.0f};
         const bool hov = CheckCollisionPointRec(m, go);
         DrawRectangleRounded(go, 0.15f, 6, hov ? Color{78, 62, 36, 235}
                                                : Color{52, 44, 30, 225});
         DrawRectangleRoundedLines(go, 0.15f, 6, Color{170, 140, 90, 190});
-        const char* t = "Resolve now, without the rest";
+        const char* t = "Resolve now";
         odText::fitAudit(t, (int)go.width - 8, 12, "mp resolve-now button");
         int mfs_mp_resolve_now_button = 12;
         const std::string mfit_mp_resolve_now_button = odText::fitToWidth(t, (int)go.width - 8, mfs_mp_resolve_now_button, 9);
@@ -4222,8 +5078,11 @@ void Game::drawMpHostConsole(int x, int top) {
         // Moderation, at the row it applies to. Kick and ban are deliberately
         // two buttons: one is "leave", the other is "and stay gone", and a
         // host who only had the second would stop using either.
-        if (p.psid != m_netHost->lobby().find(m_netHost->lobby().hostPeerId())->psid
-            && !p.psid.empty()) {
+        // The host's own row has no moderation. Looked up rather than assumed:
+        // a dedicated host holds no seat, and find() then returns nothing --
+        // dereferenced, that was a crash on the first frame this panel drew.
+        const LobbyMember* hostSeat = m_netHost->lobby().find(m_netHost->lobby().hostPeerId());
+        if ((!hostSeat || p.psid != hostSeat->psid) && !p.psid.empty() && p.connected) {
             const bool armed = m_mpArmedBan == p.psid;
             const Rectangle kb{(float)(x + w - 128), (float)(y + 1), 54.0f, 19.0f};
             const bool kh = CheckCollisionPointRec(mouse, kb);

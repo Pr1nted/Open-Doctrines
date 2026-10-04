@@ -218,6 +218,37 @@ public:
     /** Everyone watching rather than playing. */
     std::vector<const LobbyMember*> spectators() const;
 
+    /**
+     * Take a player out of their country and make them a spectator.
+     *
+     * The other half of seatSpectator: a host replacing somebody who has
+     * stopped turning up moves them out, then seats whoever is waiting. Their
+     * country is left unheld, so the absent rule plays it until then. Works in
+     * the lobby and mid-game; refuses the host's own seat.
+     */
+    LobbyDenial unseat(uint16_t peerId);
+
+    /**
+     * Put back a submission that was made before the server restarted.
+     *
+     * By PSID, because held seats all carry peer id 0 until their player
+     * reconnects. The orders were accepted once already, by submitOrders, so
+     * they are taken as they were rather than checked again. False when the
+     * psid holds no country.
+     */
+    bool restoreSubmission(const std::string& psid, uint32_t turnNumber,
+                           const std::vector<uint8_t>& orders, bool malformed);
+
+    /**
+     * Forget spectators who left, oldest first, beyond `keep`.
+     *
+     * A month-long server is watched by a lot of people who drop in once, and
+     * every disconnected member stays in the roster that goes out with each
+     * lobby update. Players are never pruned -- their seat is the whole point
+     * of remembering them -- and nor is anyone connected.
+     */
+    void pruneSpectators(size_t keep);
+
     /** Mark gone. The slot is kept so the player can come back to it. */
     void disconnect(uint16_t peerId);
 

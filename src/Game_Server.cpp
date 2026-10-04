@@ -29,21 +29,27 @@
 // with an opinion about who should win.
 
 #include "Game.h"
+#include "net/Socks5.h"
+#include "net/TorClient.h"
 
 #include "Audio.h"
 #include "net/Host.h"
 #include "net/Lobby.h"
 #include "net/ModAttest.h"
 #include "net/Tunnel.h"
+#include "net/TurnRunner.h"
 #include "mods/ModManager.h"
 #include "server/ServerConfig.h"
 #include "server/ServerConsole.h"
 #include "server/ServerRuntime.h"
+#include "net/TurnClock.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -195,6 +201,7 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     // rasteriser and the political texture; setting it here is what makes the
     // shared simulation safe to run against ServerRaylib's no-ops.
     m_headless = true;
+    m_compactRaster = true;
     Audio::s_disabled = true;
 
     console.info("OpenDoctrines dedicated server " OD_VERSION_STRING);
@@ -222,6 +229,11 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     // looked. A dedicated server has never opened a session.
     m_configPath = m_dataDir + "config.json";
     m_config.load(m_configPath);
+    // A server can reach the account service through Tor too, if its operator
+    // asked: the same setting a player uses. Onion hosting is `tunnel: tor`.
+    socks5::setRouteAll(m_config.torRouteAll);
+    socks5::setPort(m_config.torSocksPort);
+    torclient::setDataDir(m_dataDir);
     AccountClient::get().init(m_config.accountIssuer, m_dataDir + "account.json");
 
     // init() only says WHERE the session is kept. bootstrap() is what reads it
@@ -431,6 +443,147 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
                      m_srv->startRequested = true;
                  }});
 
+    /** A country by id, ISO code or name (case-insensitive, prefix allowed). */
+    auto findCountry = [&](const std::string& what) -> int {
+        if (what.empty()) return 0;
+        if (std::all_of(what.begin(), what.end(), ::isdigit)) {
+            const int id = atoi(what.c_str());
+            return m_countries.getCountry(id) ? id : 0;
+        }
+        if (const int byIso = cidForIso(what)) return byIso;
+        std::string want = what;
+        std::transform(want.begin(), want.end(), want.begin(),
+                       [](unsigned char c) { return (char)tolower(c); });
+        int prefix = 0, prefixHits = 0;
+        for (int cid : m_playableCountryIds) {
+            const Country* c = m_countries.getCountry(cid);
+            if (!c) continue;
+            std::string n = c->name;
+            std::transform(n.begin(), n.end(), n.begin(),
+                           [](unsigned char ch) { return (char)tolower(ch); });
+            if (n == want) return cid;
+            if (n.rfind(want, 0) == 0) { prefix = cid; prefixHits++; }
+        }
+        return prefixHits == 1 ? prefix : 0;
+    };
+
+    // ── SEATS, BY HAND ──
+    //
+    // A campaign that runs for a month loses players: somebody stops turning
+    // up, somebody else has been watching for a week and wants in. These are
+    // the operator's answers, the same rules the host screen uses.
+    console.add({"seat", "seat <player> <country>",
+                 "give a player or spectator a country (lobby or mid-game)", 2, -1,
+                 [&](const std::vector<std::string>& a, ServerConsole& c) {
+                     if (!m_netHost) { c.warn("the session is not open."); return; }
+                     NetPeer p;
+                     if (!findPeer(a[0], p)) { c.warn("no player called '" + a[0] + "'."); return; }
+                     std::string what;
+                     for (size_t i = 1; i < a.size(); ++i) { if (i > 1) what += " "; what += a[i]; }
+                     const int cid = findCountry(what);
+                     if (!cid) { c.warn("no single country matches '" + what + "'."); return; }
+                     Lobby& lobby = m_netHost->lobby();
+                     LobbyDenial d = LobbyDenial::None;
+                     if (srvInLobby() && !p.spectator) {
+                         d = lobby.assignCountry(lobby.hostPeerId(), p.peerId, (uint16_t)cid);
+                     } else {
+                         // Mid-game, or a spectator: out of whatever they hold, into this.
+                         if (!p.spectator) d = lobby.unseat(p.peerId);
+                         if (d == LobbyDenial::None) d = lobby.seatSpectator(p.peerId, (uint16_t)cid);
+                     }
+                     if (d != LobbyDenial::None) { c.warn(lobbyDenialText(d)); return; }
+                     m_netHost->broadcastLobby();
+                     mpSaveSeats();
+                     const Country* country = m_countries.getCountry(cid);
+                     c.info(p.name + " now holds " + (country ? country->name : what) + ".");
+                     m_netHost->sendChat(p.name + " now plays " +
+                                         (country ? country->name : what) + ".");
+                 }});
+
+    console.add({"unseat", "unseat <player>",
+                 "make a player a spectator; their country is played as absent", 1, 1,
+                 [&](const std::vector<std::string>& a, ServerConsole& c) {
+                     if (!m_netHost) { c.warn("the session is not open."); return; }
+                     NetPeer p;
+                     if (!findPeer(a[0], p)) { c.warn("no player called '" + a[0] + "'."); return; }
+                     if (p.peerId == 0) {
+                         c.warn(p.name + " is not connected; use `release " + p.name + "`.");
+                         return;
+                     }
+                     const LobbyDenial d = m_netHost->lobby().unseat(p.peerId);
+                     if (d != LobbyDenial::None) { c.warn(lobbyDenialText(d)); return; }
+                     m_netHost->broadcastLobby();
+                     mpSaveSeats();
+                     c.info(p.name + " is now spectating.");
+                 }});
+
+    console.add({"release", "release <player>",
+                 "give up the seat held for somebody who has not come back", 1, 1,
+                 [&](const std::vector<std::string>& a, ServerConsole& c) {
+                     if (!m_netHost) { c.warn("the session is not open."); return; }
+                     NetPeer p;
+                     if (!findPeer(a[0], p)) { c.warn("no player called '" + a[0] + "'."); return; }
+                     if (!m_netHost->lobby().releaseSeat(p.psid)) {
+                         c.warn(p.name + " is connected; `unseat` or `kick` them instead.");
+                         return;
+                     }
+                     m_netHost->broadcastLobby();
+                     mpSaveSeats();
+                     c.info("released " + p.name + "'s seat.");
+                 }});
+
+    console.add({"deadline", "deadline [+2h | +30m | -1h | now]",
+                 "show or move the open turn's deadline", 0, 1,
+                 [&](const std::vector<std::string>& a, ServerConsole& c) {
+                     if (!srvInGame() || !m_mpTurns || !m_mpTurns->running()) {
+                         c.warn("no turn is open."); return;
+                     }
+                     const int64_t wall = turnclock::nowEpochMs();
+                     if (a.empty()) {
+                         if (m_mpTurnDeadlineEpochMs == 0) { c.raw("this turn has no deadline."); return; }
+                         c.raw("turn " + std::to_string(m_mpTurns->turnNumber()) + " is due in " +
+                               turnclock::describe(m_mpTurnDeadlineEpochMs - wall));
+                         return;
+                     }
+                     if (mpTurnSeconds() <= 0) { c.warn("this game has no turn timer."); return; }
+                     int64_t target = 0;
+                     if (a[0] == "now") {
+                         target = wall;
+                     } else {
+                         const char sign = a[0][0];
+                         const std::string num = a[0].substr(1);
+                         const char unit = num.empty() ? 0 : num.back();
+                         const long long n = atoll(num.c_str());
+                         const int64_t mult = unit == 'h' ? 3600000 : unit == 'm' ? 60000
+                                            : unit == 'd' ? 86400000 : 0;
+                         if ((sign != '+' && sign != '-') || n <= 0 || mult == 0) {
+                             c.warn("expects +2h, -30m, +1d or now."); return;
+                         }
+                         target = m_mpTurnDeadlineEpochMs + (sign == '+' ? 1 : -1) * n * mult;
+                     }
+                     const int64_t left = std::max<int64_t>(0, target - wall);
+                     const long long nowMs = (long long)(GetTime() * 1000.0);
+                     m_mpTurns->beginTurnWithRemaining(m_mpTurns->turnNumber(), nowMs, left);
+                     m_mpTurnDeadlineEpochMs = wall + left;
+                     for (auto& [peer, due] : m_mpDeadlineMs) due = nowMs + left;
+                     m_netHost->announceDeadline(m_mpTurns->turnNumber(),
+                                                 turnclock::clampForWire(left));
+                     mpSaveSeats();
+                     c.info("turn " + std::to_string(m_mpTurns->turnNumber()) + " is now due in " +
+                            turnclock::describe(left));
+                 }});
+
+    console.add({"voice", "voice <https link | off>",
+                 "offer players a voice chat link (Discord invite etc.)", 1, 1,
+                 [&](const std::vector<std::string>& a, ServerConsole& c) {
+                     std::string why;
+                     const std::string v = a[0] == "off" ? "" : a[0];
+                     if (!config.set("voice-link", v, srvInLobby(), why)) { c.warn(why); return; }
+                     std::string saveWhy;
+                     if (!configPath.empty()) config.save(configPath, saveWhy);
+                     c.info(v.empty() ? "voice link removed." : "voice link: " + v);
+                 }});
+
     console.add({"status", "status", "what this server is doing right now", 0, 0,
                  [&](const std::vector<std::string>&, ServerConsole& c) {
                      c.raw("Session : " + config.sessionName);
@@ -438,6 +591,10 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
                      c.raw("State   : " + std::string(srvInGame() ? "playing" :
                                                       srvInLobby() ? "lobby" : "opening"));
                      if (srvInGame()) c.raw("Turn    : " + std::to_string(m_turnNumber));
+                     if (srvInGame() && m_mpTurnDeadlineEpochMs > 0)
+                         c.raw("Due in  : " + turnclock::describe(m_mpTurnDeadlineEpochMs -
+                                                                   turnclock::nowEpochMs()));
+                     if (!m_mpVoiceLink.empty()) c.raw("Voice   : " + m_mpVoiceLink);
                      c.raw("Players : " + std::to_string(srvConnectedPlayers()) + " connected, " +
                            std::to_string(srvPlayersHoldingCountries()) + " holding a country");
                      if (m_netHost && m_netHost->phase() == NetHost::Phase::Live) {
@@ -537,6 +694,16 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     hideLoadingScreen();
     m_currentScreen = SCREEN_PLAYING;
 
+    // ── HALF THE MEMORY, SAME ANSWERS ──
+    //
+    // The province image is the largest thing a server holds -- 128 MB at
+    // 8192x4096 -- and from here on nothing draws it; every remaining reader
+    // asks "which province is this pixel", which a two-byte index answers
+    // identically (ProvinceMap::compact). On a host with 512 MB, that is the
+    // difference between a margin and an out-of-memory kill.
+    if (m_provinces.compact())
+        console.info("province raster compacted to 2 bytes a pixel.");
+
     // ── A WORLD NOBODY IS GOING TO PLAY ──
     //
     // Loading a map auto-creates the save it will be played in, and that has
@@ -619,6 +786,32 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     m_mpLateJoin   = (config.lateJoin == "refuse") ? 0 : 1;
     m_mpAbsent     = (config.absent == "idle") ? 1 : 0;
 
+    // ── THE TURN LENGTH, WHICH WAS NEVER WIRED ──
+    //
+    // Eleven settings were copied onto the host above and `turn-seconds` was
+    // not one of them, so every dedicated game ran long-form whatever the
+    // config said: no countdown, and turns that moved only when every player
+    // had sent orders or an operator typed `step-go`. The schedule players
+    // were promised existed only in the file.
+    //
+    // `auto.advance-every-seconds` predates it and did the same job worse --
+    // on a monotonic clock, so a restart gave everybody another full turn. It
+    // is honoured as a turn length when turn-seconds is not set.
+    uint32_t turnSecs = config.turnSeconds;
+    if (turnSecs == 0 && config.automation.advanceEverySeconds > 0) {
+        turnSecs = config.automation.advanceEverySeconds;
+        console.info("auto.advance-every-seconds is used as the turn length (" +
+                     secondsAsWords(turnSecs) + "); set turn-seconds instead to "
+                     "silence this.");
+    }
+    m_mpTurnField     = std::to_string(turnSecs);
+    m_mpTurnAnchor    = turnclock::parseAnchor(config.turnAt);
+    m_mpResumeGraceMs = (int64_t)config.resumeGraceSeconds * 1000;
+    m_mpVoiceLink     = config.voiceLink;
+    if (turnSecs > 0)
+        console.info("turns: every " + secondsAsWords(turnSecs) +
+                     (m_mpTurnAnchor >= 0 ? ", due at " + config.turnAt + " UTC" : std::string("")));
+
     if (config.checkOnly) {
         console.info("world loaded: " + std::to_string(m_provinces.getAllProvinces().size()) +
                      " provinces, " + std::to_string(m_countries.getAll().size()) + " countries");
@@ -673,7 +866,34 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         return 0;
     }
 
+    // ── A CAMPAIGN THIS SERVER CAN COME BACK TO ──
+    //
+    // The world is on disk from here on. Writing its name into the config
+    // means the next start -- after a crash, a reboot, a power cut, a
+    // container being rescheduled -- resumes it instead of generating a new
+    // world and orphaning everybody's seats. The comment in ServerMain.cpp
+    // always claimed this happened; nothing did it.
+    if (config.loadSave.empty() && !m_currentSavePath.empty() && !configPath.empty()) {
+        config.loadSave = fs::path(m_currentSavePath).filename().string();
+        std::string why;
+        if (config.save(configPath, why))
+            console.info("this world resumes on restart: load-save = " + config.loadSave);
+        else
+            console.warn("could not record the world in the config (" + why + "); a "
+                         "restart will start a new one unless you pass --load " +
+                         config.loadSave);
+    }
+
+    // Loaded above, so mpOpenHost must not load it a second time.
+    m_mpWorldPreloaded = true;
     mpOpenHost();
+    if (m_netHost && !m_mpVoiceLink.empty()) {
+        NetSessionInfo info;
+        info.voiceLink = m_mpVoiceLink;
+        m_netHost->setSessionInfo(info);
+        m_mpVoiceLinkSent = m_mpVoiceLink;
+        console.info("voice link offered to players: " + m_mpVoiceLink);
+    }
     if (!m_netHost || m_netHost->phase() == NetHost::Phase::Closed) {
         console.error("could not open the session" +
                       (m_netHost && !m_netHost->error().empty()
@@ -704,10 +924,20 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         TunnelProvider want = TunnelProvider::None;
         if (config.tunnel == ServerTunnelMode::Cloudflared)  want = TunnelProvider::Cloudflared;
         if (config.tunnel == ServerTunnelMode::LocalhostRun) want = TunnelProvider::LocalhostRun;
+        if (config.tunnel == ServerTunnelMode::Tor)          want = TunnelProvider::Tor;
         if (config.tunnel == ServerTunnelMode::Auto) {
+            // Never Tor by itself: it makes every player install Tor, which
+            // has to be the host's decision, said in the config.
             for (TunnelProvider p : tunnelProvidersAvailable())
-                if (tunnelProviderWorksUnattended(p)) { want = p; break; }
+                if (tunnelProviderWorksUnattended(p) && p != TunnelProvider::Tor) { want = p; break; }
         }
+        // Onion keys are the address, so they live with the campaign.
+        tunnelSetStateDir(m_dataDir);
+        if (want == TunnelProvider::Tor)
+            console.warn("hosting as a Tor onion service. Players join through Tor -- "
+                         "the game starts its own, so nothing to install -- but it is "
+                         "slower, and some networks block Tor -- tell them before the "
+                         "first turn. Neither side sees the other's IP address.");
         if (want == TunnelProvider::None) {
             console.warn("no tunnel program on this machine. Players can only reach this "
                          "server if its port is forwarded, or set `tunnel` to off to stop "
@@ -753,11 +983,61 @@ bool Game::serverTick() {
         std::string line;
         while (console.poll(line)) console.dispatch(line);
 
+        // 1b. Anything left in commands.txt beside the config.
+        //
+        // A server running as a service has no terminal: its stdin is
+        // /dev/null and nobody can type `seat` or `deadline` into it. So it
+        // also takes commands from a file -- append a line, and within a
+        // second it runs, with the answer in the log. Renamed before reading,
+        // so a line appended while this one is being read waits for the next
+        // pass instead of being lost.
+        if (!m_srv->configPath.empty() && nowSeconds() - m_srv->lastCommandPoll >= 1.0) {
+            m_srv->lastCommandPoll = nowSeconds();
+            const fs::path inbox = fs::path(m_srv->configPath).parent_path() / "commands.txt";
+            std::error_code ec;
+            if (fs::exists(inbox, ec) && fs::file_size(inbox, ec) > 0) {
+                const fs::path taken = inbox.string() + ".taken";
+                fs::rename(inbox, taken, ec);
+                if (!ec) {
+                    std::ifstream f(taken);
+                    std::string cmd;
+                    while (std::getline(f, cmd)) {
+                        if (cmd.empty() || cmd[0] == '#') continue;
+                        console.info("command file: " + cmd);
+                        console.dispatch(cmd);
+                    }
+                    f.close();
+                    fs::remove(taken, ec);
+                }
+            }
+        }
+
         // 2. The network, and the game's own host logic. Unchanged from the
         //    client's: this is the point of running the same code.
+        const int turnBefore = m_turnNumber;
         mpDrainEvents();
         mpHostTurnUpdate();
         if (m_mpTunnel) m_mpTunnel->update();
+        if (m_turnNumber != turnBefore) {
+            console.info("turn " + std::to_string(m_turnNumber) + " resolved.");
+            srvCheckpoint(/*force=*/true);
+        }
+
+        // 2b. Staying signed in. A session token lasts twelve hours; a server
+        //     runs for weeks. Refreshed every three, on a worker -- an HTTP
+        //     round trip on this thread would stall every player.
+        srvKeepSignedIn();
+
+        // 2c. A changed voice link reaches everyone already here.
+        if (config.voiceLink != m_mpVoiceLinkSent && m_netHost) {
+            m_mpVoiceLink = m_mpVoiceLinkSent = config.voiceLink;
+            NetSessionInfo info;
+            info.voiceLink = config.voiceLink;
+            m_netHost->setSessionInfo(info);
+        }
+
+        // 2d. Orders that arrived get backed up within a minute.
+        srvCheckpoint(/*force=*/false);
 
         // ── A SESSION THAT FAILED AFTER OPENING WAS ASKED FOR ──
         //
@@ -839,7 +1119,9 @@ bool Game::serverTick() {
                 std::string why;
                 // force: anyone still choosing becomes a spectator rather than
                 // holding up a server nobody is watching. Lobby::start says so.
-                if (m_netHost->startGame(why, /*force=*/true)) {
+                // Through the shared start, which sends everybody the world --
+                // this one used to start the game and send nothing.
+                if (mpHostStartGame(/*force=*/true, why)) {
                     m_srv->gameStartedAt = nowSeconds();
                     m_srv->lastAutoAdvanceAt = m_srv->gameStartedAt;
                     console.info("game started -- " + because + ".");
@@ -850,19 +1132,19 @@ bool Game::serverTick() {
             }
         }
 
-        // 5. Turns.
+        // 5. Turns. The schedule itself is the turn clock, in mpHostTurnUpdate
+        //    above; this is only the operator's `step-go`.
         if (srvInGame()) {
             const ServerAutomation& au = config.automation;
-            bool advance = m_srv->stepRequested;
-            if (!advance && au.advanceEverySeconds > 0 &&
-                nowSeconds() - m_srv->lastAutoAdvanceAt >= au.advanceEverySeconds) {
-                advance = true;
-            }
-            if (advance) {
+            if (m_srv->stepRequested) {
                 m_srv->stepRequested = false;
                 m_srv->lastAutoAdvanceAt = nowSeconds();
+                const int before = m_turnNumber;
                 mpResolveTurn();
-                console.info("turn " + std::to_string(m_turnNumber) + " resolved.");
+                if (m_turnNumber != before) {
+                    console.info("turn " + std::to_string(m_turnNumber) + " resolved.");
+                    srvCheckpoint(/*force=*/true);
+                }
             }
 
             // 6. Is this game over?
@@ -893,6 +1175,69 @@ bool Game::serverTick() {
     return !console.stopping();
 }
 
+void Game::srvKeepSignedIn() {
+    if (!m_srv || m_srv->refreshing.load()) return;
+    const double now = nowSeconds();
+    // First refresh an hour in, then every three: well inside the twelve-hour
+    // life of a token, so two failed attempts in a row still leave time.
+    const double every = 3.0 * 3600.0;
+    if (m_srv->lastRefreshAt == 0.0) m_srv->lastRefreshAt = now - every + 3600.0;
+    if (now - m_srv->lastRefreshAt < every) return;
+    m_srv->lastRefreshAt = now;
+    if (m_srv->refresher.joinable()) m_srv->refresher.join();
+    m_srv->refreshing.store(true);
+    ServerRuntime* rt = m_srv.get();
+    m_srv->refresher = std::thread([rt] {
+        std::string why;
+        if (!AccountClient::get().refreshSession(&why)) {
+            // Logged rather than fatal: the open session does not need the
+            // token -- it verifies tickets with the issuer's public key -- so
+            // this only matters at the next restart or relay reconnect.
+            if (rt->console)
+                rt->console->warn("could not refresh the account token (" + why +
+                                  "). The server keeps running; sign in again "
+                                  "before its next restart if this persists.");
+            rt->lastRefreshAt -= 3.0 * 3600.0 - 600.0;   // retry in ten minutes
+        }
+        rt->refreshing.store(false);
+    });
+}
+
+void Game::srvCheckpoint(bool force, bool wait) {
+    if (!m_srv || !m_srv->config) return;
+    const std::string cmd = m_srv->config->checkpointCommand;
+    if (cmd.empty()) { m_mpCheckpointDirty = false; return; }
+    const double now = nowSeconds();
+    if (!force && (!m_mpCheckpointDirty || now - m_srv->lastCheckpointAt < 60.0)) return;
+    if (m_srv->checkpointing.load()) {
+        if (!wait) return;           // the running one will pick this up next time
+        if (m_srv->checkpointer.joinable()) m_srv->checkpointer.join();
+    }
+    if (m_srv->checkpointer.joinable()) m_srv->checkpointer.join();
+    m_mpCheckpointDirty = false;
+    m_srv->lastCheckpointAt = now;
+
+    // What the command is told, in the environment rather than on a command
+    // line it would have to quote: where the world is and where data lives.
+#ifdef _WIN32
+    _putenv_s("OD_CAMPAIGN_SAVE", m_currentSavePath.c_str());
+    _putenv_s("OD_DATA_DIR", m_dataDir.c_str());
+#else
+    setenv("OD_CAMPAIGN_SAVE", m_currentSavePath.c_str(), 1);
+    setenv("OD_DATA_DIR", m_dataDir.c_str(), 1);
+#endif
+    m_srv->checkpointing.store(true);
+    ServerRuntime* rt = m_srv.get();
+    m_srv->checkpointer = std::thread([rt, cmd] {
+        const int rc = std::system(cmd.c_str());
+        if (rc != 0 && rt->console)
+            rt->console->warn("checkpoint command exited with " + std::to_string(rc) +
+                              ": " + cmd);
+        rt->checkpointing.store(false);
+    });
+    if (wait && m_srv->checkpointer.joinable()) m_srv->checkpointer.join();
+}
+
 /** Save, close the tunnel and tell everyone. Safe to call once. */
 void Game::serverEnd() {
     if (!m_srv || !m_srv->console) return;
@@ -901,6 +1246,11 @@ void Game::serverEnd() {
     console.info("shutting down.");
     if (!m_currentSavePath.empty())
         console.info("world is at " + m_currentSavePath);
+    // The book and orders as they stand, and one last backup.
+    if (m_netHost) { mpSaveSeats(); mpSavePendingOrders(); }
+    srvCheckpoint(/*force=*/true, /*wait=*/true);
+    if (m_srv->refresher.joinable()) m_srv->refresher.join();
+    if (m_srv->checkpointer.joinable()) m_srv->checkpointer.join();
     if (m_mpTunnel) { m_mpTunnel->stop(); delete m_mpTunnel; m_mpTunnel = nullptr; }
     mpShutdown();
     unloadGameData();

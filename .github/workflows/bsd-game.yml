@@ -75,6 +75,7 @@ jobs:
             set -e
             cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
               -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+              "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               -DOD_DISCORD_APP_ID=1547303703370014830
             cmake --build build --target OpenDoctrines -j 4
 
@@ -155,6 +156,7 @@ jobs:
             cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
               -DOD_ENABLE_MODS=OFF \
               -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+              "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               -DOD_DISCORD_APP_ID=1547303703370014830
             cmake --build build --target OpenDoctrines -j 4
 

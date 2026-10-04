@@ -920,8 +920,9 @@ void Game::drawHistoryScreen() {
     bool haveTurns = n > 1;
     if (button("Download GIF of playthrough", py, std::min(previewW, 560), haveTurns, accent)) {
         std::string msg;
-        exportHistoryGif(m_historySavePath, HIST_RES[m_historyResIndex].w,
-                         HIST_RES[m_historyResIndex].h, m_historySubFrames, m_historyDestPath, msg);
+        if (exportHistoryGif(m_historySavePath, HIST_RES[m_historyResIndex].w,
+                             HIST_RES[m_historyResIndex].h, m_historySubFrames, m_historyDestPath, msg))
+            achNote("timelapses");
         m_historyStatus = msg;
     }
     py += 42;

@@ -28,6 +28,10 @@ GROUPS = [
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
         "make_linux_packages.sh",
+        # The Tor Project's tor, pinned by sha256, into a release's data/tor
+        # (package.py --tor), so onion hosting and "hide my IP" need nothing
+        # installed.
+        "fetch_tor.py",
         # A disposable Linux guest to install those packages INTO. CI proves
         # they build on the machine that built them, which is the condition a
         # packaging bug hides in; this is where one gets installed and started.
@@ -102,6 +106,9 @@ GROUPS = [
     ]),
     ("Testing multiplayer", [
         "playtest.sh", "second_player.sh",
+        # Run a dedicated campaign as a service that survives reboots
+        # (docs/hosting-a-week.md).
+        "host_campaign.sh",
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",

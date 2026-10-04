@@ -61,7 +61,20 @@ struct ServerEntry {
      */
     std::string address;
 
+    /**
+     * The player has already been told, for THIS address, that the host will
+     * see their IP, and went ahead. Without it every saved server reopened
+     * the join form and asked again, so "rejoin" was three clicks and a
+     * checkbox -- for a tournament played every day, every day. Forgotten the
+     * moment the address changes: consent was to one host, not to a slot.
+     * A relayed server (empty address) never needs it.
+     */
+    bool ipConsent = false;
+
     bool valid() const { return !name.empty() && !issuer.empty(); }
+
+    /** Joining needs nothing more from the player: one click is enough. */
+    bool oneClick() const { return !code.empty() && (address.empty() || ipConsent); }
 };
 
 class ServerBook {
@@ -84,8 +97,16 @@ public:
     bool remove(size_t index);
     bool rename(size_t index, const std::string& name);
     bool setCode(size_t index, const std::string& code);
-    /** Remember where this server was reached, for the next join. */
+    /**
+     * Remember where this server was reached, for the next join. An EMPTY
+     * address is remembered too -- it means "through the relay" -- because a
+     * server that moved from a tunnel to the relay must stop being dialled at
+     * the tunnel. A different address forgets the IP consent.
+     */
     bool setAddress(size_t index, const std::string& address);
+    bool setIpConsent(size_t index, bool consent);
+    /** The entry for this issuer and name, or -1. */
+    int find(const std::string& issuer, const std::string& name) const;
     void markJoined(size_t index, const std::string& hostName, long long nowUnix);
 
     /** Most recently joined first, then never-joined, then by name. */

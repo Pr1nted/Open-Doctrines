@@ -389,7 +389,8 @@ void Game::updateLoading() {
                 m_renderer->setDpiScale(pointerScale());
                 // Only the drawn borders and the selection glow read this raster;
                 // province centres no longer depend on it (buildProvinceData).
-                if (!m_agentLoad) m_renderer->computeBorderTexture(m_provinces.getImage());
+                if (!m_agentLoad && !m_headless)
+                    m_renderer->computeBorderTexture(m_provinces.getImage());
                 // The sky this map carries, if it carries one. A map with no
                 // sky.json keeps the Earth-like defaults, which is every map
                 // written before the globe existed -- so this must never be a
@@ -1013,6 +1014,7 @@ void Game::buildPopulationLookups() {
     int h = provImg.height;
     int totalPixels = w * h;
     const auto* srcPixels = (const Color*)provImg.data;
+    if (!m_provinces.hasPixels()) totalPixels = 0;
 
     // Checkpoints INSIDE the phase, not just at its edges.
     //
@@ -1025,7 +1027,9 @@ void Game::buildPopulationLookups() {
     // The distance field is all this function builds that only the screen
     // reads. An agent load leaves it empty, and every later writer checks
     // (generatePoliticalTexture, rebuildGradientField).
-    const bool paint = !m_agentLoad;
+    // Nor does a dedicated server build it: 32 MB at 8192x4096 for shading
+    // nobody will ever see, on a free host with 512 MB to its name.
+    const bool paint = !m_agentLoad && !m_headless;
     if (paint) m_gradientDist.assign(totalPixels, 255);
     else std::vector<uint8_t>().swap(m_gradientDist);
     logHeapAt("  pop: +gradientDist");
@@ -1075,8 +1079,9 @@ void Game::buildPopulationLookups() {
             areaRowEnd += w;
             areaRowW = rowWeight[(size_t)areaRow];
         }
-        Color src = srcPixels[i];
-        int pid = Province::colorToId(src.r, src.g, src.b);
+        // idAt, not srcPixels: on a dedicated server the image was never
+        // decoded (ProvinceMap::loadCompactFromMemory), only its index.
+        int pid = m_provinces.idAt((size_t)i);
         int cid = 0;
         if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size())
             cid = m_provinceCountryLookup[pid];
@@ -1214,29 +1219,24 @@ void Game::generatePoliticalTexture() {
 
 std::vector<int> Game::pixelsOfProvince(int pid) const {
     auto it = m_provincePixels.find(pid);
-    if (it != m_provincePixels.end()) return it->second;
+    if (it != m_provincePixels.end()) return it->second.expand();
     std::vector<int> out;
     if (pid <= 0 || (size_t)pid >= m_provinceBounds.size()) return out;
     const PixelBox& b = m_provinceBounds[(size_t)pid];
-    const Image& img = m_provinces.getImage();
-    const auto* px = (const Color*)img.data;
-    if (!px || b.x1 < b.x0) return out;
-    for (int y = b.y0; y <= b.y1; ++y) {
-        const Color* row = px + (size_t)y * img.width;
+    const int W = m_provinces.getWidth();
+    if (!m_provinces.hasPixels() || b.x1 < b.x0) return out;
+    for (int y = b.y0; y <= b.y1; ++y)
         for (int x = b.x0; x <= b.x1; ++x)
-            if (Province::colorToId(row[x].r, row[x].g, row[x].b) == pid)
-                out.push_back(y * img.width + x);
-    }
+            if (m_provinces.idAt(x, y) == pid) out.push_back(y * W + x);
     return out;
 }
 
 std::vector<int> Game::pixelsOwnedBy(int cid) const {
     std::vector<int> out;
-    const Image& img = m_provinces.getImage();
-    const auto* px = (const Color*)img.data;
-    const int w = img.width, h = img.height;
+    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
     auto cp = m_countryProvinces.find(cid);
-    if (!px || w <= 0 || h <= 0 || cid <= 0 || cp == m_countryProvinces.end()) return out;
+    if (!m_provinces.hasPixels() || w <= 0 || h <= 0 || cid <= 0 ||
+        cp == m_countryProvinces.end()) return out;
     int x0 = w, y0 = h, x1 = -1, y1 = -1;
     for (int pid : cp->second) {
         // A candidate set (see provincesOf): the owner test below is what counts.
@@ -1250,9 +1250,8 @@ std::vector<int> Game::pixelsOwnedBy(int cid) const {
         y1 = std::max(y1, std::min(h - 1, (int)std::ceil(c->second.y + reach)));
     }
     for (int y = y0; y <= y1; ++y) {
-        const Color* row = px + (size_t)y * w;
         for (int x = x0; x <= x1; ++x) {
-            const int pid = Province::colorToId(row[x].r, row[x].g, row[x].b);
+            const int pid = m_provinces.idAt(x, y);
             if (pid > 0 && (size_t)pid < m_provinceCountryLookup.size() && m_provinceCountryLookup[(size_t)pid] == cid)
                 out.push_back(y * w + x);
         }
@@ -1262,9 +1261,8 @@ std::vector<int> Game::pixelsOwnedBy(int cid) const {
 
 void Game::ensureProvincePixels() {
     if (!m_provincePixels.empty()) return;
-    const Image& provImg = m_provinces.getImage();
-    const int w = provImg.width, h = provImg.height;
-    if (w <= 0 || h <= 0 || !provImg.data) return;
+    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    if (w <= 0 || h <= 0 || !m_provinces.hasPixels()) return;
     const int total = w * h;
 
     // Province id -> the pixels that belong to it. Built once per world when
@@ -1272,11 +1270,10 @@ void Game::ensureProvincePixels() {
     // 8192x4096 -- and only the claims overlay reads it. Unlike
     // a per-country list this is never mutated afterwards, so rebuilding it here
     // rather than during the load costs one walk and loses nothing.
-    const auto* src = (const Color*)provImg.data;
     for (int i = 0; i < total; ++i) {
         if ((i & 8191) == 0) Audio::get().pump();
-        const int pid = Province::colorToId(src[i].r, src[i].g, src[i].b);
-        if (pid > 0) m_provincePixels[pid].push_back(i);
+        const int pid = m_provinces.idAt((size_t)i);
+        if (pid > 0) m_provincePixels[pid].push((uint32_t)i);
     }
 }
 
@@ -1292,7 +1289,7 @@ void Game::ensureProvincePixels() {
 static const Color kOverlaySea{10, 15, 40, 255};
 
 void Game::ensureProvinceIndex() {
-    if (!m_renderer || m_renderer->hasProvinceIndex()) return;
+    if (!m_renderer || m_headless || m_renderer->hasProvinceIndex()) return;
     m_renderer->setProvinceIndex(m_provinces.getImage());
 }
 
@@ -1654,9 +1651,11 @@ void Game::computeCountryLabels() {
     // separate islands, etc. all get their own components.
     // 8-connectivity (including diagonals) avoids splitting provinces that
     // only touch at a corner.
-    const Image& img = m_provinces.getImage();
-    int w = img.width, h = img.height;
-    const uint8_t* pixels = static_cast<const uint8_t*>(img.data);
+    // Through idAt(), not the image's bytes: a dedicated server has swapped
+    // the image for a compact index (ProvinceMap::compact), and this runs
+    // every turn there because it is what builds m_provinceNeighbors.
+    int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    if (!m_provinces.hasPixels()) { w = 0; h = 0; }
 
     // Pack adjacent province pairs into int64_t (big << 32 | little)
     std::unordered_set<int64_t> adjPairs;
@@ -1689,8 +1688,7 @@ void Game::computeCountryLabels() {
         Audio::get().pump();
 
         for (int x = 0; x < w; ++x) {
-            int idx = (y * w + x) * 4;
-            int pid = (pixels[idx] << 16) | (pixels[idx + 1] << 8) | pixels[idx + 2];
+            int pid = m_provinces.idAt(x, y);
             if (pid <= 0 || pid > maxPid) continue;
             int cid = pidToCountry[pid];
             if (cid <= 0) continue;
@@ -1703,8 +1701,7 @@ void Game::computeCountryLabels() {
                 int ny = y + DY[d];
                 if (ny >= h) continue;
 
-                int nidx = (ny * w + nx) * 4;
-                int npid = (pixels[nidx] << 16) | (pixels[nidx + 1] << 8) | pixels[nidx + 2];
+                int npid = m_provinces.idAt(nx, ny);
                 if (npid > 0 && npid <= maxPid && npid != pid) {
                     int ncid = pidToCountry[npid];
                     // Track ALL adjacencies for m_provinceNeighbors (not just same-country)
@@ -2144,6 +2141,12 @@ bool Game::loadFromODM(const std::string& odmPath) {
             // covers every pixel of it, so it was 128 MB of GPU memory (twice
             // that with the driver's copy) and a full-screen draw per frame
             // that nobody could see.
+            // A dedicated server reads the mask and nothing else, a row at a
+            // time: the 128 MB image never exists. See LandSeaMap.h.
+            if (m_compactRaster) {
+                m_landSea.loadMaskFromMemory(e.data, (int)e.size);
+                continue;
+            }
             m_landSea.loadFromMemory(e.data, (int)e.size, /*withTexture=*/false);
             // 128 MB back, immediately.
             //
@@ -2178,8 +2181,12 @@ bool Game::loadFromODM(const std::string& odmPath) {
             jsonStr.assign(static_cast<char*>(entries[i].data), entries[i].size);
         }
     }
-    if (pngData && !jsonStr.empty())
-        m_provinces.loadFromMemory(pngData, (int)pngSize, jsonStr);
+    if (pngData && !jsonStr.empty()) {
+        // Straight into the compact index on a dedicated server, which never
+        // draws the map and has 512 MB on a free host. See ProvinceMap.h.
+        if (m_compactRaster) m_provinces.loadCompactFromMemory(pngData, (int)pngSize, jsonStr);
+        else                 m_provinces.loadFromMemory(pngData, (int)pngSize, jsonStr);
+    }
 
     // Load countries
     for (int i = 0; i < found; ++i) {
@@ -2453,6 +2460,9 @@ bool Game::loadFromODM(const std::string& odmPath) {
 }
 
 void Game::unloadGameData() {
+    // Whatever world comes next, its first turn must not be diffed against
+    // this one's -- that would read a load as a war of conquest.
+    achWorldStarted(false);
     // Persist the AI model before tearing the world down (destructor saves)
     if (m_ai) { delete m_ai; m_ai = nullptr; }
     m_rebellionsThisTurnByCid.clear();
@@ -2464,7 +2474,7 @@ void Game::unloadGameData() {
     m_countryPixelCount.clear();
     std::vector<uint32_t>().swap(m_provinceEdgePixels);
     std::vector<PixelBox>().swap(m_provinceBounds);
-    std::unordered_map<int, std::vector<int>>().swap(m_provincePixels);
+    std::unordered_map<int, PixelRuns>().swap(m_provincePixels);
     std::vector<uint8_t>().swap(m_gradientDist);
     m_borderDistanceSent = false;
     std::vector<Color>().swap(m_popTable);
@@ -3036,7 +3046,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
     m_renderer = new MapRenderer(m_screenW, m_screenH,
                                  m_landSea.getWidth(), m_landSea.getHeight());
     m_renderer->setDpiScale(pointerScale());
-    m_renderer->computeBorderTexture(m_provinces.getImage());
+    if (!m_headless) m_renderer->computeBorderTexture(m_provinces.getImage());
     // Same as the loading path above: a map may carry its own sky, and one
     // that does not keeps the defaults. BOTH sites need this -- a map pack
     // loaded directly (the editor, a mod, the scenario browser) never goes
@@ -3347,13 +3357,12 @@ void Game::rebuildOwnershipPixels() {
     // here is how many each country holds, as the per-country lists were
     // rebuilt here (sizes kept, ids below the size only). See Game.h.
     {
-        const Image& provImg = m_provinces.getImage();
-        const auto* srcPixels = (const Color*)provImg.data;
-        const size_t total = (size_t)provImg.width * provImg.height;
+        const bool have = m_provinces.hasPixels();
+        const size_t total = (size_t)m_provinces.getWidth() * m_provinces.getHeight();
         std::fill(m_countryPixelCount.begin(), m_countryPixelCount.end(), (size_t)0);
-        for (size_t i = 0; srcPixels && i < total; ++i) {
+        for (size_t i = 0; have && i < total; ++i) {
             if ((i & 8191) == 0) Audio::get().pump();
-            const int pid = Province::colorToId(srcPixels[i].r, srcPixels[i].g, srcPixels[i].b);
+            const int pid = m_provinces.idAt(i);
             const int cid = (pid > 0 && (size_t)pid < m_provinceCountryLookup.size()) ? m_provinceCountryLookup[pid] : 0;
             if (cid > 0 && cid < (int)m_countryPixelCount.size()) ++m_countryPixelCount[(size_t)cid];
         }
@@ -3461,6 +3470,17 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     if (!savePath.empty()) {
         std::string stateJson = SaveManager::readState(savePath);
         loadStateJson(stateJson);
+        // ── THE TURN NUMBER IS HOW MANY TURNS WERE REPLAYED ──
+        //
+        // state.json is written by processTurn BEFORE it increments
+        // m_turnNumber, so the copy beside turn N says N-1. Read back as-is,
+        // a world with two turns played reopened believing it had played one:
+        // the next turn was numbered 2 again and overwrote turns/t_00002 --
+        // a world that silently forgot a turn on its next load -- and a
+        // multiplayer host built every joiner's snapshot one turn short. Found
+        // by killing a dedicated server mid-campaign and restarting it.
+        // History scrubbing sets the same thing explicitly; see Game_History.
+        if (m_turnCount > 0) m_turnNumber = m_turnCount;
         // A restyled country's flag has to be drawn again, and only here: this
         // is after rebuildFlags() ran further up (which built every flag from
         // the .odmap, before the save had been read) and after the archive is
@@ -3910,6 +3930,9 @@ void Game::startLoadedGame(const std::string& saveName) {
 }
 
 void Game::reloadBorders() {
+    // Borders, glow and the political layer are pictures. A dedicated server
+    // draws none, and each of these walks or copies the whole map raster.
+    if (m_headless || !m_renderer) return;
     m_renderer->computeBorderTexture(m_provinces.getImage());
     m_renderer->rebuildGlowMap(m_provinces);
     m_renderer->rebuildSelectionGlow();

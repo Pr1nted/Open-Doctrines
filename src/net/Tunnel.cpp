@@ -1,12 +1,16 @@
 #include "Tunnel.h"
+#include "TorClient.h"
 
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 
 #if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
   #include <csignal>
   #include <fcntl.h>
+  #include <sys/stat.h>
   #include <sys/wait.h>
   #include <unistd.h>
   #define OD_TUNNEL_POSIX 1
@@ -59,6 +63,7 @@ const char* tunnelProviderName(TunnelProvider p) {
     switch (p) {
         case TunnelProvider::Cloudflared:  return "Cloudflare Tunnel";
         case TunnelProvider::LocalhostRun: return "localhost.run (over ssh)";
+        case TunnelProvider::Tor:          return "Tor onion service";
         case TunnelProvider::None:         return "none";
     }
     return "none";
@@ -67,7 +72,7 @@ const char* tunnelProviderName(TunnelProvider p) {
 bool tunnelProviderWorksUnattended(TunnelProvider p) {
     // Verified by running it: localhost.run accepts the ssh session, prints its
     // welcome, and never announces a hostname without a registered key.
-    return p == TunnelProvider::Cloudflared;
+    return p == TunnelProvider::Cloudflared || p == TunnelProvider::Tor;
 }
 
 std::string tunnelProviderHowToGet(TunnelProvider p) {
@@ -80,6 +85,10 @@ std::string tunnelProviderHowToGet(TunnelProvider p) {
             return "Needs ssh, which every machine has -- but an anonymous tunnel no "
                    "longer gets an address. It only works if you have registered an "
                    "SSH key with localhost.run.";
+        case TunnelProvider::Tor:
+            return "Install Tor -- \"brew install tor\" on a Mac, \"apt install tor\" "
+                   "on Debian or Ubuntu. (Releases carry their own Tor; a source build "
+                   "does not.)";
         case TunnelProvider::None:
             return "Without a tunnel you can still host by forwarding a port on your "
                    "router, or by playing on a local network.";
@@ -101,6 +110,20 @@ std::string tunnelParseAddress(TunnelProvider provider, const std::string& outpu
             // not this game, which is a confusing way to fail.
             host = findHostWithSuffix(output, {".lhr.life"});
             break;
+        case TunnelProvider::Tor: {
+            // Tor does not print the address; it writes it to the service's
+            // hostname file, which is what `output` holds for this provider.
+            // 56 base32 characters and ".onion": a v3 address and nothing else.
+            const size_t at = output.find(".onion");
+            if (at == std::string::npos || at < 56) return {};
+            const std::string label = output.substr(at - 56, 56);
+            for (char c : label)
+                if (!((c >= 'a' && c <= 'z') || (c >= '2' && c <= '7'))) return {};
+            // ws://, not wss://: an onion connection is already encrypted end
+            // to end and authenticated by the address itself, and there is no
+            // certificate authority that would sign one for it.
+            return "ws://" + label + ".onion";
+        }
         case TunnelProvider::None:
             return {};
     }
@@ -160,6 +183,7 @@ bool onPath(const char* name) {
 struct Tunnel::Impl {
     pid_t pid = -1;
     int   fd = -1;      // read end of the tunnel's combined output
+    std::string torHostnameFile;   // where Tor writes the .onion address
     std::chrono::steady_clock::time_point startedAt{};
 };
 
@@ -183,6 +207,12 @@ std::string g_toolsDir;
 
 void tunnelSetToolsDir(const std::string& dir) { g_toolsDir = dir; }
 
+namespace {
+std::string g_stateDir;
+}  // namespace
+
+void tunnelSetStateDir(const std::string& dir) { g_stateDir = dir; }
+
 
 /** Where cloudflared is, preferring the game's own copy. Empty if absent. */
 std::string tunnelResolveProgram(const char* name) {
@@ -202,6 +232,9 @@ std::vector<TunnelProvider> tunnelProvidersAvailable() {
     if (!tunnelResolveProgram("cloudflared").empty())
         out.push_back(TunnelProvider::Cloudflared);
     if (onPath("ssh")) out.push_back(TunnelProvider::LocalhostRun);
+    // Last, and only ever by choice: see TunnelProvider::Tor.
+    if (!g_stateDir.empty()) torclient::setDataDir(g_stateDir);
+    if (!torclient::findBinary().empty()) out.push_back(TunnelProvider::Tor);
     return out;
 }
 
@@ -236,15 +269,45 @@ bool Tunnel::start(TunnelProvider provider, uint16_t localPort, std::string& err
                     "-o", "ServerAliveInterval=30",
                     "nokey@localhost.run"};
             break;
+        case TunnelProvider::Tor: {
+            // The release's own tor, or an installed one -- the same search
+            // the client side makes (TorClient.h), Homebrew's directory
+            // included, which a Finder-launched app's PATH does not have.
+            if (!g_stateDir.empty()) torclient::setDataDir(g_stateDir);
+            resolved = torclient::findBinary();
+            program = resolved.empty() ? "tor" : resolved.c_str();
+            // The service's keys are its address, so they live with the
+            // campaign and not in a temporary directory: a server restarted
+            // next week comes back at the same .onion players saved. Tor
+            // refuses a directory anyone else can read, hence 0700.
+            const std::string base = (g_stateDir.empty() ? std::string("/tmp") : g_stateDir) +
+                                     "/onion-service";
+            m_impl->torHostnameFile = base + "/onion/hostname";
+            ::mkdir(base.c_str(), 0700);
+            ::mkdir((base + "/onion").c_str(), 0700);
+            ::chmod(base.c_str(), 0700);
+            ::chmod((base + "/onion").c_str(), 0700);
+            argv = {program,
+                    // No SOCKS port of its own: this one only publishes, and a
+                    // player's tor on the same machine already holds 9050.
+                    "--SocksPort", "0",
+                    "--DataDirectory", base + "/data",
+                    "--HiddenServiceDir", base + "/onion",
+                    "--HiddenServicePort", "80 127.0.0.1:" + port,
+                    "--Log", "notice stdout"};
+            break;
+        }
         case TunnelProvider::None:
             error = "no tunnel provider chosen";
             m_state = State::Failed;
             return false;
     }
 
-    if (provider == TunnelProvider::Cloudflared ? resolved.empty() : !onPath(program)) {
-        error = std::string("cloudflared") + " is not installed. " +
-                tunnelProviderHowToGet(provider);
+    const bool missing = (provider == TunnelProvider::Cloudflared || provider == TunnelProvider::Tor)
+                             ? resolved.empty() : !onPath(program);
+    if (missing) {
+        error = std::string(provider == TunnelProvider::Tor ? "tor" : "cloudflared") +
+                " is not installed. " + tunnelProviderHowToGet(provider);
         m_error = error;
         m_state = State::Failed;
         return false;
@@ -319,7 +382,20 @@ void Tunnel::update() {
     }
 
     if (m_state == State::Starting) {
-        const std::string found = tunnelParseAddress(m_provider, m_log);
+        std::string found;
+        if (m_provider == TunnelProvider::Tor) {
+            // Up once Tor has finished bootstrapping AND written the address:
+            // the hostname file appears before the service is reachable, and
+            // handing out an address that does not answer yet reads as broken.
+            if (m_log.find("Bootstrapped 100%") != std::string::npos) {
+                std::ifstream f(m_impl->torHostnameFile);
+                std::string text((std::istreambuf_iterator<char>(f)),
+                                 std::istreambuf_iterator<char>());
+                found = tunnelParseAddress(m_provider, text);
+            }
+        } else {
+            found = tunnelParseAddress(m_provider, m_log);
+        }
         if (!found.empty()) {
             m_address = found;
             m_state = State::Up;
@@ -334,7 +410,10 @@ void Tunnel::update() {
     if (m_state == State::Starting) {
         const auto waited = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - m_impl->startedAt).count();
-        if (waited > kAnnounceTimeoutSeconds) {
+        // Tor builds circuits and publishes a descriptor before it is
+        // reachable; on a slow network that is minutes, not seconds.
+        const int limit = m_provider == TunnelProvider::Tor ? 300 : kAnnounceTimeoutSeconds;
+        if (waited > limit) {
             m_error = std::string(tunnelProviderName(m_provider)) +
                       " connected but never gave out an address.";
             if (m_provider == TunnelProvider::LocalhostRun) {
@@ -412,6 +491,7 @@ std::vector<TunnelProvider> tunnelProvidersAvailable() { return {}; }
 // says why it cannot help. Refusing here would move that explanation to a
 // place with no player in front of it.
 void tunnelSetToolsDir(const std::string&) {}
+void tunnelSetStateDir(const std::string&) {}
 
 std::string tunnelResolveProgram(const char*) { return {}; }
 

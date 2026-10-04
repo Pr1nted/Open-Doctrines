@@ -49,6 +49,16 @@ enum class TunnelProvider : uint8_t {
      * has ssh, which is every Mac and Linux box and Windows 10 onwards.
      */
     LocalhostRun,
+    /**
+     * A Tor onion service: `tor` (the release's own, or an installed one)
+     * publishing the port as a .onion address. Nobody in the middle needs
+     * trusting -- not Cloudflare, not a tunnel operator -- and neither side
+     * learns the other's IP. The price: players reach it through Tor (the game
+     * starts its own, see TorClient.h), it is slower, and some networks block
+     * Tor entirely. Never
+     * picked by "auto" for that reason; it has to be chosen.
+     */
+    Tor,
 };
 
 const char* tunnelProviderName(TunnelProvider p);
@@ -76,6 +86,13 @@ bool tunnelProviderWorksUnattended(TunnelProvider p);
  * copy the game fetched is preferred over whatever else is on the machine.
  */
 void tunnelSetToolsDir(const std::string& dir);
+
+/**
+ * Where a tunnel keeps state that must outlive the process -- the onion
+ * service's keys, which ARE its address. Set to the campaign's data
+ * directory, so a restarted server comes back at the same .onion.
+ */
+void tunnelSetStateDir(const std::string& dir);
 
 /** Resolves a tunnel program to a path, or empty when it is not present. */
 std::string tunnelResolveProgram(const char* name);

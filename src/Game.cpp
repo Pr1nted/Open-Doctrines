@@ -5,6 +5,9 @@
 #include "mods/ModManager.h"
 #include "DevLink.h"
 #include "Game.h"
+#include "net/Socks5.h"
+#include "net/TorClient.h"
+#include "util/SoftwareGlRelaunch.h"
 #include "TouchKeyboard.h"
 
 #include "util/Async.h"
@@ -148,8 +151,8 @@ std::string formatTroops(long long men) {
 // made almost never. This puts it where somebody who has just played a game
 // will see it, which is the only place it was ever going to be used from.
 const char* MENU_ITEMS[] = {"Continue", "Settings", "Save", "Timelapse",
-                            "Report a problem", "Quit to Menu"};
-const int MENU_COUNT = 6;
+                            "Achievements", "Report a problem", "Quit to Menu"};
+const int MENU_COUNT = 7;
 // .odstate is on every build, not just the web one. The browser is where it is
 // indispensable -- data/ there is an Emscripten MEMFS that dies with the tab --
 // but "put my whole setup on a stick and carry it to another machine" is not a
@@ -969,6 +972,79 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 } // namespace
 #endif
 
+#ifndef _WIN32
+// The same failure, on everything that is not Windows, and for the same
+// reason: raylib logs the GLFW error as a warning and then faults inside
+// InitWindow(), so init()'s IsWindowReady() check below is never reached.
+//
+// The macOS form of it is a benchmark story rather than a player one. A
+// process with no display attachment -- a detached session, ssh, a CI runner --
+// gets "Failed to determine Monitor to center Window" from GLFW, no GL context,
+// and then a SIGSEGV inside rlglInit() calling through a null GL function
+// pointer. That is exit 139 and nothing else: no message, no hint that the
+// cause is a missing display rather than a broken game. Crash reports going
+// back to 2026-09-28 all carry the same three frames.
+//
+// KEEP IN STEP with odWindowsGlTraceLog above and with tools/qualify.sh.
+namespace {
+void odGlTraceLog(int level, const char* text, va_list args) {
+    (void)level;
+    char line[1024];
+    vsnprintf(line, sizeof(line), text, args);
+    std::fprintf(stderr, "%s\n", line);
+
+    // TWO DIFFERENT FAILURES WEARING THE SAME WARNING.
+    //
+    // "no monitor" / "GLFW would not initialise" mean there is no display at
+    // all -- a headless or detached session -- and software rendering cannot
+    // help, because GLFW still needs a display to put a window on. "no suitable
+    // pixel format" / "does not support OpenGL" mean a display IS there and it
+    // is the GL CAPABILITY that is missing -- a VM without 3D, an old driver --
+    // which llvmpipe can supply. Only the second kind is worth a software retry.
+    const bool noDisplay =
+        std::strstr(line, "Failed to determine Monitor") ||
+        std::strstr(line, "Failed to initialize GLFW");
+    const bool noGl =
+        std::strstr(line, "Failed to find a suitable pixel format") ||
+        std::strstr(line, "does not appear to support OpenGL");
+
+    if (noGl && !noDisplay) {
+        // Never returns on success: the process is replaced by one that draws
+        // in software. Only falls through when software was already tried (then
+        // the real problem is below) or there is nothing to re-exec.
+        odTrySoftwareGlRelaunch();
+    }
+
+    if (noDisplay || noGl) {
+        if (odSoftwareGlAlreadyTried()) {
+            std::fprintf(stderr,
+                "\nOpenDoctrines could not open a window, even in software.\n"
+                "Software rendering (llvmpipe) was tried and still found no way "
+                "to draw, which points at a missing display rather than the "
+                "graphics driver: this looks like a headless or detached "
+                "session -- ssh without a forwarded display, a CI runner, or a "
+                "process started outside a logged-in desktop.\n"
+                "The headless modes need no window and do work here: --simulate, "
+                "--eval-ai, --train-ai.\n");
+        } else {
+            std::fprintf(stderr,
+                "\nOpenDoctrines could not open a window.\n"
+                "GLFW found no display to open it on, so there is no OpenGL "
+                "context and the next call inside raylib would fault.\n"
+                "This is what a headless or detached session looks like: ssh "
+                "without a forwarded display, a CI runner, a launchd job, or a "
+                "process started outside a logged-in desktop session.\n"
+                "The headless modes need no window and do work here: --simulate, "
+                "--eval-ai, --train-ai.\n");
+        }
+        // Leave now rather than return, exactly as the Windows path does: the
+        // fault lands immediately after this warning and would bury it.
+        std::_Exit(3);
+    }
+}
+} // namespace
+#endif
+
 // The console's sink, for LoadLog's static hook. A file-scope pointer because
 // the hook is a plain function pointer and has no Game to reach through.
 static Game* s_consoleOwner = nullptr;
@@ -1117,6 +1193,9 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // are safe to remove now, because nothing is running from them.
     GameUpdates::cleanUpAfterUpdate();
     m_config.load(m_configPath);
+    socks5::setRouteAll(m_config.torRouteAll);
+    socks5::setPort(m_config.torSocksPort);
+    torclient::setDataDir(m_dataDir);
     // The pad presses actions, so it needs to know what they are bound to.
     odPad::setBindings(m_config.keybinds, ACTION_COUNT);
 
@@ -1169,10 +1248,12 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // already uses, and only the resolution they are rasterised at changes.
     if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
     SetConfigFlags(winFlags);
-#ifdef _WIN32
     // Before InitWindow, because the failure it catches happens inside it and
-    // never comes back out. See odWindowsGlTraceLog above.
+    // never comes back out. See odWindowsGlTraceLog / odGlTraceLog above.
+#ifdef _WIN32
     SetTraceLogCallback(odWindowsGlTraceLog);
+#else
+    SetTraceLogCallback(odGlTraceLog);
 #endif
 #ifdef OD_HEADLESS_SDL
     // Built on raylib's SDL backend for headless rendering: default SDL to its
@@ -1557,6 +1638,8 @@ bool Game::init(int screenW, int screenH, const char* title) {
     m_splashTimer = 0.0f;
     initMenuBackground(); // ready so the splash's fade-out can reveal it
     m_menuBgScroll = 0;
+    // After AccountClient::init above: the tracker asks it who is signed in.
+    achInit();
     return true;
 }
 
@@ -2644,6 +2727,23 @@ void Game::run() {
         devinput::poll();
         float dt = GetFrameTime();
 
+        // ── WHICH SCREEN WAS THE BUTTON PRESSED ON? ──
+        //
+        // Some screens act on IsMouseButtonPressed and some on
+        // IsMouseButtonReleased, and a press that CHANGES the screen hands the
+        // release to whatever is drawn at the same point on the next one. One
+        // physical click then does two things on two screens.
+        //
+        // It is not hypothetical: the mod menu's "Back" sits at
+        // (W-140, H-52, 100x36) and acts on PRESS; the main menu's "Tutorial"
+        // sits at (W-170, H-66, 148x44) and acts on RELEASE. The two overlap
+        // almost entirely, so leaving the mod menu started the tutorial.
+        //
+        // Recorded here rather than guarded at each call site, because the
+        // bug belongs to the pair and not to either button -- and the next
+        // pair would otherwise be found the same way this one was.
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) m_pressScreen = m_currentScreen;
+
         // ── ABOVE EVERY EARLY-OUT IN THIS LOOP, WHICH IS THE WHOLE POINT ──
         //
         // Web: one queued request per frame, where the stack is shallow and
@@ -2692,6 +2792,7 @@ void Game::run() {
         odPersistTick(m_dataDir);
 
         updateNotifications();
+        achFrame();
         updatePopup();
         // Block all other update when popup is active (draw popup overlay on any screen)
         if (!m_popupQueue.empty()) {
@@ -2898,7 +2999,7 @@ void Game::run() {
                     initMenuBackground();
                     m_menuBgScroll = 0;
                 }
-            } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
+            } else if (m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_COUNTRY_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_ACHIEVEMENTS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
                        m_currentScreen == SCREEN_MULTIPLAYER) {
                 // HEIGHT ONLY. See the note on the per-frame check below.
                 if (m_screenH != m_menuBgInitScreenH) {
@@ -2911,7 +3012,7 @@ void Game::run() {
         // (covers transitions back from gameplay/country-select without a resize event)
         // Handle all menu screen types, but only init once per resize
         if ((m_currentScreen == SCREEN_MENU || m_currentScreen == SCREEN_SINGLEPLAYER ||
-             m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
+             m_currentScreen == SCREEN_FILE_BROWSER || m_currentScreen == SCREEN_MAP_SELECT || m_currentScreen == SCREEN_CREDITS || m_currentScreen == SCREEN_ACHIEVEMENTS || m_currentScreen == SCREEN_COMMUNITY || m_currentScreen == SCREEN_MAP_EDITOR || m_currentScreen == SCREEN_MODS || m_currentScreen == SCREEN_ACCOUNT ||
                        m_currentScreen == SCREEN_MULTIPLAYER) &&
             !IsWindowResized() &&
             // HEIGHT ONLY, and this is not a tidy-up.
@@ -3061,6 +3162,15 @@ void Game::run() {
             drawCountrySelect();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
+            endFrame();
+        } else if (m_currentScreen == SCREEN_ACHIEVEMENTS) {
+            updateMenuBackground();
+            updateAchievements();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            drawAchievements();
+            if (m_config.showConsole) drawConsoleWindow();
+            drawDebugOverlay();
             endFrame();
         } else if (m_currentScreen == SCREEN_CREDITS) {
             updateMenuBackground();
@@ -3501,6 +3611,7 @@ void Game::endFrame() {
     // fifteen separate draw blocks, one per screen state, and threading a new
     // overlay through each of them is how one of them ends up missing it.
     drawNowPlayingToast();
+    drawAchievementToast();
     // Manual long-form: a block of text to carry between players by hand. It
     // belongs here rather than on one screen because the moment it appears --
     // a turn resolving, orders being submitted -- can land while the player is

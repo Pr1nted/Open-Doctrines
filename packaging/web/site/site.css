@@ -235,3 +235,24 @@ footer a:hover { color: var(--gold); }
 .fly-frame .play small { font-weight: 400; font-size: 12.5px; opacity: .75; }
 /* Said before the click, not after 65 MB has landed on a phone. */
 @media (max-width: 700px) { .fly-frame .play small::after { content: " · best on a desktop"; } }
+
+/* ── the launcher card on /download: the recommended way in ── */
+.launcher {
+  display: flex; gap: 24px; align-items: flex-start;
+  margin: 28px 0 8px; padding: 26px 28px;
+  background: var(--raise); border: 1px solid var(--gold-dim); border-radius: 10px;
+}
+.launcher img { flex: none; border-radius: 16px; }
+.launcher h2 { margin: 2px 0 10px; font-size: 25px; }
+.launcher .launcher-get { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 6px; }
+.launcher a.get {
+  display: inline-block; padding: .5em 1.05em; border-radius: 5px; text-decoration: none;
+  font-size: 15px; color: var(--ink); background: transparent; border: 1px solid var(--rule-firm);
+}
+.launcher a.get:hover { border-color: var(--gold-dim); }
+.launcher a.get[hidden] { display: none; }
+.launcher[hidden] { display: none; }
+.launcher a.get.primary { background: var(--gold); color: var(--ground); border-color: var(--gold); font-weight: 600; }
+.launcher a.get.mine { outline: 2px solid var(--gold); outline-offset: 2px; }
+.or-direct { font-size: 20px; color: var(--muted); margin-top: 40px; }
+@media (max-width: 640px) { .launcher { flex-direction: column; } }

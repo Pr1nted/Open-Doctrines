@@ -64,6 +64,13 @@ public:
     /** Starts the clock for a turn. `nowMs` is any monotonic millisecond. */
     void beginTurn(uint32_t turnNumber, long long nowMs);
 
+    /**
+     * Starts the clock with a deadline decided elsewhere -- a wall-clock
+     * schedule, or the time left on a turn that was open when the server
+     * stopped. Ignored in long-form, exactly as beginTurn's would be.
+     */
+    void beginTurnWithRemaining(uint32_t turnNumber, long long nowMs, long long remainingMs);
+
     uint32_t turnNumber() const { return m_turnNumber; }
     bool     running() const { return m_running; }
 

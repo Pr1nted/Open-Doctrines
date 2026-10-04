@@ -124,6 +124,8 @@ def main():
     ap.add_argument("--zip", action="store_true", help="also produce <out>.zip")
     ap.add_argument("--no-strip", action="store_true",
                     help="keep the packaged binary's debug symbols")
+    ap.add_argument("--tor", action="store_true",
+                    help="carry the Tor Project's tor in data/tor (tools/fetch_tor.py)")
     args = ap.parse_args()
 
     version = odver.read()
@@ -259,6 +261,23 @@ def main():
         print("  Add each to DATA_ALLOWLIST (ships) or KNOWN_USER_DATA (does not) "
               "in tools/release.py.", file=sys.stderr)
         return 1
+
+    # --- Tor, for onion hosting and "hide my IP" ---
+    # Fetched from the Tor Project and checked against a pinned sha256, never
+    # copied from this machine's data/ (where a developer's tor/ may be
+    # anything). Optional: without it the game uses an installed tor.
+    if args.tor:
+        import fetch_tor
+        # The binary's own architecture, not the build machine's: see
+        # fetch_tor.target_platform. A 32-bit or cross-compiled release must
+        # carry the tor that runs where it runs.
+        plat = fetch_tor.target_platform(args.binary)
+        if fetch_tor.pinned(plat):
+            fetch_tor.fetch(dst_data, plat)
+            print(f"  tor      data/tor  ({human(tree_size(os.path.join(dst_data, 'tor')))})")
+        else:
+            print(f"  tor      none: the Tor Project publishes no bundle for {plat}; "
+                  "players there use an installed tor")
 
     # A release that still contains a save or a mod is a bug in this script, so
     # it is checked rather than assumed.

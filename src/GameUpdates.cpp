@@ -322,6 +322,11 @@ std::string GameUpdates::platformKey() {
 }
 
 bool GameUpdates::managedInstall() {
+    // Started by Unifico: the launcher installs versions side by side and
+    // switches between them, so a game that replaced its own files would be
+    // fighting the thing that started it. Unifico also writes MANAGED into
+    // every install it makes; the variable covers an install it adopted.
+    if (const char* l = std::getenv("OD_LAUNCHER"); l && std::strcmp(l, "unifico") == 0) return true;
     std::error_code ec;
     return fs::exists(fs::path(installDir()) / "MANAGED", ec);
 }

@@ -160,6 +160,23 @@ int main() {
         check("the reasons do not have to agree to count", !tunnelWantedByHost(all));
     }
 
+    printf("\n=== a Tor onion service ===\n");
+    {
+        // What Tor writes to the service's hostname file: the address and a newline.
+        const std::string onion = "vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd.onion";
+        check("the hostname file gives a plain ws:// onion address",
+              tunnelParseAddress(TunnelProvider::Tor, onion + "\n") == "ws://" + onion,
+              tunnelParseAddress(TunnelProvider::Tor, onion + "\n"));
+        check("an old 16-character v2 address is not accepted",
+              tunnelParseAddress(TunnelProvider::Tor, "expyuzz4wqqyqhjn.onion\n").empty());
+        check("characters outside base32 are not accepted",
+              tunnelParseAddress(TunnelProvider::Tor,
+                  "VWW6YBAL4BD7SZMGNCYRUUCPGFKQAHZDDI37KTCEO3AH7NGMCOPNPYYD.onion").empty());
+        check("Tor works unattended", tunnelProviderWorksUnattended(TunnelProvider::Tor));
+        TunnelWanted w;
+        check("and is still just a tunnel to the host screen", tunnelWantedByHost(w));
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

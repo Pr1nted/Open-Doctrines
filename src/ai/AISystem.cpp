@@ -16,6 +16,13 @@
 #include <cstdlib>
 #include <cstring>
 
+// Journal 490: so actHistCountsCid can resolve an ISO to a cid.
+static Game* s_actHistGame = nullptr;
+
+// Journal 482: per-feature variance over play, under OD_FEATSTAT.
+std::vector<long long> g_fsCount;
+std::vector<double> g_fsSum, g_fsSq, g_fsMin, g_fsMax;
+
 // Journal 466: the policy net's unrest INPUT f[24], under OD_F24. Nothing reads these
 // unless the variable is set.
 double g_f24Sum = 0.0, g_f24Raw = 0.0, g_f24FactorSum = 0.0;
@@ -257,8 +264,19 @@ bool AISystem::nextSpecBuy(int cid, int& outPid, const char*& outRes,
     return true;
 }
 
+// Defined below, beside the other OD_ACT_HIST counters. Declared here because
+// bestEmbarkPort needs it and sits ~3000 lines earlier in the file.
+static bool actHistCountsCid(int cid);
+
 bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
     Game& g = *m_g;
+    // See s_embWhy in the header. FIRST failure only, so the shares name the
+    // test that actually binds rather than every test a doomed call fails.
+    static const bool embHist = OD_ENV("OD_ACT_HIST") != nullptr;
+    const bool embCount = embHist && actHistCountsCid(cid);
+    auto why  = [&](int slot) { if (embCount) ++s_embWhy[slot]; };
+    auto pwhy = [&](int slot) { if (embCount) ++s_embPort[slot]; };
+    why(0);   // slot 0 counts CALLS, so every other slot is a share of it
     // ── A GARRISON GUARD WAS TRIED HERE, AND MEASURED, AND REMOVED ──
     //
     // Embarking takes half a port's garrison, and once the mask below stopped
@@ -324,7 +342,7 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
     std::unordered_set<int> hostileBodies;
     const Country* me2 = g.m_countries.getCountry(cid);
     auto relIt2 = me2 ? g.m_relations.find(me2->isoA3) : g.m_relations.end();
-    if (relIt2 == g.m_relations.end()) return false;
+    if (relIt2 == g.m_relations.end()) { why(1); return false; }
     {
         const Country* me = me2;
         auto relIt = relIt2;
@@ -342,7 +360,7 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
             }
         }
     }
-    if (hostileBodies.empty()) return false;
+    if (hostileBodies.empty()) { why(2); return false; }
 
     // ── THE AMPHIBIOUS DOCTRINE (see AMPHIB_ARMY_SHARE in the header) ──
     //
@@ -359,7 +377,7 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
     // aiDebug so a quiet no-amphibious window early in a run is not silent.
     if (armyTotal <= 0 && g.m_config.aiDebug)
         printf("[AI] t%d cid=%d: no army total in m_stats -- amphibious doctrine refuses\n", m_turn, cid);
-    if (aboard >= shareCap) return false;
+    if (aboard >= shareCap) { why(3); return false; }
     // 2. A target it could hold -- FOR THE SCRIPTED COHORT ONLY. Conditions
     //    1 and 3 are rules about what a country can physically do and bind
     //    every cohort; whether a landing that might not win outright is still
@@ -409,11 +427,11 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
         if (!p || p->countryId != cid) continue;
         // The sea this harbour opens onto has to be one an enemy is on.
         const int myBody = g.seaBodyOfPort(pid);
-        if (myBody < 0 || !hostileBodies.count(myBody)) continue;
+        if (myBody < 0 || !hostileBodies.count(myBody)) { pwhy(0); continue; }  // wrong ocean
         bool pending = false;
         for (const auto& pe : g.m_pendingEmbarkations)
             if (pe.provinceId == pid) { pending = true; break; }
-        if (pending) continue;
+        if (pending) { pwhy(1); continue; }   // already loading here
         // 3. Never from a province under threat: hostile troops on any
         //    neighbouring province means this garrison is the defence.
         {
@@ -431,27 +449,29 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
                     if (garrisonOf(nid, o) > 0) { threatened = true; break; }
                 }
             }
-            if (threatened) continue;
+            if (threatened) { pwhy(2); continue; }   // condition 3: this garrison is the defence
         }
         auto aIt = g.m_provinceArmies.find(pid);
-        if (aIt == g.m_provinceArmies.end()) continue;
+        if (aIt == g.m_provinceArmies.end()) { pwhy(3); continue; }   // empty harbour
         int gsz = 0;
         for (const auto& u : aIt->second) if (u.countryId == cid) gsz += u.count;
         // The force is half the garrison (the executor's rule); it must fit
         // under the national share and outnumber the weakest target on its
         // sea by the doctrine's odds.
         const long long force = gsz / 2;
-        if (aboard + force > shareCap) continue;
+        if (aboard + force > shareCap) { pwhy(4); continue; }   // AMPHIB_ARMY_SHARE
         if (scriptedOdds) {
             auto w = weakestTargetOnBody.find(myBody);
             if (w == weakestTargetOnBody.end()) continue;
-            if ((float)force < AMPHIB_ODDS * (float)std::max(1LL, w->second)) continue;
+            if ((float)force < AMPHIB_ODDS * (float)std::max(1LL, w->second)) { pwhy(5); continue; }   // AMPHIB_ODDS, scripted only
         }
         if (gsz > bestG) { bestG = gsz; bestPid = pid; }
     }
     // The executor's own floor: half the garrison goes aboard, and half of
     // fewer than a thousand men is not an invasion.
-    if (bestPid < 0 || bestG < 1000) return false;
+    if (bestPid < 0) { why(4); return false; }          // no harbour survived the loop
+    if (bestG < 1000) { why(5); return false; }         // the executor's 1000-man floor
+    why(6);                                             // PASSED
     outPid = bestPid; outGarrison = bestG;
     return true;
 }
@@ -1740,6 +1760,7 @@ void AISystem::beginTurn() {
     // Reads m_world.largestCid and every country's army, so it goes after both.
     updateCoalition();
     updateTrends();
+    warAgeCensus();    // journal 504: records when each war opened; game-invisible
     warLifeCensus();   // reads m_warWith; writes nothing the game can see
     seatTrace();       // reads m_stats and m_warWith; writes nothing the game can see
     // ── WHEN DID INSOLVENCY LAST ZERO THIS COUNTRY'S PACIFICATION? ──
@@ -2163,8 +2184,16 @@ void AISystem::refreshStats() {
                 int count = 0, warCount = 0;
                 // Our own harbours' seas, looked up once for this country.
                 auto myBodiesIt = portBodies.find(cid);
+                int warCountLand = 0;
                 for (int oc : coastal) {
-                    if (oc == cid || landNbr.count(oc)) continue;
+                    if (oc == cid) continue;
+                    // A LAND NEIGHBOUR IS NOT A NAVAL TARGET, by construction --
+                    // and that is what stops the AI ever mounting a landing
+                    // behind a land front (journal 509: 92.7% of naval decisions).
+                    // Counted both ways here; which one the embark mask reads is
+                    // the experiment. navalTargets (war DECLARATION) keeps the
+                    // old rule either way.
+                    const bool isLandNbr = landNbr.count(oc) != 0;
                     const Country* ec = g.m_countries.getCountry(oc);
                     if (!ec) continue;
                     // REACHABLE, not merely overseas. No shared body of water
@@ -2180,15 +2209,23 @@ void AISystem::refreshStats() {
                     if (relIt != g.m_relations.end()) {
                         auto rr = relIt->second.find(ec->isoA3);
                         if (rr != relIt->second.end()) {
-                            if (rr->second.war) { ++warCount; continue; }
+                            if (rr->second.war) {
+                                ++warCountLand;
+                                if (!isLandNbr) ++warCount;
+                                continue;
+                            }
                             if (rr->second.alliance || rr->second.guarantee)
                                 continue; // off-limits
                         }
                     }
+                    // navalTargets drives war DECLARATION, so a land neighbour
+                    // never joins it: we can march there.
+                    if (isLandNbr) continue;
                     ++count;
                 }
                 st.navalTargets = count;
                 st.navalWarTargets = warCount;
+                st.navalWarTargetsLand = warCountLand;
             }
         }
     }
@@ -2699,8 +2736,37 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     f[9] = (cid >= 0 && cid < (int)g.m_countryPixelCount.size())
                ? std::min(1.0f, (float)((double)g.m_countryPixelCount[cid] / m_worldPixels * 10.0))
                : 0.0f;
+    // ── OD_FEAT_RESCALE=1: a floor-subtracting squash for population and army ──
+    //
+    // `nlog(v,s) = tanh(log1p(v)/s)` cannot spread either of these, and the constant is
+    // not the bug -- the FORM is. log1p of a realistic population spans 13.8..21.1, a
+    // factor of 1.52, so dividing by any `s` leaves it 1.52-fold (journal 483). Measured
+    // consequence: f[10]'s band above a million people is 0.0075 wide and f[11]'s above
+    // a hundred thousand men is 0.006, while both carry ordinary weight (61st and 75th
+    // percentile of 143, journal 482). The net cannot tell a 90M France from a 600M China.
+    //
+    // Subtracting a floor first maps the useful range across the feature's range. Floors
+    // and scales are taken from the measured log1p spans, not chosen by eye:
+    //   population  log1p 13.8..21.1  ->  floor 13, scale 4  ->  band ~0.77
+    //   army        log1p 11.5..17.7  ->  floor 11, scale 3  ->  band ~0.81
+    // max(0,...) keeps the feature in [0,1] as it is today; letting small values go
+    // negative would be a second change hidden inside the first.
+    //
+    // OFF BY DEFAULT, and it is NOT inert when on: it changes a policy INPUT, so a frozen
+    // model fitted against the old scaling will measure worse (journal 501 clause 3).
+    // It exists so that a training run can set it -- items 171 and 181.
+    static const bool featRescale = OD_ENV("OD_FEAT_RESCALE") &&
+                                    atoi(OD_ENV("OD_FEAT_RESCALE")) != 0;
+    if (featRescale) {
+        auto floored = [](double v, double floorLog, double scale) -> float {
+            return (float)std::tanh(std::max(0.0, std::log1p(std::max(0.0, v)) - floorLog) / scale);
+        };
+        f[10] = floored((double)st.population, 13.0, 4.0);
+        f[11] = floored((double)st.army,       11.0, 3.0);
+    } else {
     f[10] = nlog((double)st.population, 5.0);
     f[11] = nlog((double)st.army, 4.0);
+    }
     f[12] = st.provinces > 0 ? nlog((double)st.army / st.provinces, 3.0) : 0.0f;
     f[13] = std::tanh(st.boats / 5.0f);
     f[14] = std::tanh(st.destroyers / 5.0f);
@@ -2739,7 +2805,23 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     }
     double myA = (double)std::max(1LL, st.army);
     f[21] = (float)std::tanh(std::log1p((double)strongest / myA));
-    f[22] = weakestWar >= 0 ? (float)std::tanh(std::log1p((double)weakestWar / myA)) : 0.0f;
+    // ── OD_FEAT_EFFARMY=1: army ratios in the units the RESOLVER uses (journal 506) ──
+    //
+    // f[22], f[52] and f[62] are raw army ratios, and f[62] carries the 96th percentile of
+    // weight across 143 inputs. But journal 480 derived that the resolver stops reading
+    // army at 5.66 x combat width = 113,137 men (depthFactor caps at DEPTH_MAX = 1.5), so
+    // a 10:1 raw ratio and a 1:1 raw ratio describe the SAME fight once both sides are
+    // past saturation. The net's heaviest war feature cannot tell those apart -- the same
+    // defect journal 490 found in the ceasefire mask, here in the feature space.
+    //
+    // Clamping both sides before the ratio leaves the log1p/tanh shape untouched, so with
+    // the gate off every number below is bit-identical.
+    static const bool effArmy = OD_ENV("OD_FEAT_EFFARMY") &&
+                                atoi(OD_ENV("OD_FEAT_EFFARMY")) != 0;
+    const double armySat = (double)Game::COMBAT_WIDTH_MIN * 5.656854;
+    auto effA = [&](double a) -> double { return effArmy ? std::min(a, armySat) : a; };
+    const double myEff = std::max(1.0, effA((double)myA));
+    f[22] = weakestWar >= 0 ? (float)std::tanh(std::log1p(effA((double)weakestWar) / myEff)) : 0.0f;
     f[23] = wars > 0 ? 1.0f : 0.0f;
 
     // Sampled unrest (bounded work: at most 6 provinces).
@@ -2758,6 +2840,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // The factor is accumulated over exactly the provinces sampled, in this loop, so
     // it describes the sample rather than the country. Meaningful only in the
     // aiming-on arm: without districts it is 1.0 by definition.
+    s_actHistGame = &g;
     static const bool f24Probe = OD_ENV("OD_F24") != nullptr;
     for (int pid : g.provincesOf(cid)) {
         unrestSum += g.getProvinceRebellionChance(pid, cid);
@@ -2845,7 +2928,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
             if (r.alliance) allyArmyTotal += m_stats[ocid].army;
         }
     }
-    f[52] = (float)std::tanh(std::log1p((double)enemyArmyTotal / myA));
+    f[52] = (float)std::tanh(std::log1p(effA((double)enemyArmyTotal) / myEff));
     f[53] = (float)std::tanh(std::log1p((double)allyArmyTotal / myA));
     f[54] = enemyArmyTotal > st.army ? 1.0f : 0.0f; // outgunned flag
 
@@ -2871,7 +2954,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     f[60] = std::tanh(st.provincesLost / 2.0f);
     f[61] = st.provinces > 0
                 ? std::min(1.0f, (float)st.threatenedProvinces / st.provinces) : 0.0f;
-    f[62] = (float)std::tanh(std::log1p((double)st.enemyAdjArmy / myA));
+    f[62] = (float)std::tanh(std::log1p(effA((double)st.enemyAdjArmy) / myEff));
     f[63] = st.enemyAdjArmy > 0
                 ? (float)std::tanh((double)(st.enemyAdjArmy - st.defenderArmy) /
                                    std::max(1.0, (double)st.enemyAdjArmy)) : 0.0f;
@@ -2915,6 +2998,36 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     f[77] = st.meanAlignment / 100.0f;
     f[78] = st.minorities > 0 ? st.worstAlignment / 100.0f : 1.0f;
     f[79] = std::tanh(st.minorityTrend / 5.0f);
+    // ── f[80], f[81]: THIS WAR'S AGE AND WHAT IT HAS MOVED (OD_FEAT_WARAGE=1) ──
+    //
+    // Two of the five permanently-zero slots journal 493 found. They are EXISTING columns
+    // with trained weights (mean |w| 0.052-0.130, journal 494), not new ones, so writing
+    // them is not inert on a frozen model -- but those weights are bottom-decile, so the
+    // payoff is a retrain. The OLDEST war is the one that matters: journals 477 and 489
+    // found 94-, 110- and 304-turn wars holding the single war slot and moving no ground.
+    static const bool warAgeFeat = OD_ENV("OD_FEAT_WARAGE") &&
+                                   atoi(OD_ENV("OD_FEAT_WARAGE")) != 0;
+    if (warAgeFeat) {
+        int oldest = -1, provAtOpen = 0;
+        for (const auto& [k, openTurn] : m_warOpenTurn) {
+            if (k.first != cid) continue;
+            if (oldest < 0 || openTurn < oldest) {
+                oldest = openTurn;
+                auto pit = m_warProvAtOpen.find(k);
+                provAtOpen = (pit == m_warProvAtOpen.end()) ? 0 : pit->second;
+            }
+        }
+        if (oldest >= 0) {
+            // SCALE 150, NOT 50, AND THE FIRST ATTEMPT GOT THIS WRONG. At /50 the
+            // feature reads 0.954 at 94 turns and 1.000 at 304 -- a band of 0.046
+            // across exactly the range of grind this feature exists to expose
+            // (journals 477 and 489 measured wars of 94, 110, 113 and 304 turns).
+            // That is the same saturation journal 483 diagnosed in nlog, rebuilt by
+            // hand one iteration later. At /150 the same range spans 0.556 to 0.966.
+            f[80] = std::tanh((float)(m_turn - oldest) / 150.0f);
+            f[81] = std::tanh((float)(st.provinces - provAtOpen) / 10.0f);
+        }
+    }
     f[85] = inc.total > 1.0f ? std::min(1.0f, st.minorityCost / inc.total) : 0.0f;
     f[86] = std::tanh(st.minorities / 4.0f);
 
@@ -2997,6 +3110,30 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // poisons weight updates. Zero them at the source.
     for (float& v : f)
         if (!std::isfinite(v)) v = 0.0f;
+    // ── WHICH FEATURES ACTUALLY MOVE? OD_FEATSTAT=1 (journal 482) ──
+    //
+    // Journal 481 found f[24] weighted at the 65th percentile of 143 while pinned at
+    // 1.3% of its range, and found f[80..84] never assigned at all -- both by accident,
+    // while asking about one feature. This is the other axis: how much each input moves
+    // during play, to cross against the weight columns already read from the model.
+    // Heavy weight with no variance is a wasted bias term; light weight with high
+    // variance is information the net is declining to use.
+    if (OD_ENV("OD_FEATSTAT")) {
+        const size_t n = std::min(f.size(), (size_t)FEATURE_COUNT);
+        if (g_fsCount.size() < n) {
+            g_fsCount.assign(n, 0); g_fsSum.assign(n, 0.0); g_fsSq.assign(n, 0.0);
+            g_fsMin.assign(n, 1e30); g_fsMax.assign(n, -1e30);
+        }
+        for (size_t k = 0; k < n; ++k) {
+            const double v = (double)f[k];
+            ++g_fsCount[k]; g_fsSum[k] += v; g_fsSq[k] += v * v;
+            if (v < g_fsMin[k]) g_fsMin[k] = v;
+            if (v > g_fsMax[k]) g_fsMax[k] = v;
+        }
+        static const bool regFS = (atexit(&AISystem::dumpFeatStat), true);
+        (void)regFS;
+    }
+
 }
 
 // ─── Difficulty / sampling ───────────────────────────────
@@ -3229,9 +3366,23 @@ static bool reflexAblated(const char* name) {
 // cannot answer a question about one seat (journal 386). Counters only; no decision
 // reads it.
 static bool actHistCountsCid(int cid) {
-    static const int only = OD_ENV("OD_ACT_HIST_CID")
-                                 ? atoi(OD_ENV("OD_ACT_HIST_CID")) : -1;
-    return only < 0 || only == cid;
+    // Journal 490: an ISO code is accepted as well as a numeric cid, because the cid
+    // of a bench seat is not knowable from outside the process and guessing it is how
+    // a probe ends up counting the wrong country. A numeric value behaves exactly as
+    // before, and UNSET IS STILL WORLD-WIDE -- deliberately, since making it default to
+    // the bench seat would silently change what every earlier OD_ACT_HIST run meant
+    // (journal 460's figures are world-wide and have to stay comparable).
+    static const int only = []() -> int {
+        const char* v = OD_ENV("OD_ACT_HIST_CID");
+        if (!v || !*v) return -1;
+        if (v[0] >= '0' && v[0] <= '9') return atoi(v);
+        return -2;                       // an ISO: resolved per call below
+    }();
+    if (only == -1) return true;
+    if (only >= 0) return only == cid;
+    static const std::string iso = OD_ENV("OD_ACT_HIST_CID") ? OD_ENV("OD_ACT_HIST_CID") : "";
+    const Country* c = s_actHistGame ? s_actHistGame->m_countries.getCountry(cid) : nullptr;
+    return c && c->isoA3 == iso;
 }
 
 // ── [PROBE] WHICH CONDITION KEEPS "DECLARE WAR" OFF THE MENU (OD_WARMASK_PROBE, off) ──
@@ -5409,6 +5560,27 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
                     if (diploReady(cid, ocid)) anyReachable = true;
                 }
             }
+    // ── OD_PEACE_EFFECTIVE=1: compare EFFECTIVE strength, not headcount (journal 491) ──
+    //
+    // The ratio below is raw army, and the combat resolver stops reading army at
+    // 5.66 x combat width -- 113,137 men at COMBAT_WIDTH_MIN -- because depthFactor
+    // caps at DEPTH_MAX = 1.5 (journal 480's derivation from Game.h:5082-5083). So a
+    // 44M-man army reads as decisively ahead of a 1M-man one and is exactly level at
+    // the frontage, and this mask bit was measured OFFERED ZERO TIMES in 400 turns on
+    // a seat that then sat in one unwinnable war for 304 of them (journal 490).
+    //
+    // Clamping both sides at the saturation point makes the comparison agree with what
+    // the resolver computes. Off by default: this is a behaviour change and it is
+    // measured in journal 491 before anything is proposed.
+    static const bool peaceEff = OD_ENV("OD_PEACE_EFFECTIVE") &&
+                                 atoi(OD_ENV("OD_PEACE_EFFECTIVE")) != 0;
+    if (peaceEff) {
+        const long double sat = (long double)Game::COMBAT_WIDTH_MIN * 5.656854L;
+        auto eff = [&](long long a) -> long double {
+            return (long double)a < sat ? (long double)a : sat;
+        };
+        v[6] = anyWar && anyReachable && eff(st.army) < eff(warEnemyArmy) * 1.6L;
+    } else
     v[6] = anyWar && anyReachable && st.army < (long long)(warEnemyArmy * 1.6);
     // Staging needs an allied crossing that leads somewhere and troops to send.
     // ...AND 500 MEN ON THE CROSSING ITSELF, not merely in the country. See
@@ -5456,7 +5628,55 @@ void AISystem::validNavy(int cid, std::vector<bool>& v) {
     // with a large field army and an empty harbour was offered the action,
     // chose it, and loaded nobody: 67.8% of embark decisions did nothing.
     int embPid = -1, embG = 0;
-    v[3] = st.maxPort >= 1 && st.navalWarTargets > 0 &&
+    // Backlog 202: the ONLY reader of navalWarTargetsLand. navalWarTargets is
+    // left alone because the SCRIPTED opponent and f[76] read it.
+    static const bool navalLandNbr = OD_ENV("OD_NAVAL_LAND_NBR")
+                                   && atoi(OD_ENV("OD_NAVAL_LAND_NBR")) != 0;
+    // ── Backlog 204: WHO gets the wider mask ──
+    //
+    // The gate is world-wide, which is what journal 510 measured -- and that
+    // makes its result unattributable, because the seat's ENEMIES gained
+    // amphibious reach in the same arm. Under it the world is markedly less
+    // consolidated (largest_pct 45.7 -> 33.4), and a seat score is a share, so
+    // the biggest country's share can fall without it playing any worse.
+    //
+    //   OD_NAVAL_LAND_NBR_CID=USA    only USA gets it
+    //   OD_NAVAL_LAND_NBR_CID=!USA   everyone EXCEPT USA gets it
+    //   unset                        world-wide -- journal 510's arm, UNCHANGED
+    //
+    // Numeric cids work too. Unset is a strict no-op: journal 512's inherited
+    // arms depend on that and verify it against the previous binary.
+    bool landNbrHere = navalLandNbr;
+    if (navalLandNbr) {
+        static const std::string spec = OD_ENV("OD_NAVAL_LAND_NBR_CID")
+                                      ? OD_ENV("OD_NAVAL_LAND_NBR_CID") : "";
+        if (!spec.empty()) {
+            const bool negate = spec[0] == '!';
+            const std::string want = negate ? spec.substr(1) : spec;
+            bool isMe = false;
+            if (!want.empty() && want[0] >= '0' && want[0] <= '9') {
+                isMe = atoi(want.c_str()) == cid;
+            } else {
+                const Country* me = g.m_countries.getCountry(cid);
+                isMe = me && me->isoA3 == want;
+            }
+            landNbrHere = negate ? !isMe : isMe;
+        }
+    }
+    const int embTargets = landNbrHere ? st.navalWarTargetsLand : st.navalWarTargets;
+    // Counted here as well as inside bestEmbarkPort: && short-circuits, so a
+    // country with no harbour or no naval war never reaches the function and
+    // would be missing from its census entirely. Slots 7-9 are the decisions
+    // bestEmbarkPort is never asked about. See s_embWhy.
+    {
+        static const bool ehOn = OD_ENV("OD_ACT_HIST") != nullptr;
+        const bool eh = ehOn && actHistCountsCid(cid);
+        if (eh) ++s_embWhy[7];                                  // naval decisions seen
+        if (eh && st.maxPort < 1) ++s_embWhy[8];                // no harbour at all
+        else if (eh && embTargets <= 0) ++s_embWhy[9];          // no naval war to sail to
+        else if (eh) ++s_embWhy[10];                            // the MASK reaches the function
+    }
+    v[3] = st.maxPort >= 1 && embTargets > 0 &&
            bestEmbarkPort(cid, embPid, embG);
     // "Land" is valid only when it can DO something: the executor lands at
     // an at-war port within one hull's range and otherwise does nothing (its
@@ -14205,6 +14425,9 @@ long long AISystem::s_gateOffered[ECON_ACTIONS]    = {0};
 long long AISystem::s_gateNoCash[ECON_ACTIONS]    = {0};
 long long AISystem::s_gateImpossible[ECON_ACTIONS] = {0};
 
+long long AISystem::s_embWhy[12]  = {0};
+long long AISystem::s_embPort[8] = {0};
+
 // Idempotent: both exit hooks may be registered, and the line must appear once.
 void AISystem::dumpDecisionHash() {
     static bool done = false;
@@ -14409,6 +14632,35 @@ void AISystem::dumpActionHistogram() {
                        100.0 * (double)s_gateOffered[i] / (double)tot,
                        100.0 * (double)s_gateNoCash[i] / (double)tot);
             }
+        }
+    }
+    if (s_embWhy[7]) {
+        // Backlog 201. Read top to bottom: the first row that holds most of the
+        // mass is the test that actually refuses embark, and it is the only one
+        // worth widening -- widening a test that does not bind is a no-op, and
+        // a no-op benches as a null nothing can tell from a real null.
+        const double d = (double)s_embWhy[7];
+        printf("[EMBARK] %lld naval decisions; why embark was not offered\n", s_embWhy[7]);
+        printf("[EMBARK] (first two rows are shares of the DECISIONS; the rest of bestEmbarkPort's %lld CALLS)\n", s_embWhy[0]);
+        printf("[EMBARK]   no harbour (maxPort < 1)        %9lld  %5.1f%%\n", s_embWhy[8], 100.0*s_embWhy[8]/d);
+        printf("[EMBARK]   no naval war target            %9lld  %5.1f%%\n", s_embWhy[9], 100.0*s_embWhy[9]/d);
+        printf("[EMBARK]   -- mask reaches bestEmbarkPort %9lld  %5.1f%%\n", s_embWhy[10], 100.0*s_embWhy[10]/d);
+        printf("[EMBARK]      (the function also runs %lld times for the EXECUTOR, which is not a\n"
+               "[EMBARK]       decision and is NOT in this denominator -- see s_embWhy)\n",
+               s_embWhy[0] - s_embWhy[10]);
+        printf("[EMBARK]   no relations entry             %9lld  %5.1f%%\n", s_embWhy[1], 100.0*s_embWhy[1]/(double)std::max(1LL, s_embWhy[0]));
+        printf("[EMBARK]   no enemy port on any sea       %9lld  %5.1f%%\n", s_embWhy[2], 100.0*s_embWhy[2]/(double)std::max(1LL, s_embWhy[0]));
+        printf("[EMBARK]   share full already (aboard)    %9lld  %5.1f%%   AMPHIB_ARMY_SHARE\n", s_embWhy[3], 100.0*s_embWhy[3]/(double)std::max(1LL, s_embWhy[0]));
+        printf("[EMBARK]   no harbour survived the loop   %9lld  %5.1f%%\n", s_embWhy[4], 100.0*s_embWhy[4]/(double)std::max(1LL, s_embWhy[0]));
+        printf("[EMBARK]   garrison under the floor       %9lld  %5.1f%%   the 1000-man floor\n", s_embWhy[5], 100.0*s_embWhy[5]/(double)std::max(1LL, s_embWhy[0]));
+        printf("[EMBARK]   OFFERED                        %9lld  %5.1f%%\n", s_embWhy[6], 100.0*s_embWhy[6]/(double)std::max(1LL, s_embWhy[0]));
+        long long pt = 0; for (int i = 0; i < 6; ++i) pt += s_embPort[i];
+        if (pt) {
+            printf("[EMBARK] per-harbour rejections inside the loop (%lld examined):\n", pt);
+            static const char* pn[6] = {"wrong ocean", "already loading", "threatened neighbour",
+                                        "empty harbour", "AMPHIB_ARMY_SHARE", "AMPHIB_ODDS (scripted)"};
+            for (int i = 0; i < 6; ++i)
+                if (s_embPort[i]) printf("[EMBARK]   %-24s %9lld  %5.1f%%\n", pn[i], s_embPort[i], 100.0*s_embPort[i]/(double)pt);
         }
     }
     if (s_researchN > 0) {
@@ -14906,6 +15158,41 @@ void AISystem::dumpDoctrineReflex() {
 // graph, and writes only statics: no RNG draw, no game state, nothing a
 // decision can see. Rebels are skipped, as they are in every other reflex here
 // -- a rebellion is not a war anybody declared.
+// ── WHEN DID THIS WAR OPEN, AND WHAT HAVE WE TAKEN SINCE? (journal 504) ──
+//
+// The feature vector had nothing about a war's AGE or its PROGRESS: every war input is
+// size, count or threat, and f[74] only looks like a duration proxy (its writers are two
+// call-to-arms charges and bankruptcy -- journal 503). So the head was asked whether to
+// make peace unable to tell a 304-turn war moving no ground (journal 489) from one it is
+// winning, and its pi = 0.00e+00 on "offer ceasefire" may be a correct answer to an
+// unobservable rather than a collapsed output.
+//
+// Unconditional, because a gated census would hand the feature an empty map on the turn
+// it is first read. Directed keys, so no caller has to work out which half of an
+// unordered pair it is. Entries are dropped when the war ends, which also keeps the maps
+// the size of the world's current wars rather than its history.
+void AISystem::warAgeCensus() {
+    std::set<std::pair<int,int>> live;
+    for (const auto& [cid, enemies] : m_warWith) {
+        if (cid <= 0 || cid >= Game::REBEL_CID_MIN) continue;
+        for (int e : enemies) {
+            if (e <= 0 || e >= Game::REBEL_CID_MIN) continue;
+            const std::pair<int,int> k{cid, e};
+            live.insert(k);
+            if (!m_warOpenTurn.count(k)) {
+                m_warOpenTurn[k] = m_turn;
+                auto it = m_stats.find(cid);
+                m_warProvAtOpen[k] = (it == m_stats.end()) ? 0 : it->second.provinces;
+            }
+        }
+    }
+    for (auto it = m_warOpenTurn.begin(); it != m_warOpenTurn.end(); ) {
+        if (live.count(it->first)) { ++it; continue; }
+        m_warProvAtOpen.erase(it->first);
+        it = m_warOpenTurn.erase(it);
+    }
+}
+
 void AISystem::warLifeCensus() {
     static const bool on = OD_ENV("OD_WARLIFE") &&
                            atoi(OD_ENV("OD_WARLIFE")) != 0;
@@ -14940,11 +15227,22 @@ void AISystem::warLifeCensus() {
         auto s = m_stats.find(cid);
         return s == m_stats.end() ? 0 : s->second.provinces;
     };
+    // WHO, not just how many (journal 477). The census keyed these pairs and then
+    // discarded the identities, so a run could say France fought one war for 150
+    // turns and not say against whom. Two lines, inside the OD_WARLIFE guard, and
+    // `only` above already restricts the census to the seat's own wars.
+    auto isoOf = [&](int cid) -> const char* {
+        const Country* cc = m_g->m_countries.getCountry(cid);
+        return (cc && !cc->isoA3.empty()) ? cc->isoA3.c_str() : "???";
+    };
     for (const auto& p : now)
         if (!s_warOpen.count(p)) {
             s_warOpen[p] = m_turn;
             ++s_warsStarted;
             s_warProvAtStart[p] = {provOf(p.first), provOf(p.second)};
+            fprintf(stderr, "[WARWHO] turn %d OPEN  %s(%d prov) vs %s(%d prov)\n",
+                    m_turn, isoOf(p.first), provOf(p.first),
+                    isoOf(p.second), provOf(p.second));
         }
     for (auto it = s_warOpen.begin(); it != s_warOpen.end(); ) {
         if (now.count(it->first)) { ++it; continue; }
@@ -14968,6 +15266,11 @@ void AISystem::warLifeCensus() {
             if (moved == 0) ++s_warStalemates;
             if (provOf(it->first.first) == 0 || provOf(it->first.second) == 0)
                 ++s_warEliminations;
+            fprintf(stderr, "[WARWHO] turn %d CLOSE %s(%d prov) vs %s(%d prov)"
+                    "  after %d turns  net %+d / %+d\n",
+                    m_turn, isoOf(it->first.first), provOf(it->first.first),
+                    isoOf(it->first.second), provOf(it->first.second),
+                    m_turn - it->second, a, b);
             s_warProvAtStart.erase(st);
         }
         it = s_warOpen.erase(it);
@@ -15105,6 +15408,23 @@ void AISystem::dumpPacCooldown() {
     done = true;
     fprintf(stderr, "[PACCOOL] pacification raises refused while cooling down: %lld\n",
             s_pacCooldownRefused.load());
+}
+
+void AISystem::dumpFeatStat() {
+    static bool done = false;
+    if (done || g_fsCount.empty()) return;
+    done = true;
+    fprintf(stderr, "[FEATSTAT] idx samples mean sd cv min max\n");
+    for (size_t k = 0; k < g_fsCount.size(); ++k) {
+        if (g_fsCount[k] <= 0) continue;
+        const double n = (double)g_fsCount[k];
+        const double mean = g_fsSum[k] / n;
+        const double var = std::max(0.0, g_fsSq[k] / n - mean * mean);
+        const double sd = std::sqrt(var);
+        const double cv = std::fabs(mean) > 1e-12 ? sd / std::fabs(mean) : (sd > 0 ? 1e9 : 0.0);
+        fprintf(stderr, "[FEATSTAT] %zu %lld %.6f %.6f %.6f %.6f %.6f\n",
+                k, g_fsCount[k], mean, sd, cv, g_fsMin[k], g_fsMax[k]);
+    }
 }
 
 void AISystem::dumpWarLife() {

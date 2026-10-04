@@ -12,6 +12,7 @@
 #include "Splash.h"
 #include "ReleaseRules.h"
 #include "net/Announcements.h"
+#include "achievements/Achievements.h"
 #include "net/Lfg.h"
 #include "net/ModDir.h"
 #include "stream/ChatReader.h"
@@ -42,6 +43,8 @@
 #include "Audio.h"
 #include "net/TurnSeal.h"
 #include "net/TurnStore.h"
+#include "net/HostBook.h"
+#include "net/LobbyMap.h"
 #include "net/NetProtocol.h"
 #include "ScriptEngine.h"
 #include "MapEditor.h"
@@ -93,6 +96,14 @@ public:
 
 private:
     bool     srvInLobby() const;
+    /** Refresh the account token every few hours, on a worker. */
+    void     srvKeepSignedIn();
+    /**
+     * Run the configured checkpoint command (see ServerConfig::checkpointCommand).
+     * `force` runs it now; otherwise only if something changed and a minute
+     * has passed. `wait` blocks until it finishes, for shutdown.
+     */
+    void     srvCheckpoint(bool force, bool wait = false);
     bool     srvInGame() const;
     uint32_t srvPlayersHoldingCountries() const;
     uint32_t srvConnectedPlayers() const;
@@ -569,9 +580,59 @@ private:
         SCREEN_MAP_EDITOR,
         SCREEN_MODS,
         SCREEN_ACCOUNT,
-        SCREEN_MULTIPLAYER
+        SCREEN_MULTIPLAYER,
+        SCREEN_ACHIEVEMENTS    // the collection; see Game_Achievements.cpp
     };
     ScreenState m_currentScreen = SCREEN_MENU;
+    /// The screen the left button was last PRESSED on. A release handler must
+    /// check this before acting: a press that changed the screen would
+    /// otherwise deliver its release to the new one. See Game::run().
+    ScreenState m_pressScreen = SCREEN_MENU;
+
+    // ── Achievements (Game_Achievements.cpp; the rules are src/achievements/) ──
+    //
+    // achNote() counts something the player DID, at the place it happens.
+    // achTurnSnapshot() measures state once a turn and diffs it with the last
+    // turn's, which catches every writer of that state at once. Both are no-ops
+    // unless achievementsLive(): a person is playing, not a bench or a tour.
+    bool achievementsLive() const;
+    void achInit();
+    void achNote(const char* stat, double n = 1);
+    void achNoteSet(const char* stat, const std::string& member);
+    void achNoteWarDeclared(const std::string& targetIso);
+    void achNoteArtillery(const std::string& ammo, int targetPid);
+    void achPlayerChose(int countryId);
+    void achWorldStarted(bool fromTurnZero);
+    void achTurnSnapshot(bool multiplayerTurn);
+    void achFrame();
+    void achDrawIcon(int tile, bool unlocked, int x, int y, int size);
+    void drawAchievementToast();
+    void openAchievements(ScreenState back);
+    void updateAchievements();
+    void drawAchievements();
+    struct AchSnapshot {
+        bool valid = false;
+        std::unordered_set<int> provinces;
+        std::unordered_set<int> alive;
+        std::set<std::string> wars, allies, naps, guarantees;
+    };
+    AchSnapshot m_achSnap;
+    std::set<std::string> m_achDeclaredOn;   // wars the player started this turn
+    int  m_achWarStreak = 0;
+    bool m_achWorldFromZero = false;
+    bool m_achEverAtWar = false;
+    bool m_achDirty = false;
+    bool m_achSessionNoted = false;
+    float m_achPlaySeconds = 0;       // play time not yet added to the tracker   // the once-per-run notes, made on the first live frame
+    bool m_achToastActive = false;
+    float m_achToastT = 0;
+    odach::Toast m_achToast;
+    Texture2D m_achAtlas{};
+    bool m_achAtlasLoaded = false;
+    ScreenState m_achBack = SCREEN_MENU;
+    float m_achScroll = 0, m_achScrollMax = 0;
+    int m_achFilter = 0;
+    std::vector<Rectangle> m_achChipRects;
 
     // Startup splash ("Pr1nted presents" fade before the main menu)
     void updateSplashScreen(float dt);
@@ -881,6 +942,59 @@ private:
     bool mpResolveMap(const std::string& id, std::string& pathOut, std::string& nameOut);
     /** Tell joiners what this world contains. Host only. */
     void mpPublishCountries();
+    /** The world as a small political map for the lobby picker. */
+    LobbyMap mpBuildLobbyMap() const;
+    /** The picker's map: the host's own, or the one a host sent us. */
+    LobbyMap  m_mpLobbyMap;
+    Texture2D m_mpLobbyMapTex{};
+    bool      m_mpLobbyMapDirty = false;
+    /** Typed into the country picker's search box. */
+    std::string m_mpCountrySearch;
+    bool      m_mpCountrySearchFocus = false;
+    /** The country under the cursor on the lobby map, for the hover label. */
+    uint16_t  m_mpMapHover = 0;
+    /** What the picker's map texture was last drawn for; rebuilt when it changes. */
+    std::string m_mpLobbyMapTexKey;
+    /** The host is choosing for this peer rather than for itself. 0: itself. */
+    uint16_t  m_mpAssignTarget = 0;
+    // ── GETTING BACK IN AFTER THE CONNECTION DROPS ──
+    //
+    // A client whose connection died used to sit in its game with nothing on
+    // screen saying so, the End Turn button quietly turned back into a
+    // singleplayer "Process Turn", and its world drifted away from the host's.
+    // Rejoining needed the lobby's Leave button, which is not on the map.
+    struct MpRejoin {
+        bool   active = false;
+        int    attempt = 0;
+        double nextAt = 0.0;   // GetTime() seconds
+        double since = 0.0;
+        std::string why;
+    } m_mpRejoin;
+    std::vector<std::string> m_mpLastJoinCandidates;
+    std::string m_mpLastJoinCode;
+    /** This session was welcomed at least once: a drop is a drop, not a refusal. */
+    bool m_mpWelcomedOnce = false;
+    /** Joined from a saved server: the name its row has, so the row is updated. */
+    std::string m_mpJoinEntryName;
+    bool mpRejoining() const { return m_mpRejoin.active; }
+    /** Open a session to these addresses with this code; false with a note. */
+    bool mpStartSession(const std::vector<std::string>& candidates, const std::string& code);
+    void mpUpdateRejoin();
+    /** Publish through a Tor onion service rather than the default tunnel. */
+    bool m_mpUseTor = false;
+    /** The in-game host tools, opened from the turn panel. */
+    bool m_mpHostConsoleOpen = false;
+    /** The banner across the top of the map while reconnecting. */
+    void drawMpRejoinBanner();
+    /** Join a saved server straight away when nothing more is needed. */
+    void mpJoinSaved(size_t index);
+    /** The country picker: a search box, a list and the host's map. Modal. */
+    void drawMpCountryPicker(Vector2 mouse, bool click);
+    /** Claim (or, for the host in assign mode, hand out) a country. */
+    void mpPickCountry(uint16_t countryId);
+    /** Re-draw the picker map texture for what is hovered, held and taken. */
+    void mpRefreshLobbyMapTexture(uint16_t hover, uint16_t mine,
+                                  const std::vector<uint16_t>& taken);
     /** Called by the loader when a multiplayer load finishes. */
     void mpOnWorldLoaded();
     /** Build the whole-world payload. Host only. */
@@ -1319,6 +1433,48 @@ private:
     void mpRefreshSaves();
     /** Write the current seating beside the save, for the next session. */
     void mpSaveSeats();
+
+    // ── A CAMPAIGN THAT OUTLIVES THE PROCESS ──
+    //
+    // Everything below is what a host needs to stop and start again without
+    // the players noticing more than a reconnect. See HostBook.h for what is
+    // written, and TurnClock.h for why the deadline is wall-clock time.
+
+    /** The open turn's deadline, Unix epoch ms. 0 when none is open or untimed. */
+    int64_t  m_mpTurnDeadlineEpochMs = 0;
+    /** A deadline read back from the book, used once by the turn it belongs to. */
+    int64_t  m_mpResumeDeadlineMs = 0;
+    uint32_t m_mpResumeTurn = 0;
+    /** Submissions read back from `.odorders`, applied once that turn opens. */
+    std::unique_ptr<PendingOrdersBook> m_mpResumeOrders;
+    /** Resolve on a daily grid: minutes after midnight UTC, or -1 for none. */
+    int      m_mpTurnAnchor = -1;
+    /** How long a turn that ran out while the host was down gets on resume. */
+    int64_t  m_mpResumeGraceMs = 120000;
+    /** The code this campaign had, to ask the account service for it again. */
+    std::string m_mpReopenCode;
+    /**
+     * Load map rasters straight into compact form (ProvinceMap::compact,
+     * LandSeaMap mask only). Set by the dedicated server, which never draws;
+     * NOT by training, whose screenshots read the full image.
+     */
+    bool     m_compactRaster = false;
+    /** Something worth backing up changed since the last checkpoint. */
+    bool     m_mpCheckpointDirty = false;
+    /** The world is already loaded (a dedicated server loads its own). */
+    bool     m_mpWorldPreloaded = false;
+    /** Restarting mid-game goes straight back into the game, not the lobby. */
+    bool     m_mpResumeIntoGame = false;
+    /** A voice or community link the host offers players; empty for none. */
+    std::string m_mpVoiceLink;
+    /** What the clients were last told about the voice link. */
+    std::string m_mpVoiceLinkSent;
+    /** Restore seats, bans and settings from the book; then, maybe, the game. */
+    void mpHostWorldReady();
+    /** Start the game and send everybody the world. */
+    bool mpHostStartGame(bool force, std::string& why);
+    /** Write the open turn's submissions beside the save. */
+    void mpSavePendingOrders();
     /**
      * The host declaring its own orders finished.
      *
@@ -3306,7 +3462,41 @@ public:
     /// radius bounds each one). For the panels that paint a country; builds
     /// nothing that outlives the call, and in particular not m_provincePixels.
     std::vector<int> pixelsOwnedBy(int cid) const;
-    std::unordered_map<int, std::vector<int>> m_provincePixels;
+    /**
+     * One province's pixels as runs of consecutive raster indices.
+     *
+     * The same pixels in the same order as the int-per-pixel list it replaces
+     * -- iterating one yields exactly the indices that list held -- in a
+     * fraction of the space: one run for each row a province crosses rather
+     * than four bytes for every pixel, which was ~45 MB of a dedicated
+     * server's memory once the first conquest built them all.
+     */
+    struct PixelRuns {
+        std::vector<uint32_t> start, len;
+        size_t count = 0;
+        size_t size() const { return count; }
+        bool empty() const { return count == 0; }
+        void push(uint32_t i) {
+            if (!start.empty() && start.back() + len.back() == i) ++len.back();
+            else { start.push_back(i); len.push_back(1); }
+            ++count;
+        }
+        struct iterator {
+            const PixelRuns* r; size_t run; uint32_t k;
+            int operator*() const { return (int)(r->start[run] + k); }
+            iterator& operator++() { if (++k >= r->len[run]) { ++run; k = 0; } return *this; }
+            bool operator!=(const iterator& o) const { return run != o.run || k != o.k; }
+        };
+        iterator begin() const { return {this, 0, 0}; }
+        iterator end() const { return {this, start.size(), 0}; }
+        std::vector<int> expand() const {
+            std::vector<int> out;
+            out.reserve(count);
+            for (int i : *this) out.push_back(i);
+            return out;
+        }
+    };
+    std::unordered_map<int, PixelRuns> m_provincePixels;
     /// Whether the renderer holds the current m_gradientDist; cleared when the
     /// field is rebuilt, so the 32 MB goes across only when a border moved.
     bool m_borderDistanceSent = false;

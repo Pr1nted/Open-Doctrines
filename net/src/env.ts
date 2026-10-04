@@ -25,6 +25,36 @@ export interface Env {
     LFG_BOARD: DurableObjectNamespace;
 
     /**
+     * Achievements, one object per account. See achievements/AchievementsDO.ts:
+     * every grant is a write, and writes in KV are the account-creation budget.
+     */
+    ACHIEVEMENTS: DurableObjectNamespace;
+
+    /**
+     * The achievement-grant keypair, as JWK JSON strings. Separate from the
+     * session key on purpose -- see achievements/grant.ts. Both unset means
+     * this deployment issues no achievements, and the routes say so.
+     */
+    ACHIEVEMENT_PRIVATE_KEY?: string;
+    ACHIEVEMENT_PUBLIC_JWK?: string;
+
+    /**
+     * Comma-separated od_t4 words of shipped releases, hex. A grant earned under
+     * a seal not on the list is marked `mod`, never refused. Unset: nothing is
+     * marked.
+     */
+    ACHIEVEMENT_KNOWN_SEALS?: string;
+
+    /**
+     * Google Analytics 4, for launcher statistics people agreed to. The id is
+     * public (it is on every site page); the API secret is not, which is why
+     * events come through this service. Both unset: /analytics/event accepts
+     * and drops, and nothing reaches Google. See analytics/ga.ts.
+     */
+    GA_MEASUREMENT_ID?: string;
+    GA_API_SECRET?: string;
+
+    /**
      * The review queue, one object for the whole service.
      *
      * A queue's job is to be a single line, and the scanner's daily budget has

@@ -39,6 +39,11 @@ ISSUER = "https://opendoctrines-net.opendoctrines.workers.dev"
 # a fork without a web deploy wants.
 DOCS_BASE = "https://opendoctrines.pages.dev"
 
+# The site's GA4 property (packaging/web/site/analytics.js). Public. The
+# matching API secret is GA_API_SECRET, set with `wrangler secret put`; without
+# it /analytics/event forwards nothing. See src/analytics/ga.ts.
+GA_MEASUREMENT_ID = "G-6DXCXHCNRL"
+
 # ---------------------------------------------------------------- storage ----
 #
 # One namespace. Everything is keyed by prefix (acct:, ident:, nick:, dc:,
@@ -102,6 +107,19 @@ class_name = "LfgBoardDO"
 [[migrations]]
 tag = "v4"
 new_sqlite_classes = ["LfgBoardDO"]
+
+# ------------------------------------------------------------ achievements ----
+#
+# One object per account: its grants, its first play session, its budget.
+# Every grant is a write, and KV writes are the account-creation budget -- see
+# src/achievements/AchievementsDO.ts. SQLite-backed for the free-plan reason.
+[[durable_objects.bindings]]
+name = "ACHIEVEMENTS"
+class_name = "AchievementsDO"
+
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["AchievementsDO"]
 
 # ------------------------------------------------------------------ cron ----
 #
@@ -167,6 +185,10 @@ simple = { limit = 40, period = 10 }
 #   IDENT_KEY            HMAC key that hashes provider user ids before storage
 #   PAIRWISE_KEY         HMAC key behind the per-server pseudonym (psid)
 #   ADMIN_SECRET         gates badge grants
+#   GA_API_SECRET        optional; GA4 Measurement Protocol secret for launcher
+#                        statistics. Unset means none are forwarded.
+#   ACHIEVEMENT_PRIVATE_KEY  JWK of the achievement-grant key (never rotated
+#   ACHIEVEMENT_PUBLIC_JWK   with ED25519_*; see src/achievements/grant.ts)
 #   VIRUSTOTAL_API_KEY   optional; looks up a mod's declared hash. Unset means
 #                        listings read "unscanned", which is true, rather than
 #                        defaulting to "clean", which would not be

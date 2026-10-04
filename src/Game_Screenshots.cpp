@@ -1,4 +1,6 @@
 #include "Game.h"
+#include "net/Host.h"
+#include "net/Lobby.h"
 #include "TouchKeyboard.h"
 #include <ctime>
 #include "Game_Gdtl.h"
@@ -53,6 +55,8 @@ const Shot SHOTS[] = {
     // from the game to anywhere else and a wrong one is invisible until a
     // player presses it.
     {"community",     30, false},
+    // The achievement collection, with its "closest to unlocking" strip.
+    {"achievements",  30, false},
     // The opening conversation, where it actually plays: on the menu,
     // with no world under it.
     {"menu-intro",   150, false},
@@ -305,6 +309,12 @@ const Shot SHOTS[] = {
     // see "goods" below. Leaves nothing behind, so placement does not matter.
     {"goods",         20, true},
     {"goods-factory", 20, true},
+    // The multiplayer lobby as a host sees it with players seated and a voice
+    // link offered, and the country picker over it: search, list and the
+    // host's own map. A NetHost that is never opened -- no socket, no account --
+    // with members admitted by hand, so the shot needs nothing but a world.
+    {"mp-lobby",      30, true},
+    {"mp-picker",     30, true},
     // The keyboard the game draws for itself, which on Android is the only one
     // there is. Last two, because it is switched on for the shot and stays on.
     {"keyboard",      20, false},
@@ -692,6 +702,10 @@ bool Game::tickScreenshotTour() {
             m_currentScreen = SCREEN_MENU;
         } else if (name == "community") {
             m_currentScreen = SCREEN_COMMUNITY;
+        } else if (name == "achievements") {
+            m_achBack = SCREEN_MENU;
+            m_achScroll = 0;
+            m_currentScreen = SCREEN_ACHIEVEMENTS;
         } else if (name == "menu-intro") {
             m_currentScreen = SCREEN_MENU;
             m_inSettings = false;
@@ -1263,7 +1277,37 @@ bool Game::tickScreenshotTour() {
             m_activeSidebarTab = 2;
             m_inEconomy = true;
             m_turnState = TURN_NORMAL;
+        } else if (name == "mp-lobby" || name == "mp-picker") {
+            m_inEconomy = m_inPolitics = m_inResearch = false;
+            m_mailOpen = m_reportOpen = m_devReportsOpen = false;
+            m_ratingPromptOpen = m_feedbackOpen = false;
+            if (m_dialogOpen) endDialogue();
+            if (!m_netHost) {
+                m_netHost = new NetHost();
+                Lobby& lobby = m_netHost->lobby();
+                // Three people and a watcher. Admitted as the official issuer
+                // would vouch for them, which is all admit() asks.
+                lobby.admit(2, "psid_shot_neptune", "Kaiserin Neptune", "", "", true);
+                lobby.admit(3, "psid_shot_exodus", "OPERATION NEW EXODUS", "", "", true);
+                lobby.admit(4, "psid_shot_weimar", "Weimar1920", "", "", true);
+                mpPublishCountries();
+                if (m_playableCountryIds.size() > 6) {
+                    lobby.claimCountry(2, (uint16_t)m_playableCountryIds[3]);
+                    lobby.claimCountry(3, (uint16_t)m_playableCountryIds[6]);
+                }
+            }
+            m_mpVoiceLink = "https://discord.gg/opendoctrines";
+            openMultiplayerMenu();
+            m_mpPage = MpPage::Lobby;
+            m_mpPickingCountry = (name == "mp-picker");
+            m_mpCountrySearch = m_mpPickingCountry ? "a" : "";
+            m_mpFocus = m_mpPickingCountry ? 10 : -1;
         } else if (name == "keyboard") {
+            // The lobby shots leave a host that was never opened; it is not
+            // this shot's, and a book written beside the tour's save would be.
+            if (m_netHost) { delete m_netHost; m_netHost = nullptr; }
+            m_mpPickingCountry = false;
+            m_mpVoiceLink.clear();
             // On the join screen, where the thing being typed is an invite
             // code -- the one piece of text every multiplayer player has to
             // enter, and the reason a phone needed a keyboard at all.

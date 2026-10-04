@@ -281,6 +281,7 @@ export class LobbyDO extends DurableObject<Env> {
         const url = new URL(request.url);
         switch (url.pathname) {
             case "/init": return this.handleInit(request);
+            case "/reopen": return this.handleReopen(request);
             case "/info": return this.handleInfo();
             case "/ws": return this.handleUpgrade(request);
             case "/turn": return this.handleTurn(request, url);
@@ -318,7 +319,7 @@ export class LobbyDO extends DurableObject<Env> {
             return new Response(JSON.stringify({ error: "session_exists" }), { status: 409 });
         }
         const body = await request.json<{
-            descriptor: string; settings: SessionSettings; hostPsid: string;
+            descriptor: string; settings: SessionSettings; hostPsid: string; srv?: string;
         }>();
         this.set("descriptor", body.descriptor);
         this.set("settings", JSON.stringify(body.settings));
@@ -327,8 +328,68 @@ export class LobbyDO extends DurableObject<Env> {
         // who knows the join code -- which is everyone who was invited -- and
         // a player could take it before the real host connected.
         this.set("hostPsid", body.hostPsid);
+        // The server this code belongs to, for good. /reopen checks it, and it
+        // is what stops anybody else's server from taking a code over.
+        const srv = body.srv ?? this.descriptorClaims()?.srv;
+        if (srv) this.set("srv", srv);
         this.set("createdAt", String(Date.now()));
         this.set("nextPeerId", "1");
+        return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json" },
+        });
+    }
+
+    /**
+     * Renew a session under the code it already has.
+     *
+     * WHY THE CODE HAS TO SURVIVE. Players keep the join code in a server list,
+     * and a long-form session's turns and orders are keyed by it. Issuing a
+     * fresh code every time a dedicated host restarts broke every saved entry
+     * and orphaned the tournament it had been running. The descriptor also
+     * expires after a day, so a host that runs for weeks calls this to renew
+     * it before /ticket starts refusing joins.
+     *
+     * ONLY THE SERVER THAT OPENED IT. The Worker has already checked that the
+     * caller owns `srv`; this checks that `srv` is the server this code was
+     * created for. Anyone else's reopen is refused, and the Worker issues them
+     * a fresh code instead -- a code is not something a second operator can
+     * squat on by knowing it.
+     *
+     * A SOFT RENEWAL. Nothing stored is deleted, and nobody connected is
+     * disconnected: the descriptor and settings are replaced and that is all.
+     * The host slot does not move either -- `hostPsid` is HMAC(owner, srv), and
+     * one srv has exactly one owner, so the value could only be rewritten with
+     * itself.
+     */
+    private async handleReopen(request: Request): Promise<Response> {
+        if (!this.get("descriptor")) return this.noSession();
+        const body = await request.json<{
+            descriptor: string; settings: SessionSettings; srv: string;
+        }>();
+
+        // Sessions opened before `srv` was stored still carry it inside their
+        // own descriptor, which we signed.
+        const owner = this.get("srv") ?? this.descriptorClaims()?.srv ?? null;
+        if (!owner || owner !== body.srv) return blobFail(403, "not_your_session");
+
+        this.set("srv", owner);
+        this.set("descriptor", body.descriptor);
+        this.set("settings", JSON.stringify(body.settings));
+
+        // A host that is reopening is a host that is back. If it is not on the
+        // relay yet, restart its grace from now, measured by the settings it
+        // has just sent -- a session switched to or from long-form must not
+        // keep the other mode's deadline.
+        const hostHere = this.ctx.getWebSockets().some((ws) => {
+            const peer = this.attachment(ws);
+            return peer?.authed && peer.role === "host";
+        });
+        if (!hostHere && this.get("hostGoneAt")) {
+            const graceMs = body.settings.longForm === true ? LONGFORM_IDLE_MS : HOST_GRACE_MS;
+            this.set("hostGoneAt", String(Date.now()));
+            this.set("hostGraceMs", String(graceMs));
+            await this.armAlarm(Date.now() + graceMs);
+        }
         return new Response(JSON.stringify({ ok: true }), {
             headers: { "content-type": "application/json" },
         });
@@ -976,8 +1037,14 @@ export class LobbyDO extends DurableObject<Env> {
         }
 
         // Long-form: KEEP EVERYTHING. The host coming back next week to process
-        // a turn is the design, not an anomaly. Re-arm so a truly abandoned
-        // session is still reclaimed eventually.
+        // a turn is the design, not an anomaly.
+        //
+        // NOTHING HERE EVER DELETES ONE. This branch is reached again by the
+        // re-arm below, and it keeps again; a long-form session outlives
+        // LONGFORM_IDLE_MS rather than ending at it. Deleting here would need
+        // a notion of "idle" that counts turn writes and /reopen, not only the
+        // host's socket -- a relay-less host publishing a turn a day never
+        // connects at all, and would lose its tournament on day ninety.
         await this.ctx.storage.setAlarm(Date.now() + LONGFORM_IDLE_MS);
     }
 }

@@ -374,6 +374,19 @@ void WsServer::Impl::progressHandshake(Conn& c) {
 
     WsUpgradeRequest req;
     if (!wsParseUpgrade(c.handshake, req)) {
+        // ── A HEALTH CHECK IS NOT A STRANGER ──
+        //
+        // A server on a hosting platform is probed with a plain GET -- the
+        // platform's health check, an uptime pinger keeping a free instance
+        // awake -- and answering those with 400 reads as a broken service to
+        // both. A GET for "/healthz" with no upgrade gets a small 200;
+        // it says nothing about the game but that the process is answering.
+        if (wsIsHealthCheck(c.handshake)) {
+            const std::string okText = wsHealthResponse();
+            c.out.assign(okText.begin(), okText.end());
+            c.closing = true;
+            return;
+        }
         // A browser, a port scanner, a stray HTTPS probe. Answer once, plainly,
         // and close -- never fall through into framing.
         const std::string bad = wsUpgradeResponse(WsUpgradeRequest{});

@@ -41,6 +41,10 @@ def main():
         return 1
 
     built = set(re.findall(r"\b([A-Z]\w*Test)\b", src[start:end]))
+    # A test that cannot build everywhere (POSIX-only, say) is built on its
+    # own line inside its platform guard: `--target Socks5Test` alone. That
+    # is a build too.
+    built |= set(re.findall(r"--target\s+([A-Z]\w*Test)\b", src))
     run = set(re.findall(r'"\$bin/([A-Z]\w*Test)"', src))
 
     missing = sorted(run - built)
