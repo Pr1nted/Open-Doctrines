@@ -29,6 +29,7 @@
 // without moving or resizing anything.
 
 #include <algorithm>
+#include <cstdint>   // uint32_t -- GCC 13 no longer brings it in transitively
 #include <string>
 #include <vector>
 

@@ -803,6 +803,10 @@ if(OD_ENABLE_MODS)
             EXCLUDE_FROM_ALL          # keep WAMR's install() rules out of ours
             PATCH_COMMAND ${CMAKE_COMMAND} -DWAMR_SRC=<SOURCE_DIR>
                           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wamr_fast_interp_metering.cmake
+                  # Windows on Arm64 gets AAPCS64 argument packing, not the x64
+                  # rules WAMR applies to every _WIN32. See the script.
+                  COMMAND ${CMAKE_COMMAND} -DWAMR_SRC=<SOURCE_DIR>
+                          -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wamr_windows_arm64_abi.cmake
         )
         FetchContent_MakeAvailable(wamr)
 

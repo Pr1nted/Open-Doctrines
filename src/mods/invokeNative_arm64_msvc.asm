@@ -27,6 +27,12 @@
 ;   argv[8..15]  -> x0-x7   (argv[8] is the exec_env)
 ;   argv[16..]   -> stack
 ;
+; ONLY WITH cmake/wamr_windows_arm64_abi.cmake APPLIED. Upstream WAMR packs the
+; buffer with the Windows x64 rules (4+4 registers, by position) on every
+; _WIN32, Arm64 included; unpatched, argv[8] is the first stack argument and
+; every host call that reads its exec_env crashes. The patch makes Windows on
+; Arm64 pack for AAPCS64, which is what this routine and Windows both expect.
+;
 ; Assembled by CMakeLists.txt with armasm64.exe and linked into WAMR's vmlib.
 ; Copyright of the original: Intel Corporation, Apache-2.0 WITH LLVM-exception.
 ;
