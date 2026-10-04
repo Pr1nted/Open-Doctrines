@@ -1,0 +1,17 @@
+{
+  "$comment": "The Tor Expert Bundle releases carry, pinned by checksum. tools/fetch_tor.py refuses any archive whose sha256 is not the one here. To update: take the new version's sha256sums-signed-build.txt from dist.torproject.org (it is signed by the Tor Browser team; check the signature), copy the tor-expert-bundle lines, bump version.",
+  "version": "15.0.24",
+  "url": "https://dist.torproject.org/torbrowser/{version}/tor-expert-bundle-{platform}-{version}.tar.gz",
+  "sha256": {
+    "android-aarch64": "2a7a02484149b05f64b582a4a1e8eb8aabb9f6cd32daca4e03c58e09839bb7a8",
+    "android-armv7": "9416f72b9cd31eda0f7f5a1fa3e2eec789b88b8160e20f5d690bc4ba8c29811e",
+    "android-x86": "32532b4250d5823f07ac2d88197908c1d11ffa015354144d295ee64302107917",
+    "android-x86_64": "500d51006f1938dfd5ecd0653b0d2a156feff8a4dc5e2b61b81793d47854fc90",
+    "linux-i686": "7537fea3478d05b8af25d7f8199c031b281f7015c32bb4177bef71f8e5100d9b",
+    "linux-x86_64": "8e012ec6815d7899cb64011582e2dade88e74119c6661068a2a3252de0ccd7f2",
+    "macos-aarch64": "d47afd04b6c751129978390ad003d74ac8b88adfbb939350f0f89999e6570644",
+    "macos-x86_64": "8acb0b590f6be34084dcb6d84009ac0c61cc7c5261b7a19d2ab94845aa9bd5b6",
+    "windows-i686": "7c2755b09876ebc6c2e2d2d1d3279b2be3e9beec35ff0ca2e7df4c1abcad1ae4",
+    "windows-x86_64": "e9dc6ccc93cd6afa507193f4de284d6424233ff5102155cd2c94b259e8a22b65"
+  }
+}
