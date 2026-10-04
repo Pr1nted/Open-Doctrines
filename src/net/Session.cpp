@@ -29,6 +29,21 @@ long long sessionKeepaliveSeconds() {
     return s;
 }
 
+/// The protocol version this client claims in its hello. Settable for one test
+/// only, OD_NET_CLAIM_PROTOCOL, to stand in for an older build: a real old
+/// client cannot be run against a mock account service, and the refusal it
+/// gets is the thing worth proving. Nothing in the game sets it.
+long long claimedProtocol() {
+    static const long long v = [] {
+        if (const char* s = getenv("OD_NET_CLAIM_PROTOCOL")) {
+            const long long n = atoll(s);
+            if (n > 0) return n;
+        }
+        return (long long)kNetProtocolVersion;
+    }();
+    return v;
+}
+
 long long nowSeconds() {
     return (long long)std::chrono::duration_cast<std::chrono::seconds>(
                std::chrono::system_clock::now().time_since_epoch()).count();
@@ -434,7 +449,7 @@ void NetSession::Impl::answerChallenge(const std::string& challenge) {
             // match theirs, are both better refused here with a reason than
             // discovered as a desync three turns in.
             pendingHello = "{\"ticket\":\"" + httpJsonEscape(ticket) + "\"" +
-                           ",\"protocol\":" + std::to_string(kNetProtocolVersion) +
+                           ",\"protocol\":" + std::to_string(claimedProtocol()) +
                            ",\"mods\":\"" + httpJsonEscape(modAttestation) + "\"}";
         }
     };
@@ -615,8 +630,31 @@ void NetSession::update() {
         return;
     }
 
+    // Every frame that has arrived, handled in order. Called on a CLOSED
+    // socket too: see below.
+    auto drainFrames = [&] {
+        std::vector<uint8_t> frame;
+        while (impl.socket.poll(frame)) {
+            NetMsg type;
+            const uint8_t* body = nullptr;
+            size_t size = 0;
+            // A frame we cannot decode is dropped, not fatal: a newer server may
+            // send something this build predates, and disconnecting over it would
+            // make every protocol addition a breaking change.
+            if (!netDecodeFrame(frame.data(), frame.size(), type, body, size)) continue;
+            impl.handleFrame(type, body, size);
+        }
+    };
+
     if (ws == WsState::Closed &&
         p != Phase::Fetching && p != Phase::Minting) {
+        // READ WHAT CAME BEFORE THE CLOSE. A host refuses with a Reject and
+        // then closes, and both usually arrive in one read -- so the socket is
+        // already Closed here with the Reject still queued behind it. Deciding
+        // first reported every refusal (wrong version, wrong mods, bad ticket)
+        // as "the connection to that server was lost", and the check below for
+        // an already-explained close could never see its explanation.
+        drainFrames();
         const std::string err = impl.socket.error();
         bool alreadyExplained;
         {
@@ -635,17 +673,7 @@ void NetSession::update() {
         return;
     }
 
-    std::vector<uint8_t> frame;
-    while (impl.socket.poll(frame)) {
-        NetMsg type;
-        const uint8_t* body = nullptr;
-        size_t size = 0;
-        // A frame we cannot decode is dropped, not fatal: a newer server may
-        // send something this build predates, and disconnecting over it would
-        // make every protocol addition a breaking change.
-        if (!netDecodeFrame(frame.data(), frame.size(), type, body, size)) continue;
-        impl.handleFrame(type, body, size);
-    }
+    drainFrames();
 }
 
 void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size) {

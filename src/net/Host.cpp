@@ -27,6 +27,10 @@ constexpr int kOpenTimeoutMs = 20000;
 // that opening sockets and saying nothing costs an attacker something.
 constexpr long long kAuthTimeoutSeconds = 30;
 
+/// How long a refused connection stays open after its Reject. See
+/// closeAfterRefusal.
+constexpr long long kRefusalLingerSeconds = 2;
+
 long long nowSeconds() {
     return std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -275,6 +279,25 @@ struct NetHost::Impl {
     void dropPending(WsConnId c) {
         for (size_t i = pending.size(); i-- > 0;)
             if (pending[i].conn == c) pending.erase(pending.begin() + static_cast<long>(i));
+    }
+
+    /**
+     * Stop listening to a connection that has just been sent a Reject, and
+     * close it a moment LATER rather than now.
+     *
+     * Closing at once put the close frame in the same read as the Reject, and
+     * every client up to and including 1.2.2a checks for a closed socket before
+     * it reads what is queued -- so the refusal was never read, and the player
+     * was told "the connection to that server was lost" instead of why. Newer
+     * clients read the queue first; 1.2.2a cannot be changed, and a protocol
+     * refusal is precisely the message it most needs to read. Frames from the
+     * connection meanwhile are ignored: it is no longer pending or seated.
+     */
+    struct Refused { WsConnId conn; long long closeAt; const char* why; };
+    std::vector<Refused> refused;
+    void closeAfterRefusal(WsConnId c, const char* why) {
+        dropPending(c);
+        refused.push_back({c, nowSeconds() + kRefusalLingerSeconds, why});
     }
     WsConnId connFor(uint16_t peerId) const {
         for (const Seated& s : seated) if (s.peerId == peerId) return s.conn;
@@ -684,8 +707,7 @@ void NetHost::Impl::seatPeer(WsConnId conn, const std::string& psid,
         // identical from here, and only one of them is the host's to fix.
         push({NetHostEvent::Kind::JoinRefused, 0,
               name.empty() ? std::string("Someone") : name, {}});
-        closePeer(conn, "refused");
-        dropPending(conn);
+        closeAfterRefusal(conn, "refused");
         return;
     }
 
@@ -977,8 +999,7 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
               "; this server speaks " + std::to_string(kNetProtocolVersion) +
               ". Whichever of you is older needs to update.";
         sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        closePeer(conn, "protocol");
-        dropPending(conn);
+        closeAfterRefusal(conn, "protocol");
         return;
     }
 
@@ -995,8 +1016,7 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
             r.reason = NetReject::ModMismatch;
             r.text = verdict.summary();
             sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-            closePeer(conn, "mods");
-            dropPending(conn);
+            closeAfterRefusal(conn, "mods");
             return;
         }
     }
@@ -1015,8 +1035,7 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         r.reason = NetReject::Unknown;
         r.text = "That sign-in could not be verified. Try joining again.";
         sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        closePeer(conn, "unverified");
-        dropPending(conn);
+        closeAfterRefusal(conn, "unverified");
         return;
     }
 
@@ -1026,8 +1045,7 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         r.reason = NetReject::Unknown;
         r.text = "That sign-in was already used. Try joining again.";
         sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
-        closePeer(conn, "replayed");
-        dropPending(conn);
+        closeAfterRefusal(conn, "replayed");
         return;
     }
 
@@ -1128,6 +1146,11 @@ void NetHost::Impl::handleDisconnected(WsConnId conn) {
 
 void NetHost::Impl::expirePending() {
     const long long now = nowSeconds();
+    for (size_t i = refused.size(); i-- > 0;) {
+        if (now < refused[i].closeAt) continue;
+        closePeer(refused[i].conn, refused[i].why);
+        refused.erase(refused.begin() + static_cast<long>(i));
+    }
     for (size_t i = pending.size(); i-- > 0;) {
         if (now - pending[i].since <= kAuthTimeoutSeconds) continue;
         closePeer(pending[i].conn, "no ticket");

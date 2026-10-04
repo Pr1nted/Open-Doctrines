@@ -157,6 +157,9 @@ run_case party || fail=1
 step "a mismatched mod set is refused"
 run_case mods || fail=1
 
+step "a client from the previous protocol version is refused, and told why"
+run_case protocol || fail=1
+
 step "a ticket the host cannot verify is refused"
 run_case refuse --wrong-key || fail=1
 

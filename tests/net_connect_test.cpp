@@ -540,8 +540,62 @@ int testMods(const std::string& issuer) {
 
     check("a player without the host's mods is not admitted", !seen.welcomed,
           seen.welcomed ? "the host admitted a mismatched world" : "");
+    // The REASON, not just "rejected": a connection lost after the refusal
+    // also arrives as Rejected, and for a while every refusal did -- the
+    // client checked for the close before it read the Reject queued ahead of
+    // it. This check passed throughout.
     check("and is told, rather than just dropped",
-          settled && seen.rejected);
+          settled && seen.rejected &&
+              session.rejectReason() == NetReject::ModMismatch,
+          std::string(netRejectName(session.rejectReason())) + ": " + session.error());
+    size_t others = 0;
+    for (const NetPeer& p : host.lobby().roster())
+        if (p.peerId != host.lobby().hostPeerId()) others++;
+    check("nobody new is seated", others == 0,
+          "roster has " + std::to_string(others) + " besides the host");
+
+    host.close();
+    return 0;
+}
+
+/**
+ * A client from the previous protocol version, against this host.
+ *
+ * The version is bumped when builds stop being able to play together, and
+ * the whole value of the bump is the refusal: an old client must be told why,
+ * not dropped and not admitted. The session claims the version below ours
+ * through OD_NET_CLAIM_PROTOCOL, the one thing about an old build's hello
+ * that differs -- the hello and the refusal are otherwise unchanged since
+ * 1.2.2a. Its own process (each mode is one), so the claim reaches nobody else.
+ */
+int testProtocol(const std::string& issuer) {
+    printf("\n=== a client from the previous protocol version ===\n");
+    const std::string older = std::to_string((int)kNetProtocolVersion - 1);
+#if defined(_WIN32)
+    _putenv_s("OD_NET_CLAIM_PROTOCOL", older.c_str());
+#else
+    setenv("OD_NET_CLAIM_PROTOCOL", older.c_str(), 1);
+#endif
+
+    NetHost host;
+    Seen seen;
+    if (!openHost(host, issuer, seen)) return 1;
+
+    NetSession session;
+    const std::string address = "127.0.0.1:" + std::to_string(host.listenPort());
+    session.join(address, issuer, host.code(), "mock-session-token", "test", "");
+
+    const bool settled = pumpUntil(&host, &session, [&] {
+        drain(&host, &session, seen);
+        return seen.welcomed || seen.rejected || seen.disconnected;
+    });
+
+    check("an older protocol is not admitted", !seen.welcomed,
+          seen.welcomed ? "the host admitted version " + older : "");
+    check("and is told it is the version, not just dropped",
+          settled && seen.rejected &&
+              session.rejectReason() == NetReject::ProtocolVersion,
+          std::string(netRejectName(session.rejectReason())) + ": " + session.error());
     size_t others = 0;
     for (const NetPeer& p : host.lobby().roster())
         if (p.peerId != host.lobby().hostPeerId()) others++;
@@ -1429,7 +1483,7 @@ int main(int argc, char** argv) {
     // Unbuffered: if this crashes, the last line printed is the clue.
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
-        printf("usage: %s <issuer-url> <join|refuse|mods|party|quiet|idle|race|relay|live|host> [port] [--all]\n", argv[0]);
+        printf("usage: %s <issuer-url> <join|refuse|mods|protocol|party|quiet|idle|race|relay|live|host> [port] [--all]\n", argv[0]);
         return 2;
     }
     const std::string issuer = argv[1];
@@ -1440,6 +1494,7 @@ int main(int argc, char** argv) {
     if (mode == "join") testJoin(issuer);
     else if (mode == "refuse") testRefuse(issuer);
     else if (mode == "mods") testMods(issuer);
+    else if (mode == "protocol") testProtocol(issuer);
     else if (mode == "party") testParty(issuer);
     else if (mode == "live") testLive(issuer);
     else if (mode == "quiet") testQuiet(issuer);

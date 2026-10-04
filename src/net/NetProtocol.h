@@ -34,7 +34,15 @@
 // Bumped on any incompatible change. A mismatch is refused at HELLO with a
 // message naming both versions, because "connection closed" is a bad way to
 // learn you need to update.
-inline constexpr uint16_t kNetProtocolVersion = 1;
+//
+// 2 (after 1.2.2a): a deliberate line under 1.2.2a. Everything added since
+// was made additive -- ResyncRequest, the Ping keepalive, the world sent on
+// join -- so a 1.2.2a client could in principle have joined, but nothing
+// tests that pairing, and a release that changes this much gameplay is two
+// different games resolving one turn. Both builds already refuse a mismatch
+// at HELLO and name it, so the break is a clear message, not a desync.
+// Tested: NetConnectTest's `protocol` case claims the old version.
+inline constexpr uint16_t kNetProtocolVersion = 2;
 
 enum class NetMsg : uint16_t {
     // ---- client -> server -------------------------------------------------
