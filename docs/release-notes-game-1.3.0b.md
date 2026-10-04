@@ -88,6 +88,17 @@ of them things that only appear when the two ends are on different computers.
   playing each other, saves, mods and Android. Everything in this release went
   through it.
 
+## A launcher, if you want one
+
+Unifico 0.1.0 ships alongside this release, from its own repository
+(Pr1nted/Unifico). It installs the game and keeps it up to date, keeps several
+versions side by side, signs you in once, and keeps your worlds, mods, servers
+and achievements in one place. It also carries the TempleOS edition behind a
+single Play button.
+
+It is optional and the game does not know or care whether it was started from
+there. The plain download has not moved, and on itch both are on the same page.
+
 ## Still not done
 
 - The AI does not build monuments.
