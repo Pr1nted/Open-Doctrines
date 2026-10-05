@@ -89,4 +89,50 @@ client() {
 hexof() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
 
 # Resident memory of a pid in megabytes, from ps (both macOS and Linux).
-rss_mb() { ps -o rss= -p "$1" 2>/dev/null | awk '{printf "%d", $1 / 1024}'; }
+# Windows is not a POSIX box wearing a bash prompt, and these two helpers are
+# where that stops being a detail. Both campaign tests and the soak ran here for
+# the first time once the odseal prebuilts landed and the windows-x86 and
+# windows-arm64 jobs got past configure; both failed, for reasons that are
+# about the harness rather than the server.
+od_is_windows() {
+    case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac
+}
+
+# RESIDENT SIZE. `ps -o rss=` is MSYS's own ps, which does not report rss for a
+# NATIVE Windows process -- it returns nothing at all, so the soak printed
+# "memory did not keep climbing (warm  MB, now  MB)" with both numbers empty and
+# then failed on the arithmetic. PowerShell can answer for a real Windows
+# process, but only if asked by the WINDOWS pid, which is not the pid bash
+# holds; `ps -W` is what maps one to the other. Empty output is left empty, and
+# the callers decide what an unmeasurable number means.
+rss_mb() {
+    local v
+    v="$(ps -o rss= -p "$1" 2>/dev/null | awk '{printf "%d", $1 / 1024}')"
+    if [ -z "$v" ] && od_is_windows; then
+        local winpid
+        winpid="$(ps -W 2>/dev/null | awk -v p="$1" '$1 == p { print $4; exit }')"
+        [ -n "$winpid" ] && v="$(powershell.exe -NoProfile -Command \
+            "try { [int]((Get-Process -Id $winpid).WorkingSet64/1MB) } catch { '' }" \
+            2>/dev/null | tr -d '\r')"
+    fi
+    printf '%s' "$v"
+}
+
+# A POLITE STOP, by whatever the platform actually has.
+#
+# `kill -TERM` to a native Windows process is not a signal: MSYS calls
+# TerminateProcess, which nothing can catch, so the handler installed by
+# signal(SIGTERM, ...) never runs and the process dies with 143 however well
+# the server is written. The server's own `stop` command -- "save and shut the
+# server down" -- does the same work through the command file, which these
+# tests have already proved is read. The property under test is the same
+# either way: a polite stop writes everything and exits 0.
+#
+# $1 = pid, $2 = the commands file the server is watching.
+od_stop_server() {
+    if od_is_windows && [ -n "${2:-}" ]; then
+        printf 'stop\n' >> "$2"
+    else
+        kill -TERM "$1"
+    fi
+}

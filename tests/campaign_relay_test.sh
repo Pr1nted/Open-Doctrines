@@ -42,8 +42,8 @@ relayed dev-bob --seconds 20 --until TURN > "$work/bob3.log" 2>&1
 check "Bob gets back in through it, to his country" "grep -q '^ROSTER me=$bob_cid ' '$work/bob3.log'" \
       "$(cat "$work/bob3.log" | tail -3)"
 
-kill -TERM "$server_pid"; wait "$server_pid"; rc=$?
-check "SIGTERM stops it cleanly" "[ '$rc' -eq 0 ]" "exit $rc"
+od_stop_server "$server_pid" "$work/commands.txt"; wait "$server_pid"; rc=$?
+check "a polite stop exits cleanly" "[ '$rc' -eq 0 ]" "exit $rc"
 echo
 if [ "$fail" = 0 ]; then echo "campaign relay: all checks passed"; else echo "campaign relay: FAILED"; fi
 exit "$fail"
