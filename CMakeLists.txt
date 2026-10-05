@@ -154,6 +154,29 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # arithmetic on pointers (audited for this port).
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     add_link_options(/LARGEADDRESSAWARE)
+
+    # SAFESEH OFF, ON 32-BIT WINDOWS ONLY, BECAUSE WAMR HAS HAND-WRITTEN ASM.
+    #
+    # Safe SEH is a 32-bit-only mitigation: the linker collects every exception
+    # handler into a table the loader validates against, and refuses any object
+    # that does not declare one. WAMR's invokeNative_ia32.asm is hand-written
+    # and declares nothing, so the link ends at
+    #
+    #   iwasm.lib(invokeNative_ia32.obj) : error LNK2026: module unsafe for
+    #       SAFESEH image
+    #   OpenDoctrines.exe : fatal error LNK1281: Unable to generate SAFESEH image
+    #
+    # This is why no release has ever carried a windows-x86 build: 1.2.2a
+    # shipped win64 and nothing else, and the platform added in #12 was stopped
+    # at configure by a missing odseal prebuilt until that was fixed, so the
+    # link was never reached to fail.
+    #
+    # WHAT IT COSTS, honestly: 32-bit x86 loses the SEH-handler check. Nothing
+    # else does -- x64 and Arm64 use table-driven SEH, where the data is in the
+    # binary's own unwind tables and there is no flag to turn off. The
+    # alternative was building 32-bit Windows without mods at all, which trades
+    # a mitigation nobody else has for a feature everybody else has.
+    add_link_options(/SAFESEH:NO)
 endif()
 
 # 32-BIT LINUX GETS 64-BIT FILE OFFSETS, the standard flag every 32-bit build
