@@ -784,6 +784,64 @@ void testModMessages() {
 
 }  // namespace
 
+// Letters on the wire, and the session facts that say who answers them.
+void testMail() {
+    printf("\n-- mail --\n");
+    NetMail m;
+    m.op = NetMail::Op::Edit;
+    m.id = 70000;
+    m.fromCountry = 12;
+    m.toCountry = 345;
+    m.body = "Withdraw from the border, or we will.";
+    m.writtenTurn = 9;
+    m.deliverTurn = 10;
+    m.status = 1;
+    m.author = 1;
+    m.authorName = "Brazil";
+    m.history = true;
+    const std::vector<uint8_t> bytes = m.encode();
+    NetMail back;
+    check("a letter round-trips", NetMail::decode(bytes.data(), bytes.size(), back) &&
+          back.op == m.op && back.id == m.id && back.fromCountry == 12 &&
+          back.toCountry == 345 && back.body == m.body && back.writtenTurn == 9 &&
+          back.deliverTurn == 10 && back.status == 1 && back.author == 1 &&
+          back.authorName == "Brazil" && back.history);
+
+    NetMail big = m;
+    big.body = std::string(2001, 'x');
+    const auto bigBytes = big.encode();
+    check("a body over the mail limit is refused on the way in",
+          !NetMail::decode(bigBytes.data(), bigBytes.size(), back));
+    std::vector<uint8_t> badOp = bytes;
+    badOp[0] = 9;
+    check("an operation nobody defined is refused",
+          !NetMail::decode(badOp.data(), badOp.size(), back));
+    NetMail badStatus = m;
+    badStatus.status = 7;
+    const auto bs = badStatus.encode();
+    check("so is a status nobody defined", !NetMail::decode(bs.data(), bs.size(), back));
+
+    // An older host sends version 1: a voice link and nothing else.
+    NetWriter v1;
+    v1.u8(1);
+    v1.str("https://discord.gg/abc");
+    const std::vector<uint8_t> old = v1.take();
+    NetSessionInfo info;
+    check("an older host's session info still reads",
+          NetSessionInfo::decode(old.data(), old.size(), info) &&
+          info.voiceLink == "https://discord.gg/abc" && !info.llmAnswers && info.mailPolicy == 3);
+    NetSessionInfo now;
+    now.llmAnswers = true;
+    now.mailPolicy = 1;
+    const auto nowBytes = now.encode();
+    check("and a newer one says whether its model answers, and its policy",
+          NetSessionInfo::decode(nowBytes.data(), nowBytes.size(), info) &&
+          info.llmAnswers && info.mailPolicy == 1);
+    check("the two message ids are named",
+          std::string(netMsgName(NetMsg::Mail)) == "Mail" &&
+          std::string(netMsgName(NetMsg::MailFrom)) == "MailFrom");
+}
+
 int main() {
     printf("net protocol\n");
     testPrimitives();
@@ -799,6 +857,7 @@ int main() {
     testWorldSync();
     testSignalling();
     testModMessages();
+    testMail();
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

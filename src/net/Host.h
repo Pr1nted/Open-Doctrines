@@ -46,6 +46,7 @@ struct NetHostEvent {
         OrdersReceived,
         Chat,
         PlayerReport,    // somebody told the host about somebody else
+        Mail,            // a player's letter; `mail`, with peerId the writer
         JoinRefused,     // somebody tried and was turned away; text says why
         /**
          * A player says they have lost track of the world and wants it again.
@@ -65,6 +66,7 @@ struct NetHostEvent {
     std::string text;
     NetChat     chat;
     NetPlayerReport report;
+    NetMail         mail;
 };
 
 class NetHost {
@@ -300,6 +302,8 @@ public:
      * This is what the dedicated server's `say` command sends.
      */
     void sendChat(const std::string& text);
+    /** A letter for one player, and nobody else. See NetMsg::MailFrom. */
+    void sendMail(uint16_t peerId, const NetMail& m);
 
     void kick(uint16_t peerId, const std::string& reason);
 

@@ -29,6 +29,8 @@
 //                   [--submit | --submit-after SECONDS] [--marker TEXT]
 //                   [--seconds N] [--until "<line prefix>"]
 //                   [--tor-port N | --tor-data DIR] [--tor-all]
+//                   [--mail-to CID | --mail-to-index N] [--mail-body TEXT] [--secret TEXT]
+//                   [--chat TEXT]...
 //
 // --until stops as soon as a line starting with that text is printed, so a
 // script can wait for a specific moment without sleeping for a guessed time.
@@ -39,6 +41,7 @@
 #include "net/Socks5.h"
 #include "net/TorClient.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -74,6 +77,9 @@ int main(int argc, char** argv) {
     int claim = 0, claimIndex = -1;
     bool claimFirst = false, submit = false;
     double seconds = 30.0;
+    int mailTo = 0, mailToIndex = -1;  // write one letter to this country, once in game
+    std::string mailBody, secret;      // secret: report whether a snapshot carries it
+    std::vector<std::string> chatLines;
     double submitAfter = 0.0;      // seconds after a turn opens; a late player
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -93,6 +99,11 @@ int main(int argc, char** argv) {
         else if (a == "--tor-port") socks5::setPort(std::atoi(next().c_str()));
         else if (a == "--tor-all") socks5::setRouteAll(true);
         else if (a == "--tor-data") torclient::setDataDir(next());  // start <dir>/tor/tor if no Tor answers
+        else if (a == "--mail-to") mailTo = std::atoi(next().c_str());
+        else if (a == "--mail-to-index") mailToIndex = std::atoi(next().c_str());
+        else if (a == "--mail-body") mailBody = next();
+        else if (a == "--secret") secret = next();
+        else if (a == "--chat") chatLines.push_back(next());   // said once in, in order
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
     }
     if (issuer.empty() || code.empty() || token.empty()) {
@@ -112,6 +123,9 @@ int main(int argc, char** argv) {
 
     const auto start = std::chrono::steady_clock::now();
     uint16_t me = 0;
+    bool mailSent = false;
+    size_t chatSent = 0;
+    double chatAt = 0.0;
     bool claimed = false;
     uint32_t submittedFor = 0, ackedFor = 0;
     uint32_t pendingTurn = 0;
@@ -136,6 +150,8 @@ int main(int argc, char** argv) {
                 case NetSessionEvent::Kind::CountriesKnown: {
                     const auto list = session.countries();
                     say("COUNTRIES n=" + std::to_string(list.size()));
+                    if (mailToIndex >= 0 && mailToIndex < (int)list.size())
+                        mailTo = list[(size_t)mailToIndex].id;
                     if (!claimed && (claim || claimFirst || claimIndex >= 0) && !list.empty()) {
                         uint16_t id = list.front().id;
                         if (claim) id = (uint16_t)claim;
@@ -160,7 +176,23 @@ int main(int argc, char** argv) {
                 }
                 case NetSessionEvent::Kind::SessionInfoKnown:
                     say("VOICE " + session.sessionInfo().voiceLink);
+                    say(std::string("SESSION llm=") + (session.sessionInfo().llmAnswers ? "1" : "0") +
+                        " policy=" + std::to_string(session.sessionInfo().mailPolicy));
                     break;
+                case NetSessionEvent::Kind::Chat:
+                    say("CHAT from=" + std::to_string(e.chat.fromPeerId) + " " + e.chat.text);
+                    break;
+                case NetSessionEvent::Kind::Mail: {
+                    const NetMail& m = e.mail;
+                    if (m.op == NetMail::Op::Reset) { say("MAILRESET"); break; }
+                    // BOTMAIL for the model's letters, so a script can wait for
+                    // one with --until.
+                    say(std::string(m.status == 2 ? "MAILREFUSED" : m.author == 1 ? "BOTMAIL" : "MAIL") +
+                        " from=" + std::to_string(m.fromCountry) + " to=" + std::to_string(m.toCountry) +
+                        " history=" + (m.history ? "1" : "0") + " status=" + std::to_string(m.status) +
+                        " body=" + m.body);
+                    break;
+                }
                 case NetSessionEvent::Kind::TurnBegan:
                     say("TURN " + std::to_string(e.turnNumber) +
                         " deadline_ms=" + std::to_string(e.deadlineMs));
@@ -172,7 +204,11 @@ int main(int argc, char** argv) {
                     break;
                 case NetSessionEvent::Kind::Snapshot:
                     say("SNAPSHOT turn=" + std::to_string(e.turnNumber) +
-                        " bytes=" + std::to_string(e.payload.size()));
+                        " bytes=" + std::to_string(e.payload.size()) +
+                        (secret.empty() ? std::string()
+                         : std::string(" secret=") +
+                           (std::search(e.payload.begin(), e.payload.end(), secret.begin(),
+                                        secret.end()) != e.payload.end() ? "1" : "0")));
                     break;
                 case NetSessionEvent::Kind::Delta:
                     say("DELTA turn=" + std::to_string(e.turnNumber));
@@ -192,6 +228,17 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Lines to say, one every 2.5 s -- inside the host's rate limit, so
+        // every one of them must arrive.
+        if (chatSent < chatLines.size() && me != 0 && elapsed >= chatAt &&
+            session.phase() == NetSession::Phase::Lobby) {
+            if (session.sendChat(chatLines[chatSent])) {
+                say("SAID " + chatLines[chatSent]);
+                ++chatSent;
+                chatAt = elapsed + 2.5;
+            }
+        }
+
         // A submission that was waiting for its moment.
         if (pendingTurn != 0 && elapsed >= pendingAt) {
             const std::string body = "{\"marker\":\"" + marker + "\"}";
@@ -204,6 +251,19 @@ int main(int argc, char** argv) {
         // The roster line, only when what it says changes.
         for (const NetPeer& p : session.roster()) {
             if (p.peerId != me || me == 0) continue;
+            // A letter, once, as soon as there is a game and a country to
+            // write from. Its id is ours; the host keeps its own.
+            if (!mailSent && mailTo > 0 && !mailBody.empty() && p.countryId &&
+                session.state() == NetSessionState::Game) {
+                NetMail m;
+                m.op = NetMail::Op::Send;
+                m.id = 1;
+                m.toCountry = (uint16_t)mailTo;
+                m.body = mailBody;
+                session.sendMail(m);
+                mailSent = true;
+                say("MAILSENT to=" + std::to_string(mailTo));
+            }
             const std::string line = "ROSTER me=" + std::to_string(p.countryId) +
                                      " submitted=" + (p.submitted ? "1" : "0") +
                                      " state=" + stateName(session.state()) +

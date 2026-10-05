@@ -1598,6 +1598,16 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
             broadcast(NetMsg::ChatFrom, c.encode());
             return;
         }
+        case NetMsg::Mail: {
+            NetMail m;
+            if (!NetMail::decode(payload, payloadSize, m)) return;
+            // Which country it is from is the seat's, not the sender's say.
+            m.fromCountry = 0;
+            NetHostEvent e{NetHostEvent::Kind::Mail, peerId, {}, {}, {}};
+            e.mail = std::move(m);
+            push(std::move(e));
+            return;
+        }
         case NetMsg::PlayerReport: {
             NetPlayerReport r;
             if (!NetPlayerReport::decode(payload, payloadSize, r)) return;
@@ -1869,6 +1879,11 @@ void NetHost::announceSubstitution(uint16_t countryId, NetSubstitution reason,
     n.reason = reason;
     n.text = text.empty() ? netSubstitutionReason(reason) : text;
     m_impl->broadcast(NetMsg::Notice, n.encode());
+}
+
+void NetHost::sendMail(uint16_t peerId, const NetMail& m) {
+    if (!peerId) return;
+    m_impl->toPeer(peerId, NetMsg::MailFrom, m.encode());
 }
 
 void NetHost::sendChat(const std::string& text) {

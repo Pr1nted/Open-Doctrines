@@ -112,6 +112,9 @@ GROUPS = [
         # Keeps that campaign in a private git repository, so the machine
         # hosting it can be switched off or replaced; host_campaign.sh calls it.
         "campaign_sync.sh",
+        # A fresh Linux VM (Oracle's free Arm box) into an always-on server
+        # with its own language model (docs/hosting-on-oracle.md).
+        "server_box.sh",
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",

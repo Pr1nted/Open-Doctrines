@@ -1,0 +1,138 @@
+# A dedicated server hosts a campaign with made-up players, and must not
+# break. See tests/campaign_week.py for what it checks.
+#
+# WHEN IT RUNS, AND FOR HOW LONG
+#
+# On a release tag (v*): ONE leg, about five hours, ten-minute turns. Power
+# cuts, relay drops, reconnects, session renewal, token refresh and memory
+# growth all happen many times inside that, so most of what a week would find
+# shows up in it. What it cannot see is anything that only goes wrong after
+# days: a 24-hour descriptor expiring, slow growth that crosses a limit on day
+# five.
+#
+# A full week is opt-in, by hand from the Actions tab (hours = 168). It is not
+# the default because it chains ~33 legs past the six-hour job limit -- about
+# 170 runner-hours -- and GitHub's terms let them call load like that
+# disproportionate. Testing the project is what Actions is for; occupying it
+# for a week on every release is a judgement call that is not ours to make.
+#
+# HOW A SIX-HOUR RUNNER HOSTS A LONGER GAME
+#
+# A GitHub-hosted job may run for six hours. So each job is one LEG: it builds
+# the server, downloads the campaign the previous leg left (the world, the
+# server's config, the harness's notes), plays about five hours of it, uploads
+# it, and dispatches the next leg. Between legs the server is simply gone for
+# a few minutes -- which is exactly the power cut the harness is testing for,
+# so the handover is part of the test rather than a gap in it.
+#
+# This is testing the project's own software, which is what Actions are for.
+# It is not, and must never become, a way to host real games.
+#
+# The chain stops on the first failed leg. The last leg's report.md is the
+# result, in the run summary and as an artifact.
+
+name: Week soak
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      prev_run:
+        description: "Run id of the previous leg (empty to start a new week)"
+        required: false
+        default: ""
+      hours:
+        description: "Total hours of the whole run (5.2 = one leg; 168 = a week, ~33 chained legs)"
+        required: false
+        default: "5.2"
+      turn_seconds:
+        description: "Turn length in seconds"
+        required: false
+        default: "600"
+
+permissions:
+  contents: read
+  actions: write        # to download the previous leg and dispatch the next
+
+concurrency:
+  group: week-soak
+  cancel-in-progress: false
+
+jobs:
+  leg:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PREV_RUN: ${{ github.event.inputs.prev_run }}
+      HOURS: ${{ github.event.inputs.hours || '5.2' }}
+      TURN_SECONDS: ${{ github.event.inputs.turn_seconds || '600' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxi-dev \
+                                  libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+                                  libxinerama-dev libwayland-dev libxkbcommon-dev
+
+      - name: Build the server and the scripted player
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target OpenDoctrinesServer CampaignClient -j 4
+
+      - name: The campaign the previous leg left
+        if: env.PREV_RUN != ''
+        run: |
+          gh run download "$PREV_RUN" -n week-state -D state
+          ls -la state state/data/saves || true
+
+      - name: Play this leg
+        id: play
+        run: |
+          set +e
+          # One leg is the week compressed, not the first five hours of it:
+          # at week rates it would see one power cut, and the player who is
+          # away most of a day would never come back inside it.
+          dense=()
+          if python3 -c "import sys; sys.exit(0 if float('$HOURS') <= 6 else 1)"; then
+            dense=(--kill-every 35 --relay-drop-every 25 --visit-every 12 --time-scale 0.15)
+          fi
+          python3 tests/campaign_week.py --build build --state state \
+              --hours "$HOURS" --leg-hours 5.2 --turn-seconds "$TURN_SECONDS" "${dense[@]}"
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          [ -f state/report.md ] && cat state/report.md >> "$GITHUB_STEP_SUMMARY"
+          # 3 = this leg passed and the week is not over.
+          [ "$rc" = 0 ] || [ "$rc" = 3 ]
+
+      # Only what a resume needs, and the evidence: the bulk game data is
+      # symlinked from the checkout and recreated by the next leg.
+      - name: Keep the campaign for the next leg
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: week-state
+          retention-days: 5
+          if-no-files-found: error
+          path: |
+            state/data/saves
+            state/server.json
+            state/week.json
+            state/metrics.csv
+            state/events.log
+            state/server.log
+            state/report.md
+
+      - name: Start the next leg
+        if: steps.play.outputs.rc == '3'
+        run: |
+          gh workflow run week-soak.yml --ref "${{ github.ref_name }}" \
+              -f prev_run="${{ github.run_id }}" -f hours="$HOURS" \
+              -f turn_seconds="$TURN_SECONDS"

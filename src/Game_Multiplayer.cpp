@@ -519,12 +519,7 @@ void Game::mpOpenHost() {
         return;
     }
     m_netHost->setMapName(m_mpMapId);
-    if (netVoiceLinkValid(m_mpVoiceLink)) {
-        NetSessionInfo info;
-        info.voiceLink = m_mpVoiceLink;
-        m_netHost->setSessionInfo(info);
-        m_mpVoiceLinkSent = m_mpVoiceLink;
-    }
+    mpRefreshSessionInfo();
     m_mpPage = MpPage::Lobby;
 
     // A tunnel, if the host wants one and has one. Started here rather than
@@ -916,9 +911,17 @@ void Game::mpDrainEvents() {
     }
     if (m_netHost) {
         m_netHost->update();
+        // Who the host's model answers for depends on who is seated, and the
+        // players are told whether it answers at all. Both cheap when nothing
+        // has moved.
+        refreshLlmAvailability();
+        mpRefreshSessionInfo();
         NetHostEvent e;
         while (m_netHost->nextEvent(e)) {
             switch (e.kind) {
+                case NetHostEvent::Kind::Mail:
+                    mpHostTakeMail(e.peerId, e.mail);
+                    break;
                 case NetHostEvent::Kind::WorldWanted:
                     // A player who cannot follow the turns any more. Sending
                     // the world back is the only repair; the alternative is a
@@ -928,6 +931,8 @@ void Game::mpDrainEvents() {
                                                      mpSnapshotForJoiner()))
                             mpNote(T("A player asked for the world and it is too large to send."),
                                    true);
+                        else
+                            mpSendMailHistory(e.peerId);
                     }
                     break;
 
@@ -941,8 +946,9 @@ void Game::mpDrainEvents() {
                     // delta was applied to a world that was not there.
                     if (m_netHost->lobby().state() == NetSessionState::Game && e.peerId &&
                         e.peerId != m_netHost->lobby().hostPeerId()) {
-                        m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
-                                                mpSnapshotForJoiner());
+                        if (m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
+                                                    mpSnapshotForJoiner()))
+                            mpSendMailHistory(e.peerId);
                     }
                     mpNote(TextFormat(T("%s joined"), e.text.c_str()));
                     break;
@@ -1010,9 +1016,15 @@ void Game::mpDrainEvents() {
                     break;
                 }
                 case NetHostEvent::Kind::Chat:
-                    // The host sees its own broadcast here rather than through
-                    // a loopback connection it does not have.
+                    // A PLAYER's line, as the host sees it. (The host's own
+                    // lines are shown when it sends them; see updateMpChat.)
                     pushChatLine(chatNameOf(e.chat.fromPeerId), e.chat.text);
+                    // A dedicated server has no chat panel; its operator reads
+                    // the log.
+                    if (m_headless)
+                        printf("[chat] %s: %s\n", chatNameOf(e.chat.fromPeerId).c_str(),
+                               e.chat.text.c_str());
+                    if (m_headless) fflush(stdout);
                     break;
                 case NetHostEvent::Kind::JoinRefused:
                     // Into the lobby chat, which only the host is reading at
@@ -1128,8 +1140,15 @@ void Game::mpDrainEvents() {
                     }
                     break;
                 }
-                case NetSessionEvent::Kind::SessionInfoKnown:
-                    m_mpVoiceLink = m_netSession->sessionInfo().voiceLink;
+                case NetSessionEvent::Kind::SessionInfoKnown: {
+                    const NetSessionInfo info = m_netSession->sessionInfo();
+                    m_mpVoiceLink = info.voiceLink;
+                    m_mpHostLlm = info.llmAnswers;
+                    m_mpHostMailPolicy = info.mailPolicy;
+                    break;
+                }
+                case NetSessionEvent::Kind::Mail:
+                    mpClientTakeMail(e.mail);
                     break;
                 case NetSessionEvent::Kind::TurnBegan:
                     m_mpWaitingForTurn = false;
@@ -1258,7 +1277,8 @@ void Game::updateMultiplayerMenu() {
     pumpLfg();
 
     // Typing goes to whichever box has focus. Fields are indexed so one
-    // handler serves every page.
+    // handler serves every page. Not while the lobby chat has it.
+    if (m_chatFocus) m_mpFocus = -1;
     if (m_mpFocus >= 0) {
         std::string* target = nullptr;
         size_t limit = 128;
@@ -3454,7 +3474,8 @@ bool Game::mpHostStartGame(bool force, std::string& why) {
     for (const NetPeer& p : m_netHost->lobby().roster()) {
         if (p.peerId == m_netHost->lobby().hostPeerId() || !p.connected || p.peerId == 0)
             continue;
-        m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot);
+        if (m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot))
+            mpSendMailHistory(p.peerId);
     }
     uint16_t mine = 0;
     for (const NetPeer& p : m_netHost->lobby().roster())
@@ -3524,6 +3545,20 @@ void Game::mpOnWorldLoaded() {
     }
 }
 
+void Game::mpRefreshSessionInfo() {
+    if (!m_netHost) return;
+    NetSessionInfo info;
+    if (netVoiceLinkValid(m_mpVoiceLink)) info.voiceLink = m_mpVoiceLink;
+    info.llmAnswers = m_llmAvailable;
+    info.mailPolicy = (uint8_t)std::clamp(m_config.mailPolicy, 0, 3);
+    const std::string seen = info.voiceLink + "\x1f" + (info.llmAnswers ? "1" : "0") +
+                             std::to_string(info.mailPolicy);
+    if (seen == m_mpSessionInfoSent) return;
+    m_mpSessionInfoSent = seen;
+    m_netHost->setSessionInfo(info);
+    m_mpVoiceLinkSent = m_mpVoiceLink;
+}
+
 const std::vector<uint8_t>& Game::mpSnapshotForJoiner() {
     // Rebuilt when the world has moved on, and not otherwise: several people
     // arriving between two turns are sent the same bytes.
@@ -3539,6 +3574,16 @@ std::vector<uint8_t> Game::mpBuildSnapshot() {
     snap.mapName = m_mpMapId;
     snap.turnNumber = (uint32_t)m_turnNumber;
     snap.stateJson = saveStateJson();
+    // ── NO MAIL IN THE SNAPSHOT ──
+    // One snapshot is cached and sent to every joiner, and saveStateJson holds
+    // every country's letters -- so a joiner could read everybody's post.
+    // Each player is sent their own country's instead (mpSendMailHistory).
+    if (!snap.stateJson.empty()) {
+        try {
+            nlohmann::json j = nlohmann::json::parse(snap.stateJson);
+            if (j.erase("mail")) snap.stateJson = j.dump();
+        } catch (...) {}
+    }
 
     // Every turn played so far, so a joiner can be brought to now rather than
     // to the start. A game that has not begun has none, and the map's own
@@ -4523,6 +4568,9 @@ void Game::mpResolveTurn() {
                 std::vector<uint8_t> orders = mpSerializeTurnOrders();
                 if (!orders.empty()) m_netHost->broadcastTurnOrders(turn, orders);
             }
+            // The post, after the turn it arrived on: each letter to the one
+            // player whose country it is addressed to.
+            mpPostMailToPlayers(m_turnNumber);
             // And to the store, for everyone who was not connected to hear it.
             // Long-form only, and the same bytes -- a player who catches up
             // next week applies exactly what the players who were here did.
@@ -4625,6 +4673,9 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
     m_mpWaitingForTurn = false;
     // A client never runs processTurn; this is its end of turn.
     achTurnSnapshot(true);
+    // Our own letters went with it: the host posted its copies, and these
+    // are history now -- no longer ours to change.
+    if (m_playerCountryId > 0) mailbox(m_playerCountryId).deliver(m_turnNumber);
 
     // The orders just resolved; they are not pending any more.
     //
@@ -5875,11 +5926,25 @@ void Game::updateMpChat() {
         odText::utf8PopBack(m_chatDraft);
 
     if (IsKeyPressed(KEY_ENTER) && !m_chatDraft.empty()) {
-        if (m_netSession) m_netSession->sendChat(m_chatDraft);
-        // The host has no session to send through, and its own line is echoed
-        // back to it through the same broadcast every player gets -- so it is
-        // NOT pushed locally here, or the host would see everything twice.
-        else if (m_netHost) m_netHost->sendChat(m_chatDraft);
+        if (m_netSession) {
+            // Not connected (reconnecting, or not in yet): the line used to be
+            // dropped and the field cleared, so it simply vanished. Kept, and
+            // said so -- Enter again sends it once the connection is back.
+            if (!m_netSession->sendChat(m_chatDraft)) {
+                pushChatLine("", T("Not connected, so that was not sent. Press Enter to try again."),
+                             true);
+                return;
+            }
+        } else if (m_netHost) {
+            // ── THE HOST'S OWN LINE IS SHOWN HERE ──
+            //
+            // This used to assume the host saw its own line come back "through
+            // the same broadcast every player gets". It does not: a broadcast
+            // goes to the players' sockets, and the host has none. So everyone
+            // saw what the host wrote except the host.
+            m_netHost->sendChat(m_chatDraft);
+            pushChatLine(chatNameOf(m_netHost->lobby().hostPeerId()), m_chatDraft);
+        }
         m_chatDraft.clear();
     }
 }
@@ -5933,7 +5998,11 @@ void Game::drawMpChat(int x, int y, int w, int h, Vector2 mouse, bool click) {
     const bool fh = CheckCollisionPointRec(mouse, field);
     DrawRectangleRec(field, m_chatFocus ? Color{22, 25, 34, 255} : Color{15, 17, 23, 255});
     DrawRectangleLinesEx(field, 1, m_chatFocus ? accent : Color{60, 64, 84, 200});
-    if (fh && click) m_chatFocus = true;
+    // One box has the keyboard at a time. The lobby's own fields (the country
+    // search, the voice link) keep a focus of their own, and used to keep it
+    // while chat was being typed in -- so a Backspace or an Enter meant for
+    // chat went to both.
+    if (fh && click) { m_chatFocus = true; m_mpFocus = -1; }
     else if (click && !fh) m_chatFocus = false;
 
     if (m_chatDraft.empty() && !m_chatFocus) {

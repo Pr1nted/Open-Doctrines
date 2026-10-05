@@ -114,6 +114,8 @@ function readBody(req) {
 // Each ticket gets its own name and pseudonym so a test can tell two joiners
 // apart, and so "everyone ended up with the same seat" cannot pass by accident.
 let issued = 0;
+let llmRequests = 0;
+const llmPrompts = [];
 let sessionOpens = 0, sessionReopens = 0, tokenRefreshes = 0, lastSessionBody = null;
 
 const server = createServer(async (req, res) => {
@@ -159,6 +161,25 @@ const server = createServer(async (req, res) => {
         const room = relayRooms.get(path.slice("/relay-drop/".length));
         if (room?.host) { room.host.socket.destroy(); room.host = null; }
         return json(res, { dropped: true });
+    }
+
+    // A stand-in language model: an OpenAI-style chat endpoint that answers
+    // every request with the same sentence. Enough to prove a letter reached
+    // the host's model and its reply reached the player -- what a real model
+    // would SAY is not this test's business. /llm-stats counts the asking.
+    if (req.method === "POST" && path === "/v1/chat/completions") {
+        const body = await readBody(req);
+        llmRequests += 1;
+        // A slow model, on request: MOCK_LLM_DELAY_MS, as a CPU-bound one is.
+        const slow = Number(process.env.MOCK_LLM_DELAY_MS || 0);
+        if (slow > 0) await new Promise(r => setTimeout(r, slow));
+        llmPrompts.push(JSON.stringify(body?.messages ?? []).slice(0, 40000));
+        return json(res, { choices: [{ index: 0, finish_reason: "stop",
+            message: { role: "assistant",
+                       content: "Our ministry has read your letter and will consider it carefully." } }] });
+    }
+    if (req.method === "GET" && path === "/llm-stats") {
+        return json(res, { requests: llmRequests, prompts: llmPrompts });
     }
 
     if (req.method === "POST" && path === "/server/register") {

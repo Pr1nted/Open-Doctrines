@@ -60,6 +60,11 @@ struct Answer {
 std::mutex g_lock;
 std::vector<Answer> g_answers;
 int g_inFlight = 0;
+/// Correspondences with a request out right now. See runAdvisors.
+std::set<long long> g_asking;
+long long askingKey(int from, int to, int groupId) {
+    return ((long long)from << 32) | (groupId ? (0x40000000LL | groupId) : (long long)to);
+}
 
 /// The local runner's state, refreshed on a timer by a worker. See pumpLlmServer.
 std::mutex g_statusLock;
@@ -178,8 +183,13 @@ void Game::refreshLlmAvailability() {
     seen += "\x1f" + m_config.llmEndpoint;
     seen += "\x1f" + m_config.llmModel;
     // The player's own country is excluded from the correspondents, so a change
-    // of seat changes the answer too.
+    // of seat changes the answer too -- and in multiplayer, so is every country
+    // a person holds, and whether the HOST's model answers.
     seen += "\x1f" + std::to_string(m_playerCountryId);
+    if (m_netHost || m_netSession) {
+        seen += m_mpHostLlm ? "\x1fH" : "\x1fh";
+        for (int c : mpHumanCountries()) seen += "," + std::to_string(c);
+    }
     if (seen == m_llmConfigSeen) return;
     m_llmConfigSeen = seen;
     rebuildLlmCountries();
@@ -188,11 +198,24 @@ void Game::refreshLlmAvailability() {
 
 void Game::rebuildLlmCountries() {
     m_llmCountries.clear();
-    if (!llmConfigured()) { m_llmAvailable = false; return; }
+    // ── WHOSE MODEL ──
+    //
+    // A player in somebody else's game does not answer for anybody: the
+    // countries are the host's, and so is the model that speaks for them. The
+    // player's own configuration only decides whether THEIR client shows the
+    // AI correspondents, which it does when the host says its model answers.
+    const bool remote = (m_netSession != nullptr && m_netHost == nullptr);
+    if (remote ? !m_mpHostLlm : !llmConfigured()) { m_llmAvailable = false; return; }
+    // A country a person holds is a person. Only the host's own seat used to
+    // be excluded, so on a server every human player's country was offered
+    // to the model as its own to speak for.
+    const std::set<int> people = (m_netHost || m_netSession) ? mpHumanCountries()
+                                                              : std::set<int>{};
     for (const auto& [cid, c] : m_countries.getAll()) {
         (void)c;
         if (cid <= 0 || cid == m_playerCountryId) continue;
         if (cid >= REBEL_CID_MIN) continue;
+        if (people.count(cid)) continue;
         m_llmCountries.insert(cid);
     }
     m_llmAvailable = !m_llmCountries.empty();
@@ -399,6 +422,7 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
     {
         std::lock_guard<std::mutex> g(g_lock);
         ++g_inFlight;
+        g_asking.insert(askingKey(fromCountry, toCountry, groupId));
     }
     // The same normalisation the table was built with. Copied into the worker
     // rather than captured by reference: this thread outlives this function.
@@ -647,6 +671,7 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
 
         std::lock_guard<std::mutex> g(g_lock);
         --g_inFlight;
+        g_asking.erase(askingKey(fromCountry, toCountry, groupId));
     });
 }
 
@@ -797,12 +822,32 @@ void Game::runAdvisors() {
     // local model, which is how a laptop stops responding.
     int asked = 0;
     constexpr int kMaxPerTurn = 6;
+    // ── ONE QUESTION AT A TIME, PER LETTER ──
+    //
+    // A letter whose answer is still being written was asked AGAIN every turn,
+    // because nothing here knew a request was out. With a model that takes
+    // longer than a turn -- a CPU on a server, a turn resolving every few
+    // seconds -- that is six more requests per turn, none of them finished,
+    // until the machine is doing nothing but this; and when they did finish,
+    // one letter got several replies. Seen: 45 requests open at once against
+    // one 0.5B model on four cores.
+    //
+    // So a correspondence with a request out is skipped, and nothing new is
+    // asked while the model already has a turn's worth outstanding.
+    std::set<long long> asking;
+    int outstanding = 0;
+    {
+        std::lock_guard<std::mutex> g(g_lock);
+        asking = g_asking;
+        outstanding = g_inFlight;
+    }
+    const auto full = [&] { return asked >= kMaxPerTurn || outstanding + asked >= kMaxPerTurn; };
     for (int cid : m_llmCountries) {
-        if (asked >= kMaxPerTurn) break;
+        if (full()) break;
         const mail::Box* box = mailboxIfAny(cid);
         if (!box) continue;
         for (const mail::Thread* t : box->threads()) {
-            if (asked >= kMaxPerTurn) break;
+            if (full()) break;
             if (t->messages.empty()) continue;
 
             // The last thing DELIVERED. A pending letter of its own does not
@@ -835,6 +880,8 @@ void Game::runAdvisors() {
                 ++botsSinceHuman;
             }
             if (botsSinceHuman >= 2) continue;
+            if (asking.count(askingKey(cid, t->groupId ? 0 : t->otherCountry, t->groupId)))
+                continue;
 
             if (t->groupId != 0) askAdvisor(cid, 0, t->groupId);
             else                 askAdvisor(cid, t->otherCountry);

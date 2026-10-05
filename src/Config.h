@@ -312,9 +312,10 @@ struct Config {
 
     // ── Mail ──
     //
-    // `mailPolicy` is the HOST's setting and travels with the lobby; the copy
-    // here is what a single-player game uses and what a host's own client seeds
-    // the lobby from. See mail::Policy.
+    // `mailPolicy` is the HOST's setting: a host sends it to every player in
+    // NetSessionInfo, and a player in somebody else's game obeys that copy
+    // (Game::mailRules), not this one. Here it is what a single-player game and
+    // a host use. See mail::Policy.
     //   0 nobody   1 players only   2 advisors only   3 everyone
     int         mailPolicy = 3;
     /// This player's own door. See mail::Lock: 0 open, 1 advisors only, 2 shut.
