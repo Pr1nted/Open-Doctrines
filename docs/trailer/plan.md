@@ -120,6 +120,22 @@ Cue sheet, mapped to the cut above:
 
    102 MB becomes 6.6 MB at 58 seconds. `data/saves/` holds hundreds of
    finished bench games to choose a collapse from.
+
+   Higher resolutions work, which is what a close-up of one region needs:
+   2560x1280 writes 180 MB in about three minutes and 3840x1920 writes 350 MB
+   in about six, both 721 frames, both decoding end to end under
+   `ffmpeg -v error -i out.gif -f null -`. The ceiling is the format's own --
+   GIF stores width and height in 16 bits -- so anything over 65535 on a side
+   is refused up front rather than rendered and silently wrapped.
+
+   These were briefly thought to be broken above 1920x960: the files were
+   truncated and `ffmpeg` reported "LZW decode failed". The resolution was
+   never the problem. The disk filled, every `fputc` and `fwrite` in the
+   encoder went unchecked, and the export printed "Saved 721 frames" and exited
+   0 over a half-written file. The writes are checked now, so a failed export
+   exits non-zero, names the reason on stderr, and deletes the partial GIF
+   instead of leaving it for the next script to pick up. Worth knowing before
+   starting a 350 MB render: check free space first.
 2. **Screen capture of real play** — panels, orders, a battle resolving. The
    timelapse cannot show the interface, and this is the part a player
    recognises. Has to be recorded by a person.

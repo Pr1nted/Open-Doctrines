@@ -37,12 +37,20 @@ std::atomic<int> g_progress{-1};  // bootstrap %, -1 when not starting
 std::atomic<bool> g_autoStart{true};
 std::string g_lastLine;           // under g_mutex: the last thing Tor said
 
+// The process handle is the only part that is Windows-or-POSIX. The two names
+// below are not: setDataDir() and findBinary() are compiled on every platform,
+// the web build included, and both use them. Keeping them inside the same
+// guard as the pid left them undefined under emscripten, and the web build
+// stopped compiling on `kSep` -- a platform the guard was written to exclude
+// from starting a process, not from naming one.
 #if defined(_WIN32)
 HANDLE g_proc = nullptr;
 const char* kExe = "tor.exe";
 const char kSep = '\\';
-#elif !defined(__EMSCRIPTEN__)
+#else
+#if !defined(__EMSCRIPTEN__)
 pid_t g_pid = -1;
+#endif
 const char* kExe = "tor";
 const char kSep = '/';
 #endif

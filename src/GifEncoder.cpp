@@ -1,5 +1,6 @@
 #include "GifEncoder.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <cstdlib>
 
@@ -15,8 +16,62 @@ bool GifEncoder::begin(const std::string& path, int width, int height, int delay
     m_frameCount = 0;
     m_hist.clear();
     m_palette.clear();
-    m_ok = (width > 0 && height > 0);
+    m_err.clear();
+    m_ok = true;
+
+    if (width <= 0 || height <= 0) {
+        fail("size must be positive");
+        return false;
+    }
+    // The logical screen descriptor and every image descriptor store width and
+    // height as two bytes each. Above 65535 the low 16 bits were written and
+    // the rest thrown away, so 70000 became 4464: the encoder then wrote
+    // 70000-pixel rows into a frame it had declared 4464 wide, which overruns
+    // the frame on the first row and decodes as a corrupt LZW stream -- and
+    // end() still returned true. Refuse the size instead of writing a file
+    // that cannot be right.
+    if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        fail("GIF cannot be larger than " + std::to_string(MAX_DIMENSION) +
+             " pixels on a side (asked for " + std::to_string(width) + "x" +
+             std::to_string(height) + ")");
+        return false;
+    }
+
+    // Opened here rather than on the first frame, so an unwritable path is
+    // reported before several minutes of rendering. The caller's "could not
+    // create GIF at that path" message was unreachable while this was lazy:
+    // begin() said yes to any path at all.
+    m_fp = fopen(m_path.c_str(), "wb");
+    if (!m_fp) {
+        fail("could not open " + m_path + ": " + strerror(errno));
+        return false;
+    }
     return m_ok;
+}
+
+// ─── Checked output ──────────────────────────────────────
+
+void GifEncoder::fail(const std::string& why) {
+    if (m_err.empty()) m_err = why;   // first cause, not last symptom
+    m_ok = false;
+}
+
+bool GifEncoder::put(int byte) {
+    if (!m_ok || !m_fp) return false;
+    if (fputc(byte, m_fp) == EOF) {
+        fail("write to " + m_path + " failed: " + strerror(errno));
+        return false;
+    }
+    return true;
+}
+
+bool GifEncoder::put(const void* data, size_t n) {
+    if (!m_ok || !m_fp) return false;
+    if (n && fwrite(data, 1, n, m_fp) != n) {
+        fail("write to " + m_path + " failed: " + strerror(errno));
+        return false;
+    }
+    return true;
 }
 
 void GifEncoder::addPaletteSample(const uint8_t* rgba) {
@@ -165,26 +220,26 @@ void GifEncoder::finalizePalette() {
     m_hist.clear();
 
     // Header + logical screen descriptor
-    fwrite("GIF89a", 1, 6, m_fp);
-    fputc(m_w & 0xFF, m_fp); fputc((m_w >> 8) & 0xFF, m_fp);
-    fputc(m_h & 0xFF, m_fp); fputc((m_h >> 8) & 0xFF, m_fp);
-    fputc(0xF7, m_fp); // global table present, 8 bits/pixel, 256 entries
-    fputc(0x00, m_fp); // background colour index
-    fputc(0x00, m_fp); // pixel aspect ratio
+    put("GIF89a", 6);
+    put(m_w & 0xFF); put((m_w >> 8) & 0xFF);
+    put(m_h & 0xFF); put((m_h >> 8) & 0xFF);
+    put(0xF7); // global table present, 8 bits/pixel, 256 entries
+    put(0x00); // background colour index
+    put(0x00); // pixel aspect ratio
 
     for (int i = 0; i < 256; ++i) {
         Rgb c = (i < (int)m_palette.size()) ? m_palette[i] : Rgb{0, 0, 0};
-        fputc(c.r, m_fp); fputc(c.g, m_fp); fputc(c.b, m_fp);
+        put(c.r); put(c.g); put(c.b);
     }
 
     // Netscape extension: loop forever
-    fputc(0x21, m_fp); fputc(0xFF, m_fp); fputc(0x0B, m_fp);
-    fwrite("NETSCAPE2.0", 1, 11, m_fp);
-    fputc(0x03, m_fp); fputc(0x01, m_fp);
-    fputc(0x00, m_fp); fputc(0x00, m_fp);
-    fputc(0x00, m_fp);
+    put(0x21); put(0xFF); put(0x0B);
+    put("NETSCAPE2.0", 11);
+    put(0x03); put(0x01);
+    put(0x00); put(0x00);
+    put(0x00);
 
-    m_headerWritten = true;
+    m_headerWritten = m_ok;
 }
 
 uint8_t GifEncoder::nearestIndex(uint8_t r, uint8_t g, uint8_t b) {
@@ -216,8 +271,8 @@ void GifEncoder::bitsWrite(int code, int codeLen) {
         m_bitAcc >>= 8;
         m_bitCount -= 8;
         if (m_block.size() == 255) {
-            fputc(255, m_fp);
-            fwrite(m_block.data(), 1, 255, m_fp);
+            put(255);
+            put(m_block.data(), 255);
             m_block.clear();
         }
     }
@@ -229,11 +284,11 @@ void GifEncoder::bitsFlush() {
         m_bitAcc = 0; m_bitCount = 0;
     }
     if (!m_block.empty()) {
-        fputc((int)m_block.size(), m_fp);
-        fwrite(m_block.data(), 1, m_block.size(), m_fp);
+        put((int)m_block.size());
+        put(m_block.data(), m_block.size());
         m_block.clear();
     }
-    fputc(0, m_fp); // block terminator
+    put(0); // block terminator
 }
 
 // Standard GIF variable-width LZW.
@@ -242,7 +297,7 @@ void GifEncoder::lzwCompress(const std::vector<uint8_t>& indices) {
     const int clearCode = 1 << minCodeSize; // 256
     const int endCode = clearCode + 1;      // 257
 
-    fputc(minCodeSize, m_fp);
+    put(minCodeSize);
     bitsInit();
 
     static std::vector<int32_t> dict; // dict[prefix*256 + byte] -> code
@@ -280,16 +335,13 @@ void GifEncoder::lzwCompress(const std::vector<uint8_t>& indices) {
 // ─── Frame writing ───────────────────────────────────────
 
 bool GifEncoder::writeFrame(const uint8_t* rgba) {
-    if (!m_ok || m_done || !rgba) return false;
+    if (!m_ok || m_done || !m_fp || !rgba) return false;
 
-    if (!m_fp) {
-        m_fp = fopen(m_path.c_str(), "wb");
-        if (!m_fp) { m_ok = false; return false; }
-    }
     if (!m_headerWritten) {
         // No explicit samples given — derive the palette from this frame.
         if (m_hist.empty()) addPaletteSample(rgba);
         finalizePalette();
+        if (!m_ok) return false;
     }
 
     m_indices.resize((size_t)m_w * m_h);
@@ -297,20 +349,21 @@ bool GifEncoder::writeFrame(const uint8_t* rgba) {
         m_indices[p] = nearestIndex(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]);
 
     // Graphic control extension (per-frame delay, no disposal)
-    fputc(0x21, m_fp); fputc(0xF9, m_fp); fputc(0x04, m_fp);
-    fputc(0x04, m_fp);
-    fputc(m_delayCs & 0xFF, m_fp); fputc((m_delayCs >> 8) & 0xFF, m_fp);
-    fputc(0x00, m_fp); fputc(0x00, m_fp);
+    put(0x21); put(0xF9); put(0x04);
+    put(0x04);
+    put(m_delayCs & 0xFF); put((m_delayCs >> 8) & 0xFF);
+    put(0x00); put(0x00);
 
     // Image descriptor (full frame, global palette)
-    fputc(0x2C, m_fp);
-    fputc(0, m_fp); fputc(0, m_fp);
-    fputc(0, m_fp); fputc(0, m_fp);
-    fputc(m_w & 0xFF, m_fp); fputc((m_w >> 8) & 0xFF, m_fp);
-    fputc(m_h & 0xFF, m_fp); fputc((m_h >> 8) & 0xFF, m_fp);
-    fputc(0x00, m_fp);
+    put(0x2C);
+    put(0); put(0);
+    put(0); put(0);
+    put(m_w & 0xFF); put((m_w >> 8) & 0xFF);
+    put(m_h & 0xFF); put((m_h >> 8) & 0xFF);
+    put(0x00);
 
     lzwCompress(m_indices);
+    if (!m_ok) return false;
     m_frameCount++;
     return true;
 }
@@ -318,13 +371,33 @@ bool GifEncoder::writeFrame(const uint8_t* rgba) {
 bool GifEncoder::end() {
     if (m_done) return m_ok;
     m_done = true;
-    if (!m_fp || !m_headerWritten) {
-        if (m_fp) { fclose(m_fp); m_fp = nullptr; }
-        m_ok = false;
+    if (!m_fp) {
+        if (m_err.empty()) fail("nothing was written");
         return false;
     }
-    fputc(0x3B, m_fp); // trailer
-    fclose(m_fp);
+    if (!m_headerWritten) fail("no frames were written");
+
+    put(0x3B); // trailer
+
+    // fclose does the last flush, and that is where a full disk usually
+    // surfaces: the frames before it fitted in the stdio buffer. Checking only
+    // the fputc calls would have missed it.
+    if (m_ok && fflush(m_fp) != 0)
+        fail("flushing " + m_path + " failed: " + strerror(errno));
+    if (m_ok && ferror(m_fp))
+        fail("write to " + m_path + " failed");
+    const bool closed = (fclose(m_fp) == 0);
     m_fp = nullptr;
+    if (m_ok && !closed)
+        fail("closing " + m_path + " failed: " + strerror(errno));
+
+    // A half-written GIF is indistinguishable from a whole one until something
+    // tries to decode it, so leaving it behind invites the next script to pick
+    // it up. Remove it and say so; on a full disk this also gives the space
+    // back.
+    if (!m_ok) {
+        remove(m_path.c_str());
+        if (m_headerWritten) m_err += " (incomplete file removed)";
+    }
     return m_ok;
 }

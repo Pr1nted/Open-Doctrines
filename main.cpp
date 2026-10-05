@@ -3,6 +3,7 @@
 #include "ai/AISystem.h"
 #include "WinFatalDialog.h"
 #include "util/SoftwareGlRelaunch.h"
+#include "GifEncoder.h"
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
@@ -68,6 +69,15 @@ int main(int argc, char** argv) {
             std::string a = argv[k];
             int pw = 0, ph = 0;
             if (sscanf(a.c_str(), "%dx%d", &pw, &ph) == 2 && pw > 0 && ph > 0) {
+                // GIF stores the size in 16 bits. Refuse here rather than
+                // after several minutes of rendering, and rather than writing
+                // the low two bytes and calling it a success.
+                if (pw > GifEncoder::MAX_DIMENSION || ph > GifEncoder::MAX_DIMENSION) {
+                    fprintf(stderr, "--export-timelapse: %dx%d is larger than a "
+                            "GIF can describe (max %d on a side)\n",
+                            pw, ph, GifEncoder::MAX_DIMENSION);
+                    return 2;
+                }
                 w = pw; h = ph;
             } else if (a == "population") {
                 view = Game::HV_POPULATION;

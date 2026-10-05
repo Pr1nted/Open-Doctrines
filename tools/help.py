@@ -290,6 +290,12 @@ GROUPS = [
         "generate_svg_symbols.py",
         "generate_symbols.py",
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",
+        # How much of its own canvas a symbol covers, measured by the game's
+        # own rasteriser rather than by reading path data -- it shells out to
+        # SymbolFill (tools/symbol_fill.cpp), which links the same nanosvg
+        # header FlagRenderer does, so the box it reports is the one a flag
+        # actually shows. normalize_symbols.py reframes against that.
+        "svg_fill.py",
         "sync_map_symbols.py",
         "generate_icons.py", "generate_web_favicon.py", "make_watermark.py",
         # The one-colour mark, outlined from the icon's own face so the two read

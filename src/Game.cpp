@@ -8,6 +8,9 @@
 #include "net/Socks5.h"
 #include "net/TorClient.h"
 #include "util/SoftwareGlRelaunch.h"
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 #include "TouchKeyboard.h"
 
 #include "util/Async.h"
@@ -988,9 +991,41 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 // KEEP IN STEP with odWindowsGlTraceLog above and with tools/qualify.sh.
 namespace {
 void odGlTraceLog(int level, const char* text, va_list args) {
-    (void)level;
     char line[1024];
     vsnprintf(line, sizeof(line), text, args);
+
+#if defined(__ANDROID__)
+    // ANDROID HAS NO stderr ANYBODY CAN READ.
+    //
+    // Installing this callback replaces raylib's own logging, and raylib's own
+    // logging on Android is the only thing that reaches logcat -- it calls
+    // __android_log_vprint with the "raylib" tag. Writing to stderr instead
+    // sends every line to a file descriptor nothing collects, so the whole of
+    // raylib's startup went silent on the one platform where that is the only
+    // diagnostic there is.
+    //
+    // The visible symptom was three checks in tools/android_emulator_test.sh --
+    // "raylib initialised inside the app", "the Android backend came up", "it
+    // got a GL context" -- failing against an app that was demonstrably
+    // running and drawing a real frame. The checks were right and the game was
+    // mute. The part that matters is not the checks: a GL failure on a real
+    // phone would have produced exactly the same silence.
+    //
+    // So the line goes to logcat as well, under the tag raylib would have used.
+    int prio = ANDROID_LOG_INFO;
+    switch (level) {
+        case LOG_TRACE:   prio = ANDROID_LOG_VERBOSE; break;
+        case LOG_DEBUG:   prio = ANDROID_LOG_DEBUG;   break;
+        case LOG_INFO:    prio = ANDROID_LOG_INFO;    break;
+        case LOG_WARNING: prio = ANDROID_LOG_WARN;    break;
+        case LOG_ERROR:   prio = ANDROID_LOG_ERROR;   break;
+        case LOG_FATAL:   prio = ANDROID_LOG_FATAL;   break;
+        default: break;
+    }
+    __android_log_write(prio, "raylib", line);
+#else
+    (void)level;
+#endif
     std::fprintf(stderr, "%s\n", line);
 
     // TWO DIFFERENT FAILURES WEARING THE SAME WARNING.

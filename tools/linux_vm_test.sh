@@ -127,8 +127,31 @@ state=$(r "dpkg -l opendoctrines 2>/dev/null | tail -1 | cut -c1-2")
 
 # A dependency NAME that does not exist in the archive cannot be fixed by
 # apt, and the package is uninstallable on every machine rather than this one.
-unresolved=$(r "for d in \$(dpkg-deb -f $deb Depends | tr ',' '\n' | sed 's/ //g'); do
-                  dpkg -s \"\$d\" >/dev/null 2>&1 || echo \"\$d\"; done")
+#
+# MATCHED AGAINST A LIST, NOT ASKED ONE AT A TIME. This was `dpkg -s "$d"`,
+# which answers
+#
+#   dpkg-query: error: --status needs a valid package name but 'libc6' is not:
+#               ambiguous package name 'libc6' with more than one installed
+#               instance
+#
+# the moment the guest has a foreign architecture registered -- ours now has
+# i386 and armhf, so libc6 is installed three times over. dpkg exits non-zero,
+# the loop files it as unresolved, and the stage reports that libc6 is not a
+# real package while the .deb it came from is installed and configured. Every
+# multi-arch dependency failed and only the single-arch ones passed, which is
+# the shape of the bug rather than the shape of a packaging mistake.
+#
+# Comparing against the set of installed names, with the :arch suffix stripped,
+# cannot be ambiguous. Version constraints are stripped too: `libc6 (>= 2.34)`
+# became `libc6(>=2.34)` under the old sed and would have been reported as a
+# missing package the day one was added.
+unresolved=$(r "installed=\$(dpkg-query -W -f='\${binary:Package}\n' 2>/dev/null \
+                             | sed 's/:.*//' | sort -u)
+                for d in \$(dpkg-deb -f $deb Depends | tr ',' '\n' \
+                             | sed 's/(.*//; s/ //g' | grep -v '^\$'); do
+                  printf '%s\n' \"\$installed\" | grep -qx \"\$d\" || echo \"\$d\"
+                done")
 [ -z "$unresolved" ] && ok "every declared dependency is a real package" \
                      || bad "every declared dependency is a real package" "$unresolved"
 

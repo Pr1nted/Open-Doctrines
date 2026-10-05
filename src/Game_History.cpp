@@ -494,7 +494,10 @@ bool Game::exportTimelapseHeadless(const std::string& savePath,
     }
     std::string msg;
     bool ok = exportHistoryGif(savePath, outW, outH, subFrames, outPath, msg);
-    printf("%s\n", msg.empty() ? (ok ? "exported" : "failed") : msg.c_str());
+    // A failure goes to stderr, where a script redirecting stdout to a log
+    // still sees it.
+    fprintf(ok ? stdout : stderr, "%s\n",
+            msg.empty() ? (ok ? "exported" : "failed") : msg.c_str());
     return ok;
 }
 
@@ -535,7 +538,7 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
 
     GifEncoder gif;
     if (!gif.begin(writePath, outW, outH, 8)) {
-        outMsg = T("Could not create GIF at that path");
+        outMsg = T("Could not create GIF at that path") + std::string(": ") + gif.error();
         return false;
     }
 
@@ -556,24 +559,37 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
     renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame, m_historyView);
     gif.addPaletteSample(frame.data());
 
+    // writeFrame's result is load-bearing. A GIF carries no length and no
+    // checksum, so a write that fails partway through -- a full disk is the
+    // common one -- leaves a file that opens, plays for a while and then dies
+    // on a half-written LZW code. This loop used to ignore the return value and
+    // then report "Saved 721 frames" about exactly that file, so
+    // --export-timelapse exited 0 and a calling script shipped it.
     int total = (int)(snaps.size() - 1) * subFrames + 1;
     int done = 0;
-    for (size_t i = 0; i + 1 < snaps.size(); ++i)
+    bool wrote = true;
+    for (size_t i = 0; wrote && i + 1 < snaps.size(); ++i)
         for (int s = 0; s < subFrames; ++s) {
             float t = (float)s / (float)subFrames;
             renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame, m_historyView);
-            gif.writeFrame(frame.data());
+            if (!gif.writeFrame(frame.data())) { wrote = false; break; }
             if ((++done % 8) == 0 && !m_headless) {
                 setLoadingProgress((float)done / total, "Rendering timelapse...");
                 drawLoadingScreen();
             }
         }
-    renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame, m_historyView);
-    gif.writeFrame(frame.data());
+    if (wrote) {
+        renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame, m_historyView);
+        wrote = gif.writeFrame(frame.data());
+    }
 
     int n = gif.frameCount();
-    bool ok = gif.end();
-    if (!ok) { outMsg = T("GIF export failed"); return false; }
+    const bool closed = gif.end();   // always run: it writes the trailer
+    if (!wrote || !closed) {
+        outMsg = T("GIF export failed") + std::string(": ") + gif.error();
+        LoadLog() << "  Timelapse: " << outMsg << std::endl;
+        return false;
+    }
 
 #ifdef __EMSCRIPTEN__
     // Read the encoded file back and trigger a browser download so it lands on
