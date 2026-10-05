@@ -48,7 +48,14 @@ modules:
       - install -Dm755 opendoctrines-launcher /app/bin/opendoctrines
       - install -Dm644 io.github.Pr1nted.OpenDoctrines.desktop -t /app/share/applications
       - install -Dm644 io.github.Pr1nted.OpenDoctrines.metainfo.xml -t /app/share/metainfo
-      - install -Dm644 data/Icon/icon.png
+      # FROM A file: SOURCE, not from the unpacked archive. data/Icon is a
+      # packaging input rather than game content, so tools/package.py leaves it
+      # out of the release zip (DATA_ALLOWLIST) and this command had nothing to
+      # install -- "cannot stat 'data/Icon/icon.png'". It only ever worked
+      # against a tree somebody had built locally, and no release has ever
+      # carried a .flatpak. The launcher, desktop file and metainfo beside it
+      # already arrive this way.
+      - install -Dm644 od-icon.png
           /app/share/icons/hicolor/256x256/apps/io.github.Pr1nted.OpenDoctrines.png
     sources:
       - type: archive
@@ -56,6 +63,9 @@ modules:
         sha256: fa17cf028ec08b1f223a81752b2fbdf9dd2caac939dad14eca218f8894a41867
         # The archive wraps everything in OpenDoctrines-linux-x64/.
         strip-components: 1
+      - type: file
+        path: ../../data/Icon/icon.png
+        dest-filename: od-icon.png
       - type: file
         path: opendoctrines-launcher
       - type: file
