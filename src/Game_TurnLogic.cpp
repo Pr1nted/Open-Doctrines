@@ -7146,6 +7146,27 @@ bool Game::resolveAssault(int attackerCid, int pid, int attackers, int& survivor
     return took;
 }
 
+// Shared by resolveAssault's and processBattles' pair-scoped width counters, so
+// the ISO/cid parsing exists once. OD_WIDTH_PAIR=<A>,<B>; either direction.
+bool Game::widthPairMatches(int atkCid, int defCid) const {
+    static const std::pair<std::string,std::string> want = []() {
+        const char* e = OD_ENV("OD_WIDTH_PAIR");
+        std::string s = e ? e : "";
+        const size_t c = s.find(',');
+        return c == std::string::npos ? std::make_pair(s, std::string())
+                                      : std::make_pair(s.substr(0, c), s.substr(c + 1));
+    }();
+    if (want.first.empty() || want.second.empty()) return false;
+    auto is = [&](int cid, const std::string& n) {
+        const Country* c = m_countries.getCountry(cid);
+        if (!c) return false;
+        if (n[0] >= '0' && n[0] <= '9') return atoi(n.c_str()) == c->id;
+        return c->isoA3 == n;
+    };
+    return (is(atkCid, want.first) && is(defCid, want.second)) ||
+           (is(atkCid, want.second) && is(defCid, want.first));
+}
+
 bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& attackers,
                           ForceComposition& survivorsOut, int fallbackPid) {
     survivorsOut = ForceComposition{};
@@ -7161,6 +7182,69 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
     const AssaultPowers w = weighAssault(attackerCid, pid, attackers, fromTheSea);
     ++m_assaultsTotal;
     if (w.engagedAtk < attackerCount || w.defTroops > w.width) ++m_assaultsWidthBound;
+    // ── ITEM 167: THE **AND**, NOT THE OR (journal 520) ──
+    //
+    // The line above fires when EITHER side is over the frontage, which is the
+    // ordinary case and is what od_bench's "23.8% width-bound" reports. Journal
+    // 480's unwinnable regime needs BOTH sides pinned at `width` -- only then are
+    // the engaged terms equal and the larger army's size worth nothing -- and
+    // then the fort multiplier on the defender runs against the attacker's depth,
+    // which is capped at DEPTH_MAX. Counted here rather than in projectCampaign,
+    // which is gated off and never runs (item 166's reverted probe).
+    // ── ITEM 212: THE SAME QUESTION, ASKED OF ONE WAR (OD_WIDTH_PAIR) ──
+    //
+    // Journal 520 excluded the width algebra WORLD-WIDE (0.41% both-bound). A
+    // world-wide rate can hide a concentrated effect, and the grind this is
+    // meant to explain is one long war between two countries -- so the same
+    // counters, restricted to that pair, beside the unscoped ones. Supply is
+    // summed for both populations because it is the next suspect if frontage is
+    // excluded here too (item 212). Inert unless OD_WIDTH_PAIR is set.
+    {
+        m_worldSupplySum += w.atkSupply; ++m_worldSupplyN;
+        static const bool pairOn = OD_ENV("OD_WIDTH_PAIR") != nullptr;
+        if (pairOn) {
+            static std::pair<std::string,std::string> want = []() {
+                std::string s = OD_ENV("OD_WIDTH_PAIR");
+                const size_t c = s.find(',');
+                return c == std::string::npos ? std::make_pair(s, std::string())
+                                              : std::make_pair(s.substr(0, c), s.substr(c + 1));
+            }();
+            (void)want;
+            if (widthPairMatches(attackerCid, dst->countryId)) {
+                ++m_pairAssaults;
+                m_pairSupplySum += w.atkSupply; ++m_pairSupplyN;
+                if (w.engagedAtk < attackerCount || w.defTroops > w.width) ++m_pairBoundOr;
+                if (w.engagedAtk < attackerCount && w.defTroops > w.width) {
+                    ++m_pairBoundBoth;
+                    auto pi = m_provinceIndustry.find(pid);
+                    if (pi != m_provinceIndustry.end() && pi->second.fortification > 0) ++m_pairFortified;
+                    if (w.atkDepth >= (double)DEPTH_MAX - 1e-6) ++m_pairAtDepthCap;
+                }
+                if (w.defTroops > 0) {
+                    ++m_pairContested;
+                    if (w.atkPower <= w.defPower) ++m_pairRepulsed;
+                }
+            }
+        }
+    }
+    {
+        const bool atkBound = w.engagedAtk < attackerCount;
+        const bool defBound = w.defTroops > w.width;
+        if (atkBound && defBound) {
+            ++m_assaultsWidthBoundBoth;
+            int fl = 0;
+            auto ind = m_provinceIndustry.find(pid);
+            if (ind != m_provinceIndustry.end()) fl = ind->second.fortification;
+            if (fl < 0) fl = 0;
+            if (fl > 5) fl = 5;
+            ++m_assaultsBothByFort[fl];
+            if (fl > 0) ++m_assaultsBothFortified;
+            if (fl >= 5) ++m_assaultsBothFort5;
+            const bool atDepthCap = w.atkDepth >= (double)DEPTH_MAX - 1e-6;
+            if (atDepthCap) ++m_assaultsBothAtDepthCap;
+            if (atDepthCap && fl >= 5) ++m_assaultsUnwinnable;
+        }
+    }
     if (w.defTroops > 0) {
         ++m_assaultsContested;
         if (w.atkPower <= w.defPower) ++m_assaultsRepulsed;
@@ -7190,6 +7274,16 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
                     w.atkPower, w.defPower, w.defTroops <= 0 ? "walk-in" : w.atkPower > w.defPower ? "carried" : "repulsed");
         }
     }
+
+    // Backlog 139 step 1 / journal 516: tell the AI how this went, so its
+    // re-attack counters can separate a deterministic re-loss from genuine
+    // pressure. Computed HERE, before the branches below run: a carried assault
+    // zeroes the garrison, so the verdict has to be read while it still exists --
+    // the same reason defenderCidForRecord is read above. Same expression the
+    // OD_ECON_TRACE line prints. Inert unless OD_REATTACK is set.
+    if (m_ai) m_ai->noteAssaultOutcome(attackerCid, pid,
+                                       w.defTroops > 0 && w.atkPower <= w.defPower,
+                                       w.defTroops > 0);
 
     if (w.defTroops <= 0) {
         // Nobody home: the province is taken by walking into it, or simply
@@ -7413,6 +7507,45 @@ void Game::processBattles(int countryId) {
         const AssaultPowers w = weighAssault(countryId, b.provinceId, b.men,
                                              /*fromTheSea=*/false);
         ++m_battleRounds;
+        // ── ITEM 213: THE WIDTH CENSUS, ON THE POPULATION THAT TAKES THE GROUND ──
+        //
+        // Same conjunction as the resolveAssault block, counted separately. A
+        // standing battle exists BECAUSE an assault was repulsed and the reserve
+        // stayed, so both sides are massed on one province by construction --
+        // which is exactly the regime journal 480's algebra describes and
+        // journal 520 could not see.
+        {
+            const bool atkBound = w.engagedAtk < b.attackers();
+            const bool defBound = w.defTroops > w.width;
+            if (atkBound || defBound) ++m_battleBoundOr;
+            if (atkBound && defBound) {
+                ++m_battleBoundBoth;
+                int fl = 0;
+                auto pi = m_provinceIndustry.find(b.provinceId);
+                if (pi != m_provinceIndustry.end()) fl = pi->second.fortification;
+                fl = std::clamp(fl, 0, 5);
+                ++m_battleBothByFort[fl];
+                if (fl > 0) ++m_battleBothFortified;
+                if (fl >= 5) ++m_battleBothFort5;
+                const bool atCap = w.atkDepth >= (double)DEPTH_MAX - 1e-6;
+                if (atCap) ++m_battleBothAtDepthCap;
+                if (atCap && fl >= 5) ++m_battleUnwinnable;
+            }
+            static const bool pairOn = OD_ENV("OD_WIDTH_PAIR") != nullptr;
+            if (pairOn) {
+                const Province* bp = m_provinces.getProvinceById(b.provinceId);
+                if (bp && widthPairMatches(countryId, bp->countryId)) {
+                    ++m_battlePairRounds;
+                    if (atkBound && defBound) {
+                        ++m_battlePairBoundBoth;
+                        int fl = 0;
+                        auto pi = m_provinceIndustry.find(b.provinceId);
+                        if (pi != m_provinceIndustry.end()) fl = pi->second.fortification;
+                        if (fl >= 5 && w.atkDepth >= (double)DEPTH_MAX - 1e-6) ++m_battlePairUnwinnable;
+                    }
+                }
+            }
+        }
         ++b.rounds;
         b.lastAtkPower = w.atkPower;
         b.lastDefPower = w.defPower;

@@ -911,3 +911,159 @@ world sooner, so N55 trained 855 turns. Tickets now use three maps
   mean was a null (p 0.73) and which no other arm reproduced. A falsifier is
   still binding when it fires on thin evidence — but then replicating that
   evidence becomes the top item, not an afterthought.
+- **Replicate the OBJECTION and the GAIN on the same fresh seeds.** Journal 513
+  spent 32 games showing that the collapse which rejected a +27.2pp effect was
+  a 1-in-24 fluke (control 0-in-24, Fisher p 1.000) — and left the +27.2pp
+  itself still measured only on the fitted seed set. Clearing an objection is
+  not the same as confirming the claim; both halves need set 2.
+- **A replicated SIGN at low power outranks its p-value.** The USA cost came
+  back −4.39pp then −3.26pp on two independent seed sets, pooling to −3.63pp
+  at p 0.23. Neither set was significant; the agreement is the signal. Check
+  too whether one extreme game carries it — excluding the single collapse here
+  halved the pooled effect to −1.81pp.
+- **Replicate the GAIN on fresh seeds BEFORE spending anything on its
+  objection.** Journals 510/513/514 burned 96 games over three iterations:
+  measure +27.2pp on the fitted set, prove the collapse that rejected it was a
+  1-in-24 fluke, then discover the gain itself is +3.2pp at p 0.38 on fresh
+  seeds. The 32-game defence in journal 513 was rigorous, correct and entirely
+  wasted. Fresh-seed confirmation is the FIRST follow-up, never the last.
+- **A large effect can be a bad control arm.** France's +27.2pp came with a
+  control at 21.7 and a collapse; on fresh seeds the control sat at 33.6 and
+  the effect vanished, while the TREATMENT arm barely moved (48.9 -> 36.8).
+  Read both arms' absolute levels across seed sets before believing a delta.
+- **Never pool a fitted seed set with a fresh one.** Journal 514 pooled to
+  +11.21pp at p 0.0072 — conclusive-looking, and illegitimate, because it
+  inherits the fitted set's selection. Report the fresh set alone.
+- **A tie-break nobody chose is not automatically a defect.** The AI had never
+  researched either side of ten mutex forks — `off_tactics`, `volunteer_force`,
+  `arty4b/6b`, `navy5/8`, `ind_res`, `fortress_doctrine` and more — purely
+  because all three choosers used a strict `<` on tying costs in declaration
+  order. Flipping it (journal 515) moved all ten groups and cost −4.52pp at
+  p 0.21 with a worse floor. Finding that the AI never does X is a reason to
+  measure X, not evidence that X is being missed.
+- **A probe run for the MECHANISM is not evidence about the OUTCOME.** Journal
+  515's clause-1 probe seed showed +7.4pp; the 16-seed answer was −4.52pp with
+  the floor falling 21.9 → 2.5. Read the mechanism from the probe and nothing
+  else from it.
+- **Compute the chance level BEFORE pre-registering a share.** Journal 516
+  predicted ">50% of next-turn repeats follow a repulse", got 46.3%, and
+  recorded a falsification — while the actual chance level was 35.9%, so the
+  finding was a real 1.29x enrichment at z 8.7. Pre-register the ENRICHMENT
+  when the base rate is unknown, not a round-number share.
+- **A rate is only as good as its population.** The same dump first divided
+  repulses by ALL assaults (2.9%) and showed a 16x effect. 91.8% of assaults
+  walk into an empty province and cannot be repulsed; against DEFENDED
+  assaults the base is 35.9% and the effect is 1.29x. Ask what the denominator
+  is a population OF before quoting the ratio.
+- **Pre-register a stopping rule on the SIGNED statistic, not its magnitude.**
+  Journal 517 compared |war-length movement| between two rules and nearly
+  discarded the one moving in the predicted direction: the ratio-only cooldown
+  made wars LONGER (21.7 → 30.9), the repulse-requiring one SHORTER
+  (21.7 → 14.6). On magnitude they looked like the same rule at two strengths.
+- **A firing rate understates a rule's reach.** 170 suppressions (2.2% of
+  issues) came with 2,044 fewer attack orders and 5 more wars concluded. A rule
+  that diverts a stack changes every later position, so "it only fires on 2%"
+  is not a reason to call it unmeasurable.
+- **A stopping rule whose own data contradicts its premise should be reported,
+  not obeyed.** Honouring it mechanically is the mirror image of relaxing a
+  falsifier because the headline is large — both let the letter override the
+  purpose. Report that it failed, say why the premise was wrong, and make no
+  claim either way.
+- **Verify the harness SURFACES your primary statistic before you run.**
+  `od_bench.py` keeps only `.stdout`; `[WARLIFE]`, `[REATTACK]`, `[EMBARK]` and
+  friends print to stderr and are discarded by every benched run.
+  `OD_ACT_HIST_FILE` and now `OD_WARLIFE_FILE` are the way out. Journal 518
+  pre-registered mean war length, ran 32 games, and could not read it.
+- **On 1914:FRA a single-world reading is NOT evidence.** Paired sd is 20.0pp.
+  Three large single-world effects in five iterations all vanished: +27.2 →
+  +3.21, +7.4 → −4.52, +17.8 → +1.83. Do not report them, even caveated —
+  measure the mechanism on one world and the outcome on sixteen.
+- **Four for four: every large one-world effect on 1914:FRA has collapsed on
+  16 seeds.** +27.2pp→+3.21, +7.4→−4.52, +17.8→+1.83, −7.1 turns→−1.72. This
+  is no longer a caution, it is a measured property of the seat. A one-world
+  number is for confirming a MECHANISM fires; it carries no information about
+  an outcome, and reporting one even with caveats wastes the reader's trust.
+- **A negative result is a result when the instrument was sound.** The
+  re-attack line (items 139/208/209/210) found a real behaviour — 730 of 3,290
+  repulses re-attacked next turn, 1.29x over base at z 8.65 — and established
+  that removing it moves neither land share (p 0.72) nor war length (p 0.52).
+  Closing it on that evidence is worth more than keeping it open on a hunch.
+- **Separate the conjuncts before believing a scary aggregate.** "23.8% of
+  assaults are width-bound" is an **OR** over the two sides. The **AND** — both
+  sides over the frontage, the only regime where size stops mattering — is
+  **0.41%**, and the fully specified unwinnable case (both bound, attacker at
+  DEPTH_MAX, defender behind a level-5 fort) occurred **0 times in 203,498
+  assaults** (journal 520). Nineteen of twenty width-bound fights are the
+  frontage doing its job.
+- **An explanation derived from constants is a hypothesis about the game, not
+  an answer about it.** Journal 480 derived a genuinely unwinnable
+  configuration and item 166 was marked "ANSWERED BY ALGEBRA". The algebra was
+  right and the configuration never occurs, so the outcome it explained is
+  unexplained again. Derive freely; mark the item answered only once the
+  fights it describes have been counted.
+- **Enumerate the call sites that produce a behaviour BEFORE counting it.**
+  Province capture has four call sites; the width/repulse/assault counters sit
+  on one of them. `processBattles` — the standing battle that continues across
+  turns — resolves fights and takes ground while incrementing nothing, so
+  journal 520's "0 of 203,498 assaults" and od_bench's "23.8% width-bound"
+  both describe only INITIAL assaults. One `grep -c captureProvince` would
+  have cost a command and saved two iterations.
+- **Keep a count beside a different count of the same thing.** 16 assaults
+  against 126 transferred provinces is what exposed the missing resolver.
+  Neither number is suspicious alone; together they are impossible. Put the
+  mechanism count next to the outcome count and let them disagree.
+- **Re-verify a premise before building on an old observation.** Item 212 spent
+  two iterations on a collapse journal 479 measured ~40 journals and many gates
+  earlier. On the current binary France *grows* 83 → 151 provinces on that
+  seed. Check that the phenomenon still happens before instrumenting its cause.
+- **Read the reconciliation line before inferring a hidden mechanism.** Every
+  eval prints `MODEL start N +G -L => P predicted, P actual, UNEXPLAINED +X`.
+  It was `+0`, so no transfer route was missing — journal 521 had inferred one
+  from an impossible-looking count. An exact accounting identity beats any
+  argument about which code path must exist.
+- **Three zeros are not zero.** Journals 520/522 measured the unwinnable combat
+  regime as 0 on three worlds and I wrote that it "never happens" and that the
+  constants need not be touched. The fourth world has it on 5.14% of battle
+  rounds. State a rate with its denominator in worlds, and never promote
+  "0 in the worlds I looked at" to "0".
+- **A failed read is indistinguishable from a null — make the instrument print
+  its denominators.** Journal 525 parsed the wrong stream and got "no action
+  clears the bar", which was exactly the pre-registered prediction. Only an
+  empty module-total dict revealed it. Any search whose negative result would
+  confirm your hypothesis must first prove it read something: print the counts
+  the rates divide by, and treat a zero denominator as an error, not an answer.
+- **A bimodal seat's collapse count discards most of its information.**
+  `1914:FRA:rush` under the largest AI change in the project: collapse rate
+  9/16 → 12/16 at Fisher p 0.458, but paired land share worse on **12 of 16**
+  (sign p ≈ 0.013) with the mean 9.7 → 3.7 (journal 528). Count collapses to
+  describe a seat; test the paired sign to decide.
+- **Leave no gap between a prediction and its falsifier.** Journal 528
+  predicted a collapse-count difference of "at least 4" and set the falsifier
+  at "2 or fewer". The result was 3. Score the conservative reading when that
+  happens, and write the next pre-registration as a single threshold.
+
+## Gates this loop built, and their verdicts (journal 529)
+
+**Not a complete list and not meant to be.** `src/ai/AISystem.{cpp,h}` reads 147 `OD_ENV` gates; the rest are spent
+probes documented in the journal where they were measured. These are the ones that cost an iteration if forgotten.
+
+**Waiting on a RETRAIN — benching these on a frozen model produces a null, and did, five times:**
+- `OD_PEACE_EFFECTIVE` — ceasefire mask compares effective (width-capped) armies, not raw headcount (j492).
+- `OD_FEAT_RESCALE` — floors the population/army features so the live range is not squashed (j501).
+- `OD_FEAT_WARAGE` — gives the war head a war-duration and war-progress input, which it has none of (j504).
+- `OD_FEAT_EFFARMY` — clamps f[22]/f[52]/f[62] at the depth-cap saturation point (j506-507).
+- `OD_RESEARCH_FORK_LAST` — takes the second-declared side of all ten mutex forks; the shipped AI has never
+  played them (j515, null on a frozen net).
+- `OD_REATTACK_REPULSE` — refuses a next-turn re-order only after a repulse (j517-519, null on a frozen net).
+
+**Measured NULLS — do not re-run without a new reason:**
+- `OD_NAVAL_LAND_NBR` (+`_CID` to scope it to one country or all-but-one) — land neighbours count as naval war
+  targets. Mechanism real and large (embark offers 7.3% → 53.1%); land share **+3.21pp, p 0.38** on fresh seeds
+  (j510-514). The +27.2pp was a fitted-set artefact.
+- `OD_REATTACK_COOLDOWN` / `OD_REATTACK_REPULSE` — war length −1.72 turns (p 0.52), land +1.83pp (p 0.72) (j519).
+- `OD_RESEARCH_FORK_LAST` — land −4.52pp, 8/16, p 0.21 (j515).
+
+**Instruments, kept and inert:** `OD_ACT_HIST` (+`_CID`, accepts an ISO) action census; `[EMBARK]` mask census;
+`[REATTACK]` with the `noteAssaultOutcome` join; `[WIDTH2]`/`[WIDTH4]` both-sides-bound census for `resolveAssault`
+and `processBattles`; `OD_WIDTH_PAIR` to scope those to one war; `OD_WARLIFE_FILE` to get war length out of a
+benched run (od_bench keeps only stdout).

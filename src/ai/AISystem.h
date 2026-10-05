@@ -335,6 +335,18 @@ public:
     /// change the position. Keyed (fromPid, toPid) -> {times ordered, last turn}.
     static std::map<std::pair<int,int>, std::pair<int,int>> s_reatkSeen;
     static long long s_reatkOrders, s_reatkRepeats, s_reatkConsecutive;
+    /// Journal 516 / backlog 139 step 1: THE JOIN. The issue site cannot tell a
+    /// deterministic re-loss from genuine pressure, because only the resolver
+    /// knows how the last assault went. Keyed (attackerCid, dstPid) -> {turn,
+    /// repulsed} and written by noteAssaultOutcome from the resolver; keyed on
+    /// the TARGET rather than the pair because "did my last attack on this
+    /// province fail" is the question the step-2 rule would ask, and because
+    /// the resolver does not know fromPid.
+    static std::map<std::pair<int,int>, std::pair<int,bool>> s_reatkOutcome;
+    static long long s_reatkAfterRepulse, s_reatkAfterCarry, s_reatkAfterUnknown;
+    static long long s_reatkAssaults, s_reatkAssaultsRepulsed, s_reatkAssaultsDefended;
+    /// Backlog 208: re-orders the repulse condition handed back to the AI.
+    static long long s_reatkKeptAfterWin;
     /// Journal 450: last turn and garrison ratio per pair, for the cooldown.
     static std::map<std::pair<int,int>, std::pair<int,float>> s_reatkRatio;
     static long long s_reatkSuppressed;
@@ -2505,6 +2517,10 @@ public:
     // A funded-at-zero turn with a node still active. See researchStalls.
     void noteResearchStall(int cid) { statsFor(cid).researchStalls++; }
     void noteResearchFunded(int cid){ statsFor(cid).researchFundedTurns++; }
+    /// Backlog 139 step 1 (journal 516): the resolver reporting how an assault
+    /// went, so the OD_REATTACK counters can tell a deterministic re-loss from
+    /// genuine pressure. Inert unless OD_REATTACK is set. See s_reatkOutcome.
+    void noteAssaultOutcome(int attackerCid, int dstPid, bool repulsed, bool defended);
     /**
      * A node finished. Counted HERE, at the completion site, and not by
      * diffing the size of m_countryResearched from the experience loop.

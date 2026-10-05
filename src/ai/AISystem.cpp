@@ -264,6 +264,34 @@ bool AISystem::nextSpecBuy(int cid, int& outPid, const char*& outRes,
     return true;
 }
 
+// ── WHICH SIDE OF A RESEARCH FORK (OD_RESEARCH_FORK_LAST, off) ──
+//
+// Backlog 100 / journals 372-373: every mutex pair in the tree TIES on cost and
+// all three choosers take the cheapest node with a strict `<`, so the
+// FIRST-DECLARED side always wins -- 0 second-declared fork nodes in 14,089
+// main-slot completions, world-wide. def_tactics, total_war, arty4a and arty6a
+// are always researched and their siblings never are. The shipped AI has never
+// played the other side of its own tech tree, and nothing chose that: it is
+// declaration order in m_researchNodes.
+//
+// This flips the tie, and ONLY between mutex siblings. A blanket `<=` would
+// reorder every tie in the tree and conflate the fork question with arbitrary
+// reordering elsewhere; the decision item 100 found nobody makes is specifically
+// "which side of this fork", so that is the only tie touched.
+//
+// Returns true when `n` should beat the incumbent DESPITE not being cheaper --
+// i.e. equal cost, both in the same mutex group, gate on.
+static bool forkLastBeats(const Game& g, const ResearchNode& n, int incumbentIdx,
+                          int incumbentCost) {
+    static const bool on = OD_ENV("OD_RESEARCH_FORK_LAST") &&
+                           atoi(OD_ENV("OD_RESEARCH_FORK_LAST")) != 0;
+    if (!on || incumbentIdx < 0) return false;
+    if (n.cost != incumbentCost) return false;
+    if (n.mutexGroup <= 0) return false;
+    if (incumbentIdx >= (int)g.m_researchNodes.size()) return false;
+    return g.m_researchNodes[incumbentIdx].mutexGroup == n.mutexGroup;
+}
+
 // Defined below, beside the other OD_ACT_HIST counters. Declared here because
 // bestEmbarkPort needs it and sits ~3000 lines earlier in the file.
 static bool actHistCountsCid(int cid);
@@ -6105,8 +6133,10 @@ std::string AISystem::execEconomy(int cid, int action) {
                        (strcmp(want, "army") == 0 && n.category == "formations"))
                     : (n.category == want);
                 if (wanted) {
-                    if (n.cost < bestCost) { bestCost = n.cost; bestIdx = i; }
-                } else if (n.cost < fallbackCost) {
+                    if (n.cost < bestCost || forkLastBeats(g, n, bestIdx, bestCost)) {
+                        bestCost = n.cost; bestIdx = i; }
+                } else if (n.cost < fallbackCost ||
+                           forkLastBeats(g, n, fallbackIdx, fallbackCost)) {
                     fallbackCost = n.cost; fallbackIdx = i;
                 }
             }
@@ -7195,15 +7225,40 @@ std::string AISystem::execWar(int cid, int action) {
                 {
                     static const bool cooldown = OD_ENV("OD_REATTACK_COOLDOWN") &&
                                                  atoi(OD_ENV("OD_REATTACK_COOLDOWN")) != 0;
-                    if (cooldown && ch.theirGarrison > 0) {
+                    // ── ...AND ONLY A BATTLE WE LOST (OD_REATTACK_REPULSE) ──
+                    //
+                    // Backlog 208 / journal 516: the ratio-only rule above has a
+                    // 53.4% FALSE-POSITIVE rate -- more than half the next-turn
+                    // repeats it would suppress follow a CARRIED or walk-in
+                    // assault, which is ordinary war and not a re-loss. Above the
+                    // frontage only a REPULSE returns the same answer when
+                    // re-made, so the repulse is the condition that makes this a
+                    // waste rule rather than a brake on attacking.
+                    //
+                    // Implies the cooldown: this is the same suppression with one
+                    // more condition, so it fires on a strict SUBSET.
+                    static const bool needRepulse = OD_ENV("OD_REATTACK_REPULSE") &&
+                                                    atoi(OD_ENV("OD_REATTACK_REPULSE")) != 0;
+                    if ((cooldown || needRepulse) && ch.theirGarrison > 0) {
                         const auto ckey = std::make_pair(ch.fromPid, ch.toPid);
                         const float ratio = (float)ch.myGarrison / (float)ch.theirGarrison;
                         auto f = s_reatkRatio.find(ckey);
                         if (f != s_reatkRatio.end() && m_turn == f->second.first + 1 &&
                             f->second.second > 0.0f &&
                             std::fabs(ratio - f->second.second) / f->second.second < 0.10f) {
-                            ++s_reatkSuppressed;
-                            continue;
+                            // The repulse condition, when asked for: did MY last
+                            // assault on this target actually fail? Only the
+                            // resolver knows, via noteAssaultOutcome.
+                            bool lostIt = true;
+                            if (needRepulse) {
+                                auto o = s_reatkOutcome.find(std::make_pair(cid, ch.toPid));
+                                lostIt = o != s_reatkOutcome.end() && o->second.second;
+                                if (!lostIt) ++s_reatkKeptAfterWin;
+                            }
+                            if (lostIt) {
+                                ++s_reatkSuppressed;
+                                continue;
+                            }
                         }
                         s_reatkRatio[ckey] = {m_turn, ratio};
                     }
@@ -7232,7 +7287,15 @@ std::string AISystem::execWar(int cid, int action) {
                         } else {
                             ++f->second.first;
                             ++s_reatkRepeats;
-                            if (m_turn == f->second.second + 1) ++s_reatkConsecutive;
+                            if (m_turn == f->second.second + 1) {
+                                ++s_reatkConsecutive;
+                                // THE JOIN: how did my last assault on this
+                                // target actually go? Only the resolver knows.
+                                auto o = s_reatkOutcome.find(std::make_pair(cid, ch.toPid));
+                                if (o == s_reatkOutcome.end())      ++s_reatkAfterUnknown;
+                                else if (o->second.second)          ++s_reatkAfterRepulse;
+                                else                                ++s_reatkAfterCarry;
+                            }
                             f->second.second = m_turn;
                             if (f->second.first > s_reatkMax) s_reatkMax = f->second.first;
                         }
@@ -14362,6 +14425,41 @@ long long AISystem::s_atkTurns = 0;
 long long AISystem::s_atkIssuedSum = 0;
 long long AISystem::s_atkIssuedHist[9] = {0};
 int AISystem::s_reatkMax = 0;
+std::map<std::pair<int,int>, std::pair<int,bool>> AISystem::s_reatkOutcome;
+long long AISystem::s_reatkAfterRepulse = 0;
+long long AISystem::s_reatkAfterCarry = 0;
+long long AISystem::s_reatkAfterUnknown = 0;
+long long AISystem::s_reatkAssaults = 0;
+long long AISystem::s_reatkAssaultsRepulsed = 0;
+long long AISystem::s_reatkAssaultsDefended = 0;
+long long AISystem::s_reatkKeptAfterWin = 0;
+
+// ── THE RE-ATTACK JOIN (backlog 139 step 1, journal 516) ──
+//
+// Called by the resolver, which is the only place the verdict exists. Gated on
+// the same OD_REATTACK as the issue-site counters, so unset this is a branch and
+// a return. Counters only; nothing reads s_reatkOutcome except the dump and the
+// classification beside it.
+void AISystem::noteAssaultOutcome(int attackerCid, int dstPid, bool repulsed, bool defended) {
+    // The MAP is maintained whenever something reads it -- the counters below, or
+    // OD_REATTACK_REPULSE's rule. A rule cannot depend on a debug flag being set,
+    // which is how a gate ends up measuring itself off (journal 463).
+    static const bool ruleNeeds = OD_ENV("OD_REATTACK_REPULSE") &&
+                                  atoi(OD_ENV("OD_REATTACK_REPULSE")) != 0;
+    static const bool on = OD_ENV("OD_REATTACK") && atoi(OD_ENV("OD_REATTACK")) != 0;
+    if (!on && !ruleNeeds) return;
+    if (ruleNeeds) s_reatkOutcome[std::make_pair(attackerCid, dstPid)] = {m_turn, repulsed};
+    if (!on) return;
+    ++s_reatkAssaults;
+    // DEFENDED separately, because most assaults walk into an empty province and
+    // including those in the denominator understates how often a real fight is
+    // lost -- which is the chance level the join is read against. A rate whose
+    // denominator is the wrong population is the a-flow-divided-by-a-reserve
+    // error, and it would have flattered this instrument by ~an order of magnitude.
+    if (defended) ++s_reatkAssaultsDefended;
+    if (repulsed) ++s_reatkAssaultsRepulsed;
+    s_reatkOutcome[std::make_pair(attackerCid, dstPid)] = {m_turn, repulsed};
+}
 std::vector<int> AISystem::s_warTransfers;
 long long AISystem::s_warStalemates = 0;
 long long AISystem::s_warEliminations = 0;
@@ -15376,10 +15474,37 @@ void AISystem::dumpReattack() {
             100.0 * (double)s_reatkConsecutive / n, s_reatkMax);
     fprintf(stderr, "[REATTACK] counted at ISSUE, so a pair re-attacked after the defence "
                     "genuinely changed counts as a repeat too.\n");
+    // Backlog 139 step 1: the join. Read the first line against the BASE repulse
+    // rate on the second -- a repeat-after-repulse share that merely matches the
+    // base rate means repeats track ordinary war, not deterministic re-loss.
+    if (s_reatkConsecutive > 0) {
+        const double c = (double)s_reatkConsecutive;
+        fprintf(stderr, "[REATTACK] of the %lld next-turn repeats: after a REPULSE %lld (%.1f%%), "
+                        "after a carried/walk-in assault %lld (%.1f%%), no record %lld (%.1f%%)\n",
+                s_reatkConsecutive, s_reatkAfterRepulse, 100.0 * (double)s_reatkAfterRepulse / c,
+                s_reatkAfterCarry, 100.0 * (double)s_reatkAfterCarry / c,
+                s_reatkAfterUnknown, 100.0 * (double)s_reatkAfterUnknown / c);
+    }
+    if (s_reatkAssaults > 0)
+        fprintf(stderr, "[REATTACK] BASE RATES: %lld assaults resolved, of which %lld were DEFENDED "
+                        "(%.1f%%); repulsed %lld = %.1f%% of all assaults but %.1f%% OF DEFENDED ONES "
+                        "-- the defended figure is the chance level for the line above\n",
+                s_reatkAssaults, s_reatkAssaultsDefended,
+                100.0 * (double)s_reatkAssaultsDefended / (double)s_reatkAssaults,
+                s_reatkAssaultsRepulsed,
+                100.0 * (double)s_reatkAssaultsRepulsed / (double)s_reatkAssaults,
+                s_reatkAssaultsDefended > 0
+                    ? 100.0 * (double)s_reatkAssaultsRepulsed / (double)s_reatkAssaultsDefended : 0.0);
     if (s_reatkSuppressed > 0)
         fprintf(stderr, "[REATTACK] cooldown suppressed %lld next-turn re-orders "
                         "(%.1f%% of issues)\n", s_reatkSuppressed,
                 100.0 * (double)s_reatkSuppressed / n);
+    // Backlog 208: how many suppressions the repulse condition HANDED BACK -- the
+    // false positives of the ratio-only rule, measured rather than inferred.
+    if (s_reatkKeptAfterWin > 0)
+        fprintf(stderr, "[REATTACK] repulse condition allowed %lld re-orders the ratio rule "
+                        "would have suppressed (%.1f%% of issues) -- repeats after a WIN\n",
+                s_reatkKeptAfterWin, 100.0 * (double)s_reatkKeptAfterWin / n);
 }
 
 void AISystem::dumpResearchPicks() {
@@ -15439,6 +15564,25 @@ void AISystem::dumpWarLife() {
             s_warsEnded ? (double)s_warLenSum / (double)s_warsEnded : 0.0,
             s_warTurns ? (double)s_warOpenSum / (double)s_warTurns : 0.0,
             s_warTurns);
+    // ── OD_WARLIFE_FILE, AND WHY IT HAS TO EXIST (journal 518) ──
+    //
+    // od_bench.py runs the binary with capture_output=True and reads only
+    // .stdout (tools/od_bench.py:548), so everything above goes to stderr and is
+    // DISCARDED by every benched run. OD_ACT_HIST_FILE was added for exactly
+    // this reason and war length never got the same treatment -- so journal 518
+    // pre-registered mean war length as its PRIMARY statistic, ran 32 games, and
+    // could not read it afterwards. One line per process, appended, so a
+    // multi-seed bench leaves one row per seed.
+    if (const char* f = OD_ENV("OD_WARLIFE_FILE")) {
+        if (FILE* fp = fopen(f, "a")) {
+            fprintf(fp, "started %lld ended %lld open %zu meanlen %.4f meanconc %.4f turns %lld\n",
+                    s_warsStarted, s_warsEnded, s_warOpen.size(),
+                    s_warsEnded ? (double)s_warLenSum / (double)s_warsEnded : 0.0,
+                    s_warTurns ? (double)s_warOpenSum / (double)s_warTurns : 0.0,
+                    s_warTurns);
+            fclose(fp);
+        }
+    }
     if (!s_warTransfers.empty()) {
         std::vector<int> v = s_warTransfers;
         std::sort(v.begin(), v.end());

@@ -214,7 +214,18 @@ void Game::progressCountryResearch(int countryId) {
             for (int k = 1; k < unlocked; ++k)
                 if (k != g && extra[k - 1].activeNode == (int)i) taken = true;
             if (taken) continue;
-            if (n.cost < bestCost) { bestCost = n.cost; best = (int)i; }
+            // Backlog 100 / journal 515: the same fork tie-break as the two
+            // choosers in AISystem.cpp, kept here rather than shared because
+            // this file must not depend on the AI module. Mutex siblings only.
+            bool forkFlip = false;
+            {
+                static const bool on = OD_ENV("OD_RESEARCH_FORK_LAST") &&
+                                       atoi(OD_ENV("OD_RESEARCH_FORK_LAST")) != 0;
+                forkFlip = on && best >= 0 && n.cost == bestCost &&
+                           n.mutexGroup > 0 &&
+                           m_researchNodes[best].mutexGroup == n.mutexGroup;
+            }
+            if (n.cost < bestCost || forkFlip) { bestCost = n.cost; best = (int)i; }
         }
         if (researchProbeOn() && best >= 0 && active >= 0 && active < (int)m_researchNodes.size() &&
             m_researchNodes[best].mutexGroup > 0 &&

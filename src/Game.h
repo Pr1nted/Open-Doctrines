@@ -5010,6 +5010,17 @@ private:
     /** Counters, for the same reason [WIDTH] and [SUPPLY] have them. */
     long long m_battlesStarted = 0;
     long long m_battleRounds = 0;
+    /// Item 213 / journal 522: the SAME width census as m_assaults*, for the
+    /// standing-battle population. Kept strictly separate -- processBattles is a
+    /// second resolver that takes the ground (126 provinces against 16 through
+    /// resolveAssault, journal 521), and merging the two would invalidate every
+    /// width and repulse figure this journal has quoted.
+    long long m_battleBoundOr = 0, m_battleBoundBoth = 0;
+    long long m_battleBothFortified = 0, m_battleBothFort5 = 0;
+    long long m_battleBothAtDepthCap = 0, m_battleUnwinnable = 0;
+    long long m_battleBothByFort[6] = {0};
+    long long m_battlePairRounds = 0, m_battlePairBoundBoth = 0, m_battlePairUnwinnable = 0;
+    bool widthPairMatches(int atkCid, int defCid) const;
     long long m_battlesWon = 0;
     long long m_battlesLost = 0;
     long long m_battlesWithdrawn = 0;
@@ -5205,6 +5216,25 @@ private:
      */
     long long m_assaultsTotal = 0;
     long long m_assaultsWidthBound = 0;
+    /// Item 167 / journal 520. m_assaultsWidthBound above is an **OR** -- either
+    /// side over the frontage -- which is ordinary. The regime journal 480
+    /// derived is the **AND**: both sides pinned at `width`, so the engaged terms
+    /// are equal and size buys nothing, and then a fort multiplies the defender
+    /// by up to 1.50 against the attacker's capped 1.50 depth. These count that.
+    long long m_assaultsWidthBoundBoth = 0;      // both sides over the frontage
+    long long m_assaultsBothFortified = 0;       // ...and the defender has any fort
+    long long m_assaultsBothFort5 = 0;           // ...and a level-5 fort (exact cancel)
+    long long m_assaultsBothAtDepthCap = 0;      // ...and the attacker is at DEPTH_MAX
+    long long m_assaultsUnwinnable = 0;          // both bound + depth capped + fort 5
+    long long m_assaultsBothByFort[6] = {0};     // fort-level histogram of the AND cases
+    /// Item 212 / journal 521: the same counters restricted to ONE PAIR of
+    /// countries, so a single run yields both a grind and its own baseline.
+    /// OD_WIDTH_PAIR=<ISO>,<ISO> (or two cids); either direction counts.
+    long long m_pairAssaults = 0, m_pairBoundOr = 0, m_pairBoundBoth = 0;
+    long long m_pairContested = 0, m_pairRepulsed = 0, m_pairFortified = 0;
+    long long m_pairAtDepthCap = 0;
+    double    m_pairSupplySum = 0.0;   long long m_pairSupplyN = 0;
+    double    m_worldSupplySum = 0.0;  long long m_worldSupplyN = 0;
     long long m_assaultsContested = 0;   ///< somebody was actually defending
     long long m_assaultsRepulsed = 0;    ///< ...and threw us back
     /**

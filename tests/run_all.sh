@@ -447,6 +447,7 @@ check "every llm tool offered is answered" $PY "$root/tools/check_llm_tools.py"
 # 8.6.0 ... not one seat lost" above a 1 -- and BOTH re-measured as failures.
 # A comment is accepted once the re-measurement sits beside it; see the script.
 check "ai comments describe this build" $PY "$root/tools/check_ai_comments.py"
+check "ai instruments exist" $PY "$root/tools/check_ai_instruments.py"
 
 # THE COMPATIBILITY GATE, and a different question from the two checks above.
 #

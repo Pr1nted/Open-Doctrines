@@ -1618,6 +1618,36 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                m_assaultsTotal, m_assaultsWidthBound,
                m_assaultsTotal ? 100.0 * (double)m_assaultsWidthBound / (double)m_assaultsTotal : 0.0,
                m_assaultsContested, m_assaultsRepulsed);
+        // Item 167 / journal 520: the AND. `bound` above is an OR and so cannot
+        // answer "did size stop mattering for BOTH sides at once", which is the
+        // only regime where journal 480's algebra bites.
+        {
+            const double tot = m_assaultsTotal ? (double)m_assaultsTotal : 1.0;
+            const double both = m_assaultsWidthBoundBoth ? (double)m_assaultsWidthBoundBoth : 1.0;
+            printf("[WIDTH2] BOTH sides bound=%lld (%.2f%% of assaults); of those: fortified=%lld (%.1f%%) "
+                   "fort5=%lld (%.1f%%) atkAtDepthCap=%lld (%.1f%%) UNWINNABLE(both+cap+fort5)=%lld (%.3f%% of assaults)\n",
+                   m_assaultsWidthBoundBoth, 100.0 * (double)m_assaultsWidthBoundBoth / tot,
+                   m_assaultsBothFortified, 100.0 * (double)m_assaultsBothFortified / both,
+                   m_assaultsBothFort5, 100.0 * (double)m_assaultsBothFort5 / both,
+                   m_assaultsBothAtDepthCap, 100.0 * (double)m_assaultsBothAtDepthCap / both,
+                   m_assaultsUnwinnable, 100.0 * (double)m_assaultsUnwinnable / tot);
+            printf("[WIDTH2] fort level of the both-bound fights:");
+            for (int i = 0; i <= 5; ++i) printf(" L%d=%lld", i, m_assaultsBothByFort[i]);
+            printf("\n");
+            // Item 212: the same question asked of one war, beside its own baseline.
+            if (m_pairAssaults > 0) {
+                const double pa = (double)m_pairAssaults;
+                printf("[WIDTH3] PAIR assaults=%lld  OR-bound=%lld (%.2f%%)  BOTH-bound=%lld (%.2f%%)  "
+                       "of both: fortified=%lld atDepthCap=%lld   contested=%lld repulsed=%lld (%.1f%% of contested)\n",
+                       m_pairAssaults, m_pairBoundOr, 100.0 * (double)m_pairBoundOr / pa,
+                       m_pairBoundBoth, 100.0 * (double)m_pairBoundBoth / pa,
+                       m_pairFortified, m_pairAtDepthCap, m_pairContested, m_pairRepulsed,
+                       m_pairContested ? 100.0 * (double)m_pairRepulsed / (double)m_pairContested : 0.0);
+                printf("[WIDTH3] mean attacker supply: PAIR %.4f over %lld   WORLD %.4f over %lld\n",
+                       m_pairSupplyN ? m_pairSupplySum / (double)m_pairSupplyN : 0.0, m_pairSupplyN,
+                       m_worldSupplyN ? m_worldSupplySum / (double)m_worldSupplyN : 0.0, m_worldSupplyN);
+            }
+        }
         // Did supply ever bite, and did anybody actually get cut off? See
         // Game::m_supplyChecks -- a rule that never reaches a penalty is
         // indistinguishable from no rule, and the aggregate cannot tell.
@@ -1637,6 +1667,29 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         printf("[BATTLES] started=%lld rounds=%lld won=%lld lost=%lld withdrawn=%lld reinforced=%lld\n",
                m_battlesStarted, m_battleRounds, m_battlesWon, m_battlesLost,
                m_battlesWithdrawn, m_battlesReinforced);
+        // Item 213 / journal 522: the width census for the STANDING-BATTLE
+        // population, which resolveAssault's counters never saw.
+        if (m_battleRounds > 0) {
+            const double br = (double)m_battleRounds;
+            const double bb = m_battleBoundBoth ? (double)m_battleBoundBoth : 1.0;
+            printf("[WIDTH4] battle rounds=%lld  OR-bound=%lld (%.2f%%)  BOTH-bound=%lld (%.2f%%)  "
+                   "of both: fortified=%lld (%.1f%%) fort5=%lld (%.1f%%) atDepthCap=%lld (%.1f%%)  "
+                   "UNWINNABLE=%lld (%.4f%% of rounds)\n",
+                   m_battleRounds, m_battleBoundOr, 100.0 * (double)m_battleBoundOr / br,
+                   m_battleBoundBoth, 100.0 * (double)m_battleBoundBoth / br,
+                   m_battleBothFortified, 100.0 * (double)m_battleBothFortified / bb,
+                   m_battleBothFort5, 100.0 * (double)m_battleBothFort5 / bb,
+                   m_battleBothAtDepthCap, 100.0 * (double)m_battleBothAtDepthCap / bb,
+                   m_battleUnwinnable, 100.0 * (double)m_battleUnwinnable / br);
+            printf("[WIDTH4] fort level of the both-bound rounds:");
+            for (int i = 0; i <= 5; ++i) printf(" L%d=%lld", i, m_battleBothByFort[i]);
+            printf("\n");
+            if (m_battlePairRounds > 0)
+                printf("[WIDTH4] PAIR battle rounds=%lld  BOTH-bound=%lld (%.2f%%)  UNWINNABLE=%lld\n",
+                       m_battlePairRounds, m_battlePairBoundBoth,
+                       100.0 * (double)m_battlePairBoundBoth / (double)m_battlePairRounds,
+                       m_battlePairUnwinnable);
+        }
         printf("[SUPPLY] checks=%lld penalised=%lld (%.1f%%) cutOff=%lld (%.1f%%)\n",
                m_supplyChecks, m_supplyPenalised,
                m_supplyChecks ? 100.0 * (double)m_supplyPenalised / (double)m_supplyChecks : 0.0,

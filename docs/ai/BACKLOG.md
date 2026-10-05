@@ -5074,3 +5074,563 @@ mean is not the thing in dispute.
 
 Budget note: the Debug tree runs ~4.8 min/game, so 64 games is ~2.5 h/arm. Pin `--binary`. Do not reuse seeds
 771103/881209/991317/101423/111529/121631/131737/141841.
+
+## 205. Does the collapse replicate? — NO (journal 513). The objection to item 202 has dissolved.
+
+16 **fresh** seeds, 1939:USA, both arms, binary 1172aa67 pinned:
+
+| seed set | A (gate off) | W (gate on) |
+|---|---|---|
+| set 1 (journal 510's 8) | 0/8 | 1/8 |
+| **set 2 (16 fresh)** | 0/16 | **0/16** |
+| pooled | **0/24** | **1/24** — Fisher p = **1.000** |
+
+No collapse in 16 fresh worlds, and the lowest score in the whole experiment is in the **control** arm (16.4 vs
+19.6). Journal 510 rejected item 202 for "a collapse the control arm does not have"; at 1-in-24 against 0-in-24
+that is not a difference.
+
+What survives is a small, **sign-replicated** USA cost: −4.39pp (set 1) and −3.26pp (set 2), pooled **−3.63pp over
+24 seeds, p 0.23** — and **−1.81pp if the one collapsed game is excluded**, so half of the cost ever measured was
+that single world.
+
+## 206. Replicate France's +27.2pp on fresh seeds — the last step before this is a user decision
+
+**Top item.** Item 202's headline (**+27.2pp on 1914:FRA, 8 of 8, floor 0.8 → 33.3**) comes from **seed set 1** —
+the same set that produced the fluke collapse item 205 just dismissed. The USA side now has 24 seeds; **France
+still has 8.** I replicated the objection and not the gain.
+
+[[decide-on-fresh-seeds]] exists because effects shrink on fresh seeds: +38.7 → +13.3, +20.3 → +0.2, and a p 0.017
+harm became p 0.620. So +27.2pp is a fitted-set number until set 2 says otherwise.
+
+**Run:** `OD_NAVAL_LAND_NBR` off vs on, `1914:FRA:rung`, the 16 fresh seeds
+(310207,320311,330413,340517,350619,360723,370829,380931,391037,401141,411243,421347,431449,441553,451657,461759),
+400 turns, `--binary` pinned. Read raw per-seat land share and the **floor**, not the rating (the seat is bistable
+and caps in the treatment arm).
+
+- survives at a large positive → hand to the user as a decision with its price: France +X, USA −2 to −4 (p 0.23),
+  no distinguishable collapse risk. **Do not flip the default unilaterally** — it changes the shipped game on a
+  trade.
+- shrinks to nothing → item 202 closes as a fitted-set artefact, and journal 508's "widen a mask the policy already
+  wants" lever has one confirmed instance (the research bar) rather than two.
+
+Budget: 32 games. The W arm runs ~2x slower than A (more hulls). Debug is ~4.8–7 min/game under current swap
+pressure; a Release build in a **private** directory would be ~4x faster but was refused in journal 513 at 15.07/16.38 GB
+swap — re-check `sysctl vm.swapusage` before trying it, and never rebuild the shared `build/`.
+
+## 206. Replicate France's +27.2pp on fresh seeds — IT DOES NOT (journal 514). Item 202 is CLOSED.
+
+| 1914:FRA | off | on | delta | better | perm p | floor |
+|---|---|---|---|---|---|---|
+| set 1 (fitted, 8) | 21.7 | 48.9 | +27.21pp | 8/8 | 0.0078 | 0.8 → 33.3 |
+| **set 2 (fresh, 16)** | 33.6 | 36.8 | **+3.21pp** | **8/16** | **0.3835** | 21.9 → **18.6** |
+
+A coin flip, and the floor got *worse*. The cause is in the control arm: set 1's control was France at 21.7 with a
+collapse, set 2's at 33.6 with min 21.9 — **the +27pp was mostly a bad control**, not a good gate
+([[seed-sets-carry-difficulty]]).
+
+Do **not** quote the pooled +11.21pp / p 0.0072: it averages a fitted set with a fresh one and inherits set 1's
+selection. Set 2 alone is the estimate.
+
+**202/203/204/205/206 are all closed.** `OD_NAVAL_LAND_NBR` and `OD_NAVAL_LAND_NBR_CID` stay in the tree, off by
+default and proven inert — they are the only way to ask this class of question, and the embark census `[EMBARK]`
+with them.
+
+What survives: the **mechanism** is real and large (embark offers 7.3% → 53.1%, embarkations 120 → 760, landing
+rate held at 56%) — the mask was genuinely suppressing embark; it just does not move land share on unbiased worlds.
+And journal 508's lever class now has **one** confirmed instance (the research bar, measured across two seed sets),
+not two.
+
+## 207. The loop is out of frozen-model work again — the standing list
+
+Every unstruck item is now one of: **FOR THE USER** (167 width/fort balance, 176 research bar is a trade, 181 one
+training run / four gates, 145, 108), **needs a RETRAIN** (168, 171, 180, 182, 196, 199), or **BLOCKED** on the
+other session's files (100, 139, 192, and 167's measurement — `git status --porcelain src/Game_TurnLogic.cpp
+src/Game_Research.cpp` is the first command to re-check).
+
+Journal 508's search found exactly two mask-shaped candidates and both are now resolved: the research bar (real,
+two sets) and embark (mechanism real, outcome null). **Before manufacturing an experiment, re-run that search** —
+the signature is high take-when-offered against a low offer rate, and the data comes from `OD_ACT_HIST` on a
+shipped-config run. If it turns up nothing new, say so rather than inventing an item.
+
+## 100 (last open half). Which side of a research fork — ANSWERED, a null (journal 515). ITEM CLOSED.
+
+`src/Game_TurnLogic.cpp` and `src/Game_Research.cpp` went clean (the other session committed), which made item
+188's preferred experiment live for the first time.
+
+`OD_RESEARCH_FORK_LAST=1` flips the tie-break **between mutex siblings only** at all three choosers
+(`AISystem.cpp` focused-branch and cheapest-anywhere fallback, `Game_Research.cpp:217` extra groups). A blanket
+`<=` was rejected: it would reorder every tie in the tree and conflate the fork question with arbitrary reordering.
+
+- **Mechanism: total.** All **ten** mutex groups flip — def_tactics→off_tactics, total_war→volunteer_force,
+  arty4a/6a→arty4b/6b, navy4/7→navy5/8, ind_pop/cost/eff_grid→ind_res/res2/eff_auto, national_mob→fortress_doctrine.
+  Double-hold stayed at 0 in both arms (journal 382's fix holds under the flip).
+- **Outcome: null.** 1914:FRA, 16 fresh seeds, land share **33.6 → 29.1, −4.52pp, 8/16, p 0.2084**. The rating is
+  not quotable (graded 7/16 vs 11/16). Floor **21.9 → 2.5** and one near-collapse where the control had none, so
+  the unused side is no better *and* noisier.
+
+**So the asymmetry journals 372/373 found is real and costs nothing.** The AI has never researched `off_tactics`,
+`volunteer_force`, `arty4b`, `arty6b`, `navy5`, `navy8`, `ind_res`, `ind_res2`, `ind_eff_auto` or
+`fortress_doctrine` — by declaration order, not by choice — and the two sides of those ten forks are worth the same
+to a frozen policy. Gate kept off by default: **re-ask after a retrain**, since a trained net might value them
+differently.
+
+Caution for whoever reads the probe data: seed 310207 alone showed **+7.4pp** for the flip. The 16-seed answer is
+−4.52pp with a 2.5% floor. [[a-one-seat-run-is-a-different-world]].
+
+## 139 step 1. The re-attack join — DONE (journal 516). The premise is weaker than journal 449 implied.
+
+`Game_TurnLogic.cpp` went clean, so the blocked half became live. `m_ai->noteAssaultOutcome(cid, pid, repulsed,
+defended)` is called from the resolver before the outcome branches run (a carried assault zeroes the garrison, so
+the verdict must be read while it exists), keyed `(attackerCid, dstPid)` because the resolver does not know
+`fromPid` — and "did my last attack on this province fail" is what the rule needs anyway. Inert unset, verified
+(23.5 with and without).
+
+```
+next-turn repeats 1575: after a REPULSE 730 (46.3%), after carried/walk-in 841 (53.4%), no record 4
+base: 112226 assaults, 9165 DEFENDED (8.2%), 3290 repulsed = 35.9% OF DEFENDED
+```
+
+**Enrichment 1.29x (z 8.65, 165 excess over the 565 expected at chance) — real but modest.** Note the first version
+of this dump divided by ALL assaults (2.9%) and showed a 16x effect; **91.8% of assaults walk into an empty
+province**, so that denominator measured how often the AI attacks nobody. [[a-flow-divided-by-a-reserve]].
+
+**The majority of next-turn repeats follow a SUCCESSFUL assault**, so they are ordinary war, not deterministic
+re-loss. Also useful: **22.2% of all repulses (730/3290) are immediately re-attacked** — those are the spent turns.
+
+## 208. Step 2 re-specified: the rule must require the REPULSE, not just an unmoved ratio
+
+Item 139's original candidate — "refuse to re-order a pair on the next turn unless the garrison ratio moved" —
+would fire on **1575** orders to suppress at most **730** wasted ones, hitting ordinary war more often than waste.
+[[masking-waste-costs]] (−59; the freed probability goes to the next safe action) is how a rule of that shape
+loses.
+
+**Specify it as: refuse a next-turn re-order only when the previous assault on that target was REPULSED and the
+garrison ratio has not moved.** The join now supplies the first condition and `OD_REATTACK_COOLDOWN` (journal 450)
+already implements the second — **re-read that gate in this light before benching it again**, since it keys on the
+ratio alone and so inherits the 53.4% false-positive rate measured above.
+
+Pre-register as a **DURATION** experiment (mean war length, `OD_WARLIFE`) as well as land share, per item 139's
+original note: the rating may not resolve it, and duration is the growth channel the AI has left (item 105).
+And per journal 514's lesson: **fresh seeds first, no fitted-set measurement.**
+
+## 208. The repulse-requiring cooldown — BUILT (journal 517). Stopping rule not met; item not killed.
+
+`OD_REATTACK_REPULSE=1` = the ratio cooldown **plus** "my last assault on this target was repulsed". Strict subset
+of journal 450's rule. Off by default, control reproduces 23.5.
+
+One world (seed 310207, 1914:FRA):
+
+| arm | seat | suppressed | attack orders | wars ended | mean war length | provinces/war |
+|---|---|---|---|---|---|---|
+| off | 23.5 | — | 9697 | 12 | 21.7 | 21.67 |
+| ratio only | 24.0 | 6.4% | 9926 | 11 | **30.9** (longer) | 20.45 |
+| **repulse** | **41.3** | **2.2%** | 7653 | **17** | **14.6** (shorter) | **27.94** |
+
+**The two rules move war length in OPPOSITE directions.** Item 139's thesis predicts shorter; the ratio-only rule
+(journal 451's "unresolved null") goes the wrong way, the repulse-requiring one goes the right way. My pre-registered
+stopping rule compared |movement| and so scored them as the same rule at different strengths — a specification
+error, recorded in journal 517.
+
+Also: 170 suppressions coincide with **2,044 fewer attack orders** and 5 more wars concluded, so a firing rate badly
+understates reach ([[global-knobs-move-the-world]]). The 3.0%-firing bar assumed influence scales with firings.
+
+**No claim is made on the +17.8pp.** Two single-world numbers have evaporated in the last four iterations
+(journal 510's +27.2 → +3.21; journal 515's probe +7.4 → −4.52).
+
+## 209. Bench the repulse-requiring cooldown — pre-registered HERE, before any fresh-seed number exists
+
+**Top item.** Arms: `env -u OD_REATTACK_COOLDOWN -u OD_REATTACK_REPULSE` against `OD_REATTACK_REPULSE=1`.
+**16 fresh seeds** — set 2 is now contaminated for this hypothesis (seed 310207 produced the +17.8pp above), so use
+a **new set 3**. `--binary` pinned. 1914:FRA:rung.
+
+**PRIMARY: mean war length** (`OD_WARLIFE`), per item 139 and journal 450 — it is a count over ~12-17 ended wars per
+run, so it has power the rating does not. **SECONDARY: raw per-seat land share** and provinces-per-ended-war.
+
+**PREDICTION to be judged on:** war length falls by at least 3 turns pooled, AND land share does not fall.
+**REJECT IF** land share falls, or war length does not move — and note that journal 450's duration claim died
+exactly here, on 6 seeds, after looking convincing on one world ([[decide-on-fresh-seeds]]).
+
+Do not read the single-world +17.8pp as the expected effect size. State the fresh-seed number alone; **never pool
+set 3 with seed 310207** ([[a-one-seat-run-is-a-different-world]], and journal 514's pooling error).
+
+## 209. Bench the repulse cooldown — land share NULL; primary UNMEASURED (journal 518).
+
+16 fresh seeds (set 3), binary pinned: land share **36.0 → 37.8, +1.83pp, 9/16, p 0.7219**, floor 18.2 → **10.7**.
+A null with a worse floor.
+
+**The pre-registered PRIMARY (mean war length) was never captured**: `od_bench.py:548` keeps only `.stdout` and
+`[WARLIFE]` prints to stderr. `OD_ACT_HIST_FILE` exists for exactly this reason; war length had no equivalent.
+**Fixed: `OD_WARLIFE_FILE`**, one appended line per process, proven to write.
+
+**Journal 517's single-world +17.8pp evaporated — the third in five iterations** (+27.2 → +3.21; probe +7.4 →
+−4.52; +17.8 → +1.83). Paired sd on this seat is **20.0pp**: a one-world reading on 1914:FRA is not weak evidence,
+it is none.
+
+## 210. Re-run item 209's bench with OD_WARLIFE_FILE, then close the re-attack line
+
+Same arms (`-u OD_REATTACK_COOLDOWN -u OD_REATTACK_REPULSE` vs `OD_REATTACK_REPULSE=1`), same **set 3** seeds — they
+are not contaminated, since the statistic in dispute was never read — plus
+`OD_WARLIFE=1 OD_WARLIFE_FILE=<path>` on both arms. `--binary` pinned. 1914:FRA:rung, 400 turns.
+
+**PRIMARY: mean war length**, pooled over the per-seed rows the file now leaves (~200+ ended wars across 16 seeds,
+which is where the power is). **PREDICTION: war length falls by at least 3 turns.** **REJECT IF it does not move**,
+and note land share is already a measured null (+1.83pp, p 0.72), so duration is the only live claim left.
+
+**If war length is also a null, close items 139, 208 and 209 together**: the AI does re-fight lost battles (730 of
+3290 repulses are re-attacked next turn, journal 516), and stopping it changes nothing measurable — which is the
+same conclusion journal 451 reached for the ratio-only rule, now established for the narrow rule as well.
+
+## 210 / 209 / 208 / 139. The re-attack line — CLOSED as a null (journal 519).
+
+Primary statistic finally readable via `OD_WARLIFE_FILE`. 16 seeds (set 3), binary pinned, 387 ended wars:
+
+| arm | wars ended | mean war length | war-weighted | sd of run means |
+|---|---|---|---|---|
+| off | 190 | 21.35 | 20.23 | 8.94 |
+| on (`OD_REATTACK_REPULSE=1`) | 197 | **19.63** | 19.27 | 5.23 |
+
+**−1.72 turns, p 0.5179** against a pre-registered threshold of 3 turns. Land share was already null (+1.83pp,
+p 0.72). **Both statistics null; prediction falsified.**
+
+**The finding, which is a real negative result:** the AI does re-fight lost battles — 730 of 3,290 repulses
+re-ordered on the very next turn, a 1.29x enrichment over the 35.9% base at z 8.65 (journal 516) — and **stopping
+it changes nothing measurable**, now shown for the broad rule (journal 451) and the narrow one.
+
+Kept, off by default: `OD_REATTACK` census, `noteAssaultOutcome` join, `OD_REATTACK_COOLDOWN`,
+`OD_REATTACK_REPULSE`, `OD_WARLIFE_FILE`. **Re-ask after a retrain** — a policy that knew a repulse was coming
+might value this differently; nothing here tests that.
+
+NOT a finding, flagged so nobody promotes it: sd of per-run war length 8.94 → 5.23 and 7 more wars concluded.
+Variance was not pre-registered and has no p-value here. Do not open an item on it without pre-registering variance
+first ([[count-the-groupings-you-looked-at]]).
+
+## 211. The loop's standing state — "blocked" is now EMPTY
+
+Items 100, 139, 192 closed; `src/Game_TurnLevel`/`Game_Research.cpp` clean. Item 207's three-bucket audit now reads:
+
+- **live loop work:** item **167's measurement** (width/fort balance — `combatWidth` narrows 12% per fort level and
+  `depthFactor` caps at 1.5 at 113,137 men, so a level-5 fort exactly cancels max depth). The *decision* is the
+  user's; the *measurement* is not, and it is now unblocked.
+- **FOR THE USER:** 167 (the balance call), 176 (research bar 0.45→0.60 is a cross-model trade), 181 (one training
+  run, four gates — ~8 h/arm), 145, 108.
+- **needs a RETRAIN:** 168, 171, 180, 182, 196, 199, and now the re-attack gates above.
+
+**Four for four, every large single-world reading on 1914:FRA has collapsed on 16 seeds** (+27.2→+3.21;
++7.4→−4.52; +17.8→+1.83; −7.1→−1.72 turns). Paired sd on that seat is 20.0pp. Measure the MECHANISM on one world;
+never the outcome.
+
+## 167 (measurement). DONE (journal 520): the unwinnable regime NEVER OCCURS.
+
+`Game_TurnLogic.cpp` went clean, so the blocked counter became writable. The existing `m_assaultsWidthBound` is an
+**OR**; the new `[WIDTH2]` line counts the **AND** plus the fort level and the attacker's depth cap. Inert — seat
+scores 31.5 and 52.5 reproduce journal 519's control exactly.
+
+| | 520103 | 530207 |
+|---|---|---|
+| assaults | 108,387 | 95,111 |
+| **OR** (the 23.8%-style figure) | 18.5% | 17.6% |
+| **AND** — both sides over the frontage | **0.41%** | **0.44%** |
+| of the AND cases: fort ≥ 3 | 34 (7.6%) | 23 (5.5%) |
+| of the AND cases: **fort 5** | **2** | **0** |
+| **UNWINNABLE (both + DEPTH_MAX + fort 5)** | **0** | **0** |
+
+**Zero in 203,498 assaults.** Nineteen of twenty width-bound fights have only ONE side over the frontage — the
+ordinary case, where the frontage works.
+
+**FOR THE USER, and it is the cheap answer:** the 1.5× depth cap and the fort multiplier are real and journal 480's
+algebra is correct, but **no fight on these worlds reaches the regime where they cancel**, so `DEPTH_MAX`,
+`DEPTH_PER_DOUBLING`, `COMBAT_WIDTH_PER_AREA` and the fort multiplier need not be touched on this evidence — all
+four of which bind the human player too.
+
+## 166. CORRECTED (journal 520): the width algebra is NOT the explanation. Re-opened as item 212.
+
+Journal 480 recorded item 166 as **"ANSWERED BY ALGEBRA: the army is capped at 1.5x and a level-5 fort cancels
+exactly that."** The algebra is right; **the configuration never occurs in the games it was invoked to explain**
+(0 of 203,498 assaults). The derivation found a reachable corner of the rules and was promoted to the cause of an
+observed outcome while its empirical half was still unmeasured — which journal 480 flagged and item 167 carried.
+[[measurements-replicate-explanations-dont]].
+
+## 212. Why DOES a nine-province Switzerland take 164 provinces off France?
+
+Re-opened from item 166. The width/depth/fort algebra is now **excluded** as the cause (item 167's measurement).
+What is still known and unexplained:
+
+- Switzerland takes **164 and 72** provinces off France on two separate seeds; Argentina takes **183** across two
+  consecutive 113- and 112-turn wars, ending FRA(10) vs ARG(76) (journal 479).
+- France holds **86–156** provinces while these wars run, and the collapsing seats **peak around turns 111–282**
+  before being dismantled — so the era matters and journals 462–474 measured the wrong one.
+- `updateAIDistricts` is worth **+121** per-seed rating and its removal is a **4-of-8 collapse** (Fisher p 0.00195),
+  and neither of its two mechanics explains that (non-additive by ~107).
+- 0.0% of lost provinces go to a non-belligerent, so it is conquest, not diplomacy.
+
+**Next, and cheaply:** the `[WIDTH2]` counter can be scoped to one country. Point it at the seat during a grind
+window and compare the France-vs-CHE fights against the world baseline — if the grind's assaults are not
+width-bound either, the cause is not frontage at all and the search should move to supply (`atkSupply`), the
+one-war cap (item 137's territory), or reinforcement rates. **Do not re-derive another explanation from constants
+without measuring the fights it claims to describe** — that is precisely what item 166 got wrong.
+
+## 212 (advanced, journal 521). The grind IS width-bound — and a second resolver was never instrumented.
+
+`OD_WIDTH_PAIR=FRA,CHE`, seed 20260801, 1914:FRA (seat 23.8, inert):
+
+| | world | FRA↔CHE |
+|---|---|---|
+| assaults | 110,830 | **16** |
+| both sides width-bound | **0.30%** | **62.50%** |
+| mean attacker supply | 0.9662 | **0.9950** |
+
+**Both pre-registered clauses falsified.** The grind is ~200x enriched for both-sides-bound (predicted <5%), so
+journal 520's world-wide rate *was* hiding a concentrated effect. Supply is **higher** in the grind, so it is
+excluded as the cause.
+
+**THE DECISIVE FINDING: 16 assaults cannot move the 126 provinces journal 479 recorded.** Verified not to be a
+mis-identification (`OD_WIDTH_PAIR=FRA,38` gives the identical 16, so cid 38 is CHE). The ground moves through
+**`processBattles`** (`Game_TurnLogic.cpp:7457`, capture at 7522) — the standing battle that continues across turns.
+It calls `weighAssault` itself but increments **no** assault counter.
+
+**CORRECTION to journal 520 / item 167:** "0 of 203,498 assaults" is right, but the population is **initial
+assaults only**. Its conclusion that "no fight on these worlds reaches the regime" — and so that `DEPTH_MAX`,
+`DEPTH_PER_DOUBLING`, `COMBAT_WIDTH_PER_AREA` and the fort multiplier need not be touched — **does not follow**, and
+neither does od_bench's long-quoted "23.8% of assaults width-bound". Both see one of two combat paths.
+
+## 213. Instrument `processBattles` — the resolver where the grind actually happens
+
+**Top item, and it is the measurement item 167 and item 212 both actually need.** `processBattles` resolves every
+continuing battle and takes the ground (126 provinces in journal 479's window against 16 through `resolveAssault`),
+and no width, repulse or assault counter covers it.
+
+Add, beside the `resolveAssault` counters: total battle rounds, OR-bound, **AND-bound**, defender fort level, whether
+the attacker is at `DEPTH_MAX`, and the **unwinnable** conjunction (both bound + depth cap + fort 5). Keep the two
+populations **separate in the output** — do not merge them into `m_assaultsTotal`, or every historical
+width/repulse figure in this journal becomes incomparable.
+
+Then re-ask item 167's question on the population that matters: **does the exact 1.5-vs-1.5 cancel occur in standing
+battles?** If it does, item 167 stops being a curiosity and becomes a live balance decision for the user; if it does
+not, journal 520's answer stands on a complete population for the first time.
+
+Also re-check with the pair scope on seed 20260801 — that is where a 94-turn war against a nine-province
+Switzerland is known to live.
+
+## 213. Instrument `processBattles` — DONE (journal 522). `[WIDTH4]`, inert, off-by-default pair scope.
+
+| population | n | OR-bound | **BOTH-bound** | fort 5 | **UNWINNABLE** |
+|---|---|---|---|---|---|
+| `resolveAssault` (world) | 110,830 | 20.3% | **0.30%** | 0 | **0** |
+| **`processBattles` (world)** | **238** | 91.60% | **69.75%** | 0 | **0** |
+| `processBattles`, FRA↔CHE | 27 | — | **100.00%** | 0 | **0** |
+
+**In a grind the frontage is total** (100% of the pair's rounds both-bound), so army size is irrelevant there — item
+167's substance. **But the unwinnable conjunction is 0 on both populations**, because a level-5 fort never defends a
+both-bound round (`L0=55 L1=35 L2=14 L3=32 L4=30 L5=0`): the defender tops out at 1.40 against the attacker's 1.50.
+Insensitive to size, not unwinnable. **Journal 520's answer now stands on the population that takes the ground.**
+
+## 212. Why does Switzerland beat France — SUSPENDED (journal 522): the premise is stale.
+
+The eval's own reconciliation, which nobody had read:
+
+```
+MODEL  start 83  +337 -269  => 151 predicted, 151 actual, UNEXPLAINED +0
+```
+
+**There is no missing transfer path** (205 lost to countries, 64 to revolts, 0 ceded by treaty), and on this build
+**France GROWS 83 → 151 provinces** on seed 20260801, ending with 23.8% of the world. Journal 479's "Switzerland
+takes 164 provinces off France" was ~40 journals and many gates ago and **does not describe this binary**.
+
+**CORRECTION to journal 521:** it inferred a missing capture path from "16 assaults cannot move 126 provinces". The
+structural half is right — `processBattles` does capture ground without incrementing any assault counter — but it
+does not explain the 126, because the 126 does not happen here. [[gate-change-is-a-new-build]].
+
+## 214. Re-identify the grind before spending anything else on it
+
+**Read the reconciliation line FIRST — it is exact, free, and in every eval run already:**
+`[EVAL] MODEL start N +G -L => P predicted, P actual, UNEXPLAINED +X`. If `UNEXPLAINED` is 0, no transfer route is
+missing and any "impossible" count is a stale premise, not a hidden mechanism.
+
+Then check whether the collapse still occurs at all: journal 479 put Argentina at **183** provinces with
+**FRA(10) vs ARG(76) on seed 13579**, and Switzerland at 72 on **seed 4242**. Run those two seeds and read
+`start/+/-` plus `[WIDTH4]`. If France grows on them too, items 166/212 close as fixed-by-something-else and the
+width line is finished; if one still collapses, that seed is the instrument and `OD_WIDTH_PAIR` is ready for it.
+
+**Do not re-open the width algebra on it** — the unwinnable conjunction is now measured as 0 on both combat
+populations (journals 520, 522).
+
+## 214 / 212 / 166. The grind is GONE — CLOSED as stale (journal 523).
+
+| seed | journal 479 | now | UNEXPLAINED | seat |
+|---|---|---|---|---|
+| 20260801 | CHE takes 164 | 83 → **151** | +0 | 23.8 |
+| 13579 | **FRA(10) vs ARG(76)** | 83 → **301** | +0 | 34.1 |
+| 4242 | CHE takes 72 | 83 → **303** | +0 | 37.6 |
+
+France ends with **3.6x its starting provinces** on both worlds that were supposed to destroy it. Journal 479's
+collapses do not reproduce on this binary; something in the ~40 journals since fixed them. [[gate-change-is-a-new-build]].
+
+Note for the next reader: journals 521 and 522 spent two iterations on the cause of a collapse that had already
+stopped happening. **Re-run the phenomenon before instrumenting it** — the reconciliation line makes that one cheap
+read.
+
+## 215. FOR THE USER — the unwinnable regime is rare but NOT absent (corrects journals 520/522)
+
+Journals 520 and 522 measured the unwinnable conjunction (both sides width-bound + attacker at `DEPTH_MAX` +
+defender behind a level-5 fort) as **0**, and I wrote that the constants need not be touched on that evidence.
+Across four worlds it is **0, 0, 0, and 11** — seed 13579 has **11 rounds, 5.14% of its battle rounds**, with
+`L5=11` among the both-bound.
+
+**So the regime journal 480 derived from the constants is reachable in play**, on one world in four, at ~5% of
+standing-battle rounds. It remains a corner; it is not impossible. The decision is unchanged in kind and better
+informed: `DEPTH_MAX` (1.5), `DEPTH_PER_DOUBLING` (0.20), `COMBAT_WIDTH_PER_AREA` and the fort multiplier all bind
+the human player too, so moving them is a balance call.
+
+Also worth the user's attention from the same measurements: **in a grind the frontage is total** — 61-70% of
+standing-battle rounds have both sides pinned at the width, against 0.30% of opening assaults — so army size stops
+mattering in exactly the fights that decide a war, whether or not the defender has the level-5 fort that would make
+it unwinnable.
+
+If a measurement is wanted before deciding: widen to ~16 seeds and report the per-world distribution of
+`[WIDTH4] UNWINNABLE`, since 1-in-4 from four worlds is a very loose rate.
+
+## 215. FOR THE USER — measured on 16 worlds (journal 524). Recommendation: change nothing.
+
+The denominator item 215 was missing, 16 worlds × 400 turns, 1914:FRA, 3,891 standing-battle rounds:
+
+- **UNWINNABLE (both bound + attacker at `DEPTH_MAX` + defender behind a level-5 fort): 88 rounds = 2.26%**, in
+  **7 of 16 worlds**.
+- **Concentrated: 3 worlds hold 75 of the 88 (85%)**, at 6.9% / 9.5% / 10.8% of their rounds; 9 worlds have none.
+- **It does not predict the outcome.** Worlds with any: mean seat 33.6. Without: 37.8. **r = −0.030.** The world
+  with 32 unwinnable rounds scores 48.3 (3rd best); the worst seat in the set (18.2) has zero.
+- **The broader fact is bigger: 66.3% of standing-battle rounds have BOTH sides pinned at the frontage**, against
+  0.30% of opening assaults. Army size is irrelevant in two thirds of the rounds that decide wars, fort or no fort.
+
+**Recommendation: leave `DEPTH_MAX` (1.5), `DEPTH_PER_DOUBLING` (0.20), `COMBAT_WIDTH_PER_AREA` and the fort
+multiplier alone.** The unwinnable corner is real but rare, concentrated, and uncorrelated with how the world ends,
+so there is no measured harm to fix — and all four constants bind the human player too.
+
+**If you want to change something anyway, the 66.3% is the lever, not the 2.26%:** that is the number that makes a
+large army worthless at the contact point, and it is a design question about whether frontage should dominate late
+wars, not a bug.
+
+Items 166, 167 (measurement), 212, 213 and 214 are closed. The width line is finished.
+
+## 207 (re-run, journal 525). The mask search finds NOTHING NEW. The loop is out of frozen-model work.
+
+Re-ran journal 508's unmet-demand search on the current binary — justified because the other session committed to
+`src/` since. **The table reproduces to the decimal** (FRA: 98.25/5.10, 99.56/40.64, 100.00/7.34, 85.11/23.00), so
+**their commits did not touch the shipped decision path**, and every offer/take figure in journals 490-524 is still
+current.
+
+Only two actions clear the signature on **both** seats, and both are resolved: `ECON a7 fund research UP` (the
+research bar — real, item 176, with the user) and `NAVY a3 embark` (mechanism real, outcome null, journals 510-514).
+
+Near-misses, so they are not re-derived as finds:
+- `NAVY a4 land` — USA 68.85%, 1.15pp under the bar; it is embark's executor and embark is a measured null.
+- `ECON a10 pick node` — FRA-only; mask is `(idle || stalledUnfunded)`, structural, no movable threshold.
+- `POLITICS a2 pacification up` — USA-only, and 97.5% waste.
+
+**Standing state: every open item needs the user or a retrain.** See journal 525 for the authorisation list
+(item 181's training run first — six built, inert, unjudgeable gates wait on it).
+
+**Method note for whoever runs this next:** `[ACTHIST]` prints to **stderr**. Parsing `.out` returns zero hits,
+which is indistinguishable from "the search found nothing" — it faked a confirmation of this very prediction until
+an empty module-total dict gave it away. Require the denominators in the output and treat an empty one as a failed
+read.
+
+## 216. tools/help.py is out of date — the only failing suite group (journal 526)
+
+`tests/run_all.sh`: **45 ok, 0 fail, 1 skip**, and one failing group:
+
+```
+tools/help.py is out of date:
+    campaign_sync.sh, gen_achievements.py, trailer_assets.py, trailer_build.py, trailer_music.py
+    is not in any group in tools/help.py
+```
+
+All five arrived with the achievements/trailer commits and **none belongs to this loop**, so the grouping call is
+the author's. One line per tool. **It is the only thing between this tree and a green suite**, which matters for
+[[green-test-before-tagging]].
+
+## Note: derive PENDING COMMIT from git, never carry it forward
+
+Journal 526 found the loop's `PENDING COMMIT` line had been stale for dozens of iterations — it claimed journals
+476-526 and 7 files when HEAD already held through journal **513**, backlog item **205**, and all of
+`src/Game_Policies.cpp` (committed in 9789a38). The user had been landing the work as it went.
+
+**Each iteration: `git status --porcelain` the paths, and `git show HEAD:docs/ai/LOOP_JOURNAL.md | grep -oE '^## [0-9]+' | tail -1`
+for the journal range.** Editing the previous iteration's line is how it rots.
+
+## 217. Instrument audit — CLEAN, and now guarded (journal 527)
+
+**No phantoms: all 25 `OD_*` switches named in `docs/ai/LOOP.md` exist in `src/` or `tools/`.** The discipline of
+naming a gate in the entry that builds it has held across 527 journal entries.
+
+The 7 raw mismatches were all correct history: 2 prose placeholders (`OD_X`, `OD_SOMETHING_OFF`), 1 reverted probe
+(`OD_WIDTHPROBE`, journal 480), and 4 gates built-measured-reverted with **zero commits touching `src/`**
+(`OD_PAC_COOL_LOSING`, `OD_RECRUIT_RESERVE`, `OD_RESEARCH_GUARD_OVERRUN`, `OD_SPEC_REFLEX`).
+
+**`tools/check_ai_instruments.py`** now guards it, wired into `tests/run_all.sh`. Scoped to **LOOP.md only** — the
+journal and backlog are history and may name reverted gates, so checking them would cry wolf. Break-tested.
+
+Caution for the next audit: the first pass reported **18 phantoms, all false**. Harness gates
+(`OD_BENCH_*`, `OD_MAX_GAMES`) live in `tools/*.py`, not `src/`, and a regex that accepts a trailing underscore
+picks up wrapped prefixes. **A new instrument's first run is itself untested** — cf. journal 516's denominator and
+journal 525's wrong stream.
+
+## 145 (measurement). The REJECT seat DOES respond — the problem is the statistic (journal 528)
+
+Item 145 held that `1914:FRA:rush`, the only seat left in LOOP.md's reject rule, "cannot be moved by an AI change",
+so the rule "cannot reject anything". **Tested with the largest AI effect in the project** (`OD_AI_DISTRICTS_OFF=1`,
+worth 121 per-seed rating elsewhere), 16 seeds, one pinned binary:
+
+| arm | mean land | holders | collapsed | median of holders |
+|---|---|---|---|---|
+| districts ON (shipped) | 9.7 | 6 | 9/16 | 24.6 |
+| districts OFF | **3.7** | 4 | 12/16 | 9.5 |
+
+- **Collapse rate: 9/16 → 12/16, Fisher p 0.458** — the pre-registered statistic does NOT resolve it.
+- **Paired by seed: worse on 12 of 16, better on 2** (sign test p ≈ 0.013); mean 9.7 → 3.7. *(Not pre-registered —
+  labelled as such.)*
+
+**So the seat is informative and the collapse count throws its information away.** A bimodal seat carries signal in
+*which* worlds hold and by how much, not only in how many cross a 5% line.
+
+## 218. FOR THE USER — change the reject rule's STATISTIC, not its seat
+
+Item 145 asked whether LOOP.md's reject rule guards anything. Journal 528's answer: **the seat does, the statistic
+does not.** Districts-off would be rejected at p 0.013 by a paired sign test on land share across the same 16
+seeds, and not at all (p 0.458) by the collapse count the rule currently reads.
+
+**Proposal:** the reject rule reads the **paired sign of per-seat land share** over the bench's seeds, with the
+collapse count reported beside it rather than as the test. Keep `1914:FRA:rush` — it responds.
+
+Not applied here. Journal 439 retired a seat and left that to the user; this is the same kind of change to the
+protocol everything else is judged against, so it is theirs. **Until it changes, note that the rule is
+underpowered rather than vacuous** — it will miss real harm (it missed a 121-point effect) but it is not reading
+noise.
+
+Related: the guard honoured in journal 510, which refused a +27.2pp effect over one collapse, was **not** vacuous —
+the seat carries signal. That refusal stands.
+
+## 219. Findings routed to the protocol (journal 529) — and the standing state
+
+`nothing-routes-findings-back-to-the-protocol` had recurred: **7 of this session's 10 gates were absent from
+LOOP.md**. They now have a register there with verdicts, split into *waiting on a retrain* and *measured nulls*, so
+the next session cannot re-bench a known null on a frozen model (which happened five times here) or forget a built
+gate.
+
+**The converse guard was sized and rejected.** `src/ai/AISystem.{cpp,h}` reads **147** `OD_ENV` gates; LOOP.md
+names 32. Enforcing "every AI gate is in LOOP.md" would demand documenting ~130 spent probes. LOOP.md is a
+protocol, not a gate manual. Only the LOOP.md → source direction is enforced
+(`tools/check_ai_instruments.py`, journal 527).
+
+**STANDING STATE: the loop has no work that does not require the user.**
+- journal 525 — searched the only lever class that moves a frozen model; nothing new.
+- journal 526 — pending tree validated; suite green but for item 216 (the other session's `help.py` entries).
+- journal 527 — instruments audited clean, guard installed.
+- journal 528 — item 145's premise refuted; the reject rule is underpowered, not vacuous (item 218).
+- journal 529 — findings routed.
+
+**Waiting on the user:** 181 (one training run, ~8 h/arm — six retrain-gated gates depend on it), 176 (research bar
+0.45→0.60, a cross-model trade), 215 (frontage; recommendation: change nothing), 218 (reject rule's statistic),
+145's decision, 108 (per-commit CI build job).
+
+**The next iteration should not manufacture an experiment.** Check whether any of the above has been decided; if
+not, say there is nothing to do and stop.

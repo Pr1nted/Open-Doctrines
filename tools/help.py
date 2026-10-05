@@ -179,6 +179,10 @@ GROUPS = [
         # A comment in src/ai that quotes a constant must quote THIS tree's
         # value -- a revert once restored the values and kept the comments.
         "check_ai_comments.py",
+        # Every OD_* switch LOOP.md names must exist: that file is what the next
+        # iteration plans FROM, so a phantom instrument costs somebody an
+        # experiment. Journal 527.
+        "check_ai_instruments.py",
         # Re-deflates the shipped model container with zopfli. Same format,
         # same weights, ~115 KB smaller; miniz inflates it unchanged.
         "shrink_model.py",
