@@ -1231,11 +1231,20 @@ jobs:
         with: { node-version: "22" }
 
       # fonttools for the web build's font subset (as in the web job above);
-      # Pillow for tools/banner.py, which the script runs to build the link
-      # card, because that image is generated and not in the repository.
+      # Pillow AND numpy for tools/banner.py, which the script runs to build the
+      # link card, because that image is generated and not in the repository.
+      #
+      # numpy because banner.py draws the political layer through
+      # tools/odmap_pack.py, which imports it at module scope. Pillow alone got
+      # as far as "the link card is not built yet; running tools/banner.py" and
+      # then ModuleNotFoundError, which stops the deploy -- so the site went on
+      # serving the previous version with nothing to say why.
+      #
+      # Not zopfli: odmap_pack imports it in a try/except and falls back to
+      # zlib, so it only costs a few percent on a file this deploy throws away.
       - name: Install Python tools
         if: steps.gate.outputs.go == 'yes'
-        run: python3 -m pip install --user fonttools pillow
+        run: python3 -m pip install --user fonttools pillow numpy
 
       - name: Deploy and check the live site
         if: steps.gate.outputs.go == 'yes'
