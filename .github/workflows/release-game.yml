@@ -590,8 +590,21 @@ jobs:
 
       - name: Flatpak and the runtime
         run: |
+          # FROM THE PPA, because 24.04's own flatpak is 1.14.6 and this
+          # manifest asks for --device=input, which arrived in 1.16. The build
+          # ran to the end and then stopped at
+          #
+          #   Finishing app
+          #   error: Unknown device type input, valid types are: dri, all, kvm, shm
+          #
+          # The alternatives were both worse than a PPA: --device=all is a
+          # wider permission than the app wants, and dropping the line takes
+          # gamepads away from the Flatpak alone, which README.md calls the
+          # better way to play on a touch device.
+          sudo add-apt-repository -y ppa:flatpak/stable
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder appstream
+          flatpak --version
           sudo flatpak remote-add --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
           sudo flatpak install -y --noninteractive flathub \
