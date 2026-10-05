@@ -597,6 +597,18 @@ jobs:
                      f"      - type: archive\n        path: {pathlib.Path(zip_path).resolve()}\n",
                      m, count=1)
           assert "path: " in m, "the archive source was not rewritten"
+          # The file: sources are relative TO THE MANIFEST, and this rewritten
+          # manifest is written to the repository root rather than beside the
+          # original in packaging/linux/. Every one of them therefore resolved
+          # to a path that does not exist, and flatpak-builder stopped at
+          #   Failed to download sources: module opendoctrines:
+          #   Can't find file at opendoctrines-launcher
+          # which is why no release has ever carried a .flatpak. Made absolute,
+          # the same treatment the archive above already gets.
+          m = re.sub(r"(      - type: file\n        path: )(\S+)\n",
+                     lambda mm: mm.group(1)
+                                + str((src.parent / mm.group(2)).resolve()) + "\n",
+                     m)
           pathlib.Path("build-manifest.yml").write_text(m, encoding="utf-8")
           print(m.split("sources:")[1])
           EOF
