@@ -567,7 +567,20 @@ jobs:
   flatpak:
     name: Flatpak (x86_64)
     needs: build
-    runs-on: ubuntu-22.04
+    # NOT ubuntu-22.04, which the rest of this workflow uses.
+    #
+    # 22.04's flatpak-builder is 1.2.x and ends a build by running
+    # `appstream-compose`. The freedesktop runtime dropped that binary after
+    # 23.08 in favour of `appstreamcli compose`, and this manifest asks for
+    # 24.08 -- so the build succeeded, installed everything, and then died at
+    #
+    #   bwrap: execvp appstream-compose: No such file or directory
+    #   ERROR: appstream-compose failed
+    #
+    # 24.04 ships flatpak-builder 1.4.x, which knows to call appstreamcli. The
+    # alternative was pinning the runtime back to 23.08, which fixes the build
+    # by shipping on an older platform than the manifest asks for.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
