@@ -294,9 +294,25 @@ export interface Draft {
     thumbnail?: string;
 }
 
+// Every capability module sdk/abi.json defines, minus WasiStub, which is the
+// libc shim rather than something a listing declares.
+//
+// THIS LIST WAS WRITTEN BY HAND AND FELL EIGHTEEN BEHIND. It held ten names
+// while the ABI defined twenty-eight, so the directory refused every mod using
+// anything added since -- Economy, Country, Military, Politics, Research,
+// Content, Scripts, Net, Render, Audio, and Neural.Decide, which is the
+// capability Gearbox 1.3 exists for. The first mod to use it could not be
+// listed, and the error said only "Unknown capability module".
+//
+// tools/check_registry_modules.py fails the suite when this disagrees with
+// sdk/abi.json, so the next capability cannot land without this following it.
 const KNOWN_MODULES = [
-    "Core", "UI", "GameState.Read", "GameState.Write", "GameProcess",
-    "Assets", "Neural", "Diplomacy", "Map", "Storage",
+    "Assets", "Audio", "Content", "Core", "Core.Protected", "Country",
+    "Diplomacy", "Economy.Read", "Economy.Write", "GameProcess",
+    "GameState.Read", "GameState.Write", "Map", "MapEditor",
+    "Military.Read", "Military.Write", "Net", "Neural", "Neural.Decide",
+    "Politics.Read", "Politics.Write", "Render", "Research.Read",
+    "Research.Write", "Scripts", "Storage", "UI",
 ];
 
 export function parseDraft(body: unknown): Draft | Rejected {

@@ -497,6 +497,7 @@ check "menu background matches map.odmap" $PY "$root/tools/make_menu_bg.py" --ch
 # (web, Android, installers) and DATA_ALLOWLIST in tools/release.py (zips) --
 # and the two drifted: 1.2.2a shipped without its regional laws and parties.
 check "shipped data lists agree, data/ classified" $PY "$root/tools/check_shipped_data.py"
+check "the mod registry knows every capability" $PY "$root/tools/check_registry_modules.py"
 
 # The relay drops an oversized frame without telling anybody, so the game
 # checks the relay's limits before it sends -- and those limits are written

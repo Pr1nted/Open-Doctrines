@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
+        "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_registry_modules.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
