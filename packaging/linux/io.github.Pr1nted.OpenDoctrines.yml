@@ -64,7 +64,7 @@ modules:
         # The archive wraps everything in OpenDoctrines-linux-x64/.
         strip-components: 1
       - type: file
-        path: ../../data/Icon/icon.png
+        path: icon-256.png
         dest-filename: od-icon.png
       - type: file
         path: opendoctrines-launcher

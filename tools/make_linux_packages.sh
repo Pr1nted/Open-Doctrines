@@ -124,10 +124,18 @@ install -m644 "$PKG/$APPID.metainfo.xml" "$STAGE/usr/share/metainfo/$APPID.metai
 # alternative, adding Icon to DATA_ALLOWLIST, would put 640 KB of build input
 # into every player's download to satisfy a packaging step.
 #
-# $TREE first so a tree that does carry one keeps deciding, then the repository.
-ICON="$TREE/data/Icon/icon.png"
-[ -f "$ICON" ] || ICON="$ROOT/data/Icon/icon.png"
-[ -f "$ICON" ] || die "no icon at $TREE/data/Icon/icon.png or $ROOT/data/Icon/icon.png"
+# AND IT IS THE 256px ONE, because that is the directory it goes into.
+# data/Icon/icon.png is the 1024x1024 master the macOS .icns and the Windows
+# .ico are cut from. Installed into hicolor/256x256 it is simply the wrong
+# size, which the .deb and .rpm tolerate and flatpak does not:
+#
+#   .../256x256/apps/io.github.Pr1nted.OpenDoctrines.png is not a valid icon:
+#   Image too large (1024x1024). Max. size 512x512
+#
+# packaging/linux/icon-256.png is that master resized, kept beside the desktop
+# file and the metainfo it ships with.
+ICON="$PKG/icon-256.png"
+[ -f "$ICON" ] || die "no icon at $ICON"
 install -m644 "$ICON" \
         "$STAGE/usr/share/icons/hicolor/256x256/apps/$APPID.png"
 
