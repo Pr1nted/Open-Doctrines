@@ -846,6 +846,41 @@ int Game::researchGroupsUnlocked(int countryId) const {
     return 1;                               // ONE IS ALWAYS AVAILABLE
 }
 
+void Game::compactPlayerResearchGroups() {
+    // A GROUP CAN STOP BEING AVAILABLE MID-GAME. researchGroupsUnlocked falls
+    // when the economy shrinks (or a script lowers it), and the loops that fund
+    // and draw the groups only ever touch indices below it -- so a selection
+    // sitting in a now-out-of-range group is invisible, unselectable and never
+    // advanced. It only came back when a reload rebuilt the groups from the
+    // save. Re-pack them here instead: move a stranded selection down into the
+    // lowest free group that is still available, and only let it go -- keeping
+    // the progress already invested, which lives on the node -- when every
+    // available group is itself busy.
+    const int unlocked = std::clamp(researchGroupsUnlocked(m_playerCountryId),
+                                    1, RESEARCH_GROUPS_MAX);
+    for (int g = unlocked; g < RESEARCH_GROUPS_MAX; ++g) {
+        ResearchGroup& stranded = m_researchGroups[g];
+        if (stranded.activeNode >= 0) {
+            int dst = -1;
+            for (int f = 0; f < unlocked; ++f)
+                if (m_researchGroups[f].activeNode < 0) { dst = f; break; }
+            if (dst >= 0) {
+                // Carried, not lost -- the selection and its auto-advance move too.
+                m_researchGroups[dst].activeNode  = stranded.activeNode;
+                m_researchGroups[dst].lastNode    = stranded.lastNode;
+                m_researchGroups[dst].autoAdvance = stranded.autoAdvance;
+            } else if (stranded.activeNode < (int)m_researchNodes.size()) {
+                // No room for it now. Stop drawing it as in-progress; the points
+                // already invested stay on the node, so re-selecting it resumes.
+                m_researchNodes[stranded.activeNode].inProgress = false;
+            }
+        }
+        stranded = ResearchGroup{};
+        stranded.sharePct = 0;   // as normaliseResearchShares leaves the idle tail
+    }
+    m_researchGroupSel = std::clamp(m_researchGroupSel, 0, unlocked - 1);
+}
+
 void Game::normaliseResearchShares(int changed) {
     const int unlocked = std::clamp(researchGroupsUnlocked(m_playerCountryId),
                                     1, RESEARCH_GROUPS_MAX);
@@ -925,6 +960,11 @@ int Game::researchAutoNext(int groupIndex, int countryId) const {
 
 void Game::addResearchPoints(int countryId) {
     if (countryId <= 0 || countryId == SPC_CID) return;
+    // Before any points are spent: if the number of unlocked groups fell this
+    // turn, a selection stranded in a group that is gone is re-packed into one
+    // that is left, so it keeps being funded and stays on screen rather than
+    // disappearing until the save is reloaded. See compactPlayerResearchGroups.
+    if (countryId == m_playerCountryId) compactPlayerResearchGroups();
     auto cs = computeCountryIncome(countryId);
     float allocAmount = cs.researchCost; // already capped with pacification
     // Logarithmic: base 1 + sqrt(alloc) for diminishing returns

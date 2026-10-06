@@ -4179,6 +4179,13 @@ public:
      * and the rest keep their relative standing.
      */
     void normaliseResearchShares(int changed);
+    /**
+     * Re-pack the player's groups when the economy stops supporting as many.
+     * A selection left in a group that is no longer unlocked is otherwise
+     * invisible, unfunded and unselectable until a reload rebuilds the groups
+     * -- so a dropped slot's research appears to vanish. See the definition.
+     */
+    void compactPlayerResearchGroups();
 
     static constexpr float RGROUP2_GROSS_MULT   = 2.0f;
     static constexpr float RGROUP3_GROSS_MULT   = 5.0f;
