@@ -40,6 +40,16 @@ extern "C" unsigned int rlLoadTexture(const void* data, int width, int height, i
 extern "C" unsigned int rlLoadFramebuffer(void);
 extern "C" void rlFramebufferAttach(unsigned int fboId, unsigned int texId, int attachType, int texType, int mipLevel);
 extern "C" bool rlFramebufferComplete(unsigned int id);
+
+// The GL texture-size ceiling, read straight from the driver. raylib does not
+// surface it, and the map needs it: the full province index is one texture as
+// wide as the map, and a mobile GL that will not accept it hands back a texture
+// that samples as solid black -- the map coming up empty on a phone while the
+// UI, whose textures are small, draws fine.
+extern "C" void glGetIntegerv(unsigned int pname, int* data);
+#ifndef GL_MAX_TEXTURE_SIZE
+#define GL_MAX_TEXTURE_SIZE 0x0D33
+#endif
 namespace {
 constexpr int kRlAttachmentColor0 = 0;      // RL_ATTACHMENT_COLOR_CHANNEL0
 constexpr int kRlAttachmentTexture2D = 100; // RL_ATTACHMENT_TEXTURE2D
@@ -54,6 +64,7 @@ constexpr int kGlFuncAdd          = 0x8006;
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 #include <cstring>
 #include <utility>
@@ -421,27 +432,66 @@ void uploadTable(Texture2D& tex, const std::vector<Color>& colours) {
     std::copy_n(colours.begin(), std::min<size_t>(colours.size(), N), full.begin());
     UpdateTexture(tex, full.data());
 }
+// The largest map texture this GL accepts. Desktop returns 8192-16384 and the
+// whole map fits; mobile WebGL is commonly 4096 (some 2048). Queried once.
+// OD_MAP_TEXCAP overrides it -- the only way to exercise the reduced path on a
+// desktop GPU whose real ceiling is far higher.
+int mapTexCap() {
+    static const int cap = [] {
+        if (const char* e = getenv("OD_MAP_TEXCAP")) { int v = atoi(e); if (v >= 256) return v; }
+        int v = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &v);
+        return v >= 256 ? v : 16384;   // a sane floor if the query answers nothing
+    }();
+    return cap;
+}
+
+// The power-of-two factor that brings a `w`x`h` map texture within the ceiling.
+// 1 on any GL that can hold the map outright, so nothing changes off mobile.
+int mapDownscale(int w, int h) {
+    const int cap = mapTexCap();
+    int f = 1;
+    while (w / f > cap || h / f > cap) f *= 2;
+    return f;
+}
+
 }  // namespace
 
 void MapRenderer::setProvinceIndex(const Image& provinces) {
     if (!provinces.data || provinces.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) return;
-    const size_t n = (size_t)provinces.width * provinces.height;
+    // THE MAP MUST FIT THE GL. The province index is as wide as the map (8192
+    // on the world); where the GL will not hold that it is point-sampled down
+    // to one that fits -- the ids are picked, never blended, so a province is
+    // still a province, with a border a pixel or two coarser. The id lookup for
+    // a click runs on the CPU over the full-resolution image, not this texture,
+    // so hit-testing keeps its full precision regardless.
+    const int fw = provinces.width, fh = provinces.height;
+    const int f = mapDownscale(fw, fh);
+    const int w = fw / f, h = fh / f;
+    const size_t n = (size_t)w * h;
     // Two bytes per pixel, low then high: GRAY_ALPHA, which samples as
     // (lo, lo, lo, hi) on every GL this game runs on.
     std::vector<uint8_t> ids(n * 2);
     const auto* px = (const Color*)provinces.data;
     bool wide = false;
-    for (size_t i = 0; i < n; ++i) {
-        if (px[i].r) wide = true;   // id past 65535: the table cannot hold it
-        ids[i * 2] = px[i].b;
-        ids[i * 2 + 1] = px[i].r ? 0 : px[i].g;
+    for (int y = 0; y < h; ++y) {
+        const int sy = (f == 1) ? y : std::min(fh - 1, y * f + f / 2);
+        for (int x = 0; x < w; ++x) {
+            const int sx = (f == 1) ? x : std::min(fw - 1, x * f + f / 2);
+            const Color c = px[(size_t)sy * fw + sx];
+            if (c.r) wide = true;   // id past 65535: the table cannot hold it
+            const size_t i = (size_t)y * w + x;
+            ids[i * 2] = c.b;
+            ids[i * 2 + 1] = c.r ? 0 : c.g;
+        }
     }
     if (wide) TraceLog(LOG_WARNING, "MAP: province ids above 65535 draw as sea in overlays");
+    if (f != 1) TraceLog(LOG_INFO, "MAP: index downscaled %dx%d -> %dx%d (GL cap %d)", fw, fh, w, h, mapTexCap());
     if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
     Image img{};
     img.data = ids.data();
-    img.width = provinces.width;
-    img.height = provinces.height;
+    img.width = w;
+    img.height = h;
     img.mipmaps = 1;
     img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
     m_provinceIndexTex = LoadTextureFromImage(img);
@@ -528,13 +578,31 @@ void MapRenderer::setPoliticalColours(const std::vector<Color>& colours, int row
     m_politicalStale = true;
 }
 
-void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int w, int h) {
-    if (distance.size() != (size_t)w * h) return;
+void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int fw, int fh) {
+    if (distance.size() != (size_t)fw * fh) return;
+    // Downscaled by the SAME factor as the province index (same full map dims,
+    // same ceiling), so the two textures and the mapSize the shader derives
+    // from them stay the one resolution. The distance is a gradient width in
+    // source pixels; point-sampling it coarser just widens the border shade a
+    // little, which only shows on a GL that could not hold the map anyway.
+    const int f = mapDownscale(fw, fh);
+    const int w = fw / f, h = fh / f;
+    std::vector<uint8_t> small;
+    const uint8_t* src = distance.data();
+    if (f != 1) {
+        small.resize((size_t)w * h);
+        for (int y = 0; y < h; ++y) {
+            const int sy = std::min(fh - 1, y * f + f / 2);
+            for (int x = 0; x < w; ++x)
+                small[(size_t)y * w + x] = distance[(size_t)sy * fw + std::min(fw - 1, x * f + f / 2)];
+        }
+        src = small.data();
+    }
     // A new texture each time rather than an update, for the reason in the
     // header: the Mac keeps copies of a texture that is written after it is
     // made. This changes when a border moves, at most once a turn.
     if (m_borderDistance.id > 0) UnloadTexture(m_borderDistance);
-    Image img{(void*)distance.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+    Image img{(void*)src, w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
     m_borderDistance = LoadTextureFromImage(img);
     SetTextureFilter(m_borderDistance, TEXTURE_FILTER_POINT);
     if (m_politicalTarget.id == 0) m_politicalTarget = makeTarget(w, h);
@@ -1855,8 +1923,15 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
 
     for (const Layer& l : layerStack(landSea)) {
         if (l.tex.id == 0) continue;
+        // Drawn to the MAP's world size, not the texture's pixel size. A layer
+        // whose texture was shrunk to fit the GL (setProvinceIndex downscales
+        // the province index, and the political/overlay targets follow it) must
+        // still cover the whole world rather than a corner of it; a full-sized
+        // layer maps 1:1 and is unchanged.
+        const Rectangle src{0.0f, 0.0f, (float)l.tex.width, (float)l.tex.height};
         for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(l.tex, tx * m_mapW, 0, l.tint);
+            const Rectangle dst{(float)tx * (float)m_mapW, 0.0f, (float)m_mapW, (float)m_mapH};
+            DrawTexturePro(l.tex, src, dst, {0.0f, 0.0f}, 0.0f, l.tint);
         }
     }
 
