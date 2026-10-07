@@ -22,9 +22,11 @@ normalises taps to the screen size, so a click and a tap both land where the UI
 is drawn. (This is why only EmscriptenResizeCallback is touched, and the mouse
 and touch callbacks are left stock.)
 
-dpr is clamped to [1, 3]: 1 keeps unchanged behaviour on ordinary displays, and
-3 caps the backing store so a 4x phone panel does not blow past the mobile
-GL_MAX_TEXTURE_SIZE / memory budget for a gain no eye resolves.
+dpr is clamped to [1, 2]: 1 keeps unchanged behaviour on ordinary displays, and
+2 caps the backing store. A 3x phone panel at full density made the default
+framebuffer ~9x the CSS box, and on a 4 GB iPhone that extra GPU memory, on top
+of the map textures and the wasm heap, was enough to get the tab killed on map
+load. 2x is already past what the eye resolves on a map.
 
 WHY A SCRIPT, AND WHY IT IS FATAL WHEN IT FAILS
 
@@ -54,7 +56,7 @@ BECOME1 = (
     "    // resolution, CSS box left at layout pixels. Upstream used innerWidth/\n"
     "    // innerHeight for both, which on a high-dpr phone laid the UI out against\n"
     "    // ~390 logical pixels (too zoomed in) and then upscaled it (blurry).\n"
-    "    double odDpr = EM_ASM_DOUBLE({ var d = window.devicePixelRatio || 1; if (d < 1) d = 1; if (d > 3) d = 3; return d; });\n"
+    "    double odDpr = EM_ASM_DOUBLE({ var d = window.devicePixelRatio || 1; if (d < 1) d = 1; if (d > 2) d = 2; return d; });\n"
     "    int odCssW = EM_ASM_INT( return window.innerWidth; );\n"
     "    int odCssH = EM_ASM_INT( return window.innerHeight; );\n"
     "    int width = (int)(odCssW * odDpr + 0.5);\n"

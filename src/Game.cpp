@@ -59,15 +59,17 @@
 // with the raylib web resize callback (tools/patch_raylib_web_dpi.py), which
 // does the same sizing for genuine resize events.
 //
-// dpr is clamped to [1, 3]: 1 keeps unchanged behaviour on ordinary displays,
-// 3 caps the backing store so a 4x phone panel does not blow past the mobile
-// GL_MAX_TEXTURE_SIZE / memory budget for a gain no eye resolves.
+// dpr is clamped to [1, 2]: 1 keeps unchanged behaviour on ordinary displays,
+// and 2 caps the backing store. A 3x phone panel at full density made the
+// default framebuffer ~9x the CSS box, and on a 4 GB iPhone that extra GPU
+// memory, on top of the map textures and the wasm heap, was enough to get the
+// tab killed on map load. 2x is already past what the eye resolves on a map.
 EM_JS(int, odFitCanvasJS, (), {
     var c = document.getElementById('canvas');
     if (!c) return 0;
     var dpr = window.devicePixelRatio || 1;
     if (dpr < 1) dpr = 1;
-    if (dpr > 3) dpr = 3;
+    if (dpr > 2) dpr = 2;
     var cssW = window.innerWidth | 0, cssH = window.innerHeight | 0;
     if (cssW < 1) cssW = 1;
     if (cssH < 1) cssH = 1;
