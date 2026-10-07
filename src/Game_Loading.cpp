@@ -2143,27 +2143,19 @@ bool Game::loadFromODM(const std::string& odmPath) {
             // that nobody could see.
             // A dedicated server reads the mask and nothing else, a row at a
             // time: the 128 MB image never exists. See LandSeaMap.h.
-            if (m_compactRaster) {
-                m_landSea.loadMaskFromMemory(e.data, (int)e.size);
-                continue;
-            }
-            m_landSea.loadFromMemory(e.data, (int)e.size, /*withTexture=*/false);
-            // 128 MB back, immediately.
-            //
-            // The layer is 8192x4096 RGBA and every question anyone asks it is
-            // isLand(x, y) -- one bit. It is on the GPU by now, and the mask
-            // dropPixels() keeps answers that question at 1/32nd the size, so
-            // holding the pixels for the rest of the session buys nothing.
-            //
-            // This is what made a scenario unloadable on a phone: the heap
-            // starts at 512 MB, the province layer needs another 128 MB of its
-            // own and genuinely uses them, and this took a third of what was
-            // left to store a boolean. The menu came up because nothing before
-            // the map is big; the map is where the tab died.
-            //
-            // The game's copy only. The map editor owns its own LandSeaMap and
-            // paints into its pixels, so it must never be told to do this.
-            m_landSea.dropPixels();
+            // The game only ever asks this layer isLand(x, y) -- one bit -- so
+            // the row loader builds that 1/32-size mask WITHOUT the 8192x4096
+            // RGBA ever existing. The old game path decoded the full 128 MB and
+            // freed it a line later (dropPixels), but a transient still raises
+            // the wasm heap's high-water mark for good -- and that mark (810 MB
+            // here: the province layer and this one, both decoded at once) is
+            // what an iOS tab is killed on when a 4 GB phone loads a world. So
+            // always take the row path the dedicated server already took; it
+            // ends in exactly the state dropPixels() did (mask only, no image,
+            // no texture). The map editor owns a separate LandSeaMap and never
+            // comes through here.
+            m_landSea.loadMaskFromMemory(e.data, (int)e.size);
+            continue;
         }
         else if (e.name == "provinces.png" || e.name == "provinces.json") {
             // Need both png + json — load when we have json too

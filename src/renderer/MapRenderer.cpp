@@ -50,6 +50,9 @@ extern "C" void glGetIntegerv(unsigned int pname, int* data);
 #ifndef GL_MAX_TEXTURE_SIZE
 #define GL_MAX_TEXTURE_SIZE 0x0D33
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 namespace {
 constexpr int kRlAttachmentColor0 = 0;      // RL_ATTACHMENT_COLOR_CHANNEL0
 constexpr int kRlAttachmentTexture2D = 100; // RL_ATTACHMENT_TEXTURE2D
@@ -439,9 +442,30 @@ void uploadTable(Texture2D& tex, const std::vector<Color>& colours) {
 int mapTexCap() {
     static const int cap = [] {
         if (const char* e = getenv("OD_MAP_TEXCAP")) { int v = atoi(e); if (v >= 256) return v; }
+#ifdef __EMSCRIPTEN__
+        // Web, and especially mobile web, is memory-bound, not ceiling-bound: a
+        // phone's GL ceiling is commonly 16384, so the whole 8192-wide map fits
+        // and NOTHING downscales -- yet those full-size layers (index + the
+        // political and border render targets) are hundreds of MB of GPU memory
+        // that, on top of the wasm heap, get an iOS tab killed on map load.
+        // So cap well below the ceiling on web. 4096 keeps a world map crisp at
+        // any sane zoom while quartering those layers. Tunable live with
+        // ?texcap=N (N>=256) so the right cap can be measured on the device
+        // without a rebuild.
+        int q = EM_ASM_INT({
+            try { var m = new URLSearchParams(location.search).get('texcap');
+                  var v = m ? (parseInt(m, 10) | 0) : 0; return (v >= 256) ? v : 0; }
+            catch (e) { return 0; }
+        });
+        if (q >= 256) return q;
+        int glmax = 0; glGetIntegerv(GL_MAX_TEXTURE_SIZE, &glmax);
+        const int def = 4096;
+        return (glmax >= 256 && glmax < def) ? glmax : def;
+#else
         int v = 0;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &v);
         return v >= 256 ? v : 16384;   // a sane floor if the query answers nothing
+#endif
     }();
     return cap;
 }
@@ -743,7 +767,26 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     // edge flags -- 24 KB at this width -- rolled down the image, written
     // straight into m_borderPixels. One pass over the pixels instead of three,
     // and the same picture out.
-    m_borderPixels.assign((size_t)mapW * mapH * kBorderBpp, 0);
+    // ─── AND WHY THE OUTPUT IS CAPPED, NOT JUST THE WORKING SET ───────────
+    //
+    // m_borderTex is only ever DRAWN STRETCHED across the whole map (one
+    // DrawTexture scaled to m_mapW), so its pixel grid need be no finer than
+    // the province index it sits over -- which mapTexCap already caps on mobile
+    // web. Left at the full 8192x4096 it is ~67 MB of GPU texture AND the same
+    // again in a transient wasm buffer here, and because the wasm heap only
+    // ever grows, that transient raises the tab's high-water mark for good --
+    // the figure iOS Safari kills on when a 4 GB phone loads a world. So the
+    // edge scan still runs at full resolution (every border is found exactly),
+    // but it rasterises into a buffer the capped size: a cell is marked when
+    // any full-res edge pixel falls in it.
+    //
+    // f is forced to 1 while the editor keeps the CPU copy for live painting
+    // (updateBorderRect indexes it at full width) and is 1 anyway off mobile,
+    // where the GL ceiling holds the whole map -- so nothing changes there.
+    const int f = m_keepBorderPixels ? 1 : mapDownscale(mapW, mapH);
+    const int outW = mapW / f;
+    const int outH = mapH / f;
+    m_borderPixels.assign((size_t)outW * outH * kBorderBpp, 0);
 
     std::vector<uint8_t> flagRows((size_t)mapW * 3, 0);
     uint8_t* rows[3] = { flagRows.data(), flagRows.data() + mapW, flagRows.data() + 2 * mapW };
@@ -766,7 +809,9 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
         const uint8_t* prev = rows[0];
         const uint8_t* cur  = rows[1];
         const uint8_t* next = rows[2];
-        uint8_t* dst = m_borderPixels.data() + (size_t)py * mapW * kBorderBpp;
+        const int oy = py / f;
+        uint8_t* dstRow = (oy < outH) ? m_borderPixels.data() + (size_t)oy * outW * kBorderBpp
+                                      : nullptr;
         for (int px = 0; px < mapW; ++px) {
             uint8_t a = 0;
             if (cur[px]) {
@@ -776,7 +821,14 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
                 const int r = (px == mapW - 1) ? 0 : px + 1;
                 if (cur[l] || cur[r] || prev[px] || next[px]) a = 50;
             }
-            writeBorderTexel(dst + (size_t)px * kBorderBpp, a);
+            // Only marked texels are written; unmarked cells stay {0,0}, which
+            // is transparent (alpha 0), the same as writeBorderTexel emits for
+            // a == 0. A cell shared by several full-res pixels is marked once
+            // any of them is an edge.
+            if (a && dstRow) {
+                const int ox = px / f;
+                if (ox < outW) writeBorderTexel(dstRow + (size_t)ox * kBorderBpp, a);
+            }
         }
         // Roll the window down and refill the row that just fell off the top.
         uint8_t* recycled = rows[0];
@@ -786,18 +838,8 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
         fillFlags(rows[2], py + 2);
     }
 
-    // The scan above yields every row; this does not and cannot. Handing a
-    // 8192x4096 surface to the driver is one opaque call with no iteration of
-    // ours inside it.
-    //
-    // NOT a BlockingCall, though it was one. Measured, this region is about
-    // 130 ms -- three audio periods. Suspending the device for that costs a
-    // stop and a restart of the music to save three repeated blocks, which is
-    // a worse trade than the thing it was fixing. The guard is for the
-    // multi-second regions.
-    //
-    // A top-up instead: refilling immediately before the stall is the most
-    // headroom the stream can be given, and it costs nothing.
+    // The scan above yields every row; this does not and cannot. Handing the
+    // surface to the driver is one opaque call with no iteration of ours inside.
     Audio::get().pump();
     if (m_borderTex.id > 0) UnloadTexture(m_borderTex);
     // STRAIGHT FROM THE VECTOR WE ALREADY HOLD. LoadTextureFromImage only
@@ -806,8 +848,8 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     // unloaded.
     Image img{};
     img.data = m_borderPixels.data();
-    img.width = mapW;
-    img.height = mapH;
+    img.width = outW;
+    img.height = outH;
     img.mipmaps = 1;
     img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
     m_borderTex = LoadTextureFromImage(img);
@@ -1420,7 +1462,14 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
     if (m_surface.id == 0 || m_surface.texture.width != win.texW ||
         m_surface.texture.height != win.texH) {
         if (m_surface.id > 0) UnloadRenderTexture(m_surface);
-        m_surface = LoadRenderTexture(win.texW, win.texH);
+        // Colour only (makeTarget), not LoadRenderTexture: the composite is a
+        // flat paint that tests no depth, so the depth buffer LoadRenderTexture
+        // attaches -- ~32 MB at this size -- is pure waste, and on a phone that
+        // is renderfed on top of the map textures and the wasm heap is the last
+        // ~32 MB that tipped a loaded world over the tab limit. The two paint
+        // targets above already skip it for the same reason.
+        m_surface = makeTarget(win.texW, win.texH);
+        if (m_surface.id == 0) return;   // the GPU refused it; no composite this frame
         // Bilinear, or the sphere shows the raster's texels at the limb where
         // it is most compressed.
         SetTextureFilter(m_surface.texture, TEXTURE_FILTER_BILINEAR);
