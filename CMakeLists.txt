@@ -353,6 +353,26 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     endif()
     string(STRIP "${od_vorbis_out}" od_vorbis_out)
     message(STATUS "raylib: ${od_vorbis_out}")
+
+    # Web only. See tools/patch_raylib_web_dpi.py. FATAL for the same reason as
+    # the vorbis patch: an unpatched web resize callback silently ships the
+    # zoomed-in, blurry mobile UI this fixes, and nothing else in the build
+    # would catch it.
+    if(EMSCRIPTEN)
+        set(od_webdpi_src "${raylib_SOURCE_DIR}/src/platforms/rcore_web.c")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_web_dpi.py"
+                    "${od_webdpi_src}"
+            RESULT_VARIABLE od_webdpi_rc
+            OUTPUT_VARIABLE od_webdpi_out
+            ERROR_VARIABLE  od_webdpi_err)
+        if(NOT od_webdpi_rc EQUAL 0)
+            message(FATAL_ERROR "Could not patch raylib's web canvas sizing:\n${od_webdpi_err}")
+        endif()
+        string(STRIP "${od_webdpi_out}" od_webdpi_out)
+        message(STATUS "raylib: ${od_webdpi_out}")
+    endif()
 endif()
 
 # --- Complex text shaping (HarfBuzz) ---

@@ -42,26 +42,42 @@
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
 
-// Make the canvas' backing store, its CSS box and the browser viewport one and
-// the same size, so nothing is scaled and a mouse coordinate means what it
-// says. Returns the size it settled on. See the long note in Game::init().
+// Size the canvas BACKING STORE to device pixels (innerWidth x devicePixelRatio)
+// while leaving its CSS box at layout pixels, so the page occupies the same
+// space but the framebuffer behind it is dense. Returns the backing size, in
+// device pixels, which is the screen size the game then lays out for. See the
+// long note in Game::init().
 //
-// devicePixelRatio is deliberately NOT applied. Multiplying the backing store
-// by it would sharpen the render and immediately reintroduce the very mismatch
-// this exists to remove, since the CSS box stays in CSS pixels; sharper text is
-// not worth an input layer that lies.
+// devicePixelRatio IS applied now, and that is the whole point: on a phone
+// (dpr 2-3) a CSS-pixel backing store laid the UI out against ~390 logical
+// pixels, so every panel and glyph was huge ("too zoomed in"), and the browser
+// then upscaled that small buffer to the physical screen, so it was blurry too.
+// The earlier worry -- that a denser backing store would make the pointer lie --
+// does not hold: GLFW-emscripten delivers the cursor in device pixels and
+// raylib's touch callback normalises taps to the screen size, so with screen ==
+// backing store a click and a tap both land where the UI is drawn. This agrees
+// with the raylib web resize callback (tools/patch_raylib_web_dpi.py), which
+// does the same sizing for genuine resize events.
+//
+// dpr is clamped to [1, 3]: 1 keeps unchanged behaviour on ordinary displays,
+// 3 caps the backing store so a 4x phone panel does not blow past the mobile
+// GL_MAX_TEXTURE_SIZE / memory budget for a gain no eye resolves.
 EM_JS(int, odFitCanvasJS, (), {
     var c = document.getElementById('canvas');
     if (!c) return 0;
-    var w = window.innerWidth | 0, h = window.innerHeight | 0;
-    if (w < 1) w = 1;
-    if (h < 1) h = 1;
+    var dpr = window.devicePixelRatio || 1;
+    if (dpr < 1) dpr = 1;
+    if (dpr > 3) dpr = 3;
+    var cssW = window.innerWidth | 0, cssH = window.innerHeight | 0;
+    if (cssW < 1) cssW = 1;
+    if (cssH < 1) cssH = 1;
+    var w = (cssW * dpr + 0.5) | 0, h = (cssH * dpr + 0.5) | 0;
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-    // Explicit pixels, not 100vw/100vh: those are resolved against the viewport
-    // and can disagree with innerWidth when a scrollbar appears, which is one
-    // more way for the two boxes to drift apart.
-    c.style.width = w + 'px';
-    c.style.height = h + 'px';
+    // CSS box in explicit layout pixels, not 100vw/100vh: those are resolved
+    // against the viewport and can disagree with innerWidth when a scrollbar
+    // appears, which is one more way for the two boxes to drift apart.
+    c.style.width = cssW + 'px';
+    c.style.height = cssH + 'px';
     return (w << 16) | h;
 });
 #endif
@@ -1595,8 +1611,9 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // which browser and which embed show it, because this machine could not.
     //
     // What has been ruled out, so a later attempt does not start from zero:
-    //   - the canvas element is fine. Framebuffer and CSS size both match
-    //     window.innerWidth/innerHeight, and devicePixelRatio is 1.
+    //   - the canvas element is fine. The framebuffer is the CSS box times
+    //     devicePixelRatio and the CSS box tracks window.innerWidth/innerHeight
+    //     (see odFitCanvasJS); the two follow each other by construction.
     //   - SetWindowSize() is glfwSetWindowSize() on web and touches no
     //     viewport, which is why calling it here changed nothing.
     //   - a synthetic 'resize' event is untrusted and never reaches raylib's
