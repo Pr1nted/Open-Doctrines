@@ -55,7 +55,7 @@ fixes. Nothing is backported.
 | Dedicated server | `server-v1.0.8a` | The headless host |
 | Gearbox SDK | `gearbox-v1.1` | The mod ABI and its language SDKs |
 
-Every one of them is alpha. Treat "supported" as "will be fixed if reported",
+Every one of them is beta. Treat "supported" as "will be fixed if reported",
 not as a maintenance guarantee.
 
 The account and relay service in [`net/`](net/) has no version. It is

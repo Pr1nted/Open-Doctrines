@@ -85,8 +85,9 @@ Source and let the description carry the nuance rather than overstating it)*
 > thirteen languages. The interface is translated into 21 languages.
 >
 > It plays in a browser with no download and no account, inside a Discord voice
-> channel as an Activity, or as a desktop and Android download. It is an alpha:
-> playable, and not finished, with a tutorial that is still young.
+> channel as an Activity, or as a desktop and Android download. It is a beta:
+> the shape is settled and saves keep working, not finished, with a tutorial
+> that is still young.
 
 **Tags:** `grand-strategy` `strategy` `turn-based-strategy` `wargame`
 `alternate-history` `open-source` `moddable` `multiplayer` `map-editor`
@@ -118,8 +119,8 @@ nothing else on the Hearts of Iron page.
 ## After it is live
 
 Nothing, and that is the point. Unlike a post it does not decay, and unlike a
-storefront it needs no upkeep beyond editing the description when the game stops
-being an alpha.
+storefront it needs no upkeep beyond editing the description when the game
+leaves beta.
 
 LibreGameWiki, OpenSourceGameClones and Wikipedia's *List of open-source video
 games* were listed here as similar surfaces. They are not: each requires an OSI

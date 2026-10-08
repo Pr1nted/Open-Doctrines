@@ -29,7 +29,7 @@ read off an existing entry rather than guessed.
 |---|---|
 | **Name** | `OpenDoctrines` |
 | **Release date** | `2026-08-02` — the first public tag, v1.0.3a, and the day itch traffic starts |
-| **Status** | `Alpha` (or `Early Access`; use whichever the version string says at the time) |
+| **Status** | `Beta` (or `Early Access`; use whichever the version string says at the time) |
 | **Developer** | `Pr1nted` |
 | **Publisher** | `Pr1nted` |
 | **Platforms** | `PC (Microsoft Windows)`, `Mac`, `Linux`, `Android`, `Web browser` |

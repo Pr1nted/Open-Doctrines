@@ -77,7 +77,7 @@ public.
 - **44 languages.**
 - Windows, macOS, Linux, Android and a Discord Activity, as well as the browser.
 
-### It is an alpha
+### It is a beta
 
 Playable start to finish, with a tutorial, and still changing between versions.
 Saying so is fairer than not.
@@ -128,7 +128,7 @@ game and it appears in both. The AI does not negotiate.
 > **ALSO ON** Windows, macOS, Linux, in a browser with no download, and inside a
 > Discord voice channel.
 >
-> **THIS IS AN ALPHA.** It is playable start to finish and has a tutorial, and
+> **THIS IS A BETA.** It is playable start to finish and has a tutorial, and
 > it is still changing between versions. A controller works; touch works;
 > a bigger screen helps.
 >
@@ -141,7 +141,7 @@ game and it appears in both. The AI does not negotiate.
 > research and parliament, across 1,641 provinces and six eras from 1914 to
 > today. No download, no account — it starts in about ten seconds. Six
 > scenarios, a map editor, multiplayer by invite code, 44 languages, and it is
-> an alpha that is still growing.
+> a beta that is still growing.
 
 ---
 

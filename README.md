@@ -22,7 +22,7 @@ three alternate histories and a flooded Mars — on a 1,642-province world map, 
 map editor for building your own, multiplayer that needs no port forwarding,
 and a mod SDK for thirteen languages.
 
-Alpha. [Status](#status) says what that means here, and which platforms
+Beta. [Status](#status) says what that means here, and which platforms
 anyone has actually sat down and played it on.
 
 ![The world map](docs/img/world-map.png)
@@ -577,7 +577,10 @@ itself onto every phone, and a mod runtime that could not start on FreeBSD.
 
 ## Status
 
-Alpha, and the honest version of that word:
+Beta, and the honest version of that word: alpha meant the shape was not
+settled, and it is now, so saves made from here are expected to keep working.
+It is not finished — what is missing is written down rather than found out by
+playing:
 
 - **Platforms.** This used to say that Windows, Linux and web were "targeted,
   not yet qualified", because "it compiled" is not "somebody played it". That
