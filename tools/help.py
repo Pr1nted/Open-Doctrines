@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
+        "release.py", "odver.py", "package.py", "check_shipped_data.py", "check_registry_modules.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
@@ -109,6 +109,9 @@ GROUPS = [
         # Run a dedicated campaign as a service that survives reboots
         # (docs/hosting-a-week.md).
         "host_campaign.sh",
+        # Keeps that campaign in a private git repository, so the machine
+        # hosting it can be switched off or replaced; host_campaign.sh calls it.
+        "campaign_sync.sh",
         # A fresh Linux VM (Oracle's free Arm box) into an always-on server
         # with its own language model (docs/hosting-on-oracle.md).
         "server_box.sh",
@@ -298,6 +301,12 @@ GROUPS = [
         "generate_svg_symbols.py",
         "generate_symbols.py",
         "normalize_symbols.py", "restore_symbols.py", "inline_svg_use.py",
+        # How much of its own canvas a symbol covers, measured by the game's
+        # own rasteriser rather than by reading path data -- it shells out to
+        # SymbolFill (tools/symbol_fill.cpp), which links the same nanosvg
+        # header FlagRenderer does, so the box it reports is the one a flag
+        # actually shows. normalize_symbols.py reframes against that.
+        "svg_fill.py",
         "sync_map_symbols.py",
         "generate_icons.py", "generate_web_favicon.py", "make_watermark.py",
         # The one-colour mark, outlined from the icon's own face so the two read
@@ -316,6 +325,10 @@ GROUPS = [
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.
         "check_palette.py",
+        # The achievement catalog: one edited file, every copy generated from
+        # it -- the table compiled into the game, the icons, the launcher's
+        # copy. --check fails when any of them has drifted.
+        "gen_achievements.py",
     ]),
     ("The communication window", [
         "kra_export.py", "comms_signal.py", "comms_derive.py", "make_voices.py",

@@ -32,7 +32,11 @@ WHAT IS DONE TO EACH FILE
                           coloured flag. Fills AND strokes: a black stroke in an
                           otherwise white symbol is the bug this exists to avoid.
   * refitted           -- into viewBox "-100 -100 200 200", scaled to fit and
-                          centred, never stretched.
+                          centred, never stretched. Fitted to the ARTWORK, not
+                          to the canvas the source declared around it: see
+                          refit() for the saltire that spent its life drawing
+                          at half the size of every other cross because those
+                          are not the same rectangle.
   * sanitised          -- <script> and on* handlers removed. nanosvg would
                           ignore them, but a file in data/ is one other tools may
                           open, and it arrived off the internet.
@@ -230,6 +234,35 @@ def convert(svg_bytes, name):
     return out
 
 
+def refit(path):
+    """Reframe a just-written symbol around the ink it actually has.
+
+    Returns a short note for the log, or None if the framing was already
+    right. A missing measurement is a warning, not a failure: the file that
+    was downloaded is still correct in every other way, and refusing to write
+    symbols on a machine without a C++ compiler would be a worse trade than
+    one that is framed the old way and reported as such.
+    """
+    if TOOLS_DIR not in sys.path:
+        sys.path.insert(0, TOOLS_DIR)
+    import svg_fill
+    from normalize_symbols import apply_fit
+    try:
+        info = svg_fill.measure([path]).get(path, {})
+        if "error" in info or "bbox" not in info:
+            print(f"        cannot measure coverage: {info.get('error', 'no result')}")
+            return None
+        before = info["fill"]
+        changed, why = apply_fit(path, info["bbox"])
+        if not changed:
+            return None if why == "already framed" else f"NOT reframed: {why}"
+        after = svg_fill.measure([path]).get(path, {}).get("fill", 0.0)
+        return f"reframed {before * 100:.0f}% -> {after * 100:.0f}% of canvas"
+    except svg_fill.Unavailable as e:
+        print(f"        coverage unchecked: {e}")
+        return None
+
+
 def main():
     wanted = sys.argv[1:] or list(PICKS)
     unknown = [w for w in wanted if w not in PICKS]
@@ -258,13 +291,26 @@ def main():
             continue
 
         out = convert(raw, name)
-        with open(os.path.join(SYMBOLS_DIR, name + ".svg"), "w", encoding="utf-8") as f:
+        path = os.path.join(SYMBOLS_DIR, name + ".svg")
+        with open(path, "w", encoding="utf-8") as f:
             f.write(out)
+
+        # convert() fits the source's DECLARED canvas, which is not the same
+        # thing as the artwork on it. "Saltire cross icon.svg" declares 400x400
+        # and draws the saltire across the middle 225 of it, so the symbol
+        # inherited the source's empty margin and covered 56% of its own box
+        # against 90-100% for its siblings -- it just drew small on every flag.
+        # Nothing here could see that, because a declared canvas cannot be
+        # asked where the ink is. So the file is rasterised and reframed from
+        # what it actually contains.
+        fitted = refit(path)
         lic["obligation"] = obligation
         lic["modifications"] = ("Recoloured white and refitted to the -100 -100 200 200 "
-                                "symbol viewBox. Neither is authorship.")
+                                "symbol viewBox, scaled so the artwork spans it. "
+                                "None of that is authorship.")
         records[name + ".svg"] = lic
-        print(f"  ok    {name:15s} {len(out):6d} B  {lic['license']}")
+        print(f"  ok    {name:15s} {len(out):6d} B  {lic['license']}"
+              + (f"  ({fitted})" if fitted else ""))
         time.sleep(PAUSE)
 
     if records:

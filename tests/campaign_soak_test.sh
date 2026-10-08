@@ -90,11 +90,23 @@ check "it played $turns turns" "[ '$last_turn' -ge '$turns' ]" "reached $last_tu
 # line that must never be crossed, so a regression shows here, not as an
 # out-of-memory kill in the third week of somebody's tournament.
 peak=0
-for sample in "${samples[@]}"; do v="${sample#*:}"; [ "$v" -gt "$peak" ] && peak="$v"; done
-check "it never used more than half a 512 MB host (peak ${peak} MB)" "[ '$peak' -le 256 ]"
+for sample in "${samples[@]}"; do v="${sample#*:}"; [ -n "$v" ] && [ "$v" -gt "$peak" ] && peak="$v"; done
 final="$(rss_mb "$server_pid")"
-check "memory did not keep climbing (warm ${warm} MB, now ${final} MB)" \
-      "[ '$warm' -gt 0 ] && [ '$final' -le \$(( warm + warm / 4 + 150 )) ]"
+
+# AN UNMEASURABLE NUMBER IS NOT A PASSING ONE. If rss_mb could not get a figure
+# -- which is what happens where neither ps -o rss= nor PowerShell will answer
+# for this process -- then `[ '' -le 256 ]` is a syntax error that the check
+# would report as a failure about memory, and a default of 0 would report it as
+# a triumph. Neither is true, so it is said plainly instead and counted as
+# neither pass nor failure.
+if [ -z "$final" ] || [ "$peak" = 0 ]; then
+    printf '  %-64s %s\n' "resident size is not measurable here" "skip"
+    printf '  %-64s %s\n' "  (rss_mb returned nothing; the two memory checks did not run)" ""
+else
+    check "it never used more than half a 512 MB host (peak ${peak} MB)" "[ '$peak' -le 256 ]"
+    check "memory did not keep climbing (warm ${warm} MB, now ${final} MB)" \
+          "[ '$warm' -gt 0 ] && [ '$final' -le \$(( warm + warm / 4 + 150 )) ]"
+fi
 # The relay carries frames up to 8 MB; a world that outgrows it is a campaign
 # nobody can join late. Half of that is the line a long game must stay under.
 check "a late joiner's world stays well under the relay's 8 MB (max $max_snapshot B)" \
@@ -104,7 +116,7 @@ check "the roster did not keep every passer-by (max $max_peers)" \
 check "no turn was reported unsaved" "! grep -q 'appendTurn failed' '$work/server.log'"
 echo "    $last_turn turns in ${elapsed}s"
 
-kill -TERM "$server_pid"; wait "$server_pid"; rc=$?
+od_stop_server "$server_pid" "$work/commands.txt"; wait "$server_pid"; rc=$?
 check "and it still stops cleanly" "[ '$rc' -eq 0 ]" "exit $rc"
 
 echo

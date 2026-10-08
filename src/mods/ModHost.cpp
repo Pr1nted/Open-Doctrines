@@ -1704,6 +1704,163 @@ uint32_t ecow_set_province_industry_level(ExecEnv e, uint32_t p, int32_t l) {
     MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->setProvinceIndustryLevel(p, l) ? 1u : 0u;
 }
 
+// ---- economy and battles, ABI 1.4 ----
+//
+// Monuments, sector taxes, goods, directed factories, state industry. Every
+// write takes the acting country as its first argument and lands on the rule
+// the player's click lands on; see ModGameAccess. A sector name that is not
+// readable from the mod's memory is refused like an unknown one.
+
+uint32_t eco_can_build_monument(ExecEnv e, uint32_t c, uint32_t p, int32_t k) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->canBuildMonument(c, p, k) ? 1u : 0u;
+}
+int32_t eco_country_monument_slots_used(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryMonumentSlotsUsed(c);
+}
+double eco_country_monument_upkeep(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryMonumentUpkeep(c);
+}
+double eco_country_monument_next_slot_cost(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryMonumentNextSlotCost(c);
+}
+double eco_country_sector_tax(ExecEnv e, uint32_t c, uint32_t rPtr, uint32_t rLen) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0)
+    std::string r;
+    if (!mi->readString(rPtr, rLen, r)) return 0.0;
+    return g_modGame->countrySectorTax(c, r);
+}
+double eco_country_sector_tax_target(ExecEnv e, uint32_t c, uint32_t rPtr, uint32_t rLen) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0)
+    std::string r;
+    if (!mi->readString(rPtr, rLen, r)) return 0.0;
+    return g_modGame->countrySectorTaxTarget(c, r);
+}
+double eco_country_sector_tax_room(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countrySectorTaxRoom(c);
+}
+double eco_country_sector_subsidy_room(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countrySectorSubsidyRoom(c);
+}
+uint32_t eco_goods_economy_on(ExecEnv e) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->goodsEconomyOn() ? 1u : 0u;
+}
+double eco_country_good_stock(ExecEnv e, uint32_t c, int32_t g) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryGoodStock(c, g);
+}
+double eco_country_raw_stock(ExecEnv e, uint32_t c, int32_t r) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryRawStock(c, r);
+}
+double eco_country_good_demand(ExecEnv e, uint32_t c, int32_t g) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryGoodDemand(c, g);
+}
+double eco_country_good_shortfall(ExecEnv e, uint32_t c, int32_t g) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryGoodShortfall(c, g);
+}
+double eco_country_living_standards(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0.0) return g_modGame->countryLivingStandards(c);
+}
+int32_t eco_province_output(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_ECONOMY_READ, -1) return g_modGame->provinceOutput(p);
+}
+uint32_t eco_province_output_directed(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->provinceOutputDirected(p) ? 1u : 0u;
+}
+int32_t eco_country_directable_factories(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryDirectableFactories(c);
+}
+int32_t eco_country_directed_factories(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryDirectedFactories(c);
+}
+int32_t eco_country_auto_sell_pct(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryAutoSellPct(c);
+}
+uint32_t eco_country_nationalised(ExecEnv e, uint32_t c, uint32_t rPtr, uint32_t rLen) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0)
+    std::string r;
+    if (!mi->readString(rPtr, rLen, r)) return 0;
+    return g_modGame->countryNationalised(c, r) ? 1u : 0u;
+}
+int32_t eco_country_nationalisation_cap(ExecEnv e, uint32_t c) {
+    MOD_GUARD(MODULE_ECONOMY_READ, 0) return g_modGame->countryNationalisationCap(c);
+}
+
+uint32_t ecow_build_monument(ExecEnv e, uint32_t c, uint32_t p, int32_t k) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->buildMonument(c, p, k) ? 1u : 0u;
+}
+uint32_t ecow_upgrade_monument(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->upgradeMonument(c, p) ? 1u : 0u;
+}
+uint32_t ecow_dismantle_monument(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->dismantleMonument(c, p) ? 1u : 0u;
+}
+uint32_t ecow_set_monument_active(ExecEnv e, uint32_t c, uint32_t p, uint32_t on) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->setMonumentActive(c, p, on != 0) ? 1u : 0u;
+}
+uint32_t ecow_move_monument(ExecEnv e, uint32_t c, uint32_t f, uint32_t t) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->moveMonument(c, f, t) ? 1u : 0u;
+}
+uint32_t ecow_set_country_sector_tax(ExecEnv e, uint32_t c, uint32_t rPtr, uint32_t rLen, double pct) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0)
+    std::string r;
+    if (!mi->readString(rPtr, rLen, r)) return 0;
+    return g_modGame->setCountrySectorTax(c, r, pct) ? 1u : 0u;
+}
+uint32_t ecow_set_province_output(ExecEnv e, uint32_t c, uint32_t p, int32_t g) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0) return g_modGame->setProvinceOutput(c, p, g) ? 1u : 0u;
+}
+uint32_t ecow_set_country_nationalised(ExecEnv e, uint32_t c, uint32_t rPtr, uint32_t rLen, uint32_t on) {
+    MOD_GUARD(MODULE_ECONOMY_WRITE, 0)
+    std::string r;
+    if (!mi->readString(rPtr, rLen, r)) return 0;
+    return g_modGame->setCountryNationalised(c, r, on != 0) ? 1u : 0u;
+}
+
+int64_t mil_province_combat_width(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->provinceCombatWidth(p);
+}
+uint32_t mil_province_battle_attacker(ExecEnv e, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_READ, 0) return g_modGame->provinceBattleAttacker(p);
+}
+uint32_t milw_order_withdraw(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_MILITARY_WRITE, 0) return g_modGame->orderWithdraw(c, p) ? 1u : 0u;
+}
+
+// ---- diplomacy, 1.4 additions ----
+#define OD_TREATY_THUNK(fn, action)                                            \
+    uint32_t fn(ExecEnv e, uint32_t a, uint32_t b) {                            \
+        MOD_GUARD(MODULE_DIPLOMACY, 0)                                          \
+        return g_modGame->proposeTreaty(a, b, action) ? 1u : 0u;                \
+    }
+OD_TREATY_THUNK(dip_propose_alliance,       "request_alliance")
+OD_TREATY_THUNK(dip_break_alliance,         "break_alliance")
+OD_TREATY_THUNK(dip_propose_non_aggression, "request_nap")
+OD_TREATY_THUNK(dip_break_non_aggression,   "break_nap")
+OD_TREATY_THUNK(dip_propose_guarantee,      "request_guarantee")
+OD_TREATY_THUNK(dip_break_guarantee,        "break_guarantee")
+#undef OD_TREATY_THUNK
+
+static uint32_t dipDeal(ExecEnv e, uint32_t a, uint32_t b, uint32_t tPtr, uint32_t tLen, bool trade) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0)
+    std::string terms;
+    if (tLen > 0 && !mi->readString(tPtr, tLen, terms)) return 0;
+    return g_modGame->proposeDeal(a, b, trade, terms) ? 1u : 0u;
+}
+uint32_t dip_propose_ceasefire(ExecEnv e, uint32_t a, uint32_t b, uint32_t p, uint32_t l) {
+    return dipDeal(e, a, b, p, l, false);
+}
+uint32_t dip_propose_trade(ExecEnv e, uint32_t a, uint32_t b, uint32_t p, uint32_t l) {
+    return dipDeal(e, a, b, p, l, true);
+}
+uint32_t dip_country_claims_province(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0) return g_modGame->countryClaimsProvince(c, p) ? 1u : 0u;
+}
+uint32_t dip_grant_claim(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0) return g_modGame->setCountryClaim(c, p, true) ? 1u : 0u;
+}
+uint32_t dip_revoke_claim(ExecEnv e, uint32_t c, uint32_t p) {
+    MOD_GUARD(MODULE_DIPLOMACY, 0) return g_modGame->setCountryClaim(c, p, false) ? 1u : 0u;
+}
+
 // ---- map, 1.1 additions ----
 
 uint32_t map_province_is_coastal(ExecEnv e, uint32_t p) {
@@ -2088,6 +2245,53 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:economy.read", "country_population",     "(i)I",   (void*)eco_country_population,     MODULE_ECONOMY_READ},
 
     {"gearbox:economy.write", "set_province_industry_level", "(ii)i", (void*)ecow_set_province_industry_level, MODULE_ECONOMY_WRITE},
+
+    // ABI 1.4: monuments, sector taxes, goods, directed factories, state industry.
+    {"gearbox:economy.read", "can_build_monument",             "(iii)i", (void*)eco_can_build_monument,             MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_monument_slots_used",    "(i)i",   (void*)eco_country_monument_slots_used,    MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_monument_upkeep",        "(i)F",   (void*)eco_country_monument_upkeep,        MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_monument_next_slot_cost","(i)F",   (void*)eco_country_monument_next_slot_cost,MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_sector_tax",             "(iii)F", (void*)eco_country_sector_tax,             MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_sector_tax_target",      "(iii)F", (void*)eco_country_sector_tax_target,      MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_sector_tax_room",        "(i)F",   (void*)eco_country_sector_tax_room,        MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_sector_subsidy_room",    "(i)F",   (void*)eco_country_sector_subsidy_room,    MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "goods_economy_on",               "()i",    (void*)eco_goods_economy_on,               MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_good_stock",             "(ii)F",  (void*)eco_country_good_stock,             MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_raw_stock",              "(ii)F",  (void*)eco_country_raw_stock,              MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_good_demand",            "(ii)F",  (void*)eco_country_good_demand,            MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_good_shortfall",         "(ii)F",  (void*)eco_country_good_shortfall,         MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_living_standards",       "(i)F",   (void*)eco_country_living_standards,       MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "province_output",                "(i)i",   (void*)eco_province_output,                MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "province_output_directed",       "(i)i",   (void*)eco_province_output_directed,       MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_directable_factories",   "(i)i",   (void*)eco_country_directable_factories,   MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_directed_factories",     "(i)i",   (void*)eco_country_directed_factories,     MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_auto_sell_pct",          "(i)i",   (void*)eco_country_auto_sell_pct,          MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_nationalised",           "(iii)i", (void*)eco_country_nationalised,           MODULE_ECONOMY_READ},
+    {"gearbox:economy.read", "country_nationalisation_cap",    "(i)i",   (void*)eco_country_nationalisation_cap,    MODULE_ECONOMY_READ},
+    {"gearbox:economy.write", "build_monument",                "(iii)i",  (void*)ecow_build_monument,                MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "upgrade_monument",              "(ii)i",   (void*)ecow_upgrade_monument,              MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "dismantle_monument",            "(ii)i",   (void*)ecow_dismantle_monument,            MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "set_monument_active",           "(iii)i",  (void*)ecow_set_monument_active,           MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "move_monument",                 "(iii)i",  (void*)ecow_move_monument,                 MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "set_country_sector_tax",        "(iiiF)i", (void*)ecow_set_country_sector_tax,        MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "set_province_output",           "(iii)i",  (void*)ecow_set_province_output,           MODULE_ECONOMY_WRITE},
+    {"gearbox:economy.write", "set_country_nationalised",      "(iiii)i", (void*)ecow_set_country_nationalised,      MODULE_ECONOMY_WRITE},
+    // ABI 1.4: what a front looks like.
+    {"gearbox:military.read", "province_combat_width",         "(i)I",    (void*)mil_province_combat_width,          MODULE_MILITARY_READ},
+    {"gearbox:military.read", "province_battle_attacker",      "(i)i",    (void*)mil_province_battle_attacker,       MODULE_MILITARY_READ},
+    {"gearbox:military.write", "order_withdraw",               "(ii)i",   (void*)milw_order_withdraw,                MODULE_MILITARY_WRITE},
+    // ABI 1.4: the rest of diplomacy.
+    {"gearbox:diplomacy", "propose_alliance",                  "(ii)i",   (void*)dip_propose_alliance,               MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "break_alliance",                    "(ii)i",   (void*)dip_break_alliance,                 MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_non_aggression",            "(ii)i",   (void*)dip_propose_non_aggression,         MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "break_non_aggression",              "(ii)i",   (void*)dip_break_non_aggression,           MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_guarantee",                 "(ii)i",   (void*)dip_propose_guarantee,              MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "break_guarantee",                   "(ii)i",   (void*)dip_break_guarantee,                MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_ceasefire",                 "(iiii)i", (void*)dip_propose_ceasefire,              MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "propose_trade",                     "(iiii)i", (void*)dip_propose_trade,                  MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "country_claims_province",           "(ii)i",   (void*)dip_country_claims_province,        MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "grant_claim",                       "(ii)i",   (void*)dip_grant_claim,                    MODULE_DIPLOMACY},
+    {"gearbox:diplomacy", "revoke_claim",                      "(ii)i",   (void*)dip_revoke_claim,                   MODULE_DIPLOMACY},
 
     {"gearbox:map", "province_is_coastal", "(i)i",     (void*)map_province_is_coastal, MODULE_MAP},
     {"gearbox:map", "sea_route_exists",    "(FFFF)i",  (void*)map_sea_route_exists,    MODULE_MAP},

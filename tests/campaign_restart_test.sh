@@ -126,8 +126,8 @@ for _ in $(seq 1 50); do grep -q "from the command file" "$work/run3.log" && bre
 check "a command appended to commands.txt runs" "grep -q '\[Server\] from the command file' '$work/run3.log'"
 
 # A polite stop writes everything and exits 0.
-kill -TERM "$server_pid"; wait "$server_pid"; rc=$?
-check "SIGTERM stops it cleanly" "[ '$rc' -eq 0 ]" "exit $rc"
+od_stop_server "$server_pid" "$work/commands.txt"; wait "$server_pid"; rc=$?
+check "a polite stop exits cleanly" "[ '$rc' -eq 0 ]" "exit $rc"
 
 echo
 if [ "$fail" = 0 ]; then echo "campaign restart: all checks passed"; else echo "campaign restart: FAILED"; fi

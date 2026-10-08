@@ -17,6 +17,11 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <csignal>
+#include <sys/resource.h>
+#endif
+
 namespace {
 
 int failures = 0;
@@ -172,6 +177,94 @@ int main(int argc, char** argv) {
         h.begin(dir + "/empty.gif", 8, 8, 4);
         check(!h.end(), "end() without a frame reports failure");
     }
+
+    // A size the format cannot describe.
+    //
+    // Width and height are two bytes each, in the logical screen descriptor and
+    // in every image descriptor. 70000 was written as its low 16 bits -- 4464 --
+    // and the encoder then packed 70000-pixel rows into a frame it had declared
+    // 4464 wide. The file decoded as a corrupt LZW stream and end() returned
+    // true about it.
+    {
+        GifEncoder g;
+        check(!g.begin(dir + "/huge.gif", 70000, 8, 4) && !g.error().empty(),
+              "begin() rejects a width over 65535");
+        GifEncoder h;
+        check(!h.begin(dir + "/huge2.gif", 8, 70000, 4),
+              "begin() rejects a height over 65535");
+        check(GifEncoder::MAX_DIMENSION == 65535 &&
+              GifEncoder{}.begin(dir + "/atlimit.gif", GifEncoder::MAX_DIMENSION, 1, 4),
+              "the limit itself is accepted");
+    }
+
+    // A path that cannot be written.
+    //
+    // fopen used to be deferred to the first frame, so begin() said yes to any
+    // path at all and the caller's "could not create GIF at that path" branch
+    // was unreachable.
+    {
+        GifEncoder g;
+        check(!g.begin(dir + "/no_such_subdir_xyz/a.gif", 8, 8, 4) &&
+              !g.error().empty(), "begin() rejects an unwritable path");
+    }
+
+#ifndef _WIN32
+    // THE CASE THIS SUITE DID NOT HAVE: a write that fails partway through.
+    //
+    // A GIF has no length field and no checksum, so a GIF whose tail was lost
+    // is not distinguishable from a whole one by looking at it -- it opens,
+    // plays, and then dies on a partial LZW code. Every fputc and fwrite in the
+    // encoder went unchecked, so a full disk produced a truncated file, end()
+    // returned true, and --export-timelapse printed "Saved 721 frames" and
+    // exited 0. That is what a calling script then uploaded.
+    //
+    // RLIMIT_FSIZE reproduces it without needing a full filesystem: past the
+    // limit, write() fails with EFBIG. SIGXFSZ has to be ignored first or the
+    // signal kills the process before the encoder ever sees the error.
+    //
+    // POSIX only. Windows has no equivalent that can be set from inside the
+    // process, so this one case does not run there -- which is why the checks
+    // below print their own name either way rather than being silently absent.
+    {
+        rlimit old{};
+        const bool got = getrlimit(RLIMIT_FSIZE, &old) == 0;
+        auto prev = signal(SIGXFSZ, SIG_IGN);
+        rlimit small = old;
+        small.rlim_cur = 64 * 1024;          // smaller than the GIF below
+        const bool limited = got && setrlimit(RLIMIT_FSIZE, &small) == 0;
+
+        bool reported = false, errSet = false, fileGone = false;
+        const std::string path = dir + "/truncated.gif";
+        if (limited) {
+            GifEncoder g;
+            // Noise at this size does not compress, so it passes 64 KiB well
+            // inside the first few frames.
+            reported = !writeGif(path, 256, 256, 4, 8, frameNoise);
+            // writeGif returns on the first failure; re-ask the encoder.
+            GifEncoder probe;
+            probe.begin(dir + "/truncated2.gif", 256, 256, 8);
+            auto f = frameNoise(256, 256, 1);
+            for (int t = 0; t < 4; ++t) probe.writeFrame(f.data());
+            errSet = !probe.end() && !probe.error().empty();
+            setrlimit(RLIMIT_FSIZE, &old);
+            FILE* leftover = fopen(path.c_str(), "rb");
+            fileGone = (leftover == nullptr);
+            if (leftover) fclose(leftover);
+            remove((dir + "/truncated2.gif").c_str());
+        }
+        signal(SIGXFSZ, prev);
+
+        if (!limited) {
+            check(false, "could not set RLIMIT_FSIZE (test setup)");
+        } else {
+            check(reported, "a write that fails partway is reported");
+            check(errSet, "end() after a failed write returns false, with a reason");
+            check(fileGone, "the incomplete file is not left behind");
+        }
+    }
+#else
+    printf("  %-56s %s\n", "truncated-write case", "skipped (no RLIMIT_FSIZE)");
+#endif
 
     FILE* man = fopen((dir + "/manifest.txt").c_str(), "w");
     if (man) {

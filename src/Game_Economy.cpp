@@ -104,6 +104,18 @@ void Game::setSpecTaxPct(int cid, int res, float pct) {
     // force follows it a turn at a time (advanceSpecTaxes).
 }
 
+void Game::setSpecTaxInForce(int cid, int res, float pct) {
+    if (res < 0 || res >= 5 || cid <= 0) return;
+    setSpecTaxPct(cid, res, pct);                  // the target, through the rule
+    const float target = specTaxTargetPct(cid, res);   // as it clamped and stepped it
+    auto& now = m_specTaxNow[cid];
+    now[(size_t)res] = target;
+    if (std::all_of(now.begin(), now.end(), [](float v) { return v == 0.0f; }))
+        m_specTaxNow.erase(cid);
+    m_countryIncomeCache.erase(cid);
+    invalidateIncomeCache();
+}
+
 float Game::specTaxTargetPct(int cid, int res) const {
     if (res < 0 || res >= 5) return 0.0f;
     auto it = m_specTaxPct.find(cid);
@@ -784,6 +796,16 @@ int Game::autoSellPctFor(int countryId) const {
     const float planned = plannedShare(countryId);
     const float scale = 1.0f - 0.8f * planned;
     return std::clamp((int)std::lround((double)m_autoSellPct * (double)scale), 0, 100);
+}
+
+bool Game::setStockpile(int cid, bool raw, int index, double amount) {
+    if (!m_goodsEconomy) return false;
+    if (!m_countries.getCountry(cid)) return false;
+    if (index < 0 || index >= (raw ? (int)RAW_COUNT : (int)GOOD_COUNT)) return false;
+    if (!(amount >= 0.0) || amount > 1e9) return false;   // also refuses NaN
+    CountryStockpile& s = m_countryStockpiles[cid];
+    (raw ? s.raw[index] : s.goods[index]) = (float)amount;
+    return true;
 }
 
 bool Game::setProvinceOutput(int pid, int good, int countryId) {

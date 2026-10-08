@@ -1723,3 +1723,414 @@ export declare function _contentOwnerOf(kind: u32, id: usize, id_len: u32, buf: 
 // `(iii)i`
 @external("gearbox:content", "remove")
 export declare function _contentRemove(kind: u32, id: usize, id_len: u32): u32;
+
+// 1 when this country could build a monument of this kind in this province
+// right now, 0 otherwise. The SAME test build_monument makes before it
+// spends anything: the province is the country's, has no monument yet (one
+// per province), the unlocking research is done, a coastal kind stands on
+// the coast, and the treasury covers the build. 0 for an unknown country,
+// province or kind.
+// gearbox:economy.read "can_build_monument"
+// `(iii)i`
+@external("gearbox:economy.read", "can_build_monument")
+export declare function _canBuildMonument(country: u32, province: u32, kind: u32): u32;
+
+// How many of this country's monuments are switched on, which is how many
+// slots it is paying for. 0 for an unknown country.
+// gearbox:economy.read "country_monument_slots_used"
+// `(i)i`
+@external("gearbox:economy.read", "country_monument_slots_used")
+export declare function _countryMonumentSlotsUsed(country: u32): u32;
+
+// What those slots cost per turn, all summed. The n-th active slot costs
+// more than the one before it (50, 75, 125, 200, ...), so this is not
+// slots_used times a price. 0 for an unknown country.
+// gearbox:economy.read "country_monument_upkeep"
+// `(i)F`
+@external("gearbox:economy.read", "country_monument_upkeep")
+export declare function _countryMonumentUpkeep(country: u32): f64;
+
+// What switching on one more monument would add to the per-turn upkeep --
+// the price of the next slot. 0 for an unknown country.
+// gearbox:economy.read "country_monument_next_slot_cost"
+// `(i)F`
+@external("gearbox:economy.read", "country_monument_next_slot_cost")
+export declare function _countryMonumentNextSlotCost(country: u32): f64;
+
+// The sector tax IN FORCE on a speciality, in percent: positive is a tax,
+// negative a subsidy. It walks toward the target a few points a turn
+// rather than jumping, and it is clamped to what the country's doctrines
+// allow today. `resource` is one of the five speciality sectors -- "oil",
+// "gold", "metal", "rubber", "gemstones", the spelling province_resource
+// uses; case does not matter. 0 for an unknown country or sector.
+// gearbox:economy.read "country_sector_tax"
+// `(iii)F`
+@external("gearbox:economy.read", "country_sector_tax")
+export declare function _countrySectorTax(country: u32, resource: usize, resource_len: u32): f64;
+
+// The sector tax the country has SET, in percent, which the rate in force
+// is moving toward. It can sit outside today's room if a doctrine narrowed
+// it since; the rate in force is what is charged. `resource` is one of the
+// five speciality sectors -- "oil", "gold", "metal", "rubber",
+// "gemstones", the spelling province_resource uses; case does not matter.
+// 0 for an unknown country or sector.
+// gearbox:economy.read "country_sector_tax_target"
+// `(iii)F`
+@external("gearbox:economy.read", "country_sector_tax_target")
+export declare function _countrySectorTaxTarget(country: u32, resource: usize, resource_len: u32): f64;
+
+// The highest sector tax this country's doctrines allow, in percent. 0 for
+// an unknown country.
+// gearbox:economy.read "country_sector_tax_room"
+// `(i)F`
+@external("gearbox:economy.read", "country_sector_tax_room")
+export declare function _countrySectorTaxRoom(country: u32): f64;
+
+// The deepest sector subsidy this country's doctrines allow, in percent,
+// as a positive number: a subsidy may go down to minus this. 0 for an
+// unknown country.
+// gearbox:economy.read "country_sector_subsidy_room"
+// `(i)F`
+@external("gearbox:economy.read", "country_sector_subsidy_room")
+export declare function _countrySectorSubsidyRoom(country: u32): f64;
+
+// 1 when this world runs the goods economy -- factories make goods,
+// deposits yield raw materials, and both are stockpiled. 0 when it is the
+// money economy, in which case every stock, demand and shortfall read is 0
+// and living standards read 1.
+// gearbox:economy.read "goods_economy_on"
+// `()i`
+@external("gearbox:economy.read", "goods_economy_on")
+export declare function _goodsEconomyOn(): u32;
+
+// How much of a good this country has stockpiled. 0 for an unknown country
+// or good, and outside the goods economy.
+// gearbox:economy.read "country_good_stock"
+// `(ii)F`
+@external("gearbox:economy.read", "country_good_stock")
+export declare function _countryGoodStock(country: u32, good: u32): f64;
+
+// How much of a raw material this country has stockpiled. Gold is not a
+// raw material -- it stays money. 0 for an unknown country or material,
+// and outside the goods economy.
+// gearbox:economy.read "country_raw_stock"
+// `(ii)F`
+@external("gearbox:economy.read", "country_raw_stock")
+export declare function _countryRawStock(country: u32, raw: u32): f64;
+
+// What this country needs of a good this turn: for consumer goods, what
+// its population wants; for the other three, the reserve the economy
+// recorded last turn. The same figure country_good_shortfall subtracts the
+// stock from. 0 for an unknown country or good, and outside the goods
+// economy.
+// gearbox:economy.read "country_good_demand"
+// `(ii)F`
+@external("gearbox:economy.read", "country_good_demand")
+export declare function _countryGoodDemand(country: u32, good: u32): f64;
+
+// How short this country is of a good this turn: demand minus stock, never
+// below 0. The number the economy's own allocator and the AI's trade
+// valuation read. 0 for an unknown country or good, and outside the goods
+// economy.
+// gearbox:economy.read "country_good_shortfall"
+// `(ii)F`
+@external("gearbox:economy.read", "country_good_shortfall")
+export declare function _countryGoodShortfall(country: u32, good: u32): f64;
+
+// Consumer supply over consumer demand last turn: 1 means fed, below 1
+// short, above 1 a surplus. It feeds unrest and population growth. 1 for a
+// real country with no production record (the money economy, or before the
+// first turn); 0 for an unknown country.
+// gearbox:economy.read "country_living_standards"
+// `(i)F`
+@external("gearbox:economy.read", "country_living_standards")
+export declare function _countryLivingStandards(country: u32): f64;
+
+// The good this province's factories are making, as a good -- whether its
+// government directed it or the economy allocated it
+// (province_output_directed tells the two apart). -1 when nothing is
+// assigned, for a province with no industry, and for an unknown province.
+// gearbox:economy.read "province_output"
+// `(i)i`
+@external("gearbox:economy.read", "province_output")
+export declare function _provinceOutput(province: u32): u32;
+
+// 1 when a government chose this province's output by hand and it keeps
+// that order until changed; 0 when the economy allocates it each turn, the
+// province has no industry, or it is unknown.
+// gearbox:economy.read "province_output_directed"
+// `(i)i`
+@external("gearbox:economy.read", "province_output_directed")
+export declare function _provinceOutputDirected(province: u32): u32;
+
+// How many factories this country's government may direct by hand. Its
+// economic compass sets it: a planned economy directs every factory, a
+// free market none. 0 for an unknown country.
+// gearbox:economy.read "country_directable_factories"
+// `(i)i`
+@external("gearbox:economy.read", "country_directable_factories")
+export declare function _countryDirectableFactories(country: u32): u32;
+
+// How many of its factories are directed right now. set_province_output
+// refuses a new one once this reaches country_directable_factories. 0 for
+// an unknown country.
+// gearbox:economy.read "country_directed_factories"
+// `(i)i`
+@external("gearbox:economy.read", "country_directed_factories")
+export declare function _countryDirectedFactories(country: u32): u32;
+
+// The share of this country's surplus raw materials sold automatically
+// each turn, 0-100: the world's setting scaled down by how planned its
+// economy is. 0 for an unknown country.
+// gearbox:economy.read "country_auto_sell_pct"
+// `(i)i`
+@external("gearbox:economy.read", "country_auto_sell_pct")
+export declare function _countryAutoSellPct(country: u32): u32;
+
+// 1 when this country holds a speciality sector in state hands. A released
+// sector winds down over turns but reads 0 here from the moment it is
+// released. `resource` is one of the five speciality sectors -- "oil",
+// "gold", "metal", "rubber", "gemstones", the spelling province_resource
+// uses; case does not matter. 0 for an unknown country or sector, and when
+// the nationalisation rules are switched off.
+// gearbox:economy.read "country_nationalised"
+// `(iii)i`
+@external("gearbox:economy.read", "country_nationalised")
+export declare function _countryNationalised(country: u32, resource: usize, resource_len: u32): u32;
+
+// How many speciality sectors this country may hold in state hands, from
+// its economic compass: 5 at the command end down to 0 at the market end.
+// 0 for an unknown country, and when the rules are off.
+// gearbox:economy.read "country_nationalisation_cap"
+// `(i)i`
+@external("gearbox:economy.read", "country_nationalisation_cap")
+export declare function _countryNationalisationCap(country: u32): u32;
+
+// Build a monument for this country, through the game's own buildMonument:
+// the checks can_build_monument reports, the price taken from the
+// treasury, active on arrival. 1 if it was built, 0 if anything refused
+// it.
+// gearbox:economy.write "build_monument"
+// `(iii)i`
+@external("gearbox:economy.write", "build_monument")
+export declare function _buildMonument(country: u32, province: u32, kind: u32): u32;
+
+// Raise this country's monument in a province one level, paying for it. 0
+// if the province holds no monument of this country's, it is at its top
+// level, or the treasury cannot cover it.
+// gearbox:economy.write "upgrade_monument"
+// `(ii)i`
+@external("gearbox:economy.write", "upgrade_monument")
+export declare function _upgradeMonument(country: u32, province: u32): u32;
+
+// Take down this country's monument in a province. That costs money too --
+// a flat 50 -- so 0 if the treasury cannot cover it, or the province holds
+// no monument of this country's.
+// gearbox:economy.write "dismantle_monument"
+// `(ii)i`
+@external("gearbox:economy.write", "dismantle_monument")
+export declare function _dismantleMonument(country: u32, province: u32): u32;
+
+// Switch this country's monument on or off. Off frees its slot and stops
+// its effect entirely; on takes a slot again. 1 if it is now in the
+// requested state (including already being so), 0 if the province holds no
+// monument of this country's.
+// gearbox:economy.write "set_monument_active"
+// `(iii)i`
+@external("gearbox:economy.write", "set_monument_active")
+export declare function _setMonumentActive(country: u32, province: u32, active: u32): u32;
+
+// Move one of the movable kinds (defence_corporation, signals_directorate)
+// to any province this country holds that has none, paying the move price.
+// 0 for a kind that cannot move, a destination that is taken, not the
+// country's or (for a coastal kind) inland, or a treasury that cannot
+// cover it.
+// gearbox:economy.write "move_monument"
+// `(iii)i`
+@external("gearbox:economy.write", "move_monument")
+export declare function _moveMonument(country: u32, from_province: u32, to_province: u32): u32;
+
+// Set the TARGET sector tax on a speciality, in percent; negative is a
+// subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of
+// 5 and clamped to the doctrine room, and the rate in force then walks
+// toward it a few points a turn -- nothing is charged differently this
+// turn. `resource` is one of the five speciality sectors -- "oil", "gold",
+// "metal", "rubber", "gemstones", the spelling province_resource uses;
+// case does not matter. 1 when accepted, 0 for an unknown country or
+// sector or a percent that is not a finite number.
+// gearbox:economy.write "set_country_sector_tax"
+// `(iiiF)i`
+@external("gearbox:economy.write", "set_country_sector_tax")
+export declare function _setCountrySectorTax(country: u32, resource: usize, resource_len: u32, percent: f64): u32;
+
+// Direct a province's factories to make a good, or pass -1 to hand them
+// back to the economy. Through the game's own setProvinceOutput: the
+// province must be this country's and have industry, and directing a new
+// one is refused once country_directed_factories reaches
+// country_directable_factories (re-directing one already directed is
+// always allowed, and handing back always is). 1 on success.
+// gearbox:economy.write "set_province_output"
+// `(iii)i`
+@external("gearbox:economy.write", "set_province_output")
+export declare function _setProvinceOutput(country: u32, province: u32, good: u32): u32;
+
+// Take a speciality sector into state hands, or release it, through the
+// game's own nationalise / releaseNationalised. Taking one is refused when
+// the country is at its cap; a released one winds down over turns rather
+// than stopping. `resource` is one of the five speciality sectors --
+// "oil", "gold", "metal", "rubber", "gemstones", the spelling
+// province_resource uses; case does not matter. 1 if it is now in the
+// requested state (including already being so); 0 for an unknown country
+// or sector, a full cap, or when the rules are switched off.
+// gearbox:economy.write "set_country_nationalised"
+// `(iiii)i`
+@external("gearbox:economy.write", "set_country_nationalised")
+export declare function _setCountryNationalised(country: u32, resource: usize, resource_len: u32, held: u32): u32;
+
+// How many men either side can bring to bear in one assault on this
+// province: its frontage, from its area, narrowed by fortification. Beyond
+// it, numbers add depth rather than strength. 0 for an unknown province.
+// gearbox:military.read "province_combat_width"
+// `(i)I`
+@external("gearbox:military.read", "province_combat_width")
+export declare function _provinceCombatWidth(province: u32): i64;
+
+// The country attacking this province in a standing battle, or 0 when
+// there is none. If more than one country is attacking it, the first
+// battle opened is the one reported.
+// gearbox:military.read "province_battle_attacker"
+// `(i)i`
+@external("gearbox:military.read", "province_battle_attacker")
+export declare function _provinceBattleAttacker(province: u32): u32;
+
+// Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST,
+// exactly as the diplomacy panel's button does; the other side answers at
+// the end of the turn and may refuse. Returns 0 if the request cannot be
+// made: an unknown country, a war between them, the treaty already
+// standing, or another offer between the pair still awaiting an answer.
+// gearbox:diplomacy "propose_alliance"
+// `(ii)i`
+@external("gearbox:diplomacy", "propose_alliance")
+export declare function _proposeAlliance(country: u32, other: u32): u32;
+
+// Give notice that `country` is breaking the alliance with `other`. Queued
+// like the panel's button, and applied at the end of the turn with the
+// same consequences: breaking an alliance absorbs each side's troops
+// standing on the other's soil, and breaking a pact costs credibility.
+// Returns 0 if there is no such treaty to break or an offer between the
+// pair is already waiting.
+// gearbox:diplomacy "break_alliance"
+// `(ii)i`
+@external("gearbox:diplomacy", "break_alliance")
+export declare function _breakAlliance(country: u32, other: u32): u32;
+
+// Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A
+// REQUEST, exactly as the diplomacy panel's button does; the other side
+// answers at the end of the turn and may refuse. Returns 0 if the request
+// cannot be made: an unknown country, a war between them, the treaty
+// already standing, or another offer between the pair still awaiting an
+// answer.
+// gearbox:diplomacy "propose_non_aggression"
+// `(ii)i`
+@external("gearbox:diplomacy", "propose_non_aggression")
+export declare function _proposeNonAggression(country: u32, other: u32): u32;
+
+// Give notice that `country` is breaking the non-aggression pact with
+// `other`. Queued like the panel's button, and applied at the end of the
+// turn with the same consequences: breaking an alliance absorbs each
+// side's troops standing on the other's soil, and breaking a pact costs
+// credibility. Returns 0 if there is no such treaty to break or an offer
+// between the pair is already waiting.
+// gearbox:diplomacy "break_non_aggression"
+// `(ii)i`
+@external("gearbox:diplomacy", "break_non_aggression")
+export declare function _breakNonAggression(country: u32, other: u32): u32;
+
+// Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST,
+// exactly as the diplomacy panel's button does; the other side answers at
+// the end of the turn and may refuse. Returns 0 if the request cannot be
+// made: an unknown country, a war between them, the treaty already
+// standing, or another offer between the pair still awaiting an answer.
+// gearbox:diplomacy "propose_guarantee"
+// `(ii)i`
+@external("gearbox:diplomacy", "propose_guarantee")
+export declare function _proposeGuarantee(country: u32, other: u32): u32;
+
+// Give notice that `country` is breaking the guarantee with `other`.
+// Queued like the panel's button, and applied at the end of the turn with
+// the same consequences: breaking an alliance absorbs each side's troops
+// standing on the other's soil, and breaking a pact costs credibility.
+// Returns 0 if there is no such treaty to break or an offer between the
+// pair is already waiting.
+// gearbox:diplomacy "break_guarantee"
+// `(ii)i`
+@external("gearbox:diplomacy", "break_guarantee")
+export declare function _breakGuarantee(country: u32, other: u32): u32;
+
+// Offer `other` a ceasefire, with terms, on behalf of `country`. They must
+// be at war. Sent through the same path as the deal screen's offer and
+// answered at the end of the turn; accepted, the war ends and the terms
+// are carried out. Terms are a JSON object, every key optional: our_money
+// and their_money (numbers), our_provinces and their_provinces (province
+// ids; ours must belong to `country`, theirs to `other`), our_drop_claims
+// and their_drop_claims (province ids), our_goods and their_goods (objects
+// keyed by good: consumer, machinery, fuel, munitions). `our` is what
+// `country` gives, `their` what it asks for. An unknown key, a malformed
+// value or a province on the wrong side refuses the whole offer. Money is
+// clamped to what each side holds and offered goods to what `country`
+// holds, as the deal screen clamps them. Goods change hands only in a
+// goods world. Returns 0 if the offer cannot be made.
+// gearbox:diplomacy "propose_ceasefire"
+// `(iiii)i`
+@external("gearbox:diplomacy", "propose_ceasefire")
+export declare function _proposeCeasefire(country: u32, other: u32, terms: usize, terms_len: u32): u32;
+
+// Offer `other` a trade on behalf of `country`: the same terms as a
+// ceasefire, between countries at PEACE, and no war ends. Terms are a JSON
+// object, every key optional: our_money and their_money (numbers),
+// our_provinces and their_provinces (province ids; ours must belong to
+// `country`, theirs to `other`), our_drop_claims and their_drop_claims
+// (province ids), our_goods and their_goods (objects keyed by good:
+// consumer, machinery, fuel, munitions). `our` is what `country` gives,
+// `their` what it asks for. An unknown key, a malformed value or a
+// province on the wrong side refuses the whole offer. Money is clamped to
+// what each side holds and offered goods to what `country` holds, as the
+// deal screen clamps them. Goods change hands only in a goods world.
+// Returns 0 if the offer cannot be made.
+// gearbox:diplomacy "propose_trade"
+// `(iiii)i`
+@external("gearbox:diplomacy", "propose_trade")
+export declare function _proposeTrade(country: u32, other: u32, terms: usize, terms_len: u32): u32;
+
+// Whether `country` holds a claim on `province`. 0 for an unknown country
+// or province.
+// gearbox:diplomacy "country_claims_province"
+// `(ii)i`
+@external("gearbox:diplomacy", "country_claims_province")
+export declare function _countryClaimsProvince(country: u32, province: u32): u32;
+
+// Give `country` a claim on `province`, through the game's own grant (the
+// same one conquest and events use). Returns 0 for an unknown country or
+// province.
+// gearbox:diplomacy "grant_claim"
+// `(ii)i`
+@external("gearbox:diplomacy", "grant_claim")
+export declare function _grantClaim(country: u32, province: u32): u32;
+
+// Withdraw `country`'s claim on `province`, through the game's own revoke.
+// Returns 0 for an unknown country or province; 1 when there was nothing
+// to withdraw.
+// gearbox:diplomacy "revoke_claim"
+// `(ii)i`
+@external("gearbox:diplomacy", "revoke_claim")
+export declare function _revokeClaim(country: u32, province: u32): u32;
+
+// Withdraw `country`'s attack on `province` at the next resolution: the
+// survivors go home if the country still holds the province they came
+// from. The check the multiplayer host makes of a player's order: refused
+// (0) unless a battle of THIS country's stands there. Ordering it twice is
+// the same as once.
+// gearbox:military.write "order_withdraw"
+// `(ii)i`
+@external("gearbox:military.write", "order_withdraw")
+export declare function _orderWithdraw(country: u32, province: u32): u32;

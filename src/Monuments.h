@@ -94,6 +94,9 @@ inline constexpr int kKindCount = (int)Kind::Count;
  */
 const char* kindKey(Kind k);
 
+/** The reverse of kindKey: the kind index for a key, or -1. */
+int kindFromKey(const std::string& key);
+
 /** Display name, translated at the point of drawing. */
 const char* kindName(Kind k);
 

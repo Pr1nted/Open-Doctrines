@@ -413,7 +413,7 @@ static PyObject *gbxpy_get_text(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_COUNTRY */
 
-/* ---- Diplomacy (5) ---- */
+/* ---- Diplomacy (16) ---- */
 #if GBX_WITH_DIPLOMACY
 
 /* gearbox:diplomacy "at_war" */
@@ -483,9 +483,199 @@ static PyObject *gbxpy_propose_war(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
     return PyBool_FromLong((long)gearbox_propose_war((uint32_t)a0, (uint32_t)a1));
 }
+
+/* gearbox:diplomacy "propose_alliance" */
+/* Ask `other` for an alliance, on behalf of `country`. QUEUES A REQUEST, */
+/* exactly as the diplomacy panel's button does; the other side answers at */
+/* the end of the turn and may refuse. Returns 0 if the request cannot be */
+/* made: an unknown country, a war between them, the treaty already */
+/* standing, or another offer between the pair still awaiting an answer. */
+/* gearbox:diplomacy "propose_alliance" */
+/* `(ii)i` */
+static PyObject *gbxpy_propose_alliance(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_alliance((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "break_alliance" */
+/* Give notice that `country` is breaking the alliance with `other`. Queued */
+/* like the panel's button, and applied at the end of the turn with the */
+/* same consequences: breaking an alliance absorbs each side's troops */
+/* standing on the other's soil, and breaking a pact costs credibility. */
+/* Returns 0 if there is no such treaty to break or an offer between the */
+/* pair is already waiting. */
+/* gearbox:diplomacy "break_alliance" */
+/* `(ii)i` */
+static PyObject *gbxpy_break_alliance(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_break_alliance((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_non_aggression" */
+/* Ask `other` for a non-aggression pact, on behalf of `country`. QUEUES A */
+/* REQUEST, exactly as the diplomacy panel's button does; the other side */
+/* answers at the end of the turn and may refuse. Returns 0 if the request */
+/* cannot be made: an unknown country, a war between them, the treaty */
+/* already standing, or another offer between the pair still awaiting an */
+/* answer. */
+/* gearbox:diplomacy "propose_non_aggression" */
+/* `(ii)i` */
+static PyObject *gbxpy_propose_non_aggression(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_non_aggression((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "break_non_aggression" */
+/* Give notice that `country` is breaking the non-aggression pact with */
+/* `other`. Queued like the panel's button, and applied at the end of the */
+/* turn with the same consequences: breaking an alliance absorbs each */
+/* side's troops standing on the other's soil, and breaking a pact costs */
+/* credibility. Returns 0 if there is no such treaty to break or an offer */
+/* between the pair is already waiting. */
+/* gearbox:diplomacy "break_non_aggression" */
+/* `(ii)i` */
+static PyObject *gbxpy_break_non_aggression(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_break_non_aggression((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_guarantee" */
+/* Ask `other` for a guarantee, on behalf of `country`. QUEUES A REQUEST, */
+/* exactly as the diplomacy panel's button does; the other side answers at */
+/* the end of the turn and may refuse. Returns 0 if the request cannot be */
+/* made: an unknown country, a war between them, the treaty already */
+/* standing, or another offer between the pair still awaiting an answer. */
+/* gearbox:diplomacy "propose_guarantee" */
+/* `(ii)i` */
+static PyObject *gbxpy_propose_guarantee(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_guarantee((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "break_guarantee" */
+/* Give notice that `country` is breaking the guarantee with `other`. */
+/* Queued like the panel's button, and applied at the end of the turn with */
+/* the same consequences: breaking an alliance absorbs each side's troops */
+/* standing on the other's soil, and breaking a pact costs credibility. */
+/* Returns 0 if there is no such treaty to break or an offer between the */
+/* pair is already waiting. */
+/* gearbox:diplomacy "break_guarantee" */
+/* `(ii)i` */
+static PyObject *gbxpy_break_guarantee(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_break_guarantee((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "propose_ceasefire" */
+/* Offer `other` a ceasefire, with terms, on behalf of `country`. They must */
+/* be at war. Sent through the same path as the deal screen's offer and */
+/* answered at the end of the turn; accepted, the war ends and the terms */
+/* are carried out. Terms are a JSON object, every key optional: our_money */
+/* and their_money (numbers), our_provinces and their_provinces (province */
+/* ids; ours must belong to `country`, theirs to `other`), our_drop_claims */
+/* and their_drop_claims (province ids), our_goods and their_goods (objects */
+/* keyed by good: consumer, machinery, fuel, munitions). `our` is what */
+/* `country` gives, `their` what it asks for. An unknown key, a malformed */
+/* value or a province on the wrong side refuses the whole offer. Money is */
+/* clamped to what each side holds and offered goods to what `country` */
+/* holds, as the deal screen clamps them. Goods change hands only in a */
+/* goods world. Returns 0 if the offer cannot be made. */
+/* gearbox:diplomacy "propose_ceasefire" */
+/* `(iiii)i` */
+static PyObject *gbxpy_propose_ceasefire(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    const char *a2 = NULL; Py_ssize_t a2_n = 0;
+    if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_ceasefire((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:diplomacy "propose_trade" */
+/* Offer `other` a trade on behalf of `country`: the same terms as a */
+/* ceasefire, between countries at PEACE, and no war ends. Terms are a JSON */
+/* object, every key optional: our_money and their_money (numbers), */
+/* our_provinces and their_provinces (province ids; ours must belong to */
+/* `country`, theirs to `other`), our_drop_claims and their_drop_claims */
+/* (province ids), our_goods and their_goods (objects keyed by good: */
+/* consumer, machinery, fuel, munitions). `our` is what `country` gives, */
+/* `their` what it asks for. An unknown key, a malformed value or a */
+/* province on the wrong side refuses the whole offer. Money is clamped to */
+/* what each side holds and offered goods to what `country` holds, as the */
+/* deal screen clamps them. Goods change hands only in a goods world. */
+/* Returns 0 if the offer cannot be made. */
+/* gearbox:diplomacy "propose_trade" */
+/* `(iiii)i` */
+static PyObject *gbxpy_propose_trade(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    const char *a2 = NULL; Py_ssize_t a2_n = 0;
+    if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_propose_trade((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:diplomacy "country_claims_province" */
+/* Whether `country` holds a claim on `province`. 0 for an unknown country */
+/* or province. */
+/* gearbox:diplomacy "country_claims_province" */
+/* `(ii)i` */
+static PyObject *gbxpy_country_claims_province(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_country_claims_province((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "grant_claim" */
+/* Give `country` a claim on `province`, through the game's own grant (the */
+/* same one conquest and events use). Returns 0 for an unknown country or */
+/* province. */
+/* gearbox:diplomacy "grant_claim" */
+/* `(ii)i` */
+static PyObject *gbxpy_grant_claim(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_grant_claim((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:diplomacy "revoke_claim" */
+/* Withdraw `country`'s claim on `province`, through the game's own revoke. */
+/* Returns 0 for an unknown country or province; 1 when there was nothing */
+/* to withdraw. */
+/* gearbox:diplomacy "revoke_claim" */
+/* `(ii)i` */
+static PyObject *gbxpy_revoke_claim(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_revoke_claim((uint32_t)a0, (uint32_t)a1));
+}
 #endif /* GBX_WITH_DIPLOMACY */
 
-/* ---- Economy.Read (11) ---- */
+/* ---- Economy.Read (32) ---- */
 #if GBX_WITH_ECONOMY_READ
 
 /* gearbox:economy.read "country_income_gross" */
@@ -626,9 +816,303 @@ static PyObject *gbxpy_country_population(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
     return PyLong_FromLongLong((long long)gearbox_country_population((uint32_t)a0));
 }
+
+/* gearbox:economy.read "can_build_monument" */
+/* 1 when this country could build a monument of this kind in this province */
+/* right now, 0 otherwise. The SAME test build_monument makes before it */
+/* spends anything: the province is the country's, has no monument yet (one */
+/* per province), the unlocking research is done, a coastal kind stands on */
+/* the coast, and the treasury covers the build. 0 for an unknown country, */
+/* province or kind. */
+/* gearbox:economy.read "can_build_monument" */
+/* `(iii)i` */
+static PyObject *gbxpy_can_build_monument(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "III", &a0, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_can_build_monument((uint32_t)a0, (uint32_t)a1, (uint32_t)a2));
+}
+
+/* gearbox:economy.read "country_monument_slots_used" */
+/* How many of this country's monuments are switched on, which is how many */
+/* slots it is paying for. 0 for an unknown country. */
+/* gearbox:economy.read "country_monument_slots_used" */
+/* `(i)i` */
+static PyObject *gbxpy_country_monument_slots_used(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_country_monument_slots_used((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_monument_upkeep" */
+/* What those slots cost per turn, all summed. The n-th active slot costs */
+/* more than the one before it (50, 75, 125, 200, ...), so this is not */
+/* slots_used times a price. 0 for an unknown country. */
+/* gearbox:economy.read "country_monument_upkeep" */
+/* `(i)F` */
+static PyObject *gbxpy_country_monument_upkeep(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_monument_upkeep((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_monument_next_slot_cost" */
+/* What switching on one more monument would add to the per-turn upkeep -- */
+/* the price of the next slot. 0 for an unknown country. */
+/* gearbox:economy.read "country_monument_next_slot_cost" */
+/* `(i)F` */
+static PyObject *gbxpy_country_monument_next_slot_cost(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_monument_next_slot_cost((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_sector_tax" */
+/* The sector tax IN FORCE on a speciality, in percent: positive is a tax, */
+/* negative a subsidy. It walks toward the target a few points a turn */
+/* rather than jumping, and it is clamped to what the country's doctrines */
+/* allow today. `resource` is one of the five speciality sectors -- "oil", */
+/* "gold", "metal", "rubber", "gemstones", the spelling province_resource */
+/* uses; case does not matter. 0 for an unknown country or sector. */
+/* gearbox:economy.read "country_sector_tax" */
+/* `(iii)F` */
+static PyObject *gbxpy_country_sector_tax(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    const char *a1 = NULL; Py_ssize_t a1_n = 0;
+    if (!PyArg_ParseTuple(args, "Is#", &a0, &a1, &a1_n)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_sector_tax((uint32_t)a0, a1, (uint32_t)a1_n));
+}
+
+/* gearbox:economy.read "country_sector_tax_target" */
+/* The sector tax the country has SET, in percent, which the rate in force */
+/* is moving toward. It can sit outside today's room if a doctrine narrowed */
+/* it since; the rate in force is what is charged. `resource` is one of the */
+/* five speciality sectors -- "oil", "gold", "metal", "rubber", */
+/* "gemstones", the spelling province_resource uses; case does not matter. */
+/* 0 for an unknown country or sector. */
+/* gearbox:economy.read "country_sector_tax_target" */
+/* `(iii)F` */
+static PyObject *gbxpy_country_sector_tax_target(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    const char *a1 = NULL; Py_ssize_t a1_n = 0;
+    if (!PyArg_ParseTuple(args, "Is#", &a0, &a1, &a1_n)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_sector_tax_target((uint32_t)a0, a1, (uint32_t)a1_n));
+}
+
+/* gearbox:economy.read "country_sector_tax_room" */
+/* The highest sector tax this country's doctrines allow, in percent. 0 for */
+/* an unknown country. */
+/* gearbox:economy.read "country_sector_tax_room" */
+/* `(i)F` */
+static PyObject *gbxpy_country_sector_tax_room(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_sector_tax_room((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_sector_subsidy_room" */
+/* The deepest sector subsidy this country's doctrines allow, in percent, */
+/* as a positive number: a subsidy may go down to minus this. 0 for an */
+/* unknown country. */
+/* gearbox:economy.read "country_sector_subsidy_room" */
+/* `(i)F` */
+static PyObject *gbxpy_country_sector_subsidy_room(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_sector_subsidy_room((uint32_t)a0));
+}
+
+/* gearbox:economy.read "goods_economy_on" */
+/* 1 when this world runs the goods economy -- factories make goods, */
+/* deposits yield raw materials, and both are stockpiled. 0 when it is the */
+/* money economy, in which case every stock, demand and shortfall read is 0 */
+/* and living standards read 1. */
+/* gearbox:economy.read "goods_economy_on" */
+/* `()i` */
+static PyObject *gbxpy_goods_economy_on(PyObject *self, PyObject *args) {
+    (void)self;  (void)args;
+    return PyBool_FromLong((long)gearbox_goods_economy_on());
+}
+
+/* gearbox:economy.read "country_good_stock" */
+/* How much of a good this country has stockpiled. 0 for an unknown country */
+/* or good, and outside the goods economy. */
+/* gearbox:economy.read "country_good_stock" */
+/* `(ii)F` */
+static PyObject *gbxpy_country_good_stock(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_good_stock((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.read "country_raw_stock" */
+/* How much of a raw material this country has stockpiled. Gold is not a */
+/* raw material -- it stays money. 0 for an unknown country or material, */
+/* and outside the goods economy. */
+/* gearbox:economy.read "country_raw_stock" */
+/* `(ii)F` */
+static PyObject *gbxpy_country_raw_stock(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_raw_stock((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.read "country_good_demand" */
+/* What this country needs of a good this turn: for consumer goods, what */
+/* its population wants; for the other three, the reserve the economy */
+/* recorded last turn. The same figure country_good_shortfall subtracts the */
+/* stock from. 0 for an unknown country or good, and outside the goods */
+/* economy. */
+/* gearbox:economy.read "country_good_demand" */
+/* `(ii)F` */
+static PyObject *gbxpy_country_good_demand(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_good_demand((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.read "country_good_shortfall" */
+/* How short this country is of a good this turn: demand minus stock, never */
+/* below 0. The number the economy's own allocator and the AI's trade */
+/* valuation read. 0 for an unknown country or good, and outside the goods */
+/* economy. */
+/* gearbox:economy.read "country_good_shortfall" */
+/* `(ii)F` */
+static PyObject *gbxpy_country_good_shortfall(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_good_shortfall((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.read "country_living_standards" */
+/* Consumer supply over consumer demand last turn: 1 means fed, below 1 */
+/* short, above 1 a surplus. It feeds unrest and population growth. 1 for a */
+/* real country with no production record (the money economy, or before the */
+/* first turn); 0 for an unknown country. */
+/* gearbox:economy.read "country_living_standards" */
+/* `(i)F` */
+static PyObject *gbxpy_country_living_standards(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyFloat_FromDouble((double)gearbox_country_living_standards((uint32_t)a0));
+}
+
+/* gearbox:economy.read "province_output" */
+/* The good this province's factories are making, as a good -- whether its */
+/* government directed it or the economy allocated it */
+/* (province_output_directed tells the two apart). -1 when nothing is */
+/* assigned, for a province with no industry, and for an unknown province. */
+/* gearbox:economy.read "province_output" */
+/* `(i)i` */
+static PyObject *gbxpy_province_output(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_province_output((uint32_t)a0));
+}
+
+/* gearbox:economy.read "province_output_directed" */
+/* 1 when a government chose this province's output by hand and it keeps */
+/* that order until changed; 0 when the economy allocates it each turn, the */
+/* province has no industry, or it is unknown. */
+/* gearbox:economy.read "province_output_directed" */
+/* `(i)i` */
+static PyObject *gbxpy_province_output_directed(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyBool_FromLong((long)gearbox_province_output_directed((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_directable_factories" */
+/* How many factories this country's government may direct by hand. Its */
+/* economic compass sets it: a planned economy directs every factory, a */
+/* free market none. 0 for an unknown country. */
+/* gearbox:economy.read "country_directable_factories" */
+/* `(i)i` */
+static PyObject *gbxpy_country_directable_factories(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_country_directable_factories((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_directed_factories" */
+/* How many of its factories are directed right now. set_province_output */
+/* refuses a new one once this reaches country_directable_factories. 0 for */
+/* an unknown country. */
+/* gearbox:economy.read "country_directed_factories" */
+/* `(i)i` */
+static PyObject *gbxpy_country_directed_factories(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_country_directed_factories((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_auto_sell_pct" */
+/* The share of this country's surplus raw materials sold automatically */
+/* each turn, 0-100: the world's setting scaled down by how planned its */
+/* economy is. 0 for an unknown country. */
+/* gearbox:economy.read "country_auto_sell_pct" */
+/* `(i)i` */
+static PyObject *gbxpy_country_auto_sell_pct(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_country_auto_sell_pct((uint32_t)a0));
+}
+
+/* gearbox:economy.read "country_nationalised" */
+/* 1 when this country holds a speciality sector in state hands. A released */
+/* sector winds down over turns but reads 0 here from the moment it is */
+/* released. `resource` is one of the five speciality sectors -- "oil", */
+/* "gold", "metal", "rubber", "gemstones", the spelling province_resource */
+/* uses; case does not matter. 0 for an unknown country or sector, and when */
+/* the nationalisation rules are switched off. */
+/* gearbox:economy.read "country_nationalised" */
+/* `(iii)i` */
+static PyObject *gbxpy_country_nationalised(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    const char *a1 = NULL; Py_ssize_t a1_n = 0;
+    if (!PyArg_ParseTuple(args, "Is#", &a0, &a1, &a1_n)) return NULL;
+    return PyBool_FromLong((long)gearbox_country_nationalised((uint32_t)a0, a1, (uint32_t)a1_n));
+}
+
+/* gearbox:economy.read "country_nationalisation_cap" */
+/* How many speciality sectors this country may hold in state hands, from */
+/* its economic compass: 5 at the command end down to 0 at the market end. */
+/* 0 for an unknown country, and when the rules are off. */
+/* gearbox:economy.read "country_nationalisation_cap" */
+/* `(i)i` */
+static PyObject *gbxpy_country_nationalisation_cap(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_country_nationalisation_cap((uint32_t)a0));
+}
 #endif /* GBX_WITH_ECONOMY_READ */
 
-/* ---- Economy.Write (1) ---- */
+/* ---- Economy.Write (9) ---- */
 #if GBX_WITH_ECONOMY_WRITE
 
 /* gearbox:economy.write "set_province_industry_level" */
@@ -643,6 +1127,141 @@ static PyObject *gbxpy_set_province_industry_level(PyObject *self, PyObject *arg
     unsigned int a1 = 0;
     if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
     return PyBool_FromLong((long)gearbox_set_province_industry_level((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.write "build_monument" */
+/* Build a monument for this country, through the game's own buildMonument: */
+/* the checks can_build_monument reports, the price taken from the */
+/* treasury, active on arrival. 1 if it was built, 0 if anything refused */
+/* it. */
+/* gearbox:economy.write "build_monument" */
+/* `(iii)i` */
+static PyObject *gbxpy_build_monument(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "III", &a0, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_build_monument((uint32_t)a0, (uint32_t)a1, (uint32_t)a2));
+}
+
+/* gearbox:economy.write "upgrade_monument" */
+/* Raise this country's monument in a province one level, paying for it. 0 */
+/* if the province holds no monument of this country's, it is at its top */
+/* level, or the treasury cannot cover it. */
+/* gearbox:economy.write "upgrade_monument" */
+/* `(ii)i` */
+static PyObject *gbxpy_upgrade_monument(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_upgrade_monument((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.write "dismantle_monument" */
+/* Take down this country's monument in a province. That costs money too -- */
+/* a flat 50 -- so 0 if the treasury cannot cover it, or the province holds */
+/* no monument of this country's. */
+/* gearbox:economy.write "dismantle_monument" */
+/* `(ii)i` */
+static PyObject *gbxpy_dismantle_monument(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_dismantle_monument((uint32_t)a0, (uint32_t)a1));
+}
+
+/* gearbox:economy.write "set_monument_active" */
+/* Switch this country's monument on or off. Off frees its slot and stops */
+/* its effect entirely; on takes a slot again. 1 if it is now in the */
+/* requested state (including already being so), 0 if the province holds no */
+/* monument of this country's. */
+/* gearbox:economy.write "set_monument_active" */
+/* `(iii)i` */
+static PyObject *gbxpy_set_monument_active(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "III", &a0, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_set_monument_active((uint32_t)a0, (uint32_t)a1, (uint32_t)a2));
+}
+
+/* gearbox:economy.write "move_monument" */
+/* Move one of the movable kinds (defence_corporation, signals_directorate) */
+/* to any province this country holds that has none, paying the move price. */
+/* 0 for a kind that cannot move, a destination that is taken, not the */
+/* country's or (for a coastal kind) inland, or a treasury that cannot */
+/* cover it. */
+/* gearbox:economy.write "move_monument" */
+/* `(iii)i` */
+static PyObject *gbxpy_move_monument(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "III", &a0, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_move_monument((uint32_t)a0, (uint32_t)a1, (uint32_t)a2));
+}
+
+/* gearbox:economy.write "set_country_sector_tax" */
+/* Set the TARGET sector tax on a speciality, in percent; negative is a */
+/* subsidy. Through the game's own setSpecTaxPct: snapped to a multiple of */
+/* 5 and clamped to the doctrine room, and the rate in force then walks */
+/* toward it a few points a turn -- nothing is charged differently this */
+/* turn. `resource` is one of the five speciality sectors -- "oil", "gold", */
+/* "metal", "rubber", "gemstones", the spelling province_resource uses; */
+/* case does not matter. 1 when accepted, 0 for an unknown country or */
+/* sector or a percent that is not a finite number. */
+/* gearbox:economy.write "set_country_sector_tax" */
+/* `(iiiF)i` */
+static PyObject *gbxpy_set_country_sector_tax(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    const char *a1 = NULL; Py_ssize_t a1_n = 0;
+    double a2 = 0;
+    if (!PyArg_ParseTuple(args, "Is#d", &a0, &a1, &a1_n, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_set_country_sector_tax((uint32_t)a0, a1, (uint32_t)a1_n, a2));
+}
+
+/* gearbox:economy.write "set_province_output" */
+/* Direct a province's factories to make a good, or pass -1 to hand them */
+/* back to the economy. Through the game's own setProvinceOutput: the */
+/* province must be this country's and have industry, and directing a new */
+/* one is refused once country_directed_factories reaches */
+/* country_directable_factories (re-directing one already directed is */
+/* always allowed, and handing back always is). 1 on success. */
+/* gearbox:economy.write "set_province_output" */
+/* `(iii)i` */
+static PyObject *gbxpy_set_province_output(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "III", &a0, &a1, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_set_province_output((uint32_t)a0, (uint32_t)a1, (uint32_t)a2));
+}
+
+/* gearbox:economy.write "set_country_nationalised" */
+/* Take a speciality sector into state hands, or release it, through the */
+/* game's own nationalise / releaseNationalised. Taking one is refused when */
+/* the country is at its cap; a released one winds down over turns rather */
+/* than stopping. `resource` is one of the five speciality sectors -- */
+/* "oil", "gold", "metal", "rubber", "gemstones", the spelling */
+/* province_resource uses; case does not matter. 1 if it is now in the */
+/* requested state (including already being so); 0 for an unknown country */
+/* or sector, a full cap, or when the rules are switched off. */
+/* gearbox:economy.write "set_country_nationalised" */
+/* `(iiii)i` */
+static PyObject *gbxpy_set_country_nationalised(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    const char *a1 = NULL; Py_ssize_t a1_n = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "Is#I", &a0, &a1, &a1_n, &a2)) return NULL;
+    return PyBool_FromLong((long)gearbox_set_country_nationalised((uint32_t)a0, a1, (uint32_t)a1_n, (uint32_t)a2));
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
@@ -1331,7 +1950,7 @@ static PyObject *gbxpy_editor_set_license(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_MAPEDITOR */
 
-/* ---- Military.Read (20) ---- */
+/* ---- Military.Read (22) ---- */
 #if GBX_WITH_MILITARY_READ
 
 /* gearbox:military.read "ship_count" */
@@ -1589,9 +2208,35 @@ static PyObject *gbxpy_province_troops_of_type(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
     return PyLong_FromLongLong((long long)gearbox_province_troops_of_type((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
 }
+
+/* gearbox:military.read "province_combat_width" */
+/* How many men either side can bring to bear in one assault on this */
+/* province: its frontage, from its area, narrowed by fortification. Beyond */
+/* it, numbers add depth rather than strength. 0 for an unknown province. */
+/* gearbox:military.read "province_combat_width" */
+/* `(i)I` */
+static PyObject *gbxpy_province_combat_width(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromLongLong((long long)gearbox_province_combat_width((uint32_t)a0));
+}
+
+/* gearbox:military.read "province_battle_attacker" */
+/* The country attacking this province in a standing battle, or 0 when */
+/* there is none. If more than one country is attacking it, the first */
+/* battle opened is the one reported. */
+/* gearbox:military.read "province_battle_attacker" */
+/* `(i)i` */
+static PyObject *gbxpy_province_battle_attacker(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    if (!PyArg_ParseTuple(args, "I", &a0)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_province_battle_attacker((uint32_t)a0));
+}
 #endif /* GBX_WITH_MILITARY_READ */
 
-/* ---- Military.Write (4) ---- */
+/* ---- Military.Write (5) ---- */
 #if GBX_WITH_MILITARY_WRITE
 
 /* gearbox:military.write "order_army_move" */
@@ -1665,6 +2310,22 @@ static PyObject *gbxpy_order_ship_bombard(PyObject *self, PyObject *args) {
     const char *a2 = NULL; Py_ssize_t a2_n = 0;
     if (!PyArg_ParseTuple(args, "IIs#", &a0, &a1, &a2, &a2_n)) return NULL;
     return PyBool_FromLong((long)gearbox_order_ship_bombard((uint32_t)a0, (uint32_t)a1, a2, (uint32_t)a2_n));
+}
+
+/* gearbox:military.write "order_withdraw" */
+/* Withdraw `country`'s attack on `province` at the next resolution: the */
+/* survivors go home if the country still holds the province they came */
+/* from. The check the multiplayer host makes of a player's order: refused */
+/* (0) unless a battle of THIS country's stands there. Ordering it twice is */
+/* the same as once. */
+/* gearbox:military.write "order_withdraw" */
+/* `(ii)i` */
+static PyObject *gbxpy_order_withdraw(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    if (!PyArg_ParseTuple(args, "II", &a0, &a1)) return NULL;
+    return PyBool_FromLong((long)gearbox_order_withdraw((uint32_t)a0, (uint32_t)a1));
 }
 #endif /* GBX_WITH_MILITARY_WRITE */
 

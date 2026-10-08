@@ -110,7 +110,33 @@ EOF
 install -m755 "$PKG/opendoctrines-launcher" "$STAGE/usr/bin/opendoctrines"
 install -m644 "$PKG/$APPID.desktop"      "$STAGE/usr/share/applications/$APPID.desktop"
 install -m644 "$PKG/$APPID.metainfo.xml" "$STAGE/usr/share/metainfo/$APPID.metainfo.xml"
-install -m644 "$TREE/data/Icon/icon.png" \
+# THE ICON COMES FROM THE REPOSITORY, like the three files above it.
+#
+# It used to be taken from $TREE, and that tree is whatever was handed in. A
+# BUILD tree has data/Icon in it, which is why the preflight packages stage
+# passed; a RELEASE tree does not, because tools/package.py ships only what is
+# in DATA_ALLOWLIST and the icon is a packaging input rather than game content.
+# So every release died here --
+#
+#   install: cannot stat '.../incoming/OpenDoctrines-linux-x64/data/Icon/icon.png'
+#
+# -- and no release has ever carried a .deb, .rpm, AppImage or Flatpak. The
+# alternative, adding Icon to DATA_ALLOWLIST, would put 640 KB of build input
+# into every player's download to satisfy a packaging step.
+#
+# AND IT IS THE 256px ONE, because that is the directory it goes into.
+# data/Icon/icon.png is the 1024x1024 master the macOS .icns and the Windows
+# .ico are cut from. Installed into hicolor/256x256 it is simply the wrong
+# size, which the .deb and .rpm tolerate and flatpak does not:
+#
+#   .../256x256/apps/io.github.Pr1nted.OpenDoctrines.png is not a valid icon:
+#   Image too large (1024x1024). Max. size 512x512
+#
+# packaging/linux/icon-256.png is that master resized, kept beside the desktop
+# file and the metainfo it ships with.
+ICON="$PKG/icon-256.png"
+[ -f "$ICON" ] || die "no icon at $ICON"
+install -m644 "$ICON" \
         "$STAGE/usr/share/icons/hicolor/256x256/apps/$APPID.png"
 
 SIZE_KB=$(du -sk "$STAGE" | cut -f1)

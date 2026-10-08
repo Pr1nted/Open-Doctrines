@@ -333,6 +333,7 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
 # Needs no build: it reads the C++ source and the HolyC beside it.
 run "templeos in sync with C++" "$root/tests/templeos_sync_test.sh"
 run "a damaged save is refused" "$root/tests/save_corrupt_test.sh" "$build"
+run "map scripts reach the mechanics" "$root/tests/script_mechanics_test.sh" "$build"
 run "neural net gradients" "$bin/NeuralNetTest"
 # The model container, against the shipped model when it is there: the file
 # is the only copy of every hour of training, so "it round-trips" is checked
@@ -499,6 +500,7 @@ check "menu background matches map.odmap" $PY "$root/tools/make_menu_bg.py" --ch
 # (web, Android, installers) and DATA_ALLOWLIST in tools/release.py (zips) --
 # and the two drifted: 1.2.2a shipped without its regional laws and parties.
 check "shipped data lists agree, data/ classified" $PY "$root/tools/check_shipped_data.py"
+check "the mod registry knows every capability" $PY "$root/tools/check_registry_modules.py"
 
 # The relay drops an oversized frame without telling anybody, so the game
 # checks the relay's limits before it sends -- and those limits are written
