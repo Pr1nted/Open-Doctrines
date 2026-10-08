@@ -10,6 +10,9 @@
 
 import { env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { createAccount, identSubHash } from "../src/accounts/store.js";
+import { setBadge } from "../src/accounts/badges.js";
+import { issueSessionToken } from "../src/auth/token.js";
 
 const ORIGIN = "https://opendoctrines-net.test.invalid";
 const KV = (env as unknown as { OD_ACCOUNTS: KVNamespace }).OD_ACCOUNTS;
@@ -24,7 +27,10 @@ beforeEach(async () => {
     // BOTH prefixes. Clearing only one let a bucket posted by an earlier test
     // survive into the next and inflate its count -- a test failing for a
     // reason that had nothing to do with what it was testing.
-    for (const prefix of ["stat:", "usage:"]) {
+    // "acct:" joins the sweep now that the endpoint can report how many there
+    // are: an account left behind by an earlier test would be counted by the
+    // next one and the number would be right for the wrong reason.
+    for (const prefix of ["stat:", "usage:", "acct:", "nick:", "ident:"]) {
         const listed = await KV.list({ prefix });
         for (const k of listed.keys) await KV.delete(k.name);
     }
@@ -186,5 +192,62 @@ describe("deleting it", () => {
         const res = await SELF.fetch(`${ORIGIN}/usage/forget`, { method: "POST" });
         // 404, not 403: the route does not confirm itself to a stranger.
         expect(res.status).toBe(404);
+    });
+});
+
+// ── who is allowed to know how big the service is ──────────────────────────
+//
+// countAccounts() has its own tests; these are about EXPOSURE. The number was
+// already reachable at /moderation/overview, which is moderator-gated and
+// answers 404 rather than 403 so a prober cannot even confirm the route. This
+// endpoint is public, so putting the same figure here unconditionally would
+// have undone that decision by a side door -- and it would have done it
+// silently, because the arithmetic would still have been correct.
+
+describe("how many accounts exist", () => {
+    async function moderator(): Promise<string> {
+        const e = env as unknown as Parameters<typeof createAccount>[0];
+        const made = await createAccount(e, "discord", await identSubHash(e, "discord", "mod-1"), "Warden");
+        await setBadge(e, made.account!.id, "developer", true);
+        return issueSessionToken(e, made.account!.id);
+    }
+
+    it("DOES NOT tell an anonymous caller, even when there are accounts to count", async () => {
+        const e = env as unknown as Parameters<typeof createAccount>[0];
+        await createAccount(e, "discord", await identSubHash(e, "discord", "p1"), "Player");
+
+        const res = await SELF.fetch(`${ORIGIN}/stats?days=1`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as Record<string, unknown>;
+        // Absent, not zero. A dashboard has to be able to tell "you may not ask"
+        // apart from "nobody has signed up", and 0 says the second.
+        expect(body).not.toHaveProperty("accounts");
+        expect(body).toHaveProperty("days");
+    });
+
+    it("does not tell a caller whose token is not a moderator's", async () => {
+        const e = env as unknown as Parameters<typeof createAccount>[0];
+        const made = await createAccount(e, "discord", await identSubHash(e, "discord", "p2"), "Ordinary");
+        const token = await issueSessionToken(e, made.account!.id);
+
+        const res = await SELF.fetch(`${ORIGIN}/stats?days=1`, {
+            headers: { authorization: `Bearer ${token}` },
+        });
+        expect(await res.json()).not.toHaveProperty("accounts");
+    });
+
+    it("tells a moderator, and says whether the figure is the whole truth", async () => {
+        const token = await moderator();
+        const e = env as unknown as Parameters<typeof createAccount>[0];
+        await createAccount(e, "discord", await identSubHash(e, "discord", "p3"), "Another");
+
+        const res = await SELF.fetch(`${ORIGIN}/stats?days=1`, {
+            headers: { authorization: `Bearer ${token}` },
+        });
+        const body = await res.json() as { accounts: number; accountsExact: boolean };
+        // The moderator and the player: the count is of accounts, not of
+        // sign-ups by somebody else.
+        expect(body.accounts).toBe(2);
+        expect(body.accountsExact).toBe(true);
     });
 });

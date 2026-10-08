@@ -109,6 +109,9 @@ GROUPS = [
         # Run a dedicated campaign as a service that survives reboots
         # (docs/hosting-a-week.md).
         "host_campaign.sh",
+        # A fresh Linux VM (Oracle's free Arm box) into an always-on server
+        # with its own language model (docs/hosting-on-oracle.md).
+        "server_box.sh",
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",
@@ -183,6 +186,10 @@ GROUPS = [
         # iteration plans FROM, so a phantom instrument costs somebody an
         # experiment. Journal 527.
         "check_ai_instruments.py",
+        # Copy the server binary where a concurrent rebuild cannot reach it.
+        # A bench is only quotable if both arms ran on one binary, and the
+        # shared build tree gets rebuilt under long runs. Journal 532.
+        "pin_server.sh",
         # Re-deflates the shipped model container with zopfli. Same format,
         # same weights, ~115 KB smaller; miniz inflates it unchanged.
         "shrink_model.py",
@@ -312,6 +319,20 @@ GROUPS = [
     ]),
     ("The communication window", [
         "kra_export.py", "comms_signal.py", "comms_derive.py", "make_voices.py",
+    ]),
+    # The trailer is built, not edited: the cut is a table in trailer_build.py
+    # and the score is generated to the same cue times, so a beat that moves in
+    # one has to move in the other and neither can quietly drift.
+    ("The trailer", [
+        # The stills it needs -- the wordmark and the platform marks -- taken
+        # from the download page's own icons rather than drawn again.
+        "trailer_assets.py",
+        # The cut itself: 40 shots rendered to one h264 segment each, then a
+        # single xfade chain. One shot can be rebuilt without touching the rest.
+        "trailer_build.py",
+        # And its score, synthesised from nothing, so there is no borrowed
+        # material for a storefront's content ID to match against.
+        "trailer_music.py",
     ]),
 ]
 

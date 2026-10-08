@@ -189,6 +189,7 @@ bool Config::load(const std::string& path) {
     gdtl = findBool(json, "gdtl", false);
     goodsEconomy = findBool(json, "goodsEconomy", false);
     autoTradeSurplus = findBool(json, "autoTradeSurplus", false);
+    riskyRamOps = findBool(json, "riskyRamOps", false);
     gd5Path = findConfigString(json, "gd5Path", "");
     masterVolume = std::clamp(findFloat(json, "masterVolume", 0.8f), 0.0f, 1.0f);
     musicVolume  = std::clamp(findFloat(json, "musicVolume",  0.6f), 0.0f, 1.0f);
@@ -223,6 +224,7 @@ bool Config::load(const std::string& path) {
     ratingAsked       = findBool(json, "ratingAsked", false);
     ratingGiven       = findBool(json, "ratingGiven", false);
     mpInviteAsked     = findBool(json, "mpInviteAsked", false);
+    supportAsked      = findBool(json, "supportAsked", false);
     usageAsked        = findBool(json, "usageAsked", false);
     mailPolicy        = (int)findFloat(json, "mailPolicy", 3.0f);
     mailLock          = (int)findFloat(json, "mailLock", 0.0f);
@@ -338,6 +340,7 @@ bool Config::save(const std::string& path) {
     file << "  \"gdtl\": " << (gdtl ? "true" : "false") << ",\n";
     file << "  \"goodsEconomy\": " << (goodsEconomy ? "true" : "false") << ",\n";
     file << "  \"autoTradeSurplus\": " << (autoTradeSurplus ? "true" : "false") << ",\n";
+    file << "  \"riskyRamOps\": " << (riskyRamOps ? "true" : "false") << ",\n";
     file << "  \"gd5Path\": \"" << gd5Path << "\",\n";
     file << "  \"masterVolume\": " << masterVolume << ",\n";
     file << "  \"musicVolume\": " << musicVolume << ",\n";
@@ -358,6 +361,7 @@ bool Config::save(const std::string& path) {
     file << "  \"ratingAsked\": " << (ratingAsked ? "true" : "false") << ",\n";
     file << "  \"ratingGiven\": " << (ratingGiven ? "true" : "false") << ",\n";
     file << "  \"mpInviteAsked\": " << (mpInviteAsked ? "true" : "false") << ",\n";
+    file << "  \"supportAsked\": " << (supportAsked ? "true" : "false") << ",\n";
     file << "  \"usageAsked\": " << (usageAsked ? "true" : "false") << ",\n";
     file << "  \"mailPolicy\": " << mailPolicy << ",\n";
     file << "  \"mailLock\": " << mailLock << ",\n";

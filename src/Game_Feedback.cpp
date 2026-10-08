@@ -870,6 +870,122 @@ void Game::maybeOfferRating(float dt) {
     }
 }
 
+// ─────────────────────────────────────────────────────────── the tip jar ────
+//
+// ── WHY IT IS NOT A FOURTH BOX DURING PLAY ──
+//
+// Three already compete for the bottom-right corner of a game in progress: the
+// usage question, the lost-tab warning and the rating prompt. This is the only
+// one of the four that asks for money, and it is the only one whose cost of
+// landing badly is not a dismissed box but a worse opinion of a game that is
+// free. So it takes the MAIN MENU's corner instead, through the same door the
+// multiplayer invitation uses: shown on the way out of a game, when the player
+// has stopped playing and the next thing in front of them is a menu anyway.
+//
+// ── WHY THE BAR IS AN HOUR ──
+//
+// The rating prompt's web fallback is 15 minutes and kInviteAfterMinutes is 25,
+// so 60 puts this last of the three by a clear margin. A player meets the
+// rating question first, the invitation second and this third, across different
+// sessions, in descending order of how much the answer is worth to the game. An
+// hour is also simply the honest bar: it is the point at which asking somebody
+// for money for something that cost them nothing reads as reasonable.
+//
+// ── WHY IT EXISTS AT ALL, GIVEN itch HAS A DONATE BUTTON ──
+//
+// Because that button is on the download flow, and 87% of this game's recorded
+// plays are in a browser tab that never passes a payment surface. For those
+// players this prompt and the Community menu's Ko-fi entry are the only two
+// routes to one that exist.
+
+namespace {
+
+/// Minutes of play, across the whole install, before the tip jar is mentioned.
+constexpr int kSupportAfterMinutes = 60;
+
+}  // namespace
+
+void Game::offerSupportAfterGame() {
+    if (m_config.supportAsked || m_supportOpen) return;
+    // Never two boxes in the menu's corner. The invitation gets the corner if
+    // both come due at once: a player who finds people to play with is worth
+    // more to this game than a tip, and its bar is lower anyway, so in practice
+    // it has already been and gone by the time this is eligible.
+    if (m_mpInviteOpen) return;
+    if (m_config.minutesPlayed < kSupportAfterMinutes) return;
+
+    m_supportOpen = true;
+    // Marked asked when SHOWN, exactly as mpInviteAsked is: somebody who quits
+    // with it on screen has been asked, and putting it up again next time is
+    // the nagging this is written not to be.
+    m_config.supportAsked = true;
+    m_config.save(m_configPath);
+}
+
+// The same corner as the multiplayer invitation, and they cannot collide: that
+// one holds this off at offer time, and this one stands down in draw and update
+// if it is somehow up anyway.
+Rectangle Game::supportPromptRect() const {
+    return {(float)(m_screenW - 372 - 24), (float)(m_screenH - 132 - 24), 372, 132};
+}
+Rectangle Game::supportGoRect() const {
+    const Rectangle b = supportPromptRect();
+    return {b.x + 16, b.y + 82, 180, 34};
+}
+Rectangle Game::supportDismissRect() const {
+    const Rectangle b = supportPromptRect();
+    return {b.x + b.width - 90, b.y + 86, 78, 26};
+}
+
+void Game::drawSupportPrompt() {
+    if (!m_supportOpen || m_mpInviteOpen || m_currentScreen != SCREEN_MENU) return;
+
+    const Vector2 mouse = getMouse();
+    const Color accent = hexToColor(m_config.accent());
+    const Rectangle box = supportPromptRect();
+
+    DrawRectangleRounded(box, 0.08f, 8, Color{18, 20, 27, 245});
+    DrawRectangleRoundedLines(box, 0.08f, 8, Color{70, 74, 96, 220});
+    const int x = (int)box.x, y = (int)box.y;
+
+    DrawText(T("OpenDoctrines is free, and stays free."), x + 16, y + 14, 15, accent);
+    // Every clause here is true and checkable, which is the only reason the ask
+    // is allowed to be made at all: the licence forbids anyone but the Licensor
+    // charging for this, so "nothing to buy" is not a promise that can quietly
+    // stop being kept.
+    wrapText(T("No adverts, nothing to buy, no paid version. If it has been worth something, there is a tip jar."),
+             x + 16, y + 38, (int)box.width - 32, 12, Color{160, 166, 186, 255}, true);
+
+    const Rectangle go = supportGoRect();
+    const bool gh = CheckCollisionPointRec(mouse, go);
+    DrawRectangleRounded(go, 0.2f, 6, gh ? Color{46, 84, 94, 250} : Color{34, 62, 70, 235});
+    DrawRectangleRoundedLines(go, 0.2f, 6, Color{110, 170, 190, 220});
+    DrawText(T("Open Ko-fi"), (int)go.x + 12, (int)go.y + 10, 13, WHITE);
+
+    const bool nh = CheckCollisionPointRec(mouse, supportDismissRect());
+    DrawText(T("No thanks"), (int)box.x + (int)box.width - 84, (int)box.y + 90, 12,
+             nh ? WHITE : Color{130, 134, 152, 255});
+}
+
+bool Game::updateSupportPrompt() {
+    if (!m_supportOpen || m_mpInviteOpen || m_currentScreen != SCREEN_MENU) return false;
+    const Vector2 mouse = getMouse();
+    if (!CheckCollisionPointRec(mouse, supportPromptRect())) return false;
+    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+
+    if (CheckCollisionPointRec(mouse, supportGoRect())) {
+        m_supportOpen = false;
+        odlink::open(feedback::kSupportUrl);
+        Audio::get().playSfx("confirm");
+    } else if (CheckCollisionPointRec(mouse, supportDismissRect())) {
+        // "No thanks" means never, and supportAsked is already true: it was set
+        // when the box went up, so there is nothing to persist here.
+        m_supportOpen = false;
+        Audio::get().playSfx("back");
+    }
+    return true;
+}
+
 // ─────────────────────────────────────── "this tab will lose your game" ────
 //
 // ── THE NUMBER THAT PUT THIS HERE ──

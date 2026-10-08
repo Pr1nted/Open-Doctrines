@@ -12,6 +12,9 @@
 #include "i18n/Text.h"
 #include "llm/Advisor.h"
 #include "llm/Runner.h"
+#include "net/Host.h"
+#include "net/NetProtocol.h"
+#include "net/Session.h"
 
 #include <algorithm>
 
@@ -44,7 +47,9 @@ const mail::Box* Game::mailboxIfAny(int countryId) const {
 
 mail::Rules Game::mailRules() const {
     mail::Rules r;
-    r.policy = (mail::Policy)m_config.mailPolicy;
+    // In somebody else's game, theirs: the host's policy binds everybody on it.
+    r.policy = (m_netSession && !m_netHost) ? (mail::Policy)m_mpHostMailPolicy
+                                            : (mail::Policy)m_config.mailPolicy;
     // Set when the language-model module is loaded AND answering. Until that
     // module exists this is simply false, which makes every bot path dead
     // rather than broken -- the button does not appear, and nothing pretends
@@ -59,6 +64,7 @@ bool Game::mailIsBot(int countryId) const {
     // Every country that is not held by a person is a candidate correspondent
     // once the module is loaded. The player's own country is never one.
     if (countryId == m_playerCountryId) return false;
+    if (m_netHost || m_netSession) return m_llmCountries.count(countryId) > 0;
     return m_llmCountries.empty() || m_llmCountries.count(countryId) > 0;
 }
 
@@ -272,6 +278,16 @@ bool Game::mailSendDraft() {
     // delivery, one member at a time. Checking one member here would let one
     // shut door block a letter to everybody else.
     const bool toGroup = (m_mailGroupThread != 0);
+    // Rooms live in one machine's memory, and in somebody else's game the
+    // members' boxes are on the host. Until rooms are carried too, saying so
+    // beats a letter that reaches nobody.
+    const bool remote = (m_netSession != nullptr && m_netHost == nullptr);
+    if (remote && toGroup) {
+        m_mailNotice = T("Group letters do not travel in multiplayer yet. Write to each country.");
+        m_mailNoticeUntil = GetTime() + 6.0;
+        Audio::get().playSfx("deny");
+        return false;
+    }
     // ── A ROOM IS NOT A RECIPIENT ──
     //
     // This used to describe a group as "a recipient who is not a bot", and
@@ -305,7 +321,14 @@ bool Game::mailSendDraft() {
 
     mail::Box& box = mailbox(m_playerCountryId);
     if (m_mailEditing != 0) {
-        box.edit(m_mailEditing, m_mailDraft);
+        if (box.edit(m_mailEditing, m_mailDraft) && remote) {
+            mail::Message m;
+            m.id = m_mailEditing;
+            m.fromCountry = m_playerCountryId;
+            m.toCountry = m_mailThread;
+            m.body = m_mailDraft;
+            mpClientMail((int)NetMail::Op::Edit, m);
+        }
         m_mailEditing = 0;
     } else {
         std::string me;
@@ -323,8 +346,18 @@ bool Game::mailSendDraft() {
             box.writeToGroup(m_playerCountryId, m_mailGroupThread, m_mailDraft,
                              m_turnNumber, mail::Author::Human, me);
         } else {
-            box.write(m_playerCountryId, m_mailThread, m_mailDraft, m_turnNumber,
-                      mail::Author::Human, me);
+            const int id = box.write(m_playerCountryId, m_mailThread, m_mailDraft,
+                                     m_turnNumber, mail::Author::Human, me);
+            // And the host's copy, which is the one that is posted.
+            if (id && remote) {
+                mail::Message m;
+                m.id = id;
+                m.fromCountry = m_playerCountryId;
+                m.toCountry = m_mailThread;
+                m.body = m_mailDraft;
+                m.writtenTurn = m_turnNumber;
+                mpClientMail((int)NetMail::Op::Send, m);
+            }
         }
     }
     m_mailDraft.clear();
@@ -1002,8 +1035,17 @@ void Game::drawMailThread(int x, int y, int w, int h, Vector2 mouse, bool click,
                         Audio::get().playSfx("click_light", 0.1f);
                     }
                     if (dh && click) {
-                        mailbox(m_playerCountryId).discard(m.id);
-                        if (m_mailEditing == m.id) { m_mailEditing = 0; m_mailDraft.clear(); }
+                        // Taken before the discard: `m` is the letter being
+                        // erased, and reading it afterwards reads freed memory.
+                        const int goneId = m.id;
+                        if (mailbox(m_playerCountryId).discard(goneId) &&
+                            m_netSession && !m_netHost) {
+                            mail::Message gone;
+                            gone.id = goneId;
+                            gone.fromCountry = m_playerCountryId;
+                            mpClientMail((int)NetMail::Op::Discard, gone);
+                        }
+                        if (m_mailEditing == goneId) { m_mailEditing = 0; m_mailDraft.clear(); }
                         Audio::get().playSfx("back");
                         EndScissorMode();
                         return;
@@ -1689,5 +1731,199 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
         const float barY = topY + t * ((botY - topY) - barH);
         DrawRectangleRounded({(float)(x + w - 10), barY, 4, barH}, 1.0f, 4,
                              Color{90, 95, 115, 200});
+    }
+}
+
+// ──────────────────────────────────────────── the post, in multiplayer ────
+//
+// The host's mailbox is the real one. A player writes into their own box as in
+// single player -- so the screen behaves the same and the letter can still be
+// changed until the turn -- and the same operation goes to the host, which
+// files it under the seat that player holds. Posting is the host's
+// deliverMail, unchanged. What arrives for a country a person holds is then
+// sent to that person and nobody else.
+//
+// The world snapshot carries no mail (mpBuildSnapshot strips it): one snapshot
+// is shared by every joiner, and letters are private to the two countries in
+// them. A joiner is sent their own country's correspondence separately.
+
+std::set<int> Game::mpHumanCountries() const {
+    std::set<int> out;
+    if (m_netHost) {
+        for (const LobbyMember& p : m_netHost->lobby().members())
+            if (p.countryId && !p.spectator) out.insert(p.countryId);
+    } else if (m_netSession) {
+        for (const NetPeer& p : m_netSession->roster())
+            if (p.countryId && !p.spectator) out.insert(p.countryId);
+    }
+    if (m_playerCountryId > 0) out.insert(m_playerCountryId);
+    return out;
+}
+
+namespace {
+std::string mailKey(const std::string& psid, uint32_t theirId) {
+    return psid + "\x1f" + std::to_string(theirId);
+}
+}  // namespace
+
+void Game::mpHostTakeMail(uint16_t peerId, const NetMail& m) {
+    if (!m_netHost) return;
+    const LobbyMember* who = m_netHost->lobby().find(peerId);
+    // Told why, on their own letter, rather than dropped: a letter that
+    // vanishes reads as a broken post office.
+    auto refuse = [&](const std::string& why) {
+        NetMail back;
+        back.op = NetMail::Op::Edit;
+        back.id = m.id;
+        back.fromCountry = who ? who->countryId : 0;
+        back.toCountry = m.toCountry;
+        back.status = (uint8_t)mail::Status::Blocked;
+        back.body = why;
+        m_netHost->sendMail(peerId, back);
+    };
+    if (!who || who->spectator || who->countryId == 0) {
+        refuse("Only a player who holds a country can write letters.");
+        return;
+    }
+    if (m_netHost->lobby().state() != NetSessionState::Game) {
+        refuse("Letters can be written once the game has started.");
+        return;
+    }
+    const int cid = who->countryId;
+    const std::string key = mailKey(who->psid, m.id);
+    mail::Box& box = mailbox(cid);
+
+    if (m.op == NetMail::Op::Send) {
+        const int to = m.toCountry;
+        if (to <= 0 || to == cid || !m_countries.getCountry(to) || to >= REBEL_CID_MIN) {
+            refuse("That country cannot receive letters.");
+            return;
+        }
+        if (m_mpMailIds.count(key)) return;   // a resend after a reconnect
+        const mail::Refusal why = mail::check(m.body, mailRules(), mailIsBot(to),
+                                              mailLockOf(to), m_config.mailBlacklist);
+        if (why != mail::Refusal::None) { refuse(mail::refusalText(why)); return; }
+        const int id = box.write(cid, to, m.body, m_turnNumber, mail::Author::Human, who->name);
+        if (id == 0) { refuse("That letter could not be sent."); return; }
+        m_mpMailIds[key] = id;
+        m_mpMailTheirId[id] = (int)m.id;
+        return;
+    }
+    auto it = m_mpMailIds.find(key);
+    if (it == m_mpMailIds.end()) return;   // never arrived, or the host restarted since
+    if (m.op == NetMail::Op::Edit) {
+        const mail::Refusal why = mail::checkBody(m.body, m_config.mailBlacklist);
+        if (why != mail::Refusal::None) { refuse(mail::refusalText(why)); return; }
+        box.edit(it->second, m.body);
+    } else if (m.op == NetMail::Op::Discard) {
+        box.discard(it->second);
+        m_mpMailTheirId.erase(it->second);
+        m_mpMailIds.erase(it);
+    }
+}
+
+namespace {
+NetMail toWire(const mail::Message& m) {
+    NetMail n;
+    n.id = (uint32_t)m.id;
+    n.fromCountry = (uint16_t)m.fromCountry;
+    n.toCountry = (uint16_t)m.toCountry;
+    n.body = m.body;
+    n.writtenTurn = (uint32_t)m.writtenTurn;
+    n.deliverTurn = (uint32_t)m.deliverTurn;
+    n.status = (uint8_t)m.status;
+    n.author = (uint8_t)m.author;
+    n.authorName = m.authorName.substr(0, 64);
+    return n;
+}
+}  // namespace
+
+void Game::mpSendMailHistory(uint16_t peerId) {
+    if (!m_netHost || !peerId || peerId == m_netHost->lobby().hostPeerId()) return;
+    const LobbyMember* who = m_netHost->lobby().find(peerId);
+    if (!who || who->spectator || who->countryId == 0) return;
+    const int cid = who->countryId;
+
+    NetMail reset;
+    reset.op = NetMail::Op::Reset;
+    reset.history = true;
+    m_netHost->sendMail(peerId, reset);
+    const mail::Box* box = mailboxIfAny(cid);
+    if (!box) return;
+    for (const mail::Thread* t : box->threads()) {
+        for (const mail::Message& m : t->messages) {
+            // Rooms are not carried yet; see mailSendDraft.
+            if (m.groupId != 0) continue;
+            NetMail n = toWire(m);
+            n.history = true;
+            // Their own letters under the ids THEY gave them, so a pending one
+            // can still be changed after a reconnect.
+            if (m.fromCountry == cid) {
+                auto it = m_mpMailTheirId.find(m.id);
+                if (it != m_mpMailTheirId.end()) n.id = (uint32_t)it->second;
+            }
+            m_netHost->sendMail(peerId, n);
+        }
+    }
+}
+
+void Game::mpPostMailToPlayers(int turn) {
+    if (!m_netHost) return;
+    const uint16_t hostPeer = m_netHost->lobby().hostPeerId();
+    for (const LobbyMember& p : m_netHost->lobby().members()) {
+        // Somebody away is sent it all on the way back in (mpSendMailHistory).
+        if (!p.connected || p.spectator || p.countryId == 0 || p.peerId == hostPeer) continue;
+        const mail::Box* box = mailboxIfAny(p.countryId);
+        if (!box) continue;
+        for (const mail::Message* m : box->arrivedOn(turn)) {
+            if (m->groupId != 0 || m->fromCountry == p.countryId) continue;
+            m_netHost->sendMail(p.peerId, toWire(*m));
+        }
+    }
+}
+
+void Game::mpClientMail(int op, const mail::Message& m) {
+    if (!m_netSession || m_netHost) return;
+    NetMail n = toWire(m);
+    n.op = (NetMail::Op)op;
+    m_netSession->sendMail(n);
+}
+
+void Game::mpClientTakeMail(const NetMail& n) {
+    if (m_playerCountryId <= 0) return;
+    mail::Box& box = mailbox(m_playerCountryId);
+    if (n.op == NetMail::Op::Reset) {
+        box.clear();
+        return;
+    }
+    // The host refused one of ours, and says why.
+    if (n.status == (uint8_t)mail::Status::Blocked) {
+        box.block((int)n.id);
+        // The host's reason is one of the refusal sentences, which are in the
+        // translation table already; anything else is shown as sent.
+        m_mailNotice = T(n.body.c_str());
+        m_mailNoticeUntil = GetTime() + 8.0;
+        Audio::get().playSfx("deny");
+        return;
+    }
+    mail::Message m;
+    m.id = (int)n.id;
+    m.fromCountry = n.fromCountry;
+    m.toCountry = n.toCountry;
+    m.body = n.body;
+    m.writtenTurn = (int)n.writtenTurn;
+    m.deliverTurn = (int)n.deliverTurn;
+    m.status = (mail::Status)n.status;
+    m.author = (mail::Author)n.author;
+    m.authorName = n.authorName;
+    if (m.fromCountry == m_playerCountryId) {
+        box.adopt(m);
+        return;
+    }
+    if (m.toCountry != m_playerCountryId) return;
+    box.receive(m);
+    if (!n.history) {
+        ++m_mailArrived;
+        Audio::get().playSfx("notify");
     }
 }

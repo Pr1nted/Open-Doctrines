@@ -61,6 +61,7 @@
 #include <condition_variable>
 
 class AISystem;
+struct NetMail;
 
 class Game {
 public:
@@ -1471,6 +1472,36 @@ private:
     std::string m_mpVoiceLinkSent;
     /** Restore seats, bans and settings from the book; then, maybe, the game. */
     void mpHostWorldReady();
+
+    // ── Mail across the network (Game_Mail.cpp, "The post, in multiplayer") ──
+    /** Host: tell players the voice link, and whether the host's model answers. */
+    void mpRefreshSessionInfo();
+    std::string m_mpSessionInfoSent;
+    /** Host: a player's letter arrived; file it under the seat they hold. */
+    void mpHostTakeMail(uint16_t peerId, const NetMail& m);
+    /** Host: a player's country's whole correspondence, after a snapshot. */
+    void mpSendMailHistory(uint16_t peerId);
+    /** Host: letters that arrived on `turn` for countries people hold, to them. */
+    void mpPostMailToPlayers(int turn);
+    /** Client: tell the host about a letter of ours (NetMail::Op as int). */
+    void mpClientMail(int op, const mail::Message& m);
+    /** Client: a letter the host sent us. */
+    void mpClientTakeMail(const NetMail& m);
+    /** Countries a person holds in this game, the local player's included. */
+    std::set<int> mpHumanCountries() const;
+    /**
+     * Host: "<psid>\x1f<their id>" -> the id of that letter in the host's box.
+     * A player names their letters by their own ids; the host keeps its own,
+     * so an edit or a tear-up finds the right one and nobody else's.
+     */
+    std::unordered_map<std::string, int> m_mpMailIds;
+    /// Host: the reverse, so a history sent back uses the ids the player knows.
+    std::unordered_map<int, int> m_mpMailTheirId;
+    /// Client: whether the host's language model answers, and its mail policy.
+    bool    m_mpHostLlm = false;
+    uint8_t m_mpHostMailPolicy = 3;
+    /// Server: when finished advisor replies were last gathered mid-turn.
+    double  m_llmCollectedAt = 0.0;
     /** Start the game and send everybody the world. */
     bool mpHostStartGame(bool force, std::string& why);
     /** Write the open turn's submissions beside the save. */
@@ -4096,6 +4127,13 @@ public:
      * and the rest keep their relative standing.
      */
     void normaliseResearchShares(int changed);
+    /**
+     * Re-pack the player's groups when the economy stops supporting as many.
+     * A selection left in a group that is no longer unlocked is otherwise
+     * invisible, unfunded and unselectable until a reload rebuilds the groups
+     * -- so a dropped slot's research appears to vanish. See the definition.
+     */
+    void compactPlayerResearchGroups();
 
     static constexpr float RGROUP2_GROSS_MULT   = 2.0f;
     static constexpr float RGROUP3_GROSS_MULT   = 5.0f;
@@ -6929,6 +6967,24 @@ private:
     void updateFeedbackForm();
     void drawRatingPrompt();
     bool updateRatingPrompt();
+    /**
+     * The tip jar, mentioned once, on the main menu after a long enough game.
+     *
+     * NOT a fourth box during play. The in-game corner already carries the
+     * usage question, the lost-tab warning and the rating prompt, and a money
+     * ask is the one of the four that costs goodwill if it lands at a bad
+     * moment. It takes the main-menu corner instead, behind the same door the
+     * multiplayer invitation uses: the player has just finished playing and the
+     * next thing in front of them is a menu.
+     */
+    void drawSupportPrompt();
+    /** @return true when the pointer is over the prompt. */
+    bool updateSupportPrompt();
+    void offerSupportAfterGame();
+    Rectangle supportPromptRect() const;
+    Rectangle supportGoRect() const;
+    Rectangle supportDismissRect() const;
+    bool m_supportOpen = false;
     Rectangle ratingPromptRect() const;
     Rectangle ratingRateRect() const;
     Rectangle ratingWrongRect() const;

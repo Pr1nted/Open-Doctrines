@@ -14475,6 +14475,9 @@ static bool monumentTrace() {
 }
 std::atomic<long long> AISystem::s_monumentsBuilt{0};
 std::atomic<long long> AISystem::s_monumentsIdled{0};
+std::atomic<long long> AISystem::s_monumentsRevived{0};
+std::vector<int> AISystem::s_reviveDwell;
+std::atomic<long long> AISystem::s_monumentsUpgraded{0};
 long long AISystem::s_warsStarted = 0, AISystem::s_warsEnded = 0,
           AISystem::s_warLenSum = 0, AISystem::s_warOpenSum = 0,
           AISystem::s_warTurns = 0;
@@ -15674,6 +15677,17 @@ void AISystem::monumentReflex(int cid) {
             if (!it->active) continue;
             if (g.setMonumentActive(cid, it->provinceId, false)) {
                 ++s_monumentsIdled;
+                // ── IS A REVIVE BEING UNDONE, AND HOW FAST? (journal 534) ──
+                // Journal 435's first reflex bought 55 monuments and switched 54
+                // off again after a MEDIAN OF FOUR TURNS. The revive added in
+                // journal 530 is a third mover on the same pair of gates, and an
+                // extra 120 idlings against 168 revivals (journal 531) looks like
+                // that bug in a new place. Measured rather than assumed.
+                auto rv = m_monRevivedAt.find(std::make_pair(cid, it->provinceId));
+                if (rv != m_monRevivedAt.end()) {
+                    s_reviveDwell.push_back(g.m_turnNumber - rv->second);
+                    m_monRevivedAt.erase(rv);
+                }
                 if (monumentTrace()) fprintf(stderr, "[MONTRACE] turn %d cid %d IDLE prov %d\n",
                                              g.m_turnNumber, cid, it->provinceId);
             }
@@ -15693,6 +15707,90 @@ void AISystem::monumentReflex(int cid) {
     // could not keep.
     if (flush < kPatience) return;
     if ((float)inc.total - committed < nextSlot * kBuffer) return;
+
+    // ── 2a. SWITCH BACK ON WHAT IT ALREADY OWNS, BEFORE BUYING MORE ──
+    //
+    // The dial in part 1 only ever switches monuments OFF. Nothing in src/ai
+    // ever called setMonumentActive(.., true), so a country that idled a great
+    // work through a lean spell kept it dark FOR EVER -- and once its income
+    // recovered it would come here and BUILD ANOTHER, paying a second build
+    // cost for a benefit it had already bought.
+    //
+    // Reviving is strictly better than buying: no build cost, the same standing
+    // slot, the same effect. So it comes first, and it is already past both of
+    // the gates above -- the flush hysteresis and the room-to-spare test on the
+    // next slot -- which are exactly the right affordability tests for it,
+    // because re-activating charges that next slot too.
+    //
+    // CHEAPEST SLOT FIRST, one a turn, mirroring the dial. chargeOrder is the
+    // order the slots are charged in, so forward is cheapest and the dial's
+    // reverse iteration is dearest -- the two paths undo each other in the same
+    // order rather than fighting (journal 436's ratchet was two gates measured
+    // against different things).
+    static const bool revive = !OD_ENV("OD_MONUMENT_REACTIVATE") ||
+                               atoi(OD_ENV("OD_MONUMENT_REACTIVATE")) != 0;
+    if (revive) {
+        for (const odmon::Holding& h : odmon::chargeOrder(held)) {
+            if (h.active) continue;
+            if (g.setMonumentActive(cid, h.provinceId, true)) {
+                ++s_monumentsRevived;
+                m_monRevivedAt[std::make_pair(cid, h.provinceId)] = g.m_turnNumber;
+                if (monumentTrace())
+                    fprintf(stderr, "[MONTRACE] turn %d cid %d REVIVE prov %d\n",
+                            g.m_turnNumber, cid, h.provinceId);
+                return;   // one a turn, and never build in the same breath
+            }
+        }
+    }
+
+    // ── 2b. DEEPEN WHAT IT OWNS, BEFORE BUYING ANOTHER ──
+    //
+    // The AI called upgradeMonument nowhere, so every monument it ever built sat
+    // at level 1 for ever while a player levelled theirs. And the economics are
+    // not symmetric with building: monumentSlotsUsed counts ACTIVE MONUMENTS,
+    // not levels, so an upgrade adds NO standing cost, while a build signs up
+    // for the next slot (50, 75, 125, 200, 300, 425). scaledEffect is
+    // base * (1 + 0.25*(level-1)) with radius baseRadius + (level-1), so 1 -> 3
+    // is +50% effect and +2 radius for one lump sum. For a money-bound AI that
+    // is the better purchase, and it is the one it could not make.
+    //
+    // Lowest level first: cheapest levelCost and the biggest marginal radius
+    // step. Ties by province id so the same world upgrades the same monument
+    // twice (memory obviously-equivalent-is-not-equivalent).
+    //
+    // OVER-GATED ON PURPOSE: this inherits the room-to-spare test on the NEXT
+    // SLOT above, which an upgrade does not incur. Spending the lump sum is what
+    // journal 414 traced to an AI that could then not replace its army, so the
+    // strict version ships and the counter will say if it is too strict.
+    // OFF BY DEFAULT, pending the bench (journal 535). The revive shipped on
+    // because it fixed a plain defect -- a monument lit none of the time -- and
+    // then benched as a null at 16 seeds. This is different: it makes the AI
+    // SPEND a lump sum it used to keep, and spending the lump sum is what
+    // journal 414 traced to a country that could then not replace its army
+    // (memory ai-treasuries-run-at-zero). Three worlds came in at +0.1, -7.5 and
+    // -29.7 against the same seeds without it -- not evidence at three seeds on
+    // a seat whose paired sd is ~12-20, and not something to ship on either.
+    static const bool upgrade = OD_ENV("OD_MONUMENT_UPGRADE") &&
+                                atoi(OD_ENV("OD_MONUMENT_UPGRADE")) != 0;
+    if (upgrade) {
+        int upPid = -1, upLevel = 0;
+        for (const odmon::Holding& h : held) {
+            const odmon::Spec& sp = odmon::spec(h.kind);
+            if (h.level >= sp.maxLevel) continue;
+            if ((float)c->treasury < odmon::levelCost(h.kind, h.level) * kBuffer) continue;
+            if (upPid < 0 || h.level < upLevel ||
+                (h.level == upLevel && h.provinceId < upPid)) {
+                upPid = h.provinceId; upLevel = h.level;
+            }
+        }
+        if (upPid >= 0 && g.upgradeMonument(cid, upPid)) {
+            ++s_monumentsUpgraded;
+            if (monumentTrace())
+                fprintf(stderr, "[MONTRACE] turn %d cid %d UPGRADE prov %d to level %d\n",
+                        g.m_turnNumber, cid, upPid, upLevel + 1);
+            return;   // one a turn, and never build in the same breath
+        }
+    }
 
     // Cheapest researched kind it can put down: the dearest is not obviously
     // better and the cheap one leaves money for the army, which this project
@@ -15729,8 +15827,30 @@ void AISystem::dumpMonuments() {
     static bool done = false;
     if (done) return;
     done = true;
-    fprintf(stderr, "[MONUMENT] built by the reflex: %lld   switched off to pay the bill: %lld\n",
-            s_monumentsBuilt.load(), s_monumentsIdled.load());
+    // Revived is reported beside idled on purpose: the pair is the dial, and a
+    // revive count of zero against a large idle count is the defect journal 530
+    // fixed -- monuments bought, switched off, and left dark for ever.
+    fprintf(stderr, "[MONUMENT] built by the reflex: %lld   switched off to pay the bill: %lld"
+                    "   switched back on when it could: %lld\n",
+            s_monumentsBuilt.load(), s_monumentsIdled.load(), s_monumentsRevived.load());
+    fprintf(stderr, "[MONUMENT] levelled up: %lld   (upgrading adds no standing cost -- "
+                    "slots are counted, not levels -- so it is the cheaper purchase)\n",
+            s_monumentsUpgraded.load());
+    // The dwell is the health check on the revive: a revival undone in a turn or
+    // two is journal 435's ratchet wearing a different hat.
+    if (!s_reviveDwell.empty()) {
+        std::vector<int> d = s_reviveDwell;
+        std::sort(d.begin(), d.end());
+        const long long rev = s_monumentsRevived.load();
+        const double mean = (double)std::accumulate(d.begin(), d.end(), 0LL) / (double)d.size();
+        fprintf(stderr, "[MONUMENT] revivals undone: %zu of %lld (%.1f%%)   dwell turns "
+                        "min %d  median %d  mean %.1f  max %d\n",
+                d.size(), rev, rev ? 100.0 * (double)d.size() / (double)rev : 0.0,
+                d.front(), d[d.size() / 2], mean, d.back());
+    } else {
+        fprintf(stderr, "[MONUMENT] revivals undone: none -- every revived monument "
+                        "was still lit at the end\n");
+    }
 }
 
 void AISystem::researchAusterityReflex(int cid) {

@@ -887,12 +887,16 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
     // Loaded above, so mpOpenHost must not load it a second time.
     m_mpWorldPreloaded = true;
     mpOpenHost();
-    if (m_netHost && !m_mpVoiceLink.empty()) {
-        NetSessionInfo info;
-        info.voiceLink = m_mpVoiceLink;
-        m_netHost->setSessionInfo(info);
-        m_mpVoiceLinkSent = m_mpVoiceLink;
-        console.info("voice link offered to players: " + m_mpVoiceLink);
+    if (m_netHost) {
+        refreshLlmAvailability();
+        mpRefreshSessionInfo();
+        if (!m_mpVoiceLink.empty())
+            console.info("voice link offered to players: " + m_mpVoiceLink);
+        console.info(llmConfigured()
+            ? "language model: " + m_config.llmModel + " at " + m_config.llmEndpoint +
+              " answers for every country nobody holds"
+            : std::string("language model: off (llmEnabled, llmEndpoint and llmModel in ") +
+              m_configPath + ")");
     }
     if (!m_netHost || m_netHost->phase() == NetHost::Phase::Closed) {
         console.error("could not open the session" +
@@ -1016,6 +1020,18 @@ bool Game::serverTick() {
         //    client's: this is the point of running the same code.
         const int turnBefore = m_turnNumber;
         mpDrainEvents();
+
+        // 2-. Replies the model finished since the turn resolved. The turn
+        //     itself waits only kAdvisorTurnWait for them, and a model on a
+        //     CPU can take longer than that per letter -- uncollected, a reply
+        //     would sit until the NEXT resolution and leave on the one after,
+        //     two days late on a day-long turn. Gathered now, it is written as
+        //     a pending letter and leaves on the next turn like a person's:
+        //     parity, not an advantage.
+        if (llmConfigured() && GetTime() - m_llmCollectedAt > 5.0) {
+            m_llmCollectedAt = GetTime();
+            collectAdvisorAnswers();
+        }
         mpHostTurnUpdate();
         if (m_mpTunnel) m_mpTunnel->update();
         if (m_turnNumber != turnBefore) {
@@ -1029,11 +1045,9 @@ bool Game::serverTick() {
         srvKeepSignedIn();
 
         // 2c. A changed voice link reaches everyone already here.
-        if (config.voiceLink != m_mpVoiceLinkSent && m_netHost) {
-            m_mpVoiceLink = m_mpVoiceLinkSent = config.voiceLink;
-            NetSessionInfo info;
-            info.voiceLink = config.voiceLink;
-            m_netHost->setSessionInfo(info);
+        if (config.voiceLink != m_mpVoiceLink && m_netHost) {
+            m_mpVoiceLink = config.voiceLink;
+            mpRefreshSessionInfo();
         }
 
         // 2d. Orders that arrived get backed up within a minute.

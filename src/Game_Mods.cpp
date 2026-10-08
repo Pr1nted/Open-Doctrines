@@ -1905,7 +1905,10 @@ void Game::updateModsMenu() {
     // A world being loaded is what makes activation deferred: joining a game
     // already in progress would make turn order depend on when the user
     // happened to click.
-    mm.setInGame(m_renderer != nullptr && m_provinces.getImage().data != nullptr);
+    // getWidth(), not getImage().data: a world loaded with Risky RAM has no
+    // image, but the compact raster still sets the dimensions, so this stays a
+    // correct "a world is loaded" test either way.
+    mm.setInGame(m_renderer != nullptr && m_provinces.getWidth() > 0);
 
     // mod_load runs from this screen, and it is the first thing a mod calls
     // gearbox_env from, so the reported screen size has to be current here --

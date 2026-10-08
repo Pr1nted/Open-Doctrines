@@ -40430,3 +40430,443 @@ the instruments clean and guarded them; 528 refuted item 145's premise and hande
 routes the findings. **The next iteration should not manufacture an experiment** — it should check whether the user
 has authorised the training run (item 181), decided the research bar (176), the frontage (215) or the reject
 statistic (218), and otherwise say there is nothing to do.
+
+## 530 — user request: the AI can build monuments, but it could not switch one back on
+
+PATHS TOUCHED: `src/ai/AISystem.cpp`, `src/ai/AISystem.h`, `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`.
+**Asked for by the user** ("make it so AI could build monuments, and manage them too"), not taken off the backlog.
+
+**WHAT ALREADY EXISTED, so the request was half-done.** `monumentReflex` (journal 437) is **shipped ON** — the
+header said "off by default", which was stale and is now corrected — and it builds, chooses the cheapest researched
+kind, places it in the most populous eligible province, and runs a dial that idles the dearest slot when the
+country cannot pay. It calls the same entry points the player's buttons call.
+
+**THE GAP, and it is a plain defect.** Nothing in `src/ai` ever called `setMonumentActive(.., true)`. The dial only
+switches monuments **off**. So a country that idled a great work through a lean spell kept it dark **for ever**, and
+once its income recovered it would **build another** — paying a second build cost for a benefit it had already
+bought. Measured on one world with the fix gated off: **10 built, 9 switched off, 0 ever switched back on.**
+
+**THE FIX.** A revive branch in the build path, after the two gates that already apply (the flush hysteresis and
+the room-to-spare test on the next slot — both exactly right for reviving, since re-activating charges that next
+slot too) and **before** the purchase, because reviving is strictly better than buying: no build cost, same standing
+slot, same effect. Cheapest idled slot first, **one a turn**, mirroring the dial — `chargeOrder` forward is cheapest
+and the dial's reverse iteration is dearest, so the two paths undo each other in the same order rather than fighting
+(journal 436's ratchet was two gates measured against different things). `OD_MONUMENT_REACTIVATE=0` restores the old
+behaviour.
+
+**MECHANISM VERIFIED, which is the check this project has failed four times** (`wiring-checks-are-not-execution`).
+One world, 400 turns, same binary, gate off vs on:
+
+| arm | built | switched off | **switched back on** |
+|---|---|---|---|
+| `OD_MONUMENT_REACTIVATE=0` | 10 | 9 | **0** |
+| shipped (on) | 12 | 14 | **5** |
+
+**WHAT I AM NOT CLAIMING: the seat moved 23.8 → 20.0 and that is NOT evidence.** One world, on a seat whose paired
+sd is **20.0pp**, where **four** large single-world readings have evaporated on 16 seeds this session
+(+27.2→+3.21, +7.4→−4.52, +17.8→+1.83, −7.1→−1.72 turns). I am reporting it only because omitting it would be
+worse; it carries no information about whether this helps or harms.
+
+**AND A REAL RISK THE SAME NUMBERS HINT AT.** The new arm also built more (12 vs 10) and idled more (14 vs 9):
+reviving raises the standing bill, and `ai-treasuries-run-at-zero` and `fund-a-bill-not-a-mood` both say a standing
+bill an AI cannot service is how it goes bankrupt and then cannot replace its army (journal 414 traced exactly
+that). The revive is gated on the same affordability test as a purchase, which is the right guard, but **the
+outcome is unbenched.**
+
+**VERDICT: capability delivered and gated; outcome UNMEASURED.** Left ON because the user asked for it and because
+re-activating an asset you already own instead of buying a duplicate is better play on its face. Item 220 queues
+the bench — 16 fresh seeds, both arms, and the statistic should be the paired sign of land share (journal 528) with
+the `[MONUMENT]` counts beside it.
+
+## 531 — item 220: does the monument revive cost anything?
+
+PATHS TOUCHED (revert list): `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`. **No source change** — the revive
+shipped in journal 530 at the user's request; this is the outcome measurement it was shipped without.
+
+Journal 530 fixed a plain defect: the AI idled monuments and never switched them back on (10 built, 9 idled, **0**
+revived), so it left bought assets dark for ever and bought duplicates instead. Mechanism verified at **5 revivals
+against 0**. The outcome was explicitly unmeasured, and the same run hinted at the risk: the new arm built more
+(12 vs 10) **and idled more** (14 vs 9), so reviving raises the standing bill — the shape
+`ai-treasuries-run-at-zero` and `fund-a-bill-not-a-mood` both warn about, and journal 414 traced a bankrupt AI that
+could then not replace its army.
+
+**ARMS.** `OD_MONUMENT_REACTIVATE=0` (old behaviour) against unset (shipped). `OD_ACT_HIST=1` on **both** so the
+`[MONUMENT]` dump registers symmetrically. 16 seeds of set 3, 400 turns, 1914:FRA, binary pinned.
+
+**DRIVEN DIRECTLY, NOT THROUGH od_bench, and the trade is stated.** Item 220's reject rule needs the monument
+counts and the bankruptcy count; `od_bench` captures stdout and parses only the score, so both are lost
+(`od-bench-discards-stderr`). `bankrupt_pct` is in the CSV *header* but the numeric row stops at field 19, so it is
+not emitted either — bankruptcies are counted from the `[ECONOMY] ... bankrupt:` events on stderr. The cost of
+driving it myself is `od_bench`'s BISTABLE and graded-count warnings (`a-hand-rolled-harness-discards-the-warnings`);
+acceptable here because the pre-registered statistic is **raw per-seed land share**, which is what those warnings
+exist to push me towards anyway.
+
+**PREDICTION: a null on land share, with the revive firing and bankruptcies flat.** Concretely: revivals > 0 in the
+new arm and 0 in the old; land share within ±5pp and better on 6-10 of 16 (a coin flip); bankruptcy events not
+materially up.
+
+**REJECT (item 220's rule, carried verbatim rather than softened): land share falls, or bankruptcies rise.** If
+either fires I revert the default to off and leave the capability behind the gate — the user asked for the
+capability, not for a loss, and journal 530 shipped it on the explicit understanding that this bench could take it
+back.
+
+**INTEGRITY FAILURE FIRST: THE BINARY CHANGED MID-RUN.** `b313eb9c` before, `0edb1b94` after — the other session
+rebuilt the shared `cmake-build-debug` tree while my 32 runs were in flight. This is `pin-the-benchmark-binary`,
+and LOOP.md's rule is that an A/B is quotable only if both arms ran on one tree.
+
+**Salvaged by forensics rather than guessed.** The binary's mtime puts the swap at **17:28:31**; each run's output
+file mtime says when it finished, and a replaced file does not affect an already-running process. So:
+- **13 seeds** had **both arms** finish before the swap → one binary → **quotable**.
+- **1 seed (651449)** has its old arm pre-swap and its new arm post-swap → **dropped**.
+- **2 seeds** (661553, 671657) ran entirely post-swap → internally paired but on a **different tree**, so reported
+  separately and **not pooled**.
+
+The exclusion rule is "both arms on one binary", decided by timestamp and fixed before any score was read — not by
+outcome. All 16 seeds are printed above so nobody has to take that on trust (`dropped-samples-fake-an-effect`).
+
+**RESULT on the 13 clean seeds: PREDICTION CONFIRMED on every clause.**
+
+| | old | new |
+|---|---|---|
+| land share | 35.3 | **33.8** (−1.52pp, better on **6/13**, perm p **0.6792**) |
+| monuments built | 254 | **218** |
+| monuments idled | 180 | **300** |
+| **revived** | **0** | **168** (median 11/seed, **no seed with none**) |
+| **bankruptcy events** | **0** | **0** |
+
+I predicted "a null on land share, with the revive firing and bankruptcies flat": revivals > 0 everywhere ✓, land
+share within ±5pp ✓, better on a coin-flip fraction ✓, bankruptcies not up ✓.
+
+**The reject rule does not fire, and I am saying why rather than reinterpreting it.** It read "land share falls, or
+bankruptcies rise". Bankruptcy events are **exactly 0 in both arms**. The land-share point estimate is −1.52pp at
+**p 0.68 on 6 of 13** — statistically indistinguishable from no change on a seat whose paired sd is ~20pp, and
+precisely the null the prediction named in the same breath as the rule. A rule that treated any negative point
+estimate as a fall would reject every null ever measured.
+
+**What the mechanism numbers say, and they are the substance.** The revive **substitutes for purchase**: builds
+fall 254 → 218 while 168 idled monuments come back on, so the AI is re-lighting assets it already paid for instead
+of buying duplicates — exactly the defect journal 530 found. Idling rises 180 → 300 because more monuments are
+active to be idled; the dial is working harder, which is the system behaving as designed.
+
+**THE RISK I FLAGGED DID NOT MATERIALISE — but the control never failed, so that is weaker than it looks.**
+Journal 530 warned that reviving raises the standing bill and that `ai-treasuries-run-at-zero` makes that how an AI
+goes bankrupt. Bankruptcy events are 0 in **both** arms across 13 worlds, so the affordability gate held. But
+`measure-in-the-condition-that-fails` applies: a control that never goes bankrupt cannot show that the revive is
+safe **under** bankruptcy pressure, only that it created none here.
+
+**And a caution I will not bury: the 3 post-swap seeds are −4.17pp, 0 of 3.** n=3 on a different tree, so not
+quotable and not poolable — but if the true effect is a small negative, 13 seeds cannot see it.
+
+**VERDICT: CONFIRMED (a null); the revive STAYS ON.** No revert — the capability the user asked for works, costs
+nothing measurable, and removes a plain defect. Item 220 closed.
+
+PENDING COMMIT (derived from git): journals **530-531**, backlog items **220-221**, `src/ai/AISystem.cpp` and
+`src/ai/AISystem.h` (the revive + corrected header comment; must go together), `docs/ai/LOOP_JOURNAL.md`,
+`docs/ai/BACKLOG.md`.
+
+## 532 — item 221: a bench that cannot be rebuilt out from under it
+
+PATHS TOUCHED (revert list): `tools/pin_server.sh` (new), `tools/help.py`, `docs/ai/LOOP.md`,
+`docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`.
+
+Journal 531 lost 3 of 16 seeds because the other session replaced `cmake-build-debug/OpenDoctrinesServer` at
+17:28:31 while a 32-run bench was in flight. The result was salvageable only by comparing the binary's mtime
+against every run's output mtime, and one seed had to be dropped outright. `pin-the-benchmark-binary` is already in
+memory from a previous instance of this; the memory says to *read* the integrity flag, which does not stop it
+happening.
+
+**WHY THE OBVIOUS FIX FAILED BEFORE, which is the whole design constraint.** Journal 510 copied the binary into the
+scratchpad and it died with *"no data directory at .../scratchpad/../data"*: the server resolves game data at
+`<bindir>/../data` (`server-finds-data-beside-itself`). So a pin has to sit where `../data` is the repo's `data/`.
+
+**And that makes the fix trivial, which is worth stating because I nearly built a symlink farm for it.**
+`cmake-build-debug/OpenDoctrinesServer` already resolves `cmake-build-debug/../data` = the repo's `data/`. **Any
+direct child directory of the repo root works the same way**, so a pin is a plain `cp` into a sibling build
+directory — no symlink, no layout. `.gitignore` already has `cmake-build-*/`, so the pin is invisible to git and
+cannot be confused for a tree somebody builds.
+
+**PREDICTION, two clauses:** (1) a copy at `cmake-build-pin/OpenDoctrinesServer` runs a 400-turn eval and finds its
+data, where journal 510's scratchpad copy could not; (2) rebuilding `cmake-build-debug` while the pin exists leaves
+the pin's hash unchanged — which is the property the whole thing is for.
+
+**FALSIFIED IF** the pinned copy cannot find data (then the resolution rule is not what I read and the fix needs the
+symlink after all), or if a rebuild of the source tree somehow touches the pin.
+
+**RESULT: BOTH CLAUSES CONFIRMED.**
+
+**Clause 1 — the pin finds its data.** `cmake-build-pin/OpenDoctrinesServer` ran a full eval, exit 0, **zero** "no
+data directory" errors, and produced a seat score. Journal 510's scratchpad copy could not; a sibling of the repo
+root can, because `cmake-build-pin/../data` *is* the repo's `data/`.
+
+**Clause 2 — proved structurally, without rebuilding the shared tree.** The pin is a **separate inode** with link
+count 1:
+
+```
+inode=178635463 links=1   cmake-build-debug/OpenDoctrinesServer
+inode=178655475 links=1   cmake-build-pin/OpenDoctrinesServer
+```
+
+A rebuild replaces the source *file*, so it cannot reach a different inode. **I deliberately did not test this by
+rebuilding `cmake-build-debug`** — that would have changed the shared binary under whatever the other session is
+running, which is precisely what cost me 3 seeds yesterday. An inode comparison is the stronger proof anyway:
+`prove-an-ordering-property` says assert the property rather than bench it.
+
+**Also fixed en route: `cp`, not a link.** A hard link shares the inode with the build tree and defeats the whole
+point; a symlink resolves `<bindir>` through to the original directory, which puts `../data` back where the rebuild
+lives. The script says so where somebody would otherwise "optimise" it.
+
+**Registered in `tools/help.py`**, because adding a tool otherwise fails the tool-index check on **my** tool — the
+trap journal 527 walked into on purpose. Verified: the check still lists exactly the other session's five and not
+mine.
+
+**VERDICT: CONFIRMED.** Item 221 closed. Nothing to revert.
+
+**And the pin makes journal 531's open question answerable for free.** It *is* `0edb1b94`, the post-swap binary, so
+re-running one pre-swap seed on it would say whether the other session's rebuild is behaviourally inert for the AI
+— and therefore whether journal 531's 2 post-swap seeds could have been pooled with the 13. Filed as item 222
+rather than done here, because it is a second experiment.
+
+PENDING COMMIT (derived from git): journals **530-532**, backlog items **220-222**, `docs/ai/LOOP.md`,
+`docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (the monument revive;
+must go together), `tools/pin_server.sh` (untracked), and one entry in `tools/help.py`.
+
+## 533 — item 222: was the other session's rebuild inert for the AI?
+
+PATHS TOUCHED (revert list): `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`. **No source change.**
+
+Journal 531 dropped 2 of its 16 seeds as "a different tree" because the shared binary was replaced mid-bench
+(`b313eb9c` → `0edb1b94`), and could not pool them with the 13 clean ones. The pin built in journal 532 still holds
+**`0edb1b94`** — verified by hash just now, and the build tree currently matches it, so nothing has been rebuilt
+since. So the question is two runs.
+
+**THE TEST.** Re-run seed **520103**'s two arms on the pin and compare against the pre-swap numbers recorded in
+journal 531 under `b313eb9c`: **old 31.5, new 40.1**. Both arms, same seeds, same model, same flags — the only
+difference is the binary.
+
+**PREDICTION: it reproduces exactly — 31.5 and 40.1.** The other session's commits in this window are
+multiplayer-mail, campaign tests and trailer tooling (journal 526 read the `Game.h` hunks: `NetMail`, `mpHostTakeMail`,
+`mpSendMailHistory`), none of which the AI's decision path touches. Journal 525 already found the shipped action
+census byte-identical across their commits, which is the same claim measured a different way.
+
+**FALSIFIED IF either arm differs at all.** This is a determinism check, so there is no band: the eval is
+deterministic for a fixed binary, model, seed and seat — journal 520's control reproduced 31.5 and 52.5 exactly, and
+journal 515's reproduced all sixteen per-seed values. A single decimal of drift means their rebuild reaches the AI,
+and then **every cross-rebuild comparison in this journal needs the same check** — which is worth more than the two
+seeds it would cost me.
+
+**RESULT: PREDICTION CONFIRMED EXACTLY. The rebuild is inert for the AI.**
+
+| arm | journal 531, binary `b313eb9c` | now, pinned `0edb1b94` |
+|---|---|---|
+| `OD_MONUMENT_REACTIVATE=0` | **31.5** | **31.5** |
+| shipped (revive on) | **40.1** | **40.1** |
+
+Both arms to the decimal, and the pin hashed `0edb1b94` before and after. The other session's work in that
+window — multiplayer mail, campaign tests, trailer tooling — does not reach the AI's decision path, which journal
+525 had already found a different way (the shipped action census came back byte-identical across their commits).
+
+**SO JOURNAL 531'S DROPPED SEEDS COME BACK, AND THE RESULT IS RESTATED ON ALL 16.** The split seed (651449) is
+valid too: its arms ran on different binaries, but the binaries are behaviourally equivalent, so the pairing holds.
+
+| | seeds | old | new | delta | better | perm p |
+|---|---|---|---|---|---|---|
+| journal 531, as published | 13 | 35.3 | 33.8 | −1.52pp | 6/13 | 0.6792 |
+| **all 16, now valid** | **16** | **36.0** | **33.9** | **−2.02pp** | **6/16** | **0.5044** |
+
+The three recovered seeds were −0.2, −10.2 and −2.1, so the point estimate moves from −1.52 to −2.02pp and the
+sign count from 6/13 to 6/16. **Still a null** (p 0.50), still inside the ±5pp the prediction named, and
+bankruptcies were 0 in both arms on all 16. **The verdict of journal 531 stands, now with no exclusions** — which
+is the better reason to hold it.
+
+**AND IT IS WORTH MORE THAN THESE THREE SEEDS.** Several comparisons in this journal span one of the other
+session's rebuilds. This is the first direct test that such a span is safe, and it passes to the decimal — so those
+comparisons do not individually need re-running. **It is not a licence, though:** it establishes that *these*
+commits were inert, not that the next ones will be, and the cheap check now exists (pin, re-run one seed, compare).
+
+**VERDICT: CONFIRMED.** Item 222 closed, journal 531's caveat retired, no source change, nothing to revert.
+`tools/pin_server.sh` earned its keep on its first use — the question was answerable in two runs only because the
+post-swap binary had been kept.
+
+PENDING COMMIT (derived from git): journals **530-533**, backlog items **220-222**, `docs/ai/LOOP.md`,
+`docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (the monument revive;
+must go together), `tools/pin_server.sh` (untracked), one entry in `tools/help.py`.
+
+## 534 — did my own revive reintroduce the ratchet?
+
+PATHS TOUCHED (revert list): `src/ai/AISystem.cpp`, `src/ai/AISystem.h`, `docs/ai/LOOP_JOURNAL.md`,
+`docs/ai/BACKLOG.md`.
+
+**This question comes out of my own result, not the backlog.** Journal 531's monument numbers, now on all 16 seeds:
+builds fell 254 → 218, revivals ran to **168**, and **idlings rose 180 → 300 — an extra 120**. Roughly one extra
+idling per revival is the signature of a monument being switched on and straight back off.
+
+**AND THAT IS THE BUG THIS SUBSYSTEM ALREADY HAD ONCE.** Journal 435's first reflex "bought 55 monuments and
+switched 54 of them off again after a **median of four turns**; one survived to turn 400", and journal 436 fixed it
+by making both directions need the condition to persist. My revive added a third mover to that pair, and the one
+thing I did not measure is **how long a revived monument stays on**. A revive that is undone in a turn or two is the
+same defect in a new place, and it would be mine.
+
+**THE INSTRUMENT.** On a revive, stamp the turn. On an idle, if that monument was revived, record the dwell and
+count it as a re-idle. Report the re-idle fraction and the dwell distribution beside the existing counts. Gated on
+the same `OD_ACT_HIST`/trace the `[MONUMENT]` dump already uses, so it is inert in an ordinary game.
+
+**PREDICTION: most revivals are undone, but not quickly** — re-idle fraction **above 50%**, and median dwell **at
+least 6 turns**, because `kPatience` is 5 in each direction so a full cycle cannot be shorter than about ten turns
+by construction. On that reading the revive is a slow dial doing its job, not a ratchet.
+
+**FALSIFIED IF** the median dwell is **under 5 turns** — which would mean something is bypassing the patience
+counter and the revive is thrashing. If that happens the revive gets its own hysteresis or goes back behind the
+gate, and journal 531's null becomes a null that was hiding a defect rather than measuring a clean change.
+
+**I am measuring the dwell, not the land share.** The outcome is already settled at 16 seeds (−2.02pp, p 0.50); this
+asks whether the mechanism is healthy, which a null cannot tell me either way.
+
+**RESULT: the falsifier does NOT fire — the revive is a slow dial, not a ratchet. One clause of my prediction is
+off and I am scoring it rather than rounding it.**
+
+Three worlds, 400 turns, pinned binary:
+
+| seed | built | idled | revived | **undone** | dwell min / median / mean / max |
+|---|---|---|---|---|---|
+| 560517 | 16 | 37 | 28 | 16 (57.1%) | **5** / 7 / 9.2 / 43 |
+| 520103 | 13 | 30 | 22 | 14 (63.6%) | **5** / 9 / 19.1 / 74 |
+| 550413 | 24 | 41 | 22 | 10 (45.5%) | **5** / 5 / 7.1 / 14 |
+
+**THE DECISIVE NUMBER IS THE MINIMUM, AND IT IS 5 ON ALL THREE WORLDS.** `kPatience` is 5, so a revived monument is
+**never** undone faster than the patience floor — nothing bypasses the counter, which is the thing journal 435's
+ratchet did. Against that bug (median **4** turns, **54 of 55** undone), this is: median 5-9, mean 7-19, and
+**45-64%** undone with a long right tail (max 43 and 74 turns). Roughly 40% of revivals are never undone at all.
+
+**Scoring my prediction honestly.** I said re-idle fraction above 50% and median dwell **at least 6**. The fraction
+is 57.1% / 63.6% / **45.5%** — two of three. The median is 7 / 9 / **5** — one world sits exactly on the floor, so
+the "at least 6" clause **fails there**. The falsifier I actually committed to, median under 5, does not fire on any
+world. So: **the substantive claim is confirmed and one clause of the prediction is not**, and the honest summary is
+that I guessed the dwell slightly high.
+
+**WHAT IT MEANS: the extra 120 idlings in journal 531 are the dial working, not churn.** More monuments are lit, so
+more are available to be switched off when a country goes lean; each one that comes back on stays on for at least
+five turns and usually longer. A monument lit half the time delivers half its effect for half its standing fee,
+which is what a dial is for — and the alternative, journal 530's defect, was a monument lit **none** of the time
+while the country paid to build another.
+
+**VERDICT: no change. The revive stays as shipped.** The instrument is kept (counters only, inert without
+`OD_ACT_HIST`), because it is the health check on a three-mover subsystem that has already produced one ratchet.
+
+**And a note on why this iteration existed at all:** nothing in the backlog asked for it. It came out of reading my
+own result — an extra 120 idlings against 168 revivals — and the subsystem's own history. Journal 531's null was a
+clean null, but a null cannot tell you whether the mechanism under it is healthy, and this one had a documented way
+to be sick.
+
+PENDING COMMIT (derived from git): journals **530-534**, backlog items **220-223**, `docs/ai/LOOP.md`,
+`docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (monument revive +
+dwell instrument; must go together), `tools/pin_server.sh` (untracked), one entry in `tools/help.py`.
+
+## 535 — the AI's monuments are level 1 for ever
+
+PATHS TOUCHED (revert list): `src/ai/AISystem.cpp`, `src/ai/AISystem.h`, `docs/ai/LOOP_JOURNAL.md`,
+`docs/ai/BACKLOG.md`. Gate `OD_MONUMENT_UPGRADE`, on by default.
+
+**Completing the audit the user's request deserved.** Journal 530 fixed one gap (the AI could not switch a monument
+back on) by comparing the player's API surface to the AI's usage. That method has more to say: of Game's mutating
+monument entry points, the AI calls `buildMonument` and `setMonumentActive` and **none** of `upgradeMonument`,
+`dismantleMonument` or `moveMonument` — and never reads `monumentLevelAt`. **Every AI monument in the game sits at
+level 1 for ever**, while the player levels theirs up.
+
+**THE ECONOMICS MAKE THIS THE BEST OF THE THREE GAPS, and they are not symmetric with building.**
+- `monumentSlotsUsed` is `activeCount(...)` — **the standing bill is by COUNT, not level**. Upgrading adds **no**
+  standing cost.
+- `scaledEffect` is `base * (1 + 0.25·(level − 1))` and the radius is `baseRadius + (level − 1)`, to `maxLevel = 3`.
+
+So levelling 1 → 3 buys **+50% effect and +2 radius for a one-off `levelCost`**, where building buys one monument's
+base effect and signs up for the next escalating slot (50, 75, 125, 200, 300, 425). For a money-bound AI
+(`ai-treasuries-run-at-zero`) upgrading is strictly the better purchase, and it is the one the AI cannot make.
+
+**PLACED AFTER THE REVIVE AND BEFORE THE BUILD**, which gives a clean hierarchy of increasing commitment: re-light
+something owned (free), then deepen something owned (lump sum, no new bill), then buy (lump sum **and** a new bill).
+One a turn, like the others. Lowest level first — cheapest `levelCost` and the biggest marginal radius step — ties
+by province id so the same world upgrades the same monument twice
+(`obviously-equivalent-is-not-equivalent`).
+
+**DELIBERATELY OVER-GATED, and I am recording that it is deliberate.** The upgrade inherits the build path's two
+gates, including the room-to-spare test on the **next slot cost** — which an upgrade does not incur. That is
+stricter than upgrading needs. I am keeping it because spending the lump sum is exactly what journal 414 traced to
+an AI that then could not replace its army, and because a counter will show if it makes upgrades too rare to
+matter. Loosening it is a measurable follow-up, not a guess to make now.
+
+**PREDICTION: the AI upgrades, and does so instead of building.** Upgrades > 0 on every world, and builds fall
+relative to journal 534's counts on the same seeds (16 / 13 / 24 on 560517 / 520103 / 550413). **FALSIFIED IF**
+upgrades are 0 anywhere — which would mean the inherited gates make the path unreachable and the over-gating was
+the wrong call.
+
+**I am not predicting a land-share gain.** Journal 531 measured the revive as a null at 16 seeds and four
+single-world effects have evaporated this session; this iteration establishes the capability and its mechanism, and
+the outcome is item 224.
+
+**RESULT: clause 1 CONFIRMED, clause 2 was a badly-posed test, and the default is flipped OFF.**
+
+| seed | upgrades | builds (was, journal 534) | seat (was, journal 531 new arm) |
+|---|---|---|---|
+| 560517 | **9** | 8 (was 16) | 34.9 (was 34.8) |
+| 520103 | **18** | 17 (was 13) | 32.6 (was 40.1) |
+| 550413 | **17** | 14 (was 24) | 10.6 (was 40.3) |
+
+**Clause 1 holds: the AI upgrades on every world** (9, 18, 17), so the inherited gates do not make the path
+unreachable and the over-gating was not fatal.
+
+**Clause 2 — "builds fall" — fails on one world, and the clause was my mistake rather than a finding.** Builds fell
+16→8 and 24→14 but rose 13→17 on 520103. The `return` after an upgrade **already guarantees** the AI does not build
+that turn, so substitution is structural, not empirical. Comparing total counts across arms whose trajectories
+diverge measures the divergence, not the substitution — I pre-registered a number that could not test what I meant.
+
+**AND THE DEFAULT IS NOW OFF, which is a decision and not a result.** Three worlds came in at **+0.1, −7.5 and
+−29.7** against the same seeds without the upgrade. **That is not evidence** — three seeds on a seat whose paired sd
+is 12-20, and four large single-world readings have evaporated on 16 seeds this session. But it is not something to
+ship on either, and the asymmetry with the revive is the reason:
+
+- the **revive** fixed a plain defect (a monument lit *none* of the time while the country bought another) and then
+  benched as a **null at 16 seeds**, so shipping it on was supported;
+- the **upgrade** introduces a new *spending* behaviour — the AI parts with a lump sum it used to keep — and
+  `ai-treasuries-run-at-zero` plus journal 414 give a concrete mechanism for that to cost an army. With three
+  suggestive worlds pointing that way, on is the wrong default until it is measured.
+
+So `OD_MONUMENT_UPGRADE=1` enables it, the capability exists, and **the shipped game is unchanged**. Inertness
+proven rather than asserted: with the gate off, seed 520103 gives **0 upgrades and seat 40.1**, exactly journal
+531's value.
+
+**VERDICT: capability delivered, mechanism confirmed, default OFF pending item 224.** No revert — the code stays,
+gated. This is the same call I made in journal 510 when I refused a +27.2pp effect on a flagged collapse: an
+unmeasured change does not get the default, whichever direction the early numbers lean.
+
+PENDING COMMIT (derived from git): journals **530-535**, backlog items **220-224**, `docs/ai/LOOP.md`,
+`docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (revive on, dwell
+instrument, upgrade off; must go together), `tools/pin_server.sh` (untracked), one entry in `tools/help.py`.
+
+## 536 — item 224: does letting the AI level its monuments cost anything?
+
+PATHS TOUCHED (revert list): `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`. **No source change** — the upgrade
+shipped gated off in journal 535; this is the bench that decides the default.
+
+**SEED SET 4, NEW, and the reason matters.** Journal 535 verified the mechanism on **560517, 520103 and 550413** —
+all members of set 3 — and saw +0.1 / −7.5 / −29.7 there. So three of set 3's sixteen are seeds whose outcome I
+have already looked at, and quoting set 3 would be quoting a set I peeked at before deciding
+(`decide-on-fresh-seeds`). Set 4: 710211 720313 730417 740519 750623 760727 770829 780931 791033 801137 811241
+821343 831447 841549 851653 861757.
+
+**ARMS.** `OD_MONUMENT_UPGRADE=1` against unset, both with `OD_ACT_HIST=1` so the `[MONUMENT]` dump registers
+symmetrically. 400 turns, 1914:FRA. **Binary pinned at `cc5d8bf3` via `tools/pin_server.sh`** — the tool built in
+journal 532, used here for the first time on a long run, which is exactly the case it exists for after journal 531
+lost 3 seeds to a mid-bench rebuild. Driven directly, because the monument counts and the bankruptcy events are on
+stderr and `od_bench` keeps only stdout.
+
+**STATISTIC: the paired sign of per-seat land share**, plus `[MONUMENT]` upgrades/builds and the count of
+`[ECONOMY] ... bankrupt:` events.
+
+**PREDICTION, and I am anchoring it on shrinkage rather than on the three worlds.** Three seeds averaged −12.4pp;
+`decide-on-fresh-seeds` records effects collapsing from +38.7 to +13.3 and +20.3 to +0.2, and four large
+single-world readings have vanished at 16 seeds this session. So I predict **a null or a small negative: land share
+between −5pp and +2pp, p > 0.05, better on 6-10 of 16**, with upgrades > 0 on every seed and bankruptcies flat.
+
+**THE ADOPT RULE, stated as a single threshold so there is no gap** (journal 528's lesson, where a result landed
+between my prediction and my falsifier): **the default flips ON only if the paired sign test gives p > 0.05 or the
+point estimate is ≥ 0, AND bankruptcy events do not rise.** Anything else and it stays gated off. A measured fall
+keeps it off; a null adopts it, because the capability is what the user asked for and a null means it costs nothing.

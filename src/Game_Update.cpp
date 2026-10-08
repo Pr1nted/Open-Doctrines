@@ -200,6 +200,7 @@ void Game::handlePauseMenu() {
                 m_paused = false;
                 m_currentScreen = SCREEN_MENU;
                 offerMultiplayerAfterGame();
+                offerSupportAfterGame();
             }
         }
     }
@@ -1703,6 +1704,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 6) { m_config.riskyRamOps = false; }
             } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
                 m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId];
                 m_config.save(m_configPath);
@@ -1817,6 +1819,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 6) { m_config.riskyRamOps = false; }
                 else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                     if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                         *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -1934,6 +1937,14 @@ void Game::update(float dt) {
                     m_autoTradeSurplus = m_config.autoTradeSurplus;  // live this turn
                     Audio::get().playSfx(m_config.autoTradeSurplus ? "toggle_on" : "toggle_off");
                 }
+            } else if (strcmp(s.label, "Risky RAM") == 0) {
+                // Structural, like Goods Economy: the image is freed as a world
+                // loads, so a change takes hold on the next world, not this one.
+                m_config.riskyRamOps = !m_config.riskyRamOps;
+                Audio::get().playSfx(m_config.riskyRamOps ? "toggle_on" : "toggle_off");
+                if (m_config.riskyRamOps)
+                    addNotification(T("On — fits low-memory devices; turn-rewind and the timelapse need the full map. From your next new world."),
+                                    Color{210, 200, 150, 255}, 6.0f);
             } else if (strcmp(s.label, "AI Difficulty") == 0) {
                 m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
             } else if (strcmp(s.label, "Accent Color") == 0) {
@@ -2013,6 +2024,7 @@ void Game::update(float dt) {
                 m_showUnsavedWarning = false;
                 m_currentScreen = SCREEN_MENU;
                 offerMultiplayerAfterGame();
+                offerSupportAfterGame();
             } else if (m_unsavedChoice == 1) {
                 // Quit Without Saving
                 m_popupQueue.clear();
@@ -2022,6 +2034,7 @@ void Game::update(float dt) {
                 m_showUnsavedWarning = false;
                 m_currentScreen = SCREEN_MENU;
                 offerMultiplayerAfterGame();
+                offerSupportAfterGame();
             } else {
                 // Cancel — close dialog
                 m_showUnsavedWarning = false;

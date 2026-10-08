@@ -197,6 +197,14 @@ struct Config {
     // Only meaningful with goodsEconomy on. Friendly-only, surplus-only; the
     // player's country simply joins the AI countries that already redistribute.
     bool autoTradeSurplus = false;
+    // Experimental, web/phone-facing: free the 128 MB province image the moment
+    // its GPU texture is built, keeping only the compact two-bytes-per-pixel
+    // index. It is what lets a 4 GB phone's browser tab hold a world at all --
+    // but the selected-province highlight and the live border redraw on conquest
+    // both read that image, so with it gone they stop. Off by default; a player
+    // who does not need the memory should not pay the features. Takes hold on the
+    // next world loaded.
+    bool riskyRamOps = false;
 
     // Where Greater Diplomacy 5 lives, if the player has told us.
     //
@@ -301,6 +309,16 @@ struct Config {
      * to click away without reading.
      */
     bool        mpInviteAsked = false;
+
+    /**
+     * Whether the tip jar has been mentioned, once, on the way out of a game.
+     *
+     * Same rule as `ratingAsked` and `mpInviteAsked`, and the reason is sharper
+     * here than for either of them: this is the only prompt in the game that
+     * asks for money, and a free game that asks twice stops reading as free.
+     * Set when it is SHOWN, never cleared.
+     */
+    bool        supportAsked = false;
     /// Whether the usage-reporting question has been put to the player. Set
     /// the first time the prompt is shown, whichever way they answer, so it is
     /// asked once and never again. Separate from `usageReports`, which is the
@@ -312,9 +330,10 @@ struct Config {
 
     // ── Mail ──
     //
-    // `mailPolicy` is the HOST's setting and travels with the lobby; the copy
-    // here is what a single-player game uses and what a host's own client seeds
-    // the lobby from. See mail::Policy.
+    // `mailPolicy` is the HOST's setting: a host sends it to every player in
+    // NetSessionInfo, and a player in somebody else's game obeys that copy
+    // (Game::mailRules), not this one. Here it is what a single-player game and
+    // a host use. See mail::Policy.
     //   0 nobody   1 players only   2 advisors only   3 everyone
     int         mailPolicy = 3;
     /// This player's own door. See mail::Lock: 0 open, 1 advisors only, 2 shut.

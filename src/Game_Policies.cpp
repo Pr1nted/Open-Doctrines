@@ -4018,10 +4018,12 @@ void Game::rebuildDistrictOverlay(int cid, int texW, int texH) {
     for (int idx : own) {
         if (idx < 0 || idx >= texW * texH) continue;
         Color c{0, 0, 0, 0};
-        if (prov) {
-            const int pid = Province::colorToId(prov[idx].r, prov[idx].g, prov[idx].b);
-            if (pid >= 0 && pid < (int)colByPid.size()) c = colByPid[(size_t)pid];
-        }
+        // prov is null when the image was freed (Risky RAM); idAt reads the
+        // same province id from the compact form, so the district overlay is
+        // painted either way.
+        const int pid = prov ? Province::colorToId(prov[idx].r, prov[idx].g, prov[idx].b)
+                             : m_provinces.idAt((size_t)idx);
+        if (pid >= 0 && pid < (int)colByPid.size()) c = colByPid[(size_t)pid];
         const int x = (idx % texW) / DISTRICT_OVERLAY_DIV;
         const int y = (idx / texW) / DISTRICT_OVERLAY_DIV;
         if (x >= ovW || y >= ovH) continue;

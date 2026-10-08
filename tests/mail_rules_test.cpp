@@ -383,6 +383,33 @@ int main() {
            "and a forbidden word is still forbidden");
     }
 
+    section("ours and theirs can share an id");
+    {
+        // A received letter keeps its SENDER's id, so the same number can name
+        // one of ours and one of theirs. Edit and tear-up used to stop at the
+        // first match -- theirs, if its thread came first -- and do nothing.
+        mail::Box box;
+        mail::Message theirs;
+        theirs.id = 1;
+        theirs.fromCountry = 7;
+        theirs.toCountry = 3;
+        theirs.body = "from them";
+        box.receive(theirs);
+        const int mine = box.write(3, 9, "draft", 1);
+        ok(mine == 1, "our first letter is id 1 too");
+        ok(box.edit(1, "changed"), "editing it finds ours, not theirs");
+        const mail::Thread* t = box.thread(9);
+        ok(t && !t->messages.empty() && t->messages.back().body == "changed",
+           "and the change landed on ours");
+        ok(box.block(1), "a refused one is marked, ours");
+        ok(!box.edit(1, "again"), "and is no longer ours to change");
+        const int second = box.write(3, 9, "second", 1);
+        ok(box.discard(second), "tearing up ours works with theirs about");
+        const mail::Thread* th = box.thread(7);
+        ok(th && th->messages.size() == 1 && th->messages[0].body == "from them",
+           "and theirs is untouched");
+    }
+
     printf("\n%d checks, %d failed\n", g_checks, g_fails);
     return g_fails == 0 ? 0 : 1;
 }

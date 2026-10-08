@@ -40,6 +40,19 @@ extern "C" unsigned int rlLoadTexture(const void* data, int width, int height, i
 extern "C" unsigned int rlLoadFramebuffer(void);
 extern "C" void rlFramebufferAttach(unsigned int fboId, unsigned int texId, int attachType, int texType, int mipLevel);
 extern "C" bool rlFramebufferComplete(unsigned int id);
+
+// The GL texture-size ceiling, read straight from the driver. raylib does not
+// surface it, and the map needs it: the full province index is one texture as
+// wide as the map, and a mobile GL that will not accept it hands back a texture
+// that samples as solid black -- the map coming up empty on a phone while the
+// UI, whose textures are small, draws fine.
+extern "C" void glGetIntegerv(unsigned int pname, int* data);
+#ifndef GL_MAX_TEXTURE_SIZE
+#define GL_MAX_TEXTURE_SIZE 0x0D33
+#endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 namespace {
 constexpr int kRlAttachmentColor0 = 0;      // RL_ATTACHMENT_COLOR_CHANNEL0
 constexpr int kRlAttachmentTexture2D = 100; // RL_ATTACHMENT_TEXTURE2D
@@ -54,6 +67,7 @@ constexpr int kGlFuncAdd          = 0x8006;
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 #include <cstring>
 #include <utility>
@@ -421,31 +435,131 @@ void uploadTable(Texture2D& tex, const std::vector<Color>& colours) {
     std::copy_n(colours.begin(), std::min<size_t>(colours.size(), N), full.begin());
     UpdateTexture(tex, full.data());
 }
+// The largest map texture this GL accepts. Desktop returns 8192-16384 and the
+// whole map fits; mobile WebGL is commonly 4096 (some 2048). Queried once.
+// OD_MAP_TEXCAP overrides it -- the only way to exercise the reduced path on a
+// desktop GPU whose real ceiling is far higher.
+int mapTexCap() {
+    static const int cap = [] {
+        if (const char* e = getenv("OD_MAP_TEXCAP")) { int v = atoi(e); if (v >= 256) return v; }
+#ifdef __EMSCRIPTEN__
+        // Web, and especially mobile web, is memory-bound, not ceiling-bound: a
+        // phone's GL ceiling is commonly 16384, so the whole 8192-wide map fits
+        // and NOTHING downscales -- yet those full-size layers (index + the
+        // political and border render targets) are hundreds of MB of GPU memory
+        // that, on top of the wasm heap, get an iOS tab killed on map load.
+        // So cap well below the ceiling on web. 4096 keeps a world map crisp at
+        // any sane zoom while quartering those layers. Tunable live with
+        // ?texcap=N (N>=256) so the right cap can be measured on the device
+        // without a rebuild.
+        int q = EM_ASM_INT({
+            try { var m = new URLSearchParams(location.search).get('texcap');
+                  var v = m ? (parseInt(m, 10) | 0) : 0; return (v >= 256) ? v : 0; }
+            catch (e) { return 0; }
+        });
+        if (q >= 256) return q;
+        int glmax = 0; glGetIntegerv(GL_MAX_TEXTURE_SIZE, &glmax);
+        const int def = 4096;
+        return (glmax >= 256 && glmax < def) ? glmax : def;
+#else
+        int v = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &v);
+        return v >= 256 ? v : 16384;   // a sane floor if the query answers nothing
+#endif
+    }();
+    return cap;
+}
+
+// The power-of-two factor that brings a `w`x`h` map texture within the ceiling.
+// 1 on any GL that can hold the map outright, so nothing changes off mobile.
+int mapDownscale(int w, int h) {
+    const int cap = mapTexCap();
+    int f = 1;
+    while (w / f > cap || h / f > cap) f *= 2;
+    return f;
+}
+
 }  // namespace
 
 void MapRenderer::setProvinceIndex(const Image& provinces) {
     if (!provinces.data || provinces.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) return;
-    const size_t n = (size_t)provinces.width * provinces.height;
+    // THE MAP MUST FIT THE GL. The province index is as wide as the map (8192
+    // on the world); where the GL will not hold that it is point-sampled down
+    // to one that fits -- the ids are picked, never blended, so a province is
+    // still a province, with a border a pixel or two coarser. The id lookup for
+    // a click runs on the CPU over the full-resolution image, not this texture,
+    // so hit-testing keeps its full precision regardless.
+    const int fw = provinces.width, fh = provinces.height;
+    const int f = mapDownscale(fw, fh);
+    const int w = fw / f, h = fh / f;
+    const size_t n = (size_t)w * h;
     // Two bytes per pixel, low then high: GRAY_ALPHA, which samples as
     // (lo, lo, lo, hi) on every GL this game runs on.
     std::vector<uint8_t> ids(n * 2);
     const auto* px = (const Color*)provinces.data;
     bool wide = false;
-    for (size_t i = 0; i < n; ++i) {
-        if (px[i].r) wide = true;   // id past 65535: the table cannot hold it
-        ids[i * 2] = px[i].b;
-        ids[i * 2 + 1] = px[i].r ? 0 : px[i].g;
+    for (int y = 0; y < h; ++y) {
+        const int sy = (f == 1) ? y : std::min(fh - 1, y * f + f / 2);
+        for (int x = 0; x < w; ++x) {
+            const int sx = (f == 1) ? x : std::min(fw - 1, x * f + f / 2);
+            const Color c = px[(size_t)sy * fw + sx];
+            if (c.r) wide = true;   // id past 65535: the table cannot hold it
+            const size_t i = (size_t)y * w + x;
+            ids[i * 2] = c.b;
+            ids[i * 2 + 1] = c.r ? 0 : c.g;
+        }
     }
     if (wide) TraceLog(LOG_WARNING, "MAP: province ids above 65535 draw as sea in overlays");
+    if (f != 1) TraceLog(LOG_INFO, "MAP: index downscaled %dx%d -> %dx%d (GL cap %d)", fw, fh, w, h, mapTexCap());
     if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
     Image img{};
     img.data = ids.data();
-    img.width = provinces.width;
-    img.height = provinces.height;
+    img.width = w;
+    img.height = h;
     img.mipmaps = 1;
     img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
     m_provinceIndexTex = LoadTextureFromImage(img);
     // NEAREST: the shader does the blending, after the lookup.
+    SetTextureFilter(m_provinceIndexTex, TEXTURE_FILTER_POINT);
+    m_surfaceDirty = true;
+}
+
+// From a ProvinceMap, whichever form it is in. The RGBA image is the fast path
+// and the only one off mobile; when Risky RAM loaded the map compact (no image
+// ever decoded), the same id -- the one the overlays and the picker read through
+// idAt() -- is read here, point-sampled down by the same factor, and encoded as
+// the same two bytes. The texture out is identical; only where the id came from
+// differs.
+void MapRenderer::setProvinceIndex(const ProvinceMap& pm) {
+    if (pm.getImage().data) { setProvinceIndex(pm.getImage()); return; }
+    const int fw = pm.getWidth(), fh = pm.getHeight();
+    if (fw <= 0 || fh <= 0) return;
+    const int f = mapDownscale(fw, fh);
+    const int w = fw / f, h = fh / f;
+    std::vector<uint8_t> ids((size_t)w * h * 2);
+    bool wide = false;
+    for (int y = 0; y < h; ++y) {
+        Audio::get().pump();
+        const int sy = (f == 1) ? y : std::min(fh - 1, y * f + f / 2);
+        for (int x = 0; x < w; ++x) {
+            const int sx = (f == 1) ? x : std::min(fw - 1, x * f + f / 2);
+            const int id = pm.idAt((size_t)sy * fw + sx);
+            if (id > 65535) wide = true;
+            const size_t i = (size_t)y * w + x;
+            ids[i * 2]     = (uint8_t)(id & 0xFF);
+            ids[i * 2 + 1] = (id > 65535) ? 0 : (uint8_t)((id >> 8) & 0xFF);
+        }
+    }
+    if (wide) TraceLog(LOG_WARNING, "MAP: province ids above 65535 draw as sea in overlays");
+    if (f != 1) TraceLog(LOG_INFO, "MAP: index (compact) downscaled %dx%d -> %dx%d", fw, fh, w, h);
+    if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
+    Image img{};
+    img.data = ids.data();
+    img.width = w;
+    img.height = h;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
+    m_provinceIndexTex = LoadTextureFromImage(img);
     SetTextureFilter(m_provinceIndexTex, TEXTURE_FILTER_POINT);
     m_surfaceDirty = true;
 }
@@ -528,13 +642,31 @@ void MapRenderer::setPoliticalColours(const std::vector<Color>& colours, int row
     m_politicalStale = true;
 }
 
-void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int w, int h) {
-    if (distance.size() != (size_t)w * h) return;
+void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int fw, int fh) {
+    if (distance.size() != (size_t)fw * fh) return;
+    // Downscaled by the SAME factor as the province index (same full map dims,
+    // same ceiling), so the two textures and the mapSize the shader derives
+    // from them stay the one resolution. The distance is a gradient width in
+    // source pixels; point-sampling it coarser just widens the border shade a
+    // little, which only shows on a GL that could not hold the map anyway.
+    const int f = mapDownscale(fw, fh);
+    const int w = fw / f, h = fh / f;
+    std::vector<uint8_t> small;
+    const uint8_t* src = distance.data();
+    if (f != 1) {
+        small.resize((size_t)w * h);
+        for (int y = 0; y < h; ++y) {
+            const int sy = std::min(fh - 1, y * f + f / 2);
+            for (int x = 0; x < w; ++x)
+                small[(size_t)y * w + x] = distance[(size_t)sy * fw + std::min(fw - 1, x * f + f / 2)];
+        }
+        src = small.data();
+    }
     // A new texture each time rather than an update, for the reason in the
     // header: the Mac keeps copies of a texture that is written after it is
     // made. This changes when a border moves, at most once a turn.
     if (m_borderDistance.id > 0) UnloadTexture(m_borderDistance);
-    Image img{(void*)distance.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+    Image img{(void*)src, w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
     m_borderDistance = LoadTextureFromImage(img);
     SetTextureFilter(m_borderDistance, TEXTURE_FILTER_POINT);
     if (m_politicalTarget.id == 0) m_politicalTarget = makeTarget(w, h);
@@ -675,7 +807,26 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     // edge flags -- 24 KB at this width -- rolled down the image, written
     // straight into m_borderPixels. One pass over the pixels instead of three,
     // and the same picture out.
-    m_borderPixels.assign((size_t)mapW * mapH * kBorderBpp, 0);
+    // ─── AND WHY THE OUTPUT IS CAPPED, NOT JUST THE WORKING SET ───────────
+    //
+    // m_borderTex is only ever DRAWN STRETCHED across the whole map (one
+    // DrawTexture scaled to m_mapW), so its pixel grid need be no finer than
+    // the province index it sits over -- which mapTexCap already caps on mobile
+    // web. Left at the full 8192x4096 it is ~67 MB of GPU texture AND the same
+    // again in a transient wasm buffer here, and because the wasm heap only
+    // ever grows, that transient raises the tab's high-water mark for good --
+    // the figure iOS Safari kills on when a 4 GB phone loads a world. So the
+    // edge scan still runs at full resolution (every border is found exactly),
+    // but it rasterises into a buffer the capped size: a cell is marked when
+    // any full-res edge pixel falls in it.
+    //
+    // f is forced to 1 while the editor keeps the CPU copy for live painting
+    // (updateBorderRect indexes it at full width) and is 1 anyway off mobile,
+    // where the GL ceiling holds the whole map -- so nothing changes there.
+    const int f = m_keepBorderPixels ? 1 : mapDownscale(mapW, mapH);
+    const int outW = mapW / f;
+    const int outH = mapH / f;
+    m_borderPixels.assign((size_t)outW * outH * kBorderBpp, 0);
 
     std::vector<uint8_t> flagRows((size_t)mapW * 3, 0);
     uint8_t* rows[3] = { flagRows.data(), flagRows.data() + mapW, flagRows.data() + 2 * mapW };
@@ -698,7 +849,9 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
         const uint8_t* prev = rows[0];
         const uint8_t* cur  = rows[1];
         const uint8_t* next = rows[2];
-        uint8_t* dst = m_borderPixels.data() + (size_t)py * mapW * kBorderBpp;
+        const int oy = py / f;
+        uint8_t* dstRow = (oy < outH) ? m_borderPixels.data() + (size_t)oy * outW * kBorderBpp
+                                      : nullptr;
         for (int px = 0; px < mapW; ++px) {
             uint8_t a = 0;
             if (cur[px]) {
@@ -708,7 +861,14 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
                 const int r = (px == mapW - 1) ? 0 : px + 1;
                 if (cur[l] || cur[r] || prev[px] || next[px]) a = 50;
             }
-            writeBorderTexel(dst + (size_t)px * kBorderBpp, a);
+            // Only marked texels are written; unmarked cells stay {0,0}, which
+            // is transparent (alpha 0), the same as writeBorderTexel emits for
+            // a == 0. A cell shared by several full-res pixels is marked once
+            // any of them is an edge.
+            if (a && dstRow) {
+                const int ox = px / f;
+                if (ox < outW) writeBorderTexel(dstRow + (size_t)ox * kBorderBpp, a);
+            }
         }
         // Roll the window down and refill the row that just fell off the top.
         uint8_t* recycled = rows[0];
@@ -718,18 +878,8 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
         fillFlags(rows[2], py + 2);
     }
 
-    // The scan above yields every row; this does not and cannot. Handing a
-    // 8192x4096 surface to the driver is one opaque call with no iteration of
-    // ours inside it.
-    //
-    // NOT a BlockingCall, though it was one. Measured, this region is about
-    // 130 ms -- three audio periods. Suspending the device for that costs a
-    // stop and a restart of the music to save three repeated blocks, which is
-    // a worse trade than the thing it was fixing. The guard is for the
-    // multi-second regions.
-    //
-    // A top-up instead: refilling immediately before the stall is the most
-    // headroom the stream can be given, and it costs nothing.
+    // The scan above yields every row; this does not and cannot. Handing the
+    // surface to the driver is one opaque call with no iteration of ours inside.
     Audio::get().pump();
     if (m_borderTex.id > 0) UnloadTexture(m_borderTex);
     // STRAIGHT FROM THE VECTOR WE ALREADY HOLD. LoadTextureFromImage only
@@ -738,14 +888,97 @@ void MapRenderer::computeBorderTexture(const Image& provImage) {
     // unloaded.
     Image img{};
     img.data = m_borderPixels.data();
-    img.width = mapW;
-    img.height = mapH;
+    img.width = outW;
+    img.height = outH;
     img.mipmaps = 1;
     img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
     m_borderTex = LoadTextureFromImage(img);
     m_bordersComputed = true;
     // Uploaded; a game has no further use for the CPU copy. See
     // setKeepBorderPixels() and BorderCoverageRows.
+    if (!m_keepBorderPixels) std::vector<uint8_t>().swap(m_borderPixels);
+}
+
+// The border overlay (the thin dark line BETWEEN PROVINCES, including provinces
+// of the same country, which the political shader's ownership borders do not
+// draw) read the full-resolution colour image. When Risky RAM loaded the map
+// compact there is no image, so it is rebuilt from the id lookup instead: the
+// same scan, with the id at each pixel read through idAt() rather than from a
+// Color*. It is one extra pass over the raster -- a second or so on a phone,
+// once, at load -- and brings the province lines back.
+void MapRenderer::computeBorderTexture(const ProvinceMap& pm) {
+    if (pm.getImage().data) { computeBorderTexture(pm.getImage()); return; }
+    const int mapW = pm.getWidth(), mapH = pm.getHeight();
+    if (mapW <= 0 || mapH <= 0) return;
+    m_surfaceDirty = true;
+
+    const int f = m_keepBorderPixels ? 1 : mapDownscale(mapW, mapH);
+    const int outW = mapW / f, outH = mapH / f;
+    m_borderPixels.assign((size_t)outW * outH * kBorderBpp, 0);
+
+    // provEdgeAt, from ids: not sea (0), and the id differs from a 4-neighbour.
+    // x wraps (the map is a cylinder); the poles count as edges. Matches the
+    // Color* provEdgeAt exactly.
+    auto edgeAt = [&](int px, int py) -> bool {
+        const int c = pm.idAt((size_t)py * mapW + px);
+        if (c == 0) return false;
+        const int l = (px == 0) ? mapW - 1 : px - 1;
+        const int r = (px == mapW - 1) ? 0 : px + 1;
+        return pm.idAt((size_t)py * mapW + l) != c ||
+               pm.idAt((size_t)py * mapW + r) != c ||
+               (py == 0 || pm.idAt((size_t)(py - 1) * mapW + px) != c) ||
+               (py == mapH - 1 || pm.idAt((size_t)(py + 1) * mapW + px) != c);
+    };
+
+    std::vector<uint8_t> flagRows((size_t)mapW * 3, 0);
+    uint8_t* rows[3] = { flagRows.data(), flagRows.data() + mapW, flagRows.data() + 2 * mapW };
+    auto fillFlags = [&](uint8_t* out, int y) {
+        if (y < 0 || y >= mapH) { std::fill(out, out + mapW, (uint8_t)0); return; }
+        for (int px = 0; px < mapW; ++px) out[px] = edgeAt(px, y) ? 1 : 0;
+    };
+    fillFlags(rows[0], -1);
+    fillFlags(rows[1], 0);
+    fillFlags(rows[2], 1);
+
+    for (int py = 0; py < mapH; ++py) {
+        Audio::get().pump();
+        const uint8_t* prev = rows[0];
+        const uint8_t* cur  = rows[1];
+        const uint8_t* next = rows[2];
+        const int oy = py / f;
+        uint8_t* dstRow = (oy < outH) ? m_borderPixels.data() + (size_t)oy * outW * kBorderBpp
+                                      : nullptr;
+        for (int px = 0; px < mapW; ++px) {
+            uint8_t a = 0;
+            if (cur[px]) {
+                a = 180;
+            } else {
+                const int l = (px == 0) ? mapW - 1 : px - 1;
+                const int r = (px == mapW - 1) ? 0 : px + 1;
+                if (cur[l] || cur[r] || prev[px] || next[px]) a = 50;
+            }
+            if (a && dstRow) {
+                const int ox = px / f;
+                if (ox < outW) writeBorderTexel(dstRow + (size_t)ox * kBorderBpp, a);
+            }
+        }
+        uint8_t* recycled = rows[0];
+        rows[0] = rows[1];
+        rows[1] = rows[2];
+        rows[2] = recycled;
+        fillFlags(rows[2], py + 2);
+    }
+
+    Audio::get().pump();
+    if (m_borderTex.id > 0) UnloadTexture(m_borderTex);
+    Image img{};
+    img.data = m_borderPixels.data();
+    img.width = outW;
+    img.height = outH;
+    img.mipmaps = 1;
+    img.format = PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA;
+    m_borderTex = LoadTextureFromImage(img);
+    m_bordersComputed = true;
     if (!m_keepBorderPixels) std::vector<uint8_t>().swap(m_borderPixels);
 }
 
@@ -952,15 +1185,19 @@ void MapRenderer::buildProvinceData(
     std::unordered_map<int, float>& radii_out)
 {
     m_provinceGlow.clear();
+    m_glowW = m_mapW;   // grid a glow index addresses; narrowed by buildCompactGlow
+    m_glowH = m_mapH;
     centers_out.clear();
     radii_out.clear();
     // CENTRES DO NOT NEED THE BORDER RASTER, only the glow does. This used to
     // return here without one, and the turn logic reads the centres -- so a
     // load that skips the raster (Game::m_agentLoad) still gets them.
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
-    // The centres come from province ids, which a dedicated server holds as a
-    // compact index with no image at all (ProvinceMap::compact). The glow is
-    // a picture and needs the image; without one there is simply no glow.
+    // The centres come from province ids, which both the compact index and the
+    // dedicated server hold with no image at all (ProvinceMap::compact). The
+    // glow is a picture: with an image it is built inline below; without one
+    // (Risky RAM) it is rebuilt from the id lookup in buildCompactGlow, after
+    // the centres; and a headless server, which has neither, gets no glow.
     if (!provinces.hasPixels()) return;
     const bool glow = m_bordersComputed && provPixels;
 
@@ -1058,53 +1295,154 @@ void MapRenderer::buildProvinceData(
         const float h = (float)(maxY[k] - minY[k]);
         radii_out[id] = std::max(w, h) * 0.5f;
     }
+
+    // No image but the raster is present as a compact index (Risky RAM): the
+    // inline loop above could not build the glow (it reads the border coverage,
+    // which needs the image), so build it from the id lookup now. Centres are
+    // already done above; this only fills m_provinceGlow and sets m_glowW/H.
+    if (!provPixels && m_bordersComputed && provinces.hasPixels())
+        buildCompactGlow(provinces);
 }
 
 void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
     m_provinceGlow.clear();
+    m_glowW = m_mapW;   // the grid a glow index addresses; narrowed below if compact
+    m_glowH = m_mapH;
     if (!m_bordersComputed) return;
 
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
-    if (!provPixels) return;
-    BorderCoverageRows coverage(reinterpret_cast<const uint32_t*>(provPixels), m_mapW, m_mapH);
+    if (provPixels) {
+        BorderCoverageRows coverage(reinterpret_cast<const uint32_t*>(provPixels), m_mapW, m_mapH);
 
-    // TWO BUFFERS, TWO STRIDES, AND THEY ARE NOT THE SAME ANY MORE.
-    //
-    // This one is the province image: RGBA, four bytes a pixel. The border
-    // layer is two (kBorderBpp) and must be indexed by its own stride -- the
-    // same correction 7f878d0 made to buildProvinceData when it narrowed the
-    // layer, and did not make here. Reading it at four walked twice the
-    // buffer: ASan, on a plain `--load ... --check`, reports a
-    // heap-buffer-overflow three bytes past the 67,108,864-byte region
-    // (8192 x 4096 x 2) that computeBorderTexture allocates.
-    //
-    // It only ever fired on a SAVE load, because reloadBorders() is called
-    // from replaySaveTurns and from nowhere else -- which is why every map
-    // --check passed on the runners while every save load segfaulted.
-    int stride = m_mapW * 4;
+        // TWO BUFFERS, TWO STRIDES, AND THEY ARE NOT THE SAME ANY MORE.
+        //
+        // This one is the province image: RGBA, four bytes a pixel. The border
+        // layer is two (kBorderBpp) and must be indexed by its own stride -- the
+        // same correction 7f878d0 made to buildProvinceData when it narrowed the
+        // layer, and did not make here. Reading it at four walked twice the
+        // buffer: ASan, on a plain `--load ... --check`, reports a
+        // heap-buffer-overflow three bytes past the 67,108,864-byte region
+        // (8192 x 4096 x 2) that computeBorderTexture allocates.
+        //
+        // It only ever fired on a SAVE load, because reloadBorders() is called
+        // from replaySaveTurns and from nowhere else -- which is why every map
+        // --check passed on the runners while every save load segfaulted.
+        int stride = m_mapW * 4;
 
-    for (int y = 0; y < m_mapH; ++y) {
-        Audio::get().pump();          // as in computeBorderTexture above
-        const uint8_t* cov = coverage.row(y);
-        for (int x = 0; x < m_mapW; ++x) {
-            const uint8_t ba = cov[x];   // what the border layer holds here
-            if (ba == 0) continue;
+        for (int y = 0; y < m_mapH; ++y) {
+            Audio::get().pump();          // as in computeBorderTexture above
+            const uint8_t* cov = coverage.row(y);
+            for (int x = 0; x < m_mapW; ++x) {
+                const uint8_t ba = cov[x];   // what the border layer holds here
+                if (ba == 0) continue;
+
+                int foundPid = 0;
+                for (int pass = 0; pass < 5 && foundPid == 0; ++pass) {
+                    int nx = x, ny = y;
+                    if (pass == 1) nx = (x == 0) ? m_mapW - 1 : x - 1;
+                    if (pass == 2) nx = (x == m_mapW - 1) ? 0 : x + 1;
+                    if (pass == 3) { nx = x; ny = y - 1; }
+                    if (pass == 4) { nx = x; ny = y + 1; }
+                    if (ny < 0 || ny >= m_mapH) continue;
+                    int ni = ny * stride + nx * 4;
+                    int nid = Province::colorToId(provPixels[ni], provPixels[ni + 1], provPixels[ni + 2]);
+                    if (nid > 0) foundPid = nid;
+                }
+                if (foundPid > 0)
+                    m_provinceGlow[foundPid].push_back({y * m_mapW + x, ba});
+            }
+        }
+        return;
+    }
+
+    buildCompactGlow(provinces);
+}
+
+// ── Compact (Risky RAM): the province image was freed, so the glow is built
+// from the id lookup, on the same downscaled grid the border texture uses. A
+// selection then paints into a grid-sized image instead of a full-map one --
+// the whole reason the low-memory path exists; GenImageColor(m_mapW, m_mapH) is
+// 128 MB on an 8192x4096 world. The edge scan is computeBorderTexture's, walked
+// again so each border texel is also charged to the province it outlines. Both
+// glow builders (buildProvinceData and rebuildGlowMap) route here when the
+// image is gone, so a selection works whichever one last ran. ──
+void MapRenderer::buildCompactGlow(const ProvinceMap& provinces) {
+    m_provinceGlow.clear();
+    const int f = mapDownscale(m_mapW, m_mapH);
+    const int outW = m_mapW / f, outH = m_mapH / f;
+    m_glowW = outW;
+    m_glowH = outH;
+
+    auto idOf = [&](int px, int py) -> int {
+        return provinces.idAt((size_t)py * m_mapW + px);
+    };
+    auto edgeAt = [&](int px, int py) -> bool {       // == provEdgeAt, from ids
+        const int c = idOf(px, py);
+        if (c == 0) return false;
+        const int l = (px == 0) ? m_mapW - 1 : px - 1;
+        const int r = (px == m_mapW - 1) ? 0 : px + 1;
+        return idOf(l, py) != c || idOf(r, py) != c ||
+               (py == 0 || idOf(px, py - 1) != c) ||
+               (py == m_mapH - 1 || idOf(px, py + 1) != c);
+    };
+    std::vector<uint8_t> flagRows((size_t)m_mapW * 3, 0);
+    uint8_t* rows[3] = { flagRows.data(), flagRows.data() + m_mapW, flagRows.data() + 2 * m_mapW };
+    auto fillFlags = [&](uint8_t* out, int y) {
+        if (y < 0 || y >= m_mapH) { std::fill(out, out + m_mapW, (uint8_t)0); return; }
+        for (int px = 0; px < m_mapW; ++px) out[px] = edgeAt(px, y) ? 1 : 0;
+    };
+    fillFlags(rows[0], -1);
+    fillFlags(rows[1], 0);
+    fillFlags(rows[2], 1);
+
+    // pid -> cell -> strongest alpha: the f*f full-res pixels that land in one
+    // downscaled cell collapse to a single glow texel at their brightest, the
+    // same way computeBorderTexture marks a cell once for the whole block.
+    std::unordered_map<int, std::unordered_map<int, uint8_t>> acc;
+    for (int py = 0; py < m_mapH; ++py) {
+        Audio::get().pump();
+        const uint8_t* prev = rows[0];
+        const uint8_t* cur  = rows[1];
+        const uint8_t* next = rows[2];
+        for (int px = 0; px < m_mapW; ++px) {
+            uint8_t ba = 0;
+            if (cur[px]) {
+                ba = 180;
+            } else {
+                const int l = (px == 0) ? m_mapW - 1 : px - 1;
+                const int r = (px == m_mapW - 1) ? 0 : px + 1;
+                if (cur[l] || cur[r] || prev[px] || next[px]) ba = 50;
+            }
+            if (!ba) continue;
 
             int foundPid = 0;
             for (int pass = 0; pass < 5 && foundPid == 0; ++pass) {
-                int nx = x, ny = y;
-                if (pass == 1) nx = (x == 0) ? m_mapW - 1 : x - 1;
-                if (pass == 2) nx = (x == m_mapW - 1) ? 0 : x + 1;
-                if (pass == 3) { nx = x; ny = y - 1; }
-                if (pass == 4) { nx = x; ny = y + 1; }
+                int nx = px, ny = py;
+                if (pass == 1) nx = (px == 0) ? m_mapW - 1 : px - 1;
+                if (pass == 2) nx = (px == m_mapW - 1) ? 0 : px + 1;
+                if (pass == 3) { nx = px; ny = py - 1; }
+                if (pass == 4) { nx = px; ny = py + 1; }
                 if (ny < 0 || ny >= m_mapH) continue;
-                int ni = ny * stride + nx * 4;
-                int nid = Province::colorToId(provPixels[ni], provPixels[ni + 1], provPixels[ni + 2]);
+                int nid = idOf(nx, ny);
                 if (nid > 0) foundPid = nid;
             }
-            if (foundPid > 0)
-                m_provinceGlow[foundPid].push_back({y * m_mapW + x, ba});
+            if (foundPid > 0) {
+                const int cell = (py / f) * outW + (px / f);
+                uint8_t& a = acc[foundPid][cell];
+                if (ba > a) a = ba;
+            }
         }
+        uint8_t* recycled = rows[0];
+        rows[0] = rows[1];
+        rows[1] = rows[2];
+        rows[2] = recycled;
+        fillFlags(rows[2], py + 2);
+    }
+
+    for (auto& [pid, cells] : acc) {
+        auto& vec = m_provinceGlow[pid];
+        vec.reserve(cells.size());
+        for (auto& [cell, a] : cells) vec.push_back({cell, a});
     }
 }
 
@@ -1125,9 +1463,12 @@ void MapRenderer::buildSelectionGlow() {
     if (m_selectedProvinceId <= 0) return;
 
     auto it = m_provinceGlow.find(m_selectedProvinceId);
-    if (it == m_provinceGlow.end() || it->second.empty()) return;
+    if (it == m_provinceGlow.end() || it->second.empty() || m_glowW <= 0) return;
 
-    Image glowImg = GenImageColor(m_mapW, m_mapH, {0, 0, 0, 0});
+    // m_glowW x m_glowH, not m_mapW x m_mapH: the same grid the glow indices
+    // were built against. In Risky RAM that is the downscaled border grid, so
+    // this is a few MB rather than a full-map 128 MB image per click.
+    Image glowImg = GenImageColor(m_glowW, m_glowH, {0, 0, 0, 0});
     auto* glowData = static_cast<unsigned char*>(glowImg.data);
 
     for (auto& [idx, alpha] : it->second) {
@@ -1145,9 +1486,10 @@ void MapRenderer::buildSelectionGlow() {
 void MapRenderer::setBulkSelection(const std::vector<int>& provinceIds, Color tint) {
     m_surfaceDirty = true;   // the globe samples a composite of these
     clearBulkSelection();
-    if (provinceIds.empty()) return;
+    if (provinceIds.empty() || m_glowW <= 0) return;
 
-    Image img = GenImageColor(m_mapW, m_mapH, {0, 0, 0, 0});
+    // Grid-sized, matching the glow indices (see buildSelectionGlow).
+    Image img = GenImageColor(m_glowW, m_glowH, {0, 0, 0, 0});
     auto* data = static_cast<unsigned char*>(img.data);
 
     bool any = false;
@@ -1352,7 +1694,14 @@ void MapRenderer::buildSurface(const LandSeaMap& landSea) {
     if (m_surface.id == 0 || m_surface.texture.width != win.texW ||
         m_surface.texture.height != win.texH) {
         if (m_surface.id > 0) UnloadRenderTexture(m_surface);
-        m_surface = LoadRenderTexture(win.texW, win.texH);
+        // Colour only (makeTarget), not LoadRenderTexture: the composite is a
+        // flat paint that tests no depth, so the depth buffer LoadRenderTexture
+        // attaches -- ~32 MB at this size -- is pure waste, and on a phone that
+        // is renderfed on top of the map textures and the wasm heap is the last
+        // ~32 MB that tipped a loaded world over the tab limit. The two paint
+        // targets above already skip it for the same reason.
+        m_surface = makeTarget(win.texW, win.texH);
+        if (m_surface.id == 0) return;   // the GPU refused it; no composite this frame
         // Bilinear, or the sphere shows the raster's texels at the limb where
         // it is most compressed.
         SetTextureFilter(m_surface.texture, TEXTURE_FILTER_BILINEAR);
@@ -1855,8 +2204,15 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
 
     for (const Layer& l : layerStack(landSea)) {
         if (l.tex.id == 0) continue;
+        // Drawn to the MAP's world size, not the texture's pixel size. A layer
+        // whose texture was shrunk to fit the GL (setProvinceIndex downscales
+        // the province index, and the political/overlay targets follow it) must
+        // still cover the whole world rather than a corner of it; a full-sized
+        // layer maps 1:1 and is unchanged.
+        const Rectangle src{0.0f, 0.0f, (float)l.tex.width, (float)l.tex.height};
         for (int tx = tileStart; tx < tileEnd; ++tx) {
-            DrawTexture(l.tex, tx * m_mapW, 0, l.tint);
+            const Rectangle dst{(float)tx * (float)m_mapW, 0.0f, (float)m_mapW, (float)m_mapH};
+            DrawTexturePro(l.tex, src, dst, {0.0f, 0.0f}, 0.0f, l.tint);
         }
     }
 

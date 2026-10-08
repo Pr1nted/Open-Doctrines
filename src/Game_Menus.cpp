@@ -16,6 +16,7 @@
 #include "miniz_zip.h"
 #include "Keybinds.h"
 #include "Game_Gdtl.h"
+#include "Feedback.h"   // feedback::kSupportUrl, for the Community menu's Ko-fi entry
 #include "raymath.h"
 #include <iostream>
 #include <cmath>
@@ -692,7 +693,15 @@ namespace {
  * ORDER IS DELIBERATE. Discord first because this screen is called Community
  * and that is the community. itch.io second because it is where a rating goes,
  * and a rating is the single most useful thing a player who liked this can do.
- * The website third, the source last: both matter to fewer people.
+ * The website third, the source fourth: both matter to fewer people.
+ *
+ * Ko-fi is last, and that is the point rather than an oversight. It is the only
+ * entry here that asks the player for something instead of offering them
+ * something, and a game that is free because its licence forbids anyone else
+ * charging for it can afford to put the collection tin by the door rather than
+ * in the hallway. It is also, with Steam having no donate button and itch's
+ * "Donate" pricing reaching only the minority who download rather than play in
+ * a tab, the one route to it that a browser player ever sees.
  */
 /**
  * THE LABELS ARE A `const char*[]` OF THEIR OWN, AND THAT IS NOT TIDINESS.
@@ -710,7 +719,7 @@ namespace {
  * language is loaded, so T() at this point freezes English in. They are looked
  * up at draw time instead, which is when a language exists. See docs/i18n.md.
  */
-const char* kCommunityLabels[] = {"Discord", "itch.io", "Website", "GitHub"};
+const char* kCommunityLabels[] = {"Discord", "itch.io", "Website", "GitHub", "Ko-fi"};
 
 struct CommunityLink {
     const char* url;
@@ -729,6 +738,12 @@ const CommunityLink kCommunityLinks[] = {
      {52, 45, 28, 220}, {74, 63, 38, 240}, {150, 130, 70, 200}, {200, 172, 90, 255}},
     {"https://github.com/Pr1nted/Open-Doctrines", "github.png",
      {35, 35, 45, 220}, {50, 50, 60, 240}, {110, 110, 130, 200}, {150, 150, 170, 255}},
+    // Teal rather than Ko-fi's own coral: itch.io above is already the red
+    // button on this screen, and two red buttons in one column is a misclick
+    // waiting to happen on the one pair where the wrong click costs the player
+    // money instead of a page load.
+    {feedback::kSupportUrl, "kofi.png",
+     {28, 46, 52, 220}, {40, 66, 74, 240}, {80, 150, 170, 200}, {110, 195, 220, 255}},
 };
 constexpr int kCommunityLinkCount = (int)(sizeof(kCommunityLinks) / sizeof(kCommunityLinks[0]));
 // Two arrays indexed by the same i. A mismatch is a wrong label on a right
@@ -1783,6 +1798,10 @@ void Game::updateMainMenu() {
     // solo game. It takes its own clicks so a press on it is not also a press
     // on the menu entry behind it. See Game_Lfg.cpp.
     if (updateMpInvite()) return;
+    // And the tip jar, on the same terms and in the same corner. It stands
+    // down whenever the invitation is up, so only one of these ever eats a
+    // click meant for the menu behind them.
+    if (updateSupportPrompt()) return;
 
     // The last row is the developer queue; without the badge it is simply
     // not counted, which hides it without renumbering anything above it.
@@ -3416,6 +3435,7 @@ void Game::updateSettingsFromMenu() {
             else if (m_settingsTab == 5 && m_settingsIndex == 0) { m_config.aiLearning = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
+            else if (m_settingsTab == 5 && m_settingsIndex == 6) { m_config.riskyRamOps = false; }
             else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                 if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                     *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -3629,6 +3649,15 @@ void Game::updateSettingsFromMenu() {
             // exists, and the module is what creates one.
             openLlmSetup();
             m_inSettings = false;
+        } else if (strcmp(s.label, "Risky RAM") == 0) {
+            // Structural: the image is freed as a world loads, so the change
+            // takes hold on the next world, not one already open.
+            m_config.riskyRamOps = !m_config.riskyRamOps;
+            Audio::get().playSfx(m_config.riskyRamOps ? "toggle_on" : "toggle_off");
+            m_menuFeedback = m_config.riskyRamOps
+                ? T("On — fits low-memory devices; turn-rewind and the timelapse need the full map. From your next new world.")
+                : T("Off");
+            m_menuFeedbackTimer = 6.0f;
         } else if (strcmp(s.label, "AI Difficulty") == 0) {
             m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
         } else if (strcmp(s.label, "Accent Color") == 0) {

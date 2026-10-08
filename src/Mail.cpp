@@ -179,18 +179,29 @@ const Message* Box::find(int id) const {
     return nullptr;
 }
 
+// Edit and discard look only at PENDING letters, which are always this box's
+// own. A received letter keeps its sender's id (see receive), so the same id
+// can name one of ours and one of theirs; stopping at the first match meant an
+// edit could land on the received one, be refused, and do nothing.
 bool Box::edit(int id, const std::string& body) {
-    Message* m = find(id);
-    if (!m || !m->editable()) return false;
-    m->body = body;
-    return true;
+    for (Thread& t : m_threads)
+        for (Message& m : t.messages)
+            if (m.id == id && m.editable()) { m.body = body; return true; }
+    return false;
+}
+
+bool Box::block(int id) {
+    for (Thread& t : m_threads)
+        for (Message& m : t.messages)
+            if (m.id == id && m.status == Status::Pending) { m.status = Status::Blocked; return true; }
+    return false;
 }
 
 bool Box::discard(int id) {
     for (Thread& t : m_threads) {
         for (size_t i = 0; i < t.messages.size(); ++i) {
             if (t.messages[i].id != id) continue;
-            if (!t.messages[i].editable()) return false;   // already gone
+            if (!t.messages[i].editable()) continue;   // gone, or somebody else's
             t.messages.erase(t.messages.begin() + (long)i);
             return true;
         }

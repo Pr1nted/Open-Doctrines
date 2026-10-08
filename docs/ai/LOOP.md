@@ -1067,3 +1067,15 @@ probes documented in the journal where they were measured. These are the ones th
 `[REATTACK]` with the `noteAssaultOutcome` join; `[WIDTH2]`/`[WIDTH4]` both-sides-bound census for `resolveAssault`
 and `processBattles`; `OD_WIDTH_PAIR` to scope those to one war; `OD_WARLIFE_FILE` to get war length out of a
 benched run (od_bench keeps only stdout).
+- **Hash the binary per run, not per bench, and run a private copy.** Journal
+  531 had the shared build tree rebuilt under it mid-bench and salvaged 13 of
+  16 seeds only by comparing the binary's mtime to each run's output mtime. A
+  copy needs a `data/` beside it (`<bindir>/../data`), so put it in a sibling
+  directory inside the repo rather than the scratchpad.
+- **Pin the binary by copying it, and copy it INSIDE the repo.**
+  `tools/pin_server.sh` puts the server in `cmake-build-pin/` and echoes the
+  path; use that path for every run of a bench. It must be a direct child of
+  the repo root because the server resolves data at `<bindir>/../data`, which
+  is why a scratchpad copy dies (journal 510) and a sibling build directory
+  works (journal 532). `cp`, not a link: the pin needs its own inode so a
+  rebuild of the source tree cannot reach it.

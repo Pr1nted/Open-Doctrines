@@ -159,6 +159,7 @@ bool signedIn() {
 }
 
 const char* ratingUrl() { return "https://pr1nted.itch.io/open-doctrines"; }
+const char* const kSupportUrl = "https://ko-fi.com/pr1nted";
 
 const char* categoryLabel(Category c) {
     // Translated by the caller. Kept here so the form and the summary cannot

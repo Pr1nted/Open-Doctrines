@@ -310,13 +310,22 @@ public:
     static void dumpPacCooldown();
     static void dumpMunClamp();
     static void dumpResearchPicks();
-    void monumentReflex(int cid);   ///< OD_MONUMENT_REFLEX, off by default.
+    /// OD_MONUMENT_REFLEX, SHIPPED ON (journal 437); =0 restores the world in
+    /// which the AI never touches a monument. Builds, idles what it cannot pay
+    /// for, and revives what it owns (OD_MONUMENT_REACTIVATE, also on).
+    void monumentReflex(int cid);
     /// Consecutive lean / flush turns per country -- the hysteresis journal 436
     /// added so the reflex stops selling what it just bought. Per-run, not
     /// static: two seats in one process must not share a dial.
     std::unordered_map<int,int> m_monLeanTurns, m_monFlushTurns;
+    /// Journal 534: (cid, province) -> the turn its monument was revived, so an
+    /// idle can say how long the revive lasted. Erased when it is undone.
+    std::map<std::pair<int,int>,int> m_monRevivedAt;
+    /// Dwell of every undone revival, in turns. Instrument only.
+    static std::vector<int> s_reviveDwell;
+    static std::atomic<long long> s_monumentsUpgraded;
     static void dumpMonuments();
-    static std::atomic<long long> s_monumentsBuilt, s_monumentsIdled;
+    static std::atomic<long long> s_monumentsBuilt, s_monumentsIdled, s_monumentsRevived;
     static std::map<std::string, long long> s_researchPickBy;
     static std::atomic<long long> s_recruitMunClamped;
     static std::atomic<long long> s_pacCooldownRefused;

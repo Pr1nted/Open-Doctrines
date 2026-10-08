@@ -4,7 +4,7 @@ import { clearKv, setupEnv } from "./helpers.js";
 import {
     accountForIdentity, changeNickname, createAccount, deleteAccount, getAccount,
     identSubHash, identityIsBanned, linkIdentity, NICK_COOLDOWN_SECONDS,
-    publicAccount, setBanned, unlinkIdentity, type Account,
+    publicAccount, sanctionsOf, setBanned, setModsRestricted, unlinkIdentity, type Account,
 } from "../src/accounts/store.js";
 import { checkAccountAge } from "../src/accounts/policy.js";
 import { PROVIDERS } from "../src/auth/providers.js";
@@ -264,6 +264,27 @@ describe("bans", () => {
         );
         expect(retry.account).toBeNull();
         expect(retry.nickError).toBe("banned");
+    });
+
+    it("keeps a history the player can read, pardons included", async () => {
+        const t0 = 1_800_000_000;
+        let acc = await make("Vlad");
+        acc = await setBanned(env, acc, true, "spam", 3, t0);            // timeout
+        acc = await setBanned(env, acc, false, "", undefined, t0 + 60);  // pardoned
+        acc = await setModsRestricted(env, acc, true, "malware", undefined, t0 + 120);
+        acc = await setBanned(env, acc, true, "harassment", undefined, t0 + 180);
+
+        const list = publicAccount(acc).sanctions as ReturnType<typeof sanctionsOf>;
+        expect(list.map((s) => s.kind)).toEqual(["ban", "mods", "timeout"]);
+        expect(list[2]!.liftedAt).toBe(t0 + 60);
+        expect(list[2]!.until).toBe(t0 + 3 * 86400);
+        expect(list[0]!.liftedAt).toBeUndefined();
+        expect((await getAccount(env, acc.id))!.sanctions).toHaveLength(3);
+    });
+
+    it("shows a ban set before the history existed", async () => {
+        const acc = { ...(await make("Vlad")), banned: { reason: "old", at: 5 } };
+        expect(sanctionsOf(acc)).toEqual([{ kind: "ban", reason: "old", at: 5 }]);
     });
 
     it("does not block the identity when an unbanned account is deleted", async () => {

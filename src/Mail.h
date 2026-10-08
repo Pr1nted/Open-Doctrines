@@ -265,6 +265,8 @@ public:
     bool edit(int id, const std::string& body);
     /// Tear one up. False if it has already gone.
     bool discard(int id);
+    /// A pending letter of ours that the host refused: it stays, marked so.
+    bool block(int id);
 
     /**
      * Send everything pending. Called once, when the turn resolves.

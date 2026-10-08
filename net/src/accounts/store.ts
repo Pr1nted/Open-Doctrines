@@ -72,6 +72,27 @@ export interface Restriction {
     until?: number;
 }
 
+/**
+ * One punishment as the player is owed it: what, why, when, and until when.
+ *
+ * `banned` and `restricted` hold only what is in force, and lifting one
+ * deletes it, so on their own they cannot answer "what has happened to my
+ * account?". This list can. It is shown only to the account itself (and to
+ * moderators), never to other players.
+ */
+export interface Sanction {
+    kind: "ban" | "timeout" | "mods";
+    reason: string;
+    at: number;
+    /** Unix seconds it was set to end. Absent means indefinite. */
+    until?: number;
+    /** Unix seconds it was lifted early, by a pardon. */
+    liftedAt?: number;
+}
+
+/** How many sanctions an account keeps. Older ones fall off the end. */
+export const SANCTION_HISTORY = 20;
+
 export interface Account {
     id: string;
     nick: string;          // canonical form, as displayed
@@ -133,6 +154,9 @@ export interface Account {
          */
         until?: number;
     };
+
+    /** Every ban, timeout and restriction, newest first. See Sanction. */
+    sanctions?: Sanction[];
 }
 
 /**
@@ -445,15 +469,17 @@ export async function setBanned(
     env: Env, account: Account, on: boolean, reason: string,
     days?: number, now = Math.floor(Date.now() / 1000),
 ): Promise<Account> {
+    const until = days && days > 0 ? now + Math.floor(days * 86400) : undefined;
     const updated: Account = on
         ? {
             ...account,
-            banned: {
-                reason, at: now,
-                ...(days && days > 0 ? { until: now + Math.floor(days * 86400) } : {}),
-            },
+            banned: { reason, at: now, ...(until !== undefined ? { until } : {}) },
+            sanctions: recordSanction(account,
+                { kind: until !== undefined ? "timeout" : "ban", reason, at: now,
+                  ...(until !== undefined ? { until } : {}) }, now),
         }
-        : { ...account, banned: undefined };
+        : { ...account, banned: undefined,
+            sanctions: liftSanction(account, (k) => k !== "mods", now) };
     await putAccount(env, updated);
     return updated;
 }
@@ -497,20 +523,56 @@ export async function setModsRestricted(
     days?: number, now = Math.floor(Date.now() / 1000),
 ): Promise<Account> {
     const rest = { ...(account.restricted ?? {}) };
+    let sanctions: Sanction[];
     if (on) {
         rest.mods = {
             reason, at: now,
             ...(days && days > 0 ? { until: now + Math.floor(days * 86400) } : {}),
         };
+        sanctions = recordSanction(account, { kind: "mods", ...rest.mods }, now);
     } else {
         delete rest.mods;
+        sanctions = liftSanction(account, (k) => k === "mods", now);
     }
     const updated: Account = {
         ...account,
+        sanctions,
         ...(Object.keys(rest).length ? { restricted: rest } : { restricted: undefined }),
     };
     await putAccount(env, updated);
     return updated;
+}
+
+/**
+ * The account's history, with what it had before the history existed folded
+ * in: an account banned before this field was added still has its ban shown.
+ */
+export function sanctionsOf(account: Account): Sanction[] {
+    const list = [...(account.sanctions ?? [])];
+    const seen = (kind: (k: Sanction["kind"]) => boolean, at: number) =>
+        list.some((s) => kind(s.kind) && s.at === at);
+    if (account.banned && !seen((k) => k !== "mods", account.banned.at)) {
+        list.push({ kind: account.banned.until !== undefined ? "timeout" : "ban", ...account.banned });
+    }
+    const mods = account.restricted?.mods;
+    if (mods && !seen((k) => k === "mods", mods.at)) list.push({ kind: "mods", ...mods });
+    return list.sort((a, b) => b.at - a.at).slice(0, SANCTION_HISTORY);
+}
+
+function recordSanction(account: Account, s: Sanction, now: number): Sanction[] {
+    // Replacing a sanction in force ends the old one now, so the history never
+    // shows two of the same kind running at once.
+    const same = (k: Sanction["kind"]) => (s.kind === "mods") === (k === "mods");
+    const prior = liftSanction(account, same, now);
+    return [s, ...prior].slice(0, SANCTION_HISTORY);
+}
+
+function liftSanction(
+    account: Account, kind: (k: Sanction["kind"]) => boolean, now: number,
+): Sanction[] {
+    return sanctionsOf(account).map((s) =>
+        kind(s.kind) && s.liftedAt === undefined && (s.until === undefined || s.until > now)
+            ? { ...s, liftedAt: now } : s);
 }
 
 /** The public view of an account. Never includes `identities[].subHash`. */
@@ -529,5 +591,9 @@ export function publicAccount(account: Account): Record<string, unknown> {
         // told that, rather than meeting a 403 with no account of itself.
         ...(modsRestricted(account) ? { restricted: { mods: account.restricted!.mods } } : {}),
         ...(account.displayTag ? { displayTag: account.displayTag } : {}),
+        // The whole record, expired and pardoned included. Every caller of
+        // this function answers the account itself or a moderator, so this is
+        // never shown to another player.
+        sanctions: sanctionsOf(account),
     };
 }

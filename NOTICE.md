@@ -104,7 +104,7 @@ the same one and wonder why it is not here.
 | [miniz](https://github.com/richgel999/miniz) | vendored | MIT | ZIP and deflate for .odmap, .odsv and .odmod |
 | [stb_image / stb_image_write](https://github.com/nothings/stb) | vendored | Public domain (Unlicense/MIT dual) | PNG decode and encode in the map generator |
 | [Tor (Tor Expert Bundle)](https://www.torproject.org/download/tor/) | 15.0.24 | BSD-3-Clause (tor, libevent), Apache-2.0 (OpenSSL) | Optional: onion hosting and "hide my IP"; shipped unmodified in data/tor/, licence texts in data/tor/licenses/ |
-| [Simple Icons](https://simpleicons.org/) | 16.33.0 | CC0-1.0 | The Apple, Linux, Android, FreeBSD and OpenBSD marks on the download page |
+| [Simple Icons](https://simpleicons.org/) | 16.33.0 | CC0-1.0 | The Apple, Linux, Android, FreeBSD and OpenBSD marks on the download page; the Discord, itch.io, GitHub and Ko-fi marks in the game's Community menu |
 | [Tabler Icons](https://tabler.io/icons) | 3.48.0 | MIT | The Windows mark on the download page; Simple Icons does not carry one |
 | [Lucide](https://lucide.dev/) | 1.50.0 | ISC | The church glyph standing in for TempleOS, which has no icon in any set |
 

@@ -1,0 +1,24 @@
+# Only what building and running the server needs. The working tree carries
+# gigabytes this image has no use for -- saves, local AI models, the advisor's
+# runner -- and every byte not ignored is uploaded to the builder.
+.git
+build
+dist
+cmake-build-*
+**/node_modules
+net/.wrangler
+data/saves
+data/llm
+data/audio
+data/mods
+data/tools
+data/projects
+data/custom_maps
+data/account.json
+data/config.json
+data/servers.json
+data/ai/*
+!data/ai/model.bin
+.playtest
+web
+docs/img

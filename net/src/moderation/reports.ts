@@ -28,8 +28,8 @@
 // follows the person to a new machine.
 
 import type { Env } from "../env.js";
-import type { Account } from "../accounts/store.js";
-import { getAccount, setBanned } from "../accounts/store.js";
+import type { Account, Sanction } from "../accounts/store.js";
+import { getAccount, sanctionsOf, setBanned } from "../accounts/store.js";
 import { normalize } from "../accounts/nickname.js";
 import { randomId } from "../util/crypto.js";
 
@@ -404,6 +404,8 @@ export interface Profile {
     against: Report[];
     /** Reports this person filed. A pattern here is as informative as one above. */
     filed: Report[];
+    /** Every ban, timeout and restriction, pardoned ones included. */
+    sanctions: Sanction[];
 }
 
 /**
@@ -427,6 +429,7 @@ export async function profileOf(env: Env, account: Account): Promise<Profile> {
         bannedAt: account.banned?.at,
         against: all.filter((r) => r.accusedId === account.id),
         filed: all.filter((r) => r.reporterId === account.id),
+        sanctions: sanctionsOf(account),
     };
 }
 

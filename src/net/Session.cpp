@@ -834,6 +834,12 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
             push(NetSessionEvent{NetSessionEvent::Kind::TurnStoreKnown});
             return;
         }
+        case NetMsg::MailFrom: {
+            NetSessionEvent e{NetSessionEvent::Kind::Mail};
+            if (!NetMail::decode(body, size, e.mail)) return;
+            push(std::move(e));
+            return;
+        }
         case NetMsg::Notice: {
             NetSessionEvent e{NetSessionEvent::Kind::Notice};
             if (!NetNotice::decode(body, size, e.notice)) return;
@@ -949,11 +955,17 @@ bool NetSession::nextModMessage(NetModMsg& out) {
     return true;
 }
 
-void NetSession::sendChat(const std::string& text) {
-    if (!joined(phase()) || text.empty()) return;
+bool NetSession::sendChat(const std::string& text) {
+    if (!m_impl || !joined(phase()) || text.empty()) return false;
     NetChat c;
     c.text = text.size() > NetLimits::kChat ? text.substr(0, NetLimits::kChat) : text;
     m_impl->socket.send(netEncodeFrame(NetMsg::Chat, c.encode()));
+    return true;
+}
+
+void NetSession::sendMail(const NetMail& m) {
+    if (!m_impl) return;
+    m_impl->socket.send(netEncodeFrame(NetMsg::Mail, m.encode()));
 }
 
 void NetSession::sendPlayerReport(uint16_t aboutPeer, const std::string& reason,

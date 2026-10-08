@@ -639,8 +639,14 @@ bool Game::revertToTurn(int turn) {
 bool Game::applyTurnRewind(const std::string& savePath, int turn) {
     // Everything below repaints the map, so a world without a renderer is not
     // something we can rewind onto.
-    if (!m_renderer || !m_provinces.getImage().data) {
+    if (!m_renderer || m_provinces.getWidth() <= 0) {
         m_historyStatus = "No world loaded to revert";
+        return false;
+    }
+    // A Risky-RAM world has no province image to repaint from -- the one thing
+    // that mode trades away. Say so rather than claim no world is loaded.
+    if (!m_provinces.getImage().data) {
+        m_historyStatus = "Turn rewind needs the full map -- turn off Risky RAM";
         return false;
     }
     std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" +

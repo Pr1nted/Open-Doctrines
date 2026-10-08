@@ -68,6 +68,7 @@ struct NetSessionEvent {
         TurnOrders,
         Notice,          // "AI played X because ..."
         Chat,
+        Mail,            // a letter for this player's country; see NetMsg::MailFrom
         /**
          * Long-form: the host said where turns live and handed over the key.
          *
@@ -87,6 +88,7 @@ struct NetSessionEvent {
     NetSwap              swap;
     NetNotice            notice;
     NetChat              chat;
+    NetMail              mail;
 };
 
 class NetSession {
@@ -198,7 +200,9 @@ public:
     bool submitOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload);
     /** "Not ready after all" -- retracts this turn's submission. */
     void withdrawOrders(uint32_t turnNumber);
-    void sendChat(const std::string& text);
+    /** False when it could not go -- not connected right now -- so the
+     *  caller can keep the line instead of losing it. */
+    bool sendChat(const std::string& text);
 
     /**
      * Tell the host about another player.
@@ -208,6 +212,9 @@ public:
      */
     void sendPlayerReport(uint16_t aboutPeer, const std::string& reason,
                           const std::string& note, const std::string& message);
+
+    /** A letter from this player's country, to the host who posts it. */
+    void sendMail(const NetMail& m);
 
     /** Send a mod's message. `toPeer` below zero means everyone else. */
     void sendModMessage(const std::string& modId, int32_t toPeer,

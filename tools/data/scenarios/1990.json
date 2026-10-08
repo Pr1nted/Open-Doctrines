@@ -1,0 +1,263 @@
+{
+ "$comment": "August 1990: the last summer of the world the Cold War built. Three fuses are lit at once and none of them has gone off yet. The German Democratic Republic has six weeks left. The Soviet Union has sixteen months, and three of its republics have already declared independence it does not recognise. Iraq has been in Kuwait for days and the coalition is still arriving. Yugoslavia and Czechoslovakia are each one country, as they were, and each is a year or three from not being one. Everything here is the world as it stood, not as it turned out.",
+
+ "schema": 1,
+ "id": "1990",
+ "name": "The Last Summer",
+ "date": "August 1990 AD",
+ "author": "OpenDoctrines",
+ "description": "The Wall is down, the Warsaw Pact is a signature on a dead treaty, and the Soviet Union still covers a sixth of the land. East Germany has six weeks left as a country. The Baltics have declared independence Moscow has not granted. Iraq is in Kuwait and the coalition is still unloading. Yugoslavia and Czechoslovakia are whole. None of it had to end the way it did.",
+
+ "independent_default": true,
+ "independent_except": ["BLC", "UNC"],
+
+ "$scale_comment": "World population in 1990 was about 5.3 billion against the base map's ~8.0, so 0.66. Industry is much closer to modern than 1962 was -- this is the end of the Cold War, not the middle of it -- and the cap is one below Modern Day rather than two.",
+ "population_scale": 0.66,
+ "industry_scale": 0.78,
+ "industry_level_cap": 9,
+
+ "$industry_comment": "1990, not today. Japan is at its peak and has not yet lost the decade; China has had twelve years of reform and is still poor; the Soviet Union is industrially large and economically failing, which the game models as capacity without the income to use it.",
+ "industry_by_iso": {
+  "USA": 1.0,
+  "JPN": 0.97,
+  "DEU": 0.95,
+  "FRA": 0.86,
+  "GBR": 0.85,
+  "ITA": 0.82,
+  "CAN": 0.8,
+  "SOV": 0.74,
+  "ESP": 0.66,
+  "KOR": 0.55,
+  "BRA": 0.5,
+  "IND": 0.3,
+  "CHN": 0.34
+ },
+
+ "powers": [
+  {
+   "iso": "SOV",
+   "name": "Soviet Union",
+   "color": "#b23a34",
+   "$comment": "Twelve republics, not fifteen. Lithuania declared independence on 11 March 1990 and Estonia and Latvia followed within weeks; Moscow rejected all three and kept its troops there, so they are independent countries on this map with a Soviet claim on each. That is the actual situation in August 1990 rather than either tidy answer.",
+   "owns": ["RUS", "UKR", "BLR", "KAZ", "UZB", "TKM", "TJK", "KGZ", "ARM", "AZE", "GEO", "MDA"],
+   "flag_file": "SOV",
+   "population": 289000000,
+   "army": 3988000,
+   "navy": 30,
+   "compass": { "left": 82, "auth": 74 },
+   "$compass_comment": "Not 1962's numbers. Five years of perestroika and glasnost, contested elections to the Congress of People's Deputies, and the Party's monopoly struck out of the constitution in March 1990. Still a command economy and still authoritarian -- just no longer the state that put missiles in Cuba.",
+   "policies": ["state_industry", "conscription", "collective_agriculture", "internal_passports", "literacy_campaign"]
+  },
+
+  {
+   "iso": "DDR",
+   "name": "German Democratic Republic",
+   "color": "#c68b4b",
+   "$comment": "Six weeks from the end. The Wall opened in November 1989, the first free election was in March 1990, and the currency union with the West came in July -- so this is a state whose economy is already not its own. The same bounding box the 1962 scenario uses, because the border did not move.",
+   "boxes": [{ "from": "DEU", "bbox": [10.6, 50.2, 15.1, 54.8] }],
+   "population": 16100000,
+   "army": 90000,
+   "navy": 1,
+   "compass": { "left": 58, "auth": 30 },
+   "policies": ["state_industry", "free_press", "general_amnesty"],
+   "flag_file": "DDR"
+  },
+
+  {
+   "iso": "DEU",
+   "name": "Federal Republic of Germany",
+   "color": "#89c64b",
+   "owns": ["DEU"],
+   "flag_from": "DEU",
+   "population": 63700000,
+   "army": 495000,
+   "navy": 4,
+   "compass": { "left": 8, "auth": 6 },
+   "policies": ["free_press", "conscription", "worker_rights", "universal_healthcare"]
+  },
+
+  {
+   "iso": "CSK",
+   "name": "Czechoslovakia",
+   "color": "#4b7cc6",
+   "$comment": "One country until 1993. Eight months after the Velvet Revolution, with Havel in the castle and the first free election behind it -- so the compass is liberal, not communist, which is the whole point of putting 1990 on the map rather than 1985. The flag is the one Czechia kept, so it is taken from CZE rather than drawn again.",
+   "owns": ["CZE", "SVK"],
+   "flag_from": "CZE",
+   "population": 15700000,
+   "army": 200000,
+   "navy": 0,
+   "compass": { "left": 18, "auth": 14 },
+   "policies": ["free_press", "privatization", "general_amnesty", "conscription"]
+  },
+
+  {
+   "iso": "YUG",
+   "name": "Socialist Federal Republic of Yugoslavia",
+   "color": "#7a5ab5",
+   "$comment": "Whole, for one more year. Slovenia and Croatia held multi-party elections in the spring of 1990 and the League of Communists had already broken apart in January; the wars begin in June 1991. Montenegro and Kosovo are inside SRB on the base map, so they are inside Yugoslavia here by inheritance rather than by a line of their own.",
+   "owns": ["SRB", "HRV", "SVN", "BIH", "MKD"],
+   "flag_file": "YUG_SFR",
+   "population": 23800000,
+   "army": 180000,
+   "navy": 3,
+   "compass": { "left": 52, "auth": 44 },
+   "policies": ["state_industry", "decentralization", "conscription", "worker_rights"]
+  },
+
+  {
+   "iso": "IRQ",
+   "name": "Republic of Iraq",
+   "color": "#6f8c3a",
+   "$comment": "Two years out of eight at war with Iran, a million men still under arms, and into Kuwait on 2 August. Kuwait is modelled as a country at war rather than as an Iraqi province -- it was annexed and declared the nineteenth governorate within the week, but a scenario in which the invasion has already succeeded is a scenario with nothing in it. The claim records what Baghdad said it was doing.",
+   "owns": ["IRQ"],
+   "population": 18100000,
+   "army": 1000000,
+   "navy": 1,
+   "compass": { "left": 54, "auth": 96 },
+   "policies": ["total_war_economy", "secret_police", "conscription", "censorship", "national_unity"]
+  },
+
+  {
+   "iso": "KWT",
+   "name": "State of Kuwait",
+   "color": "#d8c15a",
+   "owns": ["KWT"],
+   "population": 2100000,
+   "army": 16000,
+   "navy": 1,
+   "compass": { "left": -30, "auth": 62 },
+   "policies": ["foreign_investment", "strategic_stockpile"]
+  },
+
+  {
+   "iso": "ZAF",
+   "name": "Republic of South Africa",
+   "color": "#c9643a",
+   "$comment": "Apartheid is ending and has not ended: Mandela walked out of Victor Verster in February 1990 and the Population Registration Act is not repealed until June 1991. The flag is the orange-white-blue, which flew until 1994. Namibia is gone -- independent since 21 March -- so it is not in `owns`.",
+   "owns": ["ZAF"],
+   "flag_file": "ZAF_1928",
+   "population": 35200000,
+   "army": 103000,
+   "navy": 2,
+   "compass": { "left": -28, "auth": 84 },
+   "policies": ["martial_law", "secret_police", "autarky", "censorship"]
+  },
+
+  {
+   "iso": "ETH",
+   "name": "People's Democratic Republic of Ethiopia",
+   "color": "#5a8c4b",
+   "$comment": "Eritrea is Ethiopian until 1993 and fighting to stop being, which the base map cannot express as a border because it has no Eritrean front -- so it is ownership here and a war the scenario does not draw.",
+   "owns": ["ETH", "ERI"],
+   "population": 48000000,
+   "army": 230000,
+   "navy": 1,
+   "compass": { "left": 80, "auth": 88 },
+   "policies": ["state_industry", "collective_agriculture", "conscription", "censorship"]
+  },
+
+  {
+   "iso": "GBR",
+   "name": "United Kingdom",
+   "color": "#3e6fb0",
+   "$comment": "Hong Kong is British until 1997 and the Falklands are eight years past the war. Everything else in the old list had gone by 1990.",
+   "owns": ["GBR", "IMN", "HKG", "FLK", "SGS"],
+   "population": 57200000,
+   "army": 308000,
+   "navy": 12,
+   "compass": { "left": -34, "auth": 18 },
+   "policies": ["privatization", "deregulation", "free_press", "naval_supremacy"]
+  },
+
+  {
+   "iso": "USA",
+   "name": "United States",
+   "color": "#2f6fae",
+   "owns": ["USA", "PRI"],
+   "population": 249600000,
+   "army": 2044000,
+   "navy": 40,
+   "compass": { "left": -42, "auth": 12 },
+   "policies": ["free_press", "deregulation", "professional_army", "naval_supremacy"]
+  },
+
+  {
+   "$comment": "Named only to carry a 1990 population. A flat scale on modern figures is wrong in both directions -- Japan has barely grown since and comes out a third too small, Iraq has nearly tripled and comes out about right -- so the countries whose weight decides the era get the real number.",
+   "iso": "JPN", "color": "#526fb7", "name": "Japan", "owns": ["JPN"], "flag_from": "JPN",
+   "population": 123500000, "army": 246000, "navy": 8,
+   "compass": { "left": -30, "auth": 20 },
+   "policies": ["foreign_investment", "technocracy", "free_press"]
+  },
+
+  {
+   "iso": "CHN", "color": "#52b79a", "name": "People's Republic of China", "owns": ["CHN"], "flag_from": "CHN",
+   "population": 1143000000, "army": 3030000, "navy": 8,
+   "compass": { "left": 74, "auth": 94 },
+   "$comment": "Twelve years into reform and one year after Tiananmen: the economy is opening and the politics are not.",
+   "policies": ["state_industry", "foreign_investment", "censorship", "conscription", "secret_police"]
+  },
+
+  {
+   "iso": "IND", "color": "#b7526f", "name": "Republic of India", "owns": ["IND"], "flag_from": "IND",
+   "population": 870000000, "army": 1262000, "navy": 5,
+   "compass": { "left": 42, "auth": 24 },
+   "policies": ["state_industry", "free_press", "land_reform"]
+  },
+
+  {
+   "iso": "FRA", "color": "#5285b7", "name": "French Republic", "owns": ["FRA", "NCL", "PYF", "ATF"], "flag_from": "FRA",
+   "population": 56700000, "army": 550000, "navy": 10,
+   "compass": { "left": -8, "auth": 16 },
+   "policies": ["state_industry", "free_press", "conscription", "universal_healthcare"]
+  },
+
+  {
+   "iso": "ITA", "color": "#b75290", "name": "Italian Republic", "owns": ["ITA"], "flag_from": "ITA",
+   "population": 56700000, "army": 389000, "navy": 5,
+   "compass": { "left": -12, "auth": 14 },
+   "policies": ["free_press", "state_industry", "conscription"]
+  },
+
+  {
+   "iso": "POL", "color": "#a1b752", "name": "Republic of Poland", "owns": ["POL"], "flag_from": "POL",
+   "population": 38100000, "army": 312000, "navy": 2,
+   "$comment": "Solidarity won the 1989 election and Balcerowicz's shock therapy began in January 1990, so Poland is already out of the command economy while still formally in the Pact.",
+   "compass": { "left": 20, "auth": 18 },
+   "policies": ["privatization", "free_press", "austerity_programme", "conscription"]
+  }
+ ],
+
+ "relations": {
+  "$comment": "Two alliances that still formally existed and one that was being assembled. The Warsaw Pact is signed but hollow -- its members had held free elections and East Germany left its military structure in September -- which is why it is an alliance here and not a bloc that acts like one.",
+  "alliances": [
+   ["USA", "GBR", "FRA", "DEU", "ITA", "CAN", "NLD", "BEL", "NOR", "DNK", "PRT", "GRC", "TUR", "ISL", "LUX", "ESP"],
+   ["SOV", "POL", "CSK", "HUN", "ROU", "BGR", "DDR"],
+   ["USA", "SAU", "GBR", "EGY", "FRA", "SYR", "KWT"]
+  ],
+  "non_aggression": [
+   ["SOV", "USA"],
+   ["SOV", "DEU"]
+  ],
+  "wars": [
+   ["IRQ", "KWT"]
+  ]
+ },
+
+ "claims": [
+  { "$comment": "Declarations Moscow did not accept. Lithuania 11 March 1990, Estonia 30 March, Latvia 4 May.", "by": "SOV", "on": "LTU" },
+  { "by": "SOV", "on": "EST" },
+  { "by": "SOV", "on": "LVA" },
+  { "$comment": "The stated reason for the invasion: that Kuwait had always been part of Basra province.", "by": "IRQ", "on": "KWT" },
+  { "by": "CHN", "on": "TWN", "note": "one China" },
+  { "by": "TWN", "on": "CHN", "note": "one China" },
+  { "$comment": "A claim names whoever HOLDS the ground, so Hong Kong is a claim on Britain narrowed to the territory -- agreed in the 1984 Joint Declaration, due in 1997.", "by": "CHN", "on": "GBR", "note": "Hong Kong", "bbox": [113.8, 22.1, 114.5, 22.6] },
+  { "by": "IND", "on": "PAK" },
+  { "by": "PAK", "on": "IND" },
+  { "by": "PRK", "on": "KOR" },
+  { "by": "KOR", "on": "PRK" },
+  { "by": "MAR", "on": "ESH" },
+  { "by": "ARG", "on": "GBR", "note": "the Falklands, eight years after the war", "bbox": [-61.5, -52.5, -57.6, -51.0] },
+  { "by": "SYR", "on": "LBN" },
+  { "by": "IDN", "on": "PNG" }
+ ]
+}

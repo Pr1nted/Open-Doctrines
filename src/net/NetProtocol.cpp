@@ -40,6 +40,8 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::SessionInfo:   return "SessionInfo";
         case NetMsg::LobbyMap:      return "LobbyMap";
         case NetMsg::SnapshotZ:     return "SnapshotZ";
+        case NetMsg::Mail:          return "Mail";
+        case NetMsg::MailFrom:      return "MailFrom";
     }
     return "Unknown";
 }
@@ -499,8 +501,10 @@ std::string netVoiceLinkHost(const std::string& url) {
 
 std::vector<uint8_t> NetSessionInfo::encode() const {
     NetWriter w;
-    w.u8(1);                 // layout version, for a reader to skip what it lacks
+    w.u8(2);                 // layout version, for a reader to skip what it lacks
     w.str(voiceLink);
+    w.u8(llmAnswers ? 1 : 0);   // v2
+    w.u8(mailPolicy);           // v2
     return w.take();
 }
 
@@ -511,6 +515,11 @@ bool NetSessionInfo::decode(const uint8_t* data, size_t size, NetSessionInfo& ou
     if (!r.ok() || version == 0) return false;
     out.voiceLink = r.str(256);
     if (!r.ok()) return false;
+    if (version >= 2 && r.remaining() >= 2) {
+        out.llmAnswers = r.u8() != 0;
+        out.mailPolicy = r.u8();
+        if (out.mailPolicy > 3) out.mailPolicy = 3;
+    }
     // A link that does not pass is dropped, not shown: the host's UI should
     // have refused it, and a client is not obliged to trust that it did.
     if (!out.voiceLink.empty() && !netVoiceLinkValid(out.voiceLink)) out.voiceLink.clear();
@@ -596,6 +605,42 @@ bool NetChat::decode(const uint8_t* data, size_t size, NetChat& out) {
     NetReader r(data, size);
     out.fromPeerId = r.u16();
     out.text       = r.str(NetLimits::kChat);
+    return r.done();
+}
+
+std::vector<uint8_t> NetMail::encode() const {
+    NetWriter w;
+    w.u8(static_cast<uint8_t>(op));
+    w.u32(id);
+    w.u16(fromCountry);
+    w.u16(toCountry);
+    w.str(body);
+    w.u32(writtenTurn);
+    w.u32(deliverTurn);
+    w.u8(status);
+    w.u8(author);
+    w.str(authorName);
+    w.u8(history ? 1 : 0);
+    return w.take();
+}
+
+bool NetMail::decode(const uint8_t* data, size_t size, NetMail& out) {
+    NetReader r(data, size);
+    const uint8_t op = r.u8();
+    if (op > static_cast<uint8_t>(Op::Reset)) return false;
+    out.op = static_cast<Op>(op);
+    out.id = r.u32();
+    out.fromCountry = r.u16();
+    out.toCountry = r.u16();
+    // mail::kMaxBody is 2000; the bound is on the way IN, whatever was sent.
+    out.body = r.str(2000);
+    out.writtenTurn = r.u32();
+    out.deliverTurn = r.u32();
+    out.status = r.u8();
+    out.author = r.u8();
+    out.authorName = r.str(64);
+    out.history = r.u8() != 0;
+    if (out.status > 2 || out.author > 1) return false;
     return r.done();
 }
 

@@ -128,6 +128,15 @@ bool signedIn();
 /** Where a rating belongs: public, and useful to somebody choosing the game. */
 const char* ratingUrl();
 
+/**
+ * The tip jar.
+ *
+ * One constant and not three literals: it is wanted by the Community menu, by
+ * the after-game prompt, and by anything that comes later, and a handle that
+ * changes in two of those places is a dead link in the third.
+ */
+extern const char* const kSupportUrl;
+
 Status status();
 
 /** The last thing worth telling the player: a thank-you or a failure. */

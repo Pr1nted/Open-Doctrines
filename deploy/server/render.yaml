@@ -1,0 +1,36 @@
+# A Render Blueprint for an always-on campaign server on the FREE plan.
+#
+# Render reads a blueprint from render.yaml at the root of your repository:
+# copy this file there in your fork (or create the service by hand with the
+# same settings -- see docs/tournaments.md). Secrets are marked sync: false;
+# Render asks for them when the blueprint is applied and never stores them in
+# the repository.
+#
+# The free plan, stated plainly: 512 MB of memory (the server peaks near 130 MB
+# on any shipped map and plays at about 100 MB), a disk that is wiped on
+# every restart (which is what OD_CAMPAIGN_REPO is for), and the service sleeps
+# after 15 minutes with no traffic -- point a free uptime monitor at
+# https://<service>.onrender.com/healthz every 5-10 minutes to keep the turn
+# clock running when nobody is connected.
+services:
+  - type: web
+    name: od-campaign
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: OD_CAMPAIGN_REPO         # https://x-access-token:<token>@github.com/you/od-campaign.git
+        sync: false
+      - key: OD_SERVER_NAME
+        value: OpenDoctrines tournament
+      - key: OD_MAP
+        value: "1914"
+      - key: OD_TURN_SECONDS
+        value: "86400"
+      - key: OD_TURN_AT
+        value: "18:00"
+      - key: OD_VOICE_LINK            # e.g. a Discord invite; leave empty for none
+        sync: false

@@ -390,7 +390,7 @@ void Game::updateLoading() {
                 // Only the drawn borders and the selection glow read this raster;
                 // province centres no longer depend on it (buildProvinceData).
                 if (!m_agentLoad && !m_headless)
-                    m_renderer->computeBorderTexture(m_provinces.getImage());
+                    m_renderer->computeBorderTexture(m_provinces);
                 // The sky this map carries, if it carries one. A map with no
                 // sky.json keeps the Earth-like defaults, which is every map
                 // written before the globe existed -- so this must never be a
@@ -910,46 +910,73 @@ void Game::drawLoadingScreen() {
 // once per map (a few MB) and each rebuild checks those pixels alone rather
 // than all 33.5 million. Scanning the whole province image instead of the old
 // per-pixel owner array measured ~195 ms a rebuild against ~160 ms.
-static std::vector<uint32_t> odProvinceEdgePixels(const Color* provPixels, int w, int h) {
+static std::vector<uint32_t> odProvinceEdgePixels(const ProvinceMap& pm, int w, int h) {
     std::vector<uint32_t> edges;
-    const auto* P = reinterpret_cast<const uint32_t*>(provPixels);
-    static_assert(sizeof(Color) == 4, "a province pixel is read as one uint32");
+    if (const Color* provPixels = (const Color*)pm.getImage().data) {
+        // The image is here: compare raw colours, one uint32 a pixel. The fast
+        // path, and the only one off mobile.
+        const auto* P = reinterpret_cast<const uint32_t*>(provPixels);
+        static_assert(sizeof(Color) == 4, "a province pixel is read as one uint32");
+        for (int y = 0; y < h; ++y) {
+            Audio::get().pump();
+            const size_t row = (size_t)y * w;
+            for (int x = 0; x < w; ++x) {
+                const uint32_t c = P[row + x];
+                if ((x > 0     && P[row + x - 1] != c) || (x < w - 1 && P[row + x + 1] != c) ||
+                    (y > 0     && P[row - w + x] != c) || (y < h - 1 && P[row + w + x] != c))
+                    edges.push_back((uint32_t)(row + x));
+            }
+        }
+        return edges;
+    }
+    // Compact raster (Risky RAM): no image, read ids. A three-row window so each
+    // id is fetched once, not five times, over 33 million pixels.
+    std::vector<int> prev(w), cur(w), next(w);
+    auto fillRow = [&](std::vector<int>& r, int y) {
+        const size_t base = (size_t)y * w;
+        for (int x = 0; x < w; ++x) r[x] = pm.idAt(base + x);
+    };
+    fillRow(cur, 0);
+    if (h > 1) fillRow(next, 1);
     for (int y = 0; y < h; ++y) {
         Audio::get().pump();
         const size_t row = (size_t)y * w;
         for (int x = 0; x < w; ++x) {
-            const uint32_t c = P[row + x];
-            if ((x > 0     && P[row + x - 1] != c) || (x < w - 1 && P[row + x + 1] != c) ||
-                (y > 0     && P[row - w + x] != c) || (y < h - 1 && P[row + w + x] != c))
+            const int c = cur[x];
+            if ((x > 0     && cur[x - 1] != c) || (x < w - 1 && cur[x + 1] != c) ||
+                (y > 0     && prev[x]    != c) || (y < h - 1 && next[x]    != c))
                 edges.push_back((uint32_t)(row + x));
         }
+        prev.swap(cur);
+        cur.swap(next);
+        if (y + 2 < h) fillRow(next, y + 2);
     }
     return edges;
 }
 
-static void odBuildGradientField(const Color* provPixels, const std::vector<uint32_t>& edges,
+static void odBuildGradientField(const ProvinceMap& pm, const std::vector<uint32_t>& edges,
                                  const std::vector<int>& lookup,
                                  int w, int h, std::vector<uint8_t>& out) {
     const size_t total = (size_t)w * h;
     out.assign(total, 255);
 
     // Seeds: a pixel with a 4-neighbour under different ownership, which can
-    // only be a province-edge pixel. Bytes, not a mask, for the id: in memory
-    // a Color is r, g, b, a, so as a uint32 on a little-endian machine it
-    // reads r | g<<8 | b<<16.
-    const auto* P = reinterpret_cast<const uint32_t*>(provPixels);
-    auto ownerOf = [&](uint32_t px) -> uint16_t {
-        const uint8_t* b = reinterpret_cast<const uint8_t*>(&px);
-        const int pid = Province::colorToId(b[0], b[1], b[2]);
+    // only be a province-edge pixel. The owner is the province's id put through
+    // the country lookup, and idAt() returns that id whether the raster is still
+    // the RGBA image or the compact index -- so this reads the same for a normal
+    // load and for a Risky-RAM compact one. It runs over the edge list only
+    // (a few MB), so the extra idAt branch costs nothing measurable.
+    auto ownerOf = [&](size_t i) -> uint16_t {
+        const int pid = pm.idAt(i);
         return (pid > 0 && (size_t)pid < lookup.size()) ? (uint16_t)lookup[(size_t)pid] : (uint16_t)0;
     };
     for (uint32_t i : edges) {
         const int x = (int)(i % (uint32_t)w), y = (int)(i / (uint32_t)w);
-        const uint16_t o = ownerOf(P[i]);
-        if ((x > 0     && ownerOf(P[i - 1]) != o) ||
-            (x < w - 1 && ownerOf(P[i + 1]) != o) ||
-            (y > 0     && ownerOf(P[i - (uint32_t)w]) != o) ||
-            (y < h - 1 && ownerOf(P[i + (uint32_t)w]) != o))
+        const uint16_t o = ownerOf(i);
+        if ((x > 0     && ownerOf(i - 1) != o) ||
+            (x < w - 1 && ownerOf(i + 1) != o) ||
+            (y > 0     && ownerOf(i - (size_t)w) != o) ||
+            (y < h - 1 && ownerOf(i + (size_t)w) != o))
             out[i] = 0;
     }
 
@@ -1103,8 +1130,8 @@ void Game::buildPopulationLookups() {
 
     if (!paint) return;          // the rest is the political texture
 
-    m_provinceEdgePixels = odProvinceEdgePixels(srcPixels, w, h);
-    odBuildGradientField(srcPixels, m_provinceEdgePixels, m_provinceCountryLookup, w, h, m_gradientDist);
+    m_provinceEdgePixels = odProvinceEdgePixels(m_provinces, w, h);
+    odBuildGradientField(m_provinces, m_provinceEdgePixels, m_provinceCountryLookup, w, h, m_gradientDist);
 
     // ONE guard around all three, not one each. Two full-map uploads and a
     // third pass inside generatePoliticalTexture() run back to back with
@@ -1144,8 +1171,8 @@ void Game::rebuildGradientField() {
     // second copy of the BFS, and this one ran once per TURN -- so the 256 MB
     // queue described above was not a load-time cost, it was a per-turn one.
     if (m_provinceEdgePixels.empty())
-        m_provinceEdgePixels = odProvinceEdgePixels((const Color*)provImg.data, w2, h2);
-    odBuildGradientField((const Color*)provImg.data, m_provinceEdgePixels, m_provinceCountryLookup, w2, h2, m_gradientDist);
+        m_provinceEdgePixels = odProvinceEdgePixels(m_provinces, w2, h2);
+    odBuildGradientField(m_provinces, m_provinceEdgePixels, m_provinceCountryLookup, w2, h2, m_gradientDist);
     m_gradientDirty = false;
     m_borderDistanceSent = false;
 }
@@ -1290,7 +1317,12 @@ static const Color kOverlaySea{10, 15, 40, 255};
 
 void Game::ensureProvinceIndex() {
     if (!m_renderer || m_headless || m_renderer->hasProvinceIndex()) return;
-    m_renderer->setProvinceIndex(m_provinces.getImage());
+    // Builds from the RGBA image when it is present, and from the compact id
+    // index when Risky RAM loaded the map without ever decoding one. (Freeing
+    // the image AFTER building the texture would not help: the wasm heap only
+    // grows, so the 128 MB spike is already locked in. The win is never making
+    // it -- see m_compactRaster / loadCompactFromMemory.)
+    m_renderer->setProvinceIndex(m_provinces);
 }
 
 int Game::provinceOwnerForTable(int pid) const {
@@ -2017,6 +2049,13 @@ bool Game::loadFromFiles() {
 }
 
 bool Game::loadFromODM(const std::string& odmPath) {
+    // Risky RAM (experimental): load the province raster in its compact form,
+    // so the 128 MB province image is never decoded and the wasm heap never
+    // grows to hold it -- the one thing that lets a 4 GB phone tab hold a world.
+    // Set from the config each load so toggling it off takes effect; the
+    // dedicated server sets m_compactRaster itself before it ever gets here, so
+    // only the interactive game's flag is driven from here.
+    if (!m_headless) m_compactRaster = m_config.riskyRamOps;
     // The scenario's key for data keyed by scenario, taken from the archive
     // name rather than anything inside it: an author who renames their map's
     // title should not silently lose its party data, and a path is the one
@@ -2143,27 +2182,19 @@ bool Game::loadFromODM(const std::string& odmPath) {
             // that nobody could see.
             // A dedicated server reads the mask and nothing else, a row at a
             // time: the 128 MB image never exists. See LandSeaMap.h.
-            if (m_compactRaster) {
-                m_landSea.loadMaskFromMemory(e.data, (int)e.size);
-                continue;
-            }
-            m_landSea.loadFromMemory(e.data, (int)e.size, /*withTexture=*/false);
-            // 128 MB back, immediately.
-            //
-            // The layer is 8192x4096 RGBA and every question anyone asks it is
-            // isLand(x, y) -- one bit. It is on the GPU by now, and the mask
-            // dropPixels() keeps answers that question at 1/32nd the size, so
-            // holding the pixels for the rest of the session buys nothing.
-            //
-            // This is what made a scenario unloadable on a phone: the heap
-            // starts at 512 MB, the province layer needs another 128 MB of its
-            // own and genuinely uses them, and this took a third of what was
-            // left to store a boolean. The menu came up because nothing before
-            // the map is big; the map is where the tab died.
-            //
-            // The game's copy only. The map editor owns its own LandSeaMap and
-            // paints into its pixels, so it must never be told to do this.
-            m_landSea.dropPixels();
+            // The game only ever asks this layer isLand(x, y) -- one bit -- so
+            // the row loader builds that 1/32-size mask WITHOUT the 8192x4096
+            // RGBA ever existing. The old game path decoded the full 128 MB and
+            // freed it a line later (dropPixels), but a transient still raises
+            // the wasm heap's high-water mark for good -- and that mark (810 MB
+            // here: the province layer and this one, both decoded at once) is
+            // what an iOS tab is killed on when a 4 GB phone loads a world. So
+            // always take the row path the dedicated server already took; it
+            // ends in exactly the state dropPixels() did (mask only, no image,
+            // no texture). The map editor owns a separate LandSeaMap and never
+            // comes through here.
+            m_landSea.loadMaskFromMemory(e.data, (int)e.size);
+            continue;
         }
         else if (e.name == "provinces.png" || e.name == "provinces.json") {
             // Need both png + json — load when we have json too
@@ -3046,7 +3077,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
     m_renderer = new MapRenderer(m_screenW, m_screenH,
                                  m_landSea.getWidth(), m_landSea.getHeight());
     m_renderer->setDpiScale(pointerScale());
-    if (!m_headless) m_renderer->computeBorderTexture(m_provinces.getImage());
+    if (!m_headless) m_renderer->computeBorderTexture(m_provinces);
     // Same as the loading path above: a map may carry its own sky, and one
     // that does not keeps the defaults. BOTH sites need this -- a map pack
     // loaded directly (the editor, a mod, the scenario browser) never goes
@@ -3933,7 +3964,7 @@ void Game::reloadBorders() {
     // Borders, glow and the political layer are pictures. A dedicated server
     // draws none, and each of these walks or copies the whole map raster.
     if (m_headless || !m_renderer) return;
-    m_renderer->computeBorderTexture(m_provinces.getImage());
+    m_renderer->computeBorderTexture(m_provinces);
     m_renderer->rebuildGlowMap(m_provinces);
     m_renderer->rebuildSelectionGlow();
     generatePoliticalTexture();

@@ -64,6 +64,9 @@ public:
     /// The province ids, read from the province map (id = RGB colour). Built
     /// once per map, the first time an overlay is needed.
     void setProvinceIndex(const Image& provinces);
+    // Compact-raster path (Risky RAM): the province image was never
+    // decoded, so build the index straight from the id lookup.
+    void setProvinceIndex(const ProvinceMap& provinces);
     bool hasProvinceIndex() const { return m_provinceIndexTex.id > 0; }
     /// base[id] colours province id; stripe[id], where its alpha is non-zero,
     /// replaces it on the claims hatching ((x + y) % 10 < 4). Both at most
@@ -116,6 +119,8 @@ public:
     // has to measure against this rather than against a fixed number.
     float getMinZoom() const { return m_minZoom; }
     void computeBorderTexture(const Image& provImage);
+    // The same, from the compact id lookup when there is no image.
+    void computeBorderTexture(const ProvinceMap& provinces);
     /**
      * Which view the map is drawn in.
      *
@@ -212,6 +217,9 @@ public:
                            std::unordered_map<int, float>& radii_out);
     // Glow-only rebuild (when borders reload but provinces don't change)
     void rebuildGlowMap(const ProvinceMap& provinces);
+    // Glow from the compact id lookup (no province image), on the downscaled
+    // border grid. Shared by buildProvinceData and rebuildGlowMap under Risky RAM.
+    void buildCompactGlow(const ProvinceMap& provinces);
     void rebuildSelectionGlow() { buildSelectionGlow(); }
     void setBottomPanelRect(Rectangle r) { m_bottomPanelRect = r; }
     void setSkipClickRect(Rectangle r) { m_skipClickRect = r; }
@@ -376,8 +384,12 @@ private:
     bool m_keepBorderPixels = false;
     bool m_bordersComputed = false;         ///< computeBorderTexture ran: the glow can be built
 
-    // Precomputed glow pixels per province (built once at init)
+    // Precomputed glow pixels per province (built once at init). The index in
+    // each pair addresses a m_glowW x m_glowH grid -- the full map raster in the
+    // normal path, or the downscaled border grid when the province image was
+    // freed (Risky RAM), so a selection never has to allocate a full-map image.
     std::unordered_map<int, std::vector<std::pair<int, uint8_t>>> m_provinceGlow;
+    int m_glowW = 0, m_glowH = 0;
 
     // Fly-to animation (exponential chase: always moves toward target, smooth redirects)
     Vector2 m_flyTarget{};

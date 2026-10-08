@@ -81,6 +81,15 @@
     "hasScripts": false
   },
   {
+    "name": "The Last Summer",
+    "filename": "1990.odmap",
+    "author": "OpenDoctrines",
+    "description": "The Wall is down, the Warsaw Pact is a signature on a dead treaty, and the Soviet Union still covers a sixth of the land. East Germany has six weeks left as a country. The Baltics have declared independence Moscow has not granted. Iraq is in Kuwait and the coalition is still unloading. Yugoslavia and Czechoslovakia are whole. None of it had to end the way it did.",
+    "license": "CC-BY-4.0",
+    "thumbnail": "1990_thumb.png",
+    "hasScripts": false
+  },
+  {
     "name": "Mars",
     "filename": "mars.odmap",
     "author": "OpenDoctrines",

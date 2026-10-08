@@ -357,7 +357,7 @@ async function route(request: Request, env: Env, url: URL, path: string): Promis
     // MEDIAN, NOT MEAN. One long-form session left running for a week would
     // drag an average into uselessness while saying nothing about how long a
     // game actually holds someone.
-    if (get && path === "/stats") return sessionStats(env, url);
+    if (get && path === "/stats") return sessionStats(request, env, url);
 
     // ── HOW LONG A PLAY LASTED, FROM PLAYERS WHO SAID YES ──
     //
@@ -1646,8 +1646,22 @@ interface StatRow { s: number; j: number; p: number; }
  * one write per finished session instead of one per join -- see
  * recordSession() in LobbyDO. At the volumes this service sees, listing a
  * day's keys is cheap and a lost update is impossible by construction.
+ *
+ * ── WHY THE ACCOUNT COUNT IS NOT ALWAYS HERE ──
+ *
+ * This route is public and unauthenticated, and everything it returns is about
+ * play: sessions, lobby sizes, how long people stayed. How many people have
+ * REGISTERED is a different kind of fact -- it is the size of the service, and
+ * countAccounts() already had a home behind the moderator gate at
+ * /moderation/overview, which answers 404 rather than 403 precisely so a
+ * prober cannot confirm the route exists. Publishing the same number here
+ * without a token would undo that decision by a side door.
+ *
+ * So it is included only for a caller who could already read it: the field is
+ * absent for everyone else, rather than zero. Absent and zero are different
+ * answers and a dashboard must be able to tell them apart.
  */
-async function sessionStats(env: Env, url: URL): Promise<Response> {
+async function sessionStats(request: Request, env: Env, url: URL): Promise<Response> {
     const days = Math.min(90, Math.max(1, Number(url.searchParams.get("days") ?? "14")));
     const out: Array<Record<string, number | string | Record<string, number>>> = [];
 
@@ -1689,6 +1703,14 @@ async function sessionStats(env: Env, url: URL): Promise<Response> {
             // From players who opted in, and only ever as counts per bucket.
             plays: usage,
         });
+    }
+    // Moderator only, and it costs a KV walk, so it is not computed unless the
+    // caller has earned it. authenticate() returns null for an absent or bad
+    // token, which is the ordinary case for this route.
+    const viewer = await authenticate(request, env);
+    if (isModerator(viewer)) {
+        const { accounts, exact } = await countAccounts(env);
+        return json({ days: out, accounts, accountsExact: exact });
     }
     return json({ days: out });
 }

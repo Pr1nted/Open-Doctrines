@@ -162,6 +162,29 @@ build cannot connect rather than the build failing.
   Built and unit-tested; not yet played through a real multi-day campaign. See
   the Status section of the root README for what that means.
 
+## Letters, and the host's language model
+
+Mail is the host's. A player writes into their own box as in single player --
+the letter can still be changed until the turn -- and the same operation goes
+to the host (`NetMsg::Mail`), which files it under the seat that player holds;
+a player cannot write as a country that is not theirs. The host posts it when
+the turn resolves, and sends each letter that arrived for a country a person
+holds to that person alone (`NetMsg::MailFrom`). The world snapshot a joiner
+receives carries no mail at all -- one snapshot is shared by every joiner --
+and each player is sent their own country's correspondence after it.
+
+If the host has a language model configured, it answers for every country
+**nobody** holds, never for a person's. Players are told so in
+`NetSessionInfo`, with the host's mail policy, which binds everybody in the
+game. A reply is written as a pending letter and leaves on the next turn, like a
+person's; a dedicated server gathers replies as they finish rather than holding
+the turn for them, and asks about each letter once, however slow the model is.
+`tests/campaign_mail_test.sh` covers all of it against the real server;
+`docs/hosting-on-oracle.md` sets up a box with the model on it.
+
+Not carried yet: group rooms. A player in somebody else's game is told so
+rather than having the letter go nowhere.
+
 ## Tests
 
 ```bash

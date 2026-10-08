@@ -88,6 +88,17 @@ enum class NetMsg : uint16_t {
      */
     ResyncRequest = 12,
 
+    /**
+     * A letter from this player's country: written, changed or torn up.
+     *
+     * Mail used to stay on the machine that wrote it -- a letter to another
+     * player, or to a country the host's language model answers, went nowhere.
+     * Now the host keeps the authoritative copy and posts it when the turn
+     * resolves, exactly as it would its own. A NetMail; additive, and an older
+     * host ignores the id.
+     */
+    Mail          = 13,
+
     // ---- server -> client -------------------------------------------------
     Welcome  = 64,
     Reject   = 65,  // always the last frame before a close
@@ -153,6 +164,14 @@ enum class NetMsg : uint16_t {
      * never says so, still gets the plain Snapshot it understands.
      */
     SnapshotZ = 83,
+
+    /**
+     * A letter for THIS player: one that arrived for their country this turn,
+     * or (after a snapshot) their country's correspondence so far. Sent to
+     * that player and nobody else -- the world snapshot carries no mail,
+     * because one snapshot is shared by every joiner and letters are private.
+     */
+    MailFrom  = 84,
 };
 
 const char* netMsgName(NetMsg m);
@@ -503,6 +522,11 @@ std::string netVoiceLinkHost(const std::string& url);
 
 struct NetSessionInfo {
     std::string voiceLink;     // empty: none offered
+    /// The host's language model answers for countries nobody holds. Decides
+    /// whether a player's Mail offers those countries as correspondents.
+    bool        llmAnswers = false;
+    /// The host's mail policy (mail::Policy), which binds everybody on it.
+    uint8_t     mailPolicy = 3;
 
     std::vector<uint8_t> encode() const;
     /** Lenient: a newer host's trailing fields are ignored, not refused. */
@@ -706,6 +730,35 @@ struct NetChat {
  * and two of them can be identical, which is exactly the situation where you
  * least want the host acting on the wrong one.
  */
+/**
+ * One letter on the wire, in either direction.
+ *
+ * Up (Mail): `op` says what to do with the player's letter `id`, which is THEIR
+ * id for it -- the host keeps its own and maps between them. `fromCountry` is
+ * ignored on the way up; the host uses the seat the sender holds, so nobody
+ * can write as a country that is not theirs.
+ *
+ * Down (MailFrom): a letter as it now stands in the player's box. `history`
+ * marks the batch sent after a snapshot, which starts with a Reset.
+ */
+struct NetMail {
+    enum class Op : uint8_t { Send = 0, Edit = 1, Discard = 2, Reset = 3 };
+    Op          op = Op::Send;
+    uint32_t    id = 0;
+    uint16_t    fromCountry = 0;
+    uint16_t    toCountry = 0;
+    std::string body;
+    uint32_t    writtenTurn = 0;
+    uint32_t    deliverTurn = 0;
+    uint8_t     status = 0;        // mail::Status
+    uint8_t     author = 0;        // mail::Author
+    std::string authorName;
+    bool        history = false;
+
+    std::vector<uint8_t> encode() const;
+    static bool decode(const uint8_t* data, size_t size, NetMail& out);
+};
+
 struct NetPlayerReport {
     uint16_t    fromPeerId = 0;      // ignored on the way up; set by the server
     uint16_t    aboutPeer = 0;
