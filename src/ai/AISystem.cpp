@@ -10,6 +10,7 @@
 #include "../util/WebAssets.h"
 #include "../mods/ModManager.h"
 #include <algorithm>
+#include <functional>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -3485,6 +3486,67 @@ void policyHistNote(int cid, const std::string& id) {
 }
 }  // namespace
 
+
+// ─── Fog of war: the lens (see AISystem.h) ───────────────────────────────────
+
+void AISystem::fogLensEnter(int observer, std::vector<FogStatSave>& truth,
+                            std::vector<FogStatSave>& seen) {
+    truth.clear();
+    seen.clear();
+    Game& g = *m_g;
+    if (!g.fogOn()) return;
+    auto snap = [](int cid, const CountryStat& st) {
+        FogStatSave s;
+        s.cid = cid; s.provinces = st.provinces; s.population = st.population; s.army = st.army;
+        s.boats = st.boats; s.destroyers = st.destroyers; s.carriers = st.carriers;
+        s.industrySum = st.industrySum; s.fortSum = st.fortSum; s.maxPort = st.maxPort;
+        return s;
+    };
+    for (auto& [cid, st] : m_stats) {
+        const odfog::Estimate* e = g.fogEstimate(observer, cid);
+        if (!e) continue;                       // itself, a partner, a dossier: the truth
+        truth.push_back(snap(cid, st));
+        st.provinces = e->provinces;
+        st.population = e->population;
+        st.army = e->army;
+        st.boats = e->boats;
+        st.destroyers = e->destroyers;
+        st.carriers = e->carriers;
+        st.industrySum = e->industrySum;
+        st.fortSum = e->fortSum;
+        st.maxPort = e->maxPort;
+        seen.push_back(snap(cid, st));
+    }
+}
+
+void AISystem::fogLensLeave(const std::vector<FogStatSave>& truth,
+                            const std::vector<FogStatSave>& seen) {
+    for (size_t i = 0; i < truth.size() && i < seen.size(); ++i) {
+        auto it = m_stats.find(truth[i].cid);
+        if (it == m_stats.end()) continue;
+        CountryStat& st = it->second;
+        const FogStatSave& t = truth[i];
+        const FogStatSave& f = seen[i];
+        st.provinces   = t.provinces   + (st.provinces   - f.provinces);
+        st.population  = t.population  + (st.population  - f.population);
+        st.army        = t.army        + (st.army        - f.army);
+        st.boats       = t.boats       + (st.boats       - f.boats);
+        st.destroyers  = t.destroyers  + (st.destroyers  - f.destroyers);
+        st.carriers    = t.carriers    + (st.carriers    - f.carriers);
+        st.industrySum = t.industrySum + (st.industrySum - f.industrySum);
+        st.fortSum     = t.fortSum     + (st.fortSum     - f.fortSum);
+        st.maxPort     = t.maxPort     + (st.maxPort     - f.maxPort);
+    }
+}
+
+namespace {
+// Leaves the lens however the decision returns.
+struct FogLensScope {
+    std::function<void()> leave;
+    ~FogLensScope() { if (leave) leave(); }
+};
+}  // namespace
+
 void AISystem::takeTurn(int cid) {
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -3492,6 +3554,11 @@ void AISystem::takeTurn(int cid) {
     // Countries with nothing left don't think (eliminated but not yet culled)
     const CountryStat& st = m_stats[cid];
     if (st.provinces == 0) return;
+
+    // Under fog this country decides on what it can see of the others.
+    std::vector<FogStatSave> fogTruth, fogSeen;
+    fogLensEnter(cid, fogTruth, fogSeen);
+    FogLensScope fogScope{[&] { fogLensLeave(fogTruth, fogSeen); }};
 
     // What this country's turn costs to think. Charged to whichever cohort it
     // belongs to; see TrainStats::thinkMicros.
@@ -10299,6 +10366,10 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
                                const std::string& sourceIso,
                                const std::string& subjectIso,
                                int* statedReasonOut) {
+    // Under fog the country answering judges the asker by what it can see.
+    std::vector<FogStatSave> fogTruth, fogSeen;
+    fogLensEnter(targetCid, fogTruth, fogSeen);
+    FogLensScope fogScope{[&] { fogLensLeave(fogTruth, fogSeen); }};
     // What we will say if the answer turns out to be no. Assigned at every
     // refusing return below; a request we accept explains nothing.
     int trueReason = REFUSE_NO_INTEREST;

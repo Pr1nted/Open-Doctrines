@@ -53,5 +53,6 @@ arrived with the people who turned up for 1.3.0b.
   research tab, spy networks, stolen dossiers and counter-intelligence. Fog
   worlds' saves are sealed, and in multiplayer each player is sent only what
   they can see. Switch on "Fog of War worlds" under Settings → Experimental,
-  then pick it from a map's info button. The AI still plays with full
-  knowledge for now. See docs/fog-of-war.md.
+  then pick it from a map's info button. AI countries are held to the fog
+  too, and until they are retrained for it they play somewhat weaker in fog
+  worlds. See docs/fog-of-war.md.

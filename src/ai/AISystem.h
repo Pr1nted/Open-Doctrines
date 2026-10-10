@@ -4652,6 +4652,28 @@ private:
     int m_decisionsThisTurn = 0;
 
     std::unordered_map<int, CountryStat> m_stats;      // rebuilt in beginTurn
+
+    // ── FOG OF WAR: THE LENS ──
+    //
+    // While one country decides (takeTurn, decideDiplomacy), every OTHER
+    // country's numbers in m_stats are swapped for what that country can
+    // estimate of them -- Game::fogEstimate: last-seen garrisons and figures,
+    // a median prior where it has never looked, ships seen recently -- and
+    // swapped back when it is done. Every read of another country's stats in
+    // this file then sees through the fog without being touched one by one.
+    //
+    // Restored by DIFFERENCE, not by copy: whatever the decision changed in
+    // m_stats (an attack that thinned an enemy, say) survives the restore.
+    // A no-op without fog, so worlds without it are bit-identical.
+    struct FogStatSave {
+        int cid = 0, provinces = 0;
+        long long population = 0, army = 0;
+        int boats = 0, destroyers = 0, carriers = 0;
+        float industrySum = 0, fortSum = 0;
+        int maxPort = 0;
+    };
+    void fogLensEnter(int observer, std::vector<FogStatSave>& truth, std::vector<FogStatSave>& seen);
+    void fogLensLeave(const std::vector<FogStatSave>& truth, const std::vector<FogStatSave>& seen);
     // Relation graph as integer sets, rebuilt in beginTurn. The ISO-keyed
     // m_relations is fine for the odd query but not for the tens of thousands
     // the neighbour walks make every turn.

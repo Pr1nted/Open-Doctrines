@@ -88,12 +88,14 @@ turn's random stream, so launching an operation moves no other dice.
 - The diplomats (LLM letters and advisor tools) are told the world has fog,
   judge a stranger's strength from the map they **know**, and say "by your last
   reports" when they do. They know when spies were caught either way.
-- The country AI reads every other country through `Game::fogEstimate`: what
-  its memory holds, a median prior for provinces it has never seen (never
-  zero, so nothing reads as undefended), and ships it saw recently. Wiring
-  that into `AISystem` is the remaining piece. The shipped model was trained on
-  the truth, so in fog worlds the AI will play weaker until it is retrained on
-  a mixed curriculum.
+- The country AI sees other countries through `Game::fogEstimate` while it
+  decides (`AISystem::fogLensEnter`): what its memory holds, a median prior
+  for provinces it has never seen (never zero, so nothing reads as
+  undefended), and ships it saw recently. Partners, dossiers and itself read
+  true. `OD_FOG_AI_TRUTH=1` gives it the truth again, decision for decision.
+  The shipped model was trained on the truth, so in fog worlds the AI plays
+  weaker until it is retrained on a mixed curriculum. Its navy reflexes still
+  see foreign hulls anywhere.
 
 ## Saves
 
