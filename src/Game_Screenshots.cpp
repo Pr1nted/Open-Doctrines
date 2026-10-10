@@ -1928,6 +1928,14 @@ bool Game::tickScreenshotTour() {
             m_inResearch = m_inEconomy = m_inPolitics = false;
             m_activeViewTab = 0;
             beginDialogue("specifics");
+            // OD_SHOT_DIALOG=<script>[:page] photographs another script here
+            // (e.g. tut_fog:4) without a step of its own.
+            if (const char* d = std::getenv("OD_SHOT_DIALOG")) {
+                const std::string spec = d;
+                const size_t colon = spec.find(':');
+                beginDialogue(spec.substr(0, colon));
+                if (colon != std::string::npos) m_dialog.jumpTo(std::atoi(spec.c_str() + colon + 1));
+            }
             m_dialogPage = m_dialog.pageIndex();
             // The box grows per option, so the shot is also the check that
             // five of them still fit under the question.

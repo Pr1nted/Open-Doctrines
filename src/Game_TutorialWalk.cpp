@@ -77,6 +77,7 @@ const WalkRoute ROUTES[] = {
     {"tut_goods",     true},
     {"tut_unrest",    true},
     {"tut_diplomacy", true},
+    {"tut_fog",       true},
     {"outro",         false},
 };
 const int ROUTE_COUNT = (int)(sizeof(ROUTES) / sizeof(ROUTES[0]));

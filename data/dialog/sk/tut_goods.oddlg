@@ -1,0 +1,64 @@
+// Preklad - ekonomika tovarov.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Vo §**svete s tovarmi**§ provincia nezarába len peniaze. Ťaží suroviny a jej
+továrne z nich robia tovary - a tovary, nie hotovosť, živia vašich ľudí a
+umožňujú vám stavať. Otvorte ekonomiku.
+---
+@Signals Officer
+Sú štyri druhy. §**Spotrebný tovar**§ vaši ľudia jedia. §**Stroje**§ stavajú
+priemysel, pevnosti a prístavy. §**Palivo**§ hýbe loďami a armádami.
+§**Munícia**§ umožňuje verbovať vojakov a strieľať z delostrelectva. Zlato
+zostáva peniazmi.
+---
+@Signals Officer
+A každý pochádza zo zeme, cez továreň. Z §**kaučuku a drahokamov**§ je
+spotrebný tovar; z §**kovu**§ stroje a munícia; z §**ropy**§ palivo. Bez
+ložiska niet tovaru - takže nedostatok vám ukáže provinciu, ktorú treba
+dobyť, alebo továreň, ktorú treba presmerovať.
+---
+@Signals Officer
+V hre s tovarmi ekonomike vyrastie hore karta §**Tovary**§. Uvádza všetky
+štyri vedľa seba: koľko máte, koľko vyrábate oproti tomu, koľko každý ťah
+potrebujete, a - číslo, na ktorom záleží - §**pokrytie**§.
+---
+@Signals Officer
+Pokrytie je počet ťahov, na koľko zásoba vydrží pri súčasnej spotrebe. Deväť
+ťahov je pohodlie; pod dva je varovanie; prázdno je nedostatok, ktorý sa deje
+práve teraz. Je to poctivé čítanie - nie veľká kopa prezlečená za hojnosť, ale
+koľko času vám tá kopa naozaj kúpi.
+---
+@Signals Officer
+Spotrebný tovar je jediný z tovarov, ktorý je zároveň politický fakt. Zjedené
+oproti želanému je vaša §**životná úroveň**§: držte ľudí najedených a krajina
+rastie; nechajte ju klesnúť a hlad sa vráti ako nepokoje.
+---
+@Signals Officer
+Ostatné tri sú povolenia. Staviate priemysel a míňate stroje; vyplávate s
+flotilou a pálite palivo; verbujete a čerpáte muníciu. Keď dôjdu, akcia
+jednoducho zošedne - vojna na sklad nepočká.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kde sa ktorý tovar vyrába, sa určuje pri každej provincii. Kliknite na niektorú
+našu: na jej paneli určujete, čo budú jej továrne vyrábať, alebo to necháte
+tak a ekonomika rozdelí prácu sama a pošle nečinné továrne na to, čoho máte
+najmenej.
+---
+@Signals Officer
+:: point=btn.settings
+V §**Nastavenia -> Experimentálne**§ sú dva prepínače. Jeden zapne ekonomiku
+tovarov pre váš ďalší nový svet. Druhý,
+§**Obchodný prebytok so spojencami**§, je dobrovoľný: keď spojencovi niečo
+chýba, vaše prebytky idú jemu. Často nechýba nikomu, takže stojí nečinný - je
+to pomoc v pohotovosti, nie daň z vašich zásob.
+---
+@Signals Officer
+To je ekonomika tovarov: ťažiť, vyrábať, živiť a míňať. Sledujte pokrytie,
+držte ľudí najedených a nikdy nezačínajte vojnu, ktorú vaša munícia nedokáže
+dokončiť.
+
+Ešte niečo?

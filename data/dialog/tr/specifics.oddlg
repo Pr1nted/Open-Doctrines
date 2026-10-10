@@ -9,6 +9,8 @@ Birini seçin, düzgünce anlatayım. Bitirince yine sorun.
 > Gemiler, limanlar ve orduyu sudan geçirmek -> script:tut_ships
 > Araştırma ve başladığınız hiçbir şeyin neden bitmediği -> script:tut_research
 > Ekonomi, sanayi ve paranın nereden geldiği -> script:tut_economy
+> Mal ekonomisi: halkı beslemek ve savaşı yakıtla sürdürmek -> script:tut_goods
 > Talepler, huzursuzluk ve illeri kendi halkınıza kaptırmak -> script:tut_unrest
 > İttifaklar, ateşkesler ve diplomasinin geri kalanı -> script:tut_diplomacy
+> Savaş sisi: neyi görebildiğiniz ve gerisini nasıl gözetleyeceğiniz -> script:tut_fog
 > Başka bir şey yok, bitirdim -> script:outro

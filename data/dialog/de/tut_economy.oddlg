@@ -13,6 +13,12 @@ leeren Provinz ist ein teurer Schuppen - der Rohstoff ist die Bevölkerung,
 nicht das Gebäude.
 ---
 @Signals Officer
+Also gibt jede Provinz an, was sie tragen kann: §**Stufe II von VI**§, und wenn
+sie ausgelastet ist, sagt sie es. Menschen, wie dicht sie leben, der Boden und
+was darin vergraben liegt - diese vier bestimmen die Obergrenze, und kein Geld
+der Welt verschiebt sie.
+---
+@Signals Officer
 Einnahmen kommen einmal pro Runde, in der Runde. Nehmen Sie mehr auf sich, als
 Sie haben, und der Fehlbetrag wartet nicht höflich: er geht von der
 Einsatzbereitschaft ab, und Sie erfahren davon in einer Schlacht.

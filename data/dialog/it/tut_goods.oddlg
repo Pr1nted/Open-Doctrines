@@ -1,0 +1,65 @@
+// Traduzione - l'economia dei beni.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+In un §**mondo a beni**§, una provincia non si limita a fare soldi. Estrae
+materie prime e le sue fabbriche le trasformano in beni - e sono i beni, non i
+contanti, a sfamare la tua gente e a permetterti di costruire. Apri l'economia.
+---
+@Signals Officer
+Sono quattro. I §**Beni di consumo**§ li consuma la tua gente. I
+§**Macchinari**§ costruiscono industria, fortezze e porti. Il §**Carburante**§
+muove navi ed eserciti. Le §**Munizioni**§ servono a reclutare soldati e a far
+sparare l'artiglieria. L'oro resta denaro.
+---
+@Signals Officer
+E ognuno viene dalla terra attraverso una fabbrica. §**Gomma e pietre preziose**§
+diventano beni di consumo; il §**metallo**§ diventa macchinari e munizioni; il
+§**petrolio**§ diventa carburante. Niente giacimento, niente bene: una carenza
+ti indica quindi una provincia da prendere o una fabbrica da riconvertire.
+---
+@Signals Officer
+In una partita a beni l'economia mette su una scheda §**Beni**§ in alto. Elenca
+i quattro fianco a fianco: quanto hai, quanto produci contro quanto ti serve a
+ogni turno, e - il numero che conta - la §**copertura**§.
+---
+@Signals Officer
+La copertura è per quanti turni dura una scorta al consumo attuale. Nove turni
+sono comodi; sotto i due è un avvertimento; vuota è una carenza in corso adesso.
+È la lettura onesta: non un mucchio grande travestito da abbondanza, ma quanto
+tempo quel mucchio ti compra davvero.
+---
+@Signals Officer
+I beni di consumo sono l'unico bene che è anche un fatto politico. Consumato
+rispetto a desiderato è il tuo §**tenore di vita**§: tieni la gente sfamata e il
+paese cresce; lascialo scivolare e la fame torna sotto forma di malcontento.
+---
+@Signals Officer
+Gli altri tre sono permessi. Costruisci industria e spendi macchinari; fai
+salpare una flotta e bruci carburante; recluti e attingi alle munizioni. Resti
+a corto e l'azione diventa semplicemente grigia: la guerra non aspetta il
+magazzino.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Dove si produce un bene si decide provincia per provincia. Clicca una delle
+nostre: nel suo pannello decidi cosa costruiscono le sue fabbriche, oppure
+lasci fare e l'economia assegna per te, mandando le fabbriche ferme su ciò che
+ti manca di più.
+---
+@Signals Officer
+:: point=btn.settings
+Due interruttori stanno in §**Impostazioni -> Sperimentale**§. Uno attiva
+l'economia dei beni per il tuo prossimo nuovo mondo. L'altro,
+§**Eccedenze agli alleati**§, è facoltativo: quando a un alleato manca qualcosa,
+i tuoi beni in avanzo vanno a lui. Spesso non manca niente a nessuno, e allora
+resta fermo: è un aiuto tenuto pronto, non una tassa sulle tue scorte.
+---
+@Signals Officer
+Questa è l'economia dei beni: estrarre, produrre, sfamare e spendere. Tieni
+d'occhio la copertura, tieni sfamata la tua gente e non iniziare mai una guerra
+che le tue munizioni non possono finire.
+
+Altro?

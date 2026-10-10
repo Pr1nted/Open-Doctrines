@@ -205,6 +205,8 @@ struct Config {
     // who does not need the memory should not pay the features. Takes hold on the
     // next world loaded.
     bool riskyRamOps = false;
+    /// The fog-of-war tutorial has been shown (once, on the first fog world).
+    bool fogTutorialSeen = false;
     // Experimental: offer "Fog of War" in the New World map popup. Hidden until
     // the display, AI and save-sealing phases land (docs/design/fog-of-war-plan.md).
     bool fogOfWarWorlds = false;

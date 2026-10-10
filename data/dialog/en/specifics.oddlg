@@ -16,4 +16,5 @@ Pick one and I will go properly into it. Ask again when you are done.
 > The goods economy: feeding your people and fuelling war -> script:tut_goods
 > Claims, unrest and losing provinces to your own people -> script:tut_unrest
 > Alliances, ceasefires and the rest of diplomacy -> script:tut_diplomacy
+> Fog of war: what you can see, and spying on the rest -> script:tut_fog
 > Nothing else, I am done -> script:outro

@@ -1,0 +1,60 @@
+// Překlad - ekonomika zboží.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ve §**světě se zbožím**§ provincie jen nevydělává peníze. Těží suroviny a její
+továrny z nich dělají zboží - a právě zboží, ne hotovost, živí vaše lidi a
+umožňuje vám stavět. Otevřete ekonomiku.
+---
+@Signals Officer
+Jsou čtyři druhy. §**Spotřební zboží**§ spotřebovávají vaši lidé. §**Stroje**§
+staví průmysl, pevnosti a přístavy. §**Palivo**§ pohání lodě a armády.
+§**Munice**§ je na odvody vojáků a palbu dělostřelectva. Zlato zůstává penězi.
+---
+@Signals Officer
+A každé pochází ze země přes továrnu. Z §**kaučuku a drahokamů**§ je spotřební
+zboží; z §**kovu**§ stroje a munice; z §**ropy**§ palivo. Bez ložiska není
+zboží - nedostatek vám tedy ukazuje provincii, kterou je třeba dobýt, nebo
+továrnu, kterou je třeba přeorientovat.
+---
+@Signals Officer
+Ve hře se zbožím ekonomice nahoře naroste karta §**Zboží**§. Ukazuje všechny
+čtyři vedle sebe: co máte, kolik vyrábíte proti tomu, co každý tah
+potřebujete, a - číslo, na kterém záleží - §**výdrž**§.
+---
+@Signals Officer
+Výdrž je, na kolik tahů zásoba vystačí při současné spotřebě. Devět tahů je
+pohodlí; pod dva je varování; prázdno je nedostatek, který se děje právě teď.
+Je to poctivé čtení - ne velká hromada vystrojená jako hojnost, ale kolik času
+vám ta hromada doopravdy koupí.
+---
+@Signals Officer
+Spotřební zboží je jediné zboží, které je zároveň politickým faktem.
+Spotřebované proti žádanému je vaše §**životní úroveň**§: držte lidi najedené a
+země roste; nechte ji klesnout a hlad se vrátí jako nepokoje.
+---
+@Signals Officer
+Zbylé tři jsou povolení. Stavíte průmysl a utrácíte stroje; vyplujete s
+loďstvem a pálíte palivo; verbujete a čerpáte munici. Dojde-li vám, akce
+prostě zešedne - válka na sklad nečeká.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kde se zboží vyrábí, se nastavuje pro každou provincii. Klikněte na některou
+naši: na jejím panelu určujete, co její továrny vyrábějí, nebo to necháte a
+ekonomika rozdělí za vás - stojící továrny pošle na to, čeho máte nejméně.
+---
+@Signals Officer
+:: point=btn.settings
+Dva přepínače bydlí v §**Nastavení -> Experimentální**§. Jeden zapne ekonomiku
+zboží pro váš příští nový svět. Druhý, §**Přebytky spojencům**§, je dobrovolný:
+když spojenci něco chybí, vaše přebytečné zboží jde k němu. Často nikomu nic
+nechybí, takže stojí - je to pomoc držená v pohotovosti, ne daň z vašich zásob.
+---
+@Signals Officer
+To je ekonomika zboží: těžit, vyrábět, živit a utrácet. Hlídejte výdrž, držte
+lidi najedené a nikdy nezačínejte válku, kterou vaše munice nedokáže dokončit.
+
+Ještě něco?

@@ -190,6 +190,7 @@ bool Config::load(const std::string& path) {
     goodsEconomy = findBool(json, "goodsEconomy", false);
     autoTradeSurplus = findBool(json, "autoTradeSurplus", false);
     riskyRamOps = findBool(json, "riskyRamOps", false);
+    fogTutorialSeen = findBool(json, "fogTutorialSeen", false);
     fogOfWarWorlds = findBool(json, "fogOfWarWorlds", false);
     gd5Path = findConfigString(json, "gd5Path", "");
     masterVolume = std::clamp(findFloat(json, "masterVolume", 0.8f), 0.0f, 1.0f);
@@ -342,6 +343,7 @@ bool Config::save(const std::string& path) {
     file << "  \"goodsEconomy\": " << (goodsEconomy ? "true" : "false") << ",\n";
     file << "  \"autoTradeSurplus\": " << (autoTradeSurplus ? "true" : "false") << ",\n";
     file << "  \"riskyRamOps\": " << (riskyRamOps ? "true" : "false") << ",\n";
+    file << "  \"fogTutorialSeen\": " << (fogTutorialSeen ? "true" : "false") << ",\n";
     file << "  \"fogOfWarWorlds\": " << (fogOfWarWorlds ? "true" : "false") << ",\n";
     file << "  \"gd5Path\": \"" << gd5Path << "\",\n";
     file << "  \"masterVolume\": " << masterVolume << ",\n";

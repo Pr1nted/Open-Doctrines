@@ -1,0 +1,63 @@
+// Tłumaczenie - gospodarka towarowa.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+W §**świecie z towarami**§ prowincja nie tylko zarabia pieniądze. Wydobywa
+surowce, a jej fabryki przerabiają je na towary - i to towary, nie gotówka,
+karmią twoich ludzi i pozwalają ci budować. Otwórz gospodarkę.
+---
+@Signals Officer
+Są cztery. §**Dobra konsumpcyjne**§ twoi ludzie zjadają. §**Maszyny**§ budują
+przemysł, forty i porty. §**Paliwo**§ porusza okręty i armie. §**Amunicja**§
+pozwala werbować żołnierzy i strzelać z artylerii. Złoto zostaje pieniędzmi.
+---
+@Signals Officer
+A każdy z nich pochodzi z ziemi, przez fabrykę. §**Kauczuk i kamienie
+szlachetne**§ stają się dobrami konsumpcyjnymi; §**metal**§ - maszynami i
+amunicją; §**ropa**§ - paliwem. Nie ma złoża, nie ma towaru - więc niedobór
+wskazuje ci prowincję do zajęcia albo fabrykę do przestawienia.
+---
+@Signals Officer
+W grze z towarami gospodarce wyrasta u góry zakładka §**Towary**§. Pokazuje
+wszystkie cztery obok siebie: ile masz, ile wytwarzasz wobec tego, ile
+potrzebujesz co turę, i - liczbę, która się liczy - §**pokrycie**§.
+---
+@Signals Officer
+Pokrycie to liczba tur, na które starczy zapas przy obecnym zużyciu. Dziewięć
+tur to wygoda; poniżej dwóch to ostrzeżenie; zero to niedobór, który dzieje się
+teraz. To uczciwy odczyt - nie wielka sterta przebrana za obfitość, tylko to, ile
+czasu ta sterta naprawdę ci kupuje.
+---
+@Signals Officer
+Dobra konsumpcyjne to jedyny towar, który jest też faktem politycznym. Zjedzone
+wobec pożądanych to twój §**poziom życia**§: trzymaj ludzi sytych, a kraj
+rośnie; pozwól mu spaść, a głód wróci jako niepokoje.
+---
+@Signals Officer
+Pozostałe trzy to pozwolenia. Budujesz przemysł - wydajesz maszyny; wypływasz
+flotą - spalasz paliwo; werbujesz - pobierasz amunicję. Zabraknie, a akcja po
+prostu robi się szara - wojna nie czeka na magazyn.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+To, gdzie powstaje dany towar, ustala się dla każdej prowincji osobno. Kliknij
+którąś naszą: na jej panelu kierujesz tym, co budują jej fabryki, albo zostawiasz
+to gospodarce, która przydziela sama i wysyła bezczynne fabryki tam, gdzie
+brakuje ci najbardziej.
+---
+@Signals Officer
+:: point=btn.settings
+W §**Ustawienia -> Eksperymentalne**§ są dwa przełączniki. Jeden włącza
+gospodarkę towarową w twoim następnym nowym świecie. Drugi,
+§**Nadwyżki dla sojuszników**§, trzeba włączyć samemu: gdy sojusznikowi czegoś
+brakuje, twoje nadwyżki idą do niego. Często nikomu nie brakuje, więc stoi
+bezczynnie - to pomoc trzymana w gotowości, nie podatek od twoich zapasów.
+---
+@Signals Officer
+To jest gospodarka towarowa: wydobywaj, wytwarzaj, karm i wydawaj. Pilnuj
+pokrycia, trzymaj ludzi sytych i nigdy nie zaczynaj wojny, której twoja amunicja
+nie skończy.
+
+Coś jeszcze?

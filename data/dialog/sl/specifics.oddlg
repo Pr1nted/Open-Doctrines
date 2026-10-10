@@ -9,6 +9,8 @@ Izberite eno in jo bom predelala kot je treba. Vprašajte znova, ko končamo.
 > Ladje, pristanišča in kako spraviti vojsko čez vodo -> script:tut_ships
 > Raziskave in zakaj se nič začetega ne konča -> script:tut_research
 > Gospodarstvo, industrija in od kod prihaja denar -> script:tut_economy
+> Gospodarstvo blaga: hrana za ljudi in gorivo za vojno -> script:tut_goods
 > Zahtevki, nemiri in izguba provinc lastnim ljudem -> script:tut_unrest
 > Zavezništva, premirja in preostanek diplomacije -> script:tut_diplomacy
+> Vojna megla: kaj vidite in kako vohuniti za ostalim -> script:tut_fog
 > Nič drugega, končal sem -> script:outro

@@ -1318,7 +1318,7 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
         "Yours, and it always wins. A host can narrow who may speak on their "
         "server; nothing a host allows puts a letter through a door you shut.");
     {
-        const int picked = choices({"Anyone", "Advisors only", "Nobody"},
+        const int picked = choices({T("Anyone"), T("Advisors only"), T("Nobody")},
                                    m_config.mailLock, {true, true, true});
         if (picked >= 0) {
             m_config.mailLock = picked;
@@ -1342,7 +1342,7 @@ void Game::drawMailSettings(int x, int y, int w, int h, Vector2 mouse, bool clic
         // is allowed to describe a game the player is still setting up -- the
         // line above says what is still missing.
         const std::vector<bool> live = {amHost, amHost, amHost, amHost};
-        const int picked = choices({"Nobody", "Players only", "Advisors only", "Everyone"},
+        const int picked = choices({T("Nobody"), T("Players only"), T("Advisors only"), T("Everyone")},
                                    m_config.mailPolicy, live);
         // The one combination that silently produces no Mail button at all.
         if (m_config.mailPolicy == (int)mail::Policy::PlayersOnly &&

@@ -1,0 +1,66 @@
+// Übersetzung - die Güterwirtschaft.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+In einer §**Güterwelt**§ verdient eine Provinz nicht einfach Geld. Sie fördert
+Rohstoffe, und ihre Fabriken machen daraus Güter - und Güter, nicht Bargeld,
+ernähren Ihr Volk und lassen Sie bauen. Öffnen Sie die Wirtschaft.
+---
+@Signals Officer
+Es gibt vier. §**Konsumgüter**§ verbraucht Ihr Volk. §**Maschinen**§ bauen
+Industrie, Festungen und Häfen. §**Treibstoff**§ bewegt Schiffe und Heere.
+§**Munition**§ braucht es, um Soldaten zu rekrutieren und Artillerie abzufeuern.
+Gold bleibt Geld.
+---
+@Signals Officer
+Und jedes kommt über eine Fabrik aus dem Boden. §**Kautschuk und Edelsteine**§
+werden zu Konsumgütern, §**Metall**§ zu Maschinen und Munition, §**Öl**§ zu
+Treibstoff. Keine Lagerstätte, kein Gut - ein Mangel zeigt Ihnen also auf eine
+Provinz, die man nehmen, oder eine Fabrik, die man umlenken sollte.
+---
+@Signals Officer
+In einem Güterspiel wächst der Wirtschaft oben ein Reiter §**Güter**§. Er führt
+die vier nebeneinander auf: was Sie haben, was Sie pro Runde herstellen
+gegenüber dem Bedarf, und - die Zahl, auf die es ankommt - die §**Reichweite**§.
+---
+@Signals Officer
+Die Reichweite sagt, wie viele Runden ein Vorrat beim jetzigen Verbrauch hält.
+Neun Runden sind bequem, unter zwei ist eine Warnung, leer ist ein Mangel, der
+gerade jetzt eintritt. Es ist die ehrliche Lesart - kein großer Haufen, als
+Fülle herausgeputzt, sondern wie lange der Haufen Ihnen tatsächlich Zeit kauft.
+---
+@Signals Officer
+Konsumgüter sind das eine Gut, das zugleich eine politische Tatsache ist.
+Verbraucht gegen gewünscht ergibt Ihren §**Lebensstandard**§: halten Sie die
+Leute satt, und das Land wächst; lassen Sie ihn sinken, und der Hunger kommt
+als Unruhe zurück.
+---
+@Signals Officer
+Die anderen drei sind Erlaubnisse. Wer Industrie baut, verbraucht Maschinen;
+wer eine Flotte auslaufen lässt, verbrennt Treibstoff; wer rekrutiert, zieht
+Munition. Reicht es nicht, wird die Aktion einfach grau - der Krieg wartet
+nicht auf das Lager.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Wo ein Gut hergestellt wird, legt jede Provinz selbst fest. Klicken Sie eine
+von unseren an: in ihrem Feld bestimmen Sie, was ihre Fabriken bauen, oder Sie
+lassen es, und die Wirtschaft teilt für Sie zu und schickt stillstehende
+Fabriken an das, woran es Ihnen am meisten fehlt.
+---
+@Signals Officer
+:: point=btn.settings
+Zwei Schalter wohnen in §**Einstellungen -> Experimentell**§. Einer schaltet die
+Güterwirtschaft für Ihre nächste neue Welt ein. Der andere,
+§**Überschuss an Verbündete**§, ist freiwillig: wenn einem Verbündeten etwas
+fehlt, gehen Ihre übrigen Güter an ihn. Oft fehlt keinem etwas, dann ruht er -
+das ist bereitgehaltene Hilfe, keine Steuer auf Ihre Lager.
+---
+@Signals Officer
+Das ist die Güterwirtschaft: fördern, herstellen, ernähren, ausgeben. Achten
+Sie auf die Reichweite, halten Sie Ihr Volk satt, und beginnen Sie nie einen
+Krieg, den Ihre Munition nicht beenden kann.
+
+Sonst noch etwas?

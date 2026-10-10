@@ -9,6 +9,8 @@
 > 함선, 항구, 그리고 군대를 물 건너 보내기 -> script:tut_ships
 > 연구, 그리고 시작한 것이 왜 하나도 끝나지 않는지 -> script:tut_research
 > 경제, 공업, 그리고 돈이 어디서 나오는지 -> script:tut_economy
+> 재화 경제: 국민을 먹이고 전쟁에 연료를 대는 법 -> script:tut_goods
 > 청구권, 불안, 그리고 자국민에게 주를 잃는 일 -> script:tut_unrest
 > 동맹, 휴전, 그 밖의 외교 -> script:tut_diplomacy
+> 전장의 안개: 무엇이 보이는지, 그리고 나머지를 염탐하는 법 -> script:tut_fog
 > 더는 없습니다, 끝났어요 -> script:outro

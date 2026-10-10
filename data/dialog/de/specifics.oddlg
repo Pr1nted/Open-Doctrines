@@ -10,6 +10,8 @@ sind.
 > Schiffe, Häfen und wie ein Heer über Wasser kommt -> script:tut_ships
 > Forschung, und warum nichts Begonnenes fertig wird -> script:tut_research
 > Wirtschaft, Industrie und woher das Geld kommt -> script:tut_economy
+> Die Güterwirtschaft: das Volk ernähren und den Krieg betanken -> script:tut_goods
 > Ansprüche, Unruhe und der Verlust von Provinzen an das eigene Volk -> script:tut_unrest
 > Bündnisse, Waffenstillstände und der Rest der Diplomatie -> script:tut_diplomacy
+> Nebel des Krieges: was Sie sehen, und den Rest ausspähen -> script:tut_fog
 > Nichts weiter, ich bin fertig -> script:outro

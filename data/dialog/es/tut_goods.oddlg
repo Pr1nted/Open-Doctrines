@@ -1,0 +1,68 @@
+// Traducción - la economía de bienes.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+En un §**mundo de bienes**§, una provincia no se limita a ganar dinero. Extrae
+materias primas y sus fábricas las convierten en bienes, y son los bienes, no
+el efectivo, los que alimentan a tu gente y te dejan construir. Abre la
+economía.
+---
+@Signals Officer
+Son cuatro. Los §**Bienes de consumo**§ los consume tu gente. La
+§**Maquinaria**§ construye industria, fuertes y puertos. El §**Combustible**§
+mueve barcos y ejércitos. Las §**Municiones**§ sirven para reclutar soldados y
+disparar la artillería. El oro sigue siendo dinero.
+---
+@Signals Officer
+Y cada uno sale de la tierra pasando por una fábrica. El
+§**caucho y las piedras preciosas**§ se convierten en bienes de consumo; el
+§**metal**§, en maquinaria y municiones; el §**petróleo**§, en combustible. Sin
+yacimiento no hay bien, así que una escasez te señala una provincia que tomar
+o una fábrica que reorientar.
+---
+@Signals Officer
+En una partida de bienes, a la economía le sale una pestaña §**Bienes**§
+arriba. Muestra los cuatro uno al lado de otro: lo que tienes, lo que produces
+frente a lo que necesitas cada turno y, el número que importa, la
+§**cobertura**§.
+---
+@Signals Officer
+La cobertura es cuántos turnos dura una reserva al consumo actual. Nueve turnos
+es cómodo; menos de dos es un aviso; vacío es una escasez que está pasando
+ahora. Es la lectura honesta: no un montón grande disfrazado de abundancia,
+sino cuánto tiempo te compra de verdad ese montón.
+---
+@Signals Officer
+Los bienes de consumo son el único bien que además es un hecho político.
+Consumido frente a deseado es tu §**nivel de vida**§: mantén a la gente
+alimentada y el país crece; déjalo caer y el hambre vuelve en forma de
+descontento.
+---
+@Signals Officer
+Los otros tres son permisos. Construye industria y gastas maquinaria; saca una
+flota y quemas combustible; recluta y tiras de municiones. Quédate corto y la
+acción simplemente se pone gris: la guerra no espera al almacén.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Dónde se fabrica un bien se fija provincia por provincia. Haz clic en una de
+las nuestras: en su panel diriges lo que construyen sus fábricas, o lo dejas y
+la economía reparte por ti, mandando las fábricas paradas a lo que más te
+falte.
+---
+@Signals Officer
+:: point=btn.settings
+Hay dos interruptores en §**Ajustes -> Experimental**§. Uno activa la economía
+de bienes para tu próximo mundo nuevo. El otro, §**Excedentes a aliados**§, es
+opcional: cuando a un aliado le falta algo, tus bienes sobrantes van para él.
+A menudo a nadie le falta nada, así que se queda quieto: es ayuda preparada, no
+un impuesto sobre tus reservas.
+---
+@Signals Officer
+Esa es la economía de bienes: extraer, fabricar, alimentar y gastar. Vigila la
+cobertura, mantén a tu gente alimentada y nunca empieces una guerra que tus
+municiones no puedan terminar.
+
+¿Algo más?

@@ -10,6 +10,8 @@ fini.
 > Navires, ports et faire traverser l'eau à une armée -> script:tut_ships
 > La recherche, et pourquoi rien de commencé n'aboutit -> script:tut_research
 > L'économie, l'industrie et d'où vient l'argent -> script:tut_economy
+> L'économie des biens : nourrir votre peuple et alimenter la guerre -> script:tut_goods
 > Revendications, troubles et perdre des provinces au profit des siens -> script:tut_unrest
 > Alliances, cessez-le-feu et le reste de la diplomatie -> script:tut_diplomacy
+> Le brouillard de guerre : ce que vous voyez, et espionner le reste -> script:tut_fog
 > Rien d'autre, j'ai terminé -> script:outro

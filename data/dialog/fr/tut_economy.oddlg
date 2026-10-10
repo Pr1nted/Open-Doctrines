@@ -13,6 +13,12 @@ province vide est un hangar hors de prix : la matière première, c'est la
 population, pas le bâtiment.
 ---
 @Signals Officer
+Chaque province annonce donc ce qu'elle peut porter : §**Niveau II sur VI**§,
+et quand elle est saturée, elle le dit. Les gens, la densité à laquelle ils
+vivent, le sol et ce qui y est enfoui - ces quatre-là fixent le plafond, et
+aucune somme d'argent ne le déplace.
+---
+@Signals Officer
 Le revenu arrive une fois par tour, dans le tour. Engagez-vous au-delà de ce
 que vous avez et le manque n'attend pas poliment : il se prend sur la
 préparation, et vous l'apprenez au milieu d'une bataille.

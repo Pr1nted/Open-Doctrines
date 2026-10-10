@@ -1,0 +1,64 @@
+// Prevod - gospodarstvo blaga.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+V §**svetu z blagom**§ provinca ne služi samo denarja. Koplje surovine, njene
+tovarne pa iz njih delajo blago - in blago, ne gotovina, hrani vaše ljudi in
+vam omogoča graditi. Odprite gospodarstvo.
+---
+@Signals Officer
+Vrste so štiri. §**Potrošno blago**§ vaši ljudje pojedo. §**Stroji**§ gradijo
+industrijo, utrdbe in pristanišča. §**Gorivo**§ premika ladje in vojske.
+§**Strelivo**§ omogoča novačenje vojakov in streljanje s topništvom. Zlato
+ostane denar.
+---
+@Signals Officer
+In vsako pride iz zemlje, skozi tovarno. Iz §**kavčuka in dragih kamnov**§
+nastane potrošno blago; iz §**kovine**§ stroji in strelivo; iz §**nafte**§
+gorivo. Brez nahajališča ni blaga - zato vas pomanjkanje usmeri k provinci, ki
+jo je treba zavzeti, ali k tovarni, ki jo je treba preusmeriti.
+---
+@Signals Officer
+V igri z blagom gospodarstvu zgoraj zraste zavihek §**Blago**§. Našteje vse
+štiri drugo ob drugem: koliko imate, koliko izdelate v primerjavi s tem, koliko
+potrebujete vsako potezo, in - število, ki šteje - §**pokritost**§.
+---
+@Signals Officer
+Pokritost je število potez, ki jih zaloga zdrži pri sedanji porabi. Devet potez
+je udobno; pod dve je opozorilo; prazno je pomanjkanje, ki se dogaja zdaj. To
+je pošteno branje - ne velik kup, preoblečen v obilje, ampak koliko časa vam
+ta kup v resnici kupi.
+---
+@Signals Officer
+Potrošno blago je edino blago, ki je hkrati tudi političen dejavnik. Pojedeno
+proti želenemu je vaš §**življenjski standard**§: ljudi imejte site in država
+raste; pustite, da zdrsne, in lakota se vrne kot nemir.
+---
+@Signals Officer
+Ostali trije so dovoljenja. Gradite industrijo in porabljate stroje; izplujete
+s floto in kurite gorivo; novačite in črpate strelivo. Ko zmanjka, dejanje
+preprosto posivi - vojna ne čaka na skladišče.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kje nastaja katero blago, se določi za vsako provinco posebej. Kliknite eno od
+naših: na njeni plošči usmerjate, kaj gradijo njene tovarne, ali pa pustite in
+gospodarstvo razporedi samo ter pošlje nedejavne tovarne na tisto, česar vam
+najbolj primanjkuje.
+---
+@Signals Officer
+:: point=btn.settings
+V §**Nastavitve -> Eksperimentalno**§ sta dve stikali. Eno vklopi gospodarstvo
+blaga za vaš naslednji novi svet. Drugo, §**Trgovanje s presežki z
+zavezniki**§, je neobvezno: ko zavezniku nečesa primanjkuje, gre vaše odvečno
+blago k njemu. Pogosto ne primanjkuje nikomur, zato miruje - to je pomoč v
+pripravljenosti, ne davek na vaše zaloge.
+---
+@Signals Officer
+To je gospodarstvo blaga: kopati, izdelovati, hraniti in trošiti. Pazite na
+pokritost, imejte ljudi site in nikoli ne začnite vojne, ki je vaše strelivo ne
+more dokončati.
+
+Še kaj?

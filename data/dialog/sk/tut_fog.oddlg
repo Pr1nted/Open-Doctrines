@@ -1,0 +1,57 @@
+// Preklad - hmla vojny.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Hmla vojny. Niektoré svety sa s ňou vytvárajú, a v nich nikto nevidí celú
+mapu. Ani vy, ani oni.
+---
+@Signals Officer
+Vidíte vlastné územie a jednu provinciu za každou hranicou. Všade, kde stoja
+vaše §**armády**§, a krajinu okolo nich. More pri vašich pobrežiach, a tak
+ďaleko, kam siaha §**radar**§ vašich lodí.
+
+A všetko, čo vidia vaši §**spojenci**§ - aj ktokoľvek, komu dávate záruku,
+alebo kto ju dáva vám. Ich oči sú vaše. Oči ich spojencov už nie.
+---
+@Signals Officer
+Všetko ostatné je spomienka. Tmavé územie je územie, na ktoré sa nikto, komu
+dôverujete, v poslednom čase nepozrel: vidíte ho tak, ako vyzeralo, keď ho
+naposledy niekto videl, a panel provincie vám povie, v ktorom ťahu to bolo.
+
+Najtmavšie je územie, ktoré nikto nikdy nevidel. Jeho vlastník je ten zo
+štartovej mapy, a to sa mohlo zmeniť už dávno.
+---
+@Signals Officer
+Cudzí si knihy nechávajú zavreté. Ich profil ukazuje §**Neznáme**§ pri
+obyvateľstve, príjmoch a výdavkoch, pokiaľ sa ich sami nerozhodnú zverejniť.
+
+História ťahov, časozber a vrátenie ťahu sú v týchto svetoch vypnuté.
+Prehrávajú pravdu, a pravda je to jediné, čo nedostanete.
+---
+@Signals Officer
+Takže sa idete pozrieť. Otvorte profil cudzej krajiny a nájdete tam časť
+§**Rozviedka**§. Vybudujte §**špionážnu sieť**§ a šesť ťahov vidíte celé
+ich územie. Ukradnite ich §**spis**§ a ich čísla sú vaše rovnako dlho.
+
+Oboje stojí peniaze vopred, oboje môže zlyhať a zlyhanie si niekto všimne.
+Nechajte sa chytiť niekým, kto vie chytať, a bude vedieť, čí agenti to boli.
+---
+@Signals Officer
+Váš vlastný profil má druhú polovicu: §**kontrarozviedku**§. Tri úrovne, každá
+platená každý ťah, každá spôsobí, že cudzí špióni zlyhávajú častejšie.
+
+A v týchto svetoch je aj karta výskumu §**Rozviedka**§: radar, pobrežné
+hliadky, prieskum, lúštitelia šifier a lepšia bezpečnosť.
+---
+@Signals Officer
+Počítač hrá podľa rovnakých pravidiel: rozhoduje podľa toho, čo vidí, rovnako
+ako vy. Takisto diplomati, ktorí vám píšu. Keď povedia "podľa našich
+posledných hlásení", myslia to doslova.
+---
+@Signals Officer
+Ako si ju zahrať: §**Nastavenia**§, potom §**Experimentálne**§, potom
+§**Svety s hmlou vojny**§. Potom tlačidlo §**i**§ pri mape a hmlu zapnúť
+ešte pred začiatkom. Volí sa raz, na celý život toho sveta.
+
+To je hmla.

@@ -1,0 +1,63 @@
+// Çeviri - mal ekonomisi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Bir §**mal dünyasında**§ il yalnızca para kazanmaz. Hammadde çıkarır ve
+fabrikaları bunları mala dönüştürür - ve halkınızı besleyen, inşa etmenizi
+sağlayan nakit değil, maldır. Ekonomiyi açın.
+---
+@Signals Officer
+Dört tane var. §**Tüketim mallarını**§ halkınız yer. §**Makine**§ sanayi, kale
+ve liman inşa eder. §**Yakıt**§ gemileri ve orduları yürütür. §**Mühimmat**§
+asker toplamayı ve top atmayı sağlar. Altın para olarak kalır.
+---
+@Signals Officer
+Ve her biri topraktan bir fabrika aracılığıyla gelir. §**Kauçuk ve değerli
+taşlar**§ tüketim malı olur; §**metal**§ makine ve mühimmat olur; §**petrol**§
+yakıt olur. Yatak yoksa mal da yok - yani bir kıtlık size alınacak bir ili ya
+da yönü değiştirilecek bir fabrikayı gösterir.
+---
+@Signals Officer
+Bir mal oyununda ekonominin üstünde bir §**Mallar**§ sekmesi belirir. Dördünü
+yan yana sıralar: elinizde ne olduğunu, her tur ihtiyacınıza karşı ne
+ürettiğinizi ve - asıl önemli sayıyı - §**yeterliği**§.
+---
+@Signals Officer
+Yeterlik, bir stokun mevcut kullanımınızla kaç tur dayandığıdır. Dokuz
+tur rahattır; ikinin altı bir uyarıdır; boş, şu anda yaşanan bir kıtlıktır.
+Dürüst okuma budur - bolluk kılığına sokulmuş büyük bir yığın değil, o yığının
+size gerçekte ne kadar zaman kazandırdığı.
+---
+@Signals Officer
+Tüketim malları, aynı zamanda siyasi bir gerçek olan tek maldır. Tüketilenin
+istenene oranı sizin §**yaşam düzeyinizdir**§: halkı tok tutun, ülke büyür;
+kaymasına izin verin, açlık huzursuzluk olarak geri döner.
+---
+@Signals Officer
+Diğer üçü izinlerdir. Sanayi kurarsınız, makine harcarsınız; filoyla denize
+açılırsınız, yakıt yakarsınız; asker toplarsınız, mühimmat çekersiniz. Biterse
+eylem basitçe grileşir - savaş depoyu beklemez.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Bir malın nerede üretileceği il il belirlenir. Bizimkilerden birine tıklayın:
+panelinde fabrikalarının ne üreteceğini yönlendirirsiniz, ya da bırakırsınız
+ve ekonomi kendisi dağıtır, boşta kalan fabrikaları en çok eksiğiniz olana
+gönderir.
+---
+@Signals Officer
+:: point=btn.settings
+§**Ayarlar -> Deneysel**§ içinde iki anahtar var. Biri, bir sonraki yeni
+dünyanız için mal ekonomisini açar. Diğeri, §**Fazlanın Müttefiklerle Ticareti**§,
+isteğe bağlıdır: bir müttefik sıkıştığında fazla mallarınız ona gider. Çoğu
+zaman kimse sıkışık değildir, bu yüzden boşta durur - bu hazırda tutulan bir
+yardımdır, stoklarınızdan alınan bir vergi değil.
+---
+@Signals Officer
+Mal ekonomisi budur: çıkar, üret, besle ve harca. Yeterliği izleyin,
+halkınızı tok tutun ve mühimmatınızın bitiremeyeceği bir savaşa asla
+başlamayın.
+
+Başka bir şey?

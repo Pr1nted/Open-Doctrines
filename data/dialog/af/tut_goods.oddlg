@@ -1,0 +1,63 @@
+// Vertaling - die goedere-ekonomie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+In 'n §**goederewêreld**§ maak 'n provinsie nie net geld nie. Dit grawe
+grondstowwe uit en sy fabrieke maak goedere daarvan - en goedere, nie kontant
+nie, is wat jou mense voed en jou laat bou. Maak die ekonomie oop.
+---
+@Signals Officer
+Daar is vier. §**Verbruikersgoedere**§ is wat jou mense eet. §**Masjinerie**§
+bou nywerheid, forte en hawens. §**Brandstof**§ beweeg skepe en leërs. Met
+§**Ammunisie**§ werf jy soldate en vuur jy artillerie af. Goud bly geld.
+---
+@Signals Officer
+En elkeen kom uit die grond deur 'n fabriek. §**Rubber en edelstene**§ word
+verbruikersgoedere; §**metaal**§ word masjinerie en ammunisie; §**olie**§ word
+brandstof. Geen afsetting nie, geen goed nie - so 'n tekort wys jou na 'n
+provinsie om te vat of 'n fabriek om om te stel.
+---
+@Signals Officer
+In 'n goederespel kry die ekonomie bo-aan 'n §**Goedere**§-oortjie. Dit lys al
+vier langs mekaar: wat jy hou, wat jy maak teenoor wat jy elke beurt nodig het,
+en - die getal wat saak maak - §**dekking**§.
+---
+@Signals Officer
+Dekking is hoeveel beurte 'n voorraad hou teen jou huidige verbruik. Nege
+beurte is gemaklik; onder twee is 'n waarskuwing; leeg is 'n tekort wat nou
+gebeur. Dit is die eerlike lesing - nie 'n groot hoop wat as oorvloed
+aangetrek is nie, maar hoe lank die hoop jou werklik koop.
+---
+@Signals Officer
+Verbruikersgoedere is die een goed wat ook 'n politieke feit is. Geëet teenoor
+verlang is jou §**lewenstandaard**§: hou mense versadig en die land groei; laat
+dit gly en die honger kom terug as onrus.
+---
+@Signals Officer
+Die ander drie is toestemmings. Bou nywerheid en jy spandeer masjinerie; vaar
+met 'n vloot uit en jy brand brandstof; werf en jy trek ammunisie. Raak kort
+en die aksie word eenvoudig grys - die oorlog wag nie vir die pakhuis nie.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Waar 'n goed gemaak word, word per provinsie bepaal. Klik een van ons s'n: op
+sy paneel rig jy wat sy fabrieke bou, of jy los dit en die ekonomie deel self
+toe, en stuur ledige fabrieke na wat jy die kortste aan is.
+---
+@Signals Officer
+:: point=btn.settings
+Twee skakelaars woon in §**Instellings -> Eksperimenteel**§. Een skakel die
+goedere-ekonomie aan vir jou volgende nuwe wêreld. Die ander,
+§**Handelsoorskot met bondgenote**§, moet jy self aanskakel: wanneer 'n
+bondgenoot kortkom, gaan jou oortollige goedere na hulle. Dikwels kom niemand
+kort nie, so dit staan ledig - dis hulp wat gereed gehou word, nie 'n belasting
+op jou voorrade nie.
+---
+@Signals Officer
+Dit is die goedere-ekonomie: grawe, maak, voed en spandeer. Hou dekking dop,
+hou jou mense gevoed, en begin nooit 'n oorlog wat jou ammunisie nie kan
+klaarmaak nie.
+
+Iets anders?

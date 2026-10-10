@@ -1,0 +1,61 @@
+// Specialised: fog of war.
+//
+// Prose only, no `point=` or `gate=`. It is offered from the topic menu, in a
+// practice world that has no fog for a pointer to point at, and played once on
+// its own the first time someone enters a fog world (Game::updateDialogue).
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Fog of war. Some worlds are made with it, and in those nobody sees the whole
+map. Not you, not them.
+---
+@Signals Officer
+You see your own land, and one province past every border. Wherever your
+§**armies**§ stand, and the land around them. The sea off your coasts, and as
+far as your ships' §**radar**§ reaches.
+
+And everything your §**allies**§ see -- and anyone you guarantee, or who
+guarantees you. Their eyes are yours. Their allies' are not.
+---
+@Signals Officer
+Everything else is a memory. Dark land is land nobody you trust has looked at
+lately: what you see there is how it was when it was last seen, and the
+province panel tells you which turn that was.
+
+Darkest of all is land nobody has ever seen. Its owner is the one on the
+starting map, and that may have changed long ago.
+---
+@Signals Officer
+Strangers keep their books shut. Their profile says §**Unknown**§ for
+population, income and expenses, unless they choose to publish them.
+
+History, the timelapse and rewinding a turn are switched off in these worlds.
+They replay the truth, and the truth is the one thing you do not get.
+---
+@Signals Officer
+So you go and look. Open a foreign country's profile and you will find
+§**Intelligence**§. Plant a §**spy network**§ and you see all their land for
+six turns. Steal their §**dossier**§ and their figures are yours for as long.
+
+Both cost money up front, both can fail, and a failure is noticed. Get caught
+by someone good at catching and they will know whose agents they were.
+---
+@Signals Officer
+Your own profile has the other half: §**counter-intelligence**§. Three levels,
+each paid for every turn, each making foreign spies fail more often.
+
+And in these worlds there is an §**Intelligence**§ research tab: radar,
+coastwatchers, reconnaissance, codebreakers and better security.
+---
+@Signals Officer
+The computer plays by the same rules: it decides on what it can see, the same
+as you. So do the diplomats who write to you. When they say "by our last
+reports", they mean it.
+---
+@Signals Officer
+To play one: §**Settings**§, then §**Experimental**§, then
+§**Fog of War worlds**§. Then a map's §**i**§ button, and fog on before you
+start. It is chosen once, for the life of that world.
+
+That is the fog.

@@ -1,0 +1,71 @@
+// Traduction - l'économie des biens.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Dans un §**monde à biens**§, une province ne se contente pas de rapporter de
+l'argent. Elle extrait des matières premières et ses usines les transforment
+en biens - et ce sont les biens, pas l'argent liquide, qui nourrissent votre
+peuple et vous permettent de construire. Ouvrez l'économie.
+---
+@Signals Officer
+Il y en a quatre. Les §**Biens de consommation**§, votre peuple les consomme.
+Les §**Machines**§ bâtissent l'industrie, les forts et les ports. Le
+§**Carburant**§ fait avancer navires et armées. Les §**Munitions**§ servent à
+recruter des soldats et à faire tirer l'artillerie. L'or reste de l'argent.
+---
+@Signals Officer
+Et chacun sort de terre en passant par une usine. Le
+§**caoutchouc et les pierres précieuses**§ deviennent des biens de
+consommation ; le §**métal**§ devient
+machines et munitions ; le §**pétrole**§ devient carburant. Pas de gisement,
+pas de bien - une pénurie vous désigne donc une province à prendre ou une
+usine à réorienter.
+---
+@Signals Officer
+Dans une partie à biens, l'économie se dote d'un onglet §**Biens**§ en haut.
+Il aligne les quatre côte à côte : ce que vous détenez, ce que vous produisez
+face à ce qu'il vous faut chaque tour, et - le chiffre qui compte - la
+§**couverture**§.
+---
+@Signals Officer
+La couverture, c'est le nombre de tours que dure un stock au rythme actuel.
+Neuf tours, c'est confortable ; moins de deux, c'est une alerte ; vide, c'est
+une pénurie en cours. C'est la lecture honnête : pas un gros tas déguisé en
+abondance, mais le temps que ce tas vous achète vraiment.
+---
+@Signals Officer
+Les biens de consommation sont le seul bien qui soit aussi un fait politique.
+Consommé face à désiré, c'est votre §**niveau de vie**§ : gardez les gens
+nourris et le pays grandit ; laissez-le glisser et la faim revient sous forme
+de troubles.
+---
+@Signals Officer
+Les trois autres sont des permissions. Construisez de l'industrie et vous
+dépensez des machines ; faites sortir une flotte et vous brûlez du carburant ;
+recrutez et vous puisez dans les munitions. Venez à manquer et l'action se
+grise, tout simplement - la guerre n'attend pas l'entrepôt.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+L'endroit où un bien est produit se règle province par province. Cliquez sur
+une des nôtres : dans son panneau, vous dirigez ce que construisent ses usines,
+ou vous laissez faire et l'économie répartit pour vous, en envoyant les usines
+à l'arrêt sur ce qui vous manque le plus.
+---
+@Signals Officer
+:: point=btn.settings
+Deux interrupteurs se trouvent dans §**Paramètres -> Expérimental**§. L'un
+active l'économie des biens pour votre prochain nouveau monde. L'autre,
+§**Surplus aux alliés**§, est facultatif : quand un allié manque de quelque
+chose, vos biens en trop partent chez lui. Souvent personne ne manque de rien,
+alors il reste inactif - c'est une aide tenue prête, pas un impôt sur vos
+réserves.
+---
+@Signals Officer
+Voilà l'économie des biens : extraire, fabriquer, nourrir et dépenser.
+Surveillez la couverture, gardez votre peuple nourri, et ne commencez jamais
+une guerre que vos munitions ne peuvent pas finir.
+
+Autre chose ?
