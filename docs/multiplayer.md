@@ -63,6 +63,10 @@ Not mod verification. **Authority.**
 - The server never asks a client to compute game state. Even a `"both"`-side
   mod runs authoritatively on the server and decoratively on the client.
 
+- In a **fog-of-war** world nothing is broadcast: each seat is sent only what
+  its country can see, and spectators are sent nothing. See
+  `docs/fog-of-war.md`, "Multiplayer".
+
 **Mod matching is an integrity check, not an anti-tamper one**, and the UI says
 so in those words. A client is a program on hardware its owner controls; it can
 report any mod list it likes, and no amount of public source changes that. What the

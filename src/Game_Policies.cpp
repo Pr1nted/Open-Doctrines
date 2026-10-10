@@ -384,7 +384,7 @@ void Game::applyStartingPolicies() {
             for (int apIdx : m_countryActivePolicyIndices[cid]) {
                 if (apIdx >= (int)m_activePolicies.size()) continue;
                 const auto& ap = m_activePolicies[apIdx];
-                if (ap.turnsRemaining != 0) continue;
+                if (!ap.inForce()) continue;
                 if (policiesConflict(pid, ap.policyId)) { incompatible = true; break; }
             }
             if (incompatible) continue;
@@ -475,8 +475,8 @@ void Game::cancelPolicy(int activePolicyIndex) {
     if (ap.turnsRemaining > 0) {
         ap.turnsRemaining = -1;  // Mark as cancelled
         m_policiesEnactedThisTurn = std::max(0, m_policiesEnactedThisTurn - 1);
-    } else if (ap.turnsRemaining == 0) {
-        ap.turnsRemaining = -1;  // Mark as repealed
+    } else if (ap.inForce()) {
+        ap.turnsRemaining = -1;  // Mark as repealed -- a running campaign too
     }
 }
  
@@ -698,7 +698,7 @@ bool Game::doctrineCommitment() const {
 
 float Game::policyTenure(const ActivePolicy& ap) const {
     if (!doctrineCommitment()) return 1.0f;
-    if (ap.turnsRemaining != 0) return 1.0f;   // not in force: nothing to scale
+    if (!ap.inForce()) return 1.0f;   // not in force: nothing to scale
     const float held = (float)std::min(ap.turnsHeld, kTenureTurns);
     return 1.0f + (kTenureMax - 1.0f) * (held / (float)kTenureTurns);
 }
@@ -774,6 +774,7 @@ void Game::applyPolicyEffects(int countryId) {
             }
         } else if (ap.turnsRemaining < -1) {
             // Finite-duration propaganda policy still active
+            ap.turnsHeld++;   // in force, so it earns tenure like any other
             totalCost += policyUpkeep(ap, *p);
             shiftCountryCompass(countryId, p->econShift / 50.0f, p->socShift / 50.0f);
             // Apply public opinion shift
@@ -1139,7 +1140,7 @@ float Game::getCountryUnrest(int countryId) const {
         for (int apIdx : idxIt->second) {
             if (apIdx >= (int)m_activePolicies.size()) continue;
             const auto& ap = m_activePolicies[apIdx];
-            if (ap.turnsRemaining >= 0) {
+            if (ap.turnsRemaining != -1) {   // implementing, in force, or a running campaign
                 for (const auto& p : m_allPolicies) {
                     if (p.id == ap.policyId) {
                         unrest -= policyUnrestPct(p);   // see the declaration
@@ -1349,7 +1350,7 @@ float Game::getProvinceRebellionChance(int provinceId, int countryId) const {
         for (int idx : apIt->second) {
             if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
             const ActivePolicy& ap = m_activePolicies[idx];
-            if (ap.turnsRemaining != 0) continue; // only fully active policies
+            if (!ap.inForce()) continue; // only policies in force
             for (const auto& p : m_allPolicies)
                 if (p.id == ap.policyId) { total -= policyUnrestPct(p); break; }
         }
@@ -3327,7 +3328,7 @@ void Game::drawDistrictsTab() {
         m_districtMapSrcY = std::clamp(m_districtMapSrcY, 0.0f, std::max(0.0f, texH - srcH));
         const Rectangle src = {m_districtMapSrcX, m_districtMapSrcY, srcW, srcH};
         const Rectangle dst = {(float)mapX, (float)mapY, (float)mapW, (float)mapH};
-        DrawTexturePro(m_politicalTex, src, dst, {0, 0}, 0, WHITE);
+        DrawTexturePro(m_politicalTex, polSrc(src), dst, {0, 0}, 0, WHITE);
         // The overlay is a quarter of the political map's size, so its source
         // rectangle is halved in each direction. See rebuildDistrictOverlay.
         const Rectangle ovSrc = {src.x / DISTRICT_OVERLAY_DIV, src.y / DISTRICT_OVERLAY_DIV,
@@ -4137,7 +4138,7 @@ float Game::disclosureAppealFor(int cid, unsigned bits) const {
         if (apIt != m_countryActivePolicyIndices.end())
             for (int idx : apIt->second) {
                 if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
-                if (m_activePolicies[idx].turnsRemaining != 0) continue;
+                if (!m_activePolicies[idx].inForce()) continue;
                 for (const auto& p : m_allPolicies)
                     if (p.id == m_activePolicies[idx].policyId) {
                         calm += policyUnrestPct(p) * 0.02f;
@@ -4352,6 +4353,8 @@ void Game::drawCountryProfile() {
     if (!c) { m_inCountryProfile = false; return; }
     const int cid = m_profileCountryId;
     const bool mine = (cid == m_playerCountryId);
+    // Under fog a stranger's figures are what it publishes and nothing else.
+    const bool fogBlind = !fogKnowsCountry(cid);
     const Vector2 mouse = getMouse();
     const bool click = !m_paused && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
 
@@ -4468,12 +4471,33 @@ void Game::drawCountryProfile() {
     const int rightX = L + colW + 40;
     int leftY = y, rightY = y;
     const long long popNow = haveHist ? hIt->second.back().population : 0;
-    leftY = plot(L, leftY, "Population", popV, Color{130, 190, 230, 255},
-                 popNow > 0 ? formatPop(popNow).c_str() : nullptr);
-    rightY = plot(rightX, rightY, "Gross Income", inV, SKYBLUE,
-                  haveHist ? TextFormat("%.1f", hIt->second.back().total) : nullptr);
-    leftY = plot(L, leftY, "Expenses", outV, Color{210, 90, 90, 255},
-                 haveHist ? TextFormat("%.1f", hIt->second.back().expenses) : nullptr);
+    // A graph the fog withholds is drawn as a box that says so, in the same
+    // place, so the page does not rearrange itself by what is known.
+    auto blindBox = [&](int gx, int gy, const char* title) {
+        DrawText(T(title), gx, gy, 14, WHITE);
+        gy += 18;
+        DrawRectangle(gx, gy, colW, gh, Color{14, 16, 22, 190});
+        DrawRectangleLines(gx, gy, colW, gh, Color{62, 66, 86, 170});
+        DrawText(T("Unknown -- no intelligence"), gx + 8, gy + gh / 2 - 6, 12,
+                 Color{150, 140, 110, 255});
+        return gy + gh + 14;
+    };
+    const bool popKnown = !fogBlind || discloses(cid, DISCLOSE_POPULATION);
+    const bool incKnown = !fogBlind || discloses(cid, DISCLOSE_INCOME);
+    if (popKnown)
+        leftY = plot(L, leftY, "Population", popV, Color{130, 190, 230, 255},
+                     popNow > 0 ? formatPop(popNow).c_str() : nullptr);
+    else
+        leftY = blindBox(L, leftY, "Population");
+    if (incKnown) {
+        rightY = plot(rightX, rightY, "Gross Income", inV, SKYBLUE,
+                      haveHist ? TextFormat("%.1f", hIt->second.back().total) : nullptr);
+        leftY = plot(L, leftY, "Expenses", outV, Color{210, 90, 90, 255},
+                     haveHist ? TextFormat("%.1f", hIt->second.back().expenses) : nullptr);
+    } else {
+        rightY = blindBox(rightX, rightY, "Gross Income");
+        leftY = blindBox(L, leftY, "Expenses");
+    }
 
     // ── Where its government stands ──
     {
@@ -4539,7 +4563,14 @@ void Game::drawCountryProfile() {
     {
         ensureDefaultDistrict(cid);
         auto dIt = m_districts.find(cid);
-        if (dIt != m_districts.end() && !dIt->second.empty()) {
+        // Under fog the division is drawn on land the player cannot see.
+        if (fogBlind) {
+            const int dy = std::max(leftY, rightY) + 6;
+            DrawText(T("Districts"), L, dy, 16, hexToColor(m_config.accent()));
+            DrawText(T("Out of sight -- no intelligence on how it is divided."), L, dy + 24, 12,
+                     Color{150, 140, 110, 255});
+            leftY = rightY = dy + 46;
+        } else if (dIt != m_districts.end() && !dIt->second.empty()) {
             const auto& ds = dIt->second;
             int shareTotal = 0;
             for (const District& d : ds) shareTotal += std::max(0, d.sharePct);
@@ -4599,7 +4630,7 @@ void Game::drawCountryProfile() {
                             std::clamp(cxm - sw * 0.5f, 0.0f, (float)texW - sw),
                             std::clamp(cym - sh * 0.5f, 0.0f, (float)texH - sh), sw, sh};
                         BeginScissorMode((int)dst.x, (int)dst.y, (int)dst.width, (int)dst.height);
-                        DrawTexturePro(m_politicalTex, src, dst, {0, 0}, 0, WHITE);
+                        DrawTexturePro(m_politicalTex, polSrc(src), dst, {0, 0}, 0, WHITE);
                         const Rectangle ovSrc = {src.x / DISTRICT_OVERLAY_DIV,
                                                  src.y / DISTRICT_OVERLAY_DIV,
                                                  src.width / DISTRICT_OVERLAY_DIV,
@@ -4663,6 +4694,12 @@ void Game::drawCountryProfile() {
         }
     }
 
+    // ── What we know of them, and the means to know more (fog worlds) ──
+    {
+        const int iy = drawSpySection(cid, L, std::max(leftY, rightY) + 6, colW * 2 + 40);
+        leftY = rightY = iy;
+    }
+
     // ── And what it chooses to publish ──
     int py2 = std::max(leftY, rightY) + 6;
     DrawText(T("Published figures"), L, py2, 16, hexToColor(m_config.accent()));
@@ -4685,6 +4722,9 @@ void Game::drawCountryProfile() {
         "Doctrines in force",
         "Treasury at the start of last turn",
         "How its districts are governed",
+        "Population",
+        "Income and expenses",
+        "Men under arms",
     };
     struct Row { unsigned bit; const char* label; };
     const Row rows[] = {
@@ -4692,8 +4732,15 @@ void Game::drawCountryProfile() {
         {DISCLOSE_DOCTRINES,      kDiscloseLabels[1]},
         {DISCLOSE_TREASURY,       kDiscloseLabels[2]},
         {DISCLOSE_DISTRICT_LAWS,  kDiscloseLabels[3]},
+        {DISCLOSE_POPULATION,     kDiscloseLabels[4]},
+        {DISCLOSE_INCOME,         kDiscloseLabels[5]},
+        {DISCLOSE_ARMY,           kDiscloseLabels[6]},
     };
     for (const Row& r : rows) {
+        // Population, income and the army are on every profile without fog;
+        // only a fog world makes them something to publish.
+        if (!m_fogOfWar && (r.bit == DISCLOSE_POPULATION || r.bit == DISCLOSE_INCOME ||
+                            r.bit == DISCLOSE_ARMY)) continue;
         const bool on = discloses(cid, r.bit);
         Rectangle box = {(float)L, (float)py2, (float)(colW * 2 + 40), 26};
         const bool hov = mine && CheckCollisionPointRec(mouse, box);
@@ -4726,8 +4773,14 @@ void Game::drawCountryProfile() {
                 if (apIt != m_countryActivePolicyIndices.end())
                     for (int idx : apIt->second)
                         if (idx >= 0 && idx < (int)m_activePolicies.size() &&
-                            m_activePolicies[idx].turnsRemaining == 0) ++count;
+                            m_activePolicies[idx].inForce()) ++count;
                 value = TextFormat(T("%d in force"), count);
+            } else if (r.bit == DISCLOSE_POPULATION && hh) {
+                value = formatPop(ih->second.back().population);
+            } else if (r.bit == DISCLOSE_INCOME && hh) {
+                value = TextFormat(T("%s per turn"), formatBalance(ih->second.back().total).c_str());
+            } else if (r.bit == DISCLOSE_ARMY) {
+                value = formatTroops(countryTroops(cid));
             } else if (r.bit == DISCLOSE_TREASURY) {
                 auto tIt = m_treasuryLastTurn.find(cid);
                 value = TextFormat("$%s", formatBalance(
@@ -4766,7 +4819,7 @@ void Game::drawCountryProfile() {
             if (apIt != m_countryActivePolicyIndices.end())
                 for (int idx : apIt->second) {
                     if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
-                    if (m_activePolicies[idx].turnsRemaining != 0) continue;   // still arriving
+                    if (!m_activePolicies[idx].inForce()) continue;   // still arriving
                     for (const auto& p : m_allPolicies)
                         if (p.id == m_activePolicies[idx].policyId) {
                             names.push_back(T(p.name.c_str()));

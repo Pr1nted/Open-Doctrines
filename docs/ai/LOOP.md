@@ -1079,3 +1079,33 @@ benched run (od_bench keeps only stdout).
   is why a scratchpad copy dies (journal 510) and a sibling build directory
   works (journal 532). `cp`, not a link: the pin needs its own inode so a
   rebuild of the source tree cannot reach it.
+- **Pin the MODEL as well as the binary.** `data/ai/model.bin` is written by
+  other sessions (a `--simulate` run with `aiLearning: true` saved over it
+  mid-bench, journal 537, destroying the bytes journals 490-536 were measured
+  against). Copy `data/ai/model.loop-base.bin` to `cmake-build-pin/` and point
+  `OD_EVAL_MODEL` at the copy; confirm from the run's `[EVAL] Model:` line.
+  Keep bench output in `cmake-build-pin/` too — `/tmp` is cleaned on reboot.
+- **A search scoped to one directory cannot prove absence.** Journal 537
+  concluded `main.cpp` "does not exist in this tree" from a `grep` over `src/`.
+  It is at the REPO ROOT and is the first entry in `GAME_SOURCES` — the game's
+  entry point, where `--simulate`, `--ai-readonly` and `--bench-agent` are
+  parsed. Nothing in `src/` mentions them except comments. Widen the search
+  before denying a file exists, especially right after a grep has already
+  misfired on the same hunt.
+- **The bench reference model is `git show HEAD:data/ai/model.bin`.** It is
+  tracked, so no other session can overwrite it; the working file can be and
+  was (journal 537). HEAD's blob reproduces journals 531/533/536 to the decimal
+  (seed 520103 → 40.1). **Do NOT use `data/ai/model.loop-base.bin`** despite
+  its name: it is a different, far weaker lineage (same seed → 1.8, and
+  1914:FRA sits near the floor), so an A/B on it resolves nothing.
+- **Check git before declaring data lost.** Journal 537 announced that the
+  bytes every bench had used were gone, and advised another session against
+  restoring, without running `git ls-files data/ai/`. They were one command
+  away the whole time.
+- **A peer's one-line fix in your file can make your pending work
+  un-committable.** `AISystem.cpp` now calls `ActivePolicy::inForce()`, which
+  exists only in another session's uncommitted `GameStructs.h` (journal 537).
+  Handing a call site to the session that owns the predicate keeps it
+  single-sourced and is usually right — but say so loudly in PENDING COMMIT,
+  because this loop's paths have been committed selectively before and the
+  build breaks without the header.

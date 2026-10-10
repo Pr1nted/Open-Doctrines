@@ -194,7 +194,7 @@
    "population": 1143000000, "army": 3030000, "navy": 8,
    "compass": { "left": 74, "auth": 94 },
    "$comment": "Twelve years into reform and one year after Tiananmen: the economy is opening and the politics are not.",
-   "policies": ["state_industry", "foreign_investment", "censorship", "conscription", "secret_police"]
+   "policies": ["foreign_investment", "censorship", "conscription", "secret_police"]
   },
 
   {

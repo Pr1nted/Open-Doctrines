@@ -35,6 +35,9 @@ struct MapEntry {
     std::string author;       // map author
     std::string license;      // map license
     bool hasScripts = false;  // whether map has scripted events
+    // The fog-of-war choice made in this map's "i" popup. Session state only:
+    // it is the WORLD that records fog, in its save, once it is created.
+    bool fogOfWar = false;
 };
 
 // ─── Save World Info ────────────────────────────────────────
@@ -1021,7 +1024,12 @@ struct Policy {
 struct ActivePolicy {
     std::string policyId;
     int countryId = 0;
-    int turnsRemaining = 0;  // >0 = implementing, 0 = active, -1 = completed/removed
+    // >0 implementing, 0 in force, -1 completed/removed, and below -1 a CAMPAIGN
+    // in force with -(turnsRemaining + 1) turns to run. Ask inForce(), never
+    // `== 0`: that test is how every campaign stopped working the turn its
+    // countdown began (GitHub issue #16).
+    int turnsRemaining = 0;
+    bool inForce() const { return turnsRemaining == 0 || turnsRemaining < -1; }
     // Turns this doctrine has been IN FORCE, counted only while active.
     //
     // A doctrine is meant to be a commitment, and until this existed it was a
@@ -1170,6 +1178,15 @@ struct ResearchNode {
     float migrationRate = 0;
     float indoctrinationPct = 0;
     float conscriptionPct = 0;
+    // Intelligence: fog-of-war worlds only (see fogOnly).
+    float radarRangePct = 0;     // ships' radar reach
+    float coastSightPct = 0;     // how far a coast watches the sea
+    float landSightRings = 0;    // provinces seen past the border, in rings
+    float spyCostPct = 0;        // cheaper operations
+    float spySuccessPct = 0;     // added to an operation's chance, in points
+    float counterIntelPct = 0;   // taken off a foreign operation's chance, in points
+    /// Offered only in a fog-of-war world; without fog there is nothing to see.
+    bool fogOnly = false;
     /**
      * The troop kind this node unlocks, if any.
      *

@@ -1,5 +1,6 @@
 #pragma once
 #include "Monuments.h"
+#include "Fog.h"
 #include "util/OdEnv.h"
 #include "Nationalisation.h"
 #include "WorldProvenance.h"
@@ -184,6 +185,8 @@ public:
      * rules it checks are public, but loading a map without a window is not.
      */
     friend struct PolicyRules;
+    /** The fog-of-war multiplayer test, for the same reason (tests/fog_net_test.cpp). */
+    friend struct FogNetWorld;
 
     Game();
     ~Game();
@@ -1306,6 +1309,7 @@ private:
     int         m_mpSelected = -1;      // index into the server book
     bool        m_mpBindAll = false;
     bool        m_mpListed = false;
+    bool        m_mpFog = false;     // host screen: the new world has fog of war
     int         m_mpMaxPlayers = 8;
 
     /**
@@ -1502,6 +1506,20 @@ private:
     uint8_t m_mpHostMailPolicy = 3;
     /// Server: when finished advisor replies were last gathered mid-turn.
     double  m_llmCollectedAt = 0.0;
+    /**
+     * Host: the post, in its own file beside the save (<save>.odmail).
+     *
+     * state.json is written once a turn, BEFORE that turn's letters are
+     * delivered and answered, and a server's clean stop does not rewrite it --
+     * so every letter written, delivered or answered since the last turn was
+     * in memory only, and a restart (which a free host does whenever it likes)
+     * emptied every mailbox. Written within seconds of any change and on
+     * shutdown; read back on resume, over what state.json had.
+     */
+    void mpSaveMailIfChanged(bool now = false);
+    void mpLoadMail();
+    std::string m_mpMailWritten;
+    double      m_mpMailSavedAt = 0.0;
     /** Start the game and send everybody the world. */
     bool mpHostStartGame(bool force, std::string& why);
     /** Write the open turn's submissions beside the save. */
@@ -2004,6 +2022,9 @@ public:
     std::string m_newWorldName;
     std::string m_newWorldMapPath;
     bool m_showNewWorldDialog = false;
+    // Fog of war for the world the name dialog is about to create. Handed to
+    // m_newWorldFog only when Start is pressed, so a cancelled dialog arms nothing.
+    bool m_newWorldDialogFog = false;
 
     // World rename dialog
     std::string m_renameWorldOldName;
@@ -2061,6 +2082,18 @@ public:
     CountryMap m_countries;
     MapRenderer* m_renderer = nullptr;
     Texture2D m_politicalTex{};
+    // A source rectangle in MAP pixels, scaled to m_politicalTex's own pixels.
+    // The political texture is sized to the province index, which is halved
+    // whenever the GL texture cap is below the map width (always on web, on
+    // low-end mobile GPUs). Panels that crop it with map-pixel rectangles then
+    // sample past the edge, and since the texture repeats, the world restarts
+    // mid-panel with a hard vertical seam. Every panel crop goes through this.
+    Rectangle polSrc(Rectangle mapPx) const {
+        const int mw = m_provinces.getWidth();
+        const float k = (mw > 0 && m_politicalTex.width > 0)
+                            ? (float)m_politicalTex.width / (float)mw : 1.0f;
+        return {mapPx.x * k, mapPx.y * k, mapPx.width * k, mapPx.height * k};
+    }
     int m_screenW = 1600;
     int m_screenH = 900;
     /**
@@ -2986,6 +3019,115 @@ public:
     // which is the only way to tell "the AI got worse" from "the game changed".
     // It comes out once military costs move too.
     bool m_goodsEconomy = false;
+    // FOG OF WAR, a property of the world fixed at creation (docs/design/
+    // fog-of-war-plan.md). m_newWorldFog is the choice made in the map browser's
+    // "i" popup; the two new-world doors consume it and clear it, so a tutorial
+    // or a multiplayer join never inherits a stale "on" from earlier browsing.
+    // A save that says fog is fog for good -- nothing in the game flips it.
+    bool m_fogOfWar = false;
+    bool m_newWorldFog = false;
+
+    // --- Fog of war state (src/Game_Fog.cpp; rules in src/Fog.h) ---
+    // All empty, and every accessor answers "visible / the truth", in a world
+    // without fog.
+    std::unordered_map<int, odfog::Sight> m_fogSight;                       // this turn, shared
+    std::unordered_map<int, std::vector<odfog::ProvinceIntel>> m_fogMemory; // last seen, per country
+    std::unordered_map<int, std::vector<odfog::SeenShip>> m_fogSeenShips;   // recent sightings
+    std::vector<int> m_fogStartOwners;    // the starting atlas, public to all
+    std::vector<uint8_t> m_fogCoastal;    // per province, fixed for the world
+    std::vector<int> m_fogDisplayOwners;  // what the player's map shows (empty = truth)
+    int m_fogTurn = -1;                   // the turn the fog was last computed for
+
+    bool fogOn() const { return m_fogOfWar; }
+    // The two questions the map's markers ask: is this province / ship out of
+    // the PLAYER's sight? False without fog, and false for a spectator.
+    bool fogHides(int pid) const {
+        return m_fogOfWar && fogCountry(m_playerCountryId) && !provinceVisibleTo(m_playerCountryId, pid);
+    }
+    bool fogHidesShip(size_t i) const {
+        return m_fogOfWar && fogCountry(m_playerCountryId) && !shipVisibleTo(m_playerCountryId, i);
+    }
+    bool provinceVisibleTo(int cid, int pid) const;
+    bool shipVisibleTo(int cid, size_t shipIndex) const;
+    int knownOwner(int cid, int pid) const;
+    const odfog::ProvinceIntel* intel(int cid, int pid) const;
+    bool sharesIntel(int a, int b) const;
+    // Does the PLAYER see this country's books -- own, shared, or (Phase 6)
+    // a dossier? True without fog.
+    bool fogKnowsCountry(int cid) const;
+    // The AI's view of another country under fog: nullptr means "read the
+    // truth" -- no fog, itself, an intel-sharing partner, a dossier, or
+    // OD_FOG_AI_TRUTH set. Cached for the turn. See odfog::estimate.
+    const odfog::Estimate* fogEstimate(int observer, int other) const;
+    bool fogAiReadsTruth(int observer, int other) const;
+
+    // --- Fog in multiplayer (src/Game_FogNet.cpp): what each seat was told ---
+    struct FogProv { int owner = 0; long long pop = 0; int ind = 0, fort = 0;
+                     float income = 0, resInc = 0, popInc = 0, popMod = 1.0f; int output = -1; };
+    struct FogUnit { int countryId = 0, count = 0; uint8_t type = 0; };
+    struct FogShip { double lat = 0, lon = 0; int health = 100, crew = 0, cid = 0; };
+    struct FogMirror {
+        std::vector<FogProv> prov;
+        std::unordered_map<int, std::vector<FogUnit>> armies;
+        std::vector<FogShip> ships;
+    };
+    std::unordered_map<int, FogMirror> m_fogMirrors;   // by seated country, host only
+    FogProv fogProvTruth(int pid) const;
+    std::vector<FogUnit> fogArmyTruth(int pid) const;
+    TurnDelta fogSeatDelta(int cid, FogMirror& m, bool full, const TurnDelta& real);
+    std::string fogStateJsonFor(int cid);
+    void fogTakeSeatMemory(const std::string& stateJson);
+    std::vector<uint8_t> fogSnapshotFor(int cid, const TurnDelta& real);
+    bool fogSendSnapshot(uint16_t peerId, int cid);
+    int mpCountryOfPeer(uint16_t peerId) const;
+    void fogSendTurn(uint32_t turn, const TurnDelta& real);
+
+    // --- Espionage (src/Game_Spy.cpp; fog worlds only) ---
+    enum SpyKind : uint8_t { SPY_NETWORK = 0, SPY_DOSSIER = 1 };
+    struct SpyOp { int spy = 0, target = 0; uint8_t kind = 0; int launchTurn = 0, resolveTurn = 0; };
+    struct IntelGrant { int networkUntil = -1, dossierUntil = -1; };
+    std::vector<SpyOp> m_spyOps;
+    std::unordered_map<uint64_t, IntelGrant> m_intelGrants;   // spy<<32 | target
+    std::unordered_map<int, int> m_counterIntelLevel;         // 0..3, absent = 0
+    std::unordered_map<uint64_t, int> m_spyCaught;            // target<<32 | spy -> turn
+    bool m_spyTestDone = false;                               // OD_SPY_TEST, once
+    static const char* spyKindName(uint8_t kind);
+    int counterIntelLevel(int cid) const;
+    float counterIntelPoints(int cid) const;
+    float counterIntelCost(int cid) const;
+    void setCounterIntelLevel(int cid, int level);
+    float spyChance(int spy, int target) const;
+    float spyCost(int spy, int target, uint8_t kind) const;
+    bool spyOpPending(int spy, int target, uint8_t kind) const;
+    std::string spyRefusal(int spy, int target, uint8_t kind) const;
+    bool launchSpyOp(int spy, int target, uint8_t kind);
+    void processSpyOps();
+    bool fogNetwork(int spy, int target) const;
+    bool fogDossier(int spy, int target) const;
+    int spyCaughtTurn(int target, int spy) const;
+    void writeSpyState(nlohmann::json& j) const;
+    void readSpyState(const nlohmann::json& j);
+    int drawSpySection(int cid, int x, int y, int w);
+    mutable std::unordered_map<uint64_t, odfog::Estimate> m_fogEstimateCache;
+    mutable int m_fogEstimateTurn = -1;
+    void drawFoggedProvinceInfo(int pid, int x, int y, int w);
+    // Is this map pixel in the player's sight -- on a visible province or
+    // inside a coast/radar circle? True without fog.
+    bool fogPointVisible(float x, float y) const;
+    bool fogPointVisibleTo(int cid, float x, float y) const;
+    const std::vector<int>& displayOwners() const;
+    float shipRadarPx(const NavyShip& s) const;
+    bool fogCountry(int cid) const;
+    int fogMaxPid() const;
+    void fogBeginWorld();
+    void recomputeFog();
+    void rebuildFogDisplayOwners();
+    void fogPlayerChanged();
+    void buildSeaFogMask(std::vector<uint8_t>& mask, int& mw, int& mh) const;
+    std::string fogMemoryBlob() const;
+    void loadFogMemory(const std::string& blob);
+    void fogAfterLoad(const std::string& savePath);
+    std::string fogDebugLine() const;
     /**
      * Player opt-in: auto-trade our surplus to allies.
      *
@@ -3220,6 +3362,7 @@ public:
     std::string artilleryPriceLabel(const char* ammoType, int troopKillPct) const;
     /** Reads OD_GOODS / OD_AUTOSELL_PCT and clears the pools. Once per world. */
     void applyEconomyEnvironment();
+    void takeNewWorldFog();
 
     // ── EVERY NEW WORLD IS ITS OWN WORLD ────────────────────────────
     //
@@ -3351,7 +3494,7 @@ public:
     //
     // The node order is unchanged, so the floats are bit-identical -- which the
     // decision hash checks (journal 373).
-    static constexpr int kEffectCount = 17;
+    static constexpr int kEffectCount = 23;
     static int effectFieldIndex(const std::string& field);   // -1 if unknown
     static void addNodeEffects(const ResearchNode& n, float* out);
     struct ResearchEffectSums {
@@ -4413,6 +4556,14 @@ public:
          * kind of thing a government says out loud or does not.
          */
         DISCLOSE_DISTRICT_LAWS = 1u << 3,
+        /**
+         * FOG WORLDS ONLY. Without fog these are public anyway -- the graphs
+         * on every profile -- so the rows are offered only where publishing
+         * them tells anybody something they could not already see.
+         */
+        DISCLOSE_POPULATION = 1u << 4,
+        DISCLOSE_INCOME     = 1u << 5,  ///< gross income and expenses, as graphs
+        DISCLOSE_ARMY       = 1u << 6,  ///< men under arms
     };
     std::unordered_map<int, unsigned> m_countryDisclosure;
     /// What it held when the previous turn began, which is what it may publish.
@@ -6243,6 +6394,7 @@ private:
 
     // ─── Province panel cached aggregates (recomputed when selected country changes) ──
     int m_lastPanelCountryId = -1;
+    int m_lastPanelFogTurn = -1;
     int m_cachedProvCount = 0;
     float m_cachedCountryIncome = 0;
     int m_cachedIndustryCount = 0;
@@ -7270,6 +7422,9 @@ private:
         double turnRangeDeg = 0.0;
         std::string detail;      ///< ammo type, the share of the garrison, or what is being built
     };
+    // Under fog, was this order seen? Always for the player's own and without fog.
+    bool fogMarkSeen(const TurnOrderMark& m) const;
+    bool fogMarkSeenBy(int cid, const TurnOrderMark& m) const;
     std::vector<TurnOrderMark> m_turnOrderLog;
     /// Standing orders the current zoom cannot legibly carry; named in the banner.
     int m_ordersHiddenByZoom = 0;
@@ -7331,7 +7486,8 @@ private:
      * caused the 1.1.2a freeze, and this would have been several times the size
      * of the thing that caused it, for a display overlay.
      */
-    std::vector<uint8_t> mpSerializeTurnOrders() const;
+    // fogSeat > 0: only the marks that seat saw (fog of war); see fogMarkSeenBy.
+    std::vector<uint8_t> mpSerializeTurnOrders(int fogSeat = 0) const;
     bool mpApplyTurnOrders(const std::vector<uint8_t>& payload, int turnNumber);
     /**
      * WHAT THIS COUNTRY WILL BE EARNING IN `turns` TURNS, given only what it

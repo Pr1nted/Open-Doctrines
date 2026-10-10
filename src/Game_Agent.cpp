@@ -99,7 +99,7 @@ bool Game::agentBegin(const std::string& seatSpec, unsigned int seed, int untilT
     // the run's exit overwrites <data>/ai/model.bin. ServerMain used to set
     // it at the call site; journal 311 wired a new caller and did not, which
     // is exactly the failure a call-site guard invites. Journal 314.
-    AISystem::s_readOnlyModel = true;
+    AISystem::lockReadOnlyModel();
     applyFpsTarget(-1);
     Audio::s_disabled = true;
     m_agentLoad = true;                // see Game.h: load nothing that is only drawn
@@ -199,10 +199,12 @@ std::string Game::agentOwners(std::vector<AgentColor>& colors) {
     // Who owns each province, indexed by province id: uint16 little-endian,
     // base64. With each owner's colour, a viewer can colour the map's own
     // provinces.png the way the timelapse export does.
+    // The seat's own map: under fog, the owners it knows of.
+    const std::vector<int>& owners = displayOwners();
     std::string raw;
-    raw.reserve(m_provinceCountryLookup.size() * 2);
+    raw.reserve(owners.size() * 2);
     std::vector<int> seen;
-    for (int owner : m_provinceCountryLookup) {
+    for (int owner : owners) {
         const int v = owner < 0 ? 0 : (owner > 65535 ? 65535 : owner);
         raw.push_back((char)(v & 0xFF));
         raw.push_back((char)((v >> 8) & 0xFF));

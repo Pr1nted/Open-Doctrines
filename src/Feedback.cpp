@@ -99,8 +99,16 @@ const char* platformName() {
     return "macos";
 #elif defined(__EMSCRIPTEN__)
     return "web";
+#elif defined(__ANDROID__)
+    // Before __linux__, which Android also defines: every Android report used
+    // to arrive labelled "linux".
+    return "android";
 #elif defined(__linux__)
     return "linux";
+#elif defined(__FreeBSD__)
+    return "freebsd";
+#elif defined(__OpenBSD__)
+    return "openbsd";
 #else
     return "unknown";
 #endif

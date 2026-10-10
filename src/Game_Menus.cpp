@@ -2636,6 +2636,7 @@ void Game::updateCountrySelect() {
 void Game::commitPlayerCountry(int countryId) {
     m_playerCountryId = countryId;
     achPlayerChose(countryId);
+    fogPlayerChanged();
     const Country* pc = m_countries.getCountry(m_playerCountryId);
     LoadLog() << "[DIAG] Player confirmed country " << m_playerCountryId
               << " (" << (pc ? pc->isoA3 : "?") << ")" << std::endl;
@@ -3436,6 +3437,7 @@ void Game::updateSettingsFromMenu() {
             else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
             else if (m_settingsTab == 5 && m_settingsIndex == 6) { m_config.riskyRamOps = false; }
+            else if (m_settingsTab == 5 && m_settingsIndex == 7) { m_config.fogOfWarWorlds = false; }
             else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                 if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                     *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -3656,6 +3658,13 @@ void Game::updateSettingsFromMenu() {
             Audio::get().playSfx(m_config.riskyRamOps ? "toggle_on" : "toggle_off");
             m_menuFeedback = m_config.riskyRamOps
                 ? T("On — fits low-memory devices; turn-rewind and the timelapse need the full map. From your next new world.")
+                : T("Off");
+            m_menuFeedbackTimer = 6.0f;
+        } else if (strcmp(s.label, "Fog of War worlds") == 0) {
+            m_config.fogOfWarWorlds = !m_config.fogOfWarWorlds;
+            Audio::get().playSfx(m_config.fogOfWarWorlds ? "toggle_on" : "toggle_off");
+            m_menuFeedback = m_config.fogOfWarWorlds
+                ? T("On — new worlds can be started with fog of war, from the map's info button. Still being built.")
                 : T("Off");
             m_menuFeedbackTimer = 6.0f;
         } else if (strcmp(s.label, "AI Difficulty") == 0) {

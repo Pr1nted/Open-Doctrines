@@ -9,7 +9,6 @@ cmake-build-*
 net/.wrangler
 data/saves
 data/llm
-data/audio
 data/mods
 data/tools
 data/projects

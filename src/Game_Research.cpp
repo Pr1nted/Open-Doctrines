@@ -52,6 +52,7 @@ bool Game::isNodeAvailableFor(const ResearchNode& node, int countryId) const {
         return cit != m_countryResearched.end() && cit->second.count(id) > 0;
     };
     if (has(node.id)) return false;
+    if (node.fogOnly && !m_fogOfWar) return false;
     if (node.depsAny) {
         bool any = node.deps.empty();
         for (const auto& req : node.deps)
@@ -670,6 +671,39 @@ void buildResearchNodes(std::vector<ResearchNode>& out) {
     mon(odmon::Kind::SignalsDirectorate, "war", {"mon_defence_corporation"},   100, 680, 390);
     mon(odmon::Kind::MissileSilo,        "war", {"mon_defence_corporation"},   150, 460, 390);
 
+    // ─── Intelligence: FOG-OF-WAR WORLDS ONLY ───────────────────────────────
+    //
+    // APPENDED, AND STAYING LAST. Saves, the multiplayer wire and the AI's
+    // research pick all walk this list by position, so a node inserted above
+    // would renumber every one after it. isNodeAvailableFor refuses these
+    // outside a fog world, and the tab is hidden there.
+    auto intel = [&](const std::string& id, const std::string& name, const std::string& desc,
+                     const std::string& subcat, std::vector<std::string> reqs, int cost,
+                     float x, float y) -> ResearchNode& {
+        ResearchNode& n = add(id, name, desc, "intelligence", subcat, std::move(reqs), cost, x, y);
+        n.fogOnly = true;
+        return n;
+    };
+    intel("intel_coastwatch", "Coastwatchers", "Coasts watch half as far again out to sea",
+          "sight", {}, 12, 40, 80).coastSightPct = 50;
+    intel("intel_radar1", "Naval Radar", "Ships see 35% further",
+          "sight", {"intel_coastwatch"}, 20, 40, 190).radarRangePct = 35;
+    intel("intel_radar2", "Long-Range Radar", "Ships see a further 40% further",
+          "sight", {"intel_radar1"}, 40, 40, 300).radarRangePct = 40;
+    intel("intel_recon", "Reconnaissance Patrols", "See one more province past every border",
+          "sight", {}, 15, 240, 80).landSightRings = 1;
+    intel("intel_aerial", "Aerial Reconnaissance", "And one more beyond that",
+          "sight", {"intel_recon"}, 45, 240, 190).landSightRings = 1;
+    intel("intel_service", "Intelligence Service", "Spying costs 25% less and succeeds more often",
+          "espionage", {}, 20, 560, 80).spyCostPct = 25;
+    m_researchNodes.back().spySuccessPct = 10;
+    intel("intel_codebreak", "Codebreakers", "Operations succeed more often still",
+          "espionage", {"intel_service"}, 45, 460, 190).spySuccessPct = 15;
+    intel("intel_counter1", "Counter-Intelligence", "Foreign spies fail more often",
+          "espionage", {"intel_service"}, 20, 660, 190).counterIntelPct = 15;
+    intel("intel_counter2", "Security Apparatus", "And more often still",
+          "espionage", {"intel_counter1"}, 40, 660, 300).counterIntelPct = 20;
+
     LoadLog() << "  Loaded " << m_researchNodes.size() << " research nodes" << std::endl;
 }
 
@@ -1120,6 +1154,12 @@ int Game::effectFieldIndex(const std::string& field) {
         {"navyAtkPct", 14},
         {"navyDefPct", 15},
         {"navySpeedPct", 16},
+        {"radarRangePct", 17},
+        {"coastSightPct", 18},
+        {"landSightRings", 19},
+        {"spyCostPct", 20},
+        {"spySuccessPct", 21},
+        {"counterIntelPct", 22},
     };
     const auto it = kIndex.find(field);
     return it == kIndex.end() ? -1 : it->second;
@@ -1143,6 +1183,12 @@ void Game::addNodeEffects(const ResearchNode& n, float* out) {
     out[14] += n.navyAtkPct;
     out[15] += n.navyDefPct;
     out[16] += n.navySpeedPct;
+    out[17] += n.radarRangePct;
+    out[18] += n.coastSightPct;
+    out[19] += n.landSightRings;
+    out[20] += n.spyCostPct;
+    out[21] += n.spySuccessPct;
+    out[22] += n.counterIntelPct;
 }
 
 float Game::getResearchEffect(const std::string& effectField, int countryId) const {
@@ -1194,7 +1240,7 @@ float Game::getTotalEffect(const std::string& effectField, int countryId) const 
     // turnsRemaining > 0 is still being enacted, < 0 is not in force at all --
     // which is what the implementation delay is for.
     for (const auto& ap : m_activePolicies) {
-        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        if (ap.countryId != cid || !ap.inForce()) continue;
         for (const auto& q : m_allPolicies) {
             if (q.id != ap.policyId) continue;
             auto lv = q.levers.find(effectField);
@@ -1249,7 +1295,7 @@ std::string Game::policyBlockReason(int countryId, const Policy& p) const {
     };
 
     for (const auto& ap : m_activePolicies) {
-        if (ap.countryId != countryId || ap.turnsRemaining < 0) continue;
+        if (ap.countryId != countryId || ap.turnsRemaining == -1) continue;
         if (ap.policyId == p.id)
             return ap.turnsRemaining > 0 ? T("Already being implemented.")
                                          : T("Already in force.");
@@ -1300,6 +1346,7 @@ const char* categoryLabel(const std::string& id) {
     if (id == "formations") return "Formations";
     if (id == "population") return "Population";
     if (id == "monuments")  return "Monuments";
+    if (id == "intelligence") return "Intelligence";
     if (id == "misc")       return "Misc";
     return id.c_str();
 }
@@ -1319,6 +1366,8 @@ const char* subcategoryLabel(const std::string& id) {
     if (id == "commerce")       return T("Commerce");
     if (id == "war")            return T("War");
     if (id == "misc")           return T("Miscellaneous");
+    if (id == "sight")          return T("Sight");
+    if (id == "espionage")      return T("Espionage");
     return T(id);
 }
 
@@ -1347,10 +1396,12 @@ void Game::drawResearchTab() {
 
     // ─── Category tabs ───
     const char* catNames[] = {"Buildings", "Efficiency", "Army", "Formations",
-                              "Population", "Monuments", "Misc"};
+                              "Population", "Monuments", "Misc", "Intelligence"};
     const char* catKeys[] = {"buildings", "efficiency", "army", "formations",
-                             "population", "monuments", "misc"};
-    int catCount = 7;
+                             "population", "monuments", "misc", "intelligence"};
+    // The last tab is the fog's own: absent from a world without it.
+    int catCount = m_fogOfWar ? 8 : 7;
+    if (m_researchTab >= catCount) m_researchTab = 0;
     int catTabY = 8;
     int catTabH = 30;
     int catTabStartX = 16;
@@ -1358,7 +1409,8 @@ void Game::drawResearchTab() {
     // four at x=616 and would have put the last of six at 1016 -- off the right
     // of any window narrower than that, with no way to reach the tabs it hid.
     // Adding a tree must not be able to push another one off the screen.
-    int catSpacing = std::min(200, (m_screenW - catTabStartX * 2) / catCount);
+    // Clear of the close button (36 px at the right edge, plus a gap).
+    int catSpacing = std::min(200, (m_screenW - catTabStartX * 2 - 52) / catCount);
     if (catSpacing < 90) catSpacing = 90;
     for (int c = 0; c < catCount; ++c) {
         int tx = catTabStartX + c * catSpacing;

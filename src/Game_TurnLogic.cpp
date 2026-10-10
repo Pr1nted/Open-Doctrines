@@ -605,6 +605,8 @@ void Game::processTurn() {
         processNavyCombat(navyCid);
     }
     processDiplomaticRequests();
+    // Beside the diplomacy it is the shadow of: fog worlds only, a no-op else.
+    processSpyOps();
     // After the diplomacy, because that is what changes who has standing
     // where: the ceasefire that strands a stack and the withdrawal that
     // rescues it land on the same turn. See repatriateStrandedArmies.
@@ -627,6 +629,9 @@ void Game::processTurn() {
     // Last, so both halves of the question are settled for the turn: who owns
     // each province, and who is still at war with whom.
     expelStrandedArmies();
+    // Fog last of all: who sees what depends on who now owns what, and the
+    // result is next turn's view for every country, the AI included.
+    recomputeFog();
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
     // Self-play training never looks at the map: skip the full-raster texture
@@ -778,6 +783,10 @@ void Game::processTurn() {
          // Persist the rebel countries themselves, not just their flags —
          // otherwise their provinces reload as ownerless limbo.
          { std::string rj = buildRebelsJson(); if (!rj.empty()) rebelFiles.push_back({"rebels.json", rj}); }
+        // What every country remembers seeing. History, not state: it cannot be
+        // rebuilt by replaying the turns, because it depends on who could see
+        // what at the time.
+        if (m_fogOfWar) rebelFiles.push_back({"fog/memory.bin", fogMemoryBlob()});
         std::string stateJson = saveStateJson();
         // TIMED, and reported below with the rest.
         //
@@ -3155,7 +3164,7 @@ void Game::applyBankruptcyPenalties(int countryId, float shortfall,
             for (int idx : apIt->second) {
                 if (idx < 0 || idx >= (int)m_activePolicies.size()) continue;
                 const ActivePolicy& ap = m_activePolicies[idx];
-                if (ap.countryId != countryId || ap.turnsRemaining < 0) continue;
+                if (ap.countryId != countryId || ap.turnsRemaining == -1) continue;
                 for (const auto& p : m_allPolicies)
                     if (p.id == ap.policyId) {
                         const float bill = policyUpkeep(ap, p);

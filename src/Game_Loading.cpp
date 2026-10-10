@@ -509,6 +509,9 @@ void Game::updateLoading() {
                 strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tmLocal);
                 std::string timestamp = ts;
 
+                // Fog: the starting atlas, and turn 0's view, before the first save.
+                fogBeginWorld();
+                recomputeFog();
                 SaveMetadata meta;
                 meta.saveName = worldName;
                 meta.version = GAME_VERSION;
@@ -516,6 +519,9 @@ void Game::updateLoading() {
                 meta.lastPlayed = timestamp;
                 meta.turnCount = 0;
                 meta.provinceCount = (int)m_provincePopulations.size();
+                meta.fogOfWar = m_fogOfWar;
+                // A fog world is sealed on disk where this build can (see SaveManager).
+                if (meta.fogOfWar) meta.sealSalt = SaveManager::newSealSalt();
                 meta.shipCount = (int)m_ships.size();
                 for (auto& [cid, c] : m_countries.getAll())
                     meta.countryTreasuries[cid] = c.treasury;
@@ -552,6 +558,9 @@ void Game::updateLoading() {
                 try {
                     auto meta = SaveManager::readMetadata(m_loadingSavePath);
                     m_turnCount = meta.turnCount;
+                    // A world created with fog stays fogged: the metadata is
+                    // enough on its own, and state.json can only add to it.
+                    if (meta.fogOfWar) m_fogOfWar = true;
                     // Restore treasuries from save metadata
                     for (auto& [cid, tr] : meta.countryTreasuries) {
                         auto& all = m_countries.getAll();
@@ -563,6 +572,9 @@ void Game::updateLoading() {
                 }
                 m_unsavedChanges = false;
 
+                // The atlas is captured BEFORE the replay: the world is still at
+                // turn 0 here, which is the map every country starts out knowing.
+                fogBeginWorld();
                 bool replayOk = replaySaveTurns(m_loadingSavePath);
                 if (!replayOk) {
                     LoadLog() << "  Failed to replay save turns" << std::endl;
@@ -586,6 +598,7 @@ void Game::updateLoading() {
                     hideLoadingScreen();
                     return;
                 }
+                fogAfterLoad(m_loadingSavePath);
                 if (!m_loadingTempOdm.empty()) {
                     std::remove(m_loadingTempOdm.c_str());
                     m_loadingTempOdm.clear();
@@ -685,6 +698,7 @@ void Game::updateLoading() {
                     for (auto& n : m_researchNodes)
                         n.researched = hasResearched(n.id, savedCid);
                     LoadLog() << "  Restored player: " << m_countries.getCountry(savedCid)->name << std::endl;
+                    fogPlayerChanged();
                 } else {
                     // No saved country — prompt user to choose
                     m_playerCountryId = 0;
@@ -1131,7 +1145,7 @@ void Game::buildPopulationLookups() {
     if (!paint) return;          // the rest is the political texture
 
     m_provinceEdgePixels = odProvinceEdgePixels(m_provinces, w, h);
-    odBuildGradientField(m_provinces, m_provinceEdgePixels, m_provinceCountryLookup, w, h, m_gradientDist);
+    odBuildGradientField(m_provinces, m_provinceEdgePixels, displayOwners(), w, h, m_gradientDist);
 
     // ONE guard around all three, not one each. Two full-map uploads and a
     // third pass inside generatePoliticalTexture() run back to back with
@@ -1172,7 +1186,10 @@ void Game::rebuildGradientField() {
     // queue described above was not a load-time cost, it was a per-turn one.
     if (m_provinceEdgePixels.empty())
         m_provinceEdgePixels = odProvinceEdgePixels(m_provinces, w2, h2);
-    odBuildGradientField(m_provinces, m_provinceEdgePixels, m_provinceCountryLookup, w2, h2, m_gradientDist);
+    // displayOwners(), not the truth: the shading steps down toward every
+    // border it is drawn against, so shading from true owners would trace a
+    // border the player cannot see. Without fog the two are the same vector.
+    odBuildGradientField(m_provinces, m_provinceEdgePixels, displayOwners(), w2, h2, m_gradientDist);
     m_gradientDirty = false;
     m_borderDistanceSent = false;
 }
@@ -1202,19 +1219,34 @@ void Game::generatePoliticalTexture() {
     // border line; a special id stored as 65534 is why the rows are not
     // simply indexed by it.
     std::vector<uint16_t> owners((size_t)kTableSize, 0), rowOf((size_t)kTableSize, 0);
-    std::vector<uint16_t> rowOwner{0};                 // row -> owner id
-    std::unordered_map<uint16_t, uint16_t> rowByOwner{{0, 0}};
-    for (int pid = 1; pid < std::min<int>(kTableSize, (int)m_provinceCountryLookup.size()); ++pid) {
-        const uint16_t o = (uint16_t)m_provinceCountryLookup[pid];
+    //
+    // FOG OF WAR: the owner here is the one the PLAYER knows -- truth where they
+    // can see, memory where they cannot -- so a conquest out of sight draws no
+    // border. A row is keyed by owner AND fog level (0 in sight, 1 seen before,
+    // 2 never seen), so fogged land gets its own darker rows. Without fog
+    // displayOwners() is the truth and every level is 0: one row per owner,
+    // exactly as before.
+    const std::vector<int>& known = displayOwners();
+    const bool fogView = m_fogOfWar && fogCountry(m_playerCountryId);
+    std::vector<uint32_t> rowKey{0};                   // row -> owner | level << 16
+    std::unordered_map<uint32_t, uint16_t> rowByKey{{0, 0}};
+    for (int pid = 1; pid < std::min<int>(kTableSize, (int)known.size()); ++pid) {
+        const uint16_t o = (uint16_t)known[pid];
         owners[(size_t)pid] = o;
-        auto it = rowByOwner.find(o);
-        if (it == rowByOwner.end()) {
-            it = rowByOwner.emplace(o, (uint16_t)rowOwner.size()).first;
-            rowOwner.push_back(o);
+        uint32_t level = 0;
+        if (fogView && o != 0 && !provinceVisibleTo(m_playerCountryId, pid)) {
+            const odfog::ProvinceIntel* in = intel(m_playerCountryId, pid);
+            level = (in && in->seenTurn != odfog::kNeverSeen) ? 1u : 2u;
+        }
+        const uint32_t key = (uint32_t)o | (level << 16);
+        auto it = rowByKey.find(key);
+        if (it == rowByKey.end()) {
+            it = rowByKey.emplace(key, (uint16_t)rowKey.size()).first;
+            rowKey.push_back(key);
         }
         rowOf[(size_t)pid] = it->second;
     }
-    const int rows = (int)rowOwner.size();
+    const int rows = (int)rowKey.size();
     constexpr int C = MapRenderer::kPoliticalColumns;
     std::vector<Color> colours((size_t)rows * C);
     for (int d = 0; d < 64; ++d) {
@@ -1223,18 +1255,40 @@ void Game::generatePoliticalTexture() {
                         (uint8_t)(15 + (uint8_t)((1.0f - t) * 38)), 255};
         colours[(size_t)d] = colours[(size_t)(64 + d)] = sea;   // no dark line on unowned ground
     }
+    // Fogged land keeps a hint of its colour, so a player can still tell whose
+    // it was: greyed and dimmed, more so where it has never been seen at all.
+    auto fogShade = [](Color c, uint32_t level) -> Color {
+        if (level == 0) return c;
+        const float grey = 0.30f * c.r + 0.59f * c.g + 0.11f * c.b;
+        const float keep = level == 1 ? 0.45f : 0.25f;     // saturation left
+        const float lit  = level == 1 ? 0.55f : 0.36f;     // brightness left
+        auto ch = [&](uint8_t v) {
+            return (uint8_t)std::clamp((grey + (v - grey) * keep) * lit, 0.0f, 255.0f);
+        };
+        return {ch(c.r), ch(c.g), ch(c.b), c.a};
+    };
     for (int r = 1; r < rows; ++r) {
-        const Country* ctry = m_countries.getCountry(rowOwner[(size_t)r]);
+        const uint16_t owner = (uint16_t)(rowKey[(size_t)r] & 0xFFFF);
+        const uint32_t level = rowKey[(size_t)r] >> 16;
+        const Country* ctry = m_countries.getCountry(owner);
         const Color base = ctry ? ctry->color : Color{80, 80, 80, 255};
         Color* row = &colours[(size_t)r * C];
         for (int d = 0; d < 64; ++d) {
-            const Color c = blendColor(base, std::min(1.0f, d / 60.0f));
+            const Color c = fogShade(blendColor(base, std::min(1.0f, d / 60.0f)), level);
             row[d] = c;
             row[64 + d] = {(uint8_t)(c.r / 3), (uint8_t)(c.g / 3), (uint8_t)(c.b / 3), 255};
         }
     }
     m_renderer->setPoliticalOwners(owners, rowOf);
     m_renderer->setPoliticalColours(colours, rows);
+    if (fogView) {
+        std::vector<uint8_t> mask;
+        int mw = 0, mh = 0;
+        buildSeaFogMask(mask, mw, mh);
+        m_renderer->setSeaFog(mask, mw, mh);
+    } else {
+        m_renderer->clearSeaFog();
+    }
     if (!m_borderDistanceSent) {
         std::vector<uint8_t> dist(m_gradientDist.size());
         for (size_t i = 0; i < dist.size(); ++i) dist[i] = std::min<uint8_t>(m_gradientDist[i], 63);
@@ -1326,7 +1380,9 @@ void Game::ensureProvinceIndex() {
 }
 
 int Game::provinceOwnerForTable(int pid) const {
-    return (pid > 0 && (size_t)pid < m_provinceCountryLookup.size()) ? m_provinceCountryLookup[pid] : 0;
+    // The owner the player knows of: the truth without fog.
+    const std::vector<int>& own = displayOwners();
+    return (pid > 0 && (size_t)pid < own.size()) ? own[pid] : 0;
 }
 
 void Game::pushPopulationTable() {
@@ -1357,25 +1413,41 @@ void Game::generatePopulationTexture(int countryId, int prevCountryId) {
         for (int pid = 0; pid < kTableSize; ++pid)
             if (pid == 0 || provinceOwnerForTable(pid) == 0) m_popTable[(size_t)pid] = kOverlaySea;
     }
-    const int n = std::min<int>(kTableSize, (int)m_provinceCountryLookup.size());
+    const std::vector<int>& own = displayOwners();
+    const int n = std::min<int>(kTableSize, (int)own.size());
+
+    // Out of sight a population is the one last seen, and a province nobody
+    // has seen has none to show.
+    auto popOf = [&](int pid, bool& unknown) -> long long {
+        unknown = false;
+        if (fogHides(pid)) {
+            const odfog::ProvinceIntel* in = intel(m_playerCountryId, pid);
+            if (!in || in->seenTurn == odfog::kNeverSeen) { unknown = true; return 0; }
+            return (long long)in->population;
+        }
+        return (size_t)pid < m_provincePopArray.size() ? m_provincePopArray[pid] : 0;
+    };
 
     // Reset previous country's provinces to grey
     if (prevCountryId > 0)
         for (int pid = 1; pid < n; ++pid)
-            if (m_provinceCountryLookup[pid] == prevCountryId) m_popTable[(size_t)pid] = Color{60, 60, 60, 255};
+            if (own[pid] == prevCountryId) m_popTable[(size_t)pid] = Color{60, 60, 60, 255};
 
     // Color new country's provinces with red-green gradient
     if (countryId > 0) {
         long long maxPop = 1;
-        for (size_t pid = 0; pid < m_provinceCountryLookup.size(); ++pid) {
-            if (m_provinceCountryLookup[pid] == countryId && m_provincePopArray[pid] > maxPop)
-                maxPop = m_provincePopArray[pid];
+        bool unknown = false;
+        for (int pid = 1; pid < n; ++pid) {
+            if (own[pid] != countryId) continue;
+            maxPop = std::max(maxPop, popOf(pid, unknown));
         }
         for (int pid = 1; pid < n; ++pid) {
-            if (m_provinceCountryLookup[pid] != countryId) continue;
-            long long pop = (size_t)pid < m_provincePopArray.size() ? m_provincePopArray[pid] : 0;
+            if (own[pid] != countryId) continue;
+            long long pop = popOf(pid, unknown);
+            if (unknown) { m_popTable[(size_t)pid] = Color{38, 38, 44, 255}; continue; }
             float t = (float)pop / maxPop;
-            m_popTable[(size_t)pid] = Color{(uint8_t)(255.0f * (1.0f - t)), (uint8_t)(255.0f * t), 0, 255};
+            const float dim = fogHides(pid) ? 0.6f : 1.0f;
+            m_popTable[(size_t)pid] = Color{(uint8_t)(255.0f * (1.0f - t) * dim), (uint8_t)(255.0f * t * dim), 0, 255};
         }
     }
     pushPopulationTable();
@@ -1432,9 +1504,10 @@ void Game::generateRelationsTexture(int countryId, int prevCountryId) {
         m_countryRelationColors[cid] = col;
         recolour[(size_t)cid] = 1;
     }
-    const int n = std::min<int>(kTableSize, (int)m_provinceCountryLookup.size());
+    const std::vector<int>& own = displayOwners();
+    const int n = std::min<int>(kTableSize, (int)own.size());
     for (int pid = 1; pid < n; ++pid) {
-        const int cid = m_provinceCountryLookup[pid];
+        const int cid = own[pid];
         if (cid > 0 && cid <= maxCid && recolour[(size_t)cid]) m_popTable[(size_t)pid] = m_countryRelationColors[cid];
     }
     pushPopulationTable();
@@ -1458,8 +1531,8 @@ void Game::generateClaimsTexture() {
     auto claimIt = m_claims.find(claimer->isoA3);
     if (claimIt != m_claims.end()) {
         for (int pid : claimIt->second) {
-            if ((size_t)pid < m_provinceCountryLookup.size())
-                involvedCids.insert(m_provinceCountryLookup[pid]);
+            if (provinceOwnerForTable(pid) > 0)
+                involvedCids.insert(provinceOwnerForTable(pid));
         }
     }
 
@@ -1468,7 +1541,7 @@ void Game::generateClaimsTexture() {
     std::vector<Color> base(kTableSize, Color{0, 0, 0, 0});
     const int n = std::min<int>(kTableSize, (int)m_provinceCountryLookup.size());
     for (int pid = 1; pid < n; ++pid) {
-        const int cid = m_provinceCountryLookup[pid];
+        const int cid = provinceOwnerForTable(pid);
         if (cid <= 0) continue;
         base[(size_t)pid] = cid == countryId ? Color{0, 60, 180, 100} : Color{60, 60, 60, 180};
     }
@@ -1662,18 +1735,27 @@ void Game::computeCountryLabels() {
     // Build province → country look-up (use flat array for fast pixel scans)
     std::unordered_map<int, std::vector<int>> countryProvs;
     int maxPid = 0;
+    // Labels sit on the countries the PLAYER knows: a name placed on true
+    // borders would draw a hidden conquest in letters. Without fog, the truth.
+    const std::vector<int>& known = displayOwners();
+    auto ownerOf = [&](int pid, const Province* p) -> int {
+        if (pid >= 0 && (size_t)pid < known.size()) return known[(size_t)pid];
+        return p ? p->countryId : 0;
+    };
     for (auto& [pid, pc] : m_provinceCenters) {
         if (pid > maxPid) maxPid = pid;
         auto* p = m_provinces.getProvinceById(pid);
-        if (p && p->countryId > 0 && p->countryId != UNC_CID && p->countryId != BLC_CID) {
-            countryProvs[p->countryId].push_back(pid);
+        const int o = ownerOf(pid, p);
+        if (p && o > 0 && o != UNC_CID && o != BLC_CID) {
+            countryProvs[o].push_back(pid);
         }
     }
     std::vector<int> pidToCountry(maxPid + 1, 0);
     for (auto& [pid, pc] : m_provinceCenters) {
         auto* p = m_provinces.getProvinceById(pid);
-        if (p && p->countryId > 0 && p->countryId != BLC_CID)
-            pidToCountry[pid] = p->countryId;
+        const int o = ownerOf(pid, p);
+        if (p && o > 0 && o != BLC_CID)
+            pidToCountry[pid] = o;
     }
 
     // ── Pixel adjacency phase ──────────────────────────────────────────
@@ -2494,6 +2576,10 @@ void Game::unloadGameData() {
     // Whatever world comes next, its first turn must not be diffed against
     // this one's -- that would read a load as a war of conquest.
     achWorldStarted(false);
+    // Fog belongs to the world being unloaded. The next one sets it at its own
+    // door (new world) or from its own save (loaded world).
+    m_fogOfWar = false;
+    readSpyState(nlohmann::json::object());   // clears every operation and grant
     // Persist the AI model before tearing the world down (destructor saves)
     if (m_ai) { delete m_ai; m_ai = nullptr; }
     m_rebellionsThisTurnByCid.clear();
@@ -3524,6 +3610,16 @@ bool Game::replaySaveTurns(const std::string& savePath) {
 // OFF BY DEFAULT, and the default is load-bearing: every price in this game was
 // tuned against an economy where industry emitted money, so a world that opts
 // in is a world being measured, not the one a player gets by accident.
+// Called at both new-world doors, right after unloadGameData(). Takes the
+// map browser's choice and clears it, so the next world starts from "off"
+// unless somebody chooses again. OD_FOG is the bench's and the trainer's way
+// in, the same as OD_GOODS: it overrides the choice, never the other way round.
+void Game::takeNewWorldFog() {
+    m_fogOfWar = m_newWorldFog;
+    m_newWorldFog = false;
+    if (const char* e = std::getenv("OD_FOG")) m_fogOfWar = (*e && *e != '0');
+}
+
 void Game::applyEconomyEnvironment() {
     // The player's setting is the source of truth; the env var is the bench's
     // override, so a sweep can measure a goods world without authoring a config.
@@ -3585,6 +3681,7 @@ void Game::chooseWorldSeed() {
 
 void Game::startNewGame(const std::string& mapName) {
     unloadGameData();
+    takeNewWorldFog();
     chooseWorldSeed();
     // Clear all game state
     m_provincePopulations.clear();
@@ -3654,6 +3751,9 @@ void Game::startNewGame(const std::string& mapName) {
         const std::string odmBytes = odFile::readAll(odmPath);
         std::vector<uint8_t> odmData(odmBytes.begin(), odmBytes.end());
 
+        // Fog: the starting atlas, and turn 0's view, before the first save.
+        fogBeginWorld();
+        recomputeFog();
         SaveMetadata meta;
         meta.saveName = worldName;
         meta.version = GAME_VERSION;
@@ -3661,6 +3761,8 @@ void Game::startNewGame(const std::string& mapName) {
         meta.lastPlayed = timestamp;
         meta.turnCount = 0;
         meta.provinceCount = (int)m_provincePopulations.size();
+        meta.fogOfWar = m_fogOfWar;
+        if (meta.fogOfWar) meta.sealSalt = SaveManager::newSealSalt();
         meta.shipCount = (int)m_ships.size();
         for (auto& [cid, c] : m_countries.getAll())
             meta.countryTreasuries[cid] = c.treasury;
@@ -3701,6 +3803,7 @@ void Game::startNewGameWithName(const std::string& mapName, const std::string& w
     AISystem::s_tutorialAI = false;
     m_forcedStartIso.clear();
     unloadGameData();
+    takeNewWorldFog();
     // The second door into a new world -- this is not a wrapper around
     // startNewGame, it is a parallel copy -- so the seed is chosen here too.
     chooseWorldSeed();

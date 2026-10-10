@@ -13,10 +13,13 @@
 #include "llm/Advisor.h"
 #include "llm/Runner.h"
 #include "net/Host.h"
+#include "net/HostBook.h"
 #include "net/NetProtocol.h"
 #include "net/Session.h"
 
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 // ────────────────────────────────────────────────────────────── the box ────
 
@@ -1880,6 +1883,7 @@ void Game::mpPostMailToPlayers(int turn) {
             m_netHost->sendMail(p.peerId, toWire(*m));
         }
     }
+    mpSaveMailIfChanged(/*now=*/true);
 }
 
 void Game::mpClientMail(int op, const mail::Message& m) {
@@ -1926,4 +1930,98 @@ void Game::mpClientTakeMail(const NetMail& n) {
         ++m_mailArrived;
         Audio::get().playSfx("notify");
     }
+}
+
+// ─────────────────────────────────────────── the post, kept on disk ────
+//
+// See Game::mpSaveMailIfChanged in Game.h for why this is not state.json.
+// The same fields as state.json's "mail", plus the map from each player's
+// letter ids to the host's, so a letter written before a restart can still be
+// changed after it -- and the world's seed, so a new campaign under the same
+// save name never inherits an old one's letters.
+
+namespace {
+std::string mailSidecar(const std::string& savePath) { return savePath + ".odmail"; }
+}  // namespace
+
+void Game::mpSaveMailIfChanged(bool now) {
+    if (!m_netHost || m_currentSavePath.empty()) return;
+    if (!now && GetTime() - m_mpMailSavedAt < 5.0) return;
+    m_mpMailSavedAt = GetTime();
+
+    nlohmann::json j;
+    j["version"] = 1;
+    j["seed"] = m_worldSeed;
+    j["mail"] = nlohmann::json::array();
+    for (const auto& [owner, box] : m_mail) {
+        for (const mail::Thread* t : box.threads()) {
+            for (const mail::Message& m : t->messages) {
+                // The sender's copy only, as in state.json: the recipient's is
+                // rebuilt on load. Rooms are not carried in multiplayer.
+                if (m.fromCountry != owner || m.groupId != 0) continue;
+                j["mail"].push_back({{"id", m.id}, {"from", m.fromCountry}, {"to", m.toCountry},
+                                     {"body", m.body}, {"written", m.writtenTurn},
+                                     {"deliver", m.deliverTurn}, {"status", (int)m.status},
+                                     {"author", (int)m.author}, {"by", m.authorName}});
+            }
+        }
+    }
+    j["ids"] = m_mpMailIds;
+    nlohmann::json theirs = nlohmann::json::object();
+    for (const auto& [host, their] : m_mpMailTheirId) theirs[std::to_string(host)] = their;
+    j["theirs"] = theirs;
+
+    const std::string text = j.dump();
+    if (text == m_mpMailWritten) return;
+    if (hostBookWriteAtomic(mailSidecar(m_currentSavePath), text)) {
+        m_mpMailWritten = text;
+        m_mpCheckpointDirty = true;   // and into the campaign backup, within a minute
+    }
+}
+
+void Game::mpLoadMail() {
+    if (m_currentSavePath.empty()) return;
+    std::ifstream f(mailSidecar(m_currentSavePath), std::ios::binary);
+    if (!f) return;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const nlohmann::json j = nlohmann::json::parse(ss.str(), nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return;
+    if (j.value("seed", 0u) != m_worldSeed) return;   // another world's post
+
+    m_mail.clear();
+    int n = 0;
+    // In the order they were WRITTEN. Saved box by box, a reply's box can come
+    // before the letter it answers, and filing them in that order put the
+    // answer above the question in the recipient's thread.
+    std::vector<nlohmann::json> entries;
+    for (const auto& e : j.value("mail", nlohmann::json::array())) entries.push_back(e);
+    std::stable_sort(entries.begin(), entries.end(), [](const nlohmann::json& a, const nlohmann::json& b) {
+        return a.value("written", 0) < b.value("written", 0);
+    });
+    for (const auto& e : entries) {
+        mail::Message m;
+        m.id = e.value("id", 0);
+        m.fromCountry = e.value("from", 0);
+        m.toCountry = e.value("to", 0);
+        m.body = e.value("body", std::string());
+        m.writtenTurn = e.value("written", 0);
+        m.deliverTurn = e.value("deliver", 0);
+        m.status = (mail::Status)e.value("status", 0);
+        m.author = (mail::Author)e.value("author", 0);
+        m.authorName = e.value("by", std::string());
+        if (m.fromCountry == m.toCountry) continue;
+        mailbox(m.fromCountry).adopt(m);
+        if (m.status == mail::Status::Delivered) mailbox(m.toCountry).receive(m);
+        ++n;
+    }
+    m_mpMailIds.clear();
+    m_mpMailTheirId.clear();
+    for (const auto& [k, v] : j.value("ids", nlohmann::json::object()).items())
+        if (v.is_number_integer()) m_mpMailIds[k] = v.get<int>();
+    for (const auto& [k, v] : j.value("theirs", nlohmann::json::object()).items())
+        if (v.is_number_integer()) m_mpMailTheirId[std::atoi(k.c_str())] = v.get<int>();
+    m_mpMailWritten = ss.str();
+    LoadLog() << "  restored " << n << " letter(s) from " << mailSidecar(m_currentSavePath)
+              << std::endl;
 }

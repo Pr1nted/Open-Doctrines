@@ -40,6 +40,10 @@ COLLAPSE = os.environ.get("TL_COLLAPSE", "/tmp/tl-chn-collapse.mp4")
 TROOPS   = os.environ.get("TL_TROOPS",   "/tmp/tl-troops.mp4")
 FLY      = os.environ.get("FLY_SHOT",    "/tmp/fly_shot.png")
 SRC_LEN  = 58.0
+# The score to lay under the picture.  A module global rather than a literal in
+# build(), so an alternative cut (tools/trailer_march_cut.py) can point it at a
+# different piece without forking the builder.
+SCORE    = os.path.join(ASSET, "score.wav")
 def turn(n):
     """Source timestamp of turn n, so the cut can be written in game terms."""
     return round(n * SRC_LEN / 721.0, 2)
@@ -583,13 +587,13 @@ def build(only=None):
                "-t", str(total + pad_t / 2.0)] + COMMON + [silent])
 
     final = os.path.join(WORK, "trailer.mp4")
-    score = os.path.join(ASSET, "score.wav")
+    score = SCORE
     if os.path.exists(score):
         run(["-i", silent, "-i", score, "-c:v", "copy", "-c:a", "aac",
              "-b:a", "192k", "-shortest", "-movflags", "+faststart", final])
     else:
         shutil.copy(silent, final)
-        print("no %s -- run tools/trailer_music.py" % score)
+        print("no %s -- generate the score first" % score)
     print("\n-> %s  (%d shots, %.1f s)" % (final, len(segs), total))
     return final
 

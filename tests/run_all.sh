@@ -59,7 +59,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest MonumentsTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest MonumentsTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -119,6 +119,7 @@ run "nationalisation rules" "$bin/NationalisationTest"
 # The monument catalogue: the slot series, what one gives and why the tenth is
 # not worth ten. Pure arithmetic; see src/Monuments.h.
 run "monument rules"   "$bin/MonumentsTest"
+run "fog of war"       "$bin/FogTest"
 # Every test this RUNS must be one it BUILDS -- six were not, and that is what
 # failed the SDK 1.3 release after a green local suite. See the checker.
 "$PY" "$root/tools/check_suite_targets.py" "$0" || exit 1
@@ -216,6 +217,7 @@ run "png writer"       "$bin/PngWriteTest" "$build/pngtest"
 # allowed to say, and it is the check a modified client goes at first.
 run "order validation" "$bin/OrderValidationTest" "$root/data/"
 run "doctrine rules"   "$bin/PolicyRulesTest" "$root/data/"
+run "fog in multiplayer"   "$bin/FogNetTest" "$root/data/"
 # Twice: the tenure rule ships OFF, and a flag that is never exercised is a
 # flag nobody knows works. The second run is the only place the ON contract is
 # checked, because policyTenure caches the flag per process.
@@ -341,6 +343,7 @@ run "neural net gradients" "$bin/NeuralNetTest"
 run "ai model container" "$bin/ModelBlobTest" "$root/data/ai/model.bin"
 run "map-script expressions" "$bin/ScriptExprTest"
 run "odsv turn delta"  "$bin/SaveDeltaTest"
+run "sealed fog saves" "$bin/SaveSealTest"
 # The archive around those deltas: written, closed, and opened again. The
 # failure it exists for is the one players report -- "my save will not load"
 # -- which until now had no test at any level.

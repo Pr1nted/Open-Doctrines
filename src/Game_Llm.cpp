@@ -136,11 +136,13 @@ static std::string llmForceShare(long long part, long long total) {
 }
 
 std::string Game::llmRelativeStrength(int fromCountry, int toCountry) const {
+    // Under fog a ministry judges a stranger by the map it has, not the world.
+    const bool blind = fogOn() && !sharesIntel(fromCountry, toCountry);
     int mine = 0, theirs = 0;
     for (const auto& [pid, pr] : m_provinces.getAllProvinces()) {
-        (void)pid;
         if (pr.countryId == fromCountry) ++mine;
-        else if (pr.countryId == toCountry) ++theirs;
+        const int owner = blind ? knownOwner(fromCountry, pid) : pr.countryId;
+        if (owner == toCountry && pr.countryId != fromCountry) ++theirs;
     }
     if (mine <= 0 || theirs <= 0) return "";
     const double ratio = (double)theirs / (double)mine;
@@ -1163,7 +1165,7 @@ void Game::describeSituation(int me, int them, llm::Situation& out) const {
             if (!mine || mine->countryId != me) continue;
             for (int n : nbrs) {
                 const Province* np = m_provinces.getProvinceById(n);
-                if (np && np->countryId == them) { adjacent = true; break; }
+                if (np && knownOwner(me, n) == them) { adjacent = true; break; }
             }
             if (adjacent) break;
         }
@@ -1216,6 +1218,27 @@ void Game::describeSituation(int me, int them, llm::Situation& out) const {
             if (change < -0.06)      out.ourFortunes = "You have been losing ground lately";
             else if (change > 0.06)  out.ourFortunes = "You have been gaining ground lately";
         }
+    }
+
+    // ── What it can know about them at all (fog of war) ──
+    //
+    // Said outright, because a model left to assume it knows everything will
+    // quote what it guesses with the same confidence as what it was told.
+    if (fogOn()) {
+        out.intelligence = sharesIntel(me, them)
+            ? "This world has fog of war, but you share intelligence with " + theirName +
+              ": you see what they see."
+            : "This world has fog of war: you know only what your own forces and allies "
+              "have seen of " + theirName + ". Their armies and economy beyond your "
+              "sight are unknown, and your picture of their territory may be out of date.";
+        // Espionage is remembered. A minister writing to a country that just
+        // caught its agents -- or whose agents it just caught -- knows it.
+        const int theyCaughtUs = spyCaughtTurn(them, me), weCaughtThem = spyCaughtTurn(me, them);
+        if (theyCaughtUs >= 0 && m_turnNumber - theyCaughtUs <= 10)
+            out.intelligence += " " + theirName + " caught your spies in their country "
+                                "recently; they know you were spying on them.";
+        if (weCaughtThem >= 0 && m_turnNumber - weCaughtThem <= 10 && counterIntelPoints(me) >= 20.0f)
+            out.intelligence += " You recently caught " + theirName + "'s spies in your country.";
     }
 
     // ── How this correspondence itself has gone ──
@@ -1312,8 +1335,11 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
     }
     if (tool == "strength_of") {
         const std::string rel = llmRelativeStrength(me, them);
-        return rel.empty() ? ("You cannot judge " + name + "'s position.")
-                           : (name + "'s position is " + rel + ".");
+        if (rel.empty()) return "You cannot judge " + name + "'s position.";
+        if (fogOn() && !sharesIntel(me, them))
+            return "By your last reports, " + name + "'s position is " + rel +
+                   ". Your intelligence on them is incomplete.";
+        return name + "'s position is " + rel + ".";
     }
     if (tool == "our_correspondence") {
         llm::Situation s;
@@ -1464,7 +1490,7 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
             for (int i : idx->second) {
                 if (i < 0 || i >= (int)m_activePolicies.size()) continue;
                 const ActivePolicy& ap = m_activePolicies[i];
-                if (ap.turnsRemaining < 0) continue;   // cancelled
+                if (ap.turnsRemaining == -1) continue;   // cancelled (below -1: a running campaign)
                 std::string label = ap.policyId;
                 for (const Policy& def : m_allPolicies)
                     if (def.id == ap.policyId) { label = def.name; break; }
@@ -1676,7 +1702,8 @@ std::string Game::answerAdvisorTool(int me, const std::string& tool,
             out += "governed in a manner you cannot judge. ";
         }
         const std::string rel = llmRelativeStrength(me, them);
-        if (!rel.empty()) out += "Their position is " + rel + ". ";
+        if (!rel.empty()) out += (fogOn() && !sharesIntel(me, them) ? "By your last reports their position is "
+                                                                    : "Their position is ") + rel + ". ";
 
         llm::Situation s;
         s.atWar = modAtWar(me, them);

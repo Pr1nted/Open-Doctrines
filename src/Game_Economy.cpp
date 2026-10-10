@@ -1331,7 +1331,7 @@ float Game::pacificationRebate(int countryId) const {
     for (const auto& ap : m_activePolicies) {
         // In force only, the same test getTotalEffect applies to levers: a
         // doctrine still being implemented has not started paying for itself.
-        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        if (ap.countryId != cid || !ap.inForce()) continue;
         for (const auto& p : m_allPolicies)
             if (p.id == ap.policyId) {
                 // Scaled by tenure, as every other doctrine effect is, so the
@@ -1490,7 +1490,7 @@ CountryIncomeSnapshot Game::computeCountryIncome(int countryId) const {
             if (apIdx >= (int)m_activePolicies.size()) continue;
             auto& ap = m_activePolicies[apIdx];
             if (ap.countryId != countryId) continue;
-            if (ap.turnsRemaining < 0) continue;
+            if (ap.turnsRemaining == -1) continue;   // removed; below -1 is a running campaign
             const Policy* p = nullptr;
             for (const auto& policy : m_allPolicies) {
                 if (policy.id == ap.policyId) { p = &policy; break; }
@@ -1659,7 +1659,9 @@ void Game::refreshIncomeCache() {
             for (int apIdx : pIt->second) {
                 if (apIdx >= (int)m_activePolicies.size()) continue;
                 auto& ap = m_activePolicies[apIdx];
-                if (ap.countryId != cid || ap.turnsRemaining < 0) continue;
+                // -1 is removed. Below -1 is a campaign still running, and it
+                // is billed like any doctrine in force (GitHub issue #16).
+                if (ap.countryId != cid || ap.turnsRemaining == -1) continue;
                 for (const auto& policy : m_allPolicies)
                     if (policy.id == ap.policyId) { cs.policyCosts += policyUpkeep(ap, policy); break; }
             }
@@ -2122,7 +2124,7 @@ void Game::drawEconomySectors(int centerX, int startY) {
     // stuck and what to repeal.
     std::string why;
     for (const auto& ap : m_activePolicies) {
-        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        if (ap.countryId != cid || !ap.inForce()) continue;
         for (const auto& q : m_allPolicies) {
             if (q.id != ap.policyId) continue;
             for (const char* lever : {"specTaxRoomPct", "specSubsidyRoomPct"}) {

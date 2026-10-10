@@ -135,6 +135,8 @@ struct ServerConfig {
     /** Resume this save instead of starting a new world. Empty = new. */
     std::string loadSave;
     std::string worldName = "Dedicated";
+    /** A new world with fog of war. A resumed save keeps whatever it had. */
+    bool fogOfWar = false;
     uint32_t maxPlayers = 8;
     /** Rule turn length in seconds. 0 = long-form, no countdown. */
     uint32_t turnSeconds = 0;

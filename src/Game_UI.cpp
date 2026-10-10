@@ -699,7 +699,7 @@ void Game::drawCeasefireTermsMap(const CeasefireTerms& terms, unsigned long long
 
     DrawRectangle(x, y, w, h, Color{12, 14, 22, 255});
     BeginScissorMode(x, y, w, h);
-    DrawTexturePro(m_politicalTex, v, slot, {0, 0}, 0.0f, WHITE);
+    DrawTexturePro(m_politicalTex, polSrc(v), slot, {0, 0}, 0.0f, WHITE);
     DrawTexturePro(m_popupTermsMapTex,
                    {(v.x - cropX) / cropW * ovW, (v.y - cropY) / cropH * ovH,
                     v.width / cropW * ovW, v.height / cropH * ovH},
@@ -1034,7 +1034,7 @@ void Game::drawCeasefireScreen() {
 
     if (m_politicalTex.id > 0) {
         DrawTexturePro(m_politicalTex,
-            {(float)srcX, (float)srcY, (float)srcW, (float)srcH},
+            polSrc({(float)srcX, (float)srcY, (float)srcW, (float)srcH}),
             {dX, dYf, dW, dH}, {0, 0}, 0, WHITE);
         DrawTexturePro(m_ceasefireOverlayTex,
             {(float)srcX, (float)srcY, (float)srcW, (float)srcH},
@@ -1568,6 +1568,15 @@ std::string Game::saveStateJson() {
         entry["turnsRemaining"] = s.turnsRemaining;
         j["pendingSpecializations"].push_back(entry);
     }
+    // A FINISHED SPECIALIZATION WAS NEVER WRITTEN ANYWHERE (issue #15).
+    // The pending order above survives a reload, but the moment it completes
+    // it lives only in ProvinceIndustry::specialization -- the turn delta has no
+    // field for it and this file had no key -- so a reload put every province
+    // back to the map's default. state.json is rewritten whole every turn and on
+    // Save, so it carries the current value here; empty strings are kept on
+    // purpose, so a cleared specialization does not come back as the default.
+    for (auto& [pid, ind] : m_provinceIndustry)
+        j["provinceSpecializations"][std::to_string(pid)] = ind.specialization;
     for (auto& r : m_pendingRecruitments) {
         nlohmann::json entry;
         entry["provinceId"] = r.provinceId;
@@ -2048,6 +2057,8 @@ std::string Game::saveStateJson() {
     // falls back to the environment, which is the only sensible reading for a
     // save written before any of this existed.
     j["goodsEconomy"] = m_goodsEconomy;
+    j["fogOfWar"]     = m_fogOfWar;
+    writeSpyState(j);
     j["autoSellPct"]  = m_autoSellPct;
     // Stockpiles are national and therefore have no province to ride on -- the
     // per-province `output` goes through the turn delta like every other
@@ -2129,6 +2140,18 @@ void Game::loadStateJsonBody(const std::string& json) {
             s.specialization = entry["specialization"].get<std::string>();
             s.turnsRemaining = entry.value("turnsRemaining", 3);
             m_pendingSpecializations.push_back(s);
+        }
+    }
+
+    // Completed specializations (see saveStateJson). Absent in saves made before
+    // 1.3.1b, which then load exactly as they did.
+    if (j.contains("provinceSpecializations") && j["provinceSpecializations"].is_object()) {
+        for (auto& [k, v] : j["provinceSpecializations"].items()) {
+            if (!v.is_string()) continue;
+            int pid = 0;
+            try { pid = std::stoi(k); } catch (...) { continue; }
+            auto it = m_provinceIndustry.find(pid);
+            if (it != m_provinceIndustry.end()) it->second.specialization = v.get<std::string>();
         }
     }
 
@@ -2544,6 +2567,10 @@ void Game::loadStateJsonBody(const std::string& json) {
     if (j.contains("simRng")) setSimRngState(j["simRng"].get<std::string>());
 
     if (j.contains("goodsEconomy")) m_goodsEconomy = j["goodsEconomy"].get<bool>();
+    // OR, never assignment: fog can be switched on by a save, never off.
+    if (j.contains("fogOfWar") && j["fogOfWar"].is_boolean() && j["fogOfWar"].get<bool>())
+        m_fogOfWar = true;
+    readSpyState(j);
     if (j.contains("autoSellPct"))
         m_autoSellPct = std::clamp(j["autoSellPct"].get<int>(), 0, 100);
     if (j.contains("stockpiles")) {

@@ -1678,6 +1678,11 @@ void Game::drawMapBrowser() {
             std::string warn = T("A save with this name exists - will add (1), (2), etc.");
             DrawText(warn.c_str(), dlgX + 30, dlgY + dlgH - 102, 12, hexToColor(m_config.accent()));
         }
+        // Said here, at the last moment it can still be changed, because after
+        // Start it cannot: fog is fixed for the life of the world.
+        if (m_newWorldDialogFog)
+            DrawText(T("Fog of war: on - fixed for the life of this world"),
+                     dlgX + 30, dlgY + dlgH - 84, 14, Color{150, 190, 230, 255});
 
         return;
     }
@@ -1852,6 +1857,28 @@ void Game::drawMapBrowser() {
 
         DrawText(T("Scripted Events:"), descX, detailY, 16, Color{160, 180, 200, 255});
         DrawText(scripts.c_str(), descX + 150, detailY, 16, entry.hasScripts ? Color{100, 255, 100, 255} : Color{200, 100, 100, 255});
+
+        // Fog of war (Experimental). A choice for the world this map is about
+        // to become, not a property of the map: any map can be played fogged.
+        if (m_config.fogOfWarWorlds) {
+            detailY += 26;
+            DrawText(T("Fog of War:"), descX, detailY, 16, Color{160, 180, 200, 255});
+            Rectangle fogBtn = {(float)(descX + 150), (float)(detailY - 3), 64.0f, 22.0f};
+            const bool fogHov = CheckCollisionPointRec(mouse, fogBtn);
+            const Color on  = fogHov ? Color{70, 140, 85, 255} : Color{50, 110, 65, 255};
+            const Color off = fogHov ? Color{85, 85, 105, 255} : Color{60, 60, 80, 255};
+            DrawRectangleRounded(fogBtn, 0.3f, 6, entry.fogOfWar ? on : off);
+            const char* fl = entry.fogOfWar ? T("On") : T("Off");
+            DrawText(fl, (int)(fogBtn.x + (fogBtn.width - MeasureText(fl, 16)) / 2),
+                     (int)fogBtn.y + 3, 16, WHITE);
+            if (fogHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                entry.fogOfWar = !entry.fogOfWar;
+                Audio::get().playSfx(entry.fogOfWar ? "toggle_on" : "toggle_off");
+            }
+            detailY += 24;
+            DrawText(T("Chosen once, when the world is created."), descX, detailY, 14,
+                     Color{130, 130, 150, 255});
+        }
 
         // View License button (if license is specified)
         bool showLicenseBtn = !entry.license.empty() && entry.license != "(not specified)";
@@ -2405,6 +2432,7 @@ void Game::updateMapBrowser() {
                 suffix++;
             }
             // Start the game with the custom name
+            m_newWorldFog = m_newWorldDialogFog;
             startNewGameWithName(m_newWorldMapPath, m_newWorldName);
             m_showNewWorldDialog = false;
             m_newWorldMapPath.clear();
@@ -2438,6 +2466,7 @@ void Game::updateMapBrowser() {
                     savePath = m_dataDir + "saves/" + m_newWorldName + ".odsv";
                     suffix++;
                 }
+                m_newWorldFog = m_newWorldDialogFog;
                 startNewGameWithName(m_newWorldMapPath, m_newWorldName);
                 m_showNewWorldDialog = false;
                 m_newWorldMapPath.clear();
@@ -2720,6 +2749,7 @@ void Game::updateMapBrowser() {
         // Show world name dialog before starting
         m_newWorldMapPath = entry.directory + entry.filename;
         m_newWorldName = entry.name;
+        m_newWorldDialogFog = m_config.fogOfWarWorlds && entry.fogOfWar;
         m_showNewWorldDialog = true;
     }
 }

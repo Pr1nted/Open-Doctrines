@@ -9,6 +9,10 @@
 #include <cstdio>
 #include <cmath>
 #include <ctime>
+#include <random>
+#ifdef OD_HAS_P2
+#include "odseal.h"
+#endif
 
 // ─── Binary pack helpers ─────────────────────────────────
 
@@ -66,6 +70,60 @@ static uint32_t popSaturated(long long pop) {
 static std::string jnum(double v) {
     if (!std::isfinite(v)) return "0";
     return std::to_string(v);
+}
+
+// ── ONE WRITER FOR metadata.json ──
+//
+// This document used to be written by hand in five places -- createSave,
+// appendTurn, updateLastPlayed, updatePlayerCountry and writeState -- each a
+// copy of the others. A key added to four of them is silently dropped the next
+// time the fifth rewrites the file, which is exactly the shape of change fog of
+// war needed. So there is one writer now.
+//
+// Strings go through the JSON encoder: the save name used to be pasted in raw,
+// so a world named with a quote or a backslash wrote a file the parser threw
+// on, and the save then listed with no name, no turn count and no country.
+static std::string metadataJson(const SaveMetadata& meta) {
+    const std::string cr = meta.created.empty() ? "unknown" : meta.created;
+    const std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
+    const std::string ver = meta.version.empty() ? "unknown" : meta.version;
+    auto str = [](const std::string& s) { return nlohmann::json(s).dump(); };
+
+    std::string o = "{\n";
+    o += "  \"save_name\": " + str(meta.saveName) + ",\n";
+    o += "  \"version\": " + str(ver) + ",\n";
+    o += "  \"created\": " + str(cr) + ",\n";
+    o += "  \"last_played\": " + str(lp) + ",\n";
+    o += "  \"turn_count\": " + std::to_string(meta.turnCount) + ",\n";
+    o += "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n";
+    o += "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n";
+    o += "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n";
+    o += "  \"format\": " + std::to_string(kSaveFormat) + ",\n";
+    o += std::string("  \"fog_of_war\": ") + (meta.fogOfWar ? "true" : "false") + ",\n";
+    if (!meta.sealSalt.empty())
+        o += "  \"seal\": { \"v\": 1, \"salt\": " + str(meta.sealSalt) + " },\n";
+    o += "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
+    bool first = true;
+    for (auto& [cid, pc] : meta.countryCompasses) {
+        if (!first) o += ",\n";
+        first = false;
+        o += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) +
+             ", \"social\": " + jnum(pc.social) + " }";
+    }
+    o += "\n  },\n";
+    o += "  \"country_treasuries\": {\n";
+    first = true;
+    // A sealed save keeps its treasuries in fog/treasuries.json, sealed: what
+    // every country holds is exactly what fog hides. See sealedTreasuries().
+    if (meta.sealSalt.empty())
+    for (auto& [cid, tr] : meta.countryTreasuries) {
+        if (!first) o += ",\n";
+        first = false;
+        o += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
+    }
+    o += "\n  }\n";
+    o += "}\n";
+    return o;
 }
 
 // ── THE ARCHIVE IS THE TRUTH; turn_count IS A CACHE OF IT ──
@@ -445,8 +503,111 @@ static bool openSaveFile(mz_zip_archive& zip, const std::string& path) {
     return mz_zip_reader_init_file(&zip, path.c_str(), 0);
 }
 
-// One entry of an open archive, or empty when it is absent or unreadable.
-static std::string extractEntry(mz_zip_archive& zip, const char* name) {
+// ─── Sealed entries (fog-of-war saves) ──────────────────
+//
+// A fog-of-war save holds the whole truth -- every army the player could not
+// see -- and a .odsv is a zip. So in a world with fog the entries that carry
+// that truth are sealed with odseal's od_p2 (ChaCha20-Poly1305, keyed from a
+// key inside the sealed archive and the save's own salt):
+//
+//     "ODSL" | u8 version | 12-byte nonce | ciphertext | 16-byte tag
+//
+// Version 2 deflates the plaintext before sealing it (ciphertext does not
+// compress, so sealing first made a fog save four times the size); version 1
+// is the same without the deflate and is still read.
+//
+// Readers never see this: extractEntry() opens a sealed entry on the way out,
+// so every reader in the game gets plaintext and none of them was changed.
+// Writers seal through sealFor(), one choke point.
+//
+// The nonce is a hash of the entry name and its plaintext, so a save written
+// twice from the same state is byte-identical (the determinism checks compare
+// saves), and two different plaintexts never share a nonce under one key.
+//
+// What it is worth: unzip, a text editor and tools/read_odsv.py no longer read
+// the truth. A program that calls od_p3, a debugger or a rebuilt client still
+// can -- see docs/design/fog-of-war-plan.md. Real secrecy is multiplayer's.
+namespace {
+
+constexpr char kSealMagic[4] = {'O', 'D', 'S', 'L'};
+constexpr size_t kSealHeader = 4 + 1 + 12;
+
+bool sealedName(const char* name) {
+    return strcmp(name, "state.json") == 0 || strcmp(name, "rebels.json") == 0 ||
+           strncmp(name, "turns/", 6) == 0 || strncmp(name, "rebellion/", 10) == 0 ||
+           strncmp(name, "fog/", 4) == 0;
+}
+
+bool isSealed(const std::string& data) {
+    return data.size() >= kSealHeader + 16 && memcmp(data.data(), kSealMagic, 4) == 0;
+}
+
+void sealNonce(const char* name, const void* data, size_t n, unsigned char out[12]) {
+    uint64_t a = 1469598103934665603ull, b = 0x9E3779B97F4A7C15ull;
+    auto eat = [&](unsigned char c) {
+        a ^= c; a *= 1099511628211ull;
+        b ^= c; b = (b << 13 | b >> 51) * 0xBF58476D1CE4E5B9ull;
+    };
+    for (const char* p = name; *p; ++p) eat((unsigned char)*p);
+    eat(0);
+    const unsigned char* d = (const unsigned char*)data;
+    for (size_t i = 0; i < n; ++i) eat(d[i]);
+    for (int i = 0; i < 8; ++i) out[i] = (unsigned char)(a >> (8 * i));
+    for (int i = 0; i < 4; ++i) out[8 + i] = (unsigned char)(b >> (8 * i));
+}
+
+}  // namespace
+
+bool SaveManager::canSeal() {
+#ifdef OD_HAS_P2
+    return true;
+#else
+    return false;
+#endif
+}
+
+std::string SaveManager::newSealSalt() {
+    if (!canSeal()) return {};
+    std::random_device rd;
+    static const char* hex = "0123456789abcdef";
+    std::string s;
+    for (int i = 0; i < 32; ++i) s += hex[rd() & 15];
+    return s;
+}
+
+// The bytes to write for entry `name`: sealed when the save is, plain otherwise.
+static std::string sealFor(const SaveMetadata& meta, const char* name, const void* data, size_t n) {
+    std::string plain((const char*)data, n);
+#ifdef OD_HAS_P2
+    if (meta.sealSalt.empty() || !sealedName(name)) return plain;
+    // u64 plain length, then the deflated bytes.
+    mz_ulong zlen = mz_compressBound((mz_ulong)n);
+    std::string packed(8 + zlen, '\0');
+    for (int i = 0; i < 8; ++i) packed[(size_t)i] = (char)((uint64_t)n >> (8 * i));
+    if (mz_compress2((unsigned char*)&packed[8], &zlen, (const unsigned char*)data, (mz_ulong)n,
+                     MZ_BEST_COMPRESSION) != MZ_OK)
+        return plain;
+    packed.resize(8 + zlen);
+    std::string out(kSealHeader + packed.size() + 16, '\0');
+    memcpy(&out[0], kSealMagic, 4);
+    out[4] = 2;
+    unsigned char nonce[12];
+    sealNonce(name, data, n, nonce);
+    memcpy(&out[5], nonce, 12);
+    if (!od_p2((const unsigned char*)meta.sealSalt.data(), meta.sealSalt.size(), nonce,
+               (const unsigned char*)packed.data(), packed.size(), (unsigned char*)&out[kSealHeader]))
+        return plain;
+    return out;
+#else
+    (void)meta; (void)name;
+    return plain;
+#endif
+}
+
+static SaveMetadata parseMetadataJson(const std::string& js);
+
+// One entry of an open archive, exactly as stored.
+static std::string extractRaw(mz_zip_archive& zip, const char* name) {
     const int idx = mz_zip_reader_locate_file(&zip, name, nullptr, 0);
     if (idx < 0) return {};
     size_t sz = 0;
@@ -455,6 +616,66 @@ static std::string extractEntry(mz_zip_archive& zip, const char* name) {
     std::string out((const char*)d, sz);
     free(d);
     return out;
+}
+
+// One entry of an open archive, or empty when it is absent or unreadable --
+// opened if it is sealed. A sealed entry this build cannot open (no seal in
+// the linked odseal, a wrong salt, a tampered byte) reads as absent, and says
+// so once on stderr: a tampered save is a damaged save, not a readable one.
+static std::string extractEntry(mz_zip_archive& zip, const char* name) {
+    std::string data = extractRaw(zip, name);
+    if (!isSealed(data)) return data;
+#ifdef OD_HAS_P2
+    const SaveMetadata meta = parseMetadataJson(extractRaw(zip, "metadata.json"));
+    if (!meta.sealSalt.empty() && (data[4] == 1 || data[4] == 2)) {
+        const unsigned char* nonce = (const unsigned char*)&data[5];
+        std::string out(data.size() - kSealHeader - 16, '\0');
+        if (od_p3((const unsigned char*)meta.sealSalt.data(), meta.sealSalt.size(), nonce,
+                  (const unsigned char*)&data[kSealHeader], data.size() - kSealHeader,
+                  out.empty() ? nullptr : (unsigned char*)&out[0])) {
+            if (data[4] == 1) return out;
+            // Version 2: the length, then deflate. A length past what the
+            // archive could hold is refused rather than allocated.
+            if (out.size() >= 8) {
+                uint64_t n = 0;
+                for (int i = 0; i < 8; ++i) n |= (uint64_t)(unsigned char)out[(size_t)i] << (8 * i);
+                if (n <= (uint64_t)1 << 31) {
+                    std::string plain((size_t)n, '\0');
+                    mz_ulong got = (mz_ulong)n;
+                    if (mz_uncompress(plain.empty() ? nullptr : (unsigned char*)&plain[0], &got,
+                                      (const unsigned char*)&out[8], (mz_ulong)(out.size() - 8)) == MZ_OK &&
+                        got == (mz_ulong)n)
+                        return plain;
+                }
+            }
+        }
+    }
+    fprintf(stderr, "[SAVE] %s is sealed and does not open (damaged or edited)\n", name);
+#else
+    fprintf(stderr, "[SAVE] %s is sealed; this build cannot open fog-of-war saves\n", name);
+#endif
+    return {};
+}
+
+// The treasuries of a sealed save, which its metadata no longer carries.
+static void readSealedTreasuries(mz_zip_archive& zip, SaveMetadata& meta) {
+    if (meta.sealSalt.empty()) return;
+    const std::string js = extractEntry(zip, "fog/treasuries.json");
+    if (js.empty()) return;
+    try {
+        auto j = nlohmann::json::parse(js);
+        for (auto& [cidStr, tr] : j.items())
+            if (tr.is_number()) meta.countryTreasuries[std::stoi(cidStr)] = tr.get<double>();
+    } catch (...) {}
+}
+
+static void writeSealedTreasuries(mz_zip_archive& zip, const SaveMetadata& meta) {
+    if (meta.sealSalt.empty()) return;
+    nlohmann::json j = nlohmann::json::object();
+    for (auto& [cid, tr] : meta.countryTreasuries) j[std::to_string(cid)] = tr;
+    const std::string plain = j.dump();
+    const std::string data = sealFor(meta, "fog/treasuries.json", plain.data(), plain.size());
+    mz_zip_writer_add_mem(&zip, "fog/treasuries.json", data.data(), data.size(), MZ_BEST_COMPRESSION);
 }
 
 // ─── Create initial .odsv ────────────────────────────────
@@ -503,38 +724,10 @@ bool SaveManager::createSave(const std::string& odsvPath,
     mz_zip_writer_add_mem(&zip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     // Write metadata.json with country compasses
-    std::string cr = meta.created.empty() ? "unknown" : meta.created;
-    std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
-    std::string ver = meta.version.empty() ? "unknown" : meta.version;
-    
-    std::string metaJson = "{\n";
-    metaJson += "  \"save_name\": \"" + meta.saveName + "\",\n";
-    metaJson += "  \"version\": \"" + ver + "\",\n";
-    metaJson += "  \"created\": \"" + cr + "\",\n";
-    metaJson += "  \"last_played\": \"" + lp + "\",\n";
-    metaJson += "  \"turn_count\": " + std::to_string(meta.turnCount) + ",\n";
-    metaJson += "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n";
-    metaJson += "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n";
-    metaJson += "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n";
-    metaJson += "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
-    bool first = true;
-    for (auto& [cid, pc] : meta.countryCompasses) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
-    }
-    metaJson += "\n  },\n";
-    metaJson += "  \"country_treasuries\": {\n";
-    first = true;
-    for (auto& [cid, tr] : meta.countryTreasuries) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
-    }
-    metaJson += "\n  }\n";
-    metaJson += "}\n";
+    const std::string metaJson = metadataJson(meta);
     
     mz_zip_writer_add_mem(&zip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    writeSealedTreasuries(zip, meta);
 
     // Write empty index
     const char* idx = "{\"turns\":[]}\n";
@@ -637,36 +830,7 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     const int heldTurns = highestTurnIn(srcZip);
     if (heldTurns > meta.turnCount)        meta.turnCount = heldTurns;
     if (delta.turnNumber > meta.turnCount) meta.turnCount = delta.turnNumber;
-    std::string cr = meta.created.empty() ? "unknown" : meta.created;
-    std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
-    std::string ver = meta.version.empty() ? "unknown" : meta.version;
-    std::string metaJson =
-        "{\n"
-        "  \"save_name\": \"" + meta.saveName + "\",\n"
-        "  \"version\": \"" + ver + "\",\n"
-        "  \"created\": \"" + cr + "\",\n"
-        "  \"last_played\": \"" + lp + "\",\n"
-        "  \"turn_count\": " + std::to_string(meta.turnCount) + ",\n"
-        "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n"
-        "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n"
-        "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n"
-        "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
-    bool first = true;
-    for (auto& [cid, pc] : meta.countryCompasses) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
-    }
-    metaJson += "\n  },\n";
-    metaJson += "  \"country_treasuries\": {\n";
-    first = true;
-    for (auto& [cid, tr] : meta.countryTreasuries) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
-    }
-    metaJson += "\n  }\n";
-    metaJson += "}\n";
+    const std::string metaJson = metadataJson(meta);
     mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
 
     // Index
@@ -719,7 +883,8 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     }
 
     // Add new turn
-    auto packed = packTurn(delta);
+    auto packedPlain = packTurn(delta);
+    const std::string packed = sealFor(meta, turnPath, packedPlain.data(), packedPlain.size());
     mz_zip_writer_add_mem(&newZip, turnPath, packed.data(), packed.size(), MZ_BEST_COMPRESSION);
 
     // Fold the state snapshot into this same rewrite when supplied.
@@ -730,12 +895,16 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // reconstructed for any turn but the latest — which is what rewinding to
     // an earlier turn needs.
     if (stateJson) {
-        mz_zip_writer_add_mem(&newZip, "state.json", stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
-        mz_zip_writer_add_mem(&newZip, turnStatePath, stateJson->data(), stateJson->size(), MZ_BEST_COMPRESSION);
+        const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
+        mz_zip_writer_add_mem(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
+        const std::string ts = sealFor(meta, turnStatePath, stateJson->data(), stateJson->size());
+        mz_zip_writer_add_mem(&newZip, turnStatePath, ts.data(), ts.size(), MZ_BEST_COMPRESSION);
     }
     if (extraFiles)
-        for (auto& [name, content] : *extraFiles)
-            mz_zip_writer_add_mem(&newZip, name.c_str(), content.data(), content.size(), MZ_BEST_COMPRESSION);
+        for (auto& [name, content] : *extraFiles) {
+            const std::string c = sealFor(meta, name.c_str(), content.data(), content.size());
+            mz_zip_writer_add_mem(&newZip, name.c_str(), c.data(), c.size(), MZ_BEST_COMPRESSION);
+        }
 
     if (!mz_zip_writer_finalize_archive(&newZip)) return fail();
     mz_zip_writer_end(&newZip);
@@ -808,37 +977,9 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     // turn time.
     mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
-    std::string cr = meta.created.empty() ? "unknown" : meta.created;
-    std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
-    std::string ver = meta.version.empty() ? "unknown" : meta.version;
-    
-    std::string metaJson = "{\n";
-    metaJson += "  \"save_name\": \"" + meta.saveName + "\",\n";
-    metaJson += "  \"version\": \"" + ver + "\",\n";
-    metaJson += "  \"created\": \"" + cr + "\",\n";
-    metaJson += "  \"last_played\": \"" + lp + "\",\n";
-    metaJson += "  \"turn_count\": " + std::to_string(meta.turnCount) + ",\n";
-    metaJson += "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n";
-    metaJson += "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n";
-    metaJson += "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n";
-    metaJson += "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
-    bool first = true;
-    for (auto& [cid, pc] : meta.countryCompasses) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
-    }
-    metaJson += "\n  },\n";
-    metaJson += "  \"country_treasuries\": {\n";
-    first = true;
-    for (auto& [cid, tr] : meta.countryTreasuries) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
-    }
-    metaJson += "\n  }\n";
-    metaJson += "}\n";
+    const std::string metaJson = metadataJson(meta);
     mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    writeSealedTreasuries(newZip, meta);
 
     // Everything the archive already held, except the three entries this
     // function regenerates.
@@ -863,7 +1004,8 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
                 if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
                 if (strcmp(st.m_filename, "map.odmap") == 0 ||
                     strcmp(st.m_filename, "metadata.json") == 0 ||
-                    strcmp(st.m_filename, "index.json") == 0) continue;
+                    strcmp(st.m_filename, "index.json") == 0 ||
+                    strcmp(st.m_filename, "fog/treasuries.json") == 0) continue;
                 // Verbatim, for the reason given in appendTurn: inflating and
                 // re-deflating every turn file in the archive is seconds of
                 // work on a long save, and it buys nothing -- the bytes are
@@ -906,6 +1048,10 @@ static SaveMetadata parseMetadataJson(const std::string& js) {
         meta.provinceCount = j.value("province_count", 0);
         meta.shipCount = j.value("ship_count", 0);
         meta.playerCountryId = j.value("player_country_id", 0);
+        meta.format = j.value("format", 0);
+        meta.fogOfWar = j.value("fog_of_war", false);
+        if (j.contains("seal") && j["seal"].is_object())
+            meta.sealSalt = j["seal"].value("salt", "");
 
         // Convention 1 stored the map file's own numbers: positive meant more
         // LEFT and more AUTHORITARIAN, the opposite of what PoliticalCompass
@@ -944,6 +1090,7 @@ static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
     if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return {};
     const std::string js = extractEntry(zip, "metadata.json");
     SaveMetadata meta = parseMetadataJson(js);
+    readSealedTreasuries(zip, meta);
     const int held = highestTurnIn(zip);
     if (held > meta.turnCount) meta.turnCount = held;
     mz_zip_reader_end(&zip);
@@ -955,6 +1102,7 @@ SaveMetadata SaveManager::readMetadata(const std::string& odsvPath) {
     if (!openSaveFile(zip, odsvPath)) return {};
     const std::string js = extractEntry(zip, "metadata.json");
     SaveMetadata meta = parseMetadataJson(js);
+    readSealedTreasuries(zip, meta);
     // Every caller of this gets the repair, including the two that go on to
     // WRITE the number back -- trySaveGame through updateLastPlayed, and
     // appendTurn. Putting it here rather than at those call sites is the
@@ -975,15 +1123,8 @@ TurnDelta SaveManager::readTurn(const std::string& odsvPath, int turn) {
 
     char turnPath[32];
     snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", turn);
-    int idx = mz_zip_reader_locate_file(&zip, turnPath, nullptr, 0);
-    if (idx < 0) { mz_zip_reader_end(&zip); return delta; }
-
-    size_t sz = 0;
-    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
-    if (!d) { mz_zip_reader_end(&zip); return delta; }
-
-    unpackTurn((const uint8_t*)d, sz, delta);
-    free(d);
+    const std::string packed = extractEntry(zip, turnPath);   // opens a sealed turn
+    if (!packed.empty()) unpackTurn((const uint8_t*)packed.data(), packed.size(), delta);
     mz_zip_reader_end(&zip);
     return delta;
 }
@@ -1167,39 +1308,14 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     // turn time.
     mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
-    std::string cr = meta.created.empty() ? "unknown" : meta.created;
-    std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
-    std::string ver = meta.version.empty() ? "unknown" : meta.version;
-    std::string metaJson =
-        "{\n"
-        "  \"save_name\": \"" + meta.saveName + "\",\n"
-        "  \"version\": \"" + ver + "\",\n"
-        "  \"created\": \"" + cr + "\",\n"
-        "  \"last_played\": \"" + lp + "\",\n"
-        "  \"turn_count\": " + std::to_string(meta.turnCount) + ",\n"
-        "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n"
-        "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n"
-        "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n"
-        "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
-    bool first = true;
-    for (auto& [cid, pc] : meta.countryCompasses) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
-    }
-    metaJson += "\n  },\n";
-    metaJson += "  \"country_treasuries\": {\n";
-    first = true;
-    for (auto& [cid, tr] : meta.countryTreasuries) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
-    }
-    metaJson += "\n  }\n";
-    metaJson += "}\n";
+    const std::string metaJson = metadataJson(meta);
     mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    writeSealedTreasuries(newZip, meta);
 
-    // Copy turn files + state.json from original archive
+    // Everything else the archive held, verbatim -- see appendTurn. This used
+    // to copy only turns/*, state.json and index.json, the same keep-list bug
+    // updateLastPlayed had: picking a country dropped rebels.json, every
+    // rebellion/<cid>.svg and, in a fog world, what every country had seen.
     {
         mz_zip_archive srcZip{};
         if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
@@ -1207,12 +1323,10 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
             for (int i = 0; i < fc; ++i) {
                 mz_zip_archive_file_stat st{};
                 if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
-                if (strstr(st.m_filename, "turns/") == st.m_filename ||
-                    strcmp(st.m_filename, "state.json") == 0 ||
-                    strcmp(st.m_filename, "index.json") == 0) {
-                    // Verbatim -- see appendTurn.
-                    mz_zip_writer_add_from_zip_reader(&newZip, &srcZip, (mz_uint)i);
-                }
+                if (strcmp(st.m_filename, "map.odmap") == 0 ||
+                    strcmp(st.m_filename, "metadata.json") == 0 ||
+                    strcmp(st.m_filename, "fog/treasuries.json") == 0) continue;
+                mz_zip_writer_add_from_zip_reader(&newZip, &srcZip, (mz_uint)i);
             }
             mz_zip_reader_end(&srcZip);
         }
@@ -1298,36 +1412,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
     // Parse metadata from the in-memory buffer (NOT from the truncated file on disk)
     meta = parseMetadataFromZip(zipData);
-    std::string cr = meta.created.empty() ? "unknown" : meta.created;
-    std::string lp = meta.lastPlayed.empty() ? cr : meta.lastPlayed;
-    std::string ver = meta.version.empty() ? "unknown" : meta.version;
-    std::string metaJson =
-        "{\n"
-        "  \"save_name\": \"" + meta.saveName + "\",\n"
-        "  \"version\": \"" + ver + "\",\n"
-        "  \"created\": \"" + cr + "\",\n"
-        "  \"last_played\": \"" + lp + "\",\n"
-        "  \"turn_count\": " + std::to_string(meta.turnCount) + ",\n"
-        "  \"province_count\": " + std::to_string(meta.provinceCount) + ",\n"
-        "  \"ship_count\": " + std::to_string(meta.shipCount) + ",\n"
-        "  \"player_country_id\": " + std::to_string(meta.playerCountryId) + ",\n"
-        "  \"compass_convention\": 2,\n  \"country_compasses\": {\n";
-    bool first = true;
-    for (auto& [cid, pc] : meta.countryCompasses) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": { \"economic\": " + jnum(pc.economic) + ", \"social\": " + jnum(pc.social) + " }";
-    }
-    metaJson += "\n  },\n";
-    metaJson += "  \"country_treasuries\": {\n";
-    first = true;
-    for (auto& [cid, tr] : meta.countryTreasuries) {
-        if (!first) metaJson += ",\n";
-        first = false;
-        metaJson += "    \"" + std::to_string(cid) + "\": " + jnum(tr);
-    }
-    metaJson += "\n  }\n";
-    metaJson += "}\n";
+    const std::string metaJson = metadataJson(meta);
     mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
 
     std::string idxStr = "{\"turns\":[";
@@ -1356,14 +1441,20 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
         }
     }
 
-    mz_zip_writer_add_mem(&newZip, "state.json", stateJson.data(), stateJson.size(), MZ_BEST_COMPRESSION);
+    {
+        const std::string st = sealFor(meta, "state.json", stateJson.data(), stateJson.size());
+        mz_zip_writer_add_mem(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
+    }
 
+    // Already sealed, if the save is: carried as stored.
     for (auto& [name, data] : existingExtra)
         mz_zip_writer_add_mem(&newZip, name.c_str(), data.data(), data.size(), MZ_BEST_COMPRESSION);
 
     // Write new extra files (rebel SVGs, etc.) from caller
-    for (auto& [name, content] : extraFiles)
-        mz_zip_writer_add_mem(&newZip, name.c_str(), content.data(), content.size(), MZ_BEST_COMPRESSION);
+    for (auto& [name, content] : extraFiles) {
+        const std::string c = sealFor(meta, name.c_str(), content.data(), content.size());
+        mz_zip_writer_add_mem(&newZip, name.c_str(), c.data(), c.size(), MZ_BEST_COMPRESSION);
+    }
 
     mz_zip_writer_finalize_archive(&newZip);
     mz_zip_writer_end(&newZip);

@@ -40870,3 +40870,134 @@ between −5pp and +2pp, p > 0.05, better on 6-10 of 16**, with upgrades > 0 on 
 between my prediction and my falsifier): **the default flips ON only if the paired sign test gives p > 0.05 or the
 point estimate is ≥ 0, AND bankruptcy events do not rise.** Anything else and it stays gated off. A measured fall
 keeps it off; a null adopts it, because the capability is what the user asked for and a null means it costs nothing.
+
+## 537 — another session rewrote data/ai/model.bin under a running bench
+
+PATHS TOUCHED (revert list): `src/ai/AISystem.h`, `src/ai/AISystem.cpp`, `src/Game_Agent.cpp`,
+`src/Game_AITrain.cpp`, `src/server/ServerMain.cpp`, `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`.
+
+**WHAT HAPPENED.** The machine rebooted, taking `/tmp` and journal 536's bench with it (AGENTS.md records that
+`/tmp` is cleaned; all scratchpad output for the session was gone). I relaunched at **20:17:49** — and at
+**20:27:05** another session's `--simulate` run learned online for six turns and wrote `data/ai/model.bin` back
+("Model saved (3704049 bytes, 354363856 updates)"). My runs load that file, so the bench straddled a **model**
+change. Killed it two seeds in.
+
+**THE BYTES EVERY EARLIER BENCH USED ARE GONE.** Journals 490-536 measured against the pre-20:27 `model.bin` and
+nobody kept a copy — `model.loop-base.bin` (2e976093) is a different model from what `model.bin` held (7c430a4f
+after the write). So **absolute seat numbers in journals ≤536 are no longer reproducible.** The within-bench A/Bs
+stand, because both arms of each shared one model; the absolute figures do not. That is a real loss and it was not
+mine to prevent.
+
+**TWO FIXES, and the second is the one that matters.**
+
+**1. Pin the model as well as the binary.** `cmake-build-pin/model.pin.bin`, with `OD_EVAL_MODEL` pointed at it;
+verified in the run's own output (*"Model: .../cmake-build-pin/model.pin.bin (OD_EVAL_MODEL, read-only)"*). Journal
+536's re-run uses the loop's designated frozen reference, `model.loop-base.bin`, **because `model.bin` is a file
+other sessions write and the skill named loop-base as the stable one all along.** Bench output also moved into
+`cmake-build-pin/` (gitignored, in-repo) so a `/tmp` clean cannot destroy another 2.7 hours.
+
+**2. A read-only promise the game loop cannot revoke — `AISystem::s_readOnlyLocked`.** `Game::processTurn` resets
+`s_readOnlyModel` from `!m_config.aiLearning` **every turn**, deliberately (its comment: a player who switches
+learning off mid-game means it). That is right for a player and silently revokes every headless mode's startup
+promise. The lock is checked by **`saveModel` and `writeLeagueCheckpoint` themselves** and nothing clears it, so the
+guard sits where forgetting is impossible rather than at a call site — `put-the-guard-where-forgetting-is-impossible`,
+and journal 314 already recorded this exact failure mode here ("ServerMain used to set it at the call site; journal
+311 wired a new caller and did not"). Four callers converted: the agent seat, both bench/probe sites, and
+ServerMain's hand-played seat.
+
+**It needed NO edit to `Game_TurnLogic.cpp`**, which the other session is currently working in — the peer offered to
+make a one-line change there, and putting the check inside the save instead makes that unnecessary.
+
+**THREE OF THE PEER'S FOUR REFERENCES DID NOT CHECK OUT, so I verified rather than relayed.** `src/main.cpp` does
+not exist in this tree (the lines cited as main.cpp:155/:41/:351 are not there); `Game_AITrain.cpp:2941` is
+`runTradeProbe`, not the simulate handler; and I could not find where `--simulate` sets read-only **at all** — the
+string appears only in comments, so on this tree it may never have promised read-only, which is a different and
+worse story than a promise being revoked. **The per-turn reset at `Game_TurnLogic.cpp:552` is real and is the
+mechanism**, and that is what the lock addresses.
+
+**WHAT I HAVE NOT VERIFIED, stated plainly: the lock is not break-tested end to end.** The mechanism is three lines
+and four call sites, all read and all present, and the change is inert until something calls
+`lockReadOnlyModel()`. Proving it *prevents* a write would mean deliberately provoking a model save, which is what
+just destroyed the reference bytes. The incident is the negative control; I am not re-running it.
+`a-skip-is-not-a-pass` applies, and I would rather say so than imply a test I did not do.
+
+**Journal 536's bench is re-running** on pin `cc5d8bf3` + model `2e976093`, 16 seeds, both arms, hashes recorded
+after every run.
+
+PENDING COMMIT: journal **537**, backlog items **225-229**, `src/ai/AISystem.h`, `src/ai/AISystem.cpp`,
+`src/Game_Agent.cpp`, `src/Game_AITrain.cpp`, `src/server/ServerMain.cpp`, `docs/ai/LOOP.md`,
+`docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`. (Everything through journal 536 is already in HEAD.)
+**NOT independently committable — see the commit hazard at the end of this entry: `AISystem.cpp` now needs
+`GameStructs.h` from the other session's #16 patch.**
+
+**CORRECTION to this entry, same day: `main.cpp` DOES exist, and my denial was an artefact of my own search.**
+
+I wrote above that "`src/main.cpp` does not exist in this tree (the lines cited as main.cpp:155/:41/:351 are not
+there)". The first half is true and the second half is false, which made the whole claim misleading. **`main.cpp` is
+at the REPO ROOT**, 27,620 bytes, and it is the **first entry in `GAME_SOURCES`** in CMakeLists.txt — verified. The
+peer's line numbers were right all along; only the path was wrong, and I turned "not in `src/`" into "not in the
+tree". **A search scoped to one directory cannot establish absence**, and I had already been bitten once in the same
+investigation by `grep -rn -- "--simulate"` eating the dashes (`a-grep-pattern-starting-with-dashes`), which is
+exactly when I should have widened rather than concluded.
+
+So the mode that caused the incident *did* promise read-only and the promise *was* being revoked per turn — the
+story I called "a worse story than a promise being revoked" was my error, not the code's.
+
+**The gap I flagged is now closed, and not by me.** The peer placed `lockReadOnlyModel()` at all three revocable
+sites in `main.cpp` (41 `--ai-readonly`, 155 `--simulate`, 351 `--bench-agent`) and **break-tested it end to end**:
+`--simulate data/STDmaps/1914.odmap 4` with `aiLearning: true` — the same config, path and destructor exit-save that
+wrote the model in the incident — left `model.bin`'s hash and every `data/ai/*.bin` mtime unchanged, with a backup
+taken first. **Verified independently here**: `model.bin` is still `7c430a4f` at 10-10 20:27:05, untouched since the
+incident, and `lockReadOnlyModel()` sits in a `public:` section (last specifier before it is `public:` at
+`AISystem.h:2416`) so `main.cpp` can reach it.
+
+So the division worked out as it should have: the sticky flag in my files, the entry points in theirs, and the
+end-to-end proof done by the session that could take the risk safely because it had the backup.
+
+**Standing correction for the next reader: the game's entry point is `./main.cpp`, not `src/main.cpp`.** Four of the
+six `${GAME_SOURCES}` consumers depend on it and nothing in `src/` mentions `--simulate` except comments.
+
+**SECOND CORRECTION, and it retracts the worst claim in this entry: THE REFERENCE MODEL WAS IN GIT ALL ALONG.**
+
+I wrote above that "the bytes every earlier bench used are gone" and that "absolute seat numbers in journals ≤536
+are no longer reproducible". **Both are false.** `data/ai/model.bin` is **tracked**, and HEAD's blob (3,693,162
+bytes, sha `adb32ac8`) extracted with `git show HEAD:data/ai/model.bin` gives seed 520103 → **40.1** — exactly the
+figure journals 531, 533 and 536 recorded. **It is the model every bench in this loop used**, recoverable by anyone
+with one command, and I declared it lost without running `git ls-files data/ai/`.
+
+That mattered twice over: I told the other session not to attempt a restore *because nobody had the bytes*, which
+was wrong advice founded on the same omission. Corrected to them.
+
+**It also means I nearly measured item 224 on the wrong instrument.** The re-run was using
+`model.loop-base.bin`, on the skill's instruction that loop-base is "the frozen reference" — but loop-base is a
+**different and much weaker lineage**: 4.14 MB against 3.69 MB, and on it seed 520103 scores **1.8** where the real
+reference scores 40.1, with seed 710211 collapsing to 0.0 in both arms. France sits near the floor on loop-base, so
+the seat would have been pinned and the A/B could have resolved nothing — `saturated-seats-are-a-different-instrument`
+and `capped-small-par-seats-are-coins`, and I would have reported a null that was an artefact of the model choice.
+Killed and relaunched on the recovered model (`adb32ac8`).
+
+**So the standing rule changes: the bench reference is `git show HEAD:data/ai/model.bin`, not
+`data/ai/model.loop-base.bin`.** The committed blob is better than any file on disk for exactly the reason this
+incident demonstrates — another session can overwrite the working file, and nothing can overwrite a commit.
+
+**AND THE SERVICE I PROMISED THE FOG SESSION IS DELIVERED FOR THEIR PHASE 5.** Their nine `fogOnly` research nodes
+(appended at the end of `buildResearchNodes`, with `isNodeAvailableFor` refusing them when `!m_fogOfWar`) and the
+`kEffectCount` widen 17 → 23 leave **non-fog AI play bit-identical**: seed 520103 scores **1.8 on both** the
+pre-Phase-5 pin (`cc5d8bf3`) and the post-Phase-5 build (`f821f21c`), same model, same flags. My own
+`s_readOnlyLocked` is inert on that path too, since it is in the newer binary. Measured, not assumed.
+
+**COMMIT HAZARD, recorded prominently because it is now real: `src/ai/AISystem.cpp` CANNOT BE COMMITTED ALONE.**
+
+The policy-fix session took the one line I handed them (item 229) and `AISystem.cpp:15253` now reads
+`!ap.inForce()`. Verified: it is their only change to my files, the diff is otherwise just my `s_readOnlyLocked`
+work, and the tree builds. But `inForce()` **does not exist in HEAD** (`git show HEAD:src/GameStructs.h | grep -c
+inForce` → 0), so:
+
+**`src/ai/AISystem.cpp` must land in the same commit as `src/GameStructs.h`** — and with the rest of the GitHub #16
+patch (`Game_Research.cpp`, `Game_Economy.cpp`, the profile/LLM doctrine lists, `PolicyRulesTest`). Committing this
+loop's paths selectively, which has happened before, **breaks the build**. This is the landmine I declined to create
+by writing the call myself; it exists now by their choice and with the predicate single-sourced, which is the better
+trade — but only if the two land together.
+
+That changes this loop's own PENDING COMMIT discipline for once: the list below is no longer independently
+committable.

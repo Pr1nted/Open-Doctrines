@@ -106,8 +106,6 @@ it. The plates are 1600x900 and that is hardcoded in the tour
 
 ## The look
 
-## The look
-
 | | |
 |---|---|
 | Frame | 2.39:1, letterboxed into a 1920x1080 file |
@@ -192,6 +190,188 @@ Cue sheet, mapped to the cut above:
 | 0:57 | Strip to the ostinato again for the fly |
 | 1:07 | Full, warm, resolved — this part is sincere |
 | 1:19 | Tail out under the URL |
+
+## The march (for the Steam cut)
+
+The trip-hop score above belongs to the 90-second cut that exists. The Steam
+revamp replaces it, because the verdict on it was "way too repetitive, there is
+no action at all, and it looks so detached from reality" -- and the first two
+thirds of that are a fair description of one eight-note ostinato held for a
+minute and a half. A march fixes repetition by construction: it has strains, a
+refrain, and somewhere to go.
+
+**The tune is "When Johnny Comes Marching Home", and the arrangement is ours.**
+That split is the whole point. Remixing a known march the way Hearts of Iron
+did is a content-ID problem before it is a musical one: the tune may be ancient
+and the *recording* and *arrangement* you are thinking of are not. So:
+
+| | |
+|---|---|
+| Melody | O'Neill's *Music of Ireland* (1903) **#468** — printed there as "Johnny Fill Up the Bowl" / "Johnny, I Hardly Knew You" / "When Johnny Comes Marching Home". 6/8, A minor, 16 bars. |
+| Cross-checked | O'Neill's #69 (the 24-bar Irish air) and the Mandozine TOW setting, which agree note for note across these 16 bars |
+| Copyright | Gilmore's words are 1863, O'Neill's print is 1903 — both long expired |
+| Everything else | written in `tools/trailer_march.py`: chords, counter-lines, drum parts, voicing, orchestration |
+
+Nothing is sampled and no MIDI is imported. The note list in that file *is* the
+melody, transcribed from the ABC, and `tools/trailer_march.py --cues` prints
+the form without rendering.
+
+**Why this tune and not a generic march.** The Irish original is a lament for a
+soldier who came home maimed; Gilmore's American refrain is a victory parade.
+They are the same notes. A game whose whole argument is that the map rewards
+things the people on it pay for does not get a better gift than a melody that
+means both at once — so the arrangement plays it both ways, and the AFTERMATH
+section is the parade handed to the choir with the drum taken away.
+
+Form — eight sections, no two scored alike:
+
+| Bar | Time | Section | Scoring |
+|---|---|---|---|
+| 0 | 0:02.3 | HALT | Field drum alone, crescendo roll. No tune yet |
+| 4 | 0:07.8 | MARCH IN | The tune, one line. Strings at the second phrase, drum at the third |
+| 20 | **0:29.6** | STOP | Everything out. One cymbal tail — the cut's hinge, preserved |
+| 21 | 0:31.0 | AFTERMATH | The same phrases, choir only, augmented. The lament inside the parade |
+| 29 | 0:41.9 | REBUILD | B strain in augmentation *under* the A strain — the one contrapuntal passage |
+| 41 | 0:58.2 | FULL | Everything, octave-doubled |
+| 53 | 1:14.6 | WIDE | Lead over choir, drum back to a rim pattern. Room to breathe |
+| 57 | 1:20.1 | LOGO | The hurrah bars at full weight, then the cadence held under the wordmark |
+| 63 | 1:28.2 | END | Ring-out |
+
+![march structure](assets/march-structure.png)
+
+**The grid still lands on 0:29.6.** Six-eight at dotted-quarter 88 gives a
+1.3636 s bar, twenty bars is 27.2727 s, so the music starts 2.327 s in and bar
+20 falls on 29.600 exactly. That is the *same clock* the trip-hop score used --
+a 4/4 bar at 88 and two 6/8 bars at dotted-88 are the same length -- so the
+existing cut's hinge survives the change of metre, on a finer grid.
+
+**The refrain has holes in it, and they are free.** Bars 13-14 of the strain
+are `e2z d2z | c2z B2z`: four rests where "Hur-rah! Hur-rah!" goes. The melody
+leaves gaps for the drums to hit, which is exactly what a trailer wants and is
+the reason this tune cuts better than the alternatives that were on the list.
+
+**The instruments are stylised, not emulated.** Synthesis here is numpy-only
+(no scipy in this repo, no sample library anywhere in it) and will not
+convincingly impersonate an orchestra, so it does not try. The lead is a
+harmonic stack with the two things that make brass read as brass -- a pitch
+that scoops into the note, and a spectrum that opens as it gets louder -- not a
+fake trumpet. The choir is formant-filtered tone and never carries the melody.
+The field drum is the one voice that is genuinely close to the real thing. A
+stylised score that knows what it is beats a symphonic one that does not.
+
+## The Steam cut (the picture for the march)
+
+`tools/trailer_march_cut.py`. 47 shots, 90.2 s, same grade and same scope frame
+as the cut above; it reuses `trailer_build.py` wholesale and supplies its own
+shot list, its own cards and its own score. Both cuts still build.
+
+**The turn at 0:31 is the whole thing.** The march is sixteen bars played two
+ways -- AFTERMATH is the lament, REBUILD is the parade -- and the picture does
+the same with the *same numbers*:
+
+| | AFTERMATH 0:31 | REBUILD 0:42 |
+|---|---|---|
+| 337 | provinces changed hands | |
+| 780 | times they changed hands | **780 VICTORIES** |
+| 87 | lost three quarters of their people | |
+| 278,995,356 | gone from provinces just taken | |
+| 948,780,090 | people who changed flag | **948,780,090 LIBERATED** |
+| +76% | | **POPULATION +76%** |
+| | | *EVERY FIGURE IS TRUE* |
+
+Every figure comes from `docs/trailer/assets/toll.json`, which
+`tools/trailer_toll.py` reads out of the first 120 turns of
+`data/saves/Quick Start.odsv`. Nothing is invented on either side. That is the
+argument: propaganda does not have to lie, it only has to choose which true
+thing to print -- and a trailer that made the numbers up would be making a much
+weaker point.
+
+**What the save cannot tell you.** There is no casualty counter in `.odsv`, and
+two obvious ways to fake one are both wrong. Summing every province's
+turn-to-turn population decline gives 661 billion over the full Quick Start, in
+a world of about six billion, because it is dominated by MIGRATION -- a person
+leaving province A is a loss in A and a gain in B. And world population does
+not fall during these runs, it rises. So the quoted figure is the narrowest
+defensible one: population lost inside a province within six turns of that
+province being taken. `trailer_toll.py`'s docstring carries the reasoning.
+
+Related, and worth its own look: over 820 turns the population model runs away
+completely (2.0bn -> far beyond plausible). Do not quote long-horizon saves, and
+see the open migration-arithmetic item below.
+
+**The cutting.** The note on the previous cut was that it felt "stuck on a map".
+Most tour plates ARE the same West Africa map with a different panel over it, so
+the fix is to punch into the PANEL and to break the montage with things that are
+not maps: the globe, the charts, the TempleOS palette, the fly, and the cards.
+The four quick cuts at 0:24 and again at 1:20 land on the march's hurrah rests
+-- the melody leaves four holes and the picture uses them.
+
+**The spectrogram.** `tools/trailer_march.py --egg` paints
+`assets/egg-spectrogram.png` into the audio between 7.0 and 12.8 kHz during
+AFTERMATH. It reads "OPEN DOCTRINES / hi data miners!" in any spectrogram view.
+
+Placement is not arbitrary. The obvious hiding place is 16-20 kHz, where nobody
+can hear it, and it does not survive: YouTube and Steam re-encode to AAC/Opus,
+which low-pass around 15-16 kHz and spend no bits near the limit, so an
+ultrasonic picture arrives as an empty band. And the LOUDEST section is the best
+masking but the worst canvas -- the crashes fill that band with noise and the
+letters cannot be read out of it. AFTERMATH has no drum at all by design and its
+choir sits below 1 kHz, so the band is empty, the picture is legible, and there
+is still music over it. It sits 38 dB under the music and does not move the
+peak. Honest claim: masked, not inaudible.
+
+## Motion, and why the cut stopped being a slideshow
+
+The note on the first assembly of the Steam cut was that static images are not
+cinematic -- which was fair, because a Ken Burns push on a screenshot is not
+movement, it is a screenshot being cropped slowly. Seventeen of the forty-six
+shots are now real footage.
+
+**The map actually evolving.** `tools/trailer_timelapse.sh` drives
+`--export-timelapse` over a whole save and writes `political-fast.mp4` and
+`troops-fast.mp4`: 1920x832, one frame per turn, 820 turns of *Quick Start* in
+19.7 seconds. The cut reads them through `shot_clip`'s existing `geo()` crops,
+so a shot is written as "Eurasia, turn 200, drifting east".
+
+Two traps are baked into that script because both cost an hour:
+
+* **The GIF carries a per-frame delay.** `--export-timelapse` writes a GIF and
+  ffmpeg honours its timing, so an 820-turn export decodes to SIX AND A HALF
+  MINUTES with every frame repeated about fourteen times. Re-encode that
+  straight and you get a file that looks like a still image. One frame in
+  twenty is kept, which restores one turn per frame.
+* **Antarctica is drawn flat grey** and is the brightest thing on the plate --
+  on a dark trailer it reads as a light leak along the bottom edge. The crop to
+  1920x832 removes it and lands on 2.31:1, close enough to the 2.39 picture
+  that the shots barely scale.
+
+**A 3-D shot this project owns.** `tools/trailer_blender.py` builds a room, a
+desk, a monitor and a fly out of primitives and flies a camera through it into
+the screen -- with the political timelapse playing ON the monitor, so the
+thing the camera approaches is the game running. The old cut used two fly
+plates whose origin nobody can now point at; that is tolerable for a README
+image and not for a storefront, which is commercial use. Everything in this
+scene is authored here, so there is no provenance question and no licence to
+honour. Eevee renders it headless at about a third of a second a frame.
+
+**And the stills that remain are no longer the same picture.** The tour takes
+125 screens and only 28 were ever kept, so the cut had been drawing from a
+narrow slice of what exists -- eleven of its twenty-four plates were the same
+West Africa map with a different panel over it. The four hard cuts on the
+hurrah rests now land on four different PALETTES: the globe's magenta resource
+overlay, its red population overlay, an advisor portrait, and the map editor's
+green. That, rather than a longer dissolve, is what stops a montage reading as
+one screenshot held for ninety seconds.
+
+**What is still one picture, and why that is the tour's fault not the cut's.**
+`Game_Screenshots.cpp` picks ONE country (most provinces) and ONE province
+(most populous) after loading, and `beginScreenshotTour` caches the flat
+camera on the first map shot and restores it for every later one. So every
+flat-map plate is framed identically by construction, and re-running the tour
+with forty turns instead of twelve changes the world without changing the
+frame. Fixing that means giving `struct Shot` its own framing and resolving a
+spread of focus provinces after load -- a real change, in C++, not a change to
+this cut.
 
 ## What this needs that does not exist yet
 

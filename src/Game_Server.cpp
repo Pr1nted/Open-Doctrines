@@ -674,6 +674,8 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         }
         console.info("map: " + mapName);
         m_mpMapId = config.map;
+        m_newWorldFog = config.fogOfWar;
+        if (config.fogOfWar) console.info("fog of war: on");
         startNewGameWithName(mapPath, config.worldName);
     } else {
         console.info("resuming " + config.loadSave);
@@ -1261,7 +1263,7 @@ void Game::serverEnd() {
     if (!m_currentSavePath.empty())
         console.info("world is at " + m_currentSavePath);
     // The book and orders as they stand, and one last backup.
-    if (m_netHost) { mpSaveSeats(); mpSavePendingOrders(); }
+    if (m_netHost) { mpSaveSeats(); mpSavePendingOrders(); mpSaveMailIfChanged(/*now=*/true); }
     srvCheckpoint(/*force=*/true, /*wait=*/true);
     if (m_srv->refresher.joinable()) m_srv->refresher.join();
     if (m_srv->checkpointer.joinable()) m_srv->checkpointer.join();

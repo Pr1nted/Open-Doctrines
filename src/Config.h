@@ -205,6 +205,9 @@ struct Config {
     // who does not need the memory should not pay the features. Takes hold on the
     // next world loaded.
     bool riskyRamOps = false;
+    // Experimental: offer "Fog of War" in the New World map popup. Hidden until
+    // the display, AI and save-sealing phases land (docs/design/fog-of-war-plan.md).
+    bool fogOfWarWorlds = false;
 
     // Where Greater Diplomacy 5 lives, if the player has told us.
     //

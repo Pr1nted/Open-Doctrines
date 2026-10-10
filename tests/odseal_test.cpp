@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <sys/stat.h>
 #ifdef _WIN32
 #  include <direct.h>
@@ -110,6 +111,39 @@ int main(){
         remove(p1.c_str());
         od_rmdir(dir);
     }
+
+#ifdef OD_HAS_P2
+    // ── od_p2 / od_p3: the sealed-save cipher (ChaCha20-Poly1305) ──
+    {
+        printf("\n-- od_p2/od_p3 --\n");
+        auto check = [&](bool ok, const char* label) {
+            printf("  %-48s %s\n", label, ok ? "ok" : "FAIL");
+            if (!ok) ++fails;
+        };
+        const unsigned char salt[] = "a-world-salt";
+        const unsigned char nonce[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+        const char* text = "every army the player could not see";
+        const size_t n = strlen(text);
+        std::vector<unsigned char> ct(n + 16), pt(n);
+        check(od_p2(salt, sizeof(salt) - 1, nonce, (const unsigned char*)text, n, ct.data()) == 1,
+              "seals");
+        check(memcmp(ct.data(), text, n) != 0, "the sealed bytes are not the text");
+        check(od_p3(salt, sizeof(salt) - 1, nonce, ct.data(), ct.size(), pt.data()) == 1 &&
+                  memcmp(pt.data(), text, n) == 0, "opens to the same text");
+        ct[n / 2] ^= 1;
+        check(od_p3(salt, sizeof(salt) - 1, nonce, ct.data(), ct.size(), pt.data()) == 0,
+              "an edited byte does not open");
+        bool zeroed = true;
+        for (unsigned char c : pt) zeroed = zeroed && c == 0;
+        check(zeroed, "...and leaves nothing behind");
+        ct[n / 2] ^= 1;
+        const unsigned char other[] = "another-salt";
+        check(od_p3(other, sizeof(other) - 1, nonce, ct.data(), ct.size(), pt.data()) == 0,
+              "another save's salt does not open it");
+        check(od_p3(salt, sizeof(salt) - 1, nonce, ct.data(), 15, pt.data()) == 0,
+              "a stub shorter than a tag is refused");
+    }
+#endif
 
     printf("\n%s\n", fails? "FAILURES":"all seal checks passed");
     return fails?1:0;

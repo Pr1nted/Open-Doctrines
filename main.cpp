@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     // 20 turns and the shorter session clobbers the longer one's progress.
     for (int i = 1; i < argc; ++i)
         if (strcmp(argv[i], "--ai-readonly") == 0) {
-            AISystem::s_readOnlyModel = true;
+            AISystem::lockReadOnlyModel();
             std::cout << "[AI] Read-only model: this session will not save "
                          "data/ai/model.bin" << std::endl;
         }
@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "--simulate needs a map path and a turn count\n");
             return 2;
         }
-        AISystem::s_readOnlyModel = true;
+        AISystem::lockReadOnlyModel();
         Audio::s_disabled = true;
         std::string map = argv[i + 1];
         int turns = atoi(argv[i + 2]);
@@ -348,7 +348,7 @@ int main(int argc, char** argv) {
                             "mkfifo /tmp/od.fifo && --bench-agent 1914:FRA:rush /tmp/od.fifo\n");
             return 2;
         }
-        AISystem::s_readOnlyModel = true;
+        AISystem::lockReadOnlyModel();
         Audio::s_disabled = true;
         const std::string seat = argv[i + 1];
         const std::string save = argv[i + 2];

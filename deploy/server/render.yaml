@@ -1,36 +1,55 @@
-# A Render Blueprint for an always-on campaign server on the FREE plan.
+# A Render Blueprint for an always-on OpenDoctrines server on the FREE plan.
 #
-# Render reads a blueprint from render.yaml at the root of your repository:
-# copy this file there in your fork (or create the service by hand with the
-# same settings -- see docs/tournaments.md). Secrets are marked sync: false;
-# Render asks for them when the blueprint is applied and never stores them in
-# the repository.
+# Render -> New -> Blueprint, pointed at this repository and this file
+# (deploy/server/render.yaml). Values marked sync: false are secrets: Render asks
+# for them when the blueprint is applied, and they never enter the repository.
 #
-# The free plan, stated plainly: 512 MB of memory (the server peaks near 130 MB
-# on any shipped map and plays at about 100 MB), a disk that is wiped on
-# every restart (which is what OD_CAMPAIGN_REPO is for), and the service sleeps
-# after 15 minutes with no traffic -- point a free uptime monitor at
-# https://<service>.onrender.com/healthz every 5-10 minutes to keep the turn
-# clock running when nobody is connected.
+# What the free plan means here, measured (tests/render_sim_test.sh):
+#   memory   512 MB; the server peaks well under that on Modern Day.
+#   CPU      a tenth of one; a turn takes longer, which a day-long turn ignores.
+#   disk     wiped on every restart -- OD_CAMPAIGN_REPO is where the campaign
+#            lives, restored on start and pushed after every turn.
+#   restarts Render "might restart a Free web service at any time"; every start
+#            restores the campaign, so a restart costs about a minute.
+#   sleep    after 15 minutes with no INBOUND request. Players arrive through the
+#            relay, which is outbound, so something must ping /healthz: the
+#            account service does, every 10 minutes, for each URL in its
+#            KEEPALIVE_URLS (net/wrangler.toml).
 services:
   - type: web
-    name: od-campaign
+    name: od-tournament
     runtime: docker
     plan: free
+    region: frankfurt
     dockerfilePath: ./deploy/server/Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
-    autoDeploy: false
+    # Deploy by hand, when a release is tagged -- never on every commit.
+    autoDeployTrigger: "off"
+    # On a redeploy the old instance gets SIGTERM about a minute after the new
+    # one is healthy, then this long to exit. It saves the world, pushes it to
+    # the campaign repository and releases the lock in that time; the default
+    # 30 s is too tight for a push over the network.
+    maxShutdownDelaySeconds: 180
     envVars:
-      - key: OD_CAMPAIGN_REPO         # https://x-access-token:<token>@github.com/you/od-campaign.git
+      # https://x-access-token:<fine-grained token>@github.com/Pr1nted/od-campaign.git
+      - key: OD_CAMPAIGN_REPO
         sync: false
       - key: OD_SERVER_NAME
         value: OpenDoctrines tournament
       - key: OD_MAP
-        value: "1914"
+        value: map                 # Modern Day
       - key: OD_TURN_SECONDS
-        value: "86400"
-      - key: OD_TURN_AT
-        value: "18:00"
-      - key: OD_VOICE_LINK            # e.g. a Discord invite; leave empty for none
+        value: "86400"             # a turn a day
+      - key: OD_START_AT_PLAYERS
+        value: "0"                 # a lobby until the host types `start`
+      - key: OD_MAX_PLAYERS
+        value: "16"
+      - key: OD_RELAY
+        value: "1"                 # players join with the code alone
+      - key: OD_LLM_ENDPOINT
+        value: https://api.groq.com/openai/v1
+      - key: OD_LLM_MODEL
+        value: llama-3.1-8b-instant
+      - key: OD_LLM_KEY            # the Groq API key
         sync: false

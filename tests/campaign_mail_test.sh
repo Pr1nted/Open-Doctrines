@@ -101,6 +101,30 @@ check "Alice reconnecting gets her correspondence back" \
 check "with the model's reply in it" \
       "grep -q '^BOTMAIL from=$ai_cid to=$alice_cid history=1' '$work/alice2.log'"
 
+echo "=== the post survives the server stopping ==="
+# A free host restarts whenever it likes. The world was saved at the last turn,
+# BEFORE that turn's letters were delivered and answered -- so this is what
+# used to come back empty.
+kill -TERM "$server_pid"; wait "$server_pid"
+start_server "$work/restart1.log" || { bad "the server comes back"; tail -20 "$work/restart1.log"; }
+check "the post is read back on resume" "grep -q 'restored [1-9][0-9]* letter(s)' '$work/restart1.log'" \
+      "$(grep -i 'letter' "$work/restart1.log" | tail -2)"
+client dev-alice --seconds 30 --until BOTMAIL > "$work/alice3.log" 2>&1
+check "after a clean stop, Alice still has her letter and the reply" \
+      "grep -q '^MAIL from=$alice_cid to=$ai_cid history=1 .*body=$secret' '$work/alice3.log' && grep -q '^BOTMAIL from=$ai_cid to=$alice_cid history=1' '$work/alice3.log'" \
+      "$(grep -E 'MAIL' "$work/alice3.log")"
+check "and Bob his" "client dev-bob --seconds 30 --until 'MAIL from=$bob_cid' 2>&1 | grep -q '^MAIL from=$bob_cid to=$alice_cid history=1'"
+# A crash: no shutdown path runs at all. What is on disk is what the last
+# few seconds' saving left.
+sleep 6
+kill -9 "$server_pid"; wait "$server_pid" 2>/dev/null
+start_server "$work/restart2.log" || { bad "the server comes back after SIGKILL"; tail -20 "$work/restart2.log"; }
+client dev-alice --seconds 30 --until BOTMAIL > "$work/alice4.log" 2>&1
+check "after a crash too" "grep -q '^BOTMAIL from=$ai_cid to=$alice_cid history=1' '$work/alice4.log'" \
+      "$(grep -E 'MAIL' "$work/alice4.log")"
+check "and the post file stays out of the snapshot's way: still nobody else's letters" \
+      "client dev-carol --secret '$secret' --seconds 30 --until SNAPSHOT 2>&1 | grep -q '^SNAPSHOT .* secret=0'"
+
 kill -TERM "$server_pid"; wait "$server_pid"
 echo
 if [ "$fail" = 0 ]; then echo "campaign mail: all checks passed"; else echo "campaign mail: FAILED"; fi

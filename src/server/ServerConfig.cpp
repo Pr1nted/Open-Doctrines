@@ -178,6 +178,8 @@ const std::vector<Field>& fields() {
                    "resume this .odsv instead of starting a new world"),
         TEXT_FIELD("world-name", worldName, ServerSettingScope::LobbyOnly,
                    "name given to the world this server creates"),
+        BOOL_FIELD("fog-of-war", fogOfWar, ServerSettingScope::LobbyOnly,
+                   "the new world has fog of war; players see only what they can"),
         UINT_FIELD("max-players", maxPlayers, ServerSettingScope::LobbyOnly,
                    "seats in the lobby"),
         UINT_FIELD("turn-seconds", turnSeconds, ServerSettingScope::LobbyOnly,

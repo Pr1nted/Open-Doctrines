@@ -405,9 +405,12 @@ const Setting EXPERIMENTAL_ITEMS[] = {
     // export, which repaint from the full raster, still need it (and would spike
     // the very memory this saves). See Config::riskyRamOps.
     {"Risky RAM", false, -1},
+    // Offers fog of war in the New World map popup. Behind a switch while it is
+    // built phase by phase; see docs/design/fog-of-war-plan.md.
+    {"Fog of War worlds", false, -1},
     {"Back", false, -1},
 };
-const int EXPERIMENTAL_COUNT = 8;
+const int EXPERIMENTAL_COUNT = 9;
 
 // THE LANGUAGE TAB HAS NO ROWS.
 //
@@ -750,6 +753,8 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
                                   : std::string(": ") + od::i18n::tr("needs Goods Economy");
     } else if (tab == 5 && index == 6) {
         label += onOff(cfg.riskyRamOps);
+    } else if (tab == 5 && index == 7) {
+        label += onOff(cfg.fogOfWarWorlds);
     } else if (tab == 3 && s.actionId >= 0) {
         label += std::string(": ") + keyName(cfg.keybinds[s.actionId]);
     } else if (tab == 3) {
@@ -2217,6 +2222,9 @@ void Game::buildCountryShipList(int shipIdx) {
     }
     for (int i = 0; i < (int)m_ships.size(); i++) {
         if (m_ships[i].countryId == targetCid) {
+            // A foreign fleet's cycle list would hand over its size and, by
+            // flying to each entry, where every hull is.
+            if (i != shipIdx && fogHidesShip(i)) continue;
             m_countryShipIndices.push_back(i);
             if (i == shipIdx) m_countryShipIndex = (int)m_countryShipIndices.size() - 1;
         }
@@ -2708,11 +2716,13 @@ void Game::drawDebugOverlay() {
         drawHybridText(10, 32, 14, TextFormat(T("Provinces: %d"), provCount), Color{180, 220, 255, 200});
         drawHybridText(10, 48, 14, TextFormat(T("Zoom: %.2f"), zoom), Color{180, 220, 255, 200});
         drawHybridText(10, 64, 14, TextFormat(T("DPI: %.2f"), m_dpiScale), Color{140, 160, 180, 160});
+        // The fog's own count of what the player sees, before anything draws it.
+        if (m_fogOfWar) DrawText(fogDebugLine().c_str(), 10, 1 + 64 + 16, 12, Color{150, 190, 230, 210});
     }
 
     // AI decision feed: last decisions from the ring buffer, newest first
     if (m_config.aiDebug && m_ai) {
-        int y = 84;
+        int y = (m_config.showZoom && m_fogOfWar) ? 100 : 84;
         // Translated, and the em dash is already non-ASCII in English.
         drawHybridText(10, y, 14,
                        TextFormat(T("AI decisions (turn, country, module, action) — %d this turn"),
@@ -4494,6 +4504,7 @@ void Game::drawPauseMenu() {
                 strcmp(items[i].label, "AI Debug") == 0 ||
                 strcmp(items[i].label, "AI Learning") == 0 ||
                 strcmp(items[i].label, "Risky RAM") == 0 ||
+                strcmp(items[i].label, "Fog of War worlds") == 0 ||
                 strcmp(items[i].label, "AI Difficulty") == 0 ||
                 strcmp(items[i].label, "Resolution") == 0 ||
                 strcmp(items[i].label, "FPS") == 0 ||

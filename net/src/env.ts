@@ -52,6 +52,11 @@ export interface Env {
      * and drops, and nothing reaches Google. See analytics/ga.ts.
      */
     GA_MEASUREMENT_ID?: string;
+    /**
+     * Free-plan game servers to keep awake: https URLs, comma-separated, each
+     * requested every ten minutes. See hosting/keepalive.ts.
+     */
+    KEEPALIVE_URLS?: string;
     GA_API_SECRET?: string;
 
     /**

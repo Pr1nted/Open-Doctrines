@@ -49,6 +49,25 @@ Two corrections on top of that rule, both because `uname -m` names the
   `windows-x86_64`, `windows-x86` or `windows-arm64`, under the Visual Studio
   generator and Ninja alike.
 
+## Sealed saves (od_p2 / od_p3)
+
+A fog-of-war world's save is sealed: `od_p2` encrypts an entry with
+ChaCha20-Poly1305 under a key derived from a key inside the archive and the
+save's own salt, and `od_p3` opens it, refusing anything edited. SaveManager is
+the only caller (see "Sealed entries" in `src/SaveManager.cpp`), and
+`tests/save_seal_test.cpp` and `tests/odseal_test.cpp` cover both ends.
+
+Callers compile the seal in only under `OD_HAS_P2`, which the source branch
+defines. **The prebuilts in `third_party/odseal/` predate it**, so a clone
+building against one writes fog-of-war saves unsealed and cannot open a sealed
+one (it says so on stderr rather than misreading it). Refresh the prebuilts
+with the workflow below, then add `OD_HAS_P2` beside `OD_HAS_T4` on the
+imported target in `CMakeLists.txt`.
+
+What the seal is worth: unzip, a text editor and `tools/read_odsv.py` no longer
+read what fog hides. A program calling `od_p3`, a debugger or a rebuilt client
+still can. It raises the cost of peeking; it is not secrecy.
+
 ## Keeping them in sync
 
 Building eight archives on eight machines by hand is the chore that silently

@@ -527,6 +527,9 @@ struct NetSessionInfo {
     bool        llmAnswers = false;
     /// The host's mail policy (mail::Policy), which binds everybody on it.
     uint8_t     mailPolicy = 3;
+    /// The world has fog of war (v3). A client honours it from the world's own
+    /// state as well; this is for showing it before the world has loaded.
+    bool        fogOfWar = false;
 
     std::vector<uint8_t> encode() const;
     /** Lenient: a newer host's trailing fields are ignored, not refused. */
@@ -543,7 +546,9 @@ struct NetSnapshotZ {
 };
 
 /** What this build's hello says it can read beyond protocol version 1. */
-inline constexpr const char* kNetClientCaps = "snapz";
+/// "fog": this build draws a fog-of-war world as one -- a host running fog
+/// refuses a hello without it, because an older build would show the truth.
+inline constexpr const char* kNetClientCaps = "snapz,fog";
 
 struct NetTurnBegin {
     uint32_t turnNumber = 0;

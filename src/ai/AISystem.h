@@ -2646,6 +2646,29 @@ public:
     // Lets a normal game run alongside a training session without the two
     // processes fighting over data/ai/model.bin.
     static bool s_readOnlyModel;
+    /**
+     * A read-only promise the game loop cannot take back.
+     *
+     * s_readOnlyModel is reset EVERY TURN by Game::processTurn from
+     * `!m_config.aiLearning`, deliberately, so a player who switches learning
+     * off mid-game means it (see the comment there). That is right for a
+     * player and wrong for every headless mode that promises not to touch the
+     * model: the mode sets s_readOnlyModel once at startup and the next turn
+     * clears it. On 2026-10-10 a `--simulate` run with "aiLearning": true in
+     * data/config.json learned online for six turns and wrote data/ai/model.bin
+     * back (354,363,856 updates), destroying the bytes every bench in journals
+     * 490-535 was measured against.
+     *
+     * So this is checked by saveModel and writeLeagueCheckpoint THEMSELVES
+     * rather than by whoever last assigned s_readOnlyModel, and nothing clears
+     * it. Journal 314 already recorded that a call-site guard here invites
+     * exactly this failure ("ServerMain used to set it at the call site;
+     * journal 311 wired a new caller and did not"), and memory
+     * put-the-guard-where-forgetting-is-impossible is the general form.
+     */
+    static bool s_readOnlyLocked;
+    /// Promise, for the rest of the process, never to write the model.
+    static void lockReadOnlyModel() { s_readOnlyLocked = true; s_readOnlyModel = true; }
     // Measurement mode (--eval-ai). The harness reuses the training loop's
     // headless shortcuts, so m_aiTraining is set — but a measurement must not
     // inherit the training exploration schedule, or what it reports is 12%
@@ -2689,6 +2712,15 @@ public:
      * choice comes from.
      */
     static bool s_updTrace;
+    /**
+     * Where to append the learning curve, or null.
+     *
+     * OD_TRAIN_CURVE=<path> turns this on AND turns on s_updTrace, because the
+     * curve is made of the numbers the update trace already computes. Two
+     * switches for one measurement is a measurement somebody runs with half of
+     * it off; see the note on the writer in AISystem.cpp.
+     */
+    static const char* s_trainCurve;
     static bool s_scriptedControl;
     /**
      * SCRIPT AGAINST SCRIPT: does aggression pay in this game at all?

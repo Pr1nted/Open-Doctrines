@@ -44,6 +44,14 @@ DOCS_BASE = "https://opendoctrines.pages.dev"
 # it /analytics/event forwards nothing. See src/analytics/ga.ts.
 GA_MEASUREMENT_ID = "G-6DXCXHCNRL"
 
+# Free-plan game servers this service keeps awake: https URLs, comma-separated,
+# each requested every ten minutes by the cron below. Render's free plan stops
+# a service after 15 minutes without an inbound request, and a server hosted
+# through the relay receives none. e.g.
+#   "https://od-tournament.onrender.com/healthz"
+# See src/hosting/keepalive.ts and deploy/server/render.yaml.
+KEEPALIVE_URLS = ""
+
 # ---------------------------------------------------------------- storage ----
 #
 # One namespace. Everything is keyed by prefix (acct:, ident:, nick:, dc:,

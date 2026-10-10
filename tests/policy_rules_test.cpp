@@ -891,6 +891,50 @@ struct PolicyRules {
         check(game.policyTenure(ap) == 1.0f, "a dropped doctrine earns none");
     }
 
+    // ── A CAMPAIGN WORKS FOR ITS WHOLE RUN (GitHub issue #16) ──
+    //
+    // A campaign counts down in turnsRemaining below -1, and every "in force"
+    // test in the game asked for == 0 -- so Patriotic Education, the Smear and
+    // the Literacy Campaign worked on the turn they landed and did nothing for
+    // the rest of their run, and dropped out of the economy report. Run one
+    // through every turn and ask the game what it is doing on each.
+    void campaignRuns() {
+        printf("\n-- a campaign works for its whole run --\n");
+        reset();
+        const Policy* lit = find("literacy_campaign");
+        check(lit && lit->propagandaDuration > 0, "the Literacy Campaign is a campaign");
+        if (!lit) return;
+        const int run = lit->propagandaDuration;
+        // Put in place directly rather than enacted: enactment has its own
+        // gates (money, compass), and this is about what happens AFTER.
+        ActivePolicy enacted;
+        enacted.policyId = "literacy_campaign";
+        enacted.countryId = cid;
+        enacted.turnsRemaining = lit->implementationTurns;
+        game.m_activePolicies.push_back(enacted);
+        game.m_countryActivePolicyIndices[cid].push_back((int)game.m_activePolicies.size() - 1);
+        int workedTurns = 0, billedTurns = 0, firstDead = -1;
+        for (int turn = 0; turn < run + lit->implementationTurns + 4; ++turn) {
+            game.applyPolicyEffects(cid);
+            const bool working = game.getTotalEffect("indoctrinationPct", cid) > 0.0f;
+            game.m_lastIncomeCountryId = -1;   // the snapshot is cached per country
+            const bool billed = game.computeCountryIncome(cid).policyCosts > 0.0f;
+            if (working) ++workedTurns;
+            if (billed) ++billedTurns;
+            if (!working && workedTurns > 0 && firstDead < 0) firstDead = turn;
+        }
+        check(workedTurns >= run, "its levers act on every turn of its run (" +
+                                      std::to_string(workedTurns) + " of " + std::to_string(run) + ")");
+        check(billedTurns >= run - 1, "and it is on the books while it runs");
+        check(firstDead > 0, "and it ends");
+        ActivePolicy ap;
+        ap.turnsRemaining = -5;
+        check(ap.inForce(), "a campaign mid-countdown is in force");
+        ap.turnsRemaining = -1;
+        check(!ap.inForce(), "a finished one is not");
+        reset();
+    }
+
     // ── the other half: what a doctrine costs while it is being built ──
     //
     // The bill must never be able to exceed the sticker price, and it must
@@ -1806,6 +1850,7 @@ int main(int argc, char** argv) {
     }
     t.run();
     t.tenure();
+    t.campaignRuns();
     t.upkeep();
     t.capital();
     t.grievance();

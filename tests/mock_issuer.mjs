@@ -432,11 +432,13 @@ server.on("upgrade", async (req, socket) => {
     };
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, process.env.MOCK_BIND || "127.0.0.1", () => {
     // PORT may be 0, meaning "whatever is free" -- which is the whole point:
     // the process that BINDS the port is now the one that chooses it, so there
     // is no window between picking and binding for anything else to take it.
-    ISSUER = `http://localhost:${server.address().port}`;
+    // MOCK_ISSUER_URL: the name containers reach it by (tests/render_sim_test.sh),
+    // since every token carries ISSUER and must match what the host was told.
+    ISSUER = process.env.MOCK_ISSUER_URL || `http://localhost:${server.address().port}`;
     // The test harness waits for this line before starting the game side, and
     // reads the port back out of it.
     console.log(`mock-issuer ready on ${ISSUER}${WRONG_KEY ? " (publishing a WRONG key)" : ""}`);

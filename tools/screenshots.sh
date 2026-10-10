@@ -54,6 +54,15 @@ mkdir -p "$data/saves" "$data/mods"
 for entry in "$root/data"/*; do
     base="$(basename "$entry")"
     case "$base" in account.json|config.json|servers.json|saves|mods|mods.json|tools) continue ;; esac
+    # ai/ is COPIED, never symlinked. The world below is built with --simulate,
+    # and --simulate writes data/ai/model.bin even when asked for a read-only
+    # model -- so a symlink here points a screenshot run at the real model and
+    # lets it overwrite weeks of training with whatever twelve turns taught it.
+    # That has already happened once. A copy costs a few megabytes per run.
+    if [ "$base" = "ai" ]; then
+        [ -e "$data/ai" ] || cp -R "$entry" "$data/ai"
+        continue
+    fi
     [ -e "$data/$base" ] || ln -s "$entry" "$data/$base"
 done
 

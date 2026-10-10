@@ -157,7 +157,19 @@ struct SaveMetadata {
     int playerCountryId = 0;
     std::unordered_map<int, PoliticalCompassSave> countryCompasses;
     std::unordered_map<int, double> countryTreasuries;
+    // Fog of war is a property of the WORLD, fixed when it is created: the
+    // browser shows it before a save is opened, and nothing may flip it later.
+    bool fogOfWar = false;
+    // Salt for the sealed entries of a fog-of-war save (empty = not sealed).
+    std::string sealSalt;
+    // The metadata layout this file was written with. Absent in every save from
+    // before 1.3.1b, which reads as 0; this build writes kSaveFormat.
+    int format = 0;
 };
+
+// Bump when a save written by this build cannot be read correctly by an older
+// one. 3 = fog of war (1.3.1b); 2 is the compass convention, kept separately.
+constexpr int kSaveFormat = 3;
 
 class SaveManager {
 public:
@@ -201,6 +213,11 @@ public:
     // appended to a save or handed to another player, and a second "network
     // delta format" would be a second thing to keep in step with the first.
     static std::vector<uint8_t> packTurn(const TurnDelta& delta);
+
+    // Sealed fog-of-war saves: whether this build links an odseal with the
+    // seal (OD_HAS_P2), and a fresh salt for a new save ("" when it cannot).
+    static bool canSeal();
+    static std::string newSealSalt();
     static bool unpackTurn(const uint8_t* data, size_t size, TurnDelta& out);
 
 private:

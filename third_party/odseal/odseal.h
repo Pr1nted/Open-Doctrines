@@ -55,6 +55,18 @@ unsigned long long od_k9(const char* dataDir);
 // look at, never as something to punish automatically.
 unsigned long long od_t4(const char* dataDir);
 
+// Seal `n` bytes of a save entry with a key derived from the save's `salt`.
+// `nonce` is 12 bytes and must not repeat for different data under one salt.
+// `out` receives n + 16 bytes (ciphertext, then the tag). Returns 1.
+int od_p2(const unsigned char* salt, size_t saltLen, const unsigned char* nonce,
+          const unsigned char* in, size_t n, unsigned char* out);
+
+// Open what od_p2 wrote: `in` is n bytes (ciphertext and tag, n >= 16), `out`
+// receives n - 16. Returns 1 when the tag verifies and 0 otherwise, in which
+// case `out` is zeroed -- a tampered entry yields nothing, not garbage.
+int od_p3(const unsigned char* salt, size_t saltLen, const unsigned char* nonce,
+          const unsigned char* in, size_t n, unsigned char* out);
+
 #ifdef __cplusplus
 }
 #endif

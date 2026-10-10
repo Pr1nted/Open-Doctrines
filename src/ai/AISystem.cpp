@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <ctime>    // std::time, for the learning-curve row
 #include <cstdlib>
 #include <cstring>
 
@@ -13000,6 +13001,46 @@ void AISystem::runLearningWork() {
                    mean(t.advSum), sd(t.advSum, t.advSq),
                    100.0 * (double)t.advClipped / (double)t.n,
                    100.0 * (double)t.tgtClipped / (double)t.n);
+            // ── THE LEARNING CURVE ──
+            //
+            // Written HERE and not from saveModel(), which is the other place
+            // that runs periodically during training. saveModel() can see the
+            // update counts but not these: the trace resets a few lines below,
+            // so anything reading m_upd from elsewhere would be racing this
+            // block for the same numbers and would get whatever was left.
+            // One consumer, one reset, no second copy to drift.
+            //
+            // Long format -- a row per module per batch -- rather than one wide
+            // row. MOD_COUNT has changed before, and a wide schema makes that a
+            // column migration in every file anyone has already collected.
+            //
+            // COUNTS BESIDE THE RATES. `n` is the number of updates behind each
+            // mean on the row: a batch with n=3 and a batch with n=40000 plot
+            // identically and mean completely different things.
+            if (s_trainCurve) {
+                static bool headerDone = false;
+                if (FILE* f = std::fopen(s_trainCurve, "a")) {
+                    if (!headerDone) {
+                        std::fseek(f, 0, SEEK_END);
+                        if (std::ftell(f) == 0)
+                            std::fprintf(f, "batch,unix,war_updates,module,n,"
+                                            "norm_mean,norm_sd,base_mean,base_sd,"
+                                            "adv_mean,adv_sd,adv_clip_pct,tgt_clip_pct\n");
+                        headerDone = true;
+                    }
+                    std::fprintf(f, "%lld,%lld,%llu,%s,%lld,"
+                                    "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.3f,%.3f\n",
+                                 m_updTraceBatches, (long long)std::time(nullptr),
+                                 (unsigned long long)m_policy[MOD_WAR].updateCount(),
+                                 MN[m], t.n,
+                                 mean(t.normSum), sd(t.normSum, t.normSq),
+                                 mean(t.baseSum), sd(t.baseSum, t.baseSq),
+                                 mean(t.advSum), sd(t.advSum, t.advSq),
+                                 100.0 * (double)t.advClipped / (double)t.n,
+                                 100.0 * (double)t.tgtClipped / (double)t.n);
+                    std::fclose(f);
+                }
+            }
             t = UpdTrace{};
         }
     }
@@ -13259,7 +13300,15 @@ const float AISystem::STANCE_NAVY[STANCE_COUNT][NAVY_ACTIONS] = {
 };
 
 bool AISystem::s_readOnlyModel = false;
-bool AISystem::s_updTrace = OD_ENV("OD_UPDATE_TRACE") != nullptr;
+bool AISystem::s_readOnlyLocked = false;
+// OD_TRAIN_CURVE implies OD_UPDATE_TRACE. The curve is built out of the
+// numbers the trace already accumulates, so asking for the curve with the
+// trace off would write a file of zeroes and look like a model that never
+// learned anything. Separate OD_ENV call sites: each caches its own static, so
+// there is no initialisation order between these two lines.
+bool AISystem::s_updTrace = OD_ENV("OD_UPDATE_TRACE") != nullptr ||
+                            OD_ENV("OD_TRAIN_CURVE") != nullptr;
+const char* AISystem::s_trainCurve = OD_ENV("OD_TRAIN_CURVE");
 bool AISystem::s_scriptedControl = false;
 int AISystem::s_exploitVariant = -1;
 std::unordered_set<int> AISystem::s_exploitCids;
@@ -13458,7 +13507,7 @@ void AISystem::saveModel() {
     // normal game can run beside a training session. Both processes save every
     // 20 turns otherwise, and last-writer-wins would let a single-map play
     // session overwrite the trainer's accumulated progress.
-    if (m_modelPath.empty() || s_readOnlyModel) return;
+    if (m_modelPath.empty() || s_readOnlyModel || s_readOnlyLocked) return;
     // Directory creation happens ONCE, not on every save. This used to fork a
     // shell (system("mkdir -p ...")) every twenty turns for a directory that
     // has existed since the first save of the run.
@@ -13863,7 +13912,7 @@ void AISystem::recordLeagueOutcome() {
 }
 
 void AISystem::writeLeagueCheckpoint() {
-    if (m_modelPath.empty() || s_readOnlyModel) return;
+    if (m_modelPath.empty() || s_readOnlyModel || s_readOnlyLocked) return;
     const uint64_t updates = m_policy[MOD_WAR].updateCount();
     if (updates < s_lastCheckpointUpdates + LEAGUE_CHECKPOINT_EVERY) return;
     s_lastCheckpointUpdates = updates;
@@ -15201,7 +15250,7 @@ void AISystem::doctrineReflex(int cid) {
     // Already carrying one: the point is to hold an attack doctrine, not to
     // collect them.
     for (const auto& ap : g.m_activePolicies) {
-        if (ap.countryId != cid || ap.turnsRemaining != 0) continue;
+        if (ap.countryId != cid || !ap.inForce()) continue;   // a running campaign counts (#16)
         for (const auto& q : g.m_allPolicies)
             if (q.id == ap.policyId) { if (atkOf(q) > 0.0f) return; break; }
     }

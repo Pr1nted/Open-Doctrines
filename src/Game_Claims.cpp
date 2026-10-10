@@ -464,7 +464,7 @@ void Game::drawClaimsTab() {
 
         // Draw directly: political map first, then overlay on top, both cropped to source rect
         DrawTexturePro(m_politicalTex,
-            {(float)srcX, (float)srcY, (float)srcW, (float)srcH},
+            polSrc({(float)srcX, (float)srcY, (float)srcW, (float)srcH}),
             {dX, dYf, dW, dH},
             {0, 0}, 0, WHITE);
         DrawTexturePro(m_claimsPanelTex,

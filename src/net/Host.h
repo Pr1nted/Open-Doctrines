@@ -246,6 +246,15 @@ public:
     void broadcastTurnOrders(uint32_t turnNumber, const std::vector<uint8_t>& payload);
 
     /**
+     * Fog of war: each player is sent their OWN view of the turn, so there is
+     * no broadcast. closeTurn() does what broadcastDelta does to the turn
+     * state; the two sends go to one peer each.
+     */
+    void closeTurn();
+    void sendDeltaTo(uint16_t peerId, uint32_t turnNumber, const std::vector<uint8_t>& payload);
+    void sendTurnOrdersTo(uint16_t peerId, uint32_t turnNumber, const std::vector<uint8_t>& payload);
+
+    /**
      * Tell everyone which countries this world has.
      *
      * Held so that a peer joining later gets it too, without the host having to
@@ -259,6 +268,8 @@ public:
     void setLobbyMap(std::vector<uint8_t> encoded);
     /** The voice link and the like. Sent to everyone, now and on joining. */
     void setSessionInfo(const NetSessionInfo& info);
+    /// A fog-of-war world: refuse a hello whose caps lack "fog".
+    void setRequireFogCap(bool on);
 
     /** Send the whole world to one peer, for a joiner or a spectator. */
     /**

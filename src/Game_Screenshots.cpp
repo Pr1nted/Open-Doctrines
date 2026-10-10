@@ -579,6 +579,7 @@ bool Game::tickScreenshotTour() {
                 for (int cid = 1; cid < (int)byCountry.size(); ++cid)
                     if (byCountry[cid] > bestN) { bestN = byCountry[cid]; best = cid; }
                 m_playerCountryId = best;
+                fogPlayerChanged();
                 printf("[SHOT] playing as country %d (%d provinces)\n", best, bestN);
 
                 // The most populous province we own: the province panel is
@@ -756,6 +757,11 @@ bool Game::tickScreenshotTour() {
             m_inCountryProfile = true;
             m_profileCountryId = m_playerCountryId;
             m_profileScroll = 0;
+            // OD_SHOT_PROFILE=<ISO> photographs somebody else's profile: under
+            // fog, what the player is allowed to know about a stranger.
+            if (const char* iso = std::getenv("OD_SHOT_PROFILE"))
+                for (const auto& [ocid, oc] : m_countries.getAll())
+                    if (oc.isoA3 == iso) { m_profileCountryId = ocid; break; }
             // A history to show: two eras, so the strip is not a single flag.
             if (Country* pc2 = m_countries.getCountry(m_playerCountryId)) {
                 if (pc2->flagHistory.empty()) {
@@ -946,6 +952,9 @@ bool Game::tickScreenshotTour() {
             m_activeSidebarTab = 4;
             m_inResearch = true;
             m_researchTab = 2;              // Army; see catKeys[] in Game_Research.cpp
+            // OD_SHOT_RESEARCH_TAB=<n> photographs another tree (7 = intelligence,
+            // fog worlds only).
+            if (const char* rt = std::getenv("OD_SHOT_RESEARCH_TAB")) m_researchTab = std::atoi(rt);
             m_researchZoom = 0.75f;
             m_researchCamX = 0; m_researchCamY = 40;
         } else if (name == "army-kinds" || name == "army-mech") {
@@ -1233,6 +1242,19 @@ bool Game::tickScreenshotTour() {
             m_renderer->setGlobeDistance(2.6f);
         } else if (name == "province") {
             m_activeViewTab = 2;          // industry: the busiest of the tabs
+            // OD_SHOT_PID=<id> photographs that province instead; "fogged"
+            // picks one the player saw once and can no longer see.
+            if (const char* sp = std::getenv("OD_SHOT_PID"); sp && m_renderer) {
+                int pick = std::atoi(sp);
+                if (std::string(sp) == "fogged") {
+                    for (const auto& [pid, p] : m_provinces.getAllProvinces()) {
+                        const odfog::ProvinceIntel* in = intel(m_playerCountryId, pid);
+                        if (fogHides(pid) && in && in->seenTurn != odfog::kNeverSeen &&
+                            in->garrison > 0) { pick = pid; break; }
+                    }
+                }
+                if (pick > 0) m_renderer->setSelectedProvince(pick);
+            }
         } else if (name == "army") {
             // Tab 5 is the army view, and the shot wants a province with troops
             // in it -- the most populous one we own is the tour's selection and

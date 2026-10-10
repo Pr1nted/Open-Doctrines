@@ -501,10 +501,11 @@ std::string netVoiceLinkHost(const std::string& url) {
 
 std::vector<uint8_t> NetSessionInfo::encode() const {
     NetWriter w;
-    w.u8(2);                 // layout version, for a reader to skip what it lacks
+    w.u8(3);                 // layout version, for a reader to skip what it lacks
     w.str(voiceLink);
     w.u8(llmAnswers ? 1 : 0);   // v2
     w.u8(mailPolicy);           // v2
+    w.u8(fogOfWar ? 1 : 0);     // v3
     return w.take();
 }
 
@@ -520,6 +521,7 @@ bool NetSessionInfo::decode(const uint8_t* data, size_t size, NetSessionInfo& ou
         out.mailPolicy = r.u8();
         if (out.mailPolicy > 3) out.mailPolicy = 3;
     }
+    if (version >= 3 && r.remaining() >= 1) out.fogOfWar = r.u8() != 0;
     // A link that does not pass is dropped, not shown: the host's UI should
     // have refused it, and a client is not obliged to trust that it did.
     if (!out.voiceLink.empty() && !netVoiceLinkValid(out.voiceLink)) out.voiceLink.clear();

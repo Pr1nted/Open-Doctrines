@@ -463,6 +463,10 @@ bool Game::exportTimelapseHeadless(const std::string& savePath,
                                    const std::string& outPath,
                                    int outW, int outH, int subFrames,
                                    HistoryView view) {
+    if (SaveManager::readMetadata(savePath).fogOfWar) {
+        fprintf(stderr, "%s has fog of war; its history is not exported\n", savePath.c_str());
+        return false;
+    }
     m_headless = true;
     m_historyView = view;
 
@@ -659,6 +663,10 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
         m_historyStatus = "No world loaded to revert";
         return false;
     }
+    if (m_fogOfWar || SaveManager::readMetadata(savePath).fogOfWar) {
+        m_historyStatus = T("This world has fog of war: its history stays hidden.");
+        return false;
+    }
     // A Risky-RAM world has no province image to repaint from -- the one thing
     // that mode trades away. Say so rather than claim no world is loaded.
     if (!m_provinces.getImage().data) {
@@ -755,6 +763,12 @@ void Game::openHistoryScreen(const std::string& savePath) {
 
     if (savePath.empty()) {
         m_historyStatus = "No save selected";
+        return;
+    }
+    // The history is the TRUTH, turn by turn: every army and border the fog
+    // kept from the player. A fog world has no replay to give.
+    if (SaveManager::readMetadata(savePath).fogOfWar) {
+        m_historyStatus = T("This world has fog of war: its history stays hidden.");
         return;
     }
     // If no game is loaded, pull the map out of the save so we can render.

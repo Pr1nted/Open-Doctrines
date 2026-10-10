@@ -39,3 +39,19 @@ arrived with the people who turned up for 1.3.0b.
 - **The mod directory accepts the capabilities added since it was written.** It
   had been refusing every one added after it shipped, which quietly kept newer
   mods out of the listing.
+
+- **Campaigns work for their whole run.** Patriotic Education, the Opposition
+  Smear Campaign and the Literacy Campaign did their job on the turn they took
+  effect and nothing for the rest of their countdown. They also vanished from
+  the Doctrines line of the economy report. They now act, and cost, on every
+  turn until they end, and a running campaign can be repealed. (Reported on
+  GitHub, #16.)
+
+- **Fog of war (Experimental).** A new world can be made with fog of war: you
+  see your own land, what your armies, coasts, ships and allies see, and
+  remember the rest as it was when last seen. It brings an Intelligence
+  research tab, spy networks, stolen dossiers and counter-intelligence. Fog
+  worlds' saves are sealed, and in multiplayer each player is sent only what
+  they can see. Switch on "Fog of War worlds" under Settings → Experimental,
+  then pick it from a map's info button. The AI still plays with full
+  knowledge for now. See docs/fog-of-war.md.

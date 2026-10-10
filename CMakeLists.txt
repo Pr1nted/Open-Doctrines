@@ -493,7 +493,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/guard/odseal.cpp)
     # building against a prebuilt from before od_t4 existed still builds --
     # it simply does not carry the check. Refreshing the prebuilts (see
     # docs/odseal.md) is what turns it on for every platform.
-    target_compile_definitions(odseal PUBLIC OD_HAS_T4)
+    target_compile_definitions(odseal PUBLIC OD_HAS_T4 OD_HAS_P2)
     set_target_properties(odseal PROPERTIES POSITION_INDEPENDENT_CODE ON)
     if(NOT MSVC)
         target_compile_options(odseal PRIVATE
@@ -1228,6 +1228,7 @@ set(GAME_SOURCES
     src/ModContent.cpp
     src/Parties.cpp
     src/Feedback.cpp
+    src/util/OsVersion.cpp
     src/Game_Feedback.cpp
     src/Game_Mail.cpp
     src/StreamSafe.cpp
@@ -1258,6 +1259,10 @@ set(GAME_SOURCES
     src/Game_Render.cpp
     src/Game_Research.cpp
     src/Game_TurnLogic.cpp
+    src/Fog.cpp
+    src/Game_Fog.cpp
+    src/Game_Spy.cpp
+    src/Game_FogNet.cpp
     src/Game_AITrain.cpp
     src/Game_Screenshots.cpp
     src/Game_OjhFps.cpp
@@ -3090,6 +3095,41 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
                               MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
         target_compile_definitions(PolicyRulesTest PRIVATE OD_ENABLE_NET=1)
     endif()
+
+    # Fog of war in multiplayer: what one seat is sent, host world to client
+    # world in one process. Same server-build world as the doctrine test.
+    set(FOG_NET_TEST_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM FOG_NET_TEST_SOURCES main.cpp)
+    list(APPEND FOG_NET_TEST_SOURCES
+        tests/fog_net_test.cpp
+        src/server/ServerRaylib.cpp
+        src/server/ServerRaylibStubs.cpp)
+    add_executable(FogNetTest EXCLUDE_FROM_ALL ${FOG_NET_TEST_SOURCES})
+    # Built from GAME_SOURCES; see the note at that list.
+    target_link_libraries(FogNetTest odseal)
+    target_compile_definitions(FogNetTest PRIVATE OD_SERVER=1
+                               OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    target_include_directories(FogNetTest PRIVATE src tools/map_generator
+        $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+    if(OD_NET_BACKEND STREQUAL "mbedtls")
+        target_link_libraries(FogNetTest
+                              MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+        target_compile_definitions(FogNetTest PRIVATE OD_ENABLE_NET=1)
+    endif()
+    if(OD_P2P_DEFS)
+        target_link_libraries(FogNetTest ${OD_P2P_LIBS})
+        target_compile_definitions(FogNetTest PRIVATE ${OD_P2P_DEFS})
+    endif()
+    if(WIN32)
+        target_link_libraries(FogNetTest ws2_32 comdlg32)
+    endif()
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(FogNetTest Threads::Threads)
+    endif()
+    if(APPLE)
+        target_link_libraries(FogNetTest "-framework IOKit" "-framework CoreFoundation")
+    endif()
     if(OD_P2P_DEFS)
         target_link_libraries(PolicyRulesTest ${OD_P2P_LIBS})
         target_compile_definitions(PolicyRulesTest PRIVATE ${OD_P2P_DEFS})
@@ -3148,6 +3188,13 @@ add_executable(MonumentsTest EXCLUDE_FROM_ALL
     src/Monuments.cpp
 )
 target_include_directories(MonumentsTest PRIVATE src tests)
+
+# Fog of war: visibility, sharing, memory and the save codec (src/Fog.h).
+add_executable(FogTest EXCLUDE_FROM_ALL
+    tests/fog_test.cpp
+    src/Fog.cpp
+)
+target_include_directories(FogTest PRIVATE src tests)
 
 # --- the parsers, fed input nobody would write on purpose ---
 # The three places the game reads bytes it did not write: a multiplayer socket,
@@ -3415,6 +3462,21 @@ add_executable(SaveDeltaTest EXCLUDE_FROM_ALL
     tools/map_generator/miniz_zip.c
 )
 target_include_directories(SaveDeltaTest PRIVATE src tests tools/map_generator)
+
+# Sealed fog-of-war saves: stored unreadable, read back exactly, refused when
+# edited. Links odseal for the seal itself; against a prebuilt without it
+# (no OD_HAS_P2) the test reports a skip.
+add_executable(SaveSealTest EXCLUDE_FROM_ALL
+    tests/save_seal_test.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveSealTest PRIVATE src tests tools/map_generator)
+target_link_libraries(SaveSealTest odseal)
 
 
 # The archive, not the codec beside it: create a save, write state into it,

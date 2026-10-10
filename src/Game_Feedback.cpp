@@ -27,6 +27,7 @@
 #include "OdState.h"
 #include "util/OpenLink.h"
 #include "util/WebPersist.h"
+#include "util/OsVersion.h"
 #include "MpWidgets.h"   // wrapText, shared with the multiplayer screens
 #include "TextInput.h"
 
@@ -35,6 +36,7 @@
 std::string Game::feedbackDiagnostics() const {
     std::ostringstream o;
     o << "OpenDoctrines " << GAME_VERSION << "  (" << feedback::platform() << ")\n";
+    o << "OS: " << od::osVersion() << "\n";
     o << "AI: " << ai::versionString() << "\n";
     o << "Window: " << m_screenW << "x" << m_screenH << " @ " << GetFPS() << " fps\n";
     o << "Language: " << od::i18n::language() << "\n";
@@ -110,6 +112,25 @@ void Game::openFeedbackForm(feedback::Kind kind, feedback::Category category) {
     m_feedbackPreview = false;
     m_feedbackSwallowClick = true;
     m_feedbackDiag = feedbackDiagnostics();
+    // THE LOG, so a report arrives with what the game said just before it went
+    // wrong. The console keeps its last 500 lines whether or not the console
+    // window was ever opened; the last 80 are plenty and stay well inside the
+    // service's 24 KB diagnostics limit. Shown in the preview like the rest,
+    // and scrubbed of the home directory the same way.
+    {
+        std::ostringstream lg;
+        std::lock_guard<std::mutex> lock(m_console.mutex);
+        const size_t n = m_console.lines.size();
+        const size_t from = n > 80 ? n - 80 : 0;
+        if (n > 0) {
+            lg << "\nLog (last " << (n - from) << " lines)\n";
+            for (size_t i = from; i < n; ++i) {
+                const std::string& ln = m_console.lines[i];
+                lg << "  " << (ln.size() > 240 ? ln.substr(0, 240) + "..." : ln) << "\n";
+            }
+        }
+        m_feedbackDiag += feedback::scrubPersonalPaths(lg.str());
+    }
     feedback::clearMessage();
     Audio::get().playSfx("panel_open");
 }

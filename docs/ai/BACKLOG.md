@@ -5779,3 +5779,96 @@ Statistic: paired sign of per-seat land share, with `[MONUMENT]` upgrades/builds
 **Adopt only if land share does not fall and bankruptcies do not rise** — and note the over-gating (the upgrade
 inherits the next-slot room test it does not incur) is a deliberate conservatism that can be relaxed in a later
 arm if upgrades prove too rare.
+
+## 225. Pin the MODEL too, not just the binary (journal 537)
+
+`data/ai/model.bin` is a file other sessions write: on 2026-10-10 a `--simulate` run learned online and saved it
+mid-bench. **Pin it like the binary** — `cp` to `cmake-build-pin/model.pin.bin`, point `OD_EVAL_MODEL` at the copy,
+and confirm from the run's own output line (`[EVAL] Model: ... (OD_EVAL_MODEL, read-only)`).
+
+**CORRECTED: use `git show HEAD:data/ai/model.bin`, NOT `model.loop-base.bin`.** `data/ai/model.bin` is TRACKED;
+HEAD's blob (3,693,162 bytes, sha `adb32ac8`) gives seed 520103 → **40.1**, exactly what journals 531/533/536
+recorded, so **it is the reference every bench used and nothing was lost.** A commit cannot be overwritten by
+another session, which is precisely the failure this item exists for.
+
+`model.loop-base.bin` is a **different, much weaker lineage** (4.14 MB vs 3.69 MB): seed 520103 scores **1.8** on
+it and 710211 collapses to 0.0 in both arms, so France sits near the floor and an A/B there resolves nothing
+([[saturated-seats-are-a-different-instrument]]). Journal 536's first re-run was on it and had to be killed.
+
+Put bench output in `cmake-build-pin/` (gitignored, in-repo) — `/tmp` is cleaned on reboot and took a 2.7h run.
+
+## 226. `s_readOnlyLocked` — a read-only promise processTurn cannot revoke (journal 537)
+
+`Game::processTurn` resets `s_readOnlyModel` from `!m_config.aiLearning` **every turn** (deliberately — a player
+switching learning off mid-game means it), which silently revokes the startup promise of every headless mode.
+`AISystem::lockReadOnlyModel()` sets a sticky flag checked by **`saveModel` and `writeLeagueCheckpoint`
+themselves**; nothing clears it. Needed no edit to `Game_TurnLogic.cpp` (the other session is working there).
+
+Converted: `Game_Agent.cpp:102`, `Game_AITrain.cpp:918` and `:2941`, `ServerMain.cpp:346`.
+
+**CLOSED, and my claim here was wrong.** `main.cpp` is at the **repo root** (first in `GAME_SOURCES`), not
+`src/main.cpp` — I concluded "not in the tree" from a search scoped to `src/`. The peer's line numbers were right:
+they converted all three revocable sites (41 `--ai-readonly`, 155 `--simulate`, 351 `--bench-agent`) and
+**break-tested it**: `--simulate` with `aiLearning: true` left `model.bin`'s hash and all `data/ai/*.bin` mtimes
+unchanged. Verified here — `model.bin` still `7c430a4f` at 20:27:05, and `lockReadOnlyModel()` is in a `public:`
+section so `main.cpp` can reach it.
+
+**Standing fact: the game's entry point is `./main.cpp`, not `src/main.cpp`.**
+
+## 227. Fog of war will make the AI weaker until it is retrained — flagged to the fog session (journal 537)
+
+The other session's fog Phase 4 adds a lens (`AISystem::seen(observer, other)`) at every read of another country's
+state: f[21,22,40,52-54], r[0-2], the target/attack features, `decideDiplomacy`, and the reflexes that read
+`m_provinceArmies`/`m_ships` for foreign provinces. Under `fogOn()` those features stop carrying truth and start
+carrying estimates from `Game::intel()`.
+
+**That is a distribution shift on a frozen net, and this loop has measured that exact shape five times** — all null
+or worse: `OD_FEAT_RESCALE` (j501), `OD_FEAT_WARAGE` (j504), `OD_FEAT_EFFARMY` (j506-507), plus two more. LOOP.md's
+standing conclusion: a frozen net's weights encode the old feature distribution, so changing what an input *means*
+generically does not help without a retrain. **So fog will cost AI strength in fog worlds by construction, and a
+measured drop there is not a lens defect.**
+
+Two decisions for the user, flagged before Phase 4 ships on:
+1. **Probably the lens should be OFF for the AI by default** until a retrained model exists — fog stays a
+   player-facing feature without handing every AI opponent an unasked-for handicap.
+2. If it ships on, the honest framing is "fog makes the AI weaker, that is the feature's cost", not a bug.
+
+Division agreed: they write the lens (the intel semantics — stale `seenTurn` decay, never-seen provinces,
+`sharesIntel` with allies — are fog design decisions, not AI ones); **this loop proves non-fog worlds are
+bit-identical**, which is a measurement here (pinned binary + pinned model reproduce seat scores to the decimal
+across builds) rather than a hope.
+
+## 228. Taken from the fog session: three small AI reflexes (journal 537)
+
+Mine to write, after journal 536's bench lands and the pending AISystem work is committed:
+- **monumentResearchReflex** (their Phase 3): when `monumentReflex`'s affordability gates pass but no `mon_*` node
+  is researched, arm the cheapest available "monuments" node. `OD_MONUMENT_RESEARCH`, default on. Slots into the
+  revive → upgrade → build hierarchy journals 530/535 built.
+- **intelResearchReflex** and **intelReflex** (their Phases 5-6).
+
+All three are **RULES** bumps, not ARCH: `AIVersion.h` is at 8.5.0 and RULES is defined as "a resolver rule, a
+reflex, a default". **Model files are not refused**, so none of them needs a retrain to ship — unlike the fog lens
+above.
+
+## 229. `AISystem.cpp:15253` should use `inForce()` — handed to the policy-fix session (journal 537)
+
+GitHub #16's fix (another session, in `GameStructs.h` + `Game_Research.cpp` + `Game_Economy.cpp`) adds
+`ActivePolicy::inForce() = (turnsRemaining == 0 || turnsRemaining < -1)`, because campaign doctrines count below −1
+and every "in force" test asked for `== 0` — so a campaign applied on its first turn and went dead for the rest of
+its 8–14 turn run.
+
+The doctrine reflex's "already carrying an attack doctrine" check uses `ap.turnsRemaining != 0`, which skips a
+running campaign. **Verified inert today**: of the three campaigns, none carries a positive `armyAtkPct` or
+`navyAtkPct`, so no running campaign can be an attack doctrine. But if one ever gains one, the old form misreads it
+as not-carried and the reflex enacts a second — [[heuristics-outlive-the-bug]].
+
+**Not changed here, deliberately.** Calling `inForce()` from `AISystem.cpp` would make my file depend on their
+uncommitted `GameStructs.h`, and this loop leaves its work under PENDING COMMIT for the user to land — so a
+selective commit of my paths alone would break the build. Writing the predicate inline instead would duplicate it
+and invite drift ([[expose-the-resolvers-numbers]]).
+
+**So the one line is theirs to change inside their own patch**, where the predicate stays single-sourced and the
+commit stays atomic. Explicit permission given for that line only; the rest of `AISystem.*` is still this loop's.
+
+**Bench note: RULES-level change, so numbers do not cross it.** Journal 536's run is insulated — both arms use the
+pinned binary `cc5d8bf3`, built before the fix, verified unchanged across every run.

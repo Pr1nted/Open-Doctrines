@@ -837,6 +837,19 @@ void testMail() {
     check("and a newer one says whether its model answers, and its policy",
           NetSessionInfo::decode(nowBytes.data(), nowBytes.size(), info) &&
           info.llmAnswers && info.mailPolicy == 1);
+    check("an older host's session info reads as no fog", !info.fogOfWar);
+    NetSessionInfo fog;
+    fog.fogOfWar = true;
+    const auto fogBytes = fog.encode();
+    check("a fog-of-war host says so (v3)",
+          NetSessionInfo::decode(fogBytes.data(), fogBytes.size(), info) && info.fogOfWar);
+    {
+        // A v2 reader on v3 bytes: the trailing byte is ignored, not refused.
+        NetReader r(fogBytes.data(), fogBytes.size());
+        check("a v2 reader is not broken by the fog byte", r.u8() == 3 && r.str(256).empty() &&
+              r.u8() == 0 && r.u8() == 3 && r.remaining() == 1 && r.ok());
+    }
+    check("a client says it can draw fog", std::string(kNetClientCaps).find("fog") != std::string::npos);
     check("the two message ids are named",
           std::string(netMsgName(NetMsg::Mail)) == "Mail" &&
           std::string(netMsgName(NetMsg::MailFrom)) == "MailFrom");

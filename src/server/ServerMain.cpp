@@ -343,7 +343,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "--bench-agent needs a seat and a command FIFO\n");
             return 2;
         }
-        AISystem::s_readOnlyModel = true;      // a hand-played seat must never
+        AISystem::lockReadOnlyModel();      // a hand-played seat must never
                                                // write over the trained model
         const std::string seat = argv[i + 1];
         const std::string fifo = argv[i + 2];

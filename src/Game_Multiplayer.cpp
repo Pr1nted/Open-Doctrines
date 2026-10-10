@@ -635,6 +635,7 @@ void Game::mpOpenHost() {
     }
     m_mpLoad = MpLoad::HostOpen;
     mpNote("Loading " + name + "...");
+    m_newWorldFog = m_config.fogOfWarWorlds && m_mpFog;
     // startNewGameWithName, NOT startNewGame: the latter loads synchronously
     // and ends by putting the player straight onto the map, which for a host is
     // exactly wrong -- they should land back in the lobby waiting for people.
@@ -916,6 +917,7 @@ void Game::mpDrainEvents() {
         // has moved.
         refreshLlmAvailability();
         mpRefreshSessionInfo();
+        mpSaveMailIfChanged();   // the post on disk; see Game.h
         NetHostEvent e;
         while (m_netHost->nextEvent(e)) {
             switch (e.kind) {
@@ -927,7 +929,10 @@ void Game::mpDrainEvents() {
                     // the world back is the only repair; the alternative is a
                     // player quietly playing a different game.
                     if (m_netHost->lobby().state() == NetSessionState::Game && e.peerId) {
-                        if (!m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
+                        if (m_fogOfWar) {
+                            if (fogSendSnapshot(e.peerId, mpCountryOfPeer(e.peerId)))
+                                mpSendMailHistory(e.peerId);
+                        } else if (!m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
                                                      mpSnapshotForJoiner()))
                             mpNote(T("A player asked for the world and it is too large to send."),
                                    true);
@@ -946,8 +951,9 @@ void Game::mpDrainEvents() {
                     // delta was applied to a world that was not there.
                     if (m_netHost->lobby().state() == NetSessionState::Game && e.peerId &&
                         e.peerId != m_netHost->lobby().hostPeerId()) {
-                        if (m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
-                                                    mpSnapshotForJoiner()))
+                        if (m_fogOfWar ? fogSendSnapshot(e.peerId, mpCountryOfPeer(e.peerId))
+                                       : m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
+                                                                 mpSnapshotForJoiner()))
                             mpSendMailHistory(e.peerId);
                     }
                     mpNote(TextFormat(T("%s joined"), e.text.c_str()));
@@ -2033,6 +2039,19 @@ void Game::drawMpHostSetup(Vector2 mouse, bool click) {
         DrawText(T("List publicly"), (int)listed.rect.x + 32, (int)listed.rect.y + 4, 15,
                  Color{200, 205, 215, 255});
         if (click && listed.hovered) m_mpListed = !m_mpListed;
+        // Fog of war for a NEW world (a resumed one keeps the fog it was made
+        // with). Behind the same Experimental switch as single-player fog.
+        if (m_config.fogOfWarWorlds) {
+            const MpButton fog = buttonAt((float)(centerX + 20), (float)y + 30, 24.0f, 24.0f, mouse);
+            DrawRectangleRounded(fog.rect, 0.2f, 6,
+                                 m_mpFog ? Color{80, 130, 90, 240} : Color{30, 32, 40, 230});
+            DrawRectangleRoundedLines(fog.rect, 0.2f, 6, Color{150, 160, 175, 200});
+            if (m_mpFog) DrawText("x", (int)fog.rect.x + 8, (int)fog.rect.y + 3, 17, WHITE);
+            DrawText(T("Fog of war"), (int)fog.rect.x + 32, (int)fog.rect.y + 4, 15,
+                     Color{200, 205, 215, 255});
+            if (click && fog.hovered) m_mpFog = !m_mpFog;
+            y += 30;
+        }
         y += 46;
 
         // ---- the tunnel, which is what makes "this computer only" reachable --
@@ -3404,6 +3423,9 @@ LobbyMap Game::mpBuildLobbyMap() const {
 }
 
 void Game::mpHostWorldReady() {
+    // The post as it stood when this host last stopped, over the older copy
+    // state.json had. Nothing when the world is new.
+    mpLoadMail();
     // The world is open so the lobby can offer real countries. Back to the
     // lobby rather than into the game: nobody has joined yet.
     mpPublishCountries();
@@ -3470,12 +3492,15 @@ bool Game::mpHostStartGame(bool force, std::string& why) {
     // dedicated server's start used to skip this, so everybody connected at
     // the moment of the start sat on an empty map waiting for a world nothing
     // was going to send.
-    const std::vector<uint8_t>& snapshot = mpSnapshotForJoiner();
+    // A fog world has no shared snapshot: each seat is sent its own.
+    m_fogMirrors.clear();
+    const std::vector<uint8_t>& snapshot = m_fogOfWar ? m_mpSnapshotCache : mpSnapshotForJoiner();
     for (const NetPeer& p : m_netHost->lobby().roster()) {
         if (p.peerId == m_netHost->lobby().hostPeerId() || !p.connected || p.peerId == 0)
             continue;
-        if (m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot))
-            mpSendMailHistory(p.peerId);
+        const bool sent = m_fogOfWar ? fogSendSnapshot(p.peerId, p.countryId)
+                                     : m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot);
+        if (sent) mpSendMailHistory(p.peerId);
     }
     uint16_t mine = 0;
     for (const NetPeer& p : m_netHost->lobby().roster())
@@ -3515,6 +3540,21 @@ void Game::mpOnWorldLoaded() {
             // turns moves it to now -- the same operation a save load performs,
             // through the same function, because a delta means the same thing
             // whether it came off disk or off a socket.
+            // A fog world says so in its state. Known BEFORE the replay, so
+            // what this seat has seen is rebuilt turn by turn the way the host
+            // built it -- the same recompute on the same world, so the same
+            // memory -- rather than starting the joiner with no history.
+            bool fogWorld = false;
+            if (!snap.stateJson.empty()) {
+                try {
+                    const auto sj = nlohmann::json::parse(snap.stateJson);
+                    fogWorld = sj.value("fogOfWar", false);
+                } catch (...) {}
+            }
+            if (fogWorld) {
+                m_fogOfWar = true;
+                fogBeginWorld();
+            }
             int applied = 0;
             for (const NetTurnDelta& t : snap.turns) {
                 TurnDelta delta;
@@ -3523,6 +3563,10 @@ void Game::mpOnWorldLoaded() {
                     break;
                 }
                 applyTurnDelta(delta);
+                if (fogWorld) {
+                    m_turnNumber = (int)t.turn;
+                    recomputeFog();
+                }
                 applied++;
             }
             // Province owners have moved, so the pixel ownership and border
@@ -3533,6 +3577,9 @@ void Game::mpOnWorldLoaded() {
             }
             if (!snap.stateJson.empty()) loadStateJson(snap.stateJson);
             m_turnNumber = (int)snap.turnNumber;
+            // A fog seat's snapshot carries what it has seen; it had no turns
+            // to rebuild that from.
+            if (fogWorld) fogTakeSeatMemory(snap.stateJson);
             reloadBorders();
         }
         m_mpPendingSnapshot.clear();
@@ -3551,8 +3598,13 @@ void Game::mpRefreshSessionInfo() {
     if (netVoiceLinkValid(m_mpVoiceLink)) info.voiceLink = m_mpVoiceLink;
     info.llmAnswers = m_llmAvailable;
     info.mailPolicy = (uint8_t)std::clamp(m_config.mailPolicy, 0, 3);
+    // m_newWorldFog too: the lobby opens while the world is still loading,
+    // and a joiner let in during that second would be let in for good.
+    info.fogOfWar = m_fogOfWar || m_newWorldFog;
+    // A fog world is refused to a build that would draw it without fog.
+    m_netHost->setRequireFogCap(info.fogOfWar);
     const std::string seen = info.voiceLink + "\x1f" + (info.llmAnswers ? "1" : "0") +
-                             std::to_string(info.mailPolicy);
+                             std::to_string(info.mailPolicy) + (info.fogOfWar ? "f" : "");
     if (seen == m_mpSessionInfoSent) return;
     m_mpSessionInfoSent = seen;
     m_netHost->setSessionInfo(info);
@@ -3656,6 +3708,8 @@ void Game::mpEnterGame(uint16_t countryId) {
     }
     buildCountryProvinceList(m_playerCountryId);
     recordIncomeSnapshot();
+    if (m_fogOfWar) recomputeFog();
+    fogPlayerChanged();
     m_currentScreen = SCREEN_PLAYING;
 }
 
@@ -4558,7 +4612,12 @@ void Game::mpResolveTurn() {
     if (!m_currentSavePath.empty()) {
         const TurnDelta delta = SaveManager::readTurn(m_currentSavePath, (int)turn);
         std::vector<uint8_t> packed = SaveManager::packTurn(delta);
-        if (!packed.empty()) {
+        if (!packed.empty() && m_fogOfWar) {
+            // Fog of war: no broadcast. Each seat is sent what it can see, and
+            // nothing goes to the long-form store, which anyone can read.
+            fogSendTurn(turn, delta);
+            mpPostMailToPlayers(m_turnNumber);
+        } else if (!packed.empty()) {
             m_netHost->broadcastDelta(turn, packed);
             // The middle-state overlay's data for the same turn, in its own
             // message so an older client simply ignores it. Sent after the
@@ -4671,6 +4730,9 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
 
     m_turnNumber = (int)turnNumber;
     m_mpWaitingForTurn = false;
+    // What this seat can see now. The host computed the same for itself; a
+    // client never runs processTurn, so it is done here.
+    recomputeFog();
     // A client never runs processTurn; this is its end of turn.
     achTurnSnapshot(true);
     // Our own letters went with it: the host posted its copies, and these
@@ -5808,10 +5870,14 @@ constexpr uint32_t kMaxRouteLegs = 4096;
 
 }  // namespace
 
-std::vector<uint8_t> Game::mpSerializeTurnOrders() const {
+std::vector<uint8_t> Game::mpSerializeTurnOrders(int fogSeat) const {
     std::vector<uint8_t> v;
-    putU32(v, (uint32_t)m_turnOrderLog.size());
+    uint32_t shown = 0;
+    for (const auto& m : m_turnOrderLog)
+        if (fogSeat <= 0 || fogMarkSeenBy(fogSeat, m)) ++shown;
+    putU32(v, shown);
     for (const auto& m : m_turnOrderLog) {
+        if (fogSeat > 0 && !fogMarkSeenBy(fogSeat, m)) continue;
         putU8(v, (uint8_t)m.kind);
         putI32(v, m.countryId);
         putI32(v, m.fromProvince);
@@ -6016,4 +6082,12 @@ void Game::drawMpChat(int x, int y, int w, int h, Vector2 mouse, bool click) {
             DrawRectangle((int)field.x + 10 + MeasureText(fit.c_str(), 12),
                           (int)field.y + 6, 2, 14, WHITE);
     }
+}
+
+// The country a connected peer holds, 0 for a spectator or nobody.
+int Game::mpCountryOfPeer(uint16_t peerId) const {
+    if (!m_netHost) return 0;
+    for (const NetPeer& p : m_netHost->lobby().roster())
+        if (p.peerId == peerId) return p.countryId;
+    return 0;
 }

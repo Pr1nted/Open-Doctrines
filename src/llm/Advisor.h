@@ -116,6 +116,9 @@ struct Situation {
     /// How the correspondence itself has gone: "you have written often and
     /// warmly", "this is the first letter between you". Never a number.
     std::string historyWithThem;
+    /// Fog of war: what this minister can and cannot know about them. Empty
+    /// in a world without fog.
+    std::string intelligence;
 };
 
 /**

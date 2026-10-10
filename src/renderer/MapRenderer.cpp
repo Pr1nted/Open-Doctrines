@@ -122,6 +122,7 @@ MapRenderer::~MapRenderer() {
     if (m_politicalOwners.id > 0) UnloadTexture(m_politicalOwners);
     if (m_politicalColours.id > 0) UnloadTexture(m_politicalColours);
     if (m_borderDistance.id > 0) UnloadTexture(m_borderDistance);
+    if (m_seaFog.id > 0) UnloadTexture(m_seaFog);
     if (m_politicalShaderTried && m_politicalShader.id > 0) UnloadShader(m_politicalShader);
     if (m_overlayShaderTried && m_overlayShader.id > 0) UnloadShader(m_overlayShader);
     if (m_editorOverlayTex.id > 0) UnloadTexture(m_editorOverlayTex);
@@ -352,6 +353,8 @@ uniform sampler2D texture0;
 uniform sampler2D owners;
 uniform sampler2D colours;
 uniform sampler2D borderDistance;
+uniform sampler2D seaFog;
+uniform float fogOn;
 uniform vec2 mapSize;
 uniform float rows;
 vec4 ownerEntry(vec2 texel) {
@@ -376,7 +379,15 @@ void main() {
             (texel.y > 0.0 && ownerAt(texel + vec2(0.0, -1.0)) != cid) ||
             (texel.y < mapSize.y - 1.0 && ownerAt(texel + vec2(0.0, 1.0)) != cid)) edge = 1.0;
     }
-    gl_FragColor = texture2D(colours, (vec2(d + 64.0 * edge, row) + 0.5) / vec2(128.0, rows));
+    vec4 c = texture2D(colours, (vec2(d + 64.0 * edge, row) + 0.5) / vec2(128.0, rows));
+    if (fogOn > 0.5) {
+        vec4 s = texture2D(texture0, (texel + 0.5) / mapSize);
+        if (floor(s.r * 255.0 + 0.5) + floor(s.a * 255.0 + 0.5) < 0.5) {   // sea
+            float seen = texture2D(seaFog, (texel + 0.5) / mapSize).r;
+            c.rgb *= mix(0.42, 1.0, seen);
+        }
+    }
+    gl_FragColor = c;
 })";
 
 const char* kPoliticalFrag330 = R"(#version 330
@@ -385,6 +396,8 @@ uniform sampler2D texture0;
 uniform sampler2D owners;
 uniform sampler2D colours;
 uniform sampler2D borderDistance;
+uniform sampler2D seaFog;
+uniform float fogOn;
 uniform vec2 mapSize;
 uniform float rows;
 out vec4 finalColor;
@@ -410,7 +423,15 @@ void main() {
             (texel.y > 0.0 && ownerAt(texel + vec2(0.0, -1.0)) != cid) ||
             (texel.y < mapSize.y - 1.0 && ownerAt(texel + vec2(0.0, 1.0)) != cid)) edge = 1.0;
     }
-    finalColor = texture(colours, (vec2(d + 64.0 * edge, row) + 0.5) / vec2(128.0, rows));
+    vec4 c = texture(colours, (vec2(d + 64.0 * edge, row) + 0.5) / vec2(128.0, rows));
+    if (fogOn > 0.5) {
+        vec4 s = texture(texture0, (texel + 0.5) / mapSize);
+        if (floor(s.r * 255.0 + 0.5) + floor(s.a * 255.0 + 0.5) < 0.5) {   // sea
+            float seen = texture(seaFog, (texel + 0.5) / mapSize).r;
+            c.rgb *= mix(0.42, 1.0, seen);
+        }
+    }
+    finalColor = c;
 })";
 
 #if defined(GRAPHICS_API_OPENGL_ES2) || defined(PLATFORM_ANDROID) || defined(PLATFORM_WEB)
@@ -461,6 +482,11 @@ int mapTexCap() {
         int glmax = 0; glGetIntegerv(GL_MAX_TEXTURE_SIZE, &glmax);
         const int def = 4096;
         return (glmax >= 256 && glmax < def) ? glmax : def;
+#elif defined(OD_SERVER)
+        // Headless builds (the server, OrderValidationTest) link no GL and draw
+        // nothing, so there is no driver to ask; the cap is never used to size a
+        // texture there.
+        return 16384;
 #else
         int v = 0;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &v);
@@ -673,6 +699,26 @@ void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int fw
     m_politicalStale = true;
 }
 
+// Fog of war at sea: a coarse "has this water been seen" mask, 255 seen, 0 not.
+// Sampled with bilinear filtering, so the edge of sight is soft rather than a
+// staircase of eighth-scale pixels. Rebuilt once a turn at most.
+void MapRenderer::setSeaFog(const std::vector<uint8_t>& mask, int w, int h) {
+    if (w <= 0 || h <= 0 || mask.size() != (size_t)w * h) return;
+    if (m_seaFog.id > 0) UnloadTexture(m_seaFog);
+    Image img{(void*)mask.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+    m_seaFog = LoadTextureFromImage(img);
+    SetTextureFilter(m_seaFog, TEXTURE_FILTER_BILINEAR);
+    SetTextureWrap(m_seaFog, TEXTURE_WRAP_REPEAT);   // the map wraps east-west
+    m_seaFogOn = true;
+    m_politicalStale = true;
+}
+
+void MapRenderer::clearSeaFog() {
+    if (!m_seaFogOn) return;
+    m_seaFogOn = false;
+    m_politicalStale = true;
+}
+
 void MapRenderer::preparePolitical() {
     if (!m_politicalStale || m_politicalTarget.id == 0 || m_provinceIndexTex.id == 0 ||
         m_politicalOwners.id == 0 || m_politicalColours.id == 0 || m_borderDistance.id == 0)
@@ -685,6 +731,15 @@ void MapRenderer::preparePolitical() {
         m_locPolDistance = GetShaderLocation(m_politicalShader, "borderDistance");
         m_locPolMapSize = GetShaderLocation(m_politicalShader, "mapSize");
         m_locPolRows = GetShaderLocation(m_politicalShader, "rows");
+        m_locPolSeaFog = GetShaderLocation(m_politicalShader, "seaFog");
+        m_locPolFogOn = GetShaderLocation(m_politicalShader, "fogOn");
+    }
+    // A sampler must always be bound to something: without fog it is a 1x1
+    // "seen" texel and fogOn is 0, so the shader never reads it.
+    if (m_seaFog.id == 0) {
+        uint8_t one = 255;
+        Image img{&one, 1, 1, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+        m_seaFog = LoadTextureFromImage(img);
     }
     const int w = m_provinceIndexTex.width, h = m_provinceIndexTex.height;
     BeginTextureMode(m_politicalTarget);
@@ -698,6 +753,9 @@ void MapRenderer::preparePolitical() {
     SetShaderValue(m_politicalShader, m_locPolMapSize, size, SHADER_UNIFORM_VEC2);
     const float rows = (float)m_politicalRows;
     SetShaderValue(m_politicalShader, m_locPolRows, &rows, SHADER_UNIFORM_FLOAT);
+    SetShaderValueTexture(m_politicalShader, m_locPolSeaFog, m_seaFog);
+    const float fogOn = m_seaFogOn ? 1.0f : 0.0f;
+    SetShaderValue(m_politicalShader, m_locPolFogOn, &fogOn, SHADER_UNIFORM_FLOAT);
     DrawTexturePro(m_provinceIndexTex, {0.0f, 0.0f, (float)w, -(float)h}, {0.0f, 0.0f, (float)w, (float)h},
                    {0.0f, 0.0f}, 0.0f, WHITE);
     EndShaderMode();
@@ -1199,7 +1257,11 @@ void MapRenderer::buildProvinceData(
     // (Risky RAM) it is rebuilt from the id lookup in buildCompactGlow, after
     // the centres; and a headless server, which has neither, gets no glow.
     if (!provinces.hasPixels()) return;
-    const bool glow = m_bordersComputed && provPixels;
+    // A map the GL cannot hold at full size gets the downscaled glow even with
+    // the image present: a full-map selection texture is exactly the size the
+    // cap exists to refuse, and on a GPU whose limit is 4096 it fails to create.
+    const bool downscaled = mapDownscale(m_mapW, m_mapH) > 1;
+    const bool glow = m_bordersComputed && provPixels && !downscaled;
 
     auto& all = provinces.getAllProvinces();
 
@@ -1300,7 +1362,7 @@ void MapRenderer::buildProvinceData(
     // inline loop above could not build the glow (it reads the border coverage,
     // which needs the image), so build it from the id lookup now. Centres are
     // already done above; this only fills m_provinceGlow and sets m_glowW/H.
-    if (!provPixels && m_bordersComputed && provinces.hasPixels())
+    if ((!provPixels || downscaled) && m_bordersComputed && provinces.hasPixels())
         buildCompactGlow(provinces);
 }
 
@@ -1311,7 +1373,7 @@ void MapRenderer::rebuildGlowMap(const ProvinceMap& provinces) {
     if (!m_bordersComputed) return;
 
     const auto* provPixels = static_cast<const unsigned char*>(provinces.getImage().data);
-    if (provPixels) {
+    if (provPixels && mapDownscale(m_mapW, m_mapH) == 1) {
         BorderCoverageRows coverage(reinterpret_cast<const uint32_t*>(provPixels), m_mapW, m_mapH);
 
         // TWO BUFFERS, TWO STRIDES, AND THEY ARE NOT THE SAME ANY MORE.
@@ -2271,7 +2333,8 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
     m_hoveredProvinceId = prov ? prov->id : 0;
 
     if (prov) {
-        const Country* c = countries.getCountry(prov->countryId);
+        // The owner the player KNOWS (fog of war); the truth without fog.
+        const Country* c = countries.getCountry(knownOwnerOf(*prov));
         int pad = 4;
         int flagW = 96, flagH = 48;
         int fontSize = 20;
@@ -2335,7 +2398,7 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
             auto it = provinces.getAllProvinces().find(m_selectedProvinceId);
             if (it != provinces.getAllProvinces().end()) {
                 const Province& sel = it->second;
-                const Country* c = countries.getCountry(sel.countryId);
+                const Country* c = countries.getCountry(knownOwnerOf(sel));
                 std::string info = std::string(T("Selected: ")) +
                                    od::i18n::properName(sel.name);
                 if (c) info += " (" + od::i18n::properName(c->name) + ")";

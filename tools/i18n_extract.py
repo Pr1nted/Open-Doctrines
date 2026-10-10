@@ -493,7 +493,9 @@ def collect():
             # sentence shown under it. Eighty-three nodes, none of which any
             # DrawText call mentions.
             if fn == "Game_Research.cpp":
-                for m in re.finditer(r'\badd\(\s*"(?:[^"\\]|\\.)*"\s*,\s*'
+                # intel() is add() for the fog-only nodes: the same three
+                # leading arguments, so the same pattern.
+                for m in re.finditer(r'\b(?:add|intel)\(\s*"(?:[^"\\]|\\.)*"\s*,\s*'
                                      r'("(?:[^"\\]|\\.)*")\s*,\s*'
                                      r'("(?:[^"\\]|\\.)*")', text):
                     n = text[:m.start()].count("\n") + 1

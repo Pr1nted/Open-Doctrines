@@ -338,6 +338,7 @@ struct NetHost::Impl {
     std::string    mapName;
     std::vector<uint8_t> lobbyMap;     // encoded; empty for none
     std::vector<uint8_t> sessionInfo;  // encoded; empty for none
+    bool requireFogCap = false;        // see NetHost::setRequireFogCap
 
     Pending* findPending(WsConnId c) {
         for (Pending& p : pending) if (p.conn == c) return &p;
@@ -1306,7 +1307,19 @@ void NetHost::Impl::handleTicket(WsConnId conn, const std::string& text) {
         badges += b;
     }
 
-    if (httpJsonString(text, "caps", 256).find("snapz") != std::string::npos)
+    const std::string caps = httpJsonString(text, "caps", 256);
+    // A fog-of-war world shown by a build that does not know fog is the
+    // whole map handed over. GameVersion, not a new reason: every build
+    // already reads that one as "update to join" and says so.
+    if (requireFogCap && caps.find("fog") == std::string::npos) {
+        NetRejectMsg r;
+        r.reason = NetReject::GameVersion;
+        r.text = "This game uses fog of war. Update Open Doctrines to join it.";
+        sendToConn(conn, netEncodeFrame(NetMsg::Reject, r.encode()));
+        closeAfterRefusal(conn, "no fog");
+        return;
+    }
+    if (caps.find("snapz") != std::string::npos)
         snapzConns.push_back(conn);
     seatPeer(conn, ticket.psid, ticket.name, badges, ticket.issuer);
 }
@@ -1756,6 +1769,8 @@ void NetHost::setLobbyMap(std::vector<uint8_t> encoded) {
     for (const auto& s : m_impl->seated) m_impl->sendToConn(s.conn, frame);
 }
 
+void NetHost::setRequireFogCap(bool on) { m_impl->requireFogCap = on; }
+
 void NetHost::setSessionInfo(const NetSessionInfo& info) {
     m_impl->sessionInfo = info.encode();
     const std::vector<uint8_t> frame = netEncodeFrame(NetMsg::SessionInfo, m_impl->sessionInfo);
@@ -1803,6 +1818,24 @@ void NetHost::broadcastTurnOrders(uint32_t turnNumber,
     t.turnNumber = turnNumber;
     t.payload = payload;
     m_impl->broadcast(NetMsg::TurnOrders, t.encode());
+}
+
+void NetHost::closeTurn() { m_impl->turnOpen = false; }
+
+void NetHost::sendDeltaTo(uint16_t peerId, uint32_t turnNumber,
+                          const std::vector<uint8_t>& payload) {
+    NetWorld w;
+    w.turnNumber = turnNumber;
+    w.payload = payload;
+    m_impl->toPeer(peerId, NetMsg::Delta, w.encode());
+}
+
+void NetHost::sendTurnOrdersTo(uint16_t peerId, uint32_t turnNumber,
+                               const std::vector<uint8_t>& payload) {
+    NetTurnOrders t;
+    t.turnNumber = turnNumber;
+    t.payload = payload;
+    m_impl->toPeer(peerId, NetMsg::TurnOrders, t.encode());
 }
 
 bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,

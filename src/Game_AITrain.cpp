@@ -915,7 +915,7 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
     // Read-only before the first AISystem is constructed (that happens lazily
     // inside the first processTurn), so no path through this can write the
     // model — including the destructor's save on teardown.
-    AISystem::s_readOnlyModel = true;
+    AISystem::lockReadOnlyModel();
     AISystem::s_evaluating = true;
     const bool savedLearning = m_config.aiLearning;
     const int savedDifficulty = m_config.aiDifficulty;
@@ -2938,7 +2938,7 @@ bool Game::runTradeProbe(const std::string& seatSpec, unsigned int seed) {
     // the probe's exit overwrites <data>/ai/model.bin. ServerMain used to
     // set it at the call site; journal 311 wired a new caller and did not,
     // which is exactly the failure a call-site guard invites. Journal 314.
-    AISystem::s_readOnlyModel = true;
+    AISystem::lockReadOnlyModel();
     applyFpsTarget(-1);
     Audio::s_disabled = true;
     startBenchSeat(seatSpec, 10);

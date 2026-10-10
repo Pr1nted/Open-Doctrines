@@ -13,6 +13,7 @@
 //   code rule rather than a habit -- test/privacy.test.ts checks it.
 
 import type { Env } from "./env.js";
+import { keepaliveDue, pingKeepalive } from "./hosting/keepalive.js";
 import {
     authenticate, bearer, fail, json, preflight, rateLimit, readJson, text, wantsHtml,
     withCors,
@@ -112,8 +113,11 @@ export default {
      * The review drain. Once a minute, four at a time -- see mods/review.ts for
      * why those are the scanner's numbers rather than ours.
      */
-    async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
         ctx.waitUntil(drainReviewQueue(env));
+        // And every ten minutes, the free-plan game servers it relays for,
+        // which would otherwise be put to sleep. See hosting/keepalive.ts.
+        if (keepaliveDue(new Date(event.scheduledTime))) ctx.waitUntil(pingKeepalive(env));
     },
 
     async fetch(request: Request, env: Env): Promise<Response> {

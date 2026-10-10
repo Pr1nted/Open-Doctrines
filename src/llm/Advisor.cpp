@@ -136,6 +136,7 @@ std::string systemPrompt(const Persona& persona, const Situation& situation,
     if (!situation.historyWithThem.empty()) {
         p << "- " << situation.historyWithThem << ".\n";
     }
+    if (!situation.intelligence.empty()) p << "- " << situation.intelligence << "\n";
 
     // Deliberately no army counts, no treasury, no province list. A
     // correspondent who can quote your exact strength is reading the save file,

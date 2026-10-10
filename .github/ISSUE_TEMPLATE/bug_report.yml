@@ -11,6 +11,11 @@ body:
         rule to be, not only what you saw. That is what makes a report
         reproducible instead of a screenshot.
 
+        **The quickest route is in the game:** pause menu → *Report a
+        problem*. It attaches your version, OS, the world you were in and
+        the last lines of the game log for you, and shows you all of it
+        before anything is sent.
+
   - type: textarea
     id: what
     attributes:
@@ -51,10 +56,34 @@ body:
         - Desktop — Linux
         - Browser — itch.io
         - Browser — opendoctrines.pages.dev
+        - Browser — on a phone or tablet
         - Discord Activity
         - Android
     validations:
       required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      description: >-
+        For example "Windows 11 24H2", "macOS 15.4", "Ubuntu 24.04", "Android 15,
+        Pixel 8", or "iOS 18, Safari". Most graphics bugs depend on this.
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Game log
+      description: >-
+        The in-game *Report a problem* form attaches this automatically. If you
+        are filing here instead, paste the last lines of the console
+        (Settings → Advanced → Console window, with Debug Mode on). On the
+        browser build, the browser's developer console (F12) has the same
+        lines.
+      render: shell
 
   - type: dropdown
     id: multiplayer

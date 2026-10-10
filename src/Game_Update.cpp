@@ -1185,6 +1185,30 @@ void Game::update(float dt) {
                 }
             }
 
+            // ─── A FIRE MISSION NOBODY CAN SEE ANY MORE ───
+            //
+            // "Fire Artillery" opens an ammo dropdown and blocks map clicks until
+            // a type is picked or the mission is cancelled. Both of those live in
+            // the dropdown, which is drawn only for the source province, in army
+            // view, while the player owns it. Change selection with the arrow
+            // keys, switch tab, or lose the province, and the dropdown is gone
+            // but the block is not -- clicks are dead until a reload (issue #14).
+            // Before a type is chosen, a mission that cannot be seen is cancelled,
+            // and Escape cancels it too. Aiming after a type is chosen (including
+            // from the hotkey wheel) is left exactly as it was.
+            if (m_artillerySourceProvince > 0 && m_artillerySelectedType.empty()) {
+                const Province* asp = m_provinces.getProvinceById(m_artillerySourceProvince);
+                const bool unreachable =
+                    m_activeViewTab != 5 ||
+                    m_renderer->getSelectedProvinceId() != m_artillerySourceProvince ||
+                    !asp || asp->countryId != m_playerCountryId;
+                if (unreachable || IsKeyPressed(KEY_ESCAPE)) {
+                    m_artillerySourceProvince = -1;
+                    m_artilleryTargetPid = -1;
+                    m_blockLeftPanTimer = 2;
+                }
+            }
+
             // ─── Artillery Targeting (left-click on neighbor province) ───
             if (m_artillerySourceProvince > 0) {
                 // Block province selection while in artillery targeting mode
@@ -1318,14 +1342,14 @@ void Game::update(float dt) {
                 int sp = m_renderer->getSelectedProvinceId();
                 if (sp > 0) {
                     auto it = m_provinces.getAllProvinces().find(sp);
-                    if (it != m_provinces.getAllProvinces().end()) curCid = it->second.countryId;
+                    if (it != m_provinces.getAllProvinces().end()) curCid = provinceOwnerForTable(sp);
                 } else {
                     // No selection: use the country under the mouse cursor
                     Vector2 mp = getMouse();
                     int px, py;
                     m_renderer->screenToPixel(mp.x, mp.y, px, py);
                     const Province* hp = m_provinces.getProvince(px, py);
-                    if (hp && hp->countryId > 0) curCid = hp->countryId;
+                    if (hp && hp->countryId > 0) curCid = provinceOwnerForTable(hp->id);
                 }
                 if (curCid != m_lastPopCountryId) {
                     int oldCid = m_lastPopCountryId;
@@ -1340,13 +1364,13 @@ void Game::update(float dt) {
                 int sp = m_renderer->getSelectedProvinceId();
                 if (sp > 0) {
                     auto it = m_provinces.getAllProvinces().find(sp);
-                    if (it != m_provinces.getAllProvinces().end()) curCid = it->second.countryId;
+                    if (it != m_provinces.getAllProvinces().end()) curCid = provinceOwnerForTable(sp);
                 } else {
                     Vector2 mp = getMouse();
                     int px, py;
                     m_renderer->screenToPixel(mp.x, mp.y, px, py);
                     const Province* hp = m_provinces.getProvince(px, py);
-                    if (hp && hp->countryId > 0) curCid = hp->countryId;
+                    if (hp && hp->countryId > 0) curCid = provinceOwnerForTable(hp->id);
                 }
                 // Default to player's country when nothing selected/hovered
                 if (curCid == 0) curCid = m_playerCountryId;
@@ -1705,6 +1729,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 6) { m_config.riskyRamOps = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 7) { m_config.fogOfWarWorlds = false; }
             } else if (m_settingsTab == 3 && items[m_settingsIndex].actionId >= 0) {
                 m_config.keybinds[items[m_settingsIndex].actionId] = DEFAULT_KEYBINDS[items[m_settingsIndex].actionId];
                 m_config.save(m_configPath);
@@ -1820,6 +1845,7 @@ void Game::update(float dt) {
                 else if (m_settingsTab == 5 && m_settingsIndex == 1) { m_config.gdtl = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 3) { m_config.historicalAi = false; }
                 else if (m_settingsTab == 5 && m_settingsIndex == 6) { m_config.riskyRamOps = false; }
+                else if (m_settingsTab == 5 && m_settingsIndex == 7) { m_config.fogOfWarWorlds = false; }
                 else if (isVolumeSetting(m_settingsTab, m_settingsIndex)) {
                     if (float* v = volumeSettingPtr(m_config, m_settingsTab, m_settingsIndex)) {
                         *v = VOLUME_DEFAULTS[m_settingsIndex];
@@ -1944,6 +1970,14 @@ void Game::update(float dt) {
                 Audio::get().playSfx(m_config.riskyRamOps ? "toggle_on" : "toggle_off");
                 if (m_config.riskyRamOps)
                     addNotification(T("On — fits low-memory devices; turn-rewind and the timelapse need the full map. From your next new world."),
+                                    Color{210, 200, 150, 255}, 6.0f);
+            } else if (strcmp(s.label, "Fog of War worlds") == 0) {
+                // Only offers the choice; the world in play keeps whatever it
+                // was created with.
+                m_config.fogOfWarWorlds = !m_config.fogOfWarWorlds;
+                Audio::get().playSfx(m_config.fogOfWarWorlds ? "toggle_on" : "toggle_off");
+                if (m_config.fogOfWarWorlds)
+                    addNotification(T("On — new worlds can be started with fog of war, from the map's info button."),
                                     Color{210, 200, 150, 255}, 6.0f);
             } else if (strcmp(s.label, "AI Difficulty") == 0) {
                 m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;

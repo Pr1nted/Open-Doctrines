@@ -103,7 +103,7 @@ checkout() {                       # a fresh shallow copy of <branch> in $work/<
 world_files() {                    # the files of the world server.json names
     local save; save="$(sed -n 's/.*"load-save": "\([^"]*\)".*/\1/p' "$cfg" 2>/dev/null | head -1)"
     [ -n "$save" ] || return 0
-    for f in "$save" "$save.odhost" "$save.odorders" "$save.odkey"; do
+    for f in "$save" "$save.odhost" "$save.odorders" "$save.odkey" "$save.odmail"; do
         [ -f "$data/saves/$f" ] && echo "saves/$f"
     done
     return 0
@@ -161,7 +161,7 @@ pull)
         if [ -f "$work/$lockbranch/lock" ]; then
             read -r who when < "$work/$lockbranch/lock" || true
             age=$(( $(date +%s) - ${when:-0} ))
-            if [ -n "${who:-}" ] && [ "$who" != "$me" ] && [ "$age" -lt 900 ]; then
+            if [ -n "${who:-}" ] && [ "$who" != "$me" ] && [ "$age" -lt "${OD_SYNC_STALE_SECONDS:-900}" ]; then
                 say "REFUSING: $who was hosting this campaign ${age}s ago."
                 say "Stop it first, or set OD_SYNC_FORCE=1 if it is gone for good."
                 exit 3

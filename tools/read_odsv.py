@@ -201,6 +201,14 @@ def main():
             zf.close()
             return
 
+    # A fog-of-war world's turns are sealed (see "Sealed entries" in
+    # src/SaveManager.cpp): what this tool would print is what fog hides.
+    if zf.read(turn_files[0])[:4] == b'ODSL':
+        print("This is a fog-of-war save: its turns and state are sealed and "
+              "cannot be read outside the game.")
+        zf.close()
+        return
+
     for tf in turn_files:
         data = zf.read(tf)
         decoded = unpack_turn(data)

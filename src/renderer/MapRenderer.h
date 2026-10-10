@@ -96,6 +96,19 @@ public:
     //             shader only looks them up.
     // distance:   one byte per map pixel, the distance field, clamped to 63.
     static constexpr int kPoliticalColumns = 128;
+    // Fog of war at sea (see the .cpp). clearSeaFog() turns it off again.
+    void setSeaFog(const std::vector<uint8_t>& mask, int w, int h);
+    // Fog of war: who the player believes owns each province, by id. The vector
+    // belongs to Game and outlives the renderer's use of it; empty or null
+    // means "the truth" (no fog, or a spectator).
+    void setDisplayOwners(const std::vector<int>* owners) { m_displayOwners = owners; }
+    int knownOwnerOf(const Province& p) const {
+        if (m_displayOwners && !m_displayOwners->empty() && p.id >= 0 &&
+            (size_t)p.id < m_displayOwners->size())
+            return (*m_displayOwners)[(size_t)p.id];
+        return p.countryId;
+    }
+    void clearSeaFog();
     void setPoliticalOwners(const std::vector<uint16_t>& owners, const std::vector<uint16_t>& rows);
     void setPoliticalColours(const std::vector<Color>& colours, int rows);
     void setBorderDistance(const std::vector<uint8_t>& distance, int w, int h);
@@ -301,6 +314,10 @@ private:
     Shader m_politicalShader{};
     bool m_politicalShaderTried = false;
     int m_locPolOwners = -1, m_locPolColours = -1, m_locPolDistance = -1, m_locPolMapSize = -1, m_locPolRows = -1;
+    int m_locPolSeaFog = -1, m_locPolFogOn = -1;
+    Texture2D m_seaFog{};
+    const std::vector<int>* m_displayOwners = nullptr;
+    bool m_seaFogOn = false;
     void preparePolitical();
     RenderTexture2D makeTarget(int w, int h);
     int m_overlayPainted = -1;           ///< which Overlay m_overlayTarget holds

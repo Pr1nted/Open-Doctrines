@@ -321,6 +321,9 @@ GROUPS = [
         # entries, and the shipped audio has them. CMakeLists applies this to
         # the raylib it builds, and fails the build if it cannot.
         "patch_raylib_vorbis.py",
+        # The web build's canvas at device pixels, so a phone is neither zoomed
+        # in nor blurry. Applied to the raylib the web build compiles.
+        "patch_raylib_web_dpi.py",
         # The relations view says who is at war and who is allied with hue
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.
@@ -346,6 +349,20 @@ GROUPS = [
         # And its score, synthesised from nothing, so there is no borrowed
         # material for a storefront's content ID to match against.
         "trailer_music.py",
+        # The Steam cut's march.  Public-domain melody (O'Neill's 1903 #468),
+        # arrangement written here, for the same reason -- and --cues prints
+        # the form without rendering, so the picture can be cut to it first.
+        "trailer_march.py",
+        # The picture for that march: a second shot list over the same
+        # machinery, with the cost/propaganda turn at 0:31.
+        "trailer_march_cut.py",
+        # And the numbers that turn quotes, read out of a real save so the
+        # figures on screen are the game's rather than a copywriter's.
+        "trailer_toll.py",
+        # The motion. Real map evolution out of a real save, and a 3-D shot
+        # modelled from primitives so every frame is this project's own.
+        "trailer_timelapse.sh",
+        "trailer_blender.py",
     ]),
 ]
 

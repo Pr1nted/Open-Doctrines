@@ -112,7 +112,11 @@ void main() {
 })";
 
 const char* kStarFragEs = R"(#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#else
+precision mediump float;
+#endif
 varying vec3 vDir;
 
 uniform float pixAng;   // how much angle one screen pixel covers
@@ -465,7 +469,10 @@ attribute vec2 vertexTexCoord;
 attribute vec3 vertexNormal;
 uniform mat4 mvp;
 uniform mat4 matModel;
-uniform float morph;
+// mediump, to match kFragmentEs: GLSL ES 1.00 requires a uniform used in both
+// stages to have one precision, and the vertex stage defaults to highp. WebGL
+// refuses to link the mismatch, and the globe drew unlit and starless on web.
+uniform mediump float morph;
 varying vec2 fragTexCoord;
 varying vec3 fragNormal;
 varying vec3 fragWorld;
@@ -979,6 +986,18 @@ GlobeView::GlobeView(int mapW, int mapH)
         m_uWinOrigin   = GetShaderLocation(m_shader, "winOrigin");
         m_uWinSize     = GetShaderLocation(m_shader, "winSize");
         m_material.shader = m_shader;
+    } else {
+        TraceLog(LOG_WARNING, "GLOBE: lighting shader did not compile; drawing unlit");
+    }
+
+    // THE SKY DOES NOT DEPEND ON THE GROUND.
+    //
+    // These three used to load only inside `if (m_haveShader)`, so one failure
+    // in the lighting shader took the stars, the sun's glare and the atmosphere
+    // with it -- which is exactly what the web build showed: a uniform declared
+    // highp in one stage and mediump in the other will not link under WebGL1,
+    // and the whole sky went with it. Each shader stands or falls on its own.
+    {
         m_starSh = LoadShaderFromMemory(kEs ? kStarVertEs : kStarVert330,
                                        kEs ? kStarFragEs : kStarFrag330);
         m_haveStarSh = m_starSh.id != 0 && m_starSh.id != rlGetShaderIdDefault();
@@ -1011,8 +1030,6 @@ GlobeView::GlobeView(int mapW, int mapH)
             m_aStrength  = GetShaderLocation(m_air, "airStrength");
             m_aFalloff   = GetShaderLocation(m_air, "airFalloff");
         }
-    } else {
-        TraceLog(LOG_WARNING, "GLOBE: lighting shader did not compile; drawing unlit");
     }
     m_ready = true;
     startSkyBake();

@@ -15,7 +15,7 @@ ctx="$(mktemp -d "${TMPDIR:-/tmp}/od-server-ctx.XXXXXX")"
 trap 'rm -rf "$ctx"' EXIT
 cd "$root"
 git ls-files --cached --others --exclude-standard -z |
-    grep -zvE '^(data/(saves|llm|mods|tools|projects|custom_maps|audio)/|data/ai/models/|web/|docs/img/)' |
+    grep -zvE '^(data/(saves|llm|mods|tools|projects|custom_maps)/|data/ai/models/|web/|docs/img/)' |
     while IFS= read -r -d '' f; do
         [ -f "$f" ] || continue                       # deleted in the working tree
         mkdir -p "$ctx/$(dirname "$f")"

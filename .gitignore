@@ -216,5 +216,10 @@ manifest.txt
 # doctrines.json plus main.lua; script.h is the same for every Lua mod.
 sdk/lua/examples/custom-doctrine/bundle.lua
 
-# The trailer soundtrack is synthesised by tools/trailer_music.py; regenerate rather than track the 17MB WAV.
+# The trailer soundtracks are synthesised -- score.wav by tools/trailer_music.py,
+# march.wav by tools/trailer_march.py.  Both are deterministic, so regenerate
+# rather than track 17MB of WAV apiece.
 docs/trailer/assets/score.wav
+docs/trailer/assets/march.wav
+docs/trailer/assets/march.m4a
+docs/trailer/assets/march-cut-720p.mp4

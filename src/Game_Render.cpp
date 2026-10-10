@@ -695,6 +695,11 @@ void Game::drawCountryPanel() {
     if (selPid > 0) {
         Province* prov = m_provinces.getProvinceById(selPid);
         if (prov) { cid = prov->countryId; country = m_countries.getCountry(cid); }
+        // Out of sight the owner is the one the player last saw there.
+        if (prov && fogHides(selPid)) {
+            cid = knownOwner(m_playerCountryId, selPid);
+            country = m_countries.getCountry(cid);
+        }
     }
 
     // In relations view, use hovered/player country when no province is selected
@@ -704,6 +709,8 @@ void Game::drawCountryPanel() {
         m_renderer->screenToPixel(mp.x, mp.y, px, py);
         const Province* hp = m_provinces.getProvince(px, py);
         cid = (hp && hp->countryId > 0) ? hp->countryId : m_playerCountryId;
+        if (hp && fogHides(hp->id)) cid = knownOwner(m_playerCountryId, hp->id);
+        if (cid <= 0) cid = m_playerCountryId;
         country = m_countries.getCountry(cid);
     }
     if (!country || cid <= 0) return;
@@ -762,7 +769,29 @@ void Game::drawCountryPanel() {
     }
 
     // Cache all per-country aggregates in one pass
-    if (cid != m_lastPanelCountryId) {
+    // A stranger under fog is counted from what the player has seen of it,
+    // which changes every turn, so the turn is part of the cache key there.
+    const bool fogStranger = !fogKnowsCountry(cid);
+    if (fogStranger && m_lastPanelFogTurn != m_fogTurn) m_lastPanelCountryId = -1;
+    m_lastPanelFogTurn = m_fogTurn;
+    if (cid != m_lastPanelCountryId && fogStranger) {
+        m_lastPanelCountryId = cid;
+        m_cachedProvCount = 0;
+        m_cachedCountryIncome = -1.0f;     // unknown
+        m_cachedIndustryCount = 0;
+        m_cachedCountryPop = 0;
+        m_cachedAvgCompass = {0, 0};
+        m_cachedAvgCompassCount = 0;
+        const std::vector<int>& known = displayOwners();
+        for (size_t pid = 1; pid < known.size(); ++pid) {
+            if (known[pid] != cid) continue;
+            m_cachedProvCount++;
+            const odfog::ProvinceIntel* in = intel(m_playerCountryId, (int)pid);
+            if (!in || in->seenTurn == odfog::kNeverSeen) continue;
+            if (in->industry > 0) m_cachedIndustryCount++;
+            m_cachedCountryPop += in->population;
+        }
+    } else if (cid != m_lastPanelCountryId) {
         m_lastPanelCountryId = cid;
         m_cachedProvCount = 0;
         m_cachedCountryIncome = 0.0f;
@@ -818,6 +847,13 @@ void Game::drawCountryPanel() {
         }
     }
 
+    // Out of sight there is nothing current to show: the last sighting, and
+    // none of the actions that would act on a province the player cannot see.
+    if (selPid > 0 && fogHides(selPid)) {
+        drawFoggedProvinceInfo(selPid, panelX + pad, provY + 30, panelW - 2 * pad);
+        return;
+    }
+
     // ─── Country statistics (shown in general view and industry view) ─────
     if (m_activeViewTab == 0 || m_activeViewTab == 2) {
         int statsY = provY + 24;
@@ -830,8 +866,11 @@ void Game::drawCountryPanel() {
         offerUiTarget("panel.stats", {(float)(panelX + pad - 6), (float)statsY - 4,
                                       300.0f, 96.0f});
         DrawText(T("Country Statistics"), panelX + pad, statsY, 18, WHITE);
-        DrawText(TextFormat(T("Annual Income: %.1f"), m_cachedCountryIncome),
-                 panelX + pad, statsY + 24, 16, hexToColor(m_config.accent()));
+        if (m_cachedCountryIncome < 0.0f)
+            DrawText(T("Annual Income: unknown"), panelX + pad, statsY + 24, 16, GRAY);
+        else
+            DrawText(TextFormat(T("Annual Income: %.1f"), m_cachedCountryIncome),
+                     panelX + pad, statsY + 24, 16, hexToColor(m_config.accent()));
         DrawText(TextFormat(T("Industrial Provinces: %d"), m_cachedIndustryCount),
                  panelX + pad, statsY + 44, 14, LIGHTGRAY);
         if (m_activeViewTab == 0 && cid == m_playerCountryId) {
@@ -3841,6 +3880,7 @@ void Game::drawInner() {
 
         for (auto& [pid, ind] : m_provinceIndustry) {
             if (ind.level <= 0) continue;
+            if (fogHides(pid)) continue;          // out of sight: nothing known here
             auto cit = m_provinceCenters.find(pid);
             if (cit == m_provinceCenters.end()) continue;
             Vector2 sp = worldToScreen(cit->second);
@@ -3923,6 +3963,7 @@ void Game::drawInner() {
         const Camera2D& cam = m_renderer->getCamera();
         for (auto& [pid, ind] : m_provinceIndustry) {
             if (ind.fortification <= 0) continue;
+            if (fogHides(pid)) continue;
             auto cit = m_provinceCenters.find(pid);
             if (cit == m_provinceCenters.end()) continue;
             Vector2 sp = worldToScreen(cit->second);
@@ -4020,6 +4061,7 @@ void Game::drawInner() {
 
         for (auto& [pid, units] : m_provinceArmies) {
             if (units.empty()) continue;
+            if (fogHides(pid)) continue;          // armies out of sight are not drawn
             auto cit = m_provinceCenters.find(pid);
             if (cit == m_provinceCenters.end()) continue;
             Vector2 sp = worldToScreen(cit->second);
@@ -4164,6 +4206,7 @@ void Game::drawInner() {
             Vector2 sp = worldToScreen({(float)px, (float)py});
             float sz = std::max(6.0f * cam.zoom, 3.0f);
             bool vis = sp.x >= -50 && sp.x <= m_screenW + 50 && sp.y >= -50 && sp.y <= m_screenH + 50;
+            if (fogHidesShip((size_t)i)) vis = false;   // beyond radar and coast watch
             shipInfos.push_back({i, sp, sz, vis});
         }
 
@@ -4567,6 +4610,7 @@ void Game::drawInner() {
         // ── Step 3: Draw ports (filtered) ──
         for (auto& [pid, port] : m_provincePorts) {
             if (m_provinceCenters.find(pid) == m_provinceCenters.end()) continue;
+            if (fogHides(pid)) continue;
             Province* prov = m_provinces.getProvinceById(pid);
             if (!filterCheck(prov ? prov->countryId : 0)) continue;
             // The province's coast, not its middle. See Game::portAnchor.
@@ -4613,6 +4657,33 @@ void Game::drawInner() {
             if (fs < 7) fs = 7;
             int tw = MeasureText(lvltxt, fs);
             DrawText(lvltxt, (int)(ax - tw / 2), (int)(ay + aSize * 0.5f + 2), fs, WHITE);
+        }
+
+        // ── Step 3b: ghosts -- ships seen on earlier turns, now out of sight ──
+        //
+        // Drawn where they were last seen, fading with age, under the live
+        // ships. A sighting is a picture, not a ship: it never moves, and it
+        // is gone after a few turns (Game_Fog.cpp, kShipMemoryTurns).
+        if (m_fogOfWar && fogCountry(m_playerCountryId)) {
+            auto gs = m_fogSeenShips.find(m_playerCountryId);
+            if (gs != m_fogSeenShips.end()) {
+                for (const odfog::SeenShip& g : gs->second) {
+                    if (g.turn >= m_fogTurn) continue;          // seen this turn: it is live
+                    if (!filterCheck(g.owner)) continue;
+                    const Vector2 sp = worldToScreen({g.x, g.y});
+                    if (sp.x < -50 || sp.x > m_screenW + 50 || sp.y < -50 || sp.y > m_screenH + 50) continue;
+                    const int age = std::max(1, m_fogTurn - (int)g.turn);
+                    const unsigned char a = (unsigned char)std::max(40, 150 - 45 * age);
+                    Color gc = Color{180, 180, 190, a};
+                    if (const Country* c = m_countries.getCountry(g.owner))
+                        gc = Color{c->color.r, c->color.g, c->color.b, a};
+                    const float r = std::max(5.0f * cam.zoom, 3.0f);
+                    DrawCircleLines((int)sp.x, (int)sp.y, r, gc);
+                    DrawCircleLines((int)sp.x, (int)sp.y, r + 1.0f, Color{0, 0, 0, (unsigned char)(a / 2)});
+                    const int fs = std::max(8, (int)(9 * cam.zoom));
+                    DrawText("?", (int)(sp.x - MeasureText("?", fs) / 2), (int)(sp.y - fs / 2), fs, gc);
+                }
+            }
         }
 
         // ── Step 4: Draw ships with selection highlight (filtered) ──
@@ -7502,6 +7573,8 @@ void Game::drawMiddleStateOverlay() {
     std::unordered_map<int, int> standingSlot;
 
     for (const auto& m : m_turnOrderLog) {
+        // Under fog a foreign order is news only where it was seen happening.
+        if (!fogMarkSeen(m)) continue;
         const Color col = colourOf(m.countryId);
         switch (m.kind) {
             case TurnOrderMark::Kind::Artillery:
