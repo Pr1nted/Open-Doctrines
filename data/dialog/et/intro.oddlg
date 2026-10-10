@@ -1,0 +1,55 @@
+// Tõlge -- sissejuhatus. ::-read ja kõnelejate nimed on identifikaatorid, neid ei tõlgita.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Halloo, kes seal on?
+---
+@
+...
+---
+@Pr1nted
+Oh... Te olete siin uus... Mis? §**pole kunagi riiki juhtinud?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Teate mis? Minu viga...
+---
+@Pr1nted
+:: enter=type speed=42
+Aga mul pole aega õpetust ise läbi viia, nii et pean teid jätma ühe oma sõbra
+hoolde, eks? Mul on aega vaja, pean tulevasi uuendusi tegema, onju?
+---
+@Signals Officer
+Halloo? Mis on, §**Pr1nted**§?
+---
+@Pr1nted
+Ee... Tere, Mia, mul oleks vaja /üht pisikest teenet,/ kas sa saaksid uuele mängijale ringi näidata?
+---
+@Signals Officer
+</Ohkab/>
+---
+@Pr1nted
+**No 'kuule'!** Mille eest ma sulle maksan?
+---
+@Signals Officer
+Hea küll... Olgu, olgu.
+---
+@Pr1nted
+Tore! Niisiis näitab preili Mia teile kõike: kuidas mäng töötab ja mis on selle
+alused. Aga kui alused on teil juba selged ja tahate rääkida üksikasjadest, öelge kohe,
+> Näidake mulle aluseid -> basics
+> Alused on selged, räägime üksikasjadest -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Suurepärane, alustame.
+---
+@Pr1nted
+:: act=tune_out
+Tore, loodetavasti saate omavahel läbi! Pr1nted lõpetab.

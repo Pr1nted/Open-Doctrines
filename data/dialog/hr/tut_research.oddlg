@@ -1,0 +1,31 @@
+// Prijevod - istraživanje.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Istraživanje. Otvorite ga -- pritužba je uvijek ista -- ništa što započnete kao
+da nikad ne završava -- i to nije greška, to je poanta.
+---
+@Signals Officer
+Ovdje se sve mjeri potezima koje još niste odigrali. Ono što započnete sada
+stiže dugo nakon što ste zaboravili da ste to htjeli, što znači da je jedino
+loše vrijeme za početak -- kasnije.
+---
+@Signals Officer
+Crpi iz istog novca kao i vojska. Država koja istražuje sve ne izvodi na
+bojište ništa, a država koja izvodi sve za dvadeset poteza još uvijek vodi rat
+iz prošlog desetljeća.
+
+Odaberite smjer. Ne birajte sve.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Ponovno ga zatvorite -- §**x**§ u kutu.
+---
+@Signals Officer
+Dovršen rad ne djeluje unatrag. Nova oprema najprije stiže novim postrojbama,
+pa je potez u kojem se nešto dovrši potez da pogledate što gradite, a ne potez
+za opuštanje.
+
+To je istraživanje. Još nešto?

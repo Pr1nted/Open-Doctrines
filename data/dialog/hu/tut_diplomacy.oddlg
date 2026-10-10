@@ -1,0 +1,97 @@
+// Fordítás - szövetségek, tűzszünetek és a diplomácia többi része.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomácia. Mind egyetlen listában él, és a lista egy §**országhoz**§
+tartozik -- úgyhogy úgy éred el, hogy rákattintasz valakinek a földjére.
+
+Minden lépésnél várok. Itt semmi sem gyors.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Először a §**Kapcsolatok**§ nézet. Aszerint színezi a térképet, ki kivel áll
+háborúban, ki kinek a szövetségese, és ki kinek adott garanciát.
+---
+@Signals Officer
+Nézd meg, mielőtt bármibe belekezdesz. Az itt elvesztett háborúk fele nem egy,
+hanem három ország ellen folyt -- és mindhárom már az első lövés előtt ott volt
+ezen a térképen.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Most kattints egy tartományra, amely §**Verrické**§, a víz túloldalán.
+
+Ne Kestrelre: velük már háborúban állunk, és egy ország, amellyel háborúban
+állsz, pontosan egy dolgot kínál. Arra még rátérünk -- és amíg nem választasz
+valakit, akivel békében vagyunk, ez az oldal egyszerűen várni fog.
+---
+@Signals Officer
+A paneljükön megjelent egy lista. Hogy mi van rajta, az teljes egészében attól
+függ, mik vagytok már egymásnak -- sosem választasz minden lehetőség közül,
+csak azok közül, amelyeket a jelenlegi viszonyotok megenged.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+A legszelídebb rajta a §**megnemtámadási egyezmény**§: ígéret, hogy nem
+támadtok, és semmi több.
+
+Kérj egyet. A kérés nem kerül semmibe.
+---
+@Signals Officer
+Benyújtva -- és most nézd meg a listát. §**Minden más elszürkült**§, a most
+használt bejegyzésből pedig §**megszakítás**§ lett.
+
+Egyszerre egy kérés egy ország felé. Ez nem hiba, amibe belefutottál, hanem a
+szabály: az utolsó dologra válaszolnak, amit mondtál, és amíg nem válaszolnak,
+csak visszavonni tudod.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Úgyhogy fejezd be a kört. A kérés elmegy, ők válaszolnak, és a lista visszatér.
+
+Lehet, hogy elutasítják. Az az ő dolguk, nem a te hibád.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Megint Verrick. A §**szövetség**§ a következő lépcső -- nem csupán ígéret, hogy
+nem támadtok, hanem ígéret, hogy csatlakoztok.
+
+Kérj egyet.
+---
+@Signals Officer
+Szövetségessel még egy bejegyzés jelenik meg: a §**Fegyverbe hívás**§, amely
+belerángatja őket egy háborúba, amelyet már vívsz.
+
+Ezt is elutasíthatják. A kétszer elutasító szövetséges csak papíron
+szövetséges, és nagyjából annyit is ér.
+---
+@Signals Officer
+A kettő, amelyet még nem használtál: a §**garancia**§ az egyoldalú -- megígéred,
+hogy megvédesz valakit, aki neked semmit sem ígért. A kis országok gyűjtik; a
+nagyok osztogatják, hogy csendet vegyenek.
+
+A §**kereskedelem**§ pedig áru pénzért minden körben, amíg valaki fel nem
+mondja. Ez az egyetlen bejegyzés, amely mindkettőtöket gazdagabbá tesz, ezért
+felejtik el az emberek, hogy ott van.
+---
+@Signals Officer
+Ha az egyezményt aláírták, figyeld, mi tűnik el a listáról: a §**Hadüzenet
+eltűnik**§. Előbb fel kell bontanod az egyezményt, nyilvánosan, ahol mindenki
+látja, hogy megteszed.
+
+Erre való az egyezmény. Nem pajzs, hanem tanú.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+§**Háborúban**§ pedig az egész lista egyetlen bejegyzésre szűkül: §**Tűzszünet
+kérése**§. Feltételekkel tér vissza -- ki hagyja abba, és ki mit tart meg.
+
+Elfogadják, ha vesztésre állnak, és elutasítják, ha nem. Semennyi kérés nem
+változtat azon, melyik igaz.
+---
+@Signals Officer
+Kestrel pirossal van ezen a térképen, és ez az a lista, amelyet ők mutatnának.
+---
+@Signals Officer
+Ennyi a diplomáciáról. Még valami?

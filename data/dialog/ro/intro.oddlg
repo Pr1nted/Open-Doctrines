@@ -1,0 +1,58 @@
+// Traducere - introducerea. Liniile :: și numele vorbitorilor sunt identificatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Alo, cine e acolo?
+---
+@
+...
+---
+@Pr1nted
+Oh... Prima oară pe aici... Ce? §**N-ați condus niciodată o țară?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Știți ceva? Greșeala mea...
+---
+@Pr1nted
+:: enter=type speed=42
+Numai că nu am destul timp să fac eu tutorialul, așa că o să vă las cu o
+prietenă de-a mea, bine? Am nevoie de timp, am actualizări viitoare de făcut,
+nu?
+---
+@Signals Officer
+Alo? Ce e, §**Pr1nted**§?
+---
+@Pr1nted
+Ăăă... Salut, Mia, am nevoie de o /favoare mică, micuță,/ poți să ghidezi
+un jucător nou?
+---
+@Signals Officer
+</Oftează/>
+---
+@Pr1nted
+**Hai 'odată'!** Pentru ce te plătesc?
+---
+@Signals Officer
+Fie... Bine, bine.
+---
+@Pr1nted
+Perfect! Deci domnișoara Mia vă va arăta pe unde sunt toate, cum funcționează
+jocul și elementele de bază, sau dacă știți deja elementele de bază, dar vreți
+să discutăm detalii, spuneți-ne acum,
+> Arătați-mi elementele de bază -> basics
+> Știu elementele de bază, să trecem la detalii -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Perfect, să începem.
+---
+@Pr1nted
+:: act=tune_out
+Perfect, sper să vă înțelegeți bine! Pr1nted închide.

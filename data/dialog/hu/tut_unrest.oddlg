@@ -1,0 +1,78 @@
+// Fordítás - igények, elégedetlenség és lázadás.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Igények és elégedetlenség. Nyisd meg az igények panelt. Ez egy téma, akármit
+mond is a felület.
+---
+@Signals Officer
+Az §**igény**§ a különbség aközött, hogy a világ eltűri a háborúdat, vagy
+mindenkit ellened egyesít. Érvényesíts egy meglévőt, és egy sérelmet rendezel;
+foglalj el olyan földet, amelyre sosem tartottál igényt, és te vagy a sérelem.
+---
+@Signals Officer
+Az igényt a háború §**előtt**§ jelentsd be, ne utána. Az a kör után bejelentett
+igény, amelyben elfoglaltad a tartományt, senkit sem téveszt meg, és ugyanannyiba
+kerül.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zárd be.
+---
+@Signals Officer
+Az §**elégedetlenség**§ az, amit a földfoglalás a földdel tesz. A meghódított
+tartományok nehezményezik, a kisebbségek még jobban, a sorkatonaság és a
+cenzúra pedig egyaránt mostani erőt vesz neked későbbi elégedetlenség árán.
+---
+@Signals Officer
+Egy küszöb fölött a tartomány abbahagyja a fizetést, és szervezkedni kezd. A
+következő fölött elmegy -- és §**országként**§ megy el, a te iparoddal, a te
+népességeddel és egy nagyon konkrét véleménnyel rólad.
+
+Figyelmeztetést kapsz. Másodikat nem mindig.
+---
+@Signals Officer
+A gyógymódok népszerűtlenek vagy lassúak: helyőrség, pénz, vagy megadni neki,
+amit akar. Dönts korán, mert mindhárom körökig tart, mire hat.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+A pénz az, ahol a legtöbb elvész. Nyisd meg a Politikát, aztán a
+§**Körzetek**§ részt.
+
+---
+@Signals Officer
+A költségvetés régen egyszerre esett az egész országra -- ugyanakkora súly a
+csendes megyére, mint arra, amelyik fegyverkezik. Úgyhogy vágd fel az
+országot. A §**körzet**§ egy darabja, amelyet egységként kormányzol: fess bele
+tartományokat, adj neki színt, adj neki §**részesedést**§. A részesedések
+összege mindig száz, mert csak egy költségvetés van.
+
+---
+@Signals Officer
+Az számít, hogy a §**pénzből**§ való részesedés hogyan aránylik a §**földből**§
+való részesedéshez. Egy körzet, amely az ország tizedét foglalja el a
+költségvetés tizedéből, pontosan úgy van rendfenntartva, mint előtte -- így a
+felosztás semmit sem változtat, amíg egyenlőtlenné nem teszed a részesedéseket.
+
+---
+@Signals Officer
+Rajzolj kis körzetet a baj köré, add neki a pénz negyedét, és többszörösen
+erősebb rendfenntartást kap; a panel megmondja a számot. Mindenhol máshol ezt
+fizetik meg, és ez a döntés. Van gomb az egyenlő felosztásra: ésszerű
+kiindulópont, és ritkán jó végállomás.
+
+A körzet saját §**regionális törvényt**§ is hoz: kijárási tilalmat,
+adókedvezményt, azt, hogy milyen nyelven ítélkeznek a bíróságok. Kicsi, helyi,
+és mindegyik egy alku.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Zárd be.
+
+---
+@Signals Officer
+Ennyi az elégedetlenségről. Még valami?

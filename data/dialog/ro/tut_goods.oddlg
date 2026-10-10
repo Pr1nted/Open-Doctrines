@@ -1,0 +1,67 @@
+// Traducere - economia bunurilor.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Într-o §**lume a bunurilor**§, o provincie nu face doar bani. Extrage materii
+prime, iar fabricile ei le transformă în bunuri -- și bunurile, nu banii
+lichizi, sunt cele care vă hrănesc poporul și vă permit să construiți.
+Deschideți economia.
+---
+@Signals Officer
+Sunt patru. §**Bunuri de consum**§, pe care le consumă poporul. §**Utilaje**§,
+care construiesc industrie, fortificații și porturi. §**Combustibil**§, care
+mișcă nave și armate. §**Muniție**§, care recrutează soldați și trage cu
+artileria. Aurul rămâne bani.
+---
+@Signals Officer
+Și fiecare vine din pământ printr-o fabrică. §**Cauciucul și pietrele
+prețioase**§ devin bunuri de consum; §**metalul**§ devine utilaje și muniție;
+§**petrolul**§ devine combustibil. Fără zăcământ, fără bun -- așa că o lipsă
+vă arată o provincie de cucerit sau o fabrică de redirecționat.
+---
+@Signals Officer
+Într-un joc cu bunuri, economia capătă o filă §**Bunuri**§ sus. Le listează pe
+cele patru unul lângă altul: ce dețineți, ce produceți față de ce vă trebuie
+în fiecare tură și -- numărul care contează -- §**Acoperire**§.
+---
+@Signals Officer
+Acoperirea arată câte ture ține o rezervă la consumul actual. Nouă ture e
+confortabil; sub două e un avertisment; gol înseamnă o lipsă care se întâmplă
+acum. E citirea cinstită -- nu o grămadă mare deghizată în belșug, ci cât timp
+vă cumpără de fapt grămada.
+---
+@Signals Officer
+Bunurile de consum sunt singurul bun care e și un fapt politic. Ce se consumă
+față de ce se dorește este §**Nivel de trai**§: țineți oamenii sătui și țara
+crește; lăsați-l să scadă și foamea se întoarce sub formă de agitație.
+---
+@Signals Officer
+Celelalte trei sunt permisiuni. Construiți industrie și cheltuiți utilaje;
+scoateți o flotă pe mare și ardeți combustibil; recrutați și consumați
+muniție. Dacă nu ajung, acțiunea devine pur și simplu gri -- războiul nu
+așteaptă depozitul.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Unde se produce un bun se stabilește pe provincie. Faceți clic pe una de-a
+noastră: în panoul ei decideți ce construiesc fabricile, sau o lăsați așa și
+economia alocă pentru dumneavoastră, trimițând fabricile inactive spre ce vă
+lipsește cel mai tare.
+---
+@Signals Officer
+:: point=btn.settings
+Două comutatoare stau în §**Setări -> Experimental**§. Unul pornește economia
+bunurilor pentru următoarea dumneavoastră lume nouă. Celălalt, §**Surplus
+comercial cu aliații**§, e opțional: când unui aliat îi lipsește ceva,
+bunurile dumneavoastră în plus merg la el. Adesea nu-i lipsește nimănui nimic,
+așa că stă nefolosit -- e ajutor ținut la îndemână, nu o taxă pe rezervele
+dumneavoastră.
+---
+@Signals Officer
+Asta e economia bunurilor: extrageți, produceți, hrăniți și cheltuiți. Urmăriți
+acoperirea, țineți-vă poporul sătul și nu începeți niciodată un război pe care
+muniția dumneavoastră nu-l poate termina.
+
+Altceva?

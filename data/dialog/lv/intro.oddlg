@@ -1,0 +1,55 @@
+// Tulkojums -- ievads. :: rindas un runātāju vārdi ir identifikatori, tos netulko.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hallo, kas tur?
+---
+@
+...
+---
+@Pr1nted
+Ak... Jūs te pirmo reizi... Ko? §**vēl nekad nav sanācis vadīt valsti?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Ziniet ko? Mana vaina...
+---
+@Pr1nted
+:: enter=type speed=42
+Tikai man nepietiek laika pašam vadīt apmācību, tāpēc nāksies jūs atstāt pie
+manas draudzenes, labi? Man vajag laiku, jātaisa nākamie atjauninājumi, vai ne?
+---
+@Signals Officer
+Hallo? Ko vajag, §**Pr1nted**§?
+---
+@Pr1nted
+Ēē... Sveika, Mia, man vajag /mazītiņu pakalpojumu,/ vai tu varētu izvadāt jaunu spēlētāju?
+---
+@Signals Officer
+</Nopūšas/>
+---
+@Pr1nted
+**Nu 'beidz'!** Par ko tad es tev maksāju?
+---
+@Signals Officer
+Labi... Nu labi, labi.
+---
+@Pr1nted
+Lieliski! Tātad Mia kundze jums visu parādīs: kā spēle darbojas un tās pamatus.
+Bet ja pamatus jau zināt un gribat parunāt par konkrētākām lietām, sakiet tagad,
+> Parādiet man pamatus -> basics
+> Pamatus zinu, runāsim par konkrētām lietām -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Lieliski, sāksim.
+---
+@Pr1nted
+:: act=tune_out
+Lieliski, ceru, ka jūs abi sapratīsieties! Pr1nted beidz sakarus.

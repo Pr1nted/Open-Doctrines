@@ -1,0 +1,300 @@
+// Tõlge -- Mia tund. ::-read, kõnelejad ja {key=...} on identifikaatorid.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Nii. Ashford. Seitse provintsi, üks naaber, kellele me juba ei meeldi, ja
+saar, kuhu jalgsi ei pääse.
+
+Piisavalt väike, et sellel õppida. Just seepärast me siin olemegi.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klõpsake mis tahes provintsil ja see paneel ütleb teile, mis see on: kellele see
+kuulub, kes seal elab, mida see toodab ja kui lähedal ollakse seal mässule.
+
+Kõike, mida te selles mängus teete, teete te provintsiga.
+---
+@Signals Officer
+:: point=view.population
+Riba all ääres ei ole kaheksa nuppu. See on kaheksa viisi vaadata SAMA kaarti,
+ja te vahetate nende vahel terve mängu.
+
+See värvib iga provintsi selle järgi, kui palju inimesi seal elab.
+---
+@Signals Officer
+:: point=view.industry
+Tööstus. Kus on tehased ja seega kust tulevad raha ja varustus.
+
+Rahvastik ja tööstus koos ütlevad teile, milliseid provintse tasub vallutada ja
+mis on lihtsalt maa.
+---
+@Signals Officer
+:: point=view.defence
+Kaitse näitab kindlusi. Tume tähendab, et keegi on end sisse kaevanud, ja rünnak
+tumedale maale maksab palju rohkem, kui numbrid lubavad arvata.
+---
+@Signals Officer
+:: point=view.relations
+Suhted: kes kellega sõdib ja kes kellele garantii on andnud. Vaadake seda enne,
+kui midagi alustate -- pooled sõjad, mis siin kaotatakse, peeti kolme riigi
+vastu, mitte ühe.
+---
+@Signals Officer
+:: point=view.army
+Armee. Kõik garnisonid kaardil korraga, teie omad ja nende omad.
+
+Selles vaates tasub olla meeste liigutamise ajal, sest ainult see näitab, mis neid
+ees ootab.
+---
+@Signals Officer
+:: point=view.navy
+Merevägi teeb sama laevadega, ja sealt laadite te transpordilaevu.
+
+Ressursid ja Riikide nimed on kaks viimast, ja need teevad seda, mida nimi ütleb.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Kõigepealt §**Majandus**§, sest kõik muu makstakse sellest.
+
+Avage see.
+---
+@Signals Officer
+Tööstus on see, millega te ehitate, ja see kasvab seal, kus rahvast juba on.
+Pange tehas tühja kohta ja olete ostnud väga kalli kuuri.
+
+Tulu saabub kord käigus. Kulutage see enne, kui teil see on, ja puudujääk
+võetakse lahinguvalmidusest.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Nüüd sulgege see uuesti -- sama nupuga. Paneel katab kaardi ja ma ei saa teile
+seal väljas midagi näidata, kuni te siin sees olete.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Järgmiseks §**Uuringud**§. Avage need.
+---
+@Signals Officer
+Mitte miski, mida te siin alustate, ei valmi selle käiguga, ja enamik valmib
+kaua pärast seda, kui olete unustanud, et seda tahtsite.
+
+Just seepärast tasubki varakult alustada.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Jälle välja.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Poliitika**§. Astuge sisse.
+---
+@Signals Officer
+Poliitikad maksavad ülalpidamist, mitte ühekordset summat -- need on püsiv arve,
+ja need nihutavad riigi poliitilist asendit.
+
+Ajateenistus täidab ridu. See tekitab ka inimesi, kes ei tahtnud ridadesse
+astuda, ja just seda numbrit tuleb jälgida.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Ja välja.
+---
+@Signals Officer
+See number on §**rahutus**§.
+
+Suure rahutusega provints lõpetab maksmise ja hakkab organiseeruma. Eirake seda
+piisavalt kaua ja see lahkub -- koos oma tööstuse, oma rahvastiku ja oma
+arvamusega teist.
+
+Hoiatuse te saate. Teist ei saa te alati.
+---
+@Signals Officer
+:: point=view.relations
+Veel üks asi enne paneele: sõda ei pea lõppema sellega, et keegi sureb.
+
+Pakkumised §**relvarahu**§ ja §**kaubanduse**§ kohta saabuvad aknana, millel on
+tingimused -- kes lõpetab võitlemise, kes millest loobub. Lugege tingimused läbi.
+Nõustuge ja sõda lõpeb nende tingimustega, mitte toredatega.
+---
+@Signals Officer
+Saate ka ise sellise avada, suhete vaatest: valige riik, kellega sõdite, ja
+küsige. Nad ütlevad jah, kui nad kaotavad, ja ei, kui nad ei kaota, ja see ongi
+suurem osa selle mängu diplomaatiast.
+
+§**Kaubandusleping**§ on sama kujuga, ainult ilma sõjata: kaubad raha eest, igal
+käigul, kuni keegi selle tühistab.
+---
+@Signals Officer
+Ja selle tunni ajal ei paku teile keegi kumbagi. Ma käskisin neil seda mitte teha.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Viimane paneel. §**Nõuded**§ on see, kuidas sõda muutub legitiimseks.
+---
+@Signals Officer
+Viige ellu nõue, mis teil on, ja maailm kehitab õlgu. Võtke maad, millele te
+kunagi nõuet ei esitanud, ja kõik, kes teie suhtes kõhklesid, lõpetavad
+kõhklemise.
+
+Esitage nõue ENNE sõda. Pärast esitatud nõue ei peta kedagi.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Sulgege see ja läheme kasutame midagi sellest.
+---
+@Signals Officer
+Nüüd armee.
+
+Valige oma provints, hoidke all §{key=army_move}§ ja klõpsake, kuhu mehed
+peavad minema. Ainult naaberprovintsi -- armee kõnnib, see ei teleporteeru.
+---
+@Signals Officer
+Suurtükivägi on klahvil §{key=artillery_wheel}§. Hoidke seda all ja avaneb ratas:
+miinipildujatest kuni asjadeni, mida ma parem kirja ei paneks.
+
+Laevadel on omad: §{key=ship_move}§ liikumiseks, §{key=ship_wheel}§ nende
+kahurite jaoks, §{key=ship_engage}§ lahingu alustamiseks.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Armeed ei teki ka tühjast kohast. §**Te värbate need**§, provints provintsi
+haaval, seal elavatest inimestest.
+
+Valige üks meie omadest ja vaadake paneeli.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Seal on liugur ja nupp §**Värba**§. Liugur näitab, kui suure osa sellest, mida
+provints suudab loovutada, te sel käigul võtate -- kõige rohkem umbes viiendiku
+rahvastikust, vähem seal, kus inimesed on rahulolematud.
+
+See maksab raha ja mehed saabuvad järgmisel käigul. Värvake mõned kohe.
+---
+@Signals Officer
+Provints, millest olete mehed ära võtnud, on provints, kuhu igaüks võib sisse
+jalutada, ja provints, millest olete inimesed ära võtnud, on igaveseks vaesem.
+Värbamine on millegi kulutamine, mitte loomine.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Enne kui kedagi liigutate: §**midagi ei juhtu enne, kui käigu lõpetate.**§
+
+Võib-olla märkasite, et see oli siiani hall. See olin mina.
+
+Te annate käske. Need ootavad. Te vajutate seda ja siis juhtuvad need kõik
+korraga -- seepärast võib terve sõjakäik otsustuda ühe käiguga, kui käsud olid
+head.
+---
+@Signals Officer
+Kestrel hoiab meie saare idaotsa, nad juba sõdivad meiega ja neil on kokku
+nelikümmend kaheksa tuhat meest.
+
+Meil on seitsesada kakskümmend tuhat.
+---
+@Signals Officer
+:: until=destroyed:KES
+Nii et tehke seda §**ühe käiguga**§. Andke käsk vallutada iga nende provints --
+kõik neli, üks teise järel, enne kui midagi lõpetate -- ja siis vajutage
+Käivita käik ja vaadake, kuidas kõik laheneb.
+
+See on selle mängu rütm. Kõik muu on detailid.
+---
+@Signals Officer
+:: act=rebellion
+... Teil on kodus probleem.
+
+Rahutus äsja vallutatud provintsides on üle piiri läinud. Nad on end
+iseseisvaks kuulutanud ega küsi kelleltki luba.
+---
+@Signals Officer
+:: until=rebels:none
+Seda ma mõtlesingi. Mäss on nüüd riik -- sellel on provintsid, mehed ja piir
+teiega.
+
+Suruge see maha samamoodi nagu kõik muu. See ei lähe nii kergelt kui Kestreliga.
+---
+@Signals Officer
+Jääb Verrick, üle vee.
+
+Maismaateed pole. Ükski marssimine ei vii armeed sinna, ja just siin jääb enamik
+inimesi toppama.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Ja me §**ei sõdi nendega**§. Kestrel tuli meile juba vaenulikuna; Verrick pole
+midagi teinud, ja te ei saa maabuda riigis, kellega olete rahus.
+
+Nii et me kuulutame sõja. Mis tahes vaade peale Rahvastiku, ja klõpsake ühel
+nende provintsil.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Nende provintsi paneelil on loetelu sellest, mida me võime neile teha, nende
+seas §**Kuuluta sõda**§. Selle kohal on §**sõja eesmärk**§ -- see, mida te
+väidetavalt taotlete. Klõpsake sellel, et vahetada.
+
+Eesmärk ei ole kaunistus: selle järgi hindab teid ülejäänud maailm, ja selle üle
+vaieldakse hiljem relvarahu läbirääkimistel.
+---
+@Signals Officer
+Kuulutage see -- ja siis §**lõpetage käik**§. Sõjakuulutus on käsk nagu iga
+teine: see esitatakse nüüd ja juhtub siis, kui käik laheneb. Kaardil ei muutu
+midagi enne, kui te nuppu vajutate.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Siin on kogu ülesõit nelja sammuga. Valige üks meie rannikuprovintsidest --
+selline, kus on §**sadam**§ ja mehed.
+---
+@Signals Officer
+:: point=panel.province
+Selles peavad olema §**kohapeal mehed**§. Laevale laadimine ei kutsu armeed
+kuskilt kohale -- see paneb paati garnisoni, mis seal juba on, nii et sadam
+tühjas provintsis ei lae midagi.
+
+Vajadusel marssige kõigepealt mõned sisse.
+---
+@Signals Officer
+:: point=panel.province
+Seejärel selle provintsi paneelil: §**Lae armee laevale**§. Tasuta, üks käik.
+
+Vajutage seda ja lõpetage käik. Garnison lahkub provintsist ja muutub ranniku
+lähedal §**paadiks**§, mille meeskond nad ise on.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Nüüd minge vaatesse §**Merevägi**§. Laevale ei saa rahvastikukaardilt käsku anda --
+paati seal pole.
+---
+@Signals Officer
+Valige paat. Vajutage §**Liigu**§ ja siis -- seda osa ei arva keegi ära --
+klõpsake §**maismaal**§.
+
+Vesi liigutab seda. Rannik §**laseb mehed seal maale**§. See ongi maabumine;
+eraldi nuppu selle jaoks pole.
+---
+@Signals Officer
+:: until=destroyed:VER
+Niisiis: mehed sadamaprovintsis, laadimine, käigu lõpp, Mereväe vaade, paadi
+liigutamine, klõps maismaal.
+
+Ja minge §**läbi Hallow Rocki**§. See pole otsetee, see on marsruut: paat sõidab
+vaid teatud kauguseni ja Verricki rannik on ühe korraga sellest kaugemal.
+Maabuge kaljul, lõpetage käik, siis ületage teine pool.
+
+Ja hoidke paat nende hävitajast eemal. Laetud paat upub koos kõigiga, kes selle
+pardal on.
+---
+@Signals Officer
+:: point=tab.claims
+Ja esitage maale nõue enne, kui selle võtate, mitte pärast. Nüüd te teate, miks.
+---
+@Signals Officer
+See on kõik. Majandus, uuringud, poliitika, rahutus, nõuded, armeed, laevad.
+
+Kõik muu on detailid, ja detailid õpite selgeks neile kaotades.
+---
+@Signals Officer
+:: act=then:outro
+Ja see ongi saar. Tulge minuga menüüsse tagasi -- kaks viimast asja pole siin all.

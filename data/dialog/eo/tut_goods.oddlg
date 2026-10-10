@@ -1,0 +1,63 @@
+// Traduko - la varekonomio.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+En §**varmondo**§ provinco ne nur gajnas monon. Ĝi elfosas krudmaterialojn, kaj
+ĝiaj fabrikoj faras el ili varojn -- kaj varoj, ne kontanta mono, estas tio,
+kio nutras vian popolon kaj ebligas al vi konstrui. Malfermu la ekonomion.
+---
+@Signals Officer
+Estas kvar. §**Konsumvaroj**§ estas manĝataj de via popolo. §**Maŝinaro**§
+konstruas industrion, fortikaĵojn kaj havenojn. §**Brulaĵo**§ movas ŝipojn kaj
+armeojn. §**Municio**§ varbas soldatojn kaj pafas artilerion. Oro restas mono.
+---
+@Signals Officer
+Kaj ĉiu venas el la tero tra fabriko. §**Kaŭĉuko kaj gemoj**§ fariĝas
+konsumvaroj; §**metalo**§ fariĝas maŝinaro kaj municio; §**nafto**§ fariĝas
+brulaĵo. Sen kuŝejo, sen varo -- do manko montras al vi provincon prenendan aŭ
+fabrikon redirektendan.
+---
+@Signals Officer
+En varludo la ekonomio ricevas langeton §**Varoj**§ supre. Ĝi listigas la
+kvar flank-al-flanke: kion vi tenas, kion vi faras kontraŭ tio, kion vi
+bezonas ĉiun vicon, kaj -- la nombro, kiu gravas -- la §**Daŭro**§.
+---
+@Signals Officer
+Daŭro estas, kiom da vicoj stoko sufiĉas ĉe via nuna uzado. Naŭ vicoj estas
+komforte; malpli ol du estas averto; malplena estas manko, kiu okazas nun. Ĝi
+estas la honesta legado -- ne granda stoko maskita kiel abundo, sed kiom longe
+la stoko vere sufiĉas por vi.
+---
+@Signals Officer
+Konsumvaroj estas la sola varo, kiu estas ankaŭ politika fakto. Konsumitaj
+kontraŭ dezirataj, ili estas via §**Vivnivelo**§: tenu la homojn nutritaj, kaj
+la lando kreskas; lasu ĝin gliti, kaj la malsato revenas kiel malkvieto.
+---
+@Signals Officer
+La aliaj tri estas permesoj. Konstruu industrion, kaj vi elspezas maŝinaron;
+velu kun floto, kaj vi bruligas brulaĵon; varbu, kaj vi uzas municion. Se
+mankas, la ago simple griziĝas -- la milito ne atendas la magazenon.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kie varo estas farata, tion oni agordas por ĉiu provinco. Alklaku unu el
+niaj: en ĝia panelo vi direktas, kion ĝiaj fabrikoj konstruas, aŭ lasu ĝin,
+kaj la ekonomio disdonas por vi, sendante neokupitajn fabrikojn al tio, kio
+plej mankas al vi.
+---
+@Signals Officer
+:: point=btn.settings
+Du ŝaltiloj loĝas en §**Agordoj -> Eksperimenta**§. Unu ŝaltas la
+varekonomion por via sekva nova mondo. La alia, §**Komerca pluso kun
+aliancanoj**§, estas laŭvola: kiam al aliancano mankas io, viaj superfluaj
+varoj iras al ĝi. Ofte al neniu mankas, do ĝi restas neaktiva -- ĝi estas
+helpo tenata preta, ne imposto sur viaj provizoj.
+---
+@Signals Officer
+Tio estas la varekonomio: elfosi, fari, nutri kaj elspezi. Gardu la daŭron,
+tenu vian popolon nutrita, kaj neniam komencu militon, kiun via municio ne
+povas fini.
+
+Ĉu io alia?

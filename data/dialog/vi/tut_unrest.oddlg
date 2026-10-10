@@ -1,0 +1,76 @@
+// Bản dịch — tuyên bố chủ quyền, bất ổn và nổi loạn.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Tuyên bố chủ quyền và bất ổn. Mở bảng tuyên bố chủ quyền ra. Đây là một chủ đề
+duy nhất, giao diện nói gì cũng mặc.
+---
+@Signals Officer
+Một §**tuyên bố chủ quyền**§ là khác biệt giữa một cuộc chiến mà thế giới chấp
+nhận và một cuộc chiến khiến tất cả liên kết lại chống bạn. Thực thi một tuyên
+bố bạn đang có là bạn giải quyết một mối bất bình; chiếm vùng đất bạn chưa từng
+tuyên bố thì chính bạn là mối bất bình.
+---
+@Signals Officer
+Hãy tuyên bố §**trước**§ chiến tranh, đừng để sau. Một tuyên bố nộp vào lượt
+sau khi bạn đã chiếm tỉnh chẳng lừa được ai mà vẫn tốn y như vậy.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Đóng lại.
+---
+@Signals Officer
+§**Bất ổn**§ là những gì việc chiếm đất gây ra cho chính vùng đất đó. Các tỉnh bị
+chinh phục oán giận, các nhóm thiểu số còn oán giận hơn, và cả quân dịch lẫn
+kiểm duyệt đều mua cho bạn sức mạnh bây giờ bằng cái giá bất ổn về sau.
+---
+@Signals Officer
+Vượt một ngưỡng, tỉnh sẽ ngừng nộp tiền và bắt đầu tổ chức. Vượt ngưỡng tiếp
+theo, nó bỏ đi — và bỏ đi thành một §**quốc gia**§, mang theo công nghiệp của
+bạn, dân số của bạn và một ý kiến rất cụ thể về bạn.
+
+Bạn sẽ được cảnh báo. Không phải lúc nào cũng có lần thứ hai.
+---
+@Signals Officer
+Cách chữa thì hoặc khó chịu hoặc chậm: đóng quân ở đó, chi tiền cho nó, hoặc cho
+nó thứ nó muốn. Hãy chọn sớm, vì cả ba đều cần nhiều lượt mới có tác dụng.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Chi tiền là chỗ phần lớn bị phí phạm. Mở Chính trị, rồi §**Quận**§.
+
+---
+@Signals Officer
+Ngân sách trước đây rơi xuống cả nước cùng một lúc — một vùng quê yên ả cũng
+chịu sức nặng như nơi đang vũ trang. Vậy hãy chia đất nước ra. Một §**quận**§ là
+một phần bạn cai quản như một đơn vị: tô các tỉnh vào đó, cho nó một màu, cho
+nó một §**tỷ phần**§. Các tỷ phần luôn cộng lại thành một trăm, vì chỉ có một
+ngân sách.
+
+---
+@Signals Officer
+Điều quan trọng là tỷ phần §**tiền**§ so với tỷ phần §**đất**§. Một quận chiếm
+một phần mười đất nước với một phần mười ngân sách được kiểm soát y như trước —
+nên việc chia chẳng thay đổi gì cho đến khi bạn làm các tỷ phần chênh lệch.
+
+---
+@Signals Officer
+Vẽ một quận nhỏ quanh điểm nóng, giao cho nó một phần tư số tiền, và nó sẽ bị
+kiểm soát gắt gao hơn nhiều lần; bảng sẽ cho bạn biết con số. Mọi nơi khác phải
+trả giá cho điều đó, và đó chính là quyết định. Có một nút chia đều: một chỗ hợp
+lý để bắt đầu nhưng hiếm khi là chỗ để dừng lại.
+
+Một quận cũng ban hành §**luật vùng**§ của riêng nó: lệnh giới nghiêm, một đợt
+miễn thuế, tòa án dùng ngôn ngữ của ai. Nhỏ, mang tính địa phương, và mỗi cái là
+một sự đánh đổi.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Đóng lại.
+
+---
+@Signals Officer
+Bất ổn là vậy đó. Còn gì nữa không?

@@ -1,0 +1,97 @@
+// Översättning av tut_diplomacy.oddlg -- allianser, vapenvilor och resten av diplomatin.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomati. Allt finns i en och samma lista, och listan hör till ett
+§**land**§ -- så du når den genom att klicka på någons mark.
+
+Jag väntar vid varje steg. Ingenting här går fort.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Först vyn §**Relationer**§. Den färgar kartan efter vem som är i krig med vem,
+vem som är allierad, och vem som har garanterat vem.
+---
+@Signals Officer
+Titta på den innan du sätter igång något. Hälften av de krig folk förlorar här
+var mot tre länder i stället för ett -- och alla tre fanns på den här kartan
+före första skottet.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Klicka nu på en provins som tillhör §**Verrick**§, på andra sidan vattnet.
+
+Inte Kestrel: vi är redan i krig med dem, och ett land du är i krig med
+erbjuder exakt en sak. Vi kommer till den -- och tills du väljer någon vi har
+fred med kommer den här sidan helt enkelt att fortsätta vänta.
+---
+@Signals Officer
+Deras panel har fått en lista. Vad som står i den beror helt på vad ni två
+redan är för varandra -- du väljer aldrig bland alla alternativ, bara bland
+dem som er nuvarande relation tillåter.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Det mildaste i den är en §**icke-angreppspakt**§: ett löfte att inte anfalla,
+och inget mer.
+
+Be om en. Det kostar ingenting att fråga.
+---
+@Signals Officer
+Inlämnat -- och titta nu på listan. §**Allt annat har blivit grått**§, och
+posten du just använde har blivit §**Avbryt**§.
+
+En begäran i taget till ett land. Det är ingen bugg du har stött på, det är
+regeln: de svarar på det senaste du sa, och tills de gör det är ditt enda drag
+att ta tillbaka det.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Så avsluta draget. Begäran går iväg, de svarar, och listan kommer tillbaka.
+
+De kan vägra. Det är deras sak och inget fel hos dig.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Verrick igen. En §**allians**§ är nästa steg upp -- inte bara ett löfte att
+inte anfalla, utan ett löfte att delta.
+
+Be om en.
+---
+@Signals Officer
+Med en allierad dyker ytterligare en post upp: §**Kallelse till vapen**§, som
+drar in dem i ett krig du redan utkämpar.
+
+Det kan de också vägra. En allierad som vägrar två gånger är en allierad på
+papperet, och värd ungefär lika mycket.
+---
+@Signals Officer
+De två du inte har använt: en §**garanti**§ är den ensidiga -- du lovar att
+försvara någon som inte har lovat dig någonting. Små länder samlar på dem;
+stora delar ut dem för att köpa sig lugn.
+
+Och §**handel**§ är varor mot pengar varje drag, tills någon säger upp det. Det
+är den enda posten som gör er båda rikare, vilket är varför det är den folk
+glömmer finns där.
+---
+@Signals Officer
+När en pakt väl är undertecknad, se vad som försvinner ur listan: §**Förklara krig
+försvinner**§. Du måste bryta pakten först, offentligt, där alla ser dig göra det.
+
+Det är vad en pakt är till för. Den är ingen sköld, den är ett vittne.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Och i §**krig**§ krymper hela listan till en enda post: §**Begär
+vapenvila**§. Den kommer tillbaka med villkor -- vem som slutar, och vem som
+behåller vad.
+
+De accepterar när de förlorar och vägrar när de inte gör det. Hur mycket du än
+frågar ändras inte vilket av dem som är sant.
+---
+@Signals Officer
+Kestrel är röd på den här kartan, och det är den listan de skulle visa dig.
+---
+@Signals Officer
+Det var diplomati. Något mer?

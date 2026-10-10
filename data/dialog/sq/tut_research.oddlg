@@ -1,0 +1,31 @@
+// Përkthim - kërkimi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Kërkimi. Hapeni -- ankesa është gjithmonë e njëjta -- asgjë që nisni nuk duket
+se mbaron ndonjëherë -- dhe nuk është gabim, ky është qëllimi.
+---
+@Signals Officer
+Gjithçka këtu matet në radhë që nuk i keni luajtur ende. Diçka që nisni tani
+mbërrin shumë kohë pasi keni harruar që e donit, që do të thotë se e vetmja
+kohë e keqe për të nisur është më vonë.
+---
+@Signals Officer
+Merr nga të njëjtat para si ushtria. Një vend që kërkon gjithçka nuk nxjerr
+asgjë në fushë, dhe një vend që nxjerr gjithçka në fushë pas njëzet radhësh
+ende lufton luftën e dhjetëvjeçarit të kaluar.
+
+Zgjidhni një drejtim. Mos i zgjidhni të gjitha.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Mbylleni përsëri -- §**x**§-i në cep.
+---
+@Signals Officer
+Puna e përfunduar nuk zbatohet në mënyrë prapavepruese. Pajisjet e reja u
+shkojnë së pari formacioneve të reja, ndaj radha kur përfundon diçka është
+radha për të parë çfarë po ndërtoni, jo radha për t'u çlodhur.
+
+Ky është kërkimi. Diçka tjetër?

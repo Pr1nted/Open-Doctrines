@@ -1,0 +1,16 @@
+// Tõlge -- teemade menüü. "script:"-sihtmärgid on identifikaatorid, neid ei tõlgita.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Hea küll, te teate, kuidas see välja näeb. Mida te siis tegelikult tahate?
+
+Valige üks ja ma räägin sellest põhjalikult. Kui olete valmis, küsige uuesti.
+> Laevad, sadamad ja kuidas armee üle vee viia -> script:tut_ships
+> Uuringud ja miks miski alustatu ei valmi -> script:tut_research
+> Majandus, tööstus ja kust raha tuleb -> script:tut_economy
+> Kaupade majandus: rahva toitmine ja sõja kütus -> script:tut_goods
+> Nõuded, rahutus ja provintside kaotamine oma rahvale -> script:tut_unrest
+> Liidud, relvarahud ja muu diplomaatia -> script:tut_diplomacy
+> Sõjaudu: mida on näha ja kuidas ülejäänut luurata -> script:tut_fog
+> Rohkem mitte midagi, olen valmis -> script:outro

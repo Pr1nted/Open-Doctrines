@@ -1,0 +1,32 @@
+// Traducere - încheierea. Liniile :: și numele vorbitorilor sunt identificatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Aici sus, deci. Două lucruri care nu sunt pe nicio hartă.
+
+§**Salvările.**§ O lume adevărată se înregistrează singură în timp ce jucați și
+vă așteaptă acolo înăuntru. A noastră nu -- nimic din ce tocmai ați făcut nu a
+fost păstrat, ceea ce e cam rostul unei insule de antrenament.
+---
+@Signals Officer
+:: point=menu.2
+§**Multiplayer.**§ Un calculator găzduiește și toți ceilalți se conectează la
+el. O tură se rezolvă când fiecare jucător a spus că e gata, așa că un joc
+merge în ritmul celui mai lent.
+
+Jucați cu oameni care își răspund la mesaje.
+---
+@Pr1nted
+Încă aici? Bun. E temeinică, trebuie să recunosc.
+
+Mai vreți să treceți prin ceva, sau am terminat?
+> Înapoi jos, să acoperim ceva anume -> world:specifics
+> Asta e tot, mulțumesc
+---
+@Pr1nted
+:: act=end_tutorial
+Bine. Duceți-vă și pierdeți de câteva ori, așa se intră în joc.
+
+Pr1nted închide.

@@ -1,0 +1,39 @@
+// Përkthim - ekonomia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ekonomia -- hapeni. Gjithçka tjetër në lojë është një debat se si të
+shpenzohet ajo që prodhon kjo.
+---
+@Signals Officer
+§**Industria**§ rritet aty ku ka tashmë njerëz. Një fabrikë në një provincë
+bosh është një kasolle e shtrenjtë -- popullsia është lënda e parë, jo
+ndërtesa.
+---
+@Signals Officer
+Ndaj çdo provincë tregon sa mund të mbajë: §**Niveli II nga VI**§, dhe kur
+mbushet e thotë. Njerëzit, sa ngjeshur jetojnë, toka dhe çfarë është groposur
+në të -- këto katër vendosin tavanin, dhe asnjë shumë parash nuk e lëviz.
+---
+@Signals Officer
+Të ardhurat vijnë një herë në radhë, në kohë. Angazhohuni për më shumë se ç'keni
+dhe mungesa nuk pret me mirësjellje: zbritet nga gatishmëria, dhe ju e merrni
+vesh në një betejë.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Jashtë përsëri, dhe do të shohim në vend të kësaj një provincë të vetme.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klikoni një nga tonat. Për çdo provincë, paneli tregon çfarë prodhon dhe
+çfarë ka. Burimet vlejnë më shumë të përpunuara se të nxjerra nga dheu, ndaj
+një provincë industriale pranë një të pasure vlen më shumë se secila më vete.
+---
+@Signals Officer
+Dhe politikat janë një §**faturë e përhershme**§, jo një blerje. Çdo njëra që
+mbani zbritet çdo radhë, përgjithmonë, pavarësisht nëse bën ende diçka apo jo.
+
+Kjo është ekonomia. Diçka tjetër?

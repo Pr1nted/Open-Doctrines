@@ -1,0 +1,16 @@
+// Fordítás - a témamenü.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Rendben, a formáját ismered. Akkor mit akarsz valójában?
+
+Válassz egyet, és alaposan végigmegyek rajta. Ha végeztünk, kérdezz újra.
+> Hajók, kikötők, és hogyan jut át egy hadsereg a vízen -> script:tut_ships
+> Kutatás, és miért nem készül el semmi, amit elkezdesz -> script:tut_research
+> A gazdaság, az ipar, és honnan jön a pénz -> script:tut_economy
+> Az árugazdaság: a nép etetése és a háború üzemanyaga -> script:tut_goods
+> Igények, elégedetlenség, és tartományok elvesztése a saját néped miatt -> script:tut_unrest
+> Szövetségek, tűzszünetek és a diplomácia többi része -> script:tut_diplomacy
+> Háborús köd: mit látsz, és hogyan kémleled ki a többit -> script:tut_fog
+> Semmi más, végeztem -> script:outro

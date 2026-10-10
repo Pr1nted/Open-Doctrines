@@ -1,0 +1,38 @@
+// Oversettelse av tut_economy.oddlg -- økonomien.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Økonomien -- åpne den. Alt annet i spillet er en krangel om hvordan man skal
+bruke det denne produserer.
+---
+@Signals Officer
+§**Industri**§ vokser der folk allerede bor. En fabrikk i en tom provins er et
+dyrt skur -- befolkningen er innsatsfaktoren, ikke bygningen.
+---
+@Signals Officer
+Så hver provins oppgir hva den kan bære: §**Nivå II av VI**§, og når den er
+full, sier den fra. Folk, hvor tett de bor, grunnen og det som ligger begravd
+i den -- de fire bestemmer taket, og ingen pengesum flytter det.
+---
+@Signals Officer
+Inntekten kommer én gang per trekk, på trekket. Forplikter du deg til mer enn
+du har, venter ikke underskuddet høflig: det tas fra beredskapen, og det
+finner du ut av i et slag.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Ut igjen, så ser vi på én enkelt provins i stedet.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klikk på en av våre. Per provins viser panelet hva den produserer og hva den
+har. Ressurser er verdt mer foredlet enn gravd opp, så en industriprovins ved
+siden av en rik provins er verdt mer enn hver av dem alene.
+---
+@Signals Officer
+Og politiske tiltak er en §**fast regning**§, ikke et kjøp. Hvert tiltak du
+kjører, trekkes fra hvert trekk, for alltid, enten det fortsatt gjør noe eller ikke.
+
+Det var økonomien. Noe mer?

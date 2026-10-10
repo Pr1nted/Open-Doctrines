@@ -1,0 +1,16 @@
+// Përkthim - menyja e temave. Objektivat pas -> janë identifikues.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Mirë, e dini formën e përgjithshme. Atëherë, çfarë doni në të vërtetë?
+
+Zgjidhni një dhe do ta shtjelloj si duhet. Pyesni përsëri kur të keni mbaruar.
+> Anije, porte dhe si kalon një ushtri mbi ujë -> script:tut_ships
+> Kërkimi, dhe pse asgjë që nis nuk mbaron -> script:tut_research
+> Ekonomia, industria dhe nga vijnë paratë -> script:tut_economy
+> Ekonomia e mallrave: ushqimi i popullit dhe karburanti i luftës -> script:tut_goods
+> Pretendime, trazira dhe provincat që i humbas nga vetë populli im -> script:tut_unrest
+> Aleanca, armëpushime dhe pjesa tjetër e diplomacisë -> script:tut_diplomacy
+> Mjegulla e luftës: çfarë shoh, dhe si spiunoj pjesën tjetër -> script:tut_fog
+> Asgjë tjetër, mbarova -> script:outro

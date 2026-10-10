@@ -1,0 +1,310 @@
+// Käännös: Mian oppitunti harjoituskartalla.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+No niin. Ashford. Seitsemän maakuntaa, yksi naapuri, joka jo valmiiksi
+inhoaa meitä, ja saari, jonne ei pääse kävellen.
+
+Tarpeeksi pieni opetteluun. Juuri siksi olemme täällä.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Napsauta mitä tahansa maakuntaa, niin tämä paneeli kertoo, mikä se on: kuka
+sen omistaa, keitä siellä asuu, mitä se tuottaa ja kuinka lähellä asukkaat
+ovat mellakoimista asian takia.
+
+Kaiken, mitä tässä pelissä teet, teet jollekin maakunnalle.
+---
+@Signals Officer
+:: point=view.population
+Alareunan palkki ei ole kahdeksan nappia. Se on kahdeksan tapaa katsoa SAMAA
+karttaa, ja vaihdat niiden välillä koko pelin ajan.
+
+Tämä värittää jokaisen maakunnan sen mukaan, kuinka paljon siellä asuu väkeä.
+---
+@Signals Officer
+:: point=view.industry
+Teollisuus. Missä tehtaat ovat, ja siis mistä raha ja varusteet tulevat.
+
+Väestö ja teollisuus yhdessä kertovat, mitkä maakunnat kannattaa vallata ja
+mitkä ovat pelkkää maata.
+---
+@Signals Officer
+:: point=view.defence
+Puolustus näyttää linnoitukset. Tumma tarkoittaa, että joku on kaivautunut
+asemiin, ja hyökkäys tummalle maalle maksaa paljon enemmän kuin luvut antavat
+ymmärtää.
+---
+@Signals Officer
+:: point=view.relations
+Suhteet: kuka on sodassa kenen kanssa ja kuka takaa kenet. Katso tämä ennen
+kuin aloitat mitään. Puolet täällä hävityistä sodista käytiin kolmea maata
+vastaan, ei yhtä.
+---
+@Signals Officer
+:: point=view.army
+Armeija. Jokainen varuskunta kartalla yhtä aikaa, sinun ja heidän.
+
+Tässä kannattaa olla, kun siirrät miehiä, koska vain tämä näyttää, mikä heitä
+odottaa.
+---
+@Signals Officer
+:: point=view.navy
+Laivasto tekee saman aluksille, ja siellä myös lastataan kuljetukset.
+
+Resurssit ja Maiden nimet ovat kaksi viimeistä, ja ne tekevät mitä lupaavat.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Talous**§ ensin, koska kaikki muu maksetaan sieltä.
+
+Avaa se.
+---
+@Signals Officer
+Teollisuudella rakennetaan, ja se kasvaa sinne, missä väkeä jo on. Laita
+tehdas tyhjään paikkaan, niin olet ostanut hyvin kalliin vajan.
+
+Tulot saapuvat kerran vuorossa. Käytä ne ennen kuin ne ovat tulleet, niin
+vaje otetaan valmiudesta.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Sulje se nyt taas samasta napista. Paneeli peittää kartan, enkä voi näyttää
+sinulle mitään sieltä, kun olet täällä sisällä.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+§**Tutkimus**§ seuraavaksi. Avaa se.
+---
+@Signals Officer
+Mikään, minkä aloitat täällä, ei valmistu tällä vuorolla, ja suurin osa
+valmistuu kauan sen jälkeen, kun olet unohtanut halunneesi sitä.
+
+Juuri siksi se kannattaa aloittaa ajoissa.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Taas ulos.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politiikka**§. Sisään vain.
+---
+@Signals Officer
+Linjaukset maksavat ylläpitoa, eivät kertasummaa. Ne ovat jatkuva lasku, ja
+ne siirtävät maan poliittista asemaa.
+
+Asevelvollisuus täyttää rivit. Se tuottaa myös ihmisiä, jotka eivät halunneet
+riveihin, ja sitä lukua kannattaa seurata.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Ja ulos.
+---
+@Signals Officer
+Se luku on §**levottomuus**§.
+
+Maakunta, jossa levottomuus on korkea, lakkaa maksamasta ja alkaa
+järjestäytyä. Jätä se huomiotta tarpeeksi pitkään, niin se lähtee -- mukanaan
+teollisuutensa, väestönsä ja mielipiteensä sinusta.
+
+Saat varoituksen. Toista et aina saa.
+---
+@Signals Officer
+:: point=view.relations
+Vielä yksi asia ennen paneeleja: sodan ei tarvitse päättyä siihen, että joku
+kuolee.
+
+Tarjoukset §**tulitauosta**§ ja §**kaupasta**§ saapuvat ikkunana, jossa on
+ehdot: kuka lopettaa taistelun, kuka luopuu mistäkin. Lue ehdot. Hyväksy, niin
+sota päättyy niillä ehdoilla, ei mukavilla.
+---
+@Signals Officer
+Voit avata sellaisen itsekin suhdenäkymästä: valitse maa, jonka kanssa olet
+sodassa, ja pyydä. He sanovat kyllä, kun ovat häviämässä, ja ei, kun eivät
+ole, ja siinä on suurin osa tämän pelin diplomatiasta.
+
+§**Kauppasopimus**§ on samanlainen ilman sotaa: tavaroita rahaa vastaan,
+joka vuoro, kunnes joku peruu sen.
+---
+@Signals Officer
+Eikä kukaan tarjoa sinulle kumpaakaan tämän oppitunnin aikana. Kielsin heitä.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Viimeinen paneeli. §**Vaateet**§ ovat se, miten sodasta tulee oikeutettu.
+---
+@Signals Officer
+Aja vaadetta, joka sinulla on, niin maailma kohauttaa olkapäitään. Valtaa
+maata, jota et koskaan vaatinut, niin jokainen, joka oli sinusta epävarma,
+lakkaa olemasta epävarma.
+
+Tee vaade ENNEN sotaa. Jälkikäteen jätetty ei hämää ketään.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Sulje se, niin mennään käyttämään osaa tästä.
+---
+@Signals Officer
+Sitten armeija.
+
+Valitse omistamasi maakunta, pidä §{key=army_move}§ pohjassa ja napsauta,
+minne miesten pitää mennä. Vain naapurimaakuntaan: armeija kävelee, se ei
+teleporttaa.
+---
+@Signals Officer
+Tykistö on näppäimessä §{key=artillery_wheel}§. Pidä sitä pohjassa, niin
+pyörä aukeaa: kranaatinheittimistä aina asioihin, joita en mieluusti
+kirjoittaisi paperille.
+
+Aluksilla on omansa: §{key=ship_move}§ siirtää, §{key=ship_wheel}§ avaa
+tykit, §{key=ship_engage}§ hakee tappelua.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Armeijat eivät myöskään ilmesty tyhjästä. §**Värväät ne**§ maakunta
+kerrallaan, siellä asuvista ihmisistä.
+
+Valitse yksi meidän maakunnistamme ja katso paneelia.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Siinä on liukusäädin ja §**Värvää**§-nappi. Liukusäädin kertoo, kuinka suuren
+osan maakunnan liikenevästä väestä otat tällä vuorolla: enintään noin
+viidesosan sen väestöstä, vähemmän siellä, missä ihmiset ovat tyytymättömiä.
+
+Se maksaa rahaa, ja miehet saapuvat seuraavalla vuorolla. Määrää värväys nyt.
+---
+@Signals Officer
+Maakunta, josta olet vienyt miehet, on maakunta, johon kuka tahansa voi
+kävellä, ja maakunta, josta olet vienyt ihmiset, on köyhempi ikuisesti.
+Värvääminen on jonkin kuluttamista, ei tekemistä.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Ennen kuin siirrät ketään: §**mitään ei tapahdu ennen kuin päätät vuoron.**§
+
+Ehkä huomasit, että tämä oli tähän asti harmaana. Se olin minä.
+
+Annat käskyjä. Ne odottavat. Painat tätä, ja sitten ne kaikki tapahtuvat
+kerralla. Siksi kokonainen sotaretki voi ratketa yhdellä vuorolla, jos
+käskyt olivat hyviä.
+---
+@Signals Officer
+Kestrel pitää hallussaan saaremme itäpäätä, se on jo sodassa kanssamme, ja
+sillä on nimissään neljäkymmentäkahdeksan tuhatta miestä.
+
+Meillä on seitsemänsataakaksikymmentä tuhatta.
+---
+@Signals Officer
+:: until=destroyed:KES
+Joten tee se §**yhdellä vuorolla**§. Määrää jokainen heidän maakuntansa
+vallattavaksi, kaikki neljä yksi toisensa jälkeen, ennen kuin päätät mitään.
+Paina sitten Suorita vuoro ja katso, kun kaikki ratkeaa kerralla.
+
+Se on tämän pelin rytmi. Kaikki muu on yksityiskohtia.
+---
+@Signals Officer
+:: act=rebellion
+... Sinulla on ongelma kotona.
+
+Levottomuus juuri valtaamissasi maakunnissa on ylittänyt rajan. Ne ovat
+julistautuneet itsenäisiksi, eivätkä ne kysy lupaa.
+---
+@Signals Officer
+:: until=rebels:none
+Tätä tarkoitin. Kapina on nyt maa: sillä on maakuntia, miehiä ja yhteinen
+raja kanssasi.
+
+Kukista se samalla tavalla kuin minkä tahansa muun. Se ei ole yhtä helppo
+kuin Kestrel.
+---
+@Signals Officer
+Jäljelle jää Verrick, veden takana.
+
+Ei maayhteyttä. Mikään määrä marssimista ei vie armeijaa sinne, ja tähän
+useimmat jäävät jumiin.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Emmekä me ole §**sodassa heidän kanssaan**§. Kestrel oli meille valmiiksi
+vihamielinen; Verrick ei ole tehnyt mitään, eikä maahan, jonka kanssa olet
+rauhassa, voi nousta maihin.
+
+Joten julistamme sodan. Mikä tahansa näkymä paitsi Väestö, ja napsauta yhtä
+heidän maakunnistaan.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Heidän maakuntapaneelinsa luettelee, mitä saamme tehdä heille, muiden muassa
+§**Julista sota**§. Sen yläpuolella on §**sodan tavoite**§: se, mitä sanot
+tavoittelevasi. Napsauta sitä vaihtaaksesi.
+
+Tavoite ei ole koriste. Sen perusteella muu maailma arvioi sinua, ja siitä
+tulitauosta myöhemmin kiistellään.
+---
+@Signals Officer
+Julista se, ja sitten §**päätä vuoro**§. Julistus on käsky siinä missä muutkin:
+se kirjataan nyt ja tapahtuu, kun vuoro ratkeaa. Kartalla ei muutu mikään,
+ennen kuin painat nappia.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Tässä on koko ylitys neljällä siirrolla. Valitse yksi rannikkomaakunnistamme,
+sellainen, jossa on §**satama**§ ja miehiä.
+---
+@Signals Officer
+:: point=panel.province
+Siellä täytyy olla §**miehiä paikalla**§. Lastaaminen ei loihdi armeijaa
+tyhjästä: se nostaa veneeseen jo paikalla olevan varuskunnan, joten satama
+tyhjässä maakunnassa ei lastaa mitään.
+
+Marssita ensin miehiä sinne, jos on tarpeen.
+---
+@Signals Officer
+:: point=panel.province
+Sitten sen maakunnan paneelista: §**Lastaa armeija**§. Ilmainen, yksi vuoro.
+
+Paina sitä ja päätä vuoro. Varuskunta lähtee maakunnasta ja muuttuu
+§**veneeksi**§ rannikon edustalle, miehistönään he itse.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Mene nyt §**Laivasto**§-näkymään. Alukselle ei voi antaa käskyjä
+väestökartalta, koska venettä ei ole siinä.
+---
+@Signals Officer
+Valitse vene. Paina §**Siirrä**§, ja sitten (tätä kukaan ei arvaa)
+napsauta §**maata**§.
+
+Vesi siirtää sitä. Rannikko §**laskee miehet maihin siinä**§. Se on
+maihinnousu; sille ei ole erillistä nappia.
+---
+@Signals Officer
+:: until=destroyed:VER
+Siis: miehiä satamamaakuntaan, lastaa, päätä vuoro, laivastonäkymä, siirrä
+venettä, napsauta maata.
+
+Ja mene §**Hallow Rockin kautta**§. Se ei ole oikotie, se on reitti: vene
+kantaa vain tietyn matkan, eikä Verrickin rannikko ole yhdellä kertaa sen
+ulottuvilla. Nouse maihin kalliolle, päätä vuoro ja ylitä sitten toinen
+puolikas.
+
+Ja pidä vene erossa heidän hävittäjästään. Lastattu vene uppoaa kaikkien
+kyydissä olevien kanssa.
+---
+@Signals Officer
+:: point=tab.claims
+Ja vaadi maa ennen kuin otat sen, ei jälkeenpäin. Tiedät nyt miksi.
+---
+@Signals Officer
+Siinä se kaikki. Talous, tutkimus, politiikka, levottomuus, vaateet,
+armeijat, alukset.
+
+Kaikki muu on yksityiskohtia, ja ne opit häviämällä niille.
+---
+@Signals Officer
+:: act=then:outro
+Ja se oli saari. Tule kanssani takaisin ylös valikkoon. Kaksi viimeistä
+asiaa eivät ole täällä alhaalla.

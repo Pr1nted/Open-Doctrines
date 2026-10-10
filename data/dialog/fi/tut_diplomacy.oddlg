@@ -1,0 +1,96 @@
+// Käännös: liitot, tulitauot ja muu diplomatiapaneeli.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatia. Kaikki se on yhdessä listassa, ja lista kuuluu §**maalle**§,
+joten pääset siihen napsauttamalla jonkun maata.
+
+Odotan joka vaiheessa. Mikään täällä ei ole nopeaa.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Ensin §**Suhteet**§-näkymä. Se värittää kartan sen mukaan, kuka on sodassa
+kenen kanssa, kuka on liittoutunut ja kuka on taannut kenet.
+---
+@Signals Officer
+Katso sitä ennen kuin aloitat mitään. Puolet täällä hävityistä sodista
+käytiin kolmea maata vastaan eikä yhtä, ja kaikki kolme olivat tällä kartalla
+jo ennen ensimmäistä laukausta.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Napsauta nyt maakuntaa, joka kuuluu §**Verrickille**§, veden takana.
+
+Ei Kestreliä: olemme jo sodassa heidän kanssaan, ja maa, jonka kanssa olet
+sodassa, tarjoaa vain yhden asian. Siihen palataan. Ja kunnes valitset
+jonkun, jonka kanssa olemme rauhassa, tämä sivu vain odottaa.
+---
+@Signals Officer
+Heidän paneeliinsa on ilmestynyt lista. Sen sisältö riippuu täysin siitä,
+mitä te kaksi jo olette toisillenne. Et koskaan valitse kaikista
+vaihtoehdoista, vain niistä, jotka nykyinen suhteenne sallii.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Lievin asia siinä on §**hyökkäämättömyyssopimus**§: lupaus olla
+hyökkäämättä, eikä mitään muuta.
+
+Pyydä sellaista. Pyytäminen ei maksa mitään.
+---
+@Signals Officer
+Jätetty. Katso nyt listaa. §**Kaikki muu on harmaantunut**§, ja juuri
+käyttämäsi kohta on muuttunut muotoon §**Peruuta**§.
+
+Yksi pyyntö kerrallaan yhdelle maalle. Se ei ole bugi, johon törmäsit, se on
+sääntö: he vastaavat viimeiseen asiaan, jonka sanoit, ja kunnes he vastaavat,
+ainoa siirtosi on ottaa se takaisin.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Päätä siis vuoro. Pyyntö lähtee, he vastaavat, ja lista palaa.
+
+He voivat kieltäytyä. Se on heidän asiansa eikä sinun vikasi.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Taas Verrick. §**Liitto**§ on seuraava porras: ei pelkkä lupaus olla
+hyökkäämättä, vaan lupaus liittyä mukaan.
+
+Pyydä sellaista.
+---
+@Signals Officer
+Liittolaisen kanssa listaan ilmestyy yksi kohta lisää: §**Kutsu aseisiin**§,
+joka vetää heidät sotaan, jota jo käyt.
+
+Siitäkin he voivat kieltäytyä. Liittolainen, joka kieltäytyy kahdesti, on
+liittolainen paperilla, ja suunnilleen yhtä arvokas.
+---
+@Signals Officer
+Kaksi, joita et ole käyttänyt: §**takuu**§ on se vino: lupaat puolustaa
+jotakuta, joka ei ole luvannut sinulle mitään. Pienet maat keräävät niitä;
+suuret jakavat niitä ostaakseen hiljaisuutta.
+
+Ja §**kauppa**§ on tavaroita rahaa vastaan joka vuoro, kunnes joku peruu sen.
+Se on ainoa kohta, joka tekee teistä molemmista rikkaampia, ja siksi juuri
+sen ihmiset unohtavat olevan olemassa.
+---
+@Signals Officer
+Kun sopimus on allekirjoitettu, katso mikä katoaa listalta: §**Julista sota
+katoaa**§. Sinun on ensin rikottava sopimus julkisesti, kaikkien nähden.
+
+Sitä varten sopimus on. Se ei ole kilpi, se on todistaja.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Ja §**sodassa**§ koko lista kutistuu yhteen kohtaan: §**Pyydä
+tulitaukoa**§. Se palaa ehtojen kanssa: kuka lopettaa ja kuka pitää mitä.
+
+He hyväksyvät, kun ovat häviämässä, ja kieltäytyvät, kun eivät ole. Mikään
+määrä pyytämistä ei muuta sitä, kumpi on totta.
+---
+@Signals Officer
+Kestrel on tällä kartalla punaisena, ja tuon listan he sinulle näyttäisivät.
+---
+@Signals Officer
+Siinä diplomatia. Muuta?

@@ -1,0 +1,65 @@
+// Fordítás - az árugazdaság.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Egy §**áruvilágban**§ a tartomány nem csak pénzt termel. Nyersanyagot bányászik,
+a gyárai pedig árut készítenek belőle -- és az áru, nem a készpénz, az, amiből
+a néped eszik, és amiből építhetsz. Nyisd meg a gazdaságot.
+---
+@Signals Officer
+Négy van. A §**Fogyasztási cikkeket**§ a néped fogyasztja el. A §**Gépek**§
+ipart, erődöket és kikötőket építenek. Az §**Üzemanyag**§ hajókat és
+hadseregeket mozgat. A §**Lőszer**§ a toborzáshoz és a tüzérség tüzeléséhez kell.
+Az arany pénz marad.
+---
+@Signals Officer
+És mindegyik a földből jön, egy gyáron át. A §**gumiból és a drágakövekből**§
+fogyasztási cikk lesz; a §**fémből**§ gép és lőszer; az §**olajból**§
+üzemanyag. Nincs lelőhely, nincs áru -- így a hiány egy elfoglalandó
+tartományra vagy egy átirányítandó gyárra mutat.
+---
+@Signals Officer
+Egy árujátékban a gazdaság felül kap egy §**Áruk**§ fület. Egymás mellett
+sorolja fel a négyet: mennyi van nálad, mennyit termelsz ahhoz képest, amennyi
+körönként kell, és -- ez a lényeges szám -- a §**Fedezet**§.
+---
+@Signals Officer
+A fedezet azt mutatja, hány körig tart egy készlet a jelenlegi fogyasztás
+mellett. Kilenc kör kényelmes; kettő alatt figyelmeztetés; az üres pedig most
+zajló hiány. Ez az őszinte mérőszám -- nem egy bőségnek álcázott nagy halom,
+hanem hogy valójában meddig elég a halom.
+---
+@Signals Officer
+A fogyasztási cikk az egyetlen áru, amely egyben politikai tény is. Az
+elfogyasztott a kívánthoz képest az §**Életszínvonal**§: tartsd jóllakottan az
+embereket, és az ország nő; hagyd lecsúszni, és az éhség elégedetlenségként
+tér vissza.
+---
+@Signals Officer
+A másik három engedély. Ipart építesz, gépet költesz; flottát küldesz, üzemanyagot
+égetsz; toborzol, lőszert használsz. Ha kifogysz, a művelet egyszerűen
+elszürkül -- a háború nem vár a raktárra.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Hogy melyik áru hol készül, azt tartományonként állítod be. Kattints az egyik
+tartományunkra: a panelján megszabhatod, mit gyártsanak a gyárai, vagy hagyhatod,
+és a gazdaság maga osztja el, a tétlen gyárakat arra állítva, amiből a
+legkevesebb van.
+---
+@Signals Officer
+:: point=btn.settings
+Két kapcsoló van a §**Beállítások -> Kísérleti**§ alatt. Az egyik bekapcsolja
+az árugazdaságot a következő új világodra. A másik, a §**Kereskedelmi többlet a
+szövetségeseknek**§, választható: ha egy szövetségesednek hiánya van, a
+fölösleges árud hozzá kerül. Gyakran senkinek sincs hiánya, így tétlenül áll --
+ez készenlétben tartott segítség, nem adó a raktáraidra.
+---
+@Signals Officer
+Ez az árugazdaság: bányássz, gyárts, etess és költs. Figyeld a fedezetet,
+tartsd jóllakottan a népedet, és soha ne kezdj olyan háborút, amelyet a
+lőszered nem tud befejezni.
+
+Még valami?

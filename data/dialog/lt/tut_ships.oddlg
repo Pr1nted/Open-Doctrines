@@ -1,0 +1,49 @@
+// Vertimas -- perkėlimas per vandenį, išsamiai.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Laivai, vadinasi. Tai sustabdo daugumą žmonių, ir sustabdo kiekvieną kartą toje
+pačioje vietoje: armija prie kranto, ir niekas nevyksta.
+---
+@Signals Officer
+Armija pati vandens neperplaukia, ir įsakymo "lipti į tą laivą" nėra. Tai daro
+provincija.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Pasirinkite pakrantės provinciją, kurioje yra §**uostas**§ IR §**vyrų vietoje**§.
+Įlaipinimas perkelia garnizoną, kuris jau ten yra; tuščias uostas nieko
+neįlaipina, ir būtent čia prasideda dauguma painiavos.
+
+Jos skydelyje yra §**Įlaipinti armiją**§ -- nemokamai, vienas ėjimas.
+Paspauskite ir baikite ėjimą.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Vyrai dabar yra §**valtis**§ prie kranto. Eikite į vaizdą §**Laivynas**§ --
+laivai neklauso įsakymų nė viename iš kitų septynių.
+
+§{key=ship_move}§ ją judina, §{key=ship_wheel}§ atidaro jos pabūklus,
+§{key=ship_engage}§ liepia jai pradėti kautynes.
+---
+@Signals Officer
+Norėdami išsilaipinti: pasirinkite valtį, paspauskite §**Judėti**§ ir
+spustelėkite §**sausumą**§.
+
+Vanduo ją perkelia. Sausuma ją iškrauna. Vienas mygtukas daro abu, todėl
+žmonės plaukioja pirmyn atgal, ieškodami kito.
+---
+@Signals Officer
+Du dalykai, kurių niekas nepasako.
+
+Pakrautas transportas yra taikinys, ir jis nuskęsta kartu su vyrais. O
+išsilaipinimas ginamoje provincijoje atvyksta pavargęs -- užimkite tuščią krantą
+šalia ir eikite pėsčiomis, užuot išsilaipinę tiesiai ant forto.
+---
+@Signals Officer
+§**Hallow Rock**§ sąsiauryje nėra pasirinkimas. Valtis turi veikimo nuotolį, o
+tolimoji sala yra už jo -- tad uola yra pirmasis išsilaipinimas, o antrasis
+šuolis daromas iš ten.
+
+Tai laivai. Dar kas nors?

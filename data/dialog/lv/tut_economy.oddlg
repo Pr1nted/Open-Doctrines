@@ -1,0 +1,39 @@
+// Tulkojums -- ekonomika.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ekonomika -- atveriet to. Viss pārējais spēlē ir strīds par to, kā iztērēt to,
+ko šī saražo.
+---
+@Signals Officer
+§**Rūpniecība**§ aug tur, kur jau ir cilvēki. Rūpnīca tukšā provincē ir dārgs
+šķūnis -- iedzīvotāji ir izejviela, nevis ēka.
+---
+@Signals Officer
+Tāpēc katra province pasaka, ko tā spēj panest: §**Līmenis II no VI**§, un kad
+tā ir pilna, tā to arī pasaka. Cilvēki, cik cieši viņi dzīvo, zeme un tas, kas
+tajā aprakts -- šie četri nosaka griestus, un nekāda nauda tos nepabīda.
+---
+@Signals Officer
+Ienākumi pienāk reizi gājienā, gājiena laikā. Uzņemieties vairāk, nekā jums ir,
+un iztrūkums pieklājīgi negaida: to atskaita no kaujas gatavības, un jūs par to
+uzzināt kaujā.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Atkal ārā, un paskatīsimies labāk uz vienu provinci.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Noklikšķiniet uz kādas mūsējās. Katrai provincei panelis rāda, ko tā ražo un kas
+tajā ir. Resursi ir vērtīgāki pārstrādāti nekā izrakti, tāpēc rūpnieciska
+province blakus bagātai ir vērtīgāka par katru no tām atsevišķi.
+---
+@Signals Officer
+Un politikas virzieni ir §**pastāvīgs rēķins**§, nevis pirkums. Katru, ko
+uzturat, atskaita katru gājienu, mūžīgi, neatkarīgi no tā, vai tas vēl kaut ko
+dara.
+
+Tā ir ekonomika. Vēl kaut kas?

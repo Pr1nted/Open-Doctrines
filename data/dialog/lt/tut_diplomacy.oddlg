@@ -1,0 +1,97 @@
+// Vertimas -- sąjungos, paliaubos ir visa kita diplomatija.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatija. Visa ji yra viename sąraše, o sąrašas priklauso §**šaliai**§ --
+tad jį pasiekiate spustelėję kieno nors žemę.
+
+Lauksiu kiekviename žingsnyje. Niekas čia nevyksta greitai.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Pirmiausia vaizdas §**Santykiai**§. Jis nuspalvina žemėlapį pagal tai, kas su
+kuo kariauja, kas yra sąjungininkai ir kas kam suteikė garantiją.
+---
+@Signals Officer
+Pažiūrėkite į jį prieš ką nors pradėdami. Pusė karų, kuriuos žmonės čia
+pralaimi, buvo prieš tris šalis, o ne vieną -- ir visos trys buvo šiame
+žemėlapyje dar prieš pirmąjį šūvį.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Dabar spustelėkite provinciją, priklausančią §**Verrick**§, už vandens.
+
+Ne Kestrel: su jais jau kariaujame, o šalis, su kuria kariaujate, siūlo lygiai
+vieną dalyką. Iki jo dar prieisime -- ir kol nepasirinksite ko nors, su kuo
+esame taikoje, šis puslapis tiesiog lauks.
+---
+@Signals Officer
+Jų skydelyje atsirado sąrašas. Kas jame yra, visiškai priklauso nuo to, kas jūs
+jau esate vieni kitiems -- niekada nesirenkate iš visų galimybių, tik iš tų,
+kurias leidžia jūsų dabartiniai santykiai.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Švelniausias dalykas jame yra §**nepuolimo paktas**§: pažadas nepulti, ir nieko
+daugiau.
+
+Paprašykite jo. Paprašyti nieko nekainuoja.
+---
+@Signals Officer
+Pateikta -- o dabar pažiūrėkite į sąrašą. §**Visa kita tapo pilka**§, o įrašas,
+kurį ką tik panaudojote, virto §**Atšaukti**§.
+
+Vienas prašymas vienu metu vienai šaliai. Tai ne klaida, į kurią įsirėžėte, tai
+taisyklė: jie atsako į paskutinį jūsų žodį, ir kol neatsakė, jūsų vienintelis
+veiksmas -- jį atsiimti.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Tad baikite ėjimą. Prašymas išsiunčiamas, jie atsako, ir sąrašas grįžta.
+
+Jie gali atsisakyti. Tai jų reikalas, o ne jūsų kaltė.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Vėl Verrick. §**Sąjunga**§ yra kitas laiptelis -- ne vien pažadas nepulti, o
+pažadas prisijungti.
+
+Paprašykite jos.
+---
+@Signals Officer
+Su sąjungininku atsiranda dar vienas įrašas: §**Kvietimas į ginklą**§, kuris
+įtraukia juos į karą, kurį jau kariaujate.
+
+Jie gali atsisakyti ir to. Sąjungininkas, kuris atsisako du kartus, yra
+sąjungininkas popieriuje, ir maždaug tiek pat vertas.
+---
+@Signals Officer
+Du, kurių nepanaudojote: §**garantija**§ yra vienpusė -- jūs pažadate ginti ką
+nors, kas jums nieko nepažadėjo. Mažos šalys jas kaupia; didelės jas dalija,
+kad nusipirktų ramybę.
+
+O §**prekyba**§ -- tai prekės už pinigus kiekvieną ėjimą, kol kas nors ją
+atšaukia. Tai vienintelis įrašas, kuris jus abu padaro turtingesnius, todėl
+žmonės ir pamiršta, kad jis apskritai yra.
+---
+@Signals Officer
+Kai paktas pasirašytas, stebėkite, kas dingsta iš sąrašo: §**Paskelbti karą
+dingsta**§. Pirma turite paktą sulaužyti, viešai, kur visi mato, kaip tai
+darote.
+
+Tam paktas ir skirtas. Tai ne skydas, tai liudininkas.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+O §**kare**§ visas sąrašas susitraukia iki vieno įrašo: §**Prašyti paliaubų**§.
+Jis grįžta su sąlygomis -- kas sustoja ir kas ką pasilieka.
+
+Jie sutinka, kai pralaimi, ir atsisako, kai ne. Jokie prašymai nepakeičia, kuris
+iš šių dalykų yra tiesa.
+---
+@Signals Officer
+Kestrel šiame žemėlapyje yra raudona, ir tai sąrašas, kurį jie jums parodytų.
+---
+@Signals Officer
+Tai diplomatija. Dar kas nors?

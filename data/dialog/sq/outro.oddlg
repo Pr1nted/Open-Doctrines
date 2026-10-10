@@ -1,0 +1,32 @@
+// Përkthim - mbyllja. Rreshtat :: dhe emrat e folësve janë identifikues.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Këtu lart, pra. Dy gjëra që nuk janë në asnjë hartë.
+
+§**Ruajtjet.**§ Një botë e vërtetë e shkruan veten ndërsa luani dhe ju pret
+aty brenda. E jona jo -- asgjë nga ato që sapo bëtë nuk u ruajt, që është
+pak a shumë qëllimi i një ishulli stërvitjeje.
+---
+@Signals Officer
+:: point=menu.2
+§**Shumë lojtarë.**§ Një kompjuter pret lojën dhe të gjithë të tjerët
+lidhen me të. Një radhë zgjidhet kur çdo lojtar ka thënë që është gati, ndaj
+një lojë ecën me shpejtësinë e më të ngadaltit.
+
+Luani me njerëz që u përgjigjen mesazheve.
+---
+@Pr1nted
+Ende këtu? Mirë. Është e kujdesshme, këtë duhet t'ia pranoj.
+
+Doni të kalojmë edhe diçka tjetër, apo mbaruam?
+> Përsëri poshtë, për diçka të veçantë -> world:specifics
+> Kaq ishte, faleminderit
+---
+@Pr1nted
+:: act=end_tutorial
+Mirë. Shkoni humbni disa herë, kështu futesh në lojë.
+
+Pr1nted mbyll.

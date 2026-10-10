@@ -1,0 +1,47 @@
+// Översättning av tut_ships.oddlg -- överfarten till sjöss.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Fartyg, då. Det är här de flesta kör fast, och de kör fast på samma ställe
+varje gång: armén står vid kusten och ingenting händer.
+---
+@Signals Officer
+En armé tar sig inte över vatten av sig själv, och det finns ingen order
+"lasta på det där fartyget". Det är provinsen som gör det.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Välj en kustprovins som har en §**hamn**§ OCH §**trupper som står i den**§.
+Att skeppa in flyttar garnisonen som redan finns där; en tom hamn skeppar inte
+in någonting alls, och det är där det mesta av förvirringen börjar.
+
+Dess panel har §**Skeppa in armé**§ -- gratis, ett drag. Tryck på den och avsluta draget.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Trupperna är nu en §**båt**§ utanför kusten. Gå till vyn §**Flotta**§ -- fartyg
+tar inga order från någon av de andra sju.
+
+§{key=ship_move}§ flyttar den, §{key=ship_wheel}§ öppnar dess kanoner,
+§{key=ship_engage}§ säger åt den att söka strid.
+---
+@Signals Officer
+För att landstiga: välj båten, tryck på §**Flytta**§ och klicka på §**land**§.
+
+Vatten flyttar den. Land lastar av den. En knapp gör båda, vilket är varför
+folk seglar fram och tillbaka och letar efter den andra.
+---
+@Signals Officer
+Två saker ingen berättar.
+
+En lastad transport är ett mål, och den sjunker med trupperna ombord. Och en
+landstigning i en försvarad provins kommer fram trött -- ta den tomma kusten
+bredvid och gå, i stället för att landstiga rakt på fästningen.
+---
+@Signals Officer
+§**Hallow Rock**§, i sundet, är inte valfri. En båt har en räckvidd, och den
+bortre ön ligger utanför den -- så klippan är den första landstigningen, och
+det andra hoppet går därifrån.
+
+Det var fartyg. Något mer?

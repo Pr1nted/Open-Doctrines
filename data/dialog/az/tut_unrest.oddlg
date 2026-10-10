@@ -1,0 +1,75 @@
+// Tərcümə - iddialar, narazılıq və üsyan.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+İddialar və narazılıq. İddialar panelini açın. İnterfeys nə desə desin, bu,
+eyni mövzudur.
+---
+@Signals Officer
+§**İddia**§ dünyanın dözdüyü müharibə ilə hamını sizə qarşı birləşdirən müharibə
+arasındakı fərqdir. Əlinizdəki iddianı irəli sürsəniz, köhnə bir haqsızlığın
+əvəzini çıxırsınız; heç vaxt iddia etmədiyiniz torpağı alsanız, haqsızlığın
+özü siz olursunuz.
+---
+@Signals Officer
+İddianı müharibədən §**əvvəl**§ qaldırın, sonra yox. Vilayəti aldıqdan bir gediş
+sonra qaldırılan iddia heç kimi aldatmır, qiyməti isə eyni qalır.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Bağlayın.
+---
+@Signals Officer
+§**Narazılıq**§ torpaq tutmağın torpağın özünə etdiyidir. Fəth olunmuş
+vilayətlər buna kin bəsləyir, azlıqlar daha çox, hərbi mükəlləfiyyət və senzura
+isə sizə indi güc qazandırır, əvəzində sonra narazılıq gətirir.
+---
+@Signals Officer
+Müəyyən həddi keçəndə vilayət ödəməyi dayandırır və təşkilatlanmağa başlayır.
+Növbəti həddi keçəndə çıxıb gedir — həm də §**ölkə**§ kimi, sizin sənayeniz,
+sizin əhaliniz və sizin barənizdə çox konkret bir fikirlə.
+
+Sizə xəbərdarlıq edilir. Hər dəfə ikincisi edilmir.
+---
+@Signals Officer
+Müalicə ya xoşagəlməz, ya da yavaşdır: qarnizon yerləşdirin, pul xərcləyin, ya
+da istədiyini verin. Tez seçin, çünki üçü də işə düşmək üçün gedişlər tələb edir.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Pulun çoxu məhz pul xərcləyəndə hədər gedir. Siyasəti açın, sonra
+§**Rayonlar**§.
+
+---
+@Signals Officer
+Büdcə əvvəllər bütün ölkənin üstünə birdən düşürdü — silahlanan rayona da, sakit
+qəsəbəyə də eyni ağırlıq. Ona görə ölkəni hissələrə bölün. §**Rayon**§ ölkənin
+vahid kimi idarə etdiyiniz bir parçasıdır: vilayətləri ona rəngləyin, ona rəng
+verin, ona §**pay**§ verin. Paylar həmişə yüzə bərabərdir, çünki büdcə birdir.
+
+---
+@Signals Officer
+Önəmli olan §**pulun**§ payının §**torpağın**§ payına nisbətidir. Ölkənin onda
+birini tutan və büdcənin onda birini alan rayon əvvəlki kimi qorunur — yəni
+paylar qeyri-bərabər olmayınca bölmək heç nəyi dəyişmir.
+
+---
+@Signals Officer
+Problemin ətrafında kiçik rayon çəkin, ona pulun dörddə birini verin, orada
+nəzarət bir neçə dəfə sərtləşəcək; panel sizə rəqəmi deyəcək. Bunun əvəzini
+qalan hər yer ödəyir, qərar da elə budur. Bərabər bölmək üçün düymə var:
+başlamaq üçün ağlabatan yerdir, qalmaq üçün nadir hallarda.
+
+Rayon həm də öz §**regional qanununu**§ qəbul edir: komendant saatı, vergi
+tətili, məhkəmələrin hansı dildə işləməsi. Kiçik, yerli, hər biri bir güzəşt.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Bağlayın.
+
+---
+@Signals Officer
+Narazılıq bu qədər. Başqa nə?

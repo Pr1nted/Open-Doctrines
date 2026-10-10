@@ -1,0 +1,39 @@
+// Vertaling: de economie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+De economie. Open hem. Al het andere in dit spel is een discussie over hoe je
+uitgeeft wat dit oplevert.
+---
+@Signals Officer
+§**Industrie**§ groeit waar al mensen zijn. Een fabriek in een lege provincie
+is een dure schuur: de bevolking is de grondstof, niet het gebouw.
+---
+@Signals Officer
+Dus elke provincie geeft aan wat ze aankan: §**Niveau II van VI**§, en als ze
+vol is, zegt ze dat. Mensen, hoe dicht ze op elkaar wonen, de grond, en wat
+erin begraven ligt: die vier bepalen het plafond, en geen hoeveelheid geld
+verschuift het.
+---
+@Signals Officer
+Inkomsten komen één keer per beurt binnen, precies op de beurt. Leg je meer
+vast dan je hebt, dan wacht het tekort niet beleefd af: het gaat van de
+paraatheid af, en daar kom je achter in een veldslag.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Weer eruit, dan kijken we in plaats daarvan naar één provincie.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klik op een van de onze. Per provincie toont het paneel wat ze produceert en
+wat ze bezit. Grondstoffen zijn bewerkt meer waard dan gedolven, dus een
+industriële provincie naast een rijke is meer waard dan elk van beide alleen.
+---
+@Signals Officer
+En beleid is een §**vaste rekening**§, geen aankoop. Elk beleid dat je voert,
+wordt elke beurt afgetrokken, voor altijd, of het nog iets doet of niet.
+
+Dat is de economie. Nog iets?

@@ -1,0 +1,310 @@
+// Traduko - la leciono de Mia. La ::, la parolantoj kaj {key=...} estas identigiloj.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Nu. Ashford. Sep provincoj, unu najbaro, kiu jam malŝatas nin, kaj insulo, al
+kiu ni ne povas piediri.
+
+Sufiĉe malgranda por lerni sur ĝi. Tio estas la tuta kialo, kial ni estas ĉi
+tie.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Alklaku iun ajn provincon, kaj ĉi tiu panelo diras al vi, kio ĝi estas: kiu
+posedas ĝin, kiu loĝas tie, kion ĝi produktas kaj kiom proksime ili estas al
+tumulto pro tio.
+
+Ĉion, kion vi faras en ĉi tiu ludo, vi faras al provinco.
+---
+@Signals Officer
+:: point=view.population
+La strio malsupre ne estas ok butonoj. Ĝi estas ok manieroj rigardi la SAMAN
+mapon, kaj vi pasigos la tutan ludon ŝanĝante inter ili.
+
+Ĉi tiu kolorigas ĉiun provincon laŭ tio, kiom da homoj loĝas en ĝi.
+---
+@Signals Officer
+:: point=view.industry
+Industrio. Kie estas la fabrikoj, kaj do de kie venas la mono kaj la ekipaĵo.
+
+Loĝantaro kaj industrio kune diras al vi, kiuj provincoj valoras konkeron kaj
+kiuj estas nura grundo.
+---
+@Signals Officer
+:: point=view.defence
+Defendo montras la fortikaĵojn. Malhela signifas, ke iu enfosiĝis, kaj atako
+en malhelan teritorion kostas multe pli ol la nombroj sugestas.
+---
+@Signals Officer
+:: point=view.relations
+Rilatoj: kiu militas kontraŭ kiu, kaj kiu garantias kiun. Kontrolu ĝin antaŭ
+ol komenci ion -- duono de la militoj, kiujn oni perdas ĉi tie, estis kontraŭ
+tri landoj, ne unu.
+---
+@Signals Officer
+:: point=view.army
+Armeo. Ĉiu garnizono sur la mapo samtempe, viaj kaj iliaj.
+
+En ĉi tiu vi estu, dum vi movas homojn, ĉar ĝi estas la sola, kiu montras,
+kio atendas ilin.
+---
+@Signals Officer
+:: point=view.navy
+Mararmeo faras la samon por ŝipoj, kaj de tie vi ŝarĝas transportŝipojn.
+
+Rimedoj kaj Nomoj de landoj estas la lastaj du, kaj ili faras tion, kion ili
+diras.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**La Ekonomio**§ unue, ĉar ĉio alia estas pagata el ĝi.
+
+Malfermu ĝin.
+---
+@Signals Officer
+Industrio estas tio, per kio vi konstruas, kaj ĝi kreskas tie, kie jam estas
+loĝantaro. Metu fabrikon en malplenan lokon, kaj vi aĉetis tre multekostan
+budon.
+
+Enspezo alvenas unufoje en ĉiu vico. Elspezu ĝin antaŭ ol vi havas ĝin, kaj
+la manko estas deprenata de la batalpreteco.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Nun fermu ĝin denove -- per la sama butono. La panelo kovras la mapon, kaj mi
+povas montri al vi nenion tie ekstere, dum vi estas ĉi tie.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Poste la §**Esplorado**§. Malfermu ĝin.
+---
+@Signals Officer
+Nenio, kion vi komencas ĉi tie, finiĝas en ĉi tiu vico, kaj la plejparto
+finiĝas longe post kiam vi forgesis, ke vi volis ĝin.
+
+Ĝuste tial indas komenci frue.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Denove eksteren.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politiko**§. Eniru.
+---
+@Signals Officer
+Politikoj kostas daŭrajn elspezojn, ne unufojan sumon -- ili estas konstanta
+fakturo, kaj ili movas la landon politike.
+
+Varbdevo plenigas la armeon. Ĝi ankaŭ kreas homojn, kiuj ne volis esti en la
+armeo, kaj jen la nombro observinda.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Kaj eksteren.
+---
+@Signals Officer
+Tiu nombro estas la §**malkvieto**§.
+
+Provinco kun alta malkvieto ĉesas pagi kaj komencas organiziĝi. Ignoru ĝin
+sufiĉe longe, kaj ĝi foriras -- kun sia industrio, sia loĝantaro kaj sia
+opinio pri vi.
+
+Vi ricevas averton. Ne ĉiam vi ricevas duan.
+---
+@Signals Officer
+:: point=view.relations
+Ankoraŭ unu afero antaŭ la paneloj: milito ne devas finiĝi per ies morto.
+
+Proponoj pri §**batalhalto**§ kaj §**komerco**§ alvenas kiel fenestro kun
+kondiĉoj sur ĝi -- kiu ĉesas batali, kiu cedas kion. Legu la kondiĉojn.
+Akceptu, kaj la milito finiĝas laŭ tiuj kondiĉoj, ne laŭ afablaj.
+---
+@Signals Officer
+Vi ankaŭ povas iniciati unu, el la vido de rilatoj: elektu landon, kontraŭ kiu
+vi militas, kaj petu. Ili diras jes, kiam ili perdas, kaj ne, kiam ne, kaj
+tio estas la plejparto de la diplomatio en ĉi tiu ludo.
+
+§**Komerca interkonsento**§ havas la saman formon sen la milito: varoj kontraŭ
+mono, ĉiun vicon, ĝis iu nuligas ĝin.
+---
+@Signals Officer
+Kaj neniu proponos al vi iun ajn el ili dum ĉi tiu leciono. Mi diris al ili,
+ke ne.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Lasta panelo. §**Postuloj**§ estas tio, kio igas militon legitima.
+---
+@Signals Officer
+Premu postulon, kiun vi havas, kaj la mondo levas la ŝultrojn. Prenu
+teritorion, kiun vi neniam postulis, kaj ĉiu, kiu ĝis nun hezitis pri vi,
+ĉesas heziti.
+
+Faru la postulon ANTAŬ la milito. Postulo farita poste trompas neniun.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Fermu ĝin, kaj ni iru uzi iom el ĉio ĉi.
+---
+@Signals Officer
+Nun la armeo.
+
+Elektu provincon, kiun vi posedas, tenu §{key=army_move}§ kaj alklaku, kien la
+homoj iru. Nur al najbara provinco -- armeo piediras, ĝi ne teleportiĝas.
+---
+@Signals Officer
+Artilerio estas sur §{key=artillery_wheel}§. Tenu ĝin, kaj la rado malfermiĝas:
+de morteroj ĝis aferoj, kiujn mi prefere ne skribus.
+
+Ŝipoj havas siajn proprajn: §{key=ship_move}§ por movi, §{key=ship_wheel}§ por
+iliaj kanonoj, §{key=ship_engage}§ por serĉi batalon.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ankaŭ armeoj ne aperas el nenio. §**Vi varbas ilin**§, provinco post provinco,
+el la homoj, kiuj loĝas tie.
+
+Elektu unu el niaj kaj rigardu la panelon.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Estas ŝovilo kaj butono §**Varbi**§. La ŝovilo estas kiom el tio, kion la
+provinco povas ŝpari, vi prenas en ĉi tiu vico -- maksimume proksimume
+kvinonon de ĝia loĝantaro, malpli kie homoj estas malkontentaj.
+
+Ĝi kostas monon, kaj la homoj alvenas en la sekva vico. Ordonu kelkajn nun.
+---
+@Signals Officer
+Provinco, kiun vi senigis je soldatoj, estas provinco, en kiun iu ajn povas
+eniri, kaj tiu, kiun vi senigis je loĝantoj, estas por ĉiam pli malriĉa.
+Varbi estas elspezi ion, ne krei ĝin.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Antaŭ ol movi iun ajn: §**nenio okazas, ĝis vi finas la vicon.**§
+
+Eble vi rimarkis, ke ĝi estis griza ĝis nun. Tio estis mi.
+
+Vi donas ordonojn. Ili atendas. Vi premas ĉi tion, kaj tiam ĉiuj okazas
+samtempe -- tial tuta kampanjo povas esti decidita en unu sola vico, se la
+ordonoj estis bonaj.
+---
+@Signals Officer
+Kestrel tenas la orientan finon de nia insulo, ili jam militas kontraŭ ni, kaj
+ili havas kvardek ok mil homojn.
+
+Ni havas sepcent dudek mil.
+---
+@Signals Officer
+:: until=destroyed:KES
+Do faru ĝin en §**unu vico**§. Ordonu konkeri ĉiun ilian provincon -- ĉiujn
+kvar, unu post la alia, antaŭ ol fini ion ajn -- kaj poste premu Plenumi vicon
+kaj rigardu, kiel ĉio solviĝas.
+
+Tio estas la ritmo de ĉi tiu ludo. Ĉio alia estas detalo.
+---
+@Signals Officer
+:: act=rebellion
+... Vi havas problemon hejme.
+
+La malkvieto en la provincoj, kiujn vi ĵus prenis, superis la limon. Ili
+deklaris sin memstaraj, kaj ili ne petas permeson.
+---
+@Signals Officer
+:: until=rebels:none
+Jen kion mi celis. Ribelo nun estas lando -- ĝi havas provincojn, homojn kaj
+landlimon kun vi.
+
+Subpremu ĝin same kiel vi subpremus ion ajn alian. Ĝi ne estos tiel facila
+kiel Kestrel.
+---
+@Signals Officer
+Restas Verrick, trans la akvo.
+
+Neniu tervojo. Nenia marŝado venigas armeon tien, kaj ĉi tie la plej multaj
+haltas.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Kaj ni §**ne militas kontraŭ ili**§. Kestrel venis al ni jam malamika;
+Verrick faris nenion, kaj vi ne povas surteriĝi en lando, kun kiu vi estas en
+paco.
+
+Do ni deklaras. Iu ajn vido krom Loĝantaro, kaj alklaku unu el iliaj
+provincoj.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Ilia provinca panelo listigas, kion ni rajtas fari al ili, inter tio
+§**Deklari militon**§. Super ĝi estas la §**milita celo**§ -- tio, kion vi
+asertas celi. Alklaku ĝin por ŝanĝi.
+
+La celo ne estas ornamaĵo: laŭ ĝi la cetera mondo juĝas vin, kaj pri ĝi oni
+disputos poste en batalhalto.
+---
+@Signals Officer
+Deklaru ĝin -- kaj poste §**finu la vicon**§. Deklaro estas ordono kiel ĉiu
+alia: ĝi estas registrita nun kaj okazas, kiam la vico solviĝas. Nenio
+ŝanĝiĝas sur la mapo, ĝis vi premas la butonon.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Jen la tuta transiro, en kvar movoj. Elektu unu el niaj marbordaj provincoj
+-- unu kun §**haveno**§ kaj homoj en ĝi.
+---
+@Signals Officer
+:: point=panel.province
+Ĝi bezonas §**homojn starantajn en ĝi**§. Enŝipigo ne alvokas armeon el nenie
+-- ĝi metas la garnizonon, kiu jam estas tie, sur boaton, do haveno de
+malplena provinco enŝipigas nenion.
+
+Se necese, unue marŝigu kelkajn tien.
+---
+@Signals Officer
+:: point=panel.province
+Poste, en la panelo de tiu provinco: §**Enŝipigi armeon**§. Senpage, unu vico.
+
+Premu ĝin kaj finu la vicon. La garnizono forlasas la provincon kaj fariĝas
+§**boato**§ ĉe la marbordo, kiu portas ilin kiel sian skipon.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Nun iru al la vido §**Mararmeo**§. Vi ne povas doni ordonon al ŝipo el la
+loĝantara mapo -- la boato ne estas sur ĝi.
+---
+@Signals Officer
+Elektu la boaton. Premu §**Movi**§, kaj poste -- jen la parto, kiun neniu
+divenas -- alklaku §**teron**§.
+
+Akvo movas ĝin. Marbordo §**surterigas la homojn tie**§. Tio estas la
+surteriĝo; ne ekzistas aparta butono por ĝi.
+---
+@Signals Officer
+:: until=destroyed:VER
+Do: homoj en havena provinco, enŝipigo, fino de la vico, mararmea vido, movi
+la boaton, alklaki teron.
+
+Kaj iru §**tra Hallow Rock**§. Tio ne estas mallongigo, ĝi estas la vojo:
+boato portas nur ĝis certa distanco, kaj la marbordo de Verrick estas trans ĝi
+per unu iro. Surteriĝu sur la roko, finu la vicon, kaj poste transiru la duan
+duonon.
+
+Kaj tenu la boaton for de ilia destrojero. Ŝarĝita boato sinkas kun ĉiuj
+surŝipe.
+---
+@Signals Officer
+:: point=tab.claims
+Kaj postulu la teritorion antaŭ ol preni ĝin, ne poste. Nun vi scias kial.
+---
+@Signals Officer
+Tio estas ĉio. Ekonomio, esplorado, politiko, malkvieto, postuloj, armeoj,
+ŝipoj.
+
+Ĉio alia estas detalo, kaj la detalojn vi lernos perdante pro ili.
+---
+@Signals Officer
+:: act=then:outro
+Kaj tio estas la insulo. Revenu kun mi supren al la menuo -- la lastaj du
+aferoj ne estas ĉi tie malsupre.

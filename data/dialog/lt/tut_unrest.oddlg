@@ -1,0 +1,77 @@
+// Vertimas -- pretenzijos, neramumai ir sukilimai.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Pretenzijos ir neramumai. Atidarykite pretenzijų skydelį. Tai viena tema, ką besakytų sąsaja.
+---
+@Signals Officer
+§**Pretenzija**§ yra skirtumas tarp karo, kurį pasaulis toleruoja, ir karo,
+kuris suvienija visus prieš jus. Įgyvendinkite turimą pretenziją, ir jūs
+sprendžiate seną nuoskaudą; užimkite žemę, į kurią niekada nepretendavote, ir
+nuoskauda esate jūs.
+---
+@Signals Officer
+Pareikškite pretenziją §**prieš**§ karą, ne po jo. Pretenzija, pareikšta ėjimą
+po provincijos užėmimo, nieko neapgauna ir kainuoja tiek pat.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Uždarykite.
+---
+@Signals Officer
+§**Neramumai**§ yra tai, ką žemės užėmimas padaro žemei. Užkariautos provincijos
+piktinasi, mažumos -- dar labiau, o šaukimas ir cenzūra abu perka jums jėgą
+dabar neramumų sąskaita vėliau.
+---
+@Signals Officer
+Peržengus tam tikrą slenkstį provincija nustoja mokėti ir pradeda organizuotis.
+Peržengus kitą, ji išeina -- ir išeina kaip §**šalis**§, su jūsų pramone, jūsų
+gyventojais ir labai konkrečia nuomone apie jus.
+
+Įspėjimą gausite. Antro -- ne visada.
+---
+@Signals Officer
+Vaistai nepopuliarūs arba lėti: įkurdinkite garnizoną, leiskite jai pinigus arba
+duokite jai tai, ko ji nori. Rinkitės anksti, nes visiems trims reikia ėjimų,
+kad suveiktų.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Būtent išlaidose didžioji dalis ir nueina perniek. Atidarykite Politiką, tada
+§**Apygardos**§.
+
+---
+@Signals Officer
+Biudžetas anksčiau krisdavo ant visos šalies iš karto -- toks pats svoris ramiai
+apskričiai kaip ir tai, kuri ginkluojasi. Tad padalykite šalį. §**Apygarda**§
+yra jos dalis, kurią valdote kaip vienetą: nudažykite į ją provincijas, duokite
+jai spalvą, duokite jai §**dalį**§. Dalys visada sudaro šimtą, nes biudžetas tik
+vienas.
+
+---
+@Signals Officer
+Svarbu §**pinigų**§ dalis palyginti su §**žemės**§ dalimi. Apygarda, turinti
+dešimtadalį šalies su dešimtadaliu biudžeto, prižiūrima lygiai taip pat kaip
+anksčiau -- tad padalijimas nieko nekeičia, kol nepadarote dalių nelygių.
+
+---
+@Signals Officer
+Nubrėžkite mažą apygardą aplink bėdos židinį, duokite jai ketvirtadalį pinigų,
+ir ji bus prižiūrima kelis kartus griežčiau; skydelis pasako skaičių. Visur
+kitur už tai sumoka, ir tai ir yra sprendimas. Yra mygtukas padalyti po lygiai:
+protinga vieta pradėti ir retai vieta likti.
+
+Apygarda taip pat priima savo §**regioninį įstatymą**§: komendanto valandą,
+mokesčių atostogas, kokia kalba kalba teismai. Mažas, vietinis, ir kiekvienas
+yra kompromisas.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Uždarykite.
+
+---
+@Signals Officer
+Tai neramumai. Dar kas nors?

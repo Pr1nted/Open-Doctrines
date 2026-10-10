@@ -1,0 +1,38 @@
+// Vertimas -- ekonomika.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ekonomika -- atidarykite ją. Visa kita žaidime yra ginčas, kaip išleisti tai, ką
+ji pagamina.
+---
+@Signals Officer
+§**Pramonė**§ auga ten, kur jau yra žmonių. Gamykla tuščioje provincijoje yra
+brangi daržinė -- gyventojai yra žaliava, o ne pastatas.
+---
+@Signals Officer
+Todėl kiekviena provincija nurodo, ką ji pakelia: §**Lygis II iš VI**§, o kai ji
+pilna, ji tai ir sako. Žmonės, kaip tankiai jie gyvena, žemė ir tai, kas joje
+užkasta -- šie keturi dalykai nustato lubas, ir jokie pinigai jų nepastumia.
+---
+@Signals Officer
+Pajamos ateina kartą per ėjimą, ėjimo metu. Įsipareigokite daugiau, nei turite,
+ir trūkumas mandagiai nelaukia: jis atimamas iš kovinės parengties, ir jūs apie
+tai sužinote mūšyje.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Vėl lauk, ir verčiau pažiūrėsime į vieną provinciją.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Spustelėkite vieną iš mūsų. Kiekvienai provincijai skydelis rodo, ką ji gamina
+ir ką turi. Ištekliai vertingesni perdirbti nei iškasti, todėl pramoninė
+provincija šalia turtingos vertesnė už bet kurią iš jų atskirai.
+---
+@Signals Officer
+O politikos yra §**nuolatinė sąskaita**§, ne pirkinys. Kiekviena, kurią vykdote,
+atimama kiekvieną ėjimą, amžinai, nesvarbu, ar ji dar ką nors daro.
+
+Tai ekonomika. Dar kas nors?

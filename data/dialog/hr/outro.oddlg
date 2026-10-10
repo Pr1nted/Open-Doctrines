@@ -1,0 +1,32 @@
+// Prijevod - zajednički završetak svih putova.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Dakle, ovdje gore. Dvije stvari kojih nema ni na jednoj karti.
+
+§**Spremljene igre.**§ Pravi svijet sam se zapisuje dok igrate i čeka vas
+ondje. Naš nije -- ništa od onoga što ste upravo učinili nije sačuvano, što je
+otprilike i smisao otoka za vježbu.
+---
+@Signals Officer
+:: point=menu.2
+§**Više igrača.**§ Jedno računalo je domaćin, a svi ostali mu se pridružuju.
+Potez se razrješava kad svaki igrač javi da je spreman, pa se igra kreće
+brzinom najsporijeg.
+
+Igrajte s ljudima koji odgovaraju na poruke.
+---
+@Pr1nted
+Još ste živi? Dobro. Temeljita je, to joj moram priznati.
+
+Želite li još nešto proći, ili smo gotovi?
+> Vrati me dolje da obradimo nešto određeno -> world:specifics
+> To je sve, hvala
+---
+@Pr1nted
+:: act=end_tutorial
+Dobro. Idite izgubiti nekoliko partija, tako se to nauči.
+
+Pr1nted se odjavljuje.

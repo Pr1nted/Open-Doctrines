@@ -1,0 +1,97 @@
+// Bản dịch — ngoại giao.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Ngoại giao. Tất cả nằm trong một danh sách, và danh sách đó thuộc về một
+§**quốc gia**§ — nên bạn mở nó bằng cách nhấp vào lãnh thổ của ai đó.
+
+Tôi sẽ chờ ở từng bước. Ở đây không có gì nhanh cả.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Trước tiên, chế độ §**Quan hệ**§. Nó tô bản đồ theo ai đang đánh nhau với ai, ai
+là đồng minh, và ai đã bảo đảm cho ai.
+---
+@Signals Officer
+Hãy xem nó trước khi bạn bắt đầu bất cứ chuyện gì. Một nửa số cuộc chiến người
+ta thua ở đây là đánh với ba nước chứ không phải một — và cả ba đều đã có mặt
+trên bản đồ này trước phát súng đầu tiên.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Giờ nhấp vào một tỉnh thuộc về §**Verrick**§, bên kia mặt nước.
+
+Không phải Kestrel: ta đã đang đánh nhau với họ, và một nước đang có chiến tranh
+với bạn chỉ đưa ra đúng một lựa chọn. Ta sẽ nói đến nó sau — và cho đến khi bạn
+chọn một nước đang hòa bình với ta, trang này sẽ cứ thế chờ.
+---
+@Signals Officer
+Bảng của họ đã hiện ra một danh sách. Trong đó có gì hoàn toàn phụ thuộc vào
+việc hai bên hiện đang là gì của nhau — bạn không bao giờ được chọn từ mọi lựa
+chọn, chỉ từ những lựa chọn mà mối quan hệ hiện tại cho phép.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Thứ nhẹ nhàng nhất trong đó là §**hiệp ước không xâm lược**§: một lời hứa không
+tấn công, và không gì hơn.
+
+Hãy đề nghị một cái. Đề nghị thì chẳng tốn gì.
+---
+@Signals Officer
+Đã gửi — và giờ nhìn vào danh sách. §**Mọi thứ khác đã bị mờ xám**§, và mục bạn
+vừa dùng đã biến thành §**Hủy**§.
+
+Mỗi lần một yêu cầu tới một nước. Đó không phải lỗi bạn vừa gặp, đó là quy tắc:
+họ đang trả lời điều cuối cùng bạn nói, và cho đến khi họ trả lời, nước đi duy
+nhất của bạn là rút lại nó.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Vậy hãy kết thúc lượt. Yêu cầu được gửi đi, họ trả lời, và danh sách trở lại.
+
+Họ có thể từ chối. Đó là chuyện của họ, không phải lỗi của bạn.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Lại là Verrick. Một §**liên minh**§ là bậc tiếp theo — không chỉ là lời hứa
+không tấn công, mà là lời hứa sẽ tham chiến cùng.
+
+Hãy đề nghị một cái.
+---
+@Signals Officer
+Khi có đồng minh, thêm một mục xuất hiện: §**Kêu gọi tòng quân**§, kéo họ vào
+một cuộc chiến bạn đang đánh.
+
+Họ cũng có thể từ chối việc đó. Một đồng minh từ chối hai lần là đồng minh trên
+giấy, và đáng giá cũng chừng ấy.
+---
+@Signals Officer
+Hai thứ bạn chưa dùng: §**bảo đảm**§ là thứ một chiều — bạn hứa bảo vệ một kẻ
+chẳng hứa gì với bạn. Nước nhỏ đi gom chúng; nước lớn phát chúng ra để mua sự
+yên ổn.
+
+Còn §**thương mại**§ là hàng đổi tiền mỗi lượt, cho đến khi có người hủy. Đó là
+mục duy nhất làm cả hai bên giàu lên, và vì thế đó là mục người ta hay quên là
+nó có tồn tại.
+---
+@Signals Officer
+Khi một hiệp ước đã ký, hãy xem thứ gì rời khỏi danh sách: §**Tuyên chiến
+biến mất**§. Bạn phải phá hiệp ước trước, công khai, nơi mọi người đều thấy bạn
+làm điều đó.
+
+Hiệp ước là để làm vậy. Nó không phải tấm khiên, nó là nhân chứng.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Còn khi có §**chiến tranh**§, cả danh sách co lại còn một mục: §**Đề nghị
+ngừng bắn**§. Nó quay về kèm điều khoản — ai dừng lại, và ai giữ được gì.
+
+Họ chấp nhận khi đang thua và từ chối khi không thua. Hỏi bao nhiêu lần cũng
+không thay đổi được điều nào trong hai điều đó là sự thật.
+---
+@Signals Officer
+Kestrel có màu đỏ trên bản đồ này, và đó là danh sách họ sẽ cho bạn thấy.
+---
+@Signals Officer
+Ngoại giao là vậy đó. Còn gì nữa không?

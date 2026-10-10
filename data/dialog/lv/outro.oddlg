@@ -1,0 +1,32 @@
+// Tulkojums -- kopīgās beigas visiem ceļiem. :: rindas un "world:" mērķi ir identifikatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Tātad šeit augšā. Divas lietas, kas nav nevienā kartē.
+
+§**Saglabājumi.**§ Īsta pasaule pierakstās pati, kamēr spēlējat, un gaida jūs
+tur. Mūsējā ne -- nekas no tā, ko tikko darījāt, netika saglabāts, un treniņu
+salai tā arī jābūt.
+---
+@Signals Officer
+:: point=menu.2
+§**Vairāku spēlētāju spēle.**§ Viens dators uztur spēli, un visi pārējie tam
+pievienojas. Gājiens atrisinās, kad katrs spēlētājs ir paziņojis, ka ir gatavs,
+tāpēc spēle virzās lēnākā spēlētāja tempā.
+
+Spēlējiet ar cilvēkiem, kas atbild uz ziņām.
+---
+@Pr1nted
+Vēl elpojat? Labi. Viņa ir pamatīga, to nu gan jāatzīst.
+
+Vēl kaut ko vēlaties izrunāt, vai esam galā?
+> Atpakaļ lejā, izrunāt kaut ko konkrētu -> world:specifics
+> Tas ir viss, paldies
+---
+@Pr1nted
+:: act=end_tutorial
+Labi. Ejiet un zaudējiet dažas spēles, tā tas iesēžas galvā.
+
+Pr1nted beidz sakarus.

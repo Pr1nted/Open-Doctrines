@@ -1,0 +1,48 @@
+// Vertaling: de oversteek over zee, in detail.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Schepen dan. Hier lopen de meeste mensen op vast, en altijd op dezelfde plek:
+het leger staat aan de kust en er gebeurt niets.
+---
+@Signals Officer
+Een leger steekt het water niet op eigen houtje over, en er bestaat geen bevel
+"laad op dat schip". Dat doet de provincie.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Selecteer een kustprovincie met een §**haven**§ EN §**manschappen erin**§.
+Inschepen verplaatst het garnizoen dat er al staat; een lege haven scheept
+helemaal niets in, en daar begint de meeste verwarring.
+
+Het paneel heeft §**Leger inschepen**§: gratis, één beurt. Druk erop en
+beëindig de beurt.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+De manschappen zijn nu een §**boot**§ voor de kust. Ga naar de weergave
+§**Marine**§: schepen nemen geen bevelen aan vanuit een van de andere zeven.
+
+§{key=ship_move}§ verplaatst hem, §{key=ship_wheel}§ opent zijn kanonnen,
+§{key=ship_engage}§ laat hem een gevecht aangaan.
+---
+@Signals Officer
+Landen: selecteer de boot, druk op §**Verplaatsen**§ en klik op §**land**§.
+
+Water verplaatst hem. Land laadt hem uit. Eén knop doet allebei, en daarom
+varen mensen heen en weer op zoek naar die andere.
+---
+@Signals Officer
+Twee dingen die niemand je vertelt.
+
+Een geladen transport is een doelwit, en het zinkt met de manschappen aan
+boord. En een landing in een verdedigde provincie komt vermoeid aan: neem de
+lege kust ernaast en loop, in plaats van op het fort te landen.
+---
+@Signals Officer
+§**Hallow Rock**§, in de zeestraat, is niet optioneel. Een boot heeft een
+bereik, en het verre eiland ligt daarbuiten, dus de rots is de eerste landing
+en de tweede sprong vertrekt van daar.
+
+Dat zijn schepen. Nog iets?

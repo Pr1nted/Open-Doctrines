@@ -1,0 +1,304 @@
+// Prijevod - Mijina lekcija. ::, govornici i {key=...} su identifikatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Dakle. Ashford. Sedam pokrajina, jedan susjed koji nas već ne voli i otok
+do kojeg ne možemo pješice.
+
+Dovoljno malo da se na tome uči. To je jedini razlog zašto smo ovdje.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kliknite bilo koju pokrajinu i ova će vam ploča reći što je ona: tko je
+posjeduje, tko ondje živi, što proizvodi i koliko su blizu pobune zbog toga.
+
+Sve što radite u ovoj igri, radite nekoj pokrajini.
+---
+@Signals Officer
+:: point=view.population
+Traka na dnu nije osam gumba. To je osam načina gledanja na ISTU kartu, i
+cijelu ćete igru prebacivati između njih.
+
+Ovaj boji svaku pokrajinu prema tome koliko ljudi u njoj živi.
+---
+@Signals Officer
+:: point=view.industry
+Industrija. Gdje su tvornice, a time i odakle dolaze novac i oprema.
+
+Stanovništvo i industrija zajedno govore vam koje pokrajine vrijedi zauzeti, a
+koje su samo zemlja.
+---
+@Signals Officer
+:: point=view.defence
+Obrana prikazuje utvrde. Tamno znači da se netko ukopao, a napad na tamno tlo
+stoji daleko više nego što brojke daju naslutiti.
+---
+@Signals Officer
+:: point=view.relations
+Odnosi: tko je s kim u ratu i tko komu jamči. Provjerite ih prije nego što
+nešto započnete -- pola ratova koje ljudi ovdje izgube vođeno je protiv tri
+države, a ne jedne.
+---
+@Signals Officer
+:: point=view.army
+Vojska. Svaka posada na karti odjednom, vaša i njihova.
+
+U ovom prikazu valja biti dok pomičete ljude, jer je jedini koji pokazuje što
+ih ondje čeka.
+---
+@Signals Officer
+:: point=view.navy
+Mornarica čini isto za brodove, i odatle ukrcavate transporte.
+
+Sirovine i Imena zemalja posljednja su dva i rade točno ono što kažu.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Gospodarstvo**§, najprije, jer se sve ostalo plaća iz njega.
+
+Otvorite ga.
+---
+@Signals Officer
+Industrija je ono čime gradite, a raste ondje gdje stanovništvo već postoji.
+Stavite tvornicu negdje gdje nema nikoga i kupili ste vrlo skupu šupu.
+
+Prihod stiže jednom po potezu. Potrošite ga prije nego što ga imate i manjak
+ide na račun spremnosti.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Sad ga ponovno zatvorite -- isti gumb. Ploča prekriva kartu, a ja vam ne mogu
+ništa ondje vani pokazati dok ste ovdje unutra.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Sljedeće je §**Istraživanje**§. Otvorite ga.
+---
+@Signals Officer
+Ništa što ovdje započnete neće završiti u ovom potezu, a većina toga završi
+dugo nakon što ste zaboravili da ste to uopće htjeli.
+
+Upravo zato vrijedi početi rano.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Opet van.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Izvolite unutra.
+---
+@Signals Officer
+Politike koštaju održavanje, a ne jednokratni iznos -- one su stalni račun i
+pomiču državu po političkoj ljestvici.
+
+Vojna obveza puni redove. Ona također stvara ljude koji nisu htjeli biti u tim
+redovima, i to je broj koji treba pratiti.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+I van.
+---
+@Signals Officer
+Taj broj su §**nemiri**§.
+
+Pokrajina s visokim nemirima prestaje plaćati i počinje se organizirati.
+Ignorirajte to dovoljno dugo i ona ode -- sa svojom industrijom, svojim
+stanovništvom i svojim mišljenjem o vama.
+
+Dobit ćete upozorenje. Ne dobijete uvijek i drugo.
+---
+@Signals Officer
+:: point=view.relations
+Još nešto prije ploča: rat ne mora završiti tako da netko umre.
+
+Ponude za §**primirje**§ i §**trgovinu**§ stižu kao prozor s uvjetima -- tko
+prestaje s borbom, tko se čega odriče. Pročitajte uvjete. Prihvatite i rat
+završava pod tim uvjetima, a ne pod lijepima.
+---
+@Signals Officer
+I sami možete ponuditi jedno, iz prikaza odnosa: odaberite državu s kojom ste
+u ratu i pitajte. Kažu da kad gube, a ne kad ne gube, i to je većina
+diplomacije u ovoj igri.
+
+§**Trgovinski sporazum**§ istog je oblika, samo bez rata: roba za novac, svaki
+potez, dok ga netko ne otkaže.
+---
+@Signals Officer
+I nitko vam neće ponuditi ni jedno ni drugo tijekom ove lekcije. Rekla sam im
+da ne smiju.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Posljednja ploča. §**Zahtjevi**§ su način na koji rat postaje legitiman.
+---
+@Signals Officer
+Ostvarite zahtjev koji imate i svijet samo slegne ramenima. Uzmite zemlju na
+koju nikad niste polagali pravo, i svi koji su bili neodlučni o vama prestaju
+biti neodlučni.
+
+Postavite zahtjev PRIJE rata. Onaj podnesen poslije nikoga ne zavarava.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zatvorite ploču, pa idemo nešto od ovoga upotrijebiti.
+---
+@Signals Officer
+Sad vojska.
+
+Odaberite pokrajinu koju posjedujete, držite §{key=army_move}§ i kliknite kamo
+ljudi trebaju ići. Samo susjedna pokrajina -- vojska hoda, ne teleportira se.
+---
+@Signals Officer
+Topništvo je na §{key=artillery_wheel}§. Držite ga i otvara se kotač: od
+minobacača pa do stvari koje radije ne bih stavljala na papir.
+
+Brodovi imaju svoje: §{key=ship_move}§ za kretanje, §{key=ship_wheel}§ za
+njihove topove, §{key=ship_engage}§ da zametnu borbu.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ni vojske ne nastaju ni iz čega. §**Novačite ih**§, pokrajinu po pokrajinu,
+od ljudi koji ondje žive.
+
+Odaberite jednu od naših i pogledajte ploču.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Tu su klizač i gumb §**Novači**§. Klizač određuje koliko od onoga što ta
+pokrajina može dati uzimate u ovom potezu -- najviše otprilike petinu njezina
+stanovništva, manje ondje gdje su ljudi nezadovoljni.
+
+To stoji novca, a ljudi stižu sljedeći potez. Zapovjedite novačenje sada.
+---
+@Signals Officer
+Pokrajina koju ste ogolili od ljudi pokrajina je u koju svatko može ušetati, a
+ona koju ste ostavili bez stanovnika siromašnija je zauvijek. Novačenje je
+trošenje nečega, a ne stvaranje.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Prije nego što ikoga pomaknete: §**ništa se ne događa dok ne završite potez.**§
+
+Možda ste primijetili da je ovaj gumb dosad bio siv. To sam bila ja.
+
+Izdajete zapovijedi. One stoje. Pritisnete ovo, i tada se sve dogode odjednom --
+zato se cijeli pohod može odlučiti u jednom potezu, ako su zapovijedi bile dobre.
+---
+@Signals Officer
+Kestrel drži istočni kraj našeg otoka, s nama su već u ratu i imaju
+četrdeset osam tisuća ljudi.
+
+Mi imamo sedamsto dvadeset tisuća.
+---
+@Signals Officer
+:: until=destroyed:KES
+Zato to učinite u §**jednom potezu**§. Zapovjedite zauzimanje svake njihove
+pokrajine -- sve četiri, jednu za drugom, prije nego što išta završite -- a
+onda pritisnite Izvrši potez i gledajte kako se sve razriješi.
+
+To je ritam ove igre. Sve ostalo su detalji.
+---
+@Signals Officer
+:: act=rebellion
+... Imate problem kod kuće.
+
+Nemiri u pokrajinama koje ste upravo zauzeli prešli su granicu. Proglasili su
+se samostalnima i nikoga ne pitaju.
+---
+@Signals Officer
+:: until=rebels:none
+Na to sam mislila. Pobuna je sada država -- ima pokrajine, ljude i granicu
+s vama.
+
+Ugušite je kao što gušite sve ostalo. Neće ići tako lako kao s Kestrelom.
+---
+@Signals Officer
+Ostaje Verrick, preko vode.
+
+Nema kopnenog puta. Nikakvo marširanje ne dovodi vojsku onamo, i tu većina
+ljudi zapne.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+A §**nismo s njima u ratu**§. Kestrel nam je došao već neprijateljski;
+Verrick nije učinio ništa, a ne možete se iskrcati u državi s kojom ste
+u miru.
+
+Zato objavljujemo rat. Bilo koji prikaz osim Stanovništva, i kliknite jednu od
+njihovih pokrajina.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Ploča njihove pokrajine navodi što im smijemo učiniti, među ostalim i
+§**Objavi rat**§. Iznad toga je §**ratni cilj**§ -- ono za čim kažete da idete.
+Kliknite ga da ga promijenite.
+
+Cilj nije ukras: po njemu vas sudi ostatak svijeta, i oko njega će se kasnije
+pregovarati o primirju.
+---
+@Signals Officer
+Objavite ga -- a onda §**završite potez**§. Objava je zapovijed kao i svaka
+druga: podnosi se sada, a događa se kad se potez razriješi. Na karti se ništa
+ne mijenja dok ne pritisnete gumb.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Evo cijelog prijelaza, u četiri koraka. Odaberite jednu od naših obalnih
+pokrajina -- onu s §**lukom**§ i ljudima u njoj.
+---
+@Signals Officer
+:: point=panel.province
+U njoj moraju §**stajati ljudi**§. Ukrcavanje ne doziva vojsku niotkuda -- ono
+stavlja na brod posadu koja je već ondje, pa luka u praznoj pokrajini ne ukrcava
+ništa.
+
+Ako treba, najprije umarširajte nekoga unutra.
+---
+@Signals Officer
+:: point=panel.province
+Zatim, na ploči te pokrajine: §**Ukrcaj vojsku**§. Besplatno, jedan potez.
+
+Pritisnite ga i završite potez. Ljudi napuštaju pokrajinu i postaju §**brod**§
+uz obalu, koji ih nosi kao svoju posadu.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Sada idite u prikaz §**Mornarica**§. Brodu ne možete izdati zapovijed s karte
+stanovništva -- broda na njoj nema.
+---
+@Signals Officer
+Odaberite brod. Pritisnite §**Pomakni**§, a onda -- ovo je dio koji nitko ne
+pogodi -- kliknite na §**kopno**§.
+
+Voda ga pomiče. Obala §**ondje iskrcava ljude**§. To je iskrcavanje; zaseban
+gumb za to ne postoji.
+---
+@Signals Officer
+:: until=destroyed:VER
+Dakle: ljudi u lučkoj pokrajini, ukrcavanje, kraj poteza, prikaz mornarice,
+pomak broda, klik na kopno.
+
+I idite §**preko Hallow Rocka**§. To nije prečac, to je ruta: brod nosi samo do
+određene udaljenosti, a Verrickova je obala u jednom skoku dalje od toga.
+Iskrcajte se na stijenu, završite potez, pa prijeđite drugu polovicu.
+
+I držite brod podalje od njihova razarača. Natovaren brod tone sa svima koji
+su na njemu.
+---
+@Signals Officer
+:: point=tab.claims
+I polažite pravo na zemlju prije nego što je uzmete, a ne poslije. Sad znate
+zašto.
+---
+@Signals Officer
+To je sve. Gospodarstvo, istraživanje, politika, nemiri, zahtjevi,
+vojske, brodovi.
+
+Sve ostalo su detalji, a detalje ćete pokupiti gubeći od njih.
+---
+@Signals Officer
+:: act=then:outro
+I to je otok. Pođite sa mnom gore u izbornik -- posljednje dvije stvari nisu
+ovdje dolje.

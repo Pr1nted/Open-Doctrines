@@ -1,0 +1,56 @@
+// Käännös: Pr1nted jättää uuden pelaajan Mian huomaan.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Haloo, kuka siellä?
+---
+@
+...
+---
+@Pr1nted
+Ai... Olet uusi täällä... Mitä? §**Etkö ole ikinä johtanut maata?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Tiedätkö mitä? Minun moka...
+---
+@Pr1nted
+:: enter=type speed=42
+Minulla ei kuitenkaan ole aikaa vetää opetusta itse, joten jätän sinut erään
+ystäväni huomaan, ok? Tarvitsen aikaa, pitää tehdä tulevia päivityksiä, eikö?
+---
+@Signals Officer
+Haloo? Mitä nyt, §**Pr1nted**§?
+---
+@Pr1nted
+Öh... Hei Mia, tarvitsisin /ihan pikkuruisen palveluksen,/ voisitko näyttää
+uudelle pelaajalle paikkoja?
+---
+@Signals Officer
+</Huokaus/>
+---
+@Pr1nted
+**Ole nyt 'kiltti'!** Mistä minä sinulle oikein maksan?
+---
+@Signals Officer
+Hyvä on... Selvä, selvä.
+---
+@Pr1nted
+Hienoa! Neiti Mia näyttää sinulle paikat, miten peli toimii ja sen perusteet.
+Tai jos osaat jo perusteet mutta haluat puhua yksityiskohdista, kerro nyt,
+> Näytä minulle perusteet -> basics
+> Osaan perusteet, puhutaan yksityiskohdista -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Hienoa, aloitetaan.
+---
+@Pr1nted
+:: act=tune_out
+Hienoa, toivottavasti tulette toimeen! Pr1nted kuittaa.

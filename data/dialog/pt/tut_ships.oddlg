@@ -1,0 +1,49 @@
+// Tradução: a travessia naval, em pormenor.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Navios, então. É aqui que a maioria das pessoas encrava, e sempre no mesmo
+sítio: o exército está na costa e não acontece nada.
+---
+@Signals Officer
+Um exército não atravessa água sozinho, e não existe nenhuma ordem "embarcar
+naquele navio". Quem faz isso é a província.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Selecione uma província costeira que tenha §**porto**§ E §**homens lá
+dentro**§. Embarcar move a guarnição que já lá está; um porto vazio não
+embarca absolutamente nada, e é aí que começa a maior parte da confusão.
+
+O painel dela tem §**Embarcar exército**§: grátis, um turno. Carregue e
+termine o turno.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Os homens são agora um §**barco**§ ao largo da costa. Vá para a vista
+§**Marinha**§: os navios não recebem ordens de nenhuma das outras sete.
+
+§{key=ship_move}§ move-o, §{key=ship_wheel}§ abre os canhões,
+§{key=ship_engage}§ manda-o procurar luta.
+---
+@Signals Officer
+Para desembarcar: selecione o barco, carregue em §**Mover**§ e clique em
+§**terra**§.
+
+A água move-o. A terra descarrega-o. Um só botão faz as duas coisas, e é por
+isso que as pessoas navegam para trás e para a frente à procura do outro.
+---
+@Signals Officer
+Duas coisas que ninguém lhe diz.
+
+Um transporte carregado é um alvo, e afunda-se com os homens a bordo. E um
+desembarque numa província defendida chega cansado: tome a costa vazia ao
+lado e vá a pé, em vez de desembarcar em cima do forte.
+---
+@Signals Officer
+§**Hallow Rock**§, no estreito, não é opcional. Um barco tem alcance, e a
+ilha distante fica fora dele, por isso o rochedo é o primeiro desembarque e
+o segundo salto parte de lá.
+
+São os navios. Mais alguma coisa?

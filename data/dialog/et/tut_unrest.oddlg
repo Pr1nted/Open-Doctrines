@@ -1,0 +1,75 @@
+// Tõlge -- nõuded, rahutus ja mäss.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Nõuded ja rahutus. Avage nõuete paneel. See on üks teema, mida iganes liides ka ei ütleks.
+---
+@Signals Officer
+§**Nõue**§ on vahe sõja vahel, mida maailm talub, ja sõja vahel, mis ühendab kõik
+teie vastu. Viige ellu nõue, mis teil on, ja te lahendate vana tüli; võtke maad,
+millele te kunagi nõuet ei esitanud, ja tüli olete teie ise.
+---
+@Signals Officer
+Esitage nõue §**enne**§ sõda, mitte pärast. Nõue, mis esitati käik pärast
+provintsi vallutamist, ei peta kedagi ja maksab sama palju.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Sulgege see.
+---
+@Signals Officer
+§**Rahutus**§ on see, mida maa võtmine maale teeb. Vallutatud provintsid
+pahandavad, vähemused veel rohkem, ning ajateenistus ja tsensuur mõlemad ostavad
+teile jõudu praegu rahutuse hinnaga hiljem.
+---
+@Signals Officer
+Teatud lävest edasi lõpetab provints maksmise ja hakkab organiseeruma. Järgmisest
+edasi see lahkub -- ja lahkub §**riigina**§, koos teie tööstuse, teie rahvastiku ja
+väga konkreetse arvamusega teist.
+
+Hoiatuse te saate. Teist ei saa te alati.
+---
+@Signals Officer
+Ravimid on ebapopulaarsed või aeglased: pange sinna garnison, kulutage sellele
+raha või andke talle, mida ta tahab. Valige varakult, sest kõik kolm vajavad
+toimimiseks käike.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Just kulutamisel läheb enamik sellest raisku. Avage Poliitika, siis
+§**Ringkonnad**§.
+
+---
+@Signals Officer
+Eelarve langes varem kogu riigile korraga -- sama raskus vaiksele maakonnale kui
+sellele, mis relvastub. Nii et jagage riik tükkideks. §**Ringkond**§ on selle osa,
+mida valitsete ühe üksusena: värvige sinna provintse, andke sellele värv, andke
+sellele §**osa**§. Osad annavad kokku alati sada, sest eelarve on ainult üks.
+
+---
+@Signals Officer
+Tähtis on §**raha**§ osa võrreldes §**maa**§ osaga. Ringkonda, millel on
+kümnendik riigist ja kümnendik eelarvest, hoitakse korras täpselt nagu enne -- nii
+et jagamine ei muuda midagi enne, kui te osad ebavõrdseks teete.
+
+---
+@Signals Officer
+Joonistage väike ringkond ümber pahanduse, andke sellele veerand rahast, ja seda
+hoitakse korras mitu korda rangemalt; paneel ütleb teile numbri. Kõik ülejäänud
+paigad maksavad selle eest, ja see ongi otsus. On nupp võrdseks jagamiseks:
+mõistlik koht alustamiseks ja harva koht, kuhu jääda.
+
+Ringkond võtab vastu ka oma §**piirkondliku seaduse**§: komandanditund,
+maksupuhkus, mis keelt kohtud kasutavad. Väike, kohalik, ja iga üks on
+kompromiss.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Sulgege see.
+
+---
+@Signals Officer
+See on rahutus. Veel midagi?

@@ -1,0 +1,31 @@
+// Traducere - cercetarea.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Cercetare. Deschideți-o -- plângerea e mereu aceeași -- nimic din ce începeți
+nu pare să se termine vreodată -- și nu e o eroare, ăsta e rostul.
+---
+@Signals Officer
+Totul aici se măsoară în ture pe care nu le-ați jucat încă. Ceva început acum
+ajunge mult după ce ați uitat că îl voiați, ceea ce înseamnă că singurul
+moment prost pentru a începe este mai târziu.
+---
+@Signals Officer
+Trage din aceiași bani ca armata. O țară care cercetează totul nu are nimic pe
+câmpul de luptă, iar o țară care trimite totul pe câmpul de luptă încă poartă,
+peste douăzeci de ture, războiul de acum un deceniu.
+
+Alegeți o direcție. Nu le alegeți pe toate.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Închideți-o la loc -- §**x**§-ul din colț.
+---
+@Signals Officer
+Munca terminată nu se aplică retroactiv. Echipamentul nou ajunge mai întâi la
+formațiunile noi, așa că tura în care se termină ceva e tura în care să vă
+uitați la ce construiți, nu tura în care să vă relaxați.
+
+Asta e cercetarea. Altceva?

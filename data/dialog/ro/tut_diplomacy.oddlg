@@ -1,0 +1,98 @@
+// Traducere - alianțe, încetări ale focului și restul diplomației.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomație. Toată stă într-o singură listă, iar lista aparține unei
+§**țări**§ -- așa că ajungeți la ea făcând clic pe teritoriul cuiva.
+
+Voi aștepta la fiecare pas. Nimic de aici nu e rapid.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Mai întâi, vizualizarea §**Relații**§. Colorează harta după cine e în război
+cu cine, cine e aliat și cine a garantat pentru cine.
+---
+@Signals Officer
+Uitați-vă la ea înainte să începeți ceva. Jumătate din războaiele pierdute
+aici au fost împotriva a trei țări, nu a uneia -- și toate trei erau pe
+harta asta înainte de primul foc.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Acum faceți clic pe o provincie care aparține lui §**Verrick**§, dincolo de apă.
+
+Nu Kestrel: suntem deja în război cu ei, iar o țară cu care sunteți în război
+oferă exact un singur lucru. Ajungem și la el -- și până nu alegeți pe cineva
+cu care suntem în pace, pagina asta va aștepta pur și simplu.
+---
+@Signals Officer
+Panoul lor a căpătat o listă. Ce e în ea depinde în întregime de ce sunteți
+deja unul pentru celălalt -- nu alegeți niciodată din toate opțiunile, doar
+din cele pe care le permite relația actuală.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Cel mai blând lucru de pe ea e un §**pact de neagresiune**§: promisiunea de a
+nu ataca, și nimic mai mult.
+
+Cereți unul. Nu costă nimic să cereți.
+---
+@Signals Officer
+Depus -- și acum uitați-vă la listă. §**Tot restul a devenit gri**§, iar
+opțiunea pe care tocmai ați folosit-o s-a transformat în §**Anulează**§.
+
+O singură cerere odată către o singură țară. Nu e o eroare peste care ați dat,
+e regula: răspund la ultimul lucru pe care l-ați spus, și până răspund
+singura dumneavoastră mutare e să-l retrageți.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Deci încheiați tura. Cererea pleacă, ei răspund, iar lista revine.
+
+S-ar putea să refuze. E treaba lor, nu o vină a dumneavoastră.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Din nou Verrick. O §**alianță**§ e treapta următoare -- nu doar promisiunea de
+a nu ataca, ci promisiunea de a intra în luptă.
+
+Cereți una.
+---
+@Signals Officer
+Cu un aliat apare încă o opțiune: §**Chemare la arme**§, care îi târăște
+într-un război pe care îl purtați deja.
+
+Pot refuza și asta. Un aliat care refuză de două ori e un aliat pe hârtie și
+valorează cam cât hârtia.
+---
+@Signals Officer
+Cele două pe care nu le-ați folosit: o §**garanție**§ e cea dezechilibrată --
+promiteți să apărați pe cineva care nu v-a promis nimic. Țările mici le
+colecționează; cele mari le împart ca să-și cumpere liniștea.
+
+Iar §**comerțul**§ înseamnă bunuri pe bani în fiecare tură, până când cineva
+îl anulează. E singura opțiune care vă îmbogățește pe amândoi, și de aceea
+e cea despre care lumea uită că există.
+---
+@Signals Officer
+Odată semnat un pact, urmăriți ce dispare din listă: §**Declară război
+dispare**§. Trebuie mai întâi să rupeți pactul, în public, unde toată lumea
+vă vede făcând-o.
+
+La asta servește un pact. Nu e un scut, e un martor.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Iar în §**război**§ toată lista se reduce la o singură opțiune: §**Cere
+încetarea focului**§. Se întoarce cu condiții -- cine se oprește și cine
+păstrează ce.
+
+Acceptă când pierd și refuză când nu pierd. Oricât ați cere, nu se schimbă
+care dintre ele e adevărat.
+---
+@Signals Officer
+Kestrel e în roșu pe harta asta, iar asta e lista pe care v-ar arăta-o.
+---
+@Signals Officer
+Asta e diplomația. Altceva?

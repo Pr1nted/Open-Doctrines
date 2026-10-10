@@ -1,0 +1,31 @@
+// Tradução: investigação.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Investigação. Abra-a. A queixa é sempre a mesma: nada do que se começa parece
+alguma vez acabar. Não é um erro, é a ideia.
+---
+@Signals Officer
+Tudo aqui se mede em turnos que ainda não jogou. Uma coisa começada agora
+chega muito depois de se ter esquecido de que a queria, o que quer dizer que
+a única má altura para começar é mais tarde.
+---
+@Signals Officer
+Tira do mesmo dinheiro que o exército. Um país que investiga tudo não põe
+nada em campo, e um país que põe tudo em campo ainda está, daqui a vinte
+turnos, a travar a guerra da década passada.
+
+Escolha um caminho. Não os escolha todos.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Feche-a outra vez, no §**x**§ do canto.
+---
+@Signals Officer
+O trabalho concluído não se aplica retroativamente. O equipamento novo chega
+primeiro às formações novas, por isso o turno em que algo fica pronto é o
+turno de olhar para o que está a construir, não o turno de descansar.
+
+É a investigação. Mais alguma coisa?

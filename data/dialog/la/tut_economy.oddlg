@@ -1,0 +1,39 @@
+// Translatio Latina - oeconomia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Oeconomia -- aperi eam. Omnia cetera in ludo nihil sunt nisi disputatio
+quomodo expendas quod haec gignit.
+---
+@Signals Officer
+§**Fabrica**§ crescit ubi homines iam sunt. Officina in provincia vacua
+tugurium carum est -- populus est materia, non aedificium.
+---
+@Signals Officer
+Itaque quaeque provincia profitetur quantum ferat: §**Gradus II ex VI**§, et
+cum plena est, id dicit. Homines, quam dense habitent, solum, et quod in eo
+sepultum est -- haec quattuor fastigium statuunt, nec ulla pecuniae copia id
+movet.
+---
+@Signals Officer
+Reditus semel quaque vice advenit, in ipsa vice. Plus promitte quam habes, et
+quod deest non comiter exspectat: ex promptitudine detrahitur, et id in
+proelio cognoscis.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Rursus foras, et unam provinciam potius inspiciemus.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Unam ex nostris preme. Pro quaque provincia tabella ostendit quid gignat et
+quid contineat. Copiae pluris valent elaboratae quam effossae, itaque
+provincia fabricae iuxta divitem pluris valet quam utraque sola.
+---
+@Signals Officer
+Et rationes publicae §**debitum perpetuum**§ sunt, non emptio. Quaeque quam
+geris quaque vice detrahitur, in perpetuum, sive adhuc aliquid agit sive non.
+
+Haec de oeconomia. Num quid aliud?

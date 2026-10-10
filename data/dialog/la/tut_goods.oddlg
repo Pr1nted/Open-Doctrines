@@ -1,0 +1,63 @@
+// Translatio Latina - oeconomia bonorum.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+In §**mundo bonorum**§ provincia non pecuniam tantum facit. Materias rudes
+effodit, et officinae eius ex eis bona conficiunt -- et bona, non nummi, sunt
+quae populum tuum alunt et te aedificare sinunt. Oeconomiam aperi.
+---
+@Signals Officer
+Quattuor sunt. §**Bona consumptionis**§ populus tuus consumit. §**Machinamenta**§
+fabricam, castella portusque aedificant. §**Nafta**§ naves exercitusque movet.
+§**Munitiones**§ milites conscribunt et tormenta displodunt. Aurum pecunia
+manet.
+---
+@Signals Officer
+Et quodque e terra per officinam venit. §**Gummi et gemmae**§ bona
+consumptionis fiunt; §**metallum**§ machinamenta et munitiones fit; §**oleum**§
+nafta fit. Nullum depositum, nullum bonum -- itaque inopia te ad provinciam
+capiendam vel ad officinam convertendam dirigit.
+---
+@Signals Officer
+In ludo bonorum oeconomia scidam §**Bona**§ in summo accipit. Quattuor una
+enumerat: quid teneas, quid facias contra quod quaque vice requiris, et --
+numerus qui refert -- §**Duratio**§.
+---
+@Signals Officer
+Duratio est quot vices acervus usu praesenti durat. Novem vices commodae sunt;
+infra duas monitio est; vacuum est inopia quae nunc fit. Lectio honesta est --
+non magnus acervus copiae speciem induens, sed quamdiu acervus re vera tibi
+sufficit.
+---
+@Signals Officer
+Bona consumptionis unicum bonum sunt quod etiam res politica est. Consumpta
+contra desiderata sunt §**Norma vitae**§ tua: homines satura et civitas
+crescit; sine labi et fames ut tumultus redit.
+---
+@Signals Officer
+Cetera tria licentiae sunt. Fabricam aedifica et machinamenta impendis; classem
+mitte et naftam uris; conscribe et munitiones consumis. Si deficiunt, actio
+simpliciter obscuratur -- bellum horreum non exspectat.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Ubi bonum fiat, pro quaque provincia statuitur. Unam ex nostris preme: in
+tabella eius dirigis quid officinae eius faciant, aut omitte, et oeconomia
+pro te distribuit, officinas otiosas ad id mittens quo maxime eges.
+---
+@Signals Officer
+:: point=btn.settings
+Duo commutatores in §**Optiones -> Experimentale**§ habitant. Unus oeconomiam
+bonorum in proximo tuo novo mundo accendit. Alter, §**Superflua cum sociis
+commutare**§, voluntarius est: cum socio aliquid deest, bona tua superflua ad
+eum eunt. Saepe nulli desunt, itaque otiosum iacet -- auxilium paratum est,
+non tributum in horrea tua.
+---
+@Signals Officer
+Haec est oeconomia bonorum: effode, fac, ale, impende. Durationem observa,
+populum tuum satura, et numquam bellum incipe quod munitiones tuae perficere
+non possunt.
+
+Num quid aliud?

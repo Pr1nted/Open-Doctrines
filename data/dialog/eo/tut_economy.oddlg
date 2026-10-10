@@ -1,0 +1,39 @@
+// Traduko - la ekonomio.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+La ekonomio -- malfermu ĝin. Ĉio alia en la ludo estas disputo pri tio, kiel
+elspezi tion, kion ĉi tio produktas.
+---
+@Signals Officer
+§**Industrio**§ kreskas tie, kie homoj jam estas. Fabriko en malplena provinco
+estas multekosta budo -- la loĝantaro estas la enigo, ne la konstruaĵo.
+---
+@Signals Officer
+Do ĉiu provinco deklaras, kiom ĝi portos: §**Nivelo II el VI**§, kaj kiam ĝi
+estas plena, ĝi diras tion. Homoj, kiel dense ili loĝas, la grundo, kaj kio
+estas entombigita en ĝi -- tiuj kvar decidas la plafonon, kaj nenia monsumo
+movas ĝin.
+---
+@Signals Officer
+Enspezo alvenas unufoje en ĉiu vico, ĝustatempe. Promesu pli ol vi havas, kaj
+la manko ne atendas ĝentile: ĝi estas deprenata de la batalpreteco, kaj vi
+ekscias pri tio en batalo.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Denove eksteren, kaj ni rigardu unuopan provincon anstataŭe.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Alklaku unu el niaj. Por ĉiu provinco la panelo montras, kion ĝi produktas
+kaj kion ĝi enhavas. Rimedoj valoras pli prilaboritaj ol elfositaj, do
+industria provinco apud riĉa valoras pli ol ĉiu el ili sola.
+---
+@Signals Officer
+Kaj politikoj estas §**konstanta fakturo**§, ne aĉeto. Ĉiu, kiun vi tenas, estas
+deprenata ĉiun vicon, por ĉiam, ĉu ĝi ankoraŭ faras ion aŭ ne.
+
+Tio estas la ekonomio. Ĉu io alia?

@@ -1,0 +1,16 @@
+// Oversættelse af specifics.oddlg -- emnemenuen.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Så du kender hovedtrækkene. Hvad er det egentlig, du vil vide?
+
+Vælg et emne, så går jeg ordentligt igennem det. Spørg igen, når du er færdig.
+> Skibe, havne og at få en hær over vand -> script:tut_ships
+> Forskning, og hvorfor intet, du starter, bliver færdigt -> script:tut_research
+> Økonomien, industrien og hvor pengene kommer fra -> script:tut_economy
+> Vareøkonomien: at brødføde dit folk og drive en krig -> script:tut_goods
+> Krav, uro og at miste provinser til dit eget folk -> script:tut_unrest
+> Alliancer, våbenhviler og resten af diplomatiet -> script:tut_diplomacy
+> Krigståge: hvad du ser, og at spionere mod resten -> script:tut_fog
+> Ikke mere, jeg er færdig -> script:outro

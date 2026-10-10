@@ -1,0 +1,48 @@
+// Bản dịch — vượt biển, chi tiết.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Vậy thì tàu. Đây là phần làm hầu hết mọi người khựng lại, và lần nào cũng ở
+cùng một chỗ: quân đã ra tới bờ biển và chẳng có gì xảy ra.
+---
+@Signals Officer
+Quân đội không tự vượt nước, và cũng không có lệnh «lên con tàu kia». Việc đó
+là do tỉnh làm.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Chọn một tỉnh ven biển có §**cảng**§ VÀ §**có quân đứng trong đó**§. Lên tàu sẽ
+di chuyển đơn vị đồn trú đang có sẵn ở đó; một cảng trống không đưa được ai lên
+tàu cả, và đó là chỗ phần lớn sự rối rắm bắt đầu.
+
+Bảng của nó có §**Đưa quân lên tàu**§ — miễn phí, một lượt. Nhấn nó và kết thúc
+lượt.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Giờ quân lính là một §**con thuyền**§ ngoài khơi. Chuyển sang chế độ §**Hải
+quân**§ — tàu không nhận lệnh từ bất kỳ chế độ nào trong bảy chế độ còn lại.
+
+§{key=ship_move}§ để di chuyển nó, §{key=ship_wheel}§ mở súng pháo,
+§{key=ship_engage}§ ra lệnh cho nó gây chiến.
+---
+@Signals Officer
+Để đổ bộ: chọn thuyền, nhấn §**Di chuyển**§, và nhấp vào §**đất liền**§.
+
+Nước thì nó di chuyển. Đất liền thì nó dỡ quân. Một nút làm cả hai, đó là lý do
+người ta cứ chạy tới chạy lui đi tìm cái nút còn lại.
+---
+@Signals Officer
+Hai điều không ai nói cho bạn.
+
+Một tàu vận tải đầy quân là một mục tiêu, và nó chìm cùng quân lính trên đó. Và
+đổ bộ vào một tỉnh có phòng thủ thì quân đến nơi trong tình trạng mệt mỏi — hãy
+chiếm dải bờ trống bên cạnh rồi đi bộ sang, thay vì đổ bộ thẳng vào pháo đài.
+---
+@Signals Officer
+§**Hallow Rock**§, nằm giữa eo biển, không phải tùy chọn. Thuyền có tầm đi, và
+hòn đảo xa nằm ngoài tầm đó — nên hòn đá là lần đổ bộ đầu tiên, và chặng thứ hai
+xuất phát từ đó.
+
+Tàu là vậy đó. Còn gì nữa không?

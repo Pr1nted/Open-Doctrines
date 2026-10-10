@@ -1,0 +1,40 @@
+// Käännös: talous.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Talous. Avaa se. Kaikki muu tässä pelissä on väittelyä siitä, miten tämän
+tuotto käytetään.
+---
+@Signals Officer
+§**Teollisuus**§ kasvaa sinne, missä ihmisiä jo on. Tehdas tyhjässä
+maakunnassa on kallis vaja: väestö on raaka-aine, ei rakennus.
+---
+@Signals Officer
+Siksi jokainen maakunta ilmoittaa, mitä se kantaa: §**Taso II / VI**§, ja kun
+se on täynnä, se sanoo sen. Ihmiset, kuinka tiiviisti he asuvat, maasto ja
+se, mitä maahan on kätketty: nämä neljä määräävät katon, eikä mikään määrä
+rahaa siirrä sitä.
+---
+@Signals Officer
+Tulot saapuvat kerran vuorossa, vuoron aikana. Sitoudu useampaan kuin sinulla
+on, eikä vaje odota kohteliaasti: se otetaan valmiudesta, ja saat tietää
+siitä taistelussa.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Taas ulos, niin katsotaan sen sijaan yhtä maakuntaa.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Napsauta yhtä meidän maakunnistamme. Paneeli näyttää maakunnittain, mitä se
+tuottaa ja mitä sillä on. Resurssit ovat arvokkaampia jalostettuina kuin
+kaivettuina, joten teollisuusmaakunta rikkaan maakunnan vieressä on arvokkaampi
+kuin kumpikaan yksinään.
+---
+@Signals Officer
+Ja linjaukset ovat §**jatkuva lasku**§, eivät ostos. Jokainen voimassa oleva
+vähennetään joka vuoro, ikuisesti, teki se vielä mitään tai ei.
+
+Siinä talous. Muuta?

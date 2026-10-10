@@ -1,0 +1,31 @@
+// Tərcümə - tədqiqat.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Tədqiqat. Onu açın — şikayət həmişə eynidir: başladığınız heç nə sanki heç vaxt
+bitmir. Bu xəta deyil, bütün məsələ də elə budur.
+---
+@Signals Officer
+Buradakı hər şey hələ oynamadığınız gedişlərlə ölçülür. İndi başladığınız şey
+onu istədiyinizi unutduğunuzdan xeyli sonra hazır olur, yəni başlamaq üçün
+yeganə pis vaxt sonradır.
+---
+@Signals Officer
+O, ordunun xərcləndiyi eyni puldan qidalanır. Hər şeyi tədqiq edən ölkə heç nə
+meydana çıxara bilmir, hər şeyi meydana çıxaran ölkə isə iyirmi gedişdən sonra
+hələ də keçən onilliyin müharibəsini aparır.
+
+Bir istiqamət seçin. Hamısını seçməyin.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Yenidən bağlayın — küncdəki §**x**§ ilə.
+---
+@Signals Officer
+Bitmiş iş geriyə doğru özbaşına tətbiq olunmur. Yeni təchizat əvvəlcə yeni
+birləşmələrə çatır, ona görə nəyinsə bitdiyi gediş nə qurduğunuza baxmaq
+vaxtıdır, rahatlamaq vaxtı yox.
+
+Tədqiqat bu qədər. Başqa nə?

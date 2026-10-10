@@ -1,0 +1,32 @@
+// Tərcümə - bütün yolların ortaq sonu.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Deməli, bura qalxırıq. Heç bir xəritədə olmayan iki şey.
+
+§**Saxlanmış oyunlar.**§ Əsl dünya siz oynadıqca özünü yazır və sizi burada
+gözləyir. Bizimki yox — indicə etdiyiniz heç nə saxlanmadı, məşq adasının da
+bütün mənası elə budur.
+---
+@Signals Officer
+:: point=menu.2
+§**Çoxnəfərlik.**§ Bir kompüter oyunu yaradır, qalanları ona qoşulur. Hər oyunçu
+hazır olduğunu deyəndə gediş həll olunur, yəni oyun ən yavaş olanın sürəti ilə
+irəliləyir.
+
+Mesajlarına cavab verən insanlarla oynayın.
+---
+@Pr1nted
+Hələ sağsınız? Yaxşı. Səliqəlidir, bunu etiraf edim.
+
+Başqa nəyisə keçmək istəyirsiniz, yoxsa bitirdik?
+> Aşağı qayıdıb konkret bir mövzunu keçək -> world:specifics
+> Hamısı budur, sağ olun
+---
+@Pr1nted
+:: act=end_tutorial
+Yaxşı. Gedin bir neçə dəfə uduzun, bu iş belə öyrənilir.
+
+Pr1nted, əlaqəni bitirdi.

@@ -1,0 +1,303 @@
+// Oversættelse af tutorial.oddlg -- Mias lektion på øvelseskortet.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Nå. Ashford. Syv provinser, én nabo, der allerede ikke kan lide os, og en ø,
+vi ikke kan gå til.
+
+Lille nok til at lære på. Det er hele grunden til, at vi er her.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klik på en hvilken som helst provins, så fortæller dette panel dig, hvad den
+er: hvem der ejer den, hvem der bor der, hvad den producerer, og hvor tæt de er
+på at gøre oprør over det.
+
+Alt, hvad du gør i dette spil, gør du ved en provins.
+---
+@Signals Officer
+:: point=view.population
+Bjælken forneden er ikke otte knapper. Det er otte måder at se på DET SAMME
+kort, og du kommer til at skifte mellem dem hele spillet.
+
+Denne farver hver provins efter, hvor mange der bor i den.
+---
+@Signals Officer
+:: point=view.industry
+Industri. Hvor fabrikkerne er, og dermed hvor pengene og udstyret kommer fra.
+
+Befolkning og industri sammen fortæller dig, hvilke provinser der er værd at
+tage, og hvilke der bare er jord.
+---
+@Signals Officer
+:: point=view.defence
+Forsvar viser fæstningerne. Mørkt betyder, at nogen har gravet sig ned, og et
+angreb ind i mørkt land koster langt mere, end tallene antyder.
+---
+@Signals Officer
+:: point=view.relations
+Relationer: hvem der er i krig med hvem, og hvem der garanterer for hvem. Tjek
+den, før du sætter noget i gang -- halvdelen af de krige, folk taber her, var
+mod tre lande, ikke ét.
+---
+@Signals Officer
+:: point=view.army
+Hær. Hver garnison på kortet på én gang, vores og deres.
+
+Det er den her, du skal være i, når du flytter soldater, for det er den eneste,
+der viser, hvad der venter på dem.
+---
+@Signals Officer
+:: point=view.navy
+Flåde gør det samme for skibe, og det er derfra, du laster transporter.
+
+Ressourcer og Landenavne er de sidste to, og de gør, hvad de siger.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Først §**Økonomi**§, fordi alt andet betales derfra.
+
+Åbn den.
+---
+@Signals Officer
+Industri er det, du bygger med, og den vokser, hvor befolkningen allerede er.
+Sæt en fabrik et sted, hvor der er tomt, og du har købt et meget dyrt skur.
+
+Indtægten kommer én gang pr. tur. Brug den, før du har den, så tages
+underskuddet fra beredskabet.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Luk den igen nu -- samme knap. Panelet dækker kortet, og jeg kan ikke vise dig
+noget derude, mens du er herinde.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+§**Forskning**§ som det næste. Åbn den.
+---
+@Signals Officer
+Intet, du starter her, bliver færdigt i denne tur, og det meste bliver færdigt
+længe efter, at du har glemt, at du ville have det.
+
+Hvilket er præcis derfor, det betaler sig at starte tidligt.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Ud igen.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politik**§. Ind med dig.
+---
+@Signals Officer
+Politiske tiltag koster vedligehold, ikke et engangsbeløb -- de er en fast
+regning, og de flytter, hvor landet står politisk.
+
+Værnepligt fylder rækkerne. Den skaber også folk, der ikke ville stå i
+rækkerne, og det er tallet, du skal holde øje med.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Og ud.
+---
+@Signals Officer
+Det tal er §**uro**§.
+
+En provins med høj uro holder op med at betale og begynder at organisere sig.
+Ignorer det længe nok, så forlader den dig -- med sin industri, sin befolkning
+og sin mening om dig.
+
+Du får en advarsel. Du får ikke altid en til.
+---
+@Signals Officer
+:: point=view.relations
+Én ting mere før panelerne: en krig behøver ikke ende med, at nogen dør.
+
+Tilbud om §**våbenhvile**§ og §**handel**§ kommer som et vindue med vilkår --
+hvem der holder op med at kæmpe, hvem der opgiver hvad. Læs vilkårene. Siger
+du ja, slutter krigen på de vilkår, ikke på pæne.
+---
+@Signals Officer
+Du kan også selv åbne et, fra relationsvisningen: vælg et land, du er i krig
+med, og spørg. De siger ja, når de taber, og nej, når de ikke gør, og det er
+det meste af diplomatiet i dette spil.
+
+En §**handelsaftale**§ har samme form uden krigen: varer mod penge, hver tur,
+indtil nogen opsiger den.
+---
+@Signals Officer
+Og ingen vil tilbyde dig nogen af delene i løbet af denne lektion. Jeg har
+bedt dem lade være.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Sidste panel. §**Krav**§ er, hvordan en krig bliver legitim.
+---
+@Signals Officer
+Gør et krav, du har, gældende, og verden trækker på skuldrene. Tag land, du
+aldrig har gjort krav på, og alle, der var i tvivl om dig, holder op med at
+være i tvivl.
+
+Rejs kravet FØR krigen. Et, der indgives bagefter, narrer ingen.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Luk den, så går vi ud og bruger noget af det her.
+---
+@Signals Officer
+Nu hæren.
+
+Vælg en provins, du ejer, hold §{key=army_move}§ nede, og klik, hvor soldaterne
+skal hen. Kun naboprovinser -- en hær går, den teleporterer ikke.
+---
+@Signals Officer
+Artilleriet ligger på §{key=artillery_wheel}§. Hold den nede, så åbner hjulet
+sig: morterer og videre op til ting, jeg helst ikke vil skrive ned.
+
+Skibe har deres egne: §{key=ship_move}§ til at flytte, §{key=ship_wheel}§ til
+kanonerne, §{key=ship_engage}§ til at opsøge kamp.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Hære dukker heller ikke op ud af den blå luft. §**Du rekrutterer dem**§,
+provins for provins, blandt de folk, der bor der.
+
+Vælg en af vores, og se på panelet.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Der er en skyder og en knap §**Rekrutter**§. Skyderen er, hvor meget af det,
+provinsen kan undvære, du tager i denne tur -- højst cirka en femtedel af
+befolkningen, mindre hvor folk er utilfredse.
+
+Det koster penge, og soldaterne kommer næste tur. Bestil nogle nu.
+---
+@Signals Officer
+En provins, du har tømt for soldater, er en provins, alle kan gå ind i, og en,
+du har tømt for folk, er fattigere for altid. At rekruttere er at bruge noget,
+ikke at skabe det.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Før du flytter nogen: §**intet sker, før du afslutter turen.**§
+
+Du har måske bemærket, at den har været grå indtil nu. Det var mig.
+
+Du giver ordrer. De bliver liggende. Du trykker på denne, og så sker det hele
+på én gang -- hvilket er derfor, et helt felttog kan afgøres i en enkelt tur,
+hvis ordrerne var gode.
+---
+@Signals Officer
+Kestrel holder den østlige ende af vores ø, de er allerede i krig med os, og
+de har otteogfyrre tusind mand at gøre godt med.
+
+Vi har syv hundrede og tyve tusind.
+---
+@Signals Officer
+:: until=destroyed:KES
+Så gør det på §**én tur**§. Giv ordre om at tage hver eneste af deres
+provinser -- alle fire, den ene efter den anden, før du afslutter noget -- og tryk så på
+Kør turen, og se det hele blive afgjort.
+
+Det er rytmen i dette spil. Alt andet er detaljer.
+---
+@Signals Officer
+:: act=rebellion
+... Du har et problem på hjemmefronten.
+
+Uroen i de provinser, du lige tog, er gået over grænsen. De har erklæret sig
+selvstændige, og de spørger ikke om lov.
+---
+@Signals Officer
+:: until=rebels:none
+Det var det, jeg mente. Et oprør er et land nu -- det har provinser, soldater
+og en grænse til dig.
+
+Slå det ned på samme måde, som du slår alt andet ned. Det bliver ikke lige så
+let, som Kestrel var.
+---
+@Signals Officer
+Hvilket efterlader Verrick, på den anden side af vandet.
+
+Ingen landvej. Ingen mængde march får en hær derover, og det er her, de fleste
+går i stå.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Og vi er §**ikke i krig med dem**§. Kestrel kom til os allerede fjendtlige;
+Verrick har ikke gjort noget, og du kan ikke gå i land i et land, du har fred
+med.
+
+Så vi erklærer krig. Hvilken som helst visning undtagen Befolkning, og klik på
+en af deres provinser.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Deres provinspanel viser, hvad vi må gøre mod dem, §**Erklær krig**§ blandt
+andet. Over det står §**krigsmålet**§ -- det, du siger, du er ude efter. Klik
+på det for at bladre.
+
+Målet er ikke pynt: det er det, resten af verden dømmer dig efter, og det, en
+våbenhvile senere skal skændes om.
+---
+@Signals Officer
+Erklær den -- og §**afslut så turen**§. En krigserklæring er en ordre som alle
+andre: den indgives nu og sker, når turen afgøres. Intet ændrer sig på kortet,
+før du trykker på knappen.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Her er hele overfarten, i fire træk. Vælg en af vores kystprovinser -- en med
+en §**havn**§ og soldater i.
+---
+@Signals Officer
+:: point=panel.province
+Den skal have §**soldater, der står i den**§. Indskibning tryller ikke en hær
+frem fra ingenting -- den sætter den garnison, der allerede er der, på en båd,
+så en havn i en tom provins indskiber ingenting.
+
+March nogle ind først, hvis du er nødt til det.
+---
+@Signals Officer
+:: point=panel.province
+Så, i den provins' panel: §**Indskib hær**§. Gratis, én tur.
+
+Tryk på den, og afslut turen. Garnisonen forlader provinsen og bliver til en
+§**båd**§ ud for kysten med dem som besætning.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Gå nu til visningen §**Flåde**§. Du kan ikke give et skib en ordre fra
+befolkningskortet -- båden er ikke på det.
+---
+@Signals Officer
+Vælg båden. Tryk på §**Flyt**§, og så -- det er den del, ingen gætter --
+klik på §**land**§.
+
+Vand flytter den. En kyst §**sætter soldaterne i land der**§. Det er
+landgangen; der er ingen separat knap til den.
+---
+@Signals Officer
+:: until=destroyed:VER
+Altså: soldater i en havneprovins, indskib, afslut turen, flådevisningen, flyt
+båden, klik på land.
+
+Og tag §**via Hallow Rock**§. Det er ingen genvej, det er ruten: en båd rækker
+kun så langt, og Verricks kyst ligger længere væk end det i ét stræk. Gå i land
+på klippen, afslut turen, og kryds så den anden halvdel.
+
+Og hold båden væk fra deres destroyer. En lastet båd synker med alle om bord.
+---
+@Signals Officer
+:: point=tab.claims
+Og gør krav på landet, før du tager det, ikke bagefter. Du ved hvorfor nu.
+---
+@Signals Officer
+Det var det hele. Økonomi, forskning, politik, uro, krav, hære, skibe.
+
+Alt andet er detaljer, og detaljerne lærer du ved at tabe til dem.
+---
+@Signals Officer
+:: act=then:outro
+Og det var øen. Kom med mig op til menuen -- de sidste to ting er ikke hernede.

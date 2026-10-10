@@ -1,0 +1,32 @@
+// Tradução: de volta ao menu, e o Pr1nted despede-se.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Cá em cima, então. Duas coisas que não estão em mapa nenhum.
+
+§**Jogos guardados.**§ Um mundo a sério vai-se registando enquanto joga e
+espera por si ali dentro. O nosso não: nada do que acabou de fazer foi
+guardado, o que é precisamente a ideia de uma ilha de treino.
+---
+@Signals Officer
+:: point=menu.2
+§**Multijogador.**§ Uma máquina aloja e todas as outras juntam-se a ela. Um
+turno resolve-se quando todos os jogadores disserem que estão prontos, por
+isso um jogo anda à velocidade do mais lento.
+
+Jogue com pessoas que respondem às mensagens.
+---
+@Pr1nted
+Ainda está vivo? Ótimo. Ela é minuciosa, isso tenho de admitir.
+
+Quer ver mais alguma coisa, ou já terminámos?
+> Voltar lá para baixo e ver algo específico -> world:specifics
+> É tudo, obrigado
+---
+@Pr1nted
+:: act=end_tutorial
+Muito bem. Vá perder umas quantas, é assim que se aprende.
+
+Pr1nted, terminado.

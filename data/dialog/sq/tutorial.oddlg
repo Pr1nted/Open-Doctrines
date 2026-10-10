@@ -1,0 +1,310 @@
+// Përkthim - mësimi i Mias. Rreshtat :: dhe emrat e folësve janë identifikues.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Mirë. Ashford. Shtatë provinca, një fqinj që tashmë s'na do, dhe një ishull
+ku nuk shkojmë dot në këmbë.
+
+Mjaft i vogël për të mësuar. Kjo është e vetmja arsye pse jemi këtu.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klikoni çdo provincë dhe ky panel ju tregon çfarë është: kujt i përket, kush
+jeton aty, çfarë prodhon dhe sa afër janë njerëzit të ngrihen në kryengritje
+për këtë.
+
+Gjithçka që bëni në këtë lojë, ia bëni një province.
+---
+@Signals Officer
+:: point=view.population
+Shiriti poshtë nuk është tetë butona. Është tetë mënyra për të parë të
+NJËJTËN hartë, dhe do ta kaloni gjithë lojën duke kaluar nga njëra te tjetra.
+
+Kjo ngjyros çdo provincë sipas sa njerëz jetojnë në të.
+---
+@Signals Officer
+:: point=view.industry
+Industria. Ku janë fabrikat, pra nga vijnë paratë dhe pajisjet.
+
+Popullsia dhe industria bashkë ju tregojnë cilat provinca ia vlen të merren
+dhe cilat janë thjesht tokë.
+---
+@Signals Officer
+:: point=view.defence
+Mbrojtja tregon fortesat. E errët do të thotë se dikush është ngulitur, dhe
+një sulm në tokë të errët kushton shumë më tepër se ç'tregojnë numrat.
+---
+@Signals Officer
+:: point=view.relations
+Marrëdhëniet: kush është në luftë me kë dhe kush garanton për kë. Kontrollojini
+para se të nisni diçka -- gjysma e luftërave që humbasin njerëzit këtu ishin
+me tre vende, jo me një.
+---
+@Signals Officer
+:: point=view.army
+Ushtria. Çdo garnizon në hartë njëherësh, tonët dhe të tyret.
+
+Në këtë duhet të jeni kur lëvizni njerëz, sepse është e vetmja që tregon
+çfarë i pret.
+---
+@Signals Officer
+:: point=view.navy
+Marina bën të njëjtën gjë për anijet, dhe prej aty ngarkoni transportet.
+
+Burimet dhe Emrat e vendeve janë dy të fundit, dhe bëjnë atë që thonë.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Ekonomia**§, e para, sepse gjithçka tjetër paguhet prej saj.
+
+Hapeni.
+---
+@Signals Officer
+Industria është ajo me të cilën ndërtoni, dhe rritet aty ku ka tashmë
+popullsi. Vini një fabrikë diku bosh dhe sapo keni blerë një kasolle shumë të
+shtrenjtë.
+
+Të ardhurat vijnë një herë në radhë. Shpenzojini para se t'i keni dhe mungesa
+zbritet nga gatishmëria.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Tani mbylleni përsëri -- i njëjti buton. Paneli mbulon hartën dhe nuk mund
+t'ju tregoj asgjë atje jashtë sa kohë jeni këtu brenda.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Pastaj §**Kërkimi**§. Hapeni.
+---
+@Signals Officer
+Asgjë që nisni këtu nuk mbaron këtë radhë, dhe shumica mbaron shumë kohë pasi
+keni harruar që e donit.
+
+Pikërisht për këtë ia vlen të nisni herët.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Jashtë përsëri.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Hyni brenda.
+---
+@Signals Officer
+Politikat kushtojnë mirëmbajtje, jo një shumë të vetme -- janë një faturë e
+përhershme, dhe e zhvendosin vendin në spektrin politik.
+
+Shërbimi ushtarak mbush rreshtat. Krijon gjithashtu njerëz që nuk donin të
+ishin në rreshta, dhe ai është numri që duhet ndjekur.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Dhe jashtë.
+---
+@Signals Officer
+Ai numër quhet §**trazira**§.
+
+Një provincë me trazira të larta ndalon së paguari dhe nis të organizohet.
+Injorojeni mjaftueshëm dhe ajo largohet -- me industrinë e saj, popullsinë e
+saj dhe mendimin e saj për ju.
+
+Merrni një paralajmërim. Jo gjithmonë merrni edhe një të dytë.
+---
+@Signals Officer
+:: point=view.relations
+Edhe një gjë para paneleve: një luftë nuk ka pse të mbarojë me vdekjen e
+dikujt.
+
+Ofertat për §**armëpushim**§ dhe §**tregti**§ vijnë si një dritare me kushte
+-- kush ndalon luftimet, kush heq dorë nga çfarë. Lexoni kushtet. Pranoni dhe
+lufta mbaron me ato kushte, jo me kushte të bukura.
+---
+@Signals Officer
+Mund të hapni edhe ju një, nga pamja Marrëdhëniet: zgjidhni një vend me të
+cilin jeni në luftë dhe kërkoni. Ata thonë po kur po humbasin dhe jo kur nuk
+po humbasin, dhe kjo është pjesa më e madhe e diplomacisë në këtë lojë.
+
+Një §**marrëveshje tregtare**§ ka të njëjtën formë pa luftën: mallra për
+para, çdo radhë, derisa dikush ta anulojë.
+---
+@Signals Officer
+Dhe askush nuk do t'ju ofrojë asnjërën gjatë këtij mësimi. Ua kam ndaluar.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Paneli i fundit. §**Pretendime**§: kështu një luftë bëhet e ligjshme.
+---
+@Signals Officer
+Paraqitni një pretendim që keni dhe bota ngre supet. Merrni tokë që nuk e
+keni pretenduar kurrë, dhe të gjithë ata që ishin të pavendosur për ju
+pushojnë së qeni të pavendosur.
+
+Bëjeni pretendimin PARA luftës. Një i paraqitur pas saj nuk mashtron askënd.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Mbylleni, dhe le të shkojmë të përdorim diçka nga këto.
+---
+@Signals Officer
+Tani ushtria.
+
+Zgjidhni një provincë tuajën, mbani të shtypur §{key=army_move}§ dhe klikoni
+ku duhet të shkojnë njerëzit. Vetëm në provincë fqinje -- një ushtri ecën,
+nuk teleportohet.
+---
+@Signals Officer
+Artileria është te §{key=artillery_wheel}§. Mbajeni të shtypur dhe hapet
+rrota: nga mortajat deri te gjëra që do të preferoja të mos i shkruaja.
+
+Anijet kanë të tyret: §{key=ship_move}§ për të lëvizur, §{key=ship_wheel}§ për
+topat e tyre, §{key=ship_engage}§ për të kërkuar përleshje.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+As ushtritë nuk dalin nga hiçi. §**I rekrutoni**§, provincë pas province, nga
+njerëzit që jetojnë aty.
+
+Zgjidhni një nga tonat dhe shikoni panelin.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Ka një rrëshqitës dhe një buton §**Rekruto**§. Rrëshqitësi tregon sa merrni
+këtë radhë nga ajo që mund të kursejë ajo provincë -- e shumta rreth një të
+pestën e popullsisë së saj, më pak aty ku njerëzit janë të pakënaqur.
+
+Kushton para, dhe njerëzit mbërrijnë radhën tjetër. Jepni urdhër tani.
+---
+@Signals Officer
+Një provincë që e keni zhveshur nga burrat është një provincë ku mund të hyjë
+kushdo, dhe një që e keni zhveshur nga njerëzit është më e varfër përgjithmonë.
+Rekrutimi shpenzon diçka, nuk e krijon.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Para se të lëvizni kënd: §**asgjë nuk ndodh derisa ta mbyllni radhën.**§
+
+Mund ta keni vënë re që ishte gri deri tani. Isha unë.
+
+Jepni urdhra. Ata presin. Shtypni këtë, dhe atëherë ndodhin të gjitha
+njëherësh -- prandaj një fushatë e tërë mund të vendoset në një radhë të
+vetme, nëse urdhrat ishin të mirë.
+---
+@Signals Officer
+Kestrel mban skajin lindor të ishullit tonë, është tashmë në luftë me ne, dhe
+ka dyzet e tetë mijë burra.
+
+Ne kemi shtatëqind e njëzet mijë.
+---
+@Signals Officer
+:: until=destroyed:KES
+Ndaj bëjeni në §**një radhë**§. Urdhëroni marrjen e çdo province të tyre --
+të katërtave, njërës pas tjetrës, para se të mbyllni ndonjë gjë -- pastaj
+shtypni «Kryej radhën» dhe shikoni si zgjidhen të gjitha.
+
+Ky është ritmi i kësaj loje. Gjithçka tjetër është hollësi.
+---
+@Signals Officer
+:: act=rebellion
+... Keni një problem në shtëpi.
+
+Trazirat në provincat që sapo morët e kaluan kufirin. Janë shpallur më vete
+dhe nuk po kërkojnë leje.
+---
+@Signals Officer
+:: until=rebels:none
+Këtë kisha parasysh. Një kryengritje tani është një vend -- ka provinca,
+burra dhe kufi me ju.
+
+Shtypeni njësoj si shtypni çdo gjë tjetër. Nuk do të jetë aq e lehtë sa
+Kestrel.
+---
+@Signals Officer
+Kështu mbetet Verrick, përtej ujit.
+
+Asnjë rrugë tokësore. Sado të marshojë, një ushtri nuk arrin atje, dhe këtu
+ngecin shumica.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Dhe §**nuk jemi në luftë me ta**§. Kestrel erdhi te ne tashmë armiqësore;
+Verrick nuk ka bërë asgjë, dhe nuk mund të zbarkoni në një vend me të cilin
+jeni në paqe.
+
+Ndaj shpallim. Çdo pamje përveç Popullsisë, dhe klikoni një nga provincat e
+tyre.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Paneli i provincës së tyre rendit çfarë mund t'u bëjmë, mes tyre §**Shpall
+luftë**§. Mbi të është §**qëllimi i luftës**§ -- ajo që thoni se kërkoni.
+Klikojeni për ta ndryshuar.
+
+Qëllimi nuk është dekor: sipas tij ju gjykon pjesa tjetër e botës, dhe për
+të do të debatohet më vonë një armëpushim.
+---
+@Signals Officer
+Shpalleni -- dhe pastaj §**mbyllni radhën**§. Një shpallje është urdhër si
+çdo tjetër: regjistrohet tani dhe ndodh kur zgjidhet radha. Asgjë nuk
+ndryshon në hartë derisa të shtypni butonin.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ja gjithë kalimi, në katër lëvizje. Zgjidhni një nga provincat tona
+bregdetare -- një me §**port**§ dhe burra brenda.
+---
+@Signals Officer
+:: point=panel.province
+I duhen §**burra brenda saj**§. Hipja nuk thërret ushtri nga askund -- hip në
+varkë garnizonin që është tashmë aty, ndaj një port në një provincë bosh nuk
+hip asgjë.
+
+Çoni disa atje më parë, nëse duhet.
+---
+@Signals Officer
+:: point=panel.province
+Pastaj, në panelin e asaj province: §**Hip ushtrinë**§. Falas, një radhë.
+
+Shtypeni dhe mbyllni radhën. Garnizoni largohet nga provinca dhe bëhet një
+§**varkë**§ pranë bregut, me ta si ekuipazh.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Tani shkoni te pamja §**Marina**§. Nuk mund t'i jepni urdhër një anijeje nga
+harta e popullsisë -- varka nuk është aty.
+---
+@Signals Officer
+Zgjidhni varkën. Shtypni §**Lëviz**§, dhe pastaj -- kjo është pjesa që s'e
+merr me mend askush -- klikoni mbi §**tokë**§.
+
+Uji e lëviz. Një breg §**i zbarkon burrat aty**§. Ky është zbarkimi; nuk ka
+buton të veçantë për të.
+---
+@Signals Officer
+:: until=destroyed:VER
+Pra: burra në një provincë me port, hipja, mbyllja e radhës, pamja Marina,
+lëvizja e varkës, klikim mbi tokë.
+
+Dhe shkoni §**përmes Hallow Rock**§. Nuk është shkurtore, është rruga: një
+varkë shkon vetëm deri diku, dhe bregu i Verrick është përtej asaj distance
+me një frymë. Zbarkoni në shkëmb, mbyllni radhën, pastaj kaloni gjysmën e
+dytë.
+
+Dhe mbajeni varkën larg shkatërrueses së tyre. Një e ngarkuar fundoset me të
+gjithë brenda.
+---
+@Signals Officer
+:: point=tab.claims
+Dhe pretendojeni tokën para se ta merrni, jo pas. Tani e dini pse.
+---
+@Signals Officer
+Kaq ishte gjithçka. Ekonomia, kërkimi, politika, trazirat, pretendimet,
+ushtritë, anijet.
+
+Gjithçka tjetër është hollësi, dhe hollësitë do t'i mësoni duke humbur prej
+tyre.
+---
+@Signals Officer
+:: act=then:outro
+Dhe ky ishte ishulli. Ejani me mua lart në menu -- dy gjërat e fundit nuk
+janë këtu poshtë.

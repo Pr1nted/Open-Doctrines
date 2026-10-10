@@ -1,0 +1,31 @@
+// Vertaling: onderzoek.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Onderzoek. Open het. De klacht is altijd dezelfde: niets wat je begint, lijkt
+ooit af te komen. Dat is geen bug, dat is de bedoeling.
+---
+@Signals Officer
+Alles hier wordt gemeten in beurten die je nog niet hebt gespeeld. Wat je nu
+begint, komt binnen lang nadat je vergeten bent dat je het wilde, dus het
+enige slechte moment om te beginnen is later.
+---
+@Signals Officer
+Het put uit hetzelfde geld als het leger. Een land dat alles onderzoekt,
+brengt niets op de been, en een land dat alles op de been brengt, vecht over
+twintig beurten nog steeds de oorlog van het vorige decennium.
+
+Kies een richting. Kies ze niet allemaal.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Sluit het weer, met de §**x**§ in de hoek.
+---
+@Signals Officer
+Afgerond werk werkt niet met terugwerkende kracht. Nieuw materieel gaat eerst
+naar nieuwe eenheden, dus de beurt waarin iets af is, is de beurt om te
+kijken wat je bouwt, niet de beurt om achterover te leunen.
+
+Dat is onderzoek. Nog iets?

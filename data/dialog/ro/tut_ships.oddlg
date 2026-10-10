@@ -1,0 +1,49 @@
+// Traducere - traversarea.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Nave, deci. Asta îi oprește pe cei mai mulți și îi oprește în același loc de
+fiecare dată: armata e la coastă și nu se întâmplă nimic.
+---
+@Signals Officer
+O armată nu traversează apa de una singură și nu există ordinul „urcă pe nava
+aceea”. Provincia face asta.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Selectați o provincie de coastă care are §**port**§ ȘI §**oameni staționați în
+ea**§. Îmbarcarea mută garnizoana care e deja acolo; un port gol nu îmbarcă
+absolut nimic, și de aici începe cea mai mare parte a confuziei.
+
+Panoul ei are §**Îmbarcă armata**§ -- gratuit, o tură. Apăsați și încheiați
+tura.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Oamenii sunt acum o §**barcă**§ în largul coastei. Treceți la vizualizarea
+§**Marină**§ -- navele nu primesc ordine din niciuna dintre celelalte șapte.
+
+§{key=ship_move}§ o mută, §{key=ship_wheel}§ îi deschide tunurile,
+§{key=ship_engage}§ îi spune să caute o luptă.
+---
+@Signals Officer
+Ca să debarcați: selectați barca, apăsați §**Mută**§ și faceți clic pe
+§**uscat**§.
+
+Apa o mută. Uscatul o descarcă. Un singur buton face ambele lucruri, de aceea
+oamenii navighează încoace și încolo căutându-l pe celălalt.
+---
+@Signals Officer
+Două lucruri pe care nu vi le spune nimeni.
+
+Un transport încărcat e o țintă și se scufundă cu oamenii la bord. Iar o
+debarcare într-o provincie apărată ajunge obosită -- luați coasta goală de
+alături și mergeți pe jos, în loc să debarcați peste fortificație.
+---
+@Signals Officer
+§**Hallow Rock**§, din strâmtoare, nu e opțional. O barcă are o rază de acțiune,
+iar insula îndepărtată e în afara ei -- așa că stânca e prima debarcare, iar
+al doilea salt pleacă de acolo.
+
+Asta despre nave. Altceva?

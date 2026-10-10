@@ -1,0 +1,16 @@
+// Translatio Latina - index argumentorum.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Bene, formam rei nosti. Quid igitur revera vis?
+
+Unum elige et diligenter id explicabo. Cum finiverimus, iterum roga.
+> Naves, portus, et quomodo exercitus aquam transeat -> script:tut_ships
+> Investigatio, et cur nihil quod incipis perficiatur -> script:tut_research
+> Oeconomia, fabrica, et unde pecunia veniat -> script:tut_economy
+> Oeconomia bonorum: populum alere et bellum alere -> script:tut_goods
+> Vindiciae, tumultus, et provinciae populo tuo amissae -> script:tut_unrest
+> Societates, indutiae et reliqua diplomatia -> script:tut_diplomacy
+> Nebula belli: quid videas, et quomodo cetera speculeris -> script:tut_fog
+> Nihil aliud, finivi -> script:outro

@@ -1,0 +1,38 @@
+// Prijevod - ekonomija.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Ekonomija -- otvorite je. Sve ostalo u igri je rasprava o tome kako potrošiti
+ono što ona proizvodi.
+---
+@Signals Officer
+§**Industrija**§ raste tamo gdje ljudi već jesu. Fabrika u praznoj pokrajini
+je skupa šupa -- stanovništvo je sirovina, a ne zgrada.
+---
+@Signals Officer
+Zato svaka pokrajina navodi koliko može podnijeti: §**Nivo II od VI**§, a kad
+je puna, to i kaže. Ljudi, koliko gusto žive, tlo i ono što je u njemu
+zakopano -- te četiri stvari određuju plafon, i nikakav ga novac ne pomjera.
+---
+@Signals Officer
+Prihod stiže jednom po potezu, na vrijeme. Obavežite se na više nego što imate
+i manjak neće pristojno čekati: ide na račun spremnosti, a za to saznate usred
+bitke.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Opet van, pa ćemo umjesto toga pogledati jednu pokrajinu.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kliknite jednu od naših. Ploča po pokrajini pokazuje šta ona proizvodi i šta
+drži. Sirovine vrijede više prerađene nego iskopane, pa industrijska pokrajina
+pored bogate vrijedi više od bilo koje od njih same.
+---
+@Signals Officer
+A politike su §**stalni račun**§, ne kupovina. Svaka koju vodite oduzima se
+svaki potez, zauvijek, bez obzira na to postiže li još išta.
+
+To je ekonomija. Još nešto?

@@ -1,0 +1,308 @@
+// Tradução: a lição da Mia no mapa de treino.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Muito bem. Ashford. Sete províncias, um vizinho que já não gosta de nós, e
+uma ilha aonde não se chega a pé.
+
+Pequena o suficiente para aprender. É essa a única razão de estarmos aqui.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Clique numa província qualquer e este painel diz-lhe o que ela é: a quem
+pertence, quem lá vive, o que produz e quão perto estão de se revoltar por
+causa disso.
+
+Tudo o que fizer neste jogo, fá-lo a uma província.
+---
+@Signals Officer
+:: point=view.population
+A barra em baixo não são oito botões. São oito maneiras de olhar para o
+MESMO mapa, e vai passar o jogo inteiro a alternar entre elas.
+
+Esta pinta cada província consoante o número de pessoas que lá vivem.
+---
+@Signals Officer
+:: point=view.industry
+Indústria. Onde estão as fábricas, e portanto de onde vêm o dinheiro e o
+equipamento.
+
+População e indústria juntas dizem-lhe que províncias vale a pena tomar e
+quais são só terreno.
+---
+@Signals Officer
+:: point=view.defence
+Defesa mostra os fortes. Escuro quer dizer que alguém se entrincheirou, e um
+ataque a terreno escuro custa muito mais do que os números dão a entender.
+---
+@Signals Officer
+:: point=view.relations
+Relações: quem está em guerra com quem, e quem garante quem. Veja isto antes
+de começar alguma coisa. Metade das guerras que as pessoas perdem aqui foram
+contra três países, não contra um.
+---
+@Signals Officer
+:: point=view.army
+Exército. Todas as guarnições do mapa ao mesmo tempo, as suas e as deles.
+
+É nesta que deve estar enquanto move homens, porque é a única que mostra o
+que os espera.
+---
+@Signals Officer
+:: point=view.navy
+Marinha faz o mesmo para os navios, e é daí que se carregam os transportes.
+
+Recursos e Nomes dos países são as duas últimas, e fazem o que dizem.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**A economia**§ primeiro, porque tudo o resto é pago com ela.
+
+Abra-a.
+---
+@Signals Officer
+A indústria é aquilo com que se constrói, e cresce onde já há população.
+Ponha uma fábrica num sítio vazio e comprou um barracão caríssimo.
+
+O rendimento chega uma vez por turno. Gaste-o antes de o ter e a diferença
+sai da prontidão.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Agora feche-a outra vez, com o mesmo botão. O painel tapa o mapa, e não lhe
+consigo mostrar nada lá fora enquanto estiver aqui dentro.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+A seguir, §**Investigação**§. Abra-a.
+---
+@Signals Officer
+Nada do que começar aqui acaba neste turno, e a maior parte acaba muito
+depois de já se ter esquecido de que o queria.
+
+É exatamente por isso que vale a pena começar cedo.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Outra vez para fora.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Política**§. Entre.
+---
+@Signals Officer
+As políticas custam manutenção, não um pagamento único. São uma conta
+permanente, e mudam a posição política do país.
+
+O serviço militar enche as fileiras. Também cria pessoas que não queriam
+estar nas fileiras, e é esse o número a vigiar.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+E para fora.
+---
+@Signals Officer
+Esse número é a §**agitação**§.
+
+Uma província com agitação alta deixa de pagar e começa a organizar-se.
+Ignore-a tempo suficiente e ela vai-se embora, com a indústria, a população
+e a opinião que tem de si.
+
+Recebe um aviso. Nem sempre recebe um segundo.
+---
+@Signals Officer
+:: point=view.relations
+Mais uma coisa antes dos painéis: uma guerra não tem de acabar com alguém a
+morrer.
+
+As ofertas de §**cessar-fogo**§ e de §**comércio**§ chegam como uma janela
+com condições: quem para de lutar, quem cede o quê. Leia as condições. Aceite
+e a guerra acaba nessas condições, não em condições simpáticas.
+---
+@Signals Officer
+Também pode abrir uma, a partir da vista de relações: escolha um país com que
+esteja em guerra e peça. Dizem que sim quando estão a perder e que não quando
+não estão, e isso é a maior parte da diplomacia deste jogo.
+
+Um §**acordo comercial**§ tem a mesma forma, sem a guerra: bens por dinheiro,
+todos os turnos, até alguém cancelar.
+---
+@Signals Officer
+E ninguém lhe vai oferecer nenhum dos dois durante esta lição. Proibi-os.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Último painel. As §**Reivindicações**§ são o que torna uma guerra legítima.
+---
+@Signals Officer
+Faça valer uma reivindicação que tem e o mundo encolhe os ombros. Tome
+terreno que nunca reivindicou, e todos os que estavam indecisos a seu
+respeito deixam de estar.
+
+Faça a reivindicação ANTES da guerra. Uma apresentada depois não engana
+ninguém.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Feche-o, e vamos usar um pouco disto.
+---
+@Signals Officer
+Agora o exército.
+
+Selecione uma província sua, mantenha §{key=army_move}§ premido e clique
+para onde os homens devem ir. Só para uma província vizinha: um exército
+marcha, não se teletransporta.
+---
+@Signals Officer
+A artilharia está em §{key=artillery_wheel}§. Mantenha premido e a roda
+abre-se: de morteiros até coisas que prefiro não pôr por escrito.
+
+Os navios têm as suas: §{key=ship_move}§ para mover, §{key=ship_wheel}§ para
+os canhões, §{key=ship_engage}§ para procurar luta.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Os exércitos também não aparecem do nada. §**Recruta-os**§, província a
+província, a partir das pessoas que lá vivem.
+
+Selecione uma das nossas e olhe para o painel.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Há um cursor e um botão §**Recrutar**§. O cursor é a parte do que essa
+província pode dispensar que vai tirar neste turno: no máximo cerca de um
+quinto da população, menos onde as pessoas andam descontentes.
+
+Custa dinheiro, e os homens chegam no turno seguinte. Dê a ordem agora.
+---
+@Signals Officer
+Uma província a que tirou os homens é uma província onde qualquer um pode
+entrar, e uma a que tirou as pessoas fica mais pobre para sempre. Recrutar é
+gastar alguma coisa, não criá-la.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Antes de mover alguém: §**nada acontece até terminar o turno.**§
+
+Talvez tenha reparado que isto esteve cinzento até agora. Fui eu.
+
+Dá ordens. Elas ficam à espera. Carrega aqui, e então acontecem todas ao
+mesmo tempo. É por isso que uma campanha inteira se pode decidir num só
+turno, se as ordens forem boas.
+---
+@Signals Officer
+Kestrel ocupa a ponta leste da nossa ilha, já está em guerra connosco e tem
+quarenta e oito mil homens em seu nome.
+
+Nós temos setecentos e vinte mil.
+---
+@Signals Officer
+:: until=destroyed:KES
+Por isso faça-o num §**só turno**§. Dê ordem para tomar todas as províncias
+deles, as quatro, uma a seguir à outra, antes de terminar seja o que for.
+Depois carregue em Executar turno e veja tudo a resolver-se.
+
+É esse o ritmo deste jogo. O resto são pormenores.
+---
+@Signals Officer
+:: act=rebellion
+... Tem um problema em casa.
+
+A agitação nas províncias que acabou de tomar passou do limite. Declararam-se
+independentes, e não estão a pedir licença.
+---
+@Signals Officer
+:: until=rebels:none
+Era disto que eu falava. Uma rebelião agora é um país: tem províncias,
+homens e uma fronteira consigo.
+
+Esmague-a como esmaga qualquer outra coisa. Não vai ser tão fácil como
+Kestrel.
+---
+@Signals Officer
+O que deixa Verrick, do outro lado da água.
+
+Não há caminho por terra. Nenhuma quantidade de marchas leva um exército até
+lá, e é aqui que a maioria das pessoas encrava.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+E §**não estamos em guerra com eles**§. Kestrel já nos era hostil; Verrick
+não fez nada, e não pode desembarcar num país com o qual está em paz.
+
+Por isso declaramos guerra. Qualquer vista exceto População, e clique numa
+das províncias deles.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+O painel da província deles lista o que lhes podemos fazer, entre isso
+§**Declarar guerra**§. Por cima está o §**objetivo de guerra**§: aquilo que
+diz que pretende. Clique nele para alternar.
+
+O objetivo não é decoração: é por ele que o resto do mundo o julga, e é sobre
+ele que mais tarde se discutirá um cessar-fogo.
+---
+@Signals Officer
+Declare-a, e depois §**termine o turno**§. Uma declaração é uma ordem como
+qualquer outra: é registada agora e acontece quando o turno se resolve. Nada
+muda no mapa até carregar no botão.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Aqui está a travessia inteira, em quatro passos. Selecione uma das nossas
+províncias costeiras, uma com §**porto**§ e homens lá dentro.
+---
+@Signals Officer
+:: point=panel.province
+Precisa de §**homens lá dentro**§. Embarcar não invoca um exército do nada:
+põe num barco a guarnição que já lá está, por isso um porto numa província
+vazia não embarca nada.
+
+Faça marchar homens para lá primeiro, se for preciso.
+---
+@Signals Officer
+:: point=panel.province
+Depois, no painel dessa província: §**Embarcar exército**§. Grátis, um turno.
+
+Carregue e termine o turno. A guarnição sai da província e torna-se um
+§**barco**§ ao largo da costa, com eles como tripulação.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Agora vá para a vista §**Marinha**§. Não se dá ordens a um navio a partir do
+mapa de população: o barco não está lá.
+---
+@Signals Officer
+Selecione o barco. Carregue em §**Mover**§, e depois (esta é a parte que
+ninguém adivinha) clique em §**terra**§.
+
+A água move-o. Uma costa §**põe os homens em terra ali**§. Isso é o
+desembarque; não há um botão próprio para isso.
+---
+@Signals Officer
+:: until=destroyed:VER
+Portanto: homens numa província com porto, embarcar, terminar o turno, vista
+da marinha, mover o barco, clicar em terra.
+
+E vá §**por Hallow Rock**§. Não é um atalho, é a rota: um barco só leva até
+certa distância, e a costa de Verrick fica para lá disso de uma só vez.
+Desembarque no rochedo, termine o turno, e depois atravesse a segunda metade.
+
+E mantenha o barco longe do contratorpedeiro deles. Um barco carregado
+afunda-se com toda a gente a bordo.
+---
+@Signals Officer
+:: point=tab.claims
+E reivindique o terreno antes de o tomar, não depois. Agora já sabe porquê.
+---
+@Signals Officer
+É tudo. Economia, investigação, política, agitação, reivindicações,
+exércitos, navios.
+
+O resto são pormenores, e vai aprendê-los a perder para eles.
+---
+@Signals Officer
+:: act=then:outro
+E esta foi a ilha. Volte comigo ao menu. As duas últimas coisas não estão
+cá em baixo.

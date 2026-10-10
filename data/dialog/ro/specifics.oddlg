@@ -1,0 +1,16 @@
+// Traducere - meniul de subiecte. Țintele de după -> sunt identificatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Bun, cunoașteți forma generală. Deci ce vreți de fapt?
+
+Alegeți unul și intru serios în el. Întrebați din nou când terminați.
+> Nave, porturi și cum trece o armată peste apă -> script:tut_ships
+> Cercetarea și de ce nimic din ce încep nu se termină -> script:tut_research
+> Economia, industria și de unde vin banii -> script:tut_economy
+> Economia bunurilor: hrana poporului și combustibilul războiului -> script:tut_goods
+> Revendicări, agitație și provincii pierdute în fața propriului popor -> script:tut_unrest
+> Alianțe, încetări ale focului și restul diplomației -> script:tut_diplomacy
+> Ceața războiului: ce văd și cum spionez restul -> script:tut_fog
+> Nimic altceva, am terminat -> script:outro

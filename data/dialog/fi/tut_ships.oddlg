@@ -1,0 +1,48 @@
+// Käännös: meren ylitys yksityiskohtaisesti.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Alukset siis. Tämä pysäyttää useimmat, ja aina samassa kohdassa: armeija on
+rannikolla eikä mitään tapahdu.
+---
+@Signals Officer
+Armeija ei ylitä vettä itsestään, eikä ole mitään "lastaa tuohon alukseen"
+-käskyä. Maakunta hoitaa sen.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Valitse rannikkomaakunta, jossa on §**satama**§ JA §**miehiä paikalla**§.
+Lastaaminen siirtää jo paikalla olevan varuskunnan; tyhjä satama ei lastaa
+yhtään mitään, ja siitä suurin osa sekaannuksesta alkaa.
+
+Sen paneelissa on §**Lastaa armeija**§: ilmainen, yksi vuoro. Paina sitä ja
+päätä vuoro.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Miehet ovat nyt §**vene**§ rannikon edustalla. Mene §**Laivasto**§-näkymään:
+alukset eivät ota käskyjä yhdestäkään muusta seitsemästä.
+
+§{key=ship_move}§ siirtää sitä, §{key=ship_wheel}§ avaa sen tykit,
+§{key=ship_engage}§ käskee sen hakemaan tappelua.
+---
+@Signals Officer
+Maihinnousu: valitse vene, paina §**Siirrä**§ ja napsauta §**maata**§.
+
+Vesi siirtää sitä. Maa purkaa sen. Sama nappi tekee molemmat, ja siksi
+ihmiset purjehtivat edestakaisin etsien sitä toista.
+---
+@Signals Officer
+Kaksi asiaa, joita kukaan ei kerro.
+
+Lastattu kuljetus on maalitaulu, ja se uppoaa miehet kyydissään. Ja
+maihinnousu puolustettuun maakuntaan saapuu väsyneenä: ota naapurin tyhjä
+rannikko ja kävele, äläkä nouse maihin linnoituksen kohdalla.
+---
+@Signals Officer
+Salmessa oleva §**Hallow Rock**§ ei ole vapaaehtoinen. Veneellä on
+kantama, ja kaukainen saari on sen ulkopuolella, joten kallio on ensimmäinen
+maihinnousu ja toinen hyppy lähtee sieltä.
+
+Siinä alukset. Muuta?

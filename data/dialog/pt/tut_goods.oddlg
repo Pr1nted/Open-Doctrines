@@ -1,0 +1,64 @@
+// Tradução: a economia de bens.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Num §**mundo de bens**§, uma província não se limita a fazer dinheiro. Extrai
+matérias-primas e as fábricas transformam-nas em bens, e são os bens, não o
+dinheiro, que alimentam o seu povo e lhe permitem construir. Abra a economia.
+---
+@Signals Officer
+São quatro. Os §**Bens de consumo**§ são o que o seu povo consome. A
+§**Maquinaria**§ constrói indústria, fortes e portos. O §**Combustível**§
+move navios e exércitos. As §**Munições**§ recrutam soldados e disparam a
+artilharia. O ouro continua a ser dinheiro.
+---
+@Signals Officer
+E cada um vem do chão através de uma fábrica. §**Borracha e gemas**§ dão
+bens de consumo; §**metal**§ dá maquinaria e munições; §**petróleo**§ dá
+combustível. Sem jazida, não há bem. Por isso uma escassez aponta-lhe uma
+província a tomar ou uma fábrica a reorientar.
+---
+@Signals Officer
+Num jogo com bens, a economia ganha um separador §**Bens**§ no topo. Lista os
+quatro lado a lado: o que tem, o que produz face ao que precisa em cada
+turno, e o número que importa: a §**Cobertura**§.
+---
+@Signals Officer
+A cobertura é quantos turnos uma reserva dura ao consumo atual. Nove turnos é
+confortável; menos de dois é um aviso; vazio é uma escassez a acontecer
+agora. É a leitura honesta: não uma pilha grande disfarçada de fartura, mas
+quanto tempo a pilha realmente lhe compra.
+---
+@Signals Officer
+Os bens de consumo são o único bem que é também um facto político. Consumido
+face ao desejado é o seu §**Nível de vida**§: mantenha as pessoas alimentadas
+e o país cresce; deixe-o descer e a fome volta sob a forma de agitação.
+---
+@Signals Officer
+Os outros três são autorizações. Construa indústria e gasta maquinaria; faça
+navegar uma frota e queima combustível; recrute e consome munições. Se
+faltarem, a ação simplesmente fica cinzenta. A guerra não espera pelo armazém.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Onde um bem é produzido define-se por província. Clique numa das nossas: no
+painel dela decide o que as fábricas produzem, ou deixa estar e a economia
+distribui por si, mandando as fábricas paradas para aquilo de que tem mais
+falta.
+---
+@Signals Officer
+:: point=btn.settings
+Há dois interruptores em §**Definições -> Experimental**§. Um liga a economia
+de bens no seu próximo mundo novo. O outro, §**Excedente comercial com
+aliados**§, é opcional: quando falta algo a um aliado, os seus bens a mais
+vão para ele. Muitas vezes não falta nada a ninguém, e fica parado. É ajuda
+de reserva, não um imposto sobre as suas reservas.
+---
+@Signals Officer
+É a economia de bens: extrair, produzir, alimentar e gastar. Vigie a
+cobertura, mantenha o povo alimentado, e nunca comece uma guerra que as suas
+munições não consigam acabar.
+
+Mais alguma coisa?

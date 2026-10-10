@@ -1,0 +1,16 @@
+// Prijevod - meni tema.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Dobro, znate kako to otprilike ide. Pa šta zapravo želite?
+
+Odaberite jedno i temeljito ću to obraditi. Pitajte ponovo kad završimo.
+> Brodovi, luke i kako prebaciti vojsku preko vode -> script:tut_ships
+> Istraživanje, i zašto ništa započeto ne završava -> script:tut_research
+> Ekonomija, industrija i odakle dolazi novac -> script:tut_economy
+> Robna ekonomija: hraniti narod i pokretati rat -> script:tut_goods
+> Zahtjevi, nemiri i gubitak pokrajina vlastitom narodu -> script:tut_unrest
+> Savezi, primirja i ostatak diplomatije -> script:tut_diplomacy
+> Ratna magla: šta vidite, i kako špijunirati ostalo -> script:tut_fog
+> Ništa više, to je sve -> script:outro

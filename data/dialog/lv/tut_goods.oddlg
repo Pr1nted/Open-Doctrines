@@ -1,0 +1,65 @@
+// Tulkojums -- preču ekonomika.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Preču pasaulē**§ province nepelna tikai naudu. Tā iegūst izejvielas, un tās
+rūpnīcas pārvērš tās precēs -- un tieši preces, nevis nauda, pabaro jūsu tautu
+un ļauj jums būvēt. Atveriet ekonomiku.
+---
+@Signals Officer
+Tās ir četras. §**Patēriņa preces**§ patērē jūsu tauta. §**Mašīnas**§ būvē
+rūpniecību, fortus un ostas. §**Degviela**§ pārvieto kuģus un armijas.
+§**Munīcija**§ vajadzīga karavīru iesaukšanai un artilērijas šaušanai. Zelts
+paliek nauda.
+---
+@Signals Officer
+Un katra nāk no zemes caur rūpnīcu. §**Gumija un dārgakmeņi**§ kļūst par
+patēriņa precēm; §**metāls**§ kļūst par mašīnām un munīciju; §**nafta**§ kļūst
+par degvielu. Nav atradnes, nav preces -- tāpēc trūkums norāda uz provinci, ko
+ieņemt, vai rūpnīcu, ko pārorientēt.
+---
+@Signals Officer
+Preču spēlē ekonomikai augšā parādās cilne §**Preces**§. Tajā visas četras ir
+blakus: cik jums ir, cik saražojat pret to, cik vajag katru gājienu, un --
+skaitlis, kas tiešām ir svarīgs -- §**Pietiek**§.
+---
+@Signals Officer
+"Pietiek" nozīmē, cik gājienus krājumam pietiks pie pašreizējā patēriņa. Deviņi
+gājieni ir ērti; mazāk par diviem ir brīdinājums; tukšs ir trūkums, kas notiek
+tagad. Tas ir godīgs rādījums -- nevis liela kaudze, kas uzposta par pārpilnību,
+bet gan cik ilgu laiku kaudze jums patiešām nopērk.
+---
+@Signals Officer
+Patēriņa preces ir vienīgā prece, kas ir arī politisks fakts. Patērētais pret
+vēlamo ir jūsu §**dzīves līmenis**§: turiet cilvēkus paēdušus, un valsts aug;
+ļaujiet tam slīdēt, un bads atgriežas kā nemieri.
+---
+@Signals Officer
+Pārējās trīs ir atļaujas. Būvējiet rūpniecību, un jūs tērējat mašīnas; kuģojiet
+ar floti, un jūs dedzināt degvielu; iesauciet, un jūs patērējat munīciju. Ja
+pietrūkst, darbība vienkārši kļūst pelēka -- karš negaida noliktavu.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kur prece tiek ražota, nosaka katrai provincei atsevišķi. Noklikšķiniet uz kādas
+mūsējās: tās panelī jūs norādāt, ko būvē tās rūpnīcas, vai atstājiet to, un
+ekonomika sadalīs jūsu vietā, sūtot dīkstāvošās rūpnīcas pie tā, kā jums trūkst
+visvairāk.
+---
+@Signals Officer
+:: point=btn.settings
+Divi slēdži atrodas sadaļā §**Iestatījumi -> Eksperimentāls**§. Viens ieslēdz
+preču ekonomiku jūsu nākamajai jaunajai pasaulei. Otrs,
+§**Tirdzniecības pārpalikums ar sabiedrotajiem**§, ir pēc izvēles: kad
+sabiedrotajam pietrūkst, jūsu liekās preces aiziet pie viņa. Bieži nevienam
+netrūkst, tāpēc tas stāv dīkā -- tā ir gatavībā turēta palīdzība, nevis nodoklis
+jūsu krājumiem.
+---
+@Signals Officer
+Tā ir preču ekonomika: iegūt, ražot, pabarot un tērēt. Sekojiet līdzi rādītājam
+"Pietiek", turiet savus cilvēkus paēdušus un nekad nesāciet karu, ko jūsu
+munīcija nespēj pabeigt.
+
+Vēl kaut kas?

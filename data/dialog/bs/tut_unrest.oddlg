@@ -1,0 +1,76 @@
+// Prijevod - zahtjevi, nemiri i pobuna.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Zahtjevi i nemiri. Otvorite ploču zahtjeva. To je jedna tema, šta god
+interfejs govorio.
+---
+@Signals Officer
+§**Zahtjev**§ je razlika između rata koji svijet toleriše i rata koji sve
+ujedini protiv vas. Ostvarite onaj koji imate i ispravljate nepravdu; uzmite
+zemlju na koju nikad niste polagali pravo i vi ste ta nepravda.
+---
+@Signals Officer
+Postavite zahtjev §**prije**§ rata, ne poslije. Zahtjev podnesen potez nakon
+što ste zauzeli pokrajinu nikoga ne zavarava, a košta isto.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zatvorite je.
+---
+@Signals Officer
+§**Nemiri**§ su ono što zauzimanje zemlje radi samoj zemlji. Osvojene
+pokrajine to zamjeraju, manjine još više, a vojna obaveza i cenzura vam obje
+kupuju snagu sada po cijenu nemira kasnije.
+---
+@Signals Officer
+Iza jednog praga pokrajina prestaje plaćati i počinje se organizovati. Iza
+sljedećeg odlazi -- i odlazi kao §**država**§, s vašom industrijom, vašim
+stanovništvom i vrlo određenim mišljenjem o vama.
+
+Dobit ćete upozorenje. Ne dobijete uvijek i drugo.
+---
+@Signals Officer
+Lijekovi su nepopularni ili spori: postavite garnizon, uložite novac ili joj
+dajte ono što želi. Odlučite rano, jer svima trima treba nekoliko poteza da
+djeluju.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Na ulaganju se većina novca i potroši uzalud. Otvorite Politiku, zatim
+§**Distrikti**§.
+
+---
+@Signals Officer
+Budžet je nekad padao na cijelu državu odjednom -- jednaka težina na miran
+kraj kao i na onaj koji se naoružava. Zato podijelite državu. §**Distrikt**§
+je njen dio kojim upravljate kao cjelinom: obojite pokrajine u njega, dajte mu
+boju, dajte mu §**udio**§. Udjeli uvijek daju zbir sto, jer postoji samo jedan
+budžet.
+
+---
+@Signals Officer
+Važan je udio §**novca**§ naspram udjela §**zemlje**§. Distrikt koji drži
+desetinu države uz desetinu budžeta nadzire se tačno kao i prije -- pa podjela
+ne mijenja ništa dok udjele ne učinite nejednakim.
+
+---
+@Signals Officer
+Nacrtajte mali distrikt oko nevolje, dajte mu četvrtinu novca i nadzire se
+nekoliko puta strože; ploča vam pokazuje cifru. Sve ostalo to plaća, i to je
+odluka. Postoji dugme za jednaku podjelu: razumno mjesto za početak i rijetko
+mjesto za ostanak.
+
+Distrikt donosi i vlastiti §**regionalni zakon**§: policijski čas, poreske
+praznike, čiji jezik koriste sudovi. Malo, lokalno, i svaki je kompromis.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Zatvorite je.
+
+---
+@Signals Officer
+To su nemiri. Još nešto?

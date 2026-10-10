@@ -1,0 +1,78 @@
+// Përkthim - pretendime, trazira dhe kryengritje.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Pretendime dhe trazira. Hapni panelin e pretendimeve. Janë një temë e vetme,
+çfarëdo që të thotë ndërfaqja.
+---
+@Signals Officer
+Një §**pretendim**§ është ndryshimi mes një lufte që bota e duron dhe një
+lufte që i bashkon të gjithë kundër jush. Paraqitni një që keni dhe po zgjidhni
+një ankesë; merrni tokë që s'e keni pretenduar kurrë dhe ankesa jeni ju.
+---
+@Signals Officer
+Bëjeni pretendimin §**para**§ luftës, jo pas. Një pretendim i paraqitur radhën
+pasi e morët provincën nuk mashtron askënd dhe kushton njësoj.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Mbylleni.
+---
+@Signals Officer
+§**Trazirat**§ janë ajo që i bën tokës marrja e saj. Provincat e pushtuara
+e urrejnë, pakicat edhe më shumë, dhe shërbimi ushtarak e censura, të dyja, ju
+blejnë forcë tani në këmbim të trazirave më vonë.
+---
+@Signals Officer
+Përtej një pragu, një provincë ndalon së paguari dhe nis të organizohet.
+Përtej pragut tjetër largohet -- dhe largohet si §**vend**§, me industrinë
+tuaj, popullsinë tuaj dhe një mendim shumë të caktuar për ju.
+
+Merrni një paralajmërim. Jo gjithmonë merrni edhe një të dytë.
+---
+@Signals Officer
+Kurat janë të papëlqyera ose të ngadalta: vendosni garnizon, shpenzoni për
+të, ose jepini atë që do. Zgjidhni herët, sepse të treja duan radhë që të
+veprojnë.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Shpenzimi për të është vendi ku shkon dëm pjesa më e madhe. Hapni Politika,
+pastaj §**Rrethet**§.
+
+---
+@Signals Officer
+Buxheti dikur binte mbi gjithë vendin njëherësh -- e njëjta peshë mbi një
+krahinë të qetë si mbi atë që po armatoset. Ndaj ndajeni vendin. Një
+§**rreth**§ është një copë e tij që e qeverisni si njësi: ngjyrosni provinca
+në të, jepini një ngjyrë, jepini një §**pjesë**§. Pjesët mblidhen gjithmonë
+në njëqind, sepse ka vetëm një buxhet.
+
+---
+@Signals Officer
+Ajo që ka rëndësi është pjesa e §**parave**§ përkundrejt pjesës së
+§**territorit**§. Një rreth që mban një të dhjetën e vendit me një të dhjetën
+e buxhetit mbikëqyret saktësisht si më parë -- ndaj ndarja nuk ndryshon asgjë
+derisa t'i bëni pjesët të pabarabarta.
+
+---
+@Signals Officer
+Vizatoni një rreth të vogël rreth telashit, jepini një të katërtën e parave,
+dhe mbikëqyret disa herë më ashpër; paneli jua tregon shifrën. Gjithë të
+tjerët paguajnë për këtë, dhe ky është vendimi. Ka një buton «Ndaj barabar»:
+një vend i arsyeshëm për të nisur dhe rrallë vendi për të qëndruar.
+
+Një rreth miraton edhe §**ligjin e vet rajonal**§: një shtetrrethim, një
+pushim tatimor, cilën gjuhë përdorin gjykatat. Të vogla, vendore, dhe secila
+një shkëmbim.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Mbylleni.
+
+---
+@Signals Officer
+Kjo janë trazirat. Diçka tjetër?

@@ -1,0 +1,305 @@
+// Tulkojums -- Mias nodarbība. :: rindas, runātāji un {key=...} ir identifikatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Tā. Ashford. Septiņas provinces, viens kaimiņš, kuram mēs jau nepatīkam, un
+sala, līdz kurai nevar aiziet kājām.
+
+Pietiekami maza, lai mācītos. Tieši tāpēc mēs esam šeit.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Noklikšķiniet uz jebkuras provinces, un šis panelis pateiks, kas tā ir: kam tā
+pieder, kas tur dzīvo, ko tā ražo un cik tuvu tās ļaudis ir dumpim.
+
+Visu, ko darāt šajā spēlē, jūs darāt ar provinci.
+---
+@Signals Officer
+:: point=view.population
+Josla apakšā nav astoņas pogas. Tie ir astoņi veidi, kā skatīties uz TO PAŠU
+karti, un jūs visu spēli pārslēgsieties starp tiem.
+
+Šis iekrāso katru provinci pēc tā, cik cilvēku tajā dzīvo.
+---
+@Signals Officer
+:: point=view.industry
+Rūpniecība. Kur ir rūpnīcas, un tātad no kurienes nāk nauda un ekipējums.
+
+Iedzīvotāji un rūpniecība kopā pasaka, kuras provinces ir vērts ieņemt un kuras
+ir tikai zeme.
+---
+@Signals Officer
+:: point=view.defence
+Aizsardzība rāda fortus. Tumšs nozīmē, ka kāds ir ierakies, un uzbrukums tumšai
+zemei maksā daudz vairāk, nekā liecina skaitļi.
+---
+@Signals Officer
+:: point=view.relations
+Attiecības: kurš ar kuru karo un kurš kuram sniedz garantijas. Paskatieties
+tajās, pirms kaut ko sākat -- puse karu, ko cilvēki šeit zaudē, bija pret trim
+valstīm, nevis vienu.
+---
+@Signals Officer
+:: point=view.army
+Armija. Visi garnizoni kartē vienlaikus, jūsējie un viņu.
+
+Šajā skatā jāatrodas, kamēr pārvietojat vīrus, jo tikai tas rāda, kas viņus
+sagaida.
+---
+@Signals Officer
+:: point=view.navy
+Flote dara to pašu ar kuģiem, un no tās jūs iekraujat transportus.
+
+Resursi un Valstu nosaukumi ir pēdējie divi, un tie dara to, ko sola.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Ekonomika**§ vispirms, jo no tās tiek apmaksāts viss pārējais.
+
+Atveriet to.
+---
+@Signals Officer
+Rūpniecība ir tas, ar ko jūs būvējat, un tā aug tur, kur jau ir iedzīvotāji.
+Uzceliet rūpnīcu tukšā vietā, un būsiet nopirkuši ļoti dārgu šķūni.
+
+Ienākumi pienāk reizi gājienā. Iztērējiet tos, pirms tie ir, un iztrūkums tiek
+atskaitīts no kaujas gatavības.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Tagad aizveriet to atkal -- ar to pašu pogu. Panelis aizsedz karti, un es
+nevaru jums neko tur ārā parādīt, kamēr jūs esat šeit iekšā.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Tālāk §**Pētniecība**§. Atveriet to.
+---
+@Signals Officer
+Nekas, ko jūs šeit sākat, nebeidzas šajā gājienā, un lielākā daļa beidzas ilgi
+pēc tam, kad būsiet aizmirsuši, ka to gribējāt.
+
+Tieši tāpēc to ir vērts sākt agri.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Atkal ārā.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Lūdzu iekšā.
+---
+@Signals Officer
+Politikas virzieni maksā uzturēšanu, nevis vienreizēju summu -- tie ir pastāvīgs
+rēķins, un tie pārbīda valsts politisko stāvokli.
+
+Iesaukšana piepilda rindas. Tā arī rada cilvēkus, kas negribēja būt rindās, un
+tas ir skaitlis, kam sekot.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Un ārā.
+---
+@Signals Officer
+Šis skaitlis ir §**nemieri**§.
+
+Province ar augstiem nemieriem pārstāj maksāt un sāk organizēties. Ignorējiet
+to pietiekami ilgi, un tā aiziet -- ar savu rūpniecību, saviem iedzīvotājiem un
+savu viedokli par jums.
+
+Brīdinājumu jūs saņemsiet. Otru -- ne vienmēr.
+---
+@Signals Officer
+:: point=view.relations
+Vēl viena lieta pirms paneļiem: karam nav obligāti jābeidzas ar kāda nāvi.
+
+§**Pamiera**§ un §**tirdzniecības**§ piedāvājumi pienāk kā logs ar noteikumiem --
+kurš beidz cīnīties, kurš ko atdod. Izlasiet noteikumus. Pieņemiet, un karš
+beidzas ar šiem noteikumiem, nevis ar jaukiem.
+---
+@Signals Officer
+Jūs varat tādu atvērt arī paši, no attiecību skata: izvēlieties valsti, ar kuru
+karojat, un palūdziet. Viņi piekrīt, kad zaudē, un atsaka, kad nezaudē, un tā ir
+lielākā daļa diplomātijas šajā spēlē.
+
+§**Tirdzniecības līgums**§ ir tas pats bez kara: preces pret naudu, katru
+gājienu, līdz kāds to atceļ.
+---
+@Signals Officer
+Un šīs nodarbības laikā neviens jums nepiedāvās ne vienu, ne otru. Es viņiem
+liku to nedarīt.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Pēdējais panelis. §**Pretenzijas**§ ir tas, kas padara karu leģitīmu.
+---
+@Signals Officer
+Īstenojiet pretenziju, kas jums ir, un pasaule paraustīs plecus. Ieņemiet zemi,
+uz kuru nekad neesat pretendējuši, un visi, kas par jums vēl šaubījās, pārstāj
+šaubīties.
+
+Izvirziet pretenziju PIRMS kara. Pēc tam izvirzīta nevienu neapmāna.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Aizveriet to, un iesim kaut ko no tā izmantot.
+---
+@Signals Officer
+Tagad armija.
+
+Izvēlieties savu provinci, turiet §{key=army_move}§ un noklikšķiniet, kur
+vīriem jāiet. Tikai uz kaimiņu provinci -- armija iet kājām, tā neteleportējas.
+---
+@Signals Officer
+Artilērija ir uz §{key=artillery_wheel}§. Turiet to, un atveras ripa: no
+mīnmetējiem līdz lietām, ko es labāk nerakstītu.
+
+Kuģiem ir savējās: §{key=ship_move}§ pārvietoties, §{key=ship_wheel}§ to
+lielgabaliem, §{key=ship_engage}§, lai sāktu kauju.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Armijas arī nerodas no nekurienes. §**Jūs tās iesaucat**§, provinci pēc
+provinces, no cilvēkiem, kas tur dzīvo.
+
+Izvēlieties vienu no mūsējām un paskatieties uz paneli.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Tur ir slīdnis un poga §**Iesaukt**§. Slīdnis nosaka, cik no tā, ko province var
+atvēlēt, jūs ņemat šajā gājienā -- ne vairāk kā aptuveni piektdaļu iedzīvotāju,
+mazāk tur, kur cilvēki ir neapmierināti.
+
+Tas maksā naudu, un vīri ierodas nākamajā gājienā. Iesauciet dažus tagad.
+---
+@Signals Officer
+Province, no kuras esat izņēmuši vīrus, ir province, kurā var ieiet jebkurš, un
+province, no kuras esat izņēmuši cilvēkus, ir nabadzīgāka uz visiem laikiem.
+Iesaukšana ir kaut kā tērēšana, nevis radīšana.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Pirms kādu pārvietojat: §**nekas nenotiek, kamēr nepabeidzat gājienu.**§
+
+Varbūt pamanījāt, ka līdz šim tā bija pelēka. Tā biju es.
+
+Jūs dodat pavēles. Tās gaida. Jūs nospiežat šo, un tad tās visas notiek
+vienlaikus -- tāpēc vesela kampaņa var izšķirties vienā gājienā, ja pavēles
+bija labas.
+---
+@Signals Officer
+Kestrel tur mūsu salas austrumu galu, viņi jau karo ar mums, un viņiem ir
+četrdesmit astoņi tūkstoši vīru.
+
+Mums ir septiņi simti divdesmit tūkstoši.
+---
+@Signals Officer
+:: until=destroyed:KES
+Tāpēc izdariet to §**vienā gājienā**§. Pavēliet ieņemt katru viņu provinci --
+visas četras, vienu pēc otras, pirms kaut ko pabeidzat -- un tad nospiediet
+Izpildīt gājienu un vērojiet, kā viss atrisinās.
+
+Tas ir šīs spēles ritms. Viss pārējais ir detaļas.
+---
+@Signals Officer
+:: act=rebellion
+... Jums ir problēma mājās.
+
+Nemieri tikko ieņemtajās provincēs ir pārsnieguši robežu. Tās ir pasludinājušas
+sevi par neatkarīgām, un atļauju tās neprasa.
+---
+@Signals Officer
+:: until=rebels:none
+To es arī domāju. Dumpis tagad ir valsts -- tam ir provinces, vīri un robeža
+ar jums.
+
+Apspiediet to tāpat, kā apspiežat jebko citu. Tas nebūs tik viegli kā Kestrel.
+---
+@Signals Officer
+Paliek Verrick, aiz ūdens.
+
+Nav sauszemes ceļa. Nekāda soļošana armiju tur nenogādās, un tieši te
+lielākā daļa cilvēku iestrēgst.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Un mēs §**ar viņiem nekarojam**§. Kestrel nāca pie mums jau naidīgi noskaņoti;
+Verrick nav neko nodarījuši, un jūs nevarat izsēsties valstī, ar kuru esat
+mierā.
+
+Tāpēc mēs pieteiksim karu. Jebkurš skats, izņemot "Iedzīvotāji", un
+noklikšķiniet uz kādas viņu provinces.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Viņu provinces panelī ir saraksts ar to, ko drīkstam viņiem nodarīt, tostarp
+§**Pieteikt karu**§. Virs tā ir §**kara mērķis**§ -- tas, pēc kā jūs it kā
+tiecaties. Noklikšķiniet uz tā, lai pārslēgtu.
+
+Mērķis nav dekorācija: pēc tā jūs vērtē pārējā pasaule, un par to vēlāk
+strīdēsies pamiera sarunās.
+---
+@Signals Officer
+Piesakiet to -- un tad §**pabeidziet gājienu**§. Pieteikums ir pavēle kā jebkura
+cita: to iesniedz tagad, un tā notiek, kad gājiens atrisinās. Kartē nekas
+nemainās, kamēr nenospiežat pogu.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Lūk, visa pārcelšanās četros soļos. Izvēlieties vienu no mūsu piekrastes
+provincēm -- ar §**ostu**§ un vīriem tajā.
+---
+@Signals Officer
+:: point=panel.province
+Tajā jābūt §**vīriem uz vietas**§. Iekraušana neizsauc armiju no nekurienes --
+tā uzsēdina laivā garnizonu, kas jau tur ir, tāpēc osta tukšā provincē neko
+neiekrauj.
+
+Ja vajag, vispirms ievediet tur kādus.
+---
+@Signals Officer
+:: point=panel.province
+Tad šīs provinces panelī: §**Iekraut armiju**§. Bez maksas, viens gājiens.
+
+Nospiediet to un pabeidziet gājienu. Garnizons atstāj provinci un kļūst par
+§**laivu**§ pie krasta, kuras apkalpe ir viņi paši.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Tagad atveriet skatu §**Flote**§. Kuģim nevar dot pavēli no iedzīvotāju kartes --
+laivas tur nav.
+---
+@Signals Officer
+Izvēlieties laivu. Nospiediet §**Pārvietot**§, un tad -- šo daļu neviens neuzmin --
+noklikšķiniet uz §**sauszemes**§.
+
+Ūdens to pārvieto. Krasts §**izsēdina vīrus tur**§. Tā ir izsēšanās; atsevišķas
+pogas tai nav.
+---
+@Signals Officer
+:: until=destroyed:VER
+Tātad: vīri ostas provincē, iekraut, pabeigt gājienu, Flotes skats, pārvietot
+laivu, noklikšķināt uz sauszemes.
+
+Un ejiet §**caur Hallow Rock**§. Tas nav īsceļš, tas ir maršruts: laiva aizbrauc
+tikai līdz noteiktam attālumam, un Verrick krasts vienā piegājienā ir tālāk par
+to. Izsēdieties uz klints, pabeidziet gājienu, tad šķērsojiet otru pusi.
+
+Un turiet laivu tālāk no viņu iznīcinātāja. Piekrauta laiva nogrimst ar visiem,
+kas tajā ir.
+---
+@Signals Officer
+:: point=tab.claims
+Un izvirziet pretenziju uz zemi, pirms to ieņemat, nevis pēc tam. Tagad jūs
+zināt, kāpēc.
+---
+@Signals Officer
+Tas ir viss. Ekonomika, pētniecība, politika, nemieri, pretenzijas, armijas,
+kuģi.
+
+Viss pārējais ir detaļas, un detaļas jūs apgūsiet, zaudējot tām.
+---
+@Signals Officer
+:: act=then:outro
+Un tā ir sala. Nāciet ar mani atpakaļ uz izvēlni -- pēdējās divas lietas nav
+šeit lejā.

@@ -1,0 +1,55 @@
+// Tərcümə. :: sətirləri və danışanların adları identifikatordur - tərcümə olunmur.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Alo, kimdir?
+---
+@
+...
+---
+@Pr1nted
+Ah... Siz buralarda yenisiniz... Nə? §**heç ölkə idarə etməmisiniz?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Bilirsiniz nə? Mənim günahımdır...
+---
+@Pr1nted
+:: enter=type speed=42
+Amma təlimi özüm keçməyə vaxtım yoxdur, ona görə sizi bir dostumun yanında
+qoymalı olacağam, oldu? Vaxt lazımdır, gələcək yeniləmələri hazırlamalıyam, elə deyil?
+---
+@Signals Officer
+Alo? Hansı §**Pr1nted**§?
+---
+@Pr1nted
+Hmm... Salam Mia, /balaca bir xahişim/ var, yeni bir oyunçuya yol göstərə bilərsən?
+---
+@Signals Officer
+</Ah çəkir/>
+---
+@Pr1nted
+**Ay Mia, 'gəl' də!** Mən sənə nəyə görə pul verirəm?
+---
+@Signals Officer
+Yaxşı... Oldu, oldu.
+---
+@Pr1nted
+Əla! Deməli, Mia xanım sizə hər şeyi göstərəcək: oyun necə işləyir, əsasları nədir.
+Yox əgər əsasları bilirsiniz, amma konkret mövzulardan danışmaq istəyirsinizsə, indi deyin,
+> Mənə əsasları göstərin -> basics
+> Əsasları bilirəm, konkret mövzulara keçək -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Əla, başlayaq.
+---
+@Pr1nted
+:: act=tune_out
+Əla, ümid edirəm, yola gedəcəksiniz! Pr1nted, əlaqəni bitirdi.

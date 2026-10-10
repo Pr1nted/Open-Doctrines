@@ -1,0 +1,32 @@
+// Bản dịch — đoạn kết chung của mọi lối đi.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Lên đây nào. Hai thứ không nằm trên bất kỳ bản đồ nào.
+
+§**Bản lưu.**§ Một thế giới thật tự ghi lại chính nó khi bạn chơi và chờ bạn ở
+trong đó. Thế giới của ta thì không — không gì bạn vừa làm được giữ lại, mà đó
+cũng chính là ý nghĩa của một hòn đảo tập luyện.
+---
+@Signals Officer
+:: point=menu.2
+§**Nhiều người chơi.**§ Một máy làm chủ và mọi người khác tham gia vào. Một lượt
+được giải quyết khi mọi người chơi đều báo đã sẵn sàng, nên ván đấu đi với tốc
+độ của người chậm nhất.
+
+Hãy chơi với những người chịu trả lời tin nhắn.
+---
+@Pr1nted
+Vẫn còn sống chứ? Tốt. Cô ấy kỹ tính thật, phải công nhận điều đó.
+
+Bạn còn muốn được giảng kỹ thêm điều gì nữa không, hay ta xong rồi?
+> Quay xuống lại và nói kỹ về một chủ đề cụ thể -> world:specifics
+> Vậy là đủ rồi, cảm ơn
+---
+@Pr1nted
+:: act=end_tutorial
+Được rồi. Đi thua vài ván đi, đó là cách để thấm.
+
+Pr1nted ngắt liên lạc.

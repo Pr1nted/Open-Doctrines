@@ -1,0 +1,41 @@
+// Tradução: a economia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+A economia. Abra-a. Tudo o resto neste jogo é uma discussão sobre como gastar
+o que isto produz.
+---
+@Signals Officer
+A §**Indústria**§ cresce onde já há pessoas. Uma fábrica numa província vazia
+é um barracão caro: a população é a matéria-prima, não o edifício.
+---
+@Signals Officer
+Por isso cada província indica o que aguenta: §**Nível II de VI**§, e quando
+está cheia, di-lo. As pessoas, quão apertadas vivem, o terreno e o que está
+enterrado nele: são esses quatro que decidem o teto, e nenhuma quantia de
+dinheiro o mexe.
+---
+@Signals Officer
+O rendimento chega uma vez por turno, no próprio turno. Comprometa-se com
+mais do que tem e a diferença não espera educadamente: sai da prontidão, e
+descobre isso numa batalha.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Outra vez para fora, e vamos antes olhar para uma única província.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Clique numa das nossas. Por província, o painel mostra o que ela produz e o
+que tem. Os recursos valem mais transformados do que extraídos, por isso uma
+província industrial ao lado de uma rica vale mais do que qualquer uma delas
+sozinha.
+---
+@Signals Officer
+E as políticas são uma §**conta permanente**§, não uma compra. Cada uma que
+mantém é descontada todos os turnos, para sempre, quer ainda sirva para
+alguma coisa quer não.
+
+É a economia. Mais alguma coisa?

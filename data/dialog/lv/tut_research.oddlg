@@ -1,0 +1,31 @@
+// Tulkojums -- pētniecība.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Pētniecība. Atveriet to -- sūdzība vienmēr ir tā pati -- nekas iesāktais it kā
+nekad nebeidzas -- un tā nav kļūda, tā ir būtība.
+---
+@Signals Officer
+Viss šeit tiek mērīts gājienos, kurus vēl neesat izspēlējuši. Ko sākat tagad,
+tas pienāk ilgi pēc tam, kad būsiet aizmirsuši, ka to gribējāt, tātad vienīgais
+sliktais laiks sākt ir vēlāk.
+---
+@Signals Officer
+Tā ņem no tās pašas naudas, ko armija. Valsts, kas pēta visu, nespēj izlikt
+kaujas laukā neko, un valsts, kas izliek visu, pēc divdesmit gājieniem joprojām
+karo pagājušās desmitgades karu.
+
+Izvēlieties vienu virzienu. Neizvēlieties visus.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Aizveriet to atkal -- ar §**x**§ stūrī.
+---
+@Signals Officer
+Pabeigts darbs nedarbojas ar atpakaļejošu spēku. Jaunais ekipējums vispirms
+nonāk jaunajās vienībās, tāpēc gājiens, kurā kaut kas pabeidzas, ir gājiens,
+lai paskatītos, ko jūs būvējat, nevis gājiens, lai atslābtu.
+
+Tā ir pētniecība. Vēl kaut kas?

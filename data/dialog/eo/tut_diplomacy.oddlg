@@ -1,0 +1,98 @@
+// Traduko - aliancoj, batalhaltoj kaj la cetero de la diplomatia panelo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatio. Ĉio loĝas en unu listo, kaj la listo apartenas al §**lando**§ --
+do vi atingas ĝin, alklakante ies teritorion.
+
+Mi atendos ĉe ĉiu paŝo. Nenio ĉi tie estas rapida.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Unue, la vido §**Rilatoj**§. Ĝi kolorigas la mapon laŭ tio, kiu militas
+kontraŭ kiu, kiu estas aliancita, kaj kiu garantiis kiun.
+---
+@Signals Officer
+Rigardu ĝin antaŭ ol komenci ion ajn. Duono de la militoj, kiujn oni perdas ĉi
+tie, estis kontraŭ tri landoj anstataŭ unu -- kaj ĉiuj tri estis sur ĉi tiu
+mapo antaŭ la unua pafo.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Nun alklaku provincon, kiu apartenas al §**Verrick**§, trans la akvo.
+
+Ne Kestrel: ni jam militas kontraŭ ili, kaj lando, kontraŭ kiu vi militas,
+proponas ekzakte unu aferon. Ni venos al tiu -- kaj ĝis vi elektos iun, kun
+kiu ni estas en paco, ĉi tiu paĝo simple daŭre atendos.
+---
+@Signals Officer
+Ilia panelo nun havas liston. Kio estas en ĝi, dependas tute de tio, kio vi
+du jam estas unu al la alia -- vi neniam elektas el ĉiu ebleco, nur el tiuj,
+kiujn via nuna rilato permesas.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+La plej milda afero en ĝi estas §**neagresa pakto**§: promeso ne ataki, kaj
+nenio pli.
+
+Petu unu. Peti kostas nenion.
+---
+@Signals Officer
+Registrita -- kaj nun rigardu la liston. §**Ĉio alia griziĝis**§, kaj la
+ero, kiun vi ĵus uzis, fariĝis §**Nuligi**§.
+
+Unu peto samtempe al unu lando. Tio ne estas cimo, kiun vi trafis, ĝi estas la
+regulo: ili respondas al la lasta afero, kiun vi diris, kaj ĝis ili respondos,
+via sola movo estas repreni ĝin.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Do finu la vicon. La peto foriras, ili respondas, kaj la listo revenas.
+
+Ili eble rifuzos. Tio estas ilia afero kaj ne via kulpo.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Denove Verrick. §**Alianco**§ estas la sekva paŝo supren -- ne nur promeso ne
+ataki, sed promeso aliĝi.
+
+Petu unu.
+---
+@Signals Officer
+Kun aliancano aperas ankoraŭ unu ero: §**Voko al armiloj**§, kiu trenas ilin en
+militon, kiun vi jam batalas.
+
+Ankaŭ tion ili povas rifuzi. Aliancano, kiu rifuzas dufoje, estas aliancano
+nur surpapere, kaj valoras proksimume tiom.
+---
+@Signals Officer
+La du, kiujn vi ne uzis: §**garantio**§ estas la malsimetria -- vi promesas
+defendi iun, kiu promesis al vi nenion. Malgrandaj landoj kolektas ilin;
+grandaj disdonas ilin por aĉeti trankvilon.
+
+Kaj §**komerco**§ estas varoj kontraŭ mono ĉiun vicon, ĝis iu nuligas. Ĝi
+estas la sola ero, kiu riĉigas vin ambaŭ, kaj tial ĝi estas tiu, pri kiu homoj
+forgesas, ke ĝi ekzistas.
+---
+@Signals Officer
+Post kiam pakto estas subskribita, rigardu, kio forlasas la liston:
+§**Deklari militon malaperas**§. Vi devas unue rompi la pakton, publike, kie
+ĉiuj vidas vin fari tion.
+
+Por tio pakto ekzistas. Ĝi ne estas ŝildo, ĝi estas atestanto.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Kaj dum §**milito**§ la tuta listo kolapsas al unu ero: §**Peti
+batalhalton**§. Ĝi revenas kun kondiĉoj -- kiu ĉesas, kaj kiu konservas kion.
+
+Ili akceptas, kiam ili perdas, kaj rifuzas, kiam ne. Neniom da petado ŝanĝas,
+kiu el tiuj estas vera.
+---
+@Signals Officer
+Kestrel estas ruĝa sur ĉi tiu mapo, kaj tio estas la listo, kiun ili montrus
+al vi.
+---
+@Signals Officer
+Tio estas la diplomatio. Ĉu io alia?

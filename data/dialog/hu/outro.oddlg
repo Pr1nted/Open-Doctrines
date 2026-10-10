@@ -1,0 +1,32 @@
+// Fordítás - a közös befejezés, ahová minden út vezet.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Akkor ide fel. Két dolog, ami egyik térképen sincs rajta.
+
+§**Mentések.**§ Egy igazi világ játék közben leírja magát, és ott vár rád.
+A miénk nem -- semmi sem maradt meg abból, amit az imént csináltál, és pont ez
+a lényege egy gyakorlószigetnek.
+---
+@Signals Officer
+:: point=menu.2
+§**Többjátékos.**§ Egy gép a házigazda, mindenki más csatlakozik hozzá. Egy kör
+akkor zajlik le, amikor minden játékos jelezte, hogy kész, így a játék a
+leglassabb tempójában halad.
+
+Olyanokkal játssz, akik válaszolnak az üzeneteikre.
+---
+@Pr1nted
+Még élsz? Jó. Alapos, azt meg kell hagyni.
+
+Szeretnél még valamit végigvenni, vagy végeztünk?
+> Vissza le, és vegyünk végig valami konkrétat -> world:specifics
+> Ez minden, köszönöm
+---
+@Pr1nted
+:: act=end_tutorial
+Rendben. Menj, veszíts el néhányat, így megy bele az ember.
+
+Pr1nted, vége.

@@ -1,0 +1,64 @@
+// Tõlge -- kaupade majandus.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Kaupade maailmas**§ ei teeni provints ainult raha. See kaevandab tooraineid ja
+selle tehased teevad neist kaupu -- ja just kaubad, mitte raha, toidavad teie
+rahvast ja lasevad teil ehitada. Avage majandus.
+---
+@Signals Officer
+Neid on neli. §**Tarbekaubad**§ tarbib teie rahvas. §**Masinad**§ ehitavad
+tööstust, kindlusi ja sadamaid. §**Kütus**§ liigutab laevu ja armeesid.
+§**Laskemoon**§ on vaja sõdurite värbamiseks ja suurtükiväe tulistamiseks. Kuld
+jääb rahaks.
+---
+@Signals Officer
+Ja igaüks tuleb maa seest läbi tehase. §**Kummist ja vääriskividest**§ saavad
+tarbekaubad; §**metallist**§ saavad masinad ja laskemoon; §**naftast**§ saab
+kütus. Pole maardlat, pole kaupa -- nii et puudus osutab provintsile, mida
+vallutada, või tehasele, mida ümber suunata.
+---
+@Signals Officer
+Kaupade mängus tekib majandusse ülaossa vahekaart §**Kaubad**§. See loetleb kõik
+neli kõrvuti: mis teil on, mida te toodate võrreldes sellega, mida igal käigul
+vaja on, ja -- number, millel on tähtsust -- §**Kestus**§.
+---
+@Signals Officer
+Kestus näitab, mitu käiku varu praeguse kulu juures vastu peab. Üheksa käiku on
+mugav; alla kahe on hoiatus; tühi on puudus, mis toimub praegu. See on aus näit --
+mitte suur hunnik, mis on külluseks maskeeritud, vaid see, kui kauaks hunnik
+teile tegelikult aega ostab.
+---
+@Signals Officer
+Tarbekaubad on ainus kaup, mis on ühtlasi poliitiline fakt. Söödu võrreldes
+soovituga on teie §**elatustase**§: hoidke inimesed toidetud ja riik kasvab;
+laske sel libiseda ja nälg tuleb tagasi rahutusena.
+---
+@Signals Officer
+Ülejäänud kolm on load. Ehitage tööstust ja te kulutate masinaid; seilake
+laevastikuga ja te põletate kütust; värvake ja te kasutate laskemoona. Kui puudu
+jääb, muutub tegevus lihtsalt halliks -- sõda ei oota lao järel.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kus kaupa toodetakse, määratakse iga provintsi jaoks eraldi. Klõpsake ühel meie
+omadest: selle paneelil suunate, mida selle tehased toodavad, või jätke see nii ja
+majandus jaotab teie eest, saates jõude seisvad tehased selle kallale, millest
+teil kõige rohkem puudu on.
+---
+@Signals Officer
+:: point=btn.settings
+Kaks lülitit asuvad menüüs §**Seaded -> Eksperimentaalne**§. Üks lülitab
+kaupade majanduse sisse teie järgmise uue maailma jaoks. Teine,
+§**Kaubandusülejääk liitlastega**§, on vabatahtlik: kui liitlasel jääb puudu,
+lähevad teie üleliigsed kaubad talle. Sageli pole kellelgi puudu, nii et see
+seisab jõude -- see on valmis hoitud abi, mitte maks teie varudele.
+---
+@Signals Officer
+See on kaupade majandus: kaevandamine, tootmine, toitmine ja kulutamine. Jälgige
+kestust, hoidke oma inimesed toidetud ja ärge kunagi alustage sõda, mida teie
+laskemoon ei suuda lõpetada.
+
+Veel midagi?

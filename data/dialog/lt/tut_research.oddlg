@@ -1,0 +1,31 @@
+// Vertimas -- tyrimai.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Tyrimai. Atidarykite juos -- skundas visada tas pats -- niekas, ką pradedate,
+regis, niekada nesibaigia -- ir tai ne klaida, tai esmė.
+---
+@Signals Officer
+Viskas čia matuojama ėjimais, kurių dar nesužaidėte. Tai, ką pradedate dabar,
+pasirodo gerokai po to, kai būsite pamiršę, kad to norėjote, o tai reiškia, kad
+vienintelis blogas metas pradėti yra vėliau.
+---
+@Signals Officer
+Tai ima iš tų pačių pinigų, kaip ir armija. Šalis, kuri tiria viską, negali nieko
+išvesti į lauką, o šalis, kuri išveda viską, po dvidešimties ėjimų vis dar
+kariauja praėjusio dešimtmečio karą.
+
+Pasirinkite vieną kryptį. Nesirinkite visų.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Vėl uždarykite -- §**x**§ kampe.
+---
+@Signals Officer
+Baigtas darbas negalioja atgaline data. Nauja įranga pirmiausia pasiekia naujus
+dalinius, tad ėjimas, kai kažkas baigiama, yra ėjimas pažiūrėti, ką statote, o
+ne ėjimas atsipalaiduoti.
+
+Tai tyrimai. Dar kas nors?

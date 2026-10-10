@@ -1,0 +1,49 @@
+// Tərcümə - dəniz keçidi, ətraflı.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Deməli, gəmilər. Çoxlarını dayandıran məhz budur və hər dəfə eyni yerdə
+dayandırır: ordu sahildədir və heç nə baş vermir.
+---
+@Signals Officer
+Ordu suyu özü keçmir və "o gəmiyə min" deyə bir əmr yoxdur. Bunu vilayət
+edir.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Həm §**limanı**§ OLAN, HƏM DƏ §**içində əsgər dayanan**§ sahil vilayəti seçin.
+Gəmiyə mindirmə artıq orada olan qarnizonu aparır; boş liman heç kimi mindirmir,
+çaşqınlığın çoxu da elə buradan başlayır.
+
+Onun panelində §**Ordunu gəmiyə mindir**§ var — pulsuz, bir gediş. Basın və
+gedişi bitirin.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Əsgərlər indi sahil yaxınlığında bir §**qayıqdır**§. §**Donanma**§ görünüşünə
+keçin — gəmilər qalan yeddi görünüşün heç birindən əmr qəbul etmir.
+
+§{key=ship_move}§ onu hərəkət etdirir, §{key=ship_wheel}§ toplarını açır,
+§{key=ship_engage}§ ona döyüşə girməyi əmr edir.
+---
+@Signals Officer
+Desant üçün: qayığı seçin, §**Hərəkət**§ düyməsini basın və §**quruya**§
+klikləyin.
+
+Su onu aparır. Quru onu boşaldır. İkisini də tək bir düymə edir, buna görə də
+insanlar o biri düyməni axtararaq dənizdə o yan-bu yana üzürlər.
+---
+@Signals Officer
+Heç kimin sizə demədiyi iki şey.
+
+Yüklü nəqliyyat gəmisi hədəfdir və içindəki əsgərlərlə birlikdə batır. Müdafiə
+olunan vilayətə çıxan desant isə yorğun çatır — qalanın üstünə enmək əvəzinə
+yandakı boş sahili tutun və piyada gedin.
+---
+@Signals Officer
+Boğazdakı §**Hallow Rock**§ seçim məsələsi deyil. Qayığın uzaqlığı məhduddur,
+uzaq ada isə ondan kənardadır — yəni qaya ilk desantdır, ikinci sıçrayış oradan
+olur.
+
+Gəmilər bu qədər. Başqa nə?

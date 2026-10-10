@@ -1,0 +1,80 @@
+// Tradução: reivindicações, agitação e rebelião.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Reivindicações e agitação. Abra o painel de reivindicações. São um só
+assunto, diga a interface o que disser.
+---
+@Signals Officer
+Uma §**reivindicação**§ é a diferença entre uma guerra que o mundo tolera e
+uma guerra que une toda a gente contra si. Faça valer uma que tem e está a
+resolver um agravo; tome terreno que nunca reivindicou e o agravo é você.
+---
+@Signals Officer
+Faça a reivindicação §**antes**§ da guerra, não depois. Uma reivindicação
+apresentada no turno a seguir a tomar a província não engana ninguém e custa
+o mesmo.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Feche-o.
+---
+@Signals Officer
+A §**agitação**§ é o que tomar terreno faz ao terreno. As províncias
+conquistadas ressentem-se, as minorias ainda mais, e tanto o serviço militar
+como a censura lhe compram força agora em troca de agitação mais tarde.
+---
+@Signals Officer
+Passado um limiar, uma província deixa de pagar e começa a organizar-se.
+Passado o seguinte, vai-se embora, e vai-se como §**país**§, com a sua
+indústria, a sua população e uma opinião muito concreta sobre si.
+
+Recebe um aviso. Nem sempre recebe um segundo.
+---
+@Signals Officer
+Os remédios são impopulares ou lentos: pôr lá uma guarnição, gastar dinheiro
+com ela, ou dar-lhe o que quer. Escolha cedo, porque os três levam turnos a
+fazer efeito.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Gastar dinheiro com ela é onde quase tudo se desperdiça. Abra Política,
+depois §**Distritos**§.
+
+---
+@Signals Officer
+O orçamento caía sobre o país inteiro de uma vez: o mesmo peso num concelho
+sossegado e no que se está a armar. Por isso corte o país em partes. Um
+§**distrito**§ é um pedaço dele que governa como uma unidade: pinte
+províncias nele, dê-lhe uma cor, dê-lhe uma §**quota**§. As quotas somam
+sempre cem, porque só há um orçamento.
+
+---
+@Signals Officer
+O que conta é a quota do §**dinheiro**§ face à quota do §**terreno**§. Um
+distrito com um décimo do país e um décimo do orçamento é policiado
+exatamente como antes, por isso dividir não muda nada até tornar as quotas
+desiguais.
+
+---
+@Signals Officer
+Desenhe um distrito pequeno à volta do problema, dê-lhe um quarto do
+dinheiro, e passa a ser policiado várias vezes com mais força; o painel
+diz-lhe o valor. Todo o resto paga por isso, e é essa a decisão. Há um botão
+para dividir por igual: um sítio sensato para começar e raramente o sítio
+para ficar.
+
+Um distrito também aprova a sua própria §**lei regional**§: um recolher
+obrigatório, umas férias fiscais, a língua usada nos tribunais. Pequenas,
+locais, e cada uma é uma troca.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Feche-o.
+
+---
+@Signals Officer
+É a agitação. Mais alguma coisa?

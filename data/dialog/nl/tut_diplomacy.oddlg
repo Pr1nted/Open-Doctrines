@@ -1,0 +1,99 @@
+// Vertaling: bondgenootschappen, staakt-het-vuren en de rest van de diplomatie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatie. Het zit allemaal in één lijst, en die lijst hoort bij een
+§**land**§, dus je komt erbij door op iemands grond te klikken.
+
+Ik wacht bij elke stap. Niets hier gaat snel.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Eerst de weergave §**Betrekkingen**§. Die kleurt de kaart naar wie met wie in
+oorlog is, wie verbonden is, en wie wie heeft gegarandeerd.
+---
+@Signals Officer
+Kijk ernaar voordat je ergens aan begint. De helft van de oorlogen die mensen
+hier verliezen, ging tegen drie landen in plaats van één, en alle drie stonden
+al op deze kaart voor het eerste schot.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Klik nu op een provincie van §**Verrick**§, aan de overkant van het water.
+
+Niet Kestrel: daarmee zijn we al in oorlog, en een land waarmee je in oorlog
+bent, biedt precies één ding. Daar komen we op terug. En tot je iemand kiest
+met wie we in vrede leven, blijft deze pagina gewoon wachten.
+---
+@Signals Officer
+Hun paneel heeft er een lijst bij gekregen. Wat erin staat, hangt helemaal af
+van wat jullie al voor elkaar zijn. Je kiest nooit uit alle opties, alleen uit
+die welke jullie huidige verhouding toestaat.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Het mildste wat erop staat, is een §**niet-aanvalsverdrag**§: een belofte om
+niet aan te vallen, en verder niets.
+
+Vraag er een aan. Vragen kost niets.
+---
+@Signals Officer
+Ingediend. Kijk nu naar de lijst. §**Al het andere is grijs geworden**§, en
+de optie die je net gebruikte, is veranderd in §**Annuleren**§.
+
+Eén verzoek tegelijk aan één land. Dat is geen bug waar je tegenaan loopt, het
+is de regel: ze antwoorden op het laatste wat je zei, en tot ze dat doen, is
+je enige zet het terugnemen.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Beëindig dus de beurt. Het verzoek gaat de deur uit, ze antwoorden, en de
+lijst komt terug.
+
+Ze kunnen weigeren. Dat is hun zaak en niet jouw fout.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Weer Verrick. Een §**bondgenootschap**§ is de volgende stap: niet alleen een
+belofte om niet aan te vallen, maar een belofte om mee te doen.
+
+Vraag er een aan.
+---
+@Signals Officer
+Met een bondgenoot verschijnt er nog één optie: §**Oproep te wapen**§, die hen
+meesleept in een oorlog die je al voert.
+
+Ook dat kunnen ze weigeren. Een bondgenoot die twee keer weigert, is een
+bondgenoot op papier, en ongeveer evenveel waard.
+---
+@Signals Officer
+De twee die je niet hebt gebruikt: een §**garantie**§ is de scheve: je belooft
+iemand te verdedigen die jou niets heeft beloofd. Kleine landen verzamelen ze;
+grote delen ze uit om rust te kopen.
+
+En §**handel**§ is goederen voor geld, elke beurt, tot iemand het opzegt. Het
+is de enige optie die jullie allebei rijker maakt, en daarom vergeten mensen
+dat hij er is.
+---
+@Signals Officer
+Zodra een verdrag is getekend, let op wat er uit de lijst verdwijnt:
+§**Oorlog verklaren verdwijnt**§. Je moet eerst het verdrag verbreken, in het
+openbaar, waar iedereen je het ziet doen.
+
+Daar is een verdrag voor. Het is geen schild, het is een getuige.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+En in §**oorlog**§ krimpt de hele lijst tot één optie: §**Staakt-het-vuren
+vragen**§. Het komt terug met voorwaarden: wie stopt, en wie wat houdt.
+
+Ze accepteren als ze verliezen en weigeren als dat niet zo is. Geen
+hoeveelheid vragen verandert welke van de twee waar is.
+---
+@Signals Officer
+Kestrel staat in het rood op deze kaart, en dat is de lijst die zij je zouden
+laten zien.
+---
+@Signals Officer
+Dat is diplomatie. Nog iets?

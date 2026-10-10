@@ -1,0 +1,32 @@
+// Vertaling: terug naar het menu, en Pr1nted meldt zich af.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Hierboven dus. Twee dingen die op geen enkele kaart staan.
+
+§**Opgeslagen spellen.**§ Een echte wereld schrijft zichzelf op terwijl je
+speelt en wacht daar op je. De onze niet: niets van wat je net deed is
+bewaard, en dat is nu juist het punt van een oefeneiland.
+---
+@Signals Officer
+:: point=menu.2
+§**Multiplayer.**§ Eén machine host en alle anderen sluiten zich aan. Een
+beurt wordt afgehandeld als elke speler heeft gemeld dat hij klaar is, dus
+een spel gaat zo snel als de traagste.
+
+Speel met mensen die hun berichten beantwoorden.
+---
+@Pr1nted
+Leef je nog? Mooi. Ze is grondig, dat moet ik haar nageven.
+
+Wil je nog iets anders doornemen, of zijn we klaar?
+> Ga terug naar beneden en behandel iets specifieks -> world:specifics
+> Dat was alles, bedankt
+---
+@Pr1nted
+:: act=end_tutorial
+Goed. Ga er een paar verliezen, zo leer je het.
+
+Pr1nted, over en uit.

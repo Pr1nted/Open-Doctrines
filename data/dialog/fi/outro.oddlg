@@ -1,0 +1,32 @@
+// Käännös: takaisin valikkoon, ja Pr1nted kuittaa.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Tänne ylös siis. Kaksi asiaa, jotka eivät ole millään kartalla.
+
+§**Tallennukset.**§ Oikea maailma kirjaa itsensä muistiin pelatessasi ja
+odottaa sinua tuolla. Meidän ei: mitään juuri tekemääsi ei säilytetty, mikä
+on oikeastaan harjoitussaaren koko idea.
+---
+@Signals Officer
+:: point=menu.2
+§**Moninpeli.**§ Yksi kone isännöi ja kaikki muut liittyvät siihen. Vuoro
+ratkeaa, kun jokainen pelaaja on ilmoittanut olevansa valmis, joten peli
+etenee hitaimman tahtiin.
+
+Pelaa ihmisten kanssa, jotka vastaavat viesteihinsä.
+---
+@Pr1nted
+Vielä hengissä? Hyvä. Perusteellinen hän on, sen myönnän.
+
+Haluatko käydä läpi jotain muuta, vai olemmeko valmiit?
+> Palataan alas ja käydään läpi jotain tiettyä -> world:specifics
+> Siinä kaikki, kiitos
+---
+@Pr1nted
+:: act=end_tutorial
+Selvä. Mene ja häviä muutama, niin sen oppii.
+
+Pr1nted kuittaa.

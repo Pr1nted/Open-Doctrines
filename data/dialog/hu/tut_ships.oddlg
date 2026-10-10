@@ -1,0 +1,50 @@
+// Fordítás - a tengeri átkelés részletesen.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Hajók, tehát. Ezen akad el a legtöbb ember, és mindig ugyanott: a hadsereg a
+parton áll, és nem történik semmi.
+---
+@Signals Officer
+A hadsereg nem kel át magától a vízen, és nincs „szállj fel arra a hajóra”
+parancs. Ezt a tartomány csinálja.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Jelölj ki egy part menti tartományt, amelyben van §**kikötő**§ ÉS §**emberek is
+állnak benne**§. A behajózás a már ott lévő helyőrséget mozgatja; egy üres
+kikötő semmit sem hajóz be, és itt kezdődik a legtöbb zavar.
+
+A panelján ott a §**Hadsereg behajózása**§ -- ingyenes, egy kör. Nyomd meg, és
+fejezd be a kört.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Az emberek most egy §**hajó**§ a part előtt. Menj a §**Haditengerészet**§
+nézetbe -- a hajók a másik hét nézet egyikéből sem fogadnak parancsot.
+
+§{key=ship_move}§ mozgatja, §{key=ship_wheel}§ megnyitja a lövegeit,
+§{key=ship_engage}§ harcba küldi.
+---
+@Signals Officer
+Partraszállás: jelöld ki a hajót, nyomd meg a §**Mozgás**§ gombot, és kattints a
+§**szárazföldre**§.
+
+A víz mozgatja. A szárazföld kirakodja. Egy gomb csinálja mindkettőt, ezért
+hajóznak az emberek ide-oda, a másikat keresve.
+---
+@Signals Officer
+Két dolog, amit senki sem mond el.
+
+A megrakott szállítóhajó célpont, és az emberekkel együtt süllyed el. A
+védett tartományba érkező partraszállás pedig kimerülten ér partot -- foglald
+el a szomszédos üres partot, és onnan gyalogolj, ahelyett hogy az erődre
+szállnál partra.
+---
+@Signals Officer
+A szorosban álló §**Hallow Rock**§ nem választható. A hajónak hatótávolsága
+van, és a távoli sziget azon kívül esik -- úgyhogy a szikla az első
+partraszállás, és a második ugrás onnan indul.
+
+Ennyi a hajókról. Még valami?

@@ -1,0 +1,31 @@
+// Bản dịch — nghiên cứu.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Nghiên cứu. Mở nó ra — lời phàn nàn lúc nào cũng như nhau — dường như chẳng thứ
+gì bạn bắt đầu chịu xong — và đó không phải lỗi, đó là mục đích.
+---
+@Signals Officer
+Mọi thứ ở đây được đo bằng những lượt bạn chưa chơi. Thứ bạn bắt đầu bây giờ sẽ
+tới nơi rất lâu sau khi bạn đã quên mình từng muốn nó, nghĩa là thời điểm tệ duy
+nhất để bắt đầu là để sau.
+---
+@Signals Officer
+Nó rút từ cùng một nguồn tiền với quân đội. Một nước nghiên cứu mọi thứ thì
+chẳng đưa ra được gì, còn một nước đưa ra mọi thứ thì hai mươi lượt nữa vẫn
+đang đánh cuộc chiến của thập kỷ trước.
+
+Chọn một hướng. Đừng chọn tất cả.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Đóng lại đi — dấu §**x**§ ở góc.
+---
+@Signals Officer
+Thành quả không tự áp dụng ngược về trước. Trang bị mới đến tay các đơn vị mới
+trước, nên lượt có thứ gì đó hoàn thành là lượt để xem lại bạn đang xây gì,
+không phải lượt để nghỉ ngơi.
+
+Nghiên cứu là vậy đó. Còn gì nữa không?

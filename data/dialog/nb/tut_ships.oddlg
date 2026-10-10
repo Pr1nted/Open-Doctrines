@@ -1,0 +1,47 @@
+// Oversettelse av tut_ships.oddlg -- overfarten til sjøs.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Skip, da. Det er her de fleste står fast, og de står fast på samme sted hver
+gang: hæren står ved kysten og ingenting skjer.
+---
+@Signals Officer
+En hær krysser ikke vann av seg selv, og det finnes ingen ordre "last om bord
+på det skipet". Det er provinsen som gjør det.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Velg en kystprovins som har en §**havn**§ OG §**soldater som står i den**§.
+Innskiping flytter garnisonen som allerede er der; en tom havn skiper ikke inn
+noe som helst, og det er der mesteparten av forvirringen begynner.
+
+Panelet har §**Innskip hær**§ -- gratis, ett trekk. Trykk på den og avslutt trekket.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Soldatene er nå en §**båt**§ utenfor kysten. Gå til visningen §**Marine**§ --
+skip tar ikke imot ordrer fra noen av de andre sju.
+
+§{key=ship_move}§ flytter den, §{key=ship_wheel}§ åpner kanonene,
+§{key=ship_engage}§ ber den oppsøke kamp.
+---
+@Signals Officer
+For å gå i land: velg båten, trykk §**Flytt**§ og klikk på §**land**§.
+
+Vann flytter den. Land laster den av. Én knapp gjør begge deler, og derfor
+seiler folk fram og tilbake på leting etter den andre.
+---
+@Signals Officer
+To ting ingen forteller deg.
+
+En lastet transport er et mål, og den synker med soldatene om bord. Og en
+landgang i en forsvart provins kommer fram sliten -- ta den tomme kysten ved
+siden av og gå, i stedet for å gå i land rett på festningen.
+---
+@Signals Officer
+§**Hallow Rock**§, i sundet, er ikke valgfri. En båt har en rekkevidde, og den
+fjerne øya ligger utenfor den -- så skjæret er den første landgangen, og det
+andre hoppet går derfra.
+
+Det var skip. Noe mer?

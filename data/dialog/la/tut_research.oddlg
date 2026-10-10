@@ -1,0 +1,31 @@
+// Translatio Latina - investigatio.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Investigatio. Aperi eam -- querela semper eadem est -- nihil quod incipis
+umquam perfici videtur -- nec vitium est, sed propositum.
+---
+@Signals Officer
+Omnia hic vicibus metiuntur quas nondum lusisti. Quod nunc incipis multo
+postquam oblitus es te id voluisse advenit, quod significat solum tempus malum
+incipiendi esse postea.
+---
+@Signals Officer
+Ex eadem pecunia haurit ex qua exercitus. Civitas quae omnia investigat nihil
+in aciem educit, et civitas quae omnia in aciem educit post viginti vices
+adhuc bellum decennii prioris gerit.
+
+Unam viam elige. Noli omnes eligere.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Iterum claude -- §**x**§ in angulo.
+---
+@Signals Officer
+Opus perfectum non retro valet. Nova arma primum ad novas copias perveniunt,
+itaque vicis qua aliquid perficitur est vicis inspiciendi quid aedifices, non
+vicis quiescendi.
+
+Haec de investigatione. Num quid aliud?

@@ -1,0 +1,31 @@
+// Tõlge -- uuringud.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Uuringud. Avage need -- kaebus on alati sama -- miski alustatu ei tundu kunagi
+valmivat -- ja see pole viga, see ongi mõte.
+---
+@Signals Officer
+Kõike siin mõõdetakse käikudes, mida te pole veel mänginud. Asi, mille alustate
+nüüd, saabub kaua pärast seda, kui olete unustanud, et seda tahtsite, mis
+tähendab, et ainus halb aeg alustamiseks on hiljem.
+---
+@Signals Officer
+See võtab samast rahast, mida armee. Riik, mis uurib kõike, ei saa lahinguväljale
+midagi panna, ja riik, mis paneb sinna kõik, peab kahekümne käigu pärast ikka
+veel eelmise kümnendi sõda.
+
+Valige üks rada. Ärge valige neid kõiki.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Sulgege see uuesti -- §**x**§ nurgas.
+---
+@Signals Officer
+Valminud töö ei kehti tagasiulatuvalt. Uus varustus jõuab kõigepealt uutesse
+üksustesse, nii et käik, mil midagi valmib, on käik vaadata, mida te ehitate,
+mitte käik lõõgastuda.
+
+Need on uuringud. Veel midagi?

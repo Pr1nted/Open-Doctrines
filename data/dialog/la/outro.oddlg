@@ -1,0 +1,32 @@
+// Translatio Latina - finis communis omnium viarum.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Huc sursum ergo. Duae res quae in nulla tabula sunt.
+
+§**Ludi servati.**§ Mundus verus se ipse conscribit dum ludis et ibi te
+exspectat. Noster non -- nihil eorum quae modo fecisti servatum est, quod est
+fere propositum insulae exercitationis.
+---
+@Signals Officer
+:: point=menu.2
+§**Plures lusores.**§ Una machina hospitium praebet et ceteri omnes se
+adiungunt. Vicis dirimitur cum omnes lusores se paratos dixerunt, itaque ludus
+gradu tardissimi procedit.
+
+Cum hominibus lude qui nuntiis suis respondent.
+---
+@Pr1nted
+Adhuc vivis? Bene. Diligens est, id ei concedo.
+
+Visne aliud percurrere, an finivimus?
+> Redi deorsum et aliquid singulare tracta -> world:specifics
+> Haec omnia sunt, gratias
+---
+@Pr1nted
+:: act=end_tutorial
+Esto. I et aliquot ludos amitte, sic res intrat.
+
+Pr1nted, vale.

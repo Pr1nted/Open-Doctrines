@@ -1,0 +1,16 @@
+// Tradução: o menu de temas, para quem já sabe o básico.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Muito bem, já conhece o essencial. Então, o que quer realmente?
+
+Escolha um e eu explico-o como deve ser. Pergunte outra vez quando acabar.
+> Navios, portos e levar um exército por mar -> script:tut_ships
+> Investigação, e porque nada do que começo acaba -> script:tut_research
+> A economia, a indústria e de onde vem o dinheiro -> script:tut_economy
+> A economia de bens: alimentar o povo e abastecer a guerra -> script:tut_goods
+> Reivindicações, agitação e perder províncias para o próprio povo -> script:tut_unrest
+> Alianças, cessar-fogos e o resto da diplomacia -> script:tut_diplomacy
+> Nevoeiro de guerra: o que se vê, e espiar o resto -> script:tut_fog
+> Mais nada, terminei -> script:outro

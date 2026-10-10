@@ -1,0 +1,48 @@
+// Traduko - la mara transiro, detale.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Ŝipoj, do. Ĉi tio haltigas la plej multajn, kaj ĉiufoje en la sama loko: la
+armeo staras ĉe la marbordo kaj nenio okazas.
+---
+@Signals Officer
+Armeo ne transiras akvon per si mem, kaj ne ekzistas ordono "enŝipiĝu sur tiun
+ŝipon". La provinco faras tion.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Elektu marbordan provincon, kiu havas §**havenon**§ KAJ §**homojn starantajn en
+ĝi**§. Enŝipigo movas la garnizonon, kiu jam estas tie; malplena haveno
+enŝipigas tute nenion, kaj ĝuste tie komenciĝas la plej granda konfuzo.
+
+Ĝia panelo havas §**Enŝipigi armeon**§ -- senpage, unu vico. Premu ĝin kaj
+finu la vicon.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+La homoj nun estas §**boato**§ ĉe la marbordo. Iru al la vido §**Mararmeo**§
+-- ŝipoj akceptas ordonojn de neniu el la aliaj sep.
+
+§{key=ship_move}§ movas ĝin, §{key=ship_wheel}§ malfermas ĝiajn kanonojn,
+§{key=ship_engage}§ igas ĝin serĉi batalon.
+---
+@Signals Officer
+Por surteriĝi: elektu la boaton, premu §**Movi**§, kaj alklaku §**teron**§.
+
+Akvo movas ĝin. Tero malŝarĝas ĝin. Unu butono faras ambaŭ, tial homoj velas
+tien kaj reen serĉante la alian.
+---
+@Signals Officer
+Du aferoj, kiujn neniu diras al vi.
+
+Ŝarĝita transportŝipo estas celo, kaj ĝi sinkas kun la homoj surŝipe. Kaj
+surteriĝo en defendatan provincon alvenas laca -- prenu la malplenan
+marbordon apude kaj piediru, anstataŭ surteriĝi sur la fortikaĵon.
+---
+@Signals Officer
+§**Hallow Rock**§, en la markolo, ne estas nedeviga. Boato havas atingopovon,
+kaj la fora insulo estas ekster ĝi -- do la roko estas la unua surteriĝo, kaj
+la dua salto ekiras de tie.
+
+Tio estas la ŝipoj. Ĉu io alia?

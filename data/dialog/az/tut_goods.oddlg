@@ -1,0 +1,64 @@
+// Tərcümə - mal iqtisadiyyatı.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Mal dünyasında**§ vilayət sadəcə pul qazanmır. O, xammal çıxarır, fabrikləri
+də onu mala çevirir — insanlarınızı doyuran və tikməyə imkan verən də nağd pul
+yox, mallardır. İqtisadiyyatı açın.
+---
+@Signals Officer
+Onlar dörddür. §**İstehlak malları**§ — xalqınız bunlarla dolanır. §**Maşınlar**§
+sənaye, istehkam və liman tikir. §**Yanacaq**§ gəmiləri və orduları hərəkətə
+gətirir. §**Sursat**§ əsgər səfərbər edir və artilleriyanı atəşə tutdurur.
+Qızıl pul olaraq qalır.
+---
+@Signals Officer
+Hər biri torpaqdan fabrik vasitəsilə gəlir. §**Rezin və qiymətli daşlar**§
+istehlak mallarına çevrilir; §**metal**§ maşınlara və sursata; §**neft**§
+yanacağa. Yataq yoxdursa, mal da yoxdur — deməli, qıtlıq sizə ya tutulmalı bir
+vilayəti, ya da istiqaməti dəyişdirilməli bir fabriki göstərir.
+---
+@Signals Officer
+Mal oyununda iqtisadiyyatın yuxarısında §**Mallar**§ sekmesi peyda olur. O,
+dördünü yan-yana sadalayır: əlinizdə nə var, hər gediş nə lazım olana qarşı nə
+istehsal edirsiniz, bir də — əsas rəqəm — §**Kifayət**§.
+---
+@Signals Officer
+Kifayət ehtiyatın indiki sərfiyyatla neçə gedişə çatacağıdır. Doqquz gediş
+rahatdır; ikidən az xəbərdarlıqdır; boş isə elə indi baş verən qıtlıqdır. Bu,
+dürüst göstəricidir — bolluq kimi bəzədilmiş böyük yığın yox, yığının sizə
+əslində nə qədər vaxt qazandırdığı.
+---
+@Signals Officer
+İstehlak malları həm də siyasi fakt olan yeganə maldır. İstənilənə qarşı
+istehlak olunan sizin §**Həyat səviyyəsi**§ göstəricinizdir: insanları tox
+saxlasanız ölkə böyüyür; ipi əldən buraxsanız, aclıq narazılıq kimi geri qayıdır.
+---
+@Signals Officer
+Qalan üçü icazədir. Sənaye tikirsiniz — maşın xərcləyirsiniz; donanma üzdürürsünüz
+— yanacaq yandırırsınız; səfərbər edirsiniz — sursat götürürsünüz. Çatışmazlıq
+olsa, əməliyyat sadəcə boz olur — müharibə anbarı gözləmir.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Malın harada istehsal olunması vilayət üzrə təyin edilir. Bizimkilərdən birinə
+klikləyin: onun panelində fabriklərinin nə istehsal edəcəyini göstərirsiniz, ya
+da toxunmursunuz və iqtisadiyyat bölgünü özü aparır, boş fabrikləri ən çox
+çatışmayan mala yönəldir.
+---
+@Signals Officer
+:: point=btn.settings
+§**Tənzimləmələr -> Eksperimental**§ bölməsində iki açar var. Biri növbəti yeni
+dünyanız üçün mal iqtisadiyyatını açır. O biri, §**Müttəfiqlərlə ticarət
+artıqlığı**§, könüllüdür: müttəfiqə nəsə çatmayanda artıq mallarınız ona gedir.
+Çox vaxt heç kimə nəsə çatmır, ona görə boş dayanır — bu, hazır tutulan
+yardımdır, anbarlarınıza vergi yox.
+---
+@Signals Officer
+Mal iqtisadiyyatı budur: çıxar, istehsal et, doyur və xərclə. Kifayətə baxın,
+xalqınızı tox saxlayın və sursatınızın başa çatdıra bilməyəcəyi müharibəni heç
+vaxt başlamayın.
+
+Başqa nə?

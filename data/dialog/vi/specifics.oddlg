@@ -1,0 +1,16 @@
+// Bản dịch — menu chủ đề.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Được rồi, bạn biết đại khái rồi. Vậy rốt cuộc bạn muốn gì?
+
+Chọn một mục và tôi sẽ đi sâu vào nó. Xong thì hỏi lại.
+> Tàu, cảng và đưa quân vượt biển -> script:tut_ships
+> Nghiên cứu, và vì sao chẳng thứ gì bạn bắt đầu chịu xong -> script:tut_research
+> Kinh tế, công nghiệp và tiền từ đâu ra -> script:tut_economy
+> Kinh tế hàng hóa: nuôi dân và cấp nhiên liệu cho chiến tranh -> script:tut_goods
+> Tuyên bố chủ quyền, bất ổn và mất tỉnh vào tay chính dân mình -> script:tut_unrest
+> Liên minh, ngừng bắn và phần còn lại của ngoại giao -> script:tut_diplomacy
+> Sương mù chiến tranh: bạn thấy được gì, và do thám phần còn lại -> script:tut_fog
+> Không còn gì nữa, tôi xong rồi -> script:outro

@@ -1,0 +1,57 @@
+// Vertaling: Pr1nted draagt de nieuwe speler over aan Mia.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hallo, met wie spreek ik?
+---
+@
+...
+---
+@Pr1nted
+O... Je bent nieuw hier... Wat? §**Nog nooit een land bestuurd?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Weet je wat? Mijn fout...
+---
+@Pr1nted
+:: enter=type speed=42
+Maar ik heb niet genoeg tijd om de tutorial zelf te doen, dus ik laat je
+achter bij een vriendin van me, oké? Ik heb tijd nodig, er moeten nog updates
+komen, toch?
+---
+@Signals Officer
+Hallo? Wat is er, §**Pr1nted**§?
+---
+@Pr1nted
+Eh... Hoi Mia, ik heb een /piepklein gunstje/ nodig, kun je een nieuwe speler
+wegwijs maken?
+---
+@Signals Officer
+</Zucht/>
+---
+@Pr1nted
+**Kom 'op' nou!** Waar betaal ik je eigenlijk voor?
+---
+@Signals Officer
+Goed dan... Ja, ja, prima.
+---
+@Pr1nted
+Mooi! Juffrouw Mia laat je alles zien: hoe het spel werkt en de basis ervan.
+Of als je de basis al kent maar het over details wilt hebben, zeg het nu,
+> Laat me de basis zien -> basics
+> Ik ken de basis, laten we het over details hebben -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Mooi, laten we beginnen.
+---
+@Pr1nted
+:: act=tune_out
+Mooi, hopelijk kunnen jullie het goed met elkaar vinden! Pr1nted, over en uit.

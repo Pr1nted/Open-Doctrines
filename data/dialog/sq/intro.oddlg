@@ -1,0 +1,58 @@
+// Përkthim - hyrja. Rreshtat :: dhe emrat e folësve janë identifikues.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Përshëndetje, kush është?
+---
+@
+...
+---
+@Pr1nted
+Oh... Herë e parë këtu... Çfarë? §**S'keni drejtuar kurrë një vend?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... E dini çfarë? Faji im...
+---
+@Pr1nted
+:: enter=type speed=42
+Megjithatë, nuk kam kohë të mjaftueshme ta bëj vetë mësimin, ndaj do t'ju lë
+me një mikeshë timen, mirë? Më duhet kohë, kam përditësime të ardhshme për të
+bërë, apo jo?
+---
+@Signals Officer
+Alo? Çfarë do, §**Pr1nted**§?
+---
+@Pr1nted
+Ëmm... Hej Mia, më duhet një /nder i vogël, i vogëlush,/ mund ta ndihmosh një
+lojtar të ri të orientohet?
+---
+@Signals Officer
+</Psherëtimë/>
+---
+@Pr1nted
+**Hajde 'tani'!** Për çfarë të paguaj unë?
+---
+@Signals Officer
+Mirë... Në rregull, në rregull.
+---
+@Pr1nted
+Shkëlqyeshëm! Pra, zonjusha Mia do t'ju tregojë përreth, si funksionon loja
+dhe bazat e saj, ose nëse i dini bazat, por doni të flisni për hollësi, na e
+thoni tani,
+> Më tregoni bazat -> basics
+> I di bazat, le të flasim për hollësi -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Mirë, le të fillojmë.
+---
+@Pr1nted
+:: act=tune_out
+Shkëlqyeshëm, shpresoj të merreni vesh ju të dy! Pr1nted mbyll.

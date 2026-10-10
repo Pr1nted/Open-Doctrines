@@ -1,0 +1,97 @@
+// Tõlge -- liidud, relvarahud ja muu diplomaatia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomaatia. See kõik on ühes loetelus, ja loetelu kuulub §**riigile**§ -- nii et
+selleni jõuate, kui klõpsate kellegi maal.
+
+Ma ootan iga sammu juures. Miski siin ei käi kiiresti.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Kõigepealt vaade §**Suhted**§. See värvib kaardi selle järgi, kes kellega sõdib,
+kes on liitlased ja kes kellele garantii on andnud.
+---
+@Signals Officer
+Vaadake seda enne, kui midagi alustate. Pooled sõjad, mis siin kaotatakse, peeti
+kolme riigi vastu, mitte ühe -- ja kõik kolm olid sellel kaardil juba enne
+esimest lasku.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Nüüd klõpsake provintsil, mis kuulub §**Verrickile**§, üle vee.
+
+Mitte Kestrel: nendega me juba sõdime, ja riik, kellega te sõdite, pakub täpselt
+üht asja. Selleni me veel jõuame -- ja kuni te pole valinud kedagi, kellega oleme
+rahus, see lehekülg lihtsalt ootab.
+---
+@Signals Officer
+Nende paneelile on tekkinud loetelu. Mis seal on, sõltub täielikult sellest, kes
+te teineteisele juba olete -- te ei vali kunagi kõigi võimaluste seast, ainult
+nende seast, mida teie praegused suhted lubavad.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Kõige leebem asi seal on §**mittekallaletungipakt**§: lubadus mitte rünnata,
+ja ei midagi enamat.
+
+Paluge seda. Palumine ei maksa midagi.
+---
+@Signals Officer
+Esitatud -- ja nüüd vaadake loetelu. §**Kõik muu on halliks läinud**§, ja kirje,
+mida just kasutasite, on muutunud nupuks §**Tühista**§.
+
+Üks taotlus korraga ühele riigile. See pole viga, mille otsa te sattusite, see on
+reegel: nad vastavad viimasele, mida te ütlesite, ja kuni nad pole vastanud, on
+teie ainus võimalus see tagasi võtta.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Nii et lõpetage käik. Taotlus läheb teele, nad vastavad ja loetelu tuleb tagasi.
+
+Nad võivad keelduda. See on nende asi, mitte teie viga.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Jälle Verrick. §**Liit**§ on järgmine aste -- mitte lihtsalt lubadus mitte
+rünnata, vaid lubadus kaasa lüüa.
+
+Paluge seda.
+---
+@Signals Officer
+Liitlase puhul ilmub veel üks kirje: §**Kutse relvile**§, mis tõmbab nad sõtta,
+mida te juba peate.
+
+Ka sellest võivad nad keelduda. Liitlane, kes keeldub kaks korda, on liitlane
+paberil, ja umbes sama palju väärt.
+---
+@Signals Officer
+Need kaks, mida te pole kasutanud: §**garantii**§ on ühekülgne -- te lubate kaitsta
+kedagi, kes pole teile midagi lubanud. Väikesed riigid koguvad neid; suured jagavad
+neid laiali, et vaikust osta.
+
+Ja §**kaubandus**§ on kaubad raha eest igal käigul, kuni keegi selle tühistab. See
+on ainus kirje, mis teeb teid mõlemaid rikkamaks, ja just seepärast unustavad
+inimesed, et see üldse olemas on.
+---
+@Signals Officer
+Kui pakt on allkirjastatud, vaadake, mis loetelust kaob: §**Kuuluta sõda
+kaob**§. Te peate pakti esmalt murdma, avalikult, kus kõik näevad, et te seda
+teete.
+
+See on pakti mõte. See pole kilp, see on tunnistaja.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Ja §**sõjas**§ kahaneb kogu loetelu ühe kirjeni: §**Palu relvarahu**§. See tuleb
+tagasi tingimustega -- kes lõpetab ja kes mida endale jätab.
+
+Nad nõustuvad, kui kaotavad, ja keelduvad, kui ei kaota. Ükski palumine ei muuda
+seda, kumb neist on tõsi.
+---
+@Signals Officer
+Kestrel on sellel kaardil punane, ja see on loetelu, mida nad teile näitaksid.
+---
+@Signals Officer
+See on diplomaatia. Veel midagi?

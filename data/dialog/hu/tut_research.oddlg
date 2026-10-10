@@ -1,0 +1,31 @@
+// Fordítás - kutatás.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Kutatás. Nyisd meg -- a panasz mindig ugyanaz -- semmi, amit elkezdesz, nem
+akar elkészülni -- és ez nem hiba, hanem a lényeg.
+---
+@Signals Officer
+Itt minden olyan körökben mérődik, amelyeket még nem játszottál le. Amit most
+elkezdesz, az jóval azután érkezik meg, hogy elfelejtetted, hogy akartad, vagyis
+az egyetlen rossz időpont az elkezdésre a később.
+---
+@Signals Officer
+Ugyanabból a pénzből merít, mint a hadsereg. Az az ország, amely mindent
+kutat, semmit sem állít ki, az pedig, amely mindent kiállít, húsz kör múlva is
+a múlt évtized háborúját vívja.
+
+Válassz egy irányt. Ne mindet.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Zárd be -- az §**x**§ a sarokban.
+---
+@Signals Officer
+Az elkészült munka nem hat visszamenőleg. Az új felszerelés először az új
+alakulatokhoz jut el, így amikor valami elkészül, akkor kell megnézni, mit
+építesz, nem akkor lehet lazítani.
+
+Ennyi a kutatásról. Még valami?

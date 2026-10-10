@@ -1,0 +1,98 @@
+// Përkthim - aleanca, armëpushime dhe pjesa tjetër e diplomacisë.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomacia. E gjitha gjendet në një listë, dhe lista i përket një
+§**vendi**§ -- ndaj arrini te ajo duke klikuar tokën e dikujt.
+
+Do të pres në çdo hap. Asgjë këtu nuk është e shpejtë.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Së pari, pamja §**Marrëdhëniet**§. Ngjyros hartën sipas kush është në luftë
+me kë, kush është aleat, dhe kush ka garantuar për kë.
+---
+@Signals Officer
+Shikojeni para se të nisni ndonjë gjë. Gjysma e luftërave që humbasin
+njerëzit këtu ishin kundër tre vendeve në vend të një -- dhe të tre ishin në
+këtë hartë para të shtënës së parë.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Tani klikoni një provincë që i përket §**Verrick**§, përtej ujit.
+
+Jo Kestrel: jemi tashmë në luftë me ta, dhe një vend me të cilin jeni në luftë
+ofron saktësisht një gjë. Do të vijmë edhe te ajo -- dhe derisa të zgjidhni
+dikë me të cilin jemi në paqe, kjo faqe thjesht do të vazhdojë të presë.
+---
+@Signals Officer
+Paneli i tyre ka marrë një listë. Çfarë ka në të varet tërësisht nga çfarë
+jeni tashmë për njëri-tjetrin -- nuk zgjidhni kurrë nga të gjitha opsionet,
+vetëm nga ato që lejon marrëdhënia juaj e tanishme.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Gjëja më e butë në të është një §**pakt mossulmimi**§: një premtim për të mos
+sulmuar, dhe asgjë më shumë.
+
+Kërkoni një. Kërkesa nuk kushton asgjë.
+---
+@Signals Officer
+U regjistrua -- dhe tani shikoni listën. §**Gjithçka tjetër është bërë
+gri**§, dhe zëri që sapo përdorët është kthyer në §**Anulo**§.
+
+Një kërkesë në një kohë drejt një vendi. Nuk është gabim që e hasët, është
+rregulli: ata po i përgjigjen gjësë së fundit që thatë, dhe derisa të
+përgjigjen e vetmja lëvizje juaj është ta tërhiqni.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Ndaj mbyllni radhën. Kërkesa niset, ata përgjigjen, dhe lista rikthehet.
+
+Mund të refuzojnë. Kjo është punë e tyre dhe jo faj juaji.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Verrick përsëri. Një §**aleancë**§ është shkalla tjetër -- jo thjesht një
+premtim për të mos sulmuar, por një premtim për t'u bashkuar në luftë.
+
+Kërkoni një.
+---
+@Signals Officer
+Me një aleat shfaqet edhe një zë: §**Thirrje për armë**§, që i tërheq zvarrë
+në një luftë që po e bëni tashmë.
+
+Mund ta refuzojnë edhe këtë. Një aleat që refuzon dy herë është aleat në
+letër, dhe vlen afërsisht sa letra.
+---
+@Signals Officer
+Dy që nuk i keni përdorur: një §**garanci**§ është ajo e njëanshmja --
+premtoni të mbroni dikë që nuk ju ka premtuar asgjë. Vendet e vogla i
+mbledhin; të mëdhatë i shpërndajnë për të blerë qetësi.
+
+Dhe §**tregtia**§ është mallra për para çdo radhë, derisa dikush ta anulojë.
+Është i vetmi zë që ju bën të dy më të pasur, dhe prandaj është ai që
+njerëzit harrojnë se ekziston.
+---
+@Signals Officer
+Sapo të nënshkruhet një pakt, shikoni çfarë largohet nga lista: §**Shpall
+luftë zhduket**§. Duhet ta prishni paktin më parë, publikisht, ku të gjithë
+ju shohin ta bëni.
+
+Për këtë shërben një pakt. Nuk është mburojë, është dëshmitar.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Dhe në §**luftë**§ e gjithë lista tkurret në një zë: §**Kërko
+armëpushim**§. Kthehet me kushte -- kush ndalon, dhe kush mban çfarë.
+
+Pranojnë kur po humbasin dhe refuzojnë kur nuk po humbasin. Sado të
+kërkoni, nuk ndryshon cila nga këto është e vërtetë.
+---
+@Signals Officer
+Kestrel është me të kuqe në këtë hartë, dhe kjo është lista që do t'ju
+tregonte.
+---
+@Signals Officer
+Kjo është diplomacia. Diçka tjetër?

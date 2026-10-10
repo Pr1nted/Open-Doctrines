@@ -1,0 +1,41 @@
+// Traducere - economia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Economia -- deschideți-o. Tot restul jocului e o ceartă despre cum să
+cheltuiți ce produce ea.
+---
+@Signals Officer
+§**Industria**§ crește acolo unde există deja oameni. O fabrică într-o
+provincie goală e o magazie scumpă -- populația e materia primă, nu clădirea.
+---
+@Signals Officer
+Așa că fiecare provincie spune cât poate duce: §**Nivel II din VI**§, iar când
+e plină o spune. Oamenii, cât de înghesuit trăiesc, terenul și ce e îngropat
+în el -- aceste patru lucruri stabilesc plafonul, și nicio sumă de bani nu îl
+mută.
+---
+@Signals Officer
+Venitul sosește o dată pe tură, la timp. Angajați-vă la mai mult decât aveți
+și deficitul nu așteaptă politicos: se scade din starea de pregătire, iar
+dumneavoastră aflați asta într-o bătălie.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Afară din nou, și ne uităm în schimb la o singură provincie.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Faceți clic pe una de-a noastră. Pe provincie, panoul arată ce produce și ce
+deține. Resursele valorează mai mult prelucrate decât scoase din pământ, așa
+că o provincie industrială lângă una bogată valorează mai mult decât fiecare
+în parte.
+---
+@Signals Officer
+Iar politicile sunt o §**factură permanentă**§, nu o achiziție. Fiecare pe care
+o aplicați se scade în fiecare tură, pentru totdeauna, fie că mai face ceva,
+fie că nu.
+
+Asta e economia. Altceva?

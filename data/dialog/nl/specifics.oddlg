@@ -1,0 +1,16 @@
+// Vertaling: het onderwerpenmenu, voor wie de basis al kent.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Goed, je kent de grote lijnen. Dus wat wil je eigenlijk?
+
+Kies er een en ik ga er goed op in. Vraag opnieuw als je klaar bent.
+> Schepen, havens en een leger over water krijgen -> script:tut_ships
+> Onderzoek, en waarom niets wat je begint ooit af is -> script:tut_research
+> De economie, industrie en waar het geld vandaan komt -> script:tut_economy
+> De goedereneconomie: je volk voeden en de oorlog van brandstof voorzien -> script:tut_goods
+> Aanspraken, onrust en provincies verliezen aan je eigen volk -> script:tut_unrest
+> Bondgenootschappen, staakt-het-vuren en de rest van de diplomatie -> script:tut_diplomacy
+> Oorlogsmist: wat je kunt zien, en de rest bespioneren -> script:tut_fog
+> Verder niets, ik ben klaar -> script:outro

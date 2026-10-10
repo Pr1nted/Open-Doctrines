@@ -1,0 +1,75 @@
+// Translatio Latina - vindiciae, tumultus et rebellio.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Vindiciae et tumultus. Tabellam vindiciarum aperi. Haec una res sunt,
+quidquid tabellae dicunt.
+---
+@Signals Officer
+§**Vindicia**§ discrimen est inter bellum quod mundus tolerat et bellum quod
+omnes contra te coniungit. Urge eam quam habes et querelam componis; terram
+cape quam numquam vindicavisti et tu ipse es querela.
+---
+@Signals Officer
+Vindiciam §**ante**§ bellum fac, non postea. Vindicia proposita vice post
+captam provinciam nemini imponit et idem constat.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Claude eam.
+---
+@Signals Officer
+§**Tumultus**§ est quod terrae captio terrae facit. Provinciae victae id aegre
+ferunt, minoritates aegrius, et dilectus et censura ambo vires nunc tibi emunt
+pretio tumultus posterioris.
+---
+@Signals Officer
+Ultra limen provincia solvere desinit et se ordinare incipit. Ultra proximum
+abit -- et ut §**civitas**§ abit, cum fabrica tua, populo tuo, et opinione de
+te admodum certa.
+
+Monitionem accipis. Alteram non semper.
+---
+@Signals Officer
+Remedia aut ingrata aut lenta sunt: praesidium pone, pecuniam impende, aut da
+quod vult. Mature elige, quia omnia tria vices requirunt ut valeant.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+In pecunia impendenda plurima perditur. Rem publicam aperi, deinde
+§**Districtus**§.
+
+---
+@Signals Officer
+Pecunia publica olim toti civitati simul incidebat -- idem pondus in quietum
+pagum ac in eum qui se armat. Itaque civitatem seca. §**Districtus**§ pars eius
+est quam ut unum regis: provincias in eum pinge, colorem ei da, §**portionem**§
+ei da. Portiones semper centum efficiunt, quia una tantum pecunia publica est.
+
+---
+@Signals Officer
+Quod refert est portio §**pecuniae**§ contra portionem §**terrae**§. Districtus
+qui decimam partem civitatis tenet cum decima parte pecuniae prorsus ut antea
+custoditur -- itaque divisio nihil mutat donec portiones inaequales facias.
+
+---
+@Signals Officer
+Parvum districtum circa turbas describe, quartam partem pecuniae ei trade, et
+aliquotiens acrius custoditur; tabella numerum tibi dicit. Ubique alibi pro eo
+solvitur, et id est consilium. Est bulla ad aequaliter dividendum: locus sanus
+ad incipiendum et raro ad manendum.
+
+Districtus etiam suam §**legem regionalem**§ fert: interdictum nocturnum,
+immunitatem tributi, qua lingua iudicia utantur. Parva, localia, et quaeque
+pactio.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Claude eam.
+
+---
+@Signals Officer
+Haec de tumultu. Num quid aliud?

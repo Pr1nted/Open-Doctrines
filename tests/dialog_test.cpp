@@ -256,6 +256,13 @@ int main() {
            "a slash inside \"and/or\" does not italicise");
         ok(textOf("a well-known problem\n") == "a well-known problem",
            "the hyphen survives too");
+        // The goods lesson: "Settings -> Experimental" struck through the
+        // rest of the page, in every language, until "->" stopped opening.
+        ok(!fxOf("Two switches live in \u00a7**Settings -> Experimental**\u00a7. One turns\n",
+                 dlg::FX_STRIKE),
+           "an arrow \"->\" does not strike");
+        ok(textOf("Settings -> Experimental\n") == "Settings -> Experimental",
+           "and the arrow is still in the text");
     }
 
     section("the short delimiters do work where they are meant to");

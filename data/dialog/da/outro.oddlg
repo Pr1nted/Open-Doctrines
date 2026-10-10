@@ -1,0 +1,32 @@
+// Oversættelse af outro.oddlg -- tilbage til menuen, og Pr1nted melder af.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Herop, altså. To ting, der ikke står på noget kort.
+
+§**Gemte spil.**§ En rigtig verden skriver sig selv ned, mens du spiller, og
+venter på dig herinde. Vores gjorde ikke -- intet af det, du lige har gjort,
+blev gemt, hvilket er lidt af pointen med en øvelsesø.
+---
+@Signals Officer
+:: point=menu.2
+§**Flerspiller.**§ Én maskine er vært, og alle andre slutter sig til den. En
+tur afgøres, når hver spiller har sagt, at de er klar, så et spil går i den
+langsomstes tempo.
+
+Spil med folk, der svarer på deres beskeder.
+---
+@Pr1nted
+Lever du stadig? Godt. Grundig er hun, det skal hun have.
+
+Er der mere, du vil have gennemgået, eller er vi færdige?
+> Gå ned igen og tag noget bestemt op -> world:specifics
+> Det var alt, tak
+---
+@Pr1nted
+:: act=end_tutorial
+Godt. Gå ud og tab et par stykker, det er sådan, man lærer det.
+
+Pr1nted, slut.

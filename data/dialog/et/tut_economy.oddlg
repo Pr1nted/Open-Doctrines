@@ -1,0 +1,38 @@
+// Tõlge -- majandus.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Majandus -- avage see. Kõik muu selles mängus on vaidlus selle üle, kuidas
+kulutada seda, mida see toodab.
+---
+@Signals Officer
+§**Tööstus**§ kasvab seal, kus inimesed juba on. Tehas tühjas provintsis on kallis
+kuur -- rahvastik on sisend, mitte hoone.
+---
+@Signals Officer
+Nii et iga provints ütleb, mida see kannab: §**Tase II / VI**§, ja kui see on
+täis, ütleb ta seda. Inimesed, kui tihedalt nad elavad, pinnas ja see, mis sinna
+on maetud -- need neli määravad lae, ja mingi raha seda ei nihuta.
+---
+@Signals Officer
+Tulu saabub kord käigus, käigu ajal. Võtke endale rohkem kohustusi, kui teil on
+raha, ja puudujääk ei oota viisakalt: see võetakse lahinguvalmidusest, ja te
+saate sellest teada lahingus.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Jälle välja, ja vaatame hoopis üht provintsi.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klõpsake ühel meie omadest. Iga provintsi kohta näitab paneel, mida see toodab ja
+mida selles leidub. Ressursid on töödelduna rohkem väärt kui kaevandatuna, nii et
+tööstusprovints rikka kõrval on väärt rohkem kui kumbki üksi.
+---
+@Signals Officer
+Ja poliitikad on §**püsiv arve**§, mitte ost. Iga, mida te käigus hoiate,
+arvatakse maha igal käigul, igavesti, olgu sellest veel kasu või mitte.
+
+See on majandus. Veel midagi?

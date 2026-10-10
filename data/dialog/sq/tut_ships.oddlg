@@ -1,0 +1,49 @@
+// Përkthim - kalimi i detit.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Anijet, pra. Kjo është ajo që ndal shumicën, dhe i ndal në të njëjtin vend
+çdo herë: ushtria është në breg dhe nuk ndodh asgjë.
+---
+@Signals Officer
+Një ushtri nuk e kalon ujin vetë, dhe nuk ka urdhër «hip në atë anije». Këtë
+e bën provinca.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Zgjidhni një provincë bregdetare që ka §**port**§ DHE §**burra brenda saj**§.
+Hipja lëviz garnizonin që është tashmë aty; një port bosh nuk hip absolutisht
+asgjë, dhe këtu nis pjesa më e madhe e ngatërresës.
+
+Paneli i saj ka §**Hip ushtrinë**§ -- falas, një radhë. Shtypeni dhe mbyllni
+radhën.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Burrat tani janë një §**varkë**§ pranë bregut. Shkoni te pamja §**Marina**§
+-- anijet nuk marrin urdhra nga asnjë prej shtatë të tjerave.
+
+§{key=ship_move}§ e lëviz, §{key=ship_wheel}§ i hap topat,
+§{key=ship_engage}§ i thotë të kërkojë përleshje.
+---
+@Signals Officer
+Për të zbarkuar: zgjidhni varkën, shtypni §**Lëviz**§, dhe klikoni mbi
+§**tokë**§.
+
+Uji e lëviz. Toka e shkarkon. Një buton i bën të dyja, prandaj njerëzit
+lundrojnë andej-këtej duke kërkuar tjetrin.
+---
+@Signals Officer
+Dy gjëra që s'jua thotë askush.
+
+Një transport i ngarkuar është shënjestër, dhe fundoset me burrat brenda. Dhe
+një zbarkim në një provincë të mbrojtur mbërrin i lodhur -- merrni bregun bosh
+ngjitur dhe ecni, në vend që të zbarkoni mbi fortesë.
+---
+@Signals Officer
+§**Hallow Rock**§, në ngushticë, nuk është opsional. Një varkë ka rreze
+veprimi, dhe ishulli i largët është jashtë saj -- ndaj shkëmbi është zbarkimi
+i parë, dhe kërcimi i dytë niset prej andej.
+
+Kaq për anijet. Diçka tjetër?

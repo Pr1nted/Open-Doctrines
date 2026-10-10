@@ -1,0 +1,97 @@
+// Translatio Latina - societates, indutiae et reliqua diplomatia.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatia. Tota in uno indice habitat, et index ad §**civitatem**§ pertinet
+-- itaque eum attingis alicuius terram premendo.
+
+Ad quemque gradum exspectabo. Nihil hic celere est.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Primum conspectus §**Relationes**§. Tabulam pingit secundum quis cum quo
+bellum gerat, quis socius sit, et quis cui fidem praestiterit.
+---
+@Signals Officer
+Eum inspice antequam quidquam incipias. Dimidium bellorum quae hic amittuntur
+contra tres civitates, non unam, gestum est -- et omnes tres in hac tabula
+erant ante primum ictum.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Nunc preme provinciam ad §**Verrick**§ pertinentem, trans aquam.
+
+Non Kestrel: cum eis iam bellum gerimus, et civitas cum qua bellum geris unam
+tantum rem offert. Ad illam veniemus -- et donec aliquem eligas cum quo pacem
+habemus, haec pagina simpliciter exspectabit.
+---
+@Signals Officer
+Tabella eorum indicem accepit. Quid in eo sit omnino pendet ex eo quid iam
+alter alteri sitis -- numquam ex omnibus optionibus eligis, sed tantum ex eis
+quas necessitudo praesens permittit.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Mitissimum in eo est §**pactum non impugnandi**§: promissum non impugnandi,
+nec quidquam amplius.
+
+Pete unum. Petere nihil constat.
+---
+@Signals Officer
+Propositum est -- et nunc indicem inspice. §**Cetera omnia obscurata sunt**§,
+et lemma quo modo usus es in §**Abrogare**§ versum est.
+
+Una petitio simul ad unam civitatem. Non vitium est in quod incidisti, sed
+regula: ad ultimum quod dixisti respondent, et donec respondeant, nihil aliud
+facere potes nisi id revocare.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Itaque vicem fini. Petitio exit, respondent, et index redit.
+
+Fortasse recusabunt. Id eorum negotium est, non culpa tua.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Iterum Verrick. §**Societas**§ gradus proximus est -- non solum promissum non
+impugnandi, sed promissum se adiungendi.
+
+Pete unam.
+---
+@Signals Officer
+Cum socio, unum lemma amplius apparet: §**Ad arma vocare**§, quod eos in
+bellum trahit quod iam geris.
+
+Id quoque recusare possunt. Socius qui bis recusat socius in charta est, et
+fere tanti valet.
+---
+@Signals Officer
+Duo quibus nondum usus es: §**fides**§ inaequalis est -- promittis te aliquem
+defensurum qui tibi nihil promisit. Parvae civitates eas colligunt; magnae eas
+distribuunt ut quietem emant.
+
+Et §**commercium**§ est bona pro pecunia quaque vice, donec aliquis abroget.
+Solum lemma est quod ambos ditiores facit, quam ob rem id est quod homines
+obliviscuntur adesse.
+---
+@Signals Officer
+Pacto signato, specta quid ex indice discedat: §**Bellum indicere
+evanescit**§. Pactum prius rumpere debes, palam, ubi omnes te id facere
+vident.
+
+Ad hoc pactum est. Non scutum est, sed testis.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Et in §**bello**§ totus index ad unum lemma contrahitur: §**Indutias
+petere**§. Cum condicionibus redit -- quis desinat, et quis quid retineat.
+
+Accipiunt cum vincuntur et recusant cum non vincuntur. Nulla petendi copia
+mutat utrum verum sit.
+---
+@Signals Officer
+Kestrel rubro colore in hac tabula est, et hic est index quem tibi ostenderent.
+---
+@Signals Officer
+Haec de diplomatia. Num quid aliud?

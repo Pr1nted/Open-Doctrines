@@ -1,0 +1,55 @@
+// Vertimas -- įžanga. :: eilutės ir kalbėtojų vardai yra identifikatoriai, jų neversti.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Alio, kas čia?
+---
+@
+...
+---
+@Pr1nted
+O... Jūs čia pirmą kartą... Ką? §**niekada nevaldėte šalies?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Žinote ką? Mano kaltė...
+---
+@Pr1nted
+:: enter=type speed=42
+Tik man neužtenka laiko pačiam vesti mokymą, tad turėsiu jus palikti su savo
+drauge, gerai? Man reikia laiko, turiu ruošti būsimus atnaujinimus, ane?
+---
+@Signals Officer
+Alio? Ko reikia, §**Pr1nted**§?
+---
+@Pr1nted
+Ee... Labas, Mia, turiu /mažytį prašymą,/ gal galėtum viską aprodyti naujam žaidėjui?
+---
+@Signals Officer
+</Atsidūsta/>
+---
+@Pr1nted
+**Na 'liaukis'!** Už ką aš tau moku?
+---
+@Signals Officer
+Gerai... Gerai jau, gerai.
+---
+@Pr1nted
+Puiku! Taigi panelė Mia jums viską parodys: kaip veikia žaidimas ir kokie jo
+pagrindai. O jei pagrindus jau žinote ir norite pakalbėti apie konkrečius dalykus, sakykite dabar,
+> Parodykite pagrindus -> basics
+> Pagrindus žinau, kalbėkime apie konkrečius dalykus -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Puiku, pradėkime.
+---
+@Pr1nted
+:: act=tune_out
+Puiku, tikiuosi, kad sutarsite! Pr1nted atsijungia.

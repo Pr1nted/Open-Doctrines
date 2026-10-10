@@ -1,0 +1,40 @@
+// Tərcümə - iqtisadiyyat.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+İqtisadiyyat — açın onu. Oyundakı qalan hər şey bunun istehsal etdiyini necə
+xərcləmək barədə mübahisədir.
+---
+@Signals Officer
+§**Sənaye**§ insanların artıq yaşadığı yerdə böyüyür. Boş vilayətdəki fabrik
+baha bir daxmadır — giriş materialı binanın özü deyil, əhalidir.
+---
+@Signals Officer
+Ona görə hər vilayət nə qədər daşıya biləcəyini deyir: §**Səviyyə II / VI**§,
+dolanda da bunu bildirir. İnsanlar, onların nə qədər sıx yaşadığı, torpaq və
+torpağın altında nə olduğu — tavanı bu dördü müəyyən edir, heç bir pul da onu
+tərpədə bilməz.
+---
+@Signals Officer
+Gəlir hər gedişdə bir dəfə, gedişin özündə gəlir. Əlinizdəkindən artığını
+öhdəyə götürsəniz, kəsir nəzakətlə gözləmir: döyüş hazırlığından çıxılır,
+bundan da döyüşdə xəbər tutursunuz.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Yenidən çıxın, əvəzində tək bir vilayətə baxaq.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Bizimkilərdən birinə klikləyin. Vilayət üzrə panel onun nə istehsal etdiyini və
+nəyi saxladığını göstərir. Resurslar emal olunanda qazılan haldakından daha
+qiymətlidir, ona görə zəngin vilayətin yanındakı sənaye vilayəti hər ikisinin
+ayrı-ayrılıqda olduğundan daha dəyərlidir.
+---
+@Signals Officer
+Siyasətlər isə alış deyil, §**daimi hesabdır**§. İşlətdiyiniz hər biri hər gediş,
+həmişəlik çıxılır, hələ də bir iş görüb-görmədiyindən asılı olmayaraq.
+
+İqtisadiyyat bu qədər. Başqa nə?

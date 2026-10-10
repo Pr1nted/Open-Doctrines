@@ -1,0 +1,61 @@
+// Oversettelse av tut_goods.oddlg -- vareøkonomien.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+I en §**vareverden**§ tjener en provins ikke bare penger. Den graver fram
+råvarer, og fabrikkene gjør dem om til varer -- og det er varer, ikke
+kontanter, som metter folket ditt og lar deg bygge. Åpne økonomien.
+---
+@Signals Officer
+Det finnes fire. §**Forbruksvarer**§ lever folket ditt av. §**Maskiner**§
+bygger industri, festninger og havner. §**Drivstoff**§ flytter skip og hærer.
+§**Ammunisjon**§ rekrutterer soldater og fyrer av artilleri. Gull forblir penger.
+---
+@Signals Officer
+Og hver av dem kommer fra grunnen via en fabrikk. §**Gummi og edelstener**§
+blir forbruksvarer; §**metall**§ blir maskiner og ammunisjon; §**olje**§ blir
+drivstoff. Ingen forekomst, ingen vare -- så en mangel peker deg mot en
+provins du bør ta eller en fabrikk du bør legge om.
+---
+@Signals Officer
+I et varespill får økonomien en fane §**Varer**§ øverst. Den viser de fire
+side om side: hva du har, hva du lager mot hva du trenger hvert trekk, og --
+tallet som teller -- §**Dekning**§.
+---
+@Signals Officer
+Dekning er hvor mange trekk et lager varer med dagens forbruk. Ni trekk er
+behagelig; under to er en advarsel; tomt er en mangel som skjer nå. Det er den
+ærlige avlesningen -- ikke et stort lager utkledd som overflod, men hvor lenge
+lageret faktisk holder.
+---
+@Signals Officer
+Forbruksvarer er den eneste varen som også er et politisk faktum. Det som spises
+mot det som ønskes er din §**Levestandard**§: hold folket mett, så vokser
+landet; la den gli, så kommer sulten tilbake som uro.
+---
+@Signals Officer
+De tre andre er tillatelser. Bygg industri, og du bruker maskiner; seil en
+flåte, og du brenner drivstoff; rekrutter, og du tar av ammunisjonen. Går du
+tom, blir handlingen ganske enkelt grå -- krigen venter ikke på lageret.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Hvor en vare lages, bestemmes per provins. Klikk på en av våre: i panelet
+styrer du hva fabrikkene bygger, eller lar være, så fordeler økonomien for deg
+og sender ledige fabrikker mot det du har minst av.
+---
+@Signals Officer
+:: point=btn.settings
+To brytere ligger i §**Innstillinger -> Eksperimentell**§. Den ene slår på
+vareøkonomien for din neste nye verden. Den andre, §**Overskuddshandel med allierte**§,
+er frivillig: når en alliert går tom, går dine overskuddsvarer til dem. Ofte
+mangler ingen noe, så den står ubrukt -- det er hjelp i beredskap, ikke en skatt
+på lagrene dine.
+---
+@Signals Officer
+Det var vareøkonomien: grav, lag, fø og bruk. Følg med på dekningen, hold
+folket mett, og start aldri en krig som ammunisjonen din ikke kan avslutte.
+
+Noe mer?

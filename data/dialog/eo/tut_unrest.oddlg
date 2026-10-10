@@ -1,0 +1,78 @@
+// Traduko - postuloj, malkvieto kaj ribelo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Postuloj kaj malkvieto. Malfermu la panelon de postuloj. Ili estas unu temo,
+kion ajn diras la interfaco.
+---
+@Signals Officer
+§**Postulo**§ estas la diferenco inter milito, kiun la mondo toleras, kaj
+milito, kiu unuigas ĉiujn kontraŭ vi. Premu postulon, kiun vi havas, kaj vi
+solvas plendon; prenu teritorion, kiun vi neniam postulis, kaj vi estas la
+plendo.
+---
+@Signals Officer
+Faru la postulon §**antaŭ**§ la milito, ne poste. Postulo registrita en la
+vico post kiam vi prenis la provincon trompas neniun kaj kostas same.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Fermu ĝin.
+---
+@Signals Officer
+§**Malkvieto**§ estas tio, kion preno de tero faras al la tero. Konkeritaj
+provincoj indignas pri ĝi, minoritatoj ankoraŭ pli, kaj varbdevo kaj cenzuro
+ambaŭ aĉetas al vi forton nun kontraŭ malkvieto poste.
+---
+@Signals Officer
+Preter sojlo provinco ĉesas pagi kaj komencas organiziĝi. Preter la sekva ĝi
+foriras -- kaj ĝi foriras kiel §**lando**§, kun via industrio, via loĝantaro
+kaj tre konkreta opinio pri vi.
+
+Vi ricevas averton. Ne ĉiam vi ricevas duan.
+---
+@Signals Officer
+La kuraciloj estas malpopularaj aŭ malrapidaj: garnizonu ĝin, elspezu por ĝi,
+aŭ donu al ĝi tion, kion ĝi volas. Elektu frue, ĉar ĉiuj tri bezonas vicojn
+por efiki.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Elspezado por ĝi estas tio, kie la plejparto malŝpariĝas. Malfermu Politikon,
+poste §**Distriktoj**§.
+
+---
+@Signals Officer
+La buĝeto iam falis sur la tutan landon samtempe -- la sama pezo sur trankvila
+graflando kiel sur tiu, kiu armiĝas. Do tranĉu la landon. §**Distrikto**§ estas
+peco de ĝi, kiun vi regas kiel unuon: pentru provincojn en ĝin, donu al ĝi
+koloron, donu al ĝi §**parton**§. La partoj ĉiam sumiĝas al cent, ĉar estas
+nur unu buĝeto.
+
+---
+@Signals Officer
+Gravas la parto de la §**mono**§ kontraŭ la parto de la §**tero**§. Distrikto,
+kiu tenas dekonon de la lando per dekono de la buĝeto, estas policata same kiel
+antaŭe -- do la dividado ŝanĝas nenion, ĝis vi igas la partojn neegalaj.
+
+---
+@Signals Officer
+Desegnu malgrandan distrikton ĉirkaŭ la problemo, donu al ĝi kvaronon de la
+mono, kaj ĝi estas policata plurfoje pli forte; la panelo diras al vi la
+ciferon. Ĉie alie oni pagas por tio, kaj jen la decido. Estas butono por
+dividi egale: prudenta loko por komenci kaj malofte la loko por resti.
+
+Distrikto ankaŭ havas sian propran §**regionan leĝon**§: elirmalpermeson,
+impostan pardonon, kies lingvon uzas la tribunaloj. Malgranda, loka, kaj ĉiu
+estas interŝanĝo.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Fermu ĝin.
+
+---
+@Signals Officer
+Tio estas la malkvieto. Ĉu io alia?

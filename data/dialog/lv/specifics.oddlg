@@ -1,0 +1,16 @@
+// Tulkojums -- tēmu izvēlne. "script:" mērķi ir identifikatori, tos netulko.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Labi, jūs zināt, kā tas viss izskatās. Tad ko jūs patiesībā gribat?
+
+Izvēlieties vienu, un es to izstāstīšu pamatīgi. Kad būsiet galā, jautājiet vēlreiz.
+> Kuģi, ostas un kā pārcelt armiju pāri ūdenim -> script:tut_ships
+> Pētniecība, un kāpēc nekas iesāktais nebeidzas -> script:tut_research
+> Ekonomika, rūpniecība un no kurienes nāk nauda -> script:tut_economy
+> Preču ekonomika: tautas pabarošana un kara degviela -> script:tut_goods
+> Pretenzijas, nemieri un provinču zaudēšana pašu tautai -> script:tut_unrest
+> Savienības, pamieri un pārējā diplomātija -> script:tut_diplomacy
+> Kara migla: ko var redzēt, un kā izspiegot pārējo -> script:tut_fog
+> Neko vairāk, man pietiek -> script:outro

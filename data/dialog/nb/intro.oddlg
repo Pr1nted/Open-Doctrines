@@ -1,0 +1,55 @@
+// Oversettelse av intro.oddlg. Linjer med :: og talernavn er id-er -- ikke oversett dem.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Hallo, hvem er dette?
+---
+@
+...
+---
+@Pr1nted
+Å... Du er ny her... Hva? §**aldri styrt et land før?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Vet du hva? Min feil...
+---
+@Pr1nted
+:: enter=type speed=42
+Men jeg har ikke tid til å holde opplæringen selv, så jeg må overlate deg til
+en venn av meg, ok? Jeg trenger tid, oppdateringene lager ikke seg selv, vel?
+---
+@Signals Officer
+Hallo? Hva er det, §**Pr1nted**§?
+---
+@Pr1nted
+Øh... Hei Mia, jeg trenger en /bitte liten tjeneste,/ kan du vise en ny spiller rundt?
+---
+@Signals Officer
+</Sukker/>
+---
+@Pr1nted
+**Kom igjen!** Hva betaler jeg deg for?
+---
+@Signals Officer
+Greit... Ja da, ja da.
+---
+@Pr1nted
+Flott! Så frøken Mia viser deg rundt, hvordan spillet fungerer og det grunnleggende,
+eller hvis du kan det grunnleggende, men vil snakke detaljer, si det nå,
+> Vis meg det grunnleggende -> basics
+> Jeg kan det grunnleggende, ta detaljene -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Flott, da setter vi i gang.
+---
+@Pr1nted
+:: act=tune_out
+Flott, håper dere to kommer overens! Pr1nted, slutt.

@@ -1,0 +1,58 @@
+// Bản dịch. Các dòng :: và tên người nói là mã định danh, không được dịch.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Alô, ai đấy?
+---
+@
+...
+---
+@Pr1nted
+Ồ... Bạn mới đến à... Gì cơ? §**chưa từng điều hành một quốc gia nào sao?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Bạn biết không? Lỗi tại tôi...
+---
+@Pr1nted
+:: enter=type speed=42
+Có điều tôi không đủ thời gian tự hướng dẫn bạn, nên tôi phải gửi bạn cho một
+người bạn của tôi, được chứ? Tôi cần thời gian, còn phải làm các bản cập nhật
+sắp tới nữa, đúng không?
+---
+@Signals Officer
+Alô? §**Pr1nted**§ nào cơ?
+---
+@Pr1nted
+Ừm... Chào Mia, tôi cần một /việc nhỏ xíu thôi/, cô dẫn một người chơi mới đi
+một vòng được không?
+---
+@Signals Officer
+</Thở dài/>
+---
+@Pr1nted
+**Thôi nào!** Tôi trả lương cho cô để làm gì chứ?
+---
+@Signals Officer
+Thôi được... Được rồi, được rồi.
+---
+@Pr1nted
+Tốt! Vậy cô Mia sẽ dẫn bạn đi một vòng, cho bạn xem trò chơi vận hành ra sao và
+những điều cơ bản. Còn nếu bạn đã biết những điều cơ bản nhưng muốn bàn chi
+tiết, hãy nói ngay bây giờ,
+> Cho tôi xem những điều cơ bản -> basics
+> Tôi biết cơ bản rồi, nói chi tiết đi -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Tuyệt, bắt đầu thôi.
+---
+@Pr1nted
+:: act=tune_out
+Tuyệt, mong là hai người hợp nhau! Pr1nted ngắt liên lạc.

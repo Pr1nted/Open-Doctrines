@@ -1,0 +1,57 @@
+// Traduko. La :: linioj kaj la nomoj de parolantoj estas identigiloj - ne traduku ilin.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Saluton, kiu estas tie?
+---
+@
+...
+---
+@Pr1nted
+Ho... Vi estas nova ĉi tie... Kio? §**vi neniam antaŭe regis landon?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Ĉu vi scias? Mia kulpo...
+---
+@Pr1nted
+:: enter=type speed=42
+Tamen mi ne havas sufiĉe da tempo por mem fari la instruadon, do mi devos lasi
+vin ĉe amikino mia, ĉu bone? Mi bezonas tempon, mi devas fari estontajn
+ĝisdatigojn, ĉu ne?
+---
+@Signals Officer
+Halo? Kio estas, §**Pr1nted**§?
+---
+@Pr1nted
+Hmm... Saluton, Mia, mi bezonas /etegan komplezeton,/ ĉu vi gvidus novan ludanton?
+---
+@Signals Officer
+</Suspiras/>
+---
+@Pr1nted
+**Nu 'ja'!** Por kio mi pagas vin?
+---
+@Signals Officer
+Bone... Nu bone, nu bone.
+---
+@Pr1nted
+Bonege! Do fraŭlino Mia montros al vi ĉion, kiel la ludo funkcias kaj ĝiajn
+bazojn, aŭ se vi jam konas la bazojn, sed volas paroli pri detaloj, diru al ni
+nun,
+> Montru al mi la bazojn -> basics
+> Mi konas la bazojn, ni parolu pri detaloj -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Bonege, ni komencu.
+---
+@Pr1nted
+:: act=tune_out
+Bonege, espereble vi du interkonsentos! Pr1nted, fino.

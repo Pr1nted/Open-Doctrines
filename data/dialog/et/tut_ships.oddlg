@@ -1,0 +1,48 @@
+// Tõlge -- ülesõit üle vee, üksikasjalikult.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Laevad siis. See peatab enamiku inimesi, ja peatab neid iga kord samas kohas:
+armee on rannikul ja midagi ei juhtu.
+---
+@Signals Officer
+Armee ei ületa vett ise, ja käsku "mine sellele laevale" ei ole. Seda teeb
+provints.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Valige rannikuprovints, kus on §**sadam**§ JA §**kohapeal mehed**§. Laadimine
+liigutab garnisoni, mis seal juba on; tühi sadam ei lae üldse midagi, ja sealt
+saab alguse enamik segadusest.
+
+Selle paneelil on §**Lae armee laevale**§ -- tasuta, üks käik. Vajutage seda ja
+lõpetage käik.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Mehed on nüüd §**paat**§ ranniku lähedal. Minge vaatesse §**Merevägi**§ -- laevad
+ei võta käske vastu üheski teises seitsmest.
+
+§{key=ship_move}§ liigutab seda, §{key=ship_wheel}§ avab selle kahurid,
+§{key=ship_engage}§ käsib sel lahingut alustada.
+---
+@Signals Officer
+Maabumiseks: valige paat, vajutage §**Liigu**§ ja klõpsake §**maismaal**§.
+
+Vesi liigutab seda. Maa laadib selle tühjaks. Üks nupp teeb mõlemat, mistõttu
+inimesed seilavad edasi-tagasi, otsides teist.
+---
+@Signals Officer
+Kaks asja, mida keegi ei ütle.
+
+Laetud transpordilaev on sihtmärk, ja see upub koos meestega. Ja maabumine
+kaitstud provintsi saabub väsinuna -- võtke kõrval tühi rannik ja kõndige, selle
+asemel et kindlusele maabuda.
+---
+@Signals Officer
+§**Hallow Rock**§ väinas ei ole valikuline. Paadil on tegevusraadius ja kauge saar
+jääb sellest välja -- nii et kalju on esimene maabumine ja teine hüpe tehakse
+sealt.
+
+Need on laevad. Veel midagi?

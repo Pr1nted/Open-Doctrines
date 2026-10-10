@@ -1,0 +1,31 @@
+// Käännös: tutkimus.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Tutkimus. Avaa se. Valitus on aina sama: mikään aloitettu ei tunnu koskaan
+valmistuvan. Se ei ole bugi, se on koko idea.
+---
+@Signals Officer
+Kaikki täällä mitataan vuoroissa, joita et ole vielä pelannut. Nyt aloitettu
+asia valmistuu kauan sen jälkeen, kun olet unohtanut halunneesi sitä, joten
+ainoa huono hetki aloittaa on myöhemmin.
+---
+@Signals Officer
+Se ottaa rahansa samasta kassasta kuin armeija. Maa, joka tutkii kaikkea, ei
+saa kenttään mitään, ja maa, joka panee kaiken kenttään, käy kahdenkymmenen
+vuoron päästä yhä viime vuosikymmenen sotaa.
+
+Valitse suunta. Älä valitse niitä kaikkia.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Sulje se taas kulman §**x**§:stä.
+---
+@Signals Officer
+Valmistunut työ ei vaikuta taannehtivasti. Uusi kalusto menee ensin uusille
+joukoille, joten vuoro, jolla jotain valmistuu, on vuoro katsoa, mitä olet
+rakentamassa, eikä vuoro hengähtää.
+
+Siinä tutkimus. Muuta?

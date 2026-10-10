@@ -1,0 +1,62 @@
+// Bản dịch — kinh tế hàng hóa.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Trong một §**thế giới hàng hóa**§, một tỉnh không chỉ kiếm ra tiền. Nó khai thác
+nguyên liệu thô và các nhà máy biến chúng thành hàng hóa — và chính hàng hóa,
+không phải tiền mặt, mới nuôi dân bạn và cho phép bạn xây dựng. Mở kinh tế ra.
+---
+@Signals Officer
+Có bốn loại. §**Hàng tiêu dùng**§ để dân bạn ăn. §**Máy móc**§ xây công nghiệp,
+pháo đài và cảng. §**Nhiên liệu**§ làm tàu và quân đội di chuyển. §**Đạn dược**§
+dùng để tuyển lính và bắn pháo binh. Vàng vẫn là tiền.
+---
+@Signals Officer
+Và mỗi loại đều từ lòng đất đi qua một nhà máy. §**Cao su và đá quý**§ thành
+hàng tiêu dùng; §**kim loại**§ thành máy móc và đạn dược; §**dầu**§ thành nhiên
+liệu. Không có mỏ thì không có hàng — nên một sự thiếu hụt sẽ chỉ cho bạn một
+tỉnh cần chiếm hoặc một nhà máy cần chuyển hướng.
+---
+@Signals Officer
+Trong ván có hàng hóa, phần kinh tế mọc thêm một thẻ §**Hàng hóa**§ ở trên cùng.
+Nó liệt kê bốn loại cạnh nhau: bạn đang giữ bao nhiêu, mỗi lượt bạn làm ra bao
+nhiêu so với nhu cầu, và — con số quan trọng nhất — §**Dự trữ**§.
+---
+@Signals Officer
+Dự trữ là số lượt một đống hàng còn trụ được với mức tiêu dùng hiện tại. Chín
+lượt là thoải mái; dưới hai là cảnh báo; trống rỗng là thiếu hụt đang xảy ra
+ngay lúc này. Đó là cách đọc trung thực — không phải một đống to được tô vẽ
+thành dư dả, mà là đống đó thực sự cho bạn được bao lâu.
+---
+@Signals Officer
+Hàng tiêu dùng là loại hàng duy nhất đồng thời là một thực tế chính trị. Lượng
+được ăn so với lượng mong muốn chính là §**Mức sống**§ của bạn: giữ dân được no
+thì đất nước phát triển; để nó tụt xuống thì cơn đói quay lại dưới dạng bất ổn.
+---
+@Signals Officer
+Ba loại còn lại là giấy phép. Xây công nghiệp thì tiêu máy móc; cho hạm đội ra
+khơi thì đốt nhiên liệu; tuyển quân thì rút đạn dược. Thiếu thì hành động đó chỉ
+đơn giản mờ đi — chiến tranh không chờ nhà kho.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Nơi sản xuất mỗi loại hàng được đặt theo từng tỉnh. Nhấp vào một tỉnh của ta:
+trên bảng của nó bạn chỉ định các nhà máy làm gì, hoặc để nguyên và nền kinh tế
+tự phân bổ, đưa các nhà máy nhàn rỗi sang thứ bạn đang thiếu nhất.
+---
+@Signals Officer
+:: point=btn.settings
+Hai công tắc nằm trong §**Cài đặt -> Thử nghiệm**§. Một cái bật kinh tế hàng hóa
+cho thế giới mới tiếp theo của bạn. Cái kia, §**Thặng dư thương mại với đồng
+minh**§, là tùy chọn: khi một đồng minh thiếu hàng, hàng dư của bạn sẽ chuyển
+sang cho họ. Thường thì chẳng ai thiếu, nên nó nằm yên — đó là sự giúp đỡ sẵn
+sàng, không phải một khoản thuế đánh vào kho của bạn.
+---
+@Signals Officer
+Kinh tế hàng hóa là vậy: khai thác, chế tạo, nuôi dân và chi tiêu. Theo dõi dự
+trữ, giữ dân được no, và đừng bao giờ bắt đầu một cuộc chiến mà đạn dược của
+bạn không đủ để kết thúc.
+
+Còn gì nữa không?

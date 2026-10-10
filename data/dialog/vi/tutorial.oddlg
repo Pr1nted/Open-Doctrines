@@ -1,0 +1,304 @@
+// Bản dịch — bài học của Mia. Các dòng ::, tên người nói và {key=...} là mã định danh.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Được rồi. Ashford. Bảy tỉnh, một láng giềng vốn đã ghét chúng ta, và một hòn
+đảo mà ta không thể đi bộ tới.
+
+Đủ nhỏ để học. Đó là toàn bộ lý do chúng ta ở đây.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Nhấp vào bất kỳ tỉnh nào và bảng này sẽ cho bạn biết nó là gì: ai sở hữu, ai
+sống ở đó, nó sản xuất gì và họ sắp nổi loạn vì chuyện đó đến mức nào.
+
+Mọi việc bạn làm trong trò chơi này, bạn đều làm với một tỉnh.
+---
+@Signals Officer
+:: point=view.population
+Thanh ở dưới cùng không phải tám cái nút. Đó là tám cách nhìn CÙNG MỘT tấm bản
+đồ, và bạn sẽ chuyển qua lại giữa chúng suốt cả ván.
+
+Chế độ này tô màu từng tỉnh theo số người sống ở đó.
+---
+@Signals Officer
+:: point=view.industry
+Công nghiệp. Nhà máy nằm ở đâu, và do đó tiền với trang bị đến từ đâu.
+
+Dân số và công nghiệp gộp lại cho bạn biết tỉnh nào đáng chiếm và tỉnh nào chỉ
+là đất trống.
+---
+@Signals Officer
+:: point=view.defence
+Phòng thủ hiển thị các pháo đài. Màu tối nghĩa là có kẻ đã cố thủ, và tấn công
+vào vùng tối tốn kém hơn nhiều so với những gì con số gợi ý.
+---
+@Signals Officer
+:: point=view.relations
+Quan hệ: ai đang đánh nhau với ai, và ai đang bảo đảm cho ai. Hãy xem trước khi
+bạn gây chuyện — một nửa số cuộc chiến người ta thua ở đây là đánh với ba nước,
+chứ không phải một.
+---
+@Signals Officer
+:: point=view.army
+Lục quân. Mọi đơn vị đồn trú trên bản đồ cùng một lúc, của bạn lẫn của họ.
+
+Hãy ở chế độ này khi bạn điều quân, vì đây là chế độ duy nhất cho thấy cái gì
+đang chờ họ.
+---
+@Signals Officer
+:: point=view.navy
+Hải quân làm điều tương tự cho tàu, và cũng là nơi bạn chất quân lên tàu vận tải.
+
+Tài nguyên và Tên quốc gia là hai chế độ cuối, và chúng làm đúng như tên gọi.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Kinh tế**§ trước đã, vì mọi thứ khác đều được trả tiền từ đó.
+
+Mở nó ra.
+---
+@Signals Officer
+Công nghiệp là thứ bạn dùng để xây dựng, và nó lớn lên ở nơi đã có dân. Đặt một
+nhà máy ở chỗ trống trải là bạn vừa mua một cái nhà kho rất đắt tiền.
+
+Thu nhập đến mỗi lượt một lần. Tiêu trước khi có tiền thì phần thiếu hụt sẽ bị
+trừ vào mức sẵn sàng chiến đấu.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Giờ đóng nó lại — vẫn nút đó. Bảng này che bản đồ, và tôi không thể chỉ cho bạn
+thứ gì ngoài kia khi bạn còn ở trong này.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Tiếp theo là §**Nghiên cứu**§. Mở ra.
+---
+@Signals Officer
+Không thứ gì bạn bắt đầu ở đây xong trong lượt này, và phần lớn sẽ xong rất lâu
+sau khi bạn đã quên mình từng muốn nó.
+
+Chính vì thế mà nên bắt đầu sớm.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Ra lại.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Chính trị**§. Vào đi.
+---
+@Signals Officer
+Chính sách tốn chi phí duy trì, không phải trả một lần — chúng là một hóa đơn
+thường trực, và chúng dịch chuyển vị trí chính trị của đất nước.
+
+Chế độ quân dịch lấp đầy hàng ngũ. Nó cũng tạo ra những người không muốn đứng
+trong hàng ngũ, và đó là con số cần theo dõi.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Rồi ra.
+---
+@Signals Officer
+Con số đó là §**bất ổn**§.
+
+Một tỉnh bất ổn cao sẽ ngừng nộp tiền và bắt đầu tổ chức. Phớt lờ đủ lâu là nó
+bỏ đi — mang theo công nghiệp, dân số và cả ý kiến của nó về bạn.
+
+Bạn sẽ được cảnh báo. Không phải lúc nào cũng có lần thứ hai.
+---
+@Signals Officer
+:: point=view.relations
+Thêm một điều trước khi tới các bảng: một cuộc chiến không nhất thiết phải kết
+thúc bằng việc ai đó chết.
+
+Lời đề nghị §**ngừng bắn**§ và §**thương mại**§ đến dưới dạng một cửa sổ có ghi
+điều khoản — ai ngừng đánh, ai nhượng lại cái gì. Hãy đọc điều khoản. Chấp
+nhận thì chiến tranh kết thúc theo đúng những điều khoản đó, chứ không phải
+theo những điều khoản dễ chịu.
+---
+@Signals Officer
+Bạn cũng có thể tự mở một cửa sổ như vậy, từ chế độ quan hệ: chọn một nước bạn
+đang đánh nhau và đề nghị. Họ đồng ý khi đang thua và từ chối khi không thua,
+và đó là phần lớn ngoại giao trong trò chơi này.
+
+Một §**thỏa thuận thương mại**§ có cùng hình dạng nhưng không có chiến tranh:
+hàng đổi tiền, mỗi lượt, cho đến khi có người hủy.
+---
+@Signals Officer
+Và trong bài học này sẽ không ai đề nghị bạn thứ nào cả. Tôi đã dặn họ rồi.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Bảng cuối cùng. §**Tuyên bố chủ quyền**§ là cách để một cuộc chiến trở nên chính
+đáng.
+---
+@Signals Officer
+Thực thi một tuyên bố bạn đang có thì thế giới chỉ nhún vai. Chiếm vùng đất bạn
+chưa từng tuyên bố, và mọi kẻ còn đang lưỡng lự về bạn sẽ thôi lưỡng lự.
+
+Hãy tuyên bố TRƯỚC chiến tranh. Tuyên bố nộp sau đó chẳng lừa được ai.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Đóng lại, rồi ta đi dùng thử vài thứ này.
+---
+@Signals Officer
+Giờ đến quân đội.
+
+Chọn một tỉnh của bạn, giữ §{key=army_move}§ và nhấp vào nơi quân lính cần đến.
+Chỉ tỉnh kề bên thôi — quân đội đi bộ, không dịch chuyển tức thời.
+---
+@Signals Officer
+Pháo binh nằm ở §{key=artillery_wheel}§. Giữ phím đó và vòng chọn sẽ mở ra: từ
+súng cối cho tới những thứ tôi không muốn ghi thành văn bản.
+
+Tàu có phím riêng: §{key=ship_move}§ để di chuyển, §{key=ship_wheel}§ cho súng
+pháo của chúng, §{key=ship_engage}§ để gây chiến.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Quân đội cũng không tự nhiên mà có. §**Bạn phải tuyển họ**§, từng tỉnh một, từ
+chính những người sống ở đó.
+
+Chọn một tỉnh của ta và nhìn vào bảng.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Có một thanh trượt và một nút §**Tuyển**§. Thanh trượt cho biết bạn đang lấy bao
+nhiêu phần trong số người tỉnh đó có thể cho đi trong lượt này — tối đa khoảng
+một phần năm dân số, ít hơn ở nơi người dân bất mãn.
+
+Việc này tốn tiền, và quân sẽ đến vào lượt sau. Tuyển một ít ngay đi.
+---
+@Signals Officer
+Một tỉnh bị bạn rút cạn quân là tỉnh mà ai cũng có thể bước vào, còn một tỉnh
+bị rút cạn người thì nghèo đi mãi mãi. Tuyển quân là tiêu một thứ gì đó, không
+phải tạo ra nó.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Trước khi bạn điều ai đi: §**không có gì xảy ra cho đến khi bạn kết thúc lượt.**§
+
+Có lẽ bạn đã để ý nó bị mờ xám đến tận giờ. Là tôi đấy.
+
+Bạn ra lệnh. Lệnh nằm chờ. Bạn nhấn nút này, và tất cả cùng xảy ra một lúc —
+đó là lý do cả một chiến dịch có thể được quyết định chỉ trong một lượt nếu
+mệnh lệnh tốt.
+---
+@Signals Officer
+Kestrel giữ đầu phía đông hòn đảo của chúng ta, họ đã đang đánh nhau với ta, và
+họ có bốn mươi tám nghìn quân.
+
+Chúng ta có bảy trăm hai mươi nghìn.
+---
+@Signals Officer
+:: until=destroyed:KES
+Vậy hãy làm trong §**một lượt**§. Ra lệnh chiếm mọi tỉnh của họ — cả bốn, lần
+lượt từng tỉnh, trước khi kết thúc bất cứ thứ gì — rồi nhấn «Thực hiện lượt» và
+xem tất cả được giải quyết.
+
+Đó là nhịp điệu của trò chơi này. Mọi thứ khác chỉ là chi tiết.
+---
+@Signals Officer
+:: act=rebellion
+... Bạn có rắc rối ở nhà.
+
+Bất ổn ở các tỉnh bạn vừa chiếm đã vượt ngưỡng. Họ đã tuyên bố tự lập, và họ
+không hỏi ý ai cả.
+---
+@Signals Officer
+:: until=rebels:none
+Đây là điều tôi nói đấy. Một cuộc nổi loạn giờ là một quốc gia — nó có tỉnh, có
+quân, và có biên giới với bạn.
+
+Dẹp nó theo cách bạn dẹp mọi thứ khác. Sẽ không dễ như Kestrel đâu.
+---
+@Signals Officer
+Vậy là còn lại Verrick, bên kia mặt nước.
+
+Không có đường bộ. Hành quân bao nhiêu cũng không đưa được quân tới đó, và đây là
+chỗ phần lớn mọi người bị kẹt.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Và chúng ta §**không có chiến tranh với họ**§. Kestrel đến với ta vốn đã thù
+địch; Verrick chưa làm gì cả, và bạn không thể đổ bộ lên một nước đang hòa bình
+với mình.
+
+Vậy ta tuyên chiến. Chọn bất kỳ chế độ nào trừ Dân số, rồi nhấp vào một tỉnh của
+họ.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Bảng tỉnh của họ liệt kê những gì ta có thể làm với họ, trong đó có
+§**Tuyên chiến**§. Phía trên là §**mục tiêu chiến tranh**§ — điều bạn tuyên bố
+mình muốn đạt được. Nhấp vào để chuyển qua các lựa chọn.
+
+Mục tiêu không phải để trang trí: phần còn lại của thế giới phán xét bạn theo nó,
+và sau này một cuộc ngừng bắn cũng sẽ được tranh cãi quanh nó.
+---
+@Signals Officer
+Tuyên chiến đi — rồi §**kết thúc lượt**§. Một lời tuyên chiến cũng là một mệnh
+lệnh như mọi lệnh khác: được ghi nhận bây giờ và xảy ra khi lượt được giải quyết.
+Không có gì thay đổi trên bản đồ cho đến khi bạn nhấn nút.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Đây là toàn bộ cuộc vượt biển, trong bốn bước. Chọn một tỉnh ven biển của ta —
+một tỉnh có §**cảng**§ và có quân trong đó.
+---
+@Signals Officer
+:: point=panel.province
+Nó cần §**có quân đứng trong đó**§. Lên tàu không triệu hồi quân đội từ đâu ra cả
+— nó đưa đơn vị đồn trú đang có sẵn ở đó lên thuyền, nên một cảng ở tỉnh trống
+không đưa được ai lên tàu.
+
+Nếu cần thì hãy cho quân hành quân vào trước.
+---
+@Signals Officer
+:: point=panel.province
+Rồi, trong bảng của tỉnh đó: §**Đưa quân lên tàu**§. Miễn phí, một lượt.
+
+Nhấn nó và kết thúc lượt. Đơn vị đồn trú rời tỉnh và trở thành một §**con
+thuyền**§ ngoài khơi, chở họ như thủy thủ đoàn.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Giờ chuyển sang chế độ §**Hải quân**§. Bạn không thể ra lệnh cho tàu từ bản đồ
+dân số — con thuyền không có trên đó.
+---
+@Signals Officer
+Chọn con thuyền. Nhấn §**Di chuyển**§, rồi — đây là phần không ai đoán ra — nhấp
+vào §**đất liền**§.
+
+Nước thì nó di chuyển. Bờ biển thì §**nó cho quân đổ bộ ở đó**§. Đó chính là đổ
+bộ; không có nút riêng nào cho việc này.
+---
+@Signals Officer
+:: until=destroyed:VER
+Tóm lại: quân ở tỉnh có cảng, lên tàu, kết thúc lượt, chế độ hải quân, di chuyển
+thuyền, nhấp vào đất liền.
+
+Và đi §**qua Hallow Rock**§. Đó không phải đường tắt, đó là tuyến đường: một con
+thuyền chỉ đi được một quãng nhất định, và bờ biển của Verrick nằm quá tầm đó nếu
+đi một mạch. Đổ bộ lên hòn đá, kết thúc lượt, rồi vượt nửa còn lại.
+
+Và giữ thuyền tránh xa tàu khu trục của họ. Một con thuyền đầy quân chìm cùng
+tất cả mọi người trên đó.
+---
+@Signals Officer
+:: point=tab.claims
+Và hãy tuyên bố chủ quyền vùng đất trước khi chiếm nó, đừng để sau. Giờ thì bạn
+biết vì sao rồi.
+---
+@Signals Officer
+Thế là hết. Kinh tế, nghiên cứu, chính trị, bất ổn, tuyên bố chủ quyền, quân
+đội, tàu thuyền.
+
+Mọi thứ khác chỉ là chi tiết, và bạn sẽ học được chi tiết bằng cách thua vì nó.
+---
+@Signals Officer
+:: act=then:outro
+Và đó là hòn đảo. Quay lên menu với tôi — hai điều cuối cùng không nằm ở dưới này.

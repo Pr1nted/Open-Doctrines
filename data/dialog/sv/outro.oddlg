@@ -1,0 +1,32 @@
+// Översättning av outro.oddlg -- tillbaka till menyn och Pr1nted avslutar.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Hit upp, alltså. Två saker som inte finns på någon karta.
+
+§**Sparade spel.**§ En riktig värld skriver ner sig själv medan du spelar och
+väntar på dig här inne. Vår gjorde inte det -- inget av det du just gjorde
+sparades, vilket är lite av poängen med en övningsö.
+---
+@Signals Officer
+:: point=menu.2
+§**Flerspelarläge.**§ En dator är värd och alla andra ansluter till den. Ett
+drag avgörs när varje spelare har sagt att de är redo, så ett spel går i takt
+med den långsammaste.
+
+Spela med folk som svarar på sina meddelanden.
+---
+@Pr1nted
+Lever du fortfarande? Bra. Grundlig är hon, det ska hon ha.
+
+Något mer du vill gå igenom, eller är vi klara?
+> Gå ner igen och ta upp något särskilt -> world:specifics
+> Det var allt, tack
+---
+@Pr1nted
+:: act=end_tutorial
+Okej. Gå och förlora några, det är så man lär sig.
+
+Pr1nted slut.

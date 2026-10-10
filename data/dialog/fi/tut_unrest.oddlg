@@ -1,0 +1,78 @@
+// Käännös: vaateet, levottomuus ja kapina.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Vaateet ja levottomuus. Avaa vaatepaneeli. Ne ovat yksi ja sama aihe,
+sanoi käyttöliittymä mitä tahansa.
+---
+@Signals Officer
+§**Vaade**§ on ero sodan, jonka maailma sietää, ja sodan, joka yhdistää
+kaikki sinua vastaan, välillä. Aja vaadetta, joka sinulla on, niin sovit
+vanhaa kaunaa; valtaa maata, jota et koskaan vaatinut, niin sinä olet se kauna.
+---
+@Signals Officer
+Tee vaade §**ennen**§ sotaa, ei jälkeenpäin. Vaade, joka jätetään maakunnan
+valtaamista seuraavalla vuorolla, ei hämää ketään ja maksaa saman verran.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Sulje se.
+---
+@Signals Officer
+§**Levottomuus**§ on se, mitä maan valtaaminen tekee maalle. Vallatut
+maakunnat paheksuvat sitä, vähemmistöt vielä enemmän, ja sekä asevelvollisuus
+että sensuuri ostavat sinulle voimaa nyt levottomuuden hinnalla myöhemmin.
+---
+@Signals Officer
+Tietyn kynnyksen jälkeen maakunta lakkaa maksamasta ja alkaa järjestäytyä.
+Seuraavan jälkeen se lähtee, ja se lähtee §**maana**§, mukanaan teollisuutesi,
+väestösi ja hyvin tarkka mielipide sinusta.
+
+Saat varoituksen. Toista et aina saa.
+---
+@Signals Officer
+Lääkkeet ovat epäsuosittuja tai hitaita: sijoita sinne varuskunta, käytä
+siihen rahaa tai anna sille, mitä se haluaa. Valitse ajoissa, sillä kaikki
+kolme vaativat vuoroja tehotakseen.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Rahan käyttämisessä siihen suurin osa valuu hukkaan. Avaa Politiikka ja sitten
+§**Piirit**§.
+
+---
+@Signals Officer
+Budjetti kohdistui ennen koko maahan kerralla: sama paino rauhalliselle
+seudulle kuin sille, joka aseistautuu. Joten pilko maa. §**Piiri**§ on sen
+osa, jota hallitset yhtenä kokonaisuutena: maalaa maakuntia siihen, anna sille
+väri, anna sille §**osuus**§. Osuudet ovat yhteensä aina sata, koska budjetti
+on vain yksi.
+
+---
+@Signals Officer
+Olennaista on §**rahan**§ osuus suhteessa §**maan**§ osuuteen. Piiri, jolla
+on kymmenesosa maasta ja kymmenesosa budjetista, on valvottu täsmälleen kuten
+ennenkin, joten jakaminen ei muuta mitään, ennen kuin teet osuuksista
+epätasaisia.
+
+---
+@Signals Officer
+Piirrä pieni piiri ongelman ympärille, anna sille neljännes rahoista, niin
+sitä valvotaan moninkertaisesti tiukemmin; paneeli kertoo luvun. Kaikki muut
+alueet maksavat sen, ja se on itse päätös. Tasajakoon on oma nappi: järkevä
+paikka aloittaa ja harvoin paikka jäädä.
+
+Piiri säätää myös oman §**aluelakinsa**§: ulkonaliikkumiskiellon, verovapaan
+jakson, sen, mitä kieltä tuomioistuimet käyttävät. Pieniä, paikallisia, ja
+jokainen on kauppa.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Sulje se.
+
+---
+@Signals Officer
+Siinä levottomuus. Muuta?

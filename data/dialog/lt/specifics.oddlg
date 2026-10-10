@@ -1,0 +1,16 @@
+// Vertimas -- temų meniu. "script:" tikslai yra identifikatoriai, jų neversti.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Gerai, jūs žinote, kaip tai atrodo. Tai ko jūs iš tikrųjų norite?
+
+Pasirinkite vieną, ir aš apie tai papasakosiu nuodugniai. Kai baigsite, klauskite dar kartą.
+> Laivai, uostai ir kaip perkelti armiją per vandenį -> script:tut_ships
+> Tyrimai, ir kodėl niekas pradėta nesibaigia -> script:tut_research
+> Ekonomika, pramonė ir iš kur ateina pinigai -> script:tut_economy
+> Prekių ekonomika: žmonių maitinimas ir karo kuras -> script:tut_goods
+> Pretenzijos, neramumai ir provincijų praradimas savo žmonėms -> script:tut_unrest
+> Sąjungos, paliaubos ir visa kita diplomatija -> script:tut_diplomacy
+> Karo rūkas: ką matau, ir kaip šnipinėti likusius -> script:tut_fog
+> Daugiau nieko, baigiau -> script:outro

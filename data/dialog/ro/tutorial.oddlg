@@ -1,0 +1,312 @@
+// Traducere - lecția Miei. Liniile :: și numele vorbitorilor sunt identificatori.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Bun. Ashford. Șapte provincii, un vecin care deja nu ne suportă și o insulă
+la care nu putem ajunge pe jos.
+
+Destul de mică pentru a învăța pe ea. Acesta e singurul motiv pentru care
+suntem aici.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Faceți clic pe orice provincie și panoul acesta vă spune ce este: al cui e,
+cine locuiește acolo, ce produce și cât de aproape sunt oamenii să se revolte
+din cauza asta.
+
+Tot ce faceți în jocul acesta faceți unei provincii.
+---
+@Signals Officer
+:: point=view.population
+Bara de jos nu înseamnă opt butoane. Înseamnă opt feluri de a privi ACEEAȘI
+hartă, iar dumneavoastră veți petrece tot jocul trecând de la unul la altul.
+
+Acesta colorează fiecare provincie după câți oameni locuiesc în ea.
+---
+@Signals Officer
+:: point=view.industry
+Industrie. Unde sunt fabricile, deci de unde vin banii și echipamentul.
+
+Populația și industria împreună vă spun care provincii merită cucerite și
+care sunt doar teren.
+---
+@Signals Officer
+:: point=view.defence
+Apărare arată fortificațiile. Închis la culoare înseamnă că cineva s-a
+înrădăcinat, iar un atac pe teren închis la culoare costă mult mai mult decât
+sugerează cifrele.
+---
+@Signals Officer
+:: point=view.relations
+Relații: cine e în război cu cine și cine garantează pentru cine. Verificați
+înainte să începeți ceva -- jumătate din războaiele pierdute aici au fost cu
+trei țări, nu cu una.
+---
+@Signals Officer
+:: point=view.army
+Armată. Toate garnizoanele de pe hartă deodată, ale noastre și ale lor.
+
+În aceasta trebuie să fiți când mutați oameni, pentru că e singura care arată
+ce îi așteaptă.
+---
+@Signals Officer
+:: point=view.navy
+Marină face același lucru pentru nave și de aici încărcați transporturile.
+
+Resurse și Numele țărilor sunt ultimele două și fac exact ce spun.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Economia**§, mai întâi, pentru că tot restul se plătește din ea.
+
+Deschideți-o.
+---
+@Signals Officer
+Industria este cea cu care construiți și crește acolo unde există deja
+populație. Puneți o fabrică undeva unde nu e nimeni și ați cumpărat o magazie
+foarte scumpă.
+
+Venitul sosește o dată pe tură. Cheltuiți-l înainte să-l aveți și deficitul
+se scade din starea de pregătire.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Acum închideți-o la loc -- același buton. Panoul acoperă harta și nu vă pot
+arăta nimic acolo afară cât timp sunteți aici înăuntru.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Urmează §**Cercetare**§. Deschideți-o.
+---
+@Signals Officer
+Nimic din ce începeți aici nu se termină în tura asta, iar cele mai multe se
+termină mult după ce ați uitat că le voiați.
+
+Exact de aceea merită să începeți devreme.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Afară din nou.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politică**§. Intrați.
+---
+@Signals Officer
+Politicile costă întreținere, nu o sumă fixă -- sunt o factură permanentă și
+mută poziția politică a țării.
+
+Serviciul militar umple rândurile. Produce și oameni care nu voiau să fie în
+rânduri, iar acela e numărul de urmărit.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Și afară.
+---
+@Signals Officer
+Numărul acela este §**agitația**§.
+
+O provincie cu agitație mare nu mai plătește și începe să se organizeze.
+Ignorați-o destul de mult și pleacă -- cu industria ei, cu populația ei și cu
+părerea ei despre dumneavoastră.
+
+Primiți un avertisment. Nu primiți întotdeauna și un al doilea.
+---
+@Signals Officer
+:: point=view.relations
+Încă un lucru înainte de panouri: un război nu trebuie să se termine prin
+moartea cuiva.
+
+Ofertele de §**încetare a focului**§ și de §**comerț**§ sosesc ca o fereastră
+cu condiții -- cine încetează lupta, cine cedează ce. Citiți condițiile.
+Acceptați și războiul se încheie în condițiile acelea, nu în unele drăguțe.
+---
+@Signals Officer
+Puteți deschide și dumneavoastră una, din vizualizarea Relații: alegeți o țară
+cu care sunteți în război și cereți. Spun da când pierd și nu când nu pierd,
+iar asta e cea mai mare parte a diplomației din jocul acesta.
+
+Un §**acord comercial**§ are aceeași formă, fără război: bunuri pe bani, în
+fiecare tură, până când cineva îl anulează.
+---
+@Signals Officer
+Și nimeni nu vă va oferi niciuna dintre ele în lecția asta. Le-am spus eu să
+nu o facă.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Ultimul panou. §**Revendicări**§: așa devine un război legitim.
+---
+@Signals Officer
+Faceți valabilă o revendicare pe care o aveți și lumea ridică din umeri. Luați
+teren pe care nu l-ați revendicat niciodată și toți cei care erau nehotărâți
+în privința dumneavoastră încetează să mai fie nehotărâți.
+
+Faceți revendicarea ÎNAINTE de război. Una depusă după nu păcălește pe nimeni.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Închideți-l și hai să folosim o parte din toate astea.
+---
+@Signals Officer
+Acum armata.
+
+Selectați o provincie a dumneavoastră, țineți apăsat §{key=army_move}§ și
+faceți clic unde trebuie să meargă oamenii. Doar în provincia vecină -- o
+armată merge pe jos, nu se teleportează.
+---
+@Signals Officer
+Artileria e pe §{key=artillery_wheel}§. Țineți apăsat și se deschide roata:
+de la mortiere până la lucruri pe care aș prefera să nu le pun pe hârtie.
+
+Navele au propriile taste: §{key=ship_move}§ pentru mutare, §{key=ship_wheel}§
+pentru tunuri, §{key=ship_engage}§ ca să caute o luptă.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Nici armatele nu apar din neant. §**Le recrutați**§, provincie cu provincie,
+din oamenii care locuiesc acolo.
+
+Selectați una de-a noastră și uitați-vă la panou.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Există un cursor și un buton §**Recrutează**§. Cursorul arată cât din ce poate
+da provincia aceea luați în tura asta -- cel mult cam o cincime din populația
+ei, mai puțin acolo unde oamenii sunt nemulțumiți.
+
+Costă bani, iar oamenii sosesc tura următoare. Dați ordinul acum.
+---
+@Signals Officer
+O provincie pe care ați golit-o de bărbați e o provincie în care poate intra
+oricine, iar una pe care ați golit-o de oameni e mai săracă pentru totdeauna.
+Recrutarea cheltuiește ceva, nu produce.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Înainte să mutați pe cineva: §**nu se întâmplă nimic până nu încheiați tura.**§
+
+Poate ați observat că era gri până acum. Eu am fost.
+
+Dați ordine. Ele așteaptă. Apăsați aici și atunci se întâmplă toate deodată --
+de aceea o campanie întreagă se poate decide într-o singură tură, dacă
+ordinele au fost bune.
+---
+@Signals Officer
+Kestrel ține capătul estic al insulei noastre, e deja în război cu noi și are
+patruzeci și opt de mii de oameni.
+
+Noi avem șapte sute douăzeci de mii.
+---
+@Signals Officer
+:: until=destroyed:KES
+Așa că faceți-o într-o §**singură tură**§. Ordonați cucerirea fiecărei
+provincii a lor -- toate patru, una după alta, înainte să încheiați ceva --
+apoi apăsați «Execută tura» și priviți cum se rezolvă totul.
+
+Acesta e ritmul jocului. Restul sunt detalii.
+---
+@Signals Officer
+:: act=rebellion
+... Aveți o problemă acasă.
+
+Agitația din provinciile pe care tocmai le-ați luat a depășit limita. S-au
+declarat independente și nu cer voie nimănui.
+---
+@Signals Officer
+:: until=rebels:none
+Asta voiam să spun. O rebeliune e acum o țară -- are provincii, oameni și
+graniță cu dumneavoastră.
+
+Înăbușiți-o la fel cum înăbușiți orice altceva. Nu va fi la fel de ușor ca
+Kestrel.
+---
+@Signals Officer
+Rămâne Verrick, dincolo de apă.
+
+Niciun drum pe uscat. Oricât ar mărșălui, o armată nu ajunge acolo, și aici
+se împotmolesc cei mai mulți.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Și §**nu suntem în război cu ei**§. Kestrel a venit spre noi deja ostilă;
+Verrick nu a făcut nimic, iar dumneavoastră nu puteți debarca într-o țară cu
+care sunteți în pace.
+
+Așa că declarăm. Orice vizualizare în afară de Populație, și faceți clic pe
+una dintre provinciile lor.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Panoul provinciei lor arată ce le putem face, printre altele §**Declară
+război**§. Deasupra e §**scopul războiului**§ -- ce spuneți că urmăriți.
+Faceți clic pe el ca să-l schimbați.
+
+Scopul nu e decor: după el vă judecă restul lumii și pe el se va negocia mai
+târziu o încetare a focului.
+---
+@Signals Officer
+Declarați-l -- și apoi §**încheiați tura**§. O declarație e un ordin ca
+oricare altul: se depune acum și se întâmplă când se rezolvă tura. Nimic nu se
+schimbă pe hartă până nu apăsați butonul.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Iată toată traversarea, în patru mișcări. Selectați una dintre provinciile
+noastre de coastă -- una cu §**port**§ și cu oameni în ea.
+---
+@Signals Officer
+:: point=panel.province
+Are nevoie de §**oameni staționați în ea**§. Îmbarcarea nu cheamă o armată de
+nicăieri -- pune pe o barcă garnizoana care e deja acolo, așa că un port într-o
+provincie goală nu îmbarcă nimic.
+
+Aduceți câțiva acolo mai întâi, dacă e nevoie.
+---
+@Signals Officer
+:: point=panel.province
+Apoi, în panoul provinciei: §**Îmbarcă armata**§. Gratuit, o tură.
+
+Apăsați și încheiați tura. Garnizoana părăsește provincia și devine o
+§**barcă**§ în largul coastei, cu ei pe post de echipaj.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Acum treceți la vizualizarea §**Marină**§. Nu puteți da un ordin unei nave de
+pe harta populației -- barca nu apare pe ea.
+---
+@Signals Officer
+Selectați barca. Apăsați §**Mută**§ și apoi -- asta e partea pe care n-o
+ghicește nimeni -- faceți clic pe §**uscat**§.
+
+Apa o mută. O coastă §**debarcă oamenii acolo**§. Asta e debarcarea; nu există
+un buton separat pentru ea.
+---
+@Signals Officer
+:: until=destroyed:VER
+Deci: oameni într-o provincie cu port, îmbarcare, încheiați tura, vizualizarea
+Marină, mutați barca, clic pe uscat.
+
+Și mergeți §**prin Hallow Rock**§. Nu e o scurtătură, e traseul: o barcă
+ajunge doar până la o anumită distanță, iar coasta lui Verrick e dincolo de ea
+dintr-o bucată. Debarcați pe stâncă, încheiați tura, apoi traversați a doua
+jumătate.
+
+Și țineți barca departe de distrugătorul lor. Una încărcată se scufundă cu
+toți cei de la bord.
+---
+@Signals Officer
+:: point=tab.claims
+Și revendicați terenul înainte să-l luați, nu după. Acum știți de ce.
+---
+@Signals Officer
+Asta a fost tot. Economie, cercetare, politică, agitație, revendicări,
+armate, nave.
+
+Restul sunt detalii, iar detaliile le veți învăța pierzând din cauza lor.
+---
+@Signals Officer
+:: act=then:outro
+Și asta a fost insula. Veniți cu mine înapoi sus, în meniu -- ultimele două
+lucruri nu sunt aici jos.

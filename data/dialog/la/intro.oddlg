@@ -1,0 +1,56 @@
+// Translatio Latina. Versus :: et nomina loquentium notae sunt - noli vertere.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Salve, quis es?
+---
+@
+...
+---
+@Pr1nted
+Oh... Novus hic es... Quid? §**numquam antea civitatem rexisti?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Scisne? Mea culpa...
+---
+@Pr1nted
+:: enter=type speed=42
+Sed otii non satis habeo ut ipse te instituam, itaque te amicae meae
+relinquam, licetne? Tempore egeo, renovationes futuras facere debeo, nonne?
+---
+@Signals Officer
+Heus? Quid est, §**Pr1nted**§?
+---
+@Pr1nted
+Hem... Salve, Mia, /beneficiolum pusillum/ rogo, novum lusorem circumducesne?
+---
+@Signals Officer
+</Suspirat/>
+---
+@Pr1nted
+**Age 'iam'!** Cur tibi mercedem solvo?
+---
+@Signals Officer
+Bene... Esto, esto.
+---
+@Pr1nted
+Optime! Domina igitur Mia te circumducet, tibi ostendet quomodo ludus procedat
+et elementa eius, aut si elementa iam nosti, sed de singulis loqui vis,
+nunc dic,
+> Elementa mihi ostende -> basics
+> Elementa novi, de singulis loquamur -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Optime, incipiamus.
+---
+@Pr1nted
+:: act=tune_out
+Optime, spero vos bene conventuros! Pr1nted, vale.

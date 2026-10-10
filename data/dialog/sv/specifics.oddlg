@@ -1,0 +1,16 @@
+// Översättning av specifics.oddlg -- ämnesmenyn.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Så, du känner till grunddragen. Vad är det du egentligen vill veta?
+
+Välj ett ämne så går jag igenom det ordentligt. Fråga igen när du är klar.
+> Fartyg, hamnar och hur man får en armé över vatten -> script:tut_ships
+> Forskning, och varför inget du påbörjar blir klart -> script:tut_research
+> Ekonomin, industrin och var pengarna kommer ifrån -> script:tut_economy
+> Varuekonomin: att föda ditt folk och driva ett krig -> script:tut_goods
+> Anspråk, oro och att förlora provinser till ditt eget folk -> script:tut_unrest
+> Allianser, vapenvilor och resten av diplomatin -> script:tut_diplomacy
+> Krigsdimma: vad du ser, och att spionera på resten -> script:tut_fog
+> Inget mer, jag är klar -> script:outro

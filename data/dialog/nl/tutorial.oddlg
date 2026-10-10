@@ -1,0 +1,314 @@
+// Vertaling: Mia's les op de oefenkaart.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Goed. Ashford. Zeven provincies, één buurman die ons nu al niet mag, en een
+eiland waar je niet naartoe kunt lopen.
+
+Klein genoeg om op te leren. Dat is de enige reden dat we hier zijn.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Klik op een provincie en dit paneel vertelt je wat het is: wie het bezit, wie
+er woont, wat het produceert en hoe dicht ze erbij zijn om daarover in opstand
+te komen.
+
+Alles wat je in dit spel doet, doe je met een provincie.
+---
+@Signals Officer
+:: point=view.population
+De balk onderaan is niet acht knoppen. Het zijn acht manieren om naar DEZELFDE
+kaart te kijken, en je zult het hele spel tussen ze heen en weer schakelen.
+
+Deze kleurt elke provincie naar hoeveel mensen er wonen.
+---
+@Signals Officer
+:: point=view.industry
+Industrie. Waar de fabrieken staan, en dus waar het geld en het materieel
+vandaan komen.
+
+Bevolking en industrie samen vertellen je welke provincies het veroveren waard
+zijn en welke alleen maar grond zijn.
+---
+@Signals Officer
+:: point=view.defence
+Verdediging toont de forten. Donker betekent dat iemand zich heeft
+ingegraven, en een aanval op donkere grond kost veel meer dan de cijfers doen
+vermoeden.
+---
+@Signals Officer
+:: point=view.relations
+Betrekkingen: wie met wie in oorlog is, en wie wie garandeert. Kijk ernaar
+voordat je ergens aan begint. De helft van de oorlogen die mensen hier
+verliezen, ging tegen drie landen, niet één.
+---
+@Signals Officer
+:: point=view.army
+Leger. Elk garnizoen op de kaart tegelijk, het jouwe en dat van hen.
+
+In deze moet je zitten terwijl je manschappen verplaatst, want het is de
+enige die laat zien wat ze te wachten staat.
+---
+@Signals Officer
+:: point=view.navy
+Marine doet hetzelfde voor schepen, en daar laad je ook transporten.
+
+Grondstoffen en Landnamen zijn de laatste twee, en die doen wat ze zeggen.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Eerst §**de economie**§, want al het andere wordt daaruit betaald.
+
+Open hem.
+---
+@Signals Officer
+Met industrie bouw je, en ze groeit waar al bevolking is. Zet een fabriek op
+een lege plek en je hebt een heel dure schuur gekocht.
+
+Inkomsten komen één keer per beurt binnen. Geef ze uit voordat je ze hebt en
+het tekort gaat van de paraatheid af.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Sluit hem nu weer, met dezelfde knop. Het paneel bedekt de kaart, en ik kan je
+daarbuiten niets laten zien zolang je hierbinnen zit.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Dan §**Onderzoek**§. Open het.
+---
+@Signals Officer
+Niets wat je hier begint, is deze beurt klaar, en het meeste is pas klaar
+lang nadat je vergeten bent dat je het wilde.
+
+Precies daarom is het de moeite waard om vroeg te beginnen.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Weer eruit.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politiek**§. Naar binnen.
+---
+@Signals Officer
+Beleid kost onderhoud, geen eenmalig bedrag. Het is een vaste rekening, en
+het verschuift waar het land politiek staat.
+
+Dienstplicht vult de gelederen. Het maakt ook mensen die niet in de gelederen
+wilden, en dat is het getal om in de gaten te houden.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+En eruit.
+---
+@Signals Officer
+Dat getal is §**onrust**§.
+
+Een provincie met hoge onrust stopt met betalen en begint zich te organiseren.
+Negeer het lang genoeg en ze vertrekt, met haar industrie, haar bevolking en
+haar mening over jou.
+
+Je krijgt een waarschuwing. Niet altijd een tweede.
+---
+@Signals Officer
+:: point=view.relations
+Nog één ding voor de panelen: een oorlog hoeft niet te eindigen doordat
+iemand sterft.
+
+Aanbiedingen voor een §**staakt-het-vuren**§ en §**handel**§ komen binnen als
+een venster met voorwaarden: wie stopt met vechten, wie wat opgeeft. Lees de
+voorwaarden. Accepteer, en de oorlog eindigt op die voorwaarden, niet op
+aardige.
+---
+@Signals Officer
+Je kunt er ook zelf een openen, vanuit de betrekkingenweergave: kies een land
+waarmee je in oorlog bent en vraag het. Ze zeggen ja als ze verliezen en nee
+als dat niet zo is, en dat is het grootste deel van de diplomatie in dit spel.
+
+Een §**handelsakkoord**§ heeft dezelfde vorm zonder de oorlog: goederen voor
+geld, elke beurt, tot iemand het opzegt.
+---
+@Signals Officer
+En niemand zal je tijdens deze les een van beide aanbieden. Dat heb ik ze
+verboden.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Laatste paneel. Met §**Aanspraken**§ wordt een oorlog legitiem.
+---
+@Signals Officer
+Maak een aanspraak geldend die je hebt, en de wereld haalt haar schouders op.
+Neem grond die je nooit hebt opgeëist, en iedereen die nog twijfelde over jou,
+twijfelt niet meer.
+
+Maak de aanspraak VOOR de oorlog. Eén die achteraf wordt ingediend, houdt
+niemand voor de gek.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Sluit het, en dan gaan we wat hiervan gebruiken.
+---
+@Signals Officer
+Nu het leger.
+
+Selecteer een provincie van jou, houd §{key=army_move}§ ingedrukt en klik
+waar de manschappen heen moeten. Alleen naar een aangrenzende provincie: een
+leger loopt, het teleporteert niet.
+---
+@Signals Officer
+Artillerie zit op §{key=artillery_wheel}§. Houd die ingedrukt en het wiel gaat
+open: van mortieren tot dingen die ik liever niet op papier zet.
+
+Schepen hebben hun eigen toetsen: §{key=ship_move}§ om te varen,
+§{key=ship_wheel}§ voor hun kanonnen, §{key=ship_engage}§ om een gevecht aan
+te gaan.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Legers komen ook niet uit het niets. §**Je werft ze**§, provincie voor
+provincie, uit de mensen die er wonen.
+
+Selecteer een van onze provincies en kijk naar het paneel.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Er is een schuifregelaar en een knop §**Werf**§. De schuifregelaar bepaalt
+hoeveel van wat die provincie kan missen je deze beurt neemt: hooguit
+ongeveer een vijfde van de bevolking, minder waar mensen ontevreden zijn.
+
+Het kost geld, en de manschappen komen de volgende beurt. Werf er nu een paar.
+---
+@Signals Officer
+Een provincie die je van manschappen hebt ontdaan, is een provincie waar
+iedereen zo in kan lopen, en een die je van mensen hebt ontdaan, is voorgoed
+armer. Werven is iets uitgeven, niet iets maken.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Voordat je iemand verplaatst: §**er gebeurt niets tot je de beurt beëindigt.**§
+
+Misschien heb je gemerkt dat dit tot nu toe grijs was. Dat was ik.
+
+Je geeft bevelen. Die blijven liggen. Je drukt hierop, en dan gebeuren ze
+allemaal tegelijk. Daarom kan een hele veldtocht in één beurt beslist worden,
+als de bevelen goed waren.
+---
+@Signals Officer
+Kestrel houdt het oostelijke deel van ons eiland, ze zijn al met ons in
+oorlog, en ze hebben achtenveertigduizend man op hun naam.
+
+Wij hebben er zevenhonderdtwintigduizend.
+---
+@Signals Officer
+:: until=destroyed:KES
+Doe het dus in §**één beurt**§. Geef bevel om al hun provincies in te nemen,
+alle vier, de een na de ander, voordat je iets beëindigt. Druk dan op Beurt
+uitvoeren en kijk hoe alles wordt afgehandeld.
+
+Dat is het ritme van dit spel. De rest is detail.
+---
+@Signals Officer
+:: act=rebellion
+... Je hebt een probleem thuis.
+
+De onrust in de provincies die je net hebt ingenomen is over de grens gegaan.
+Ze hebben zich onafhankelijk verklaard, en ze vragen het niet.
+---
+@Signals Officer
+:: until=rebels:none
+Dit bedoelde ik. Een opstand is nu een land: het heeft provincies,
+manschappen en een grens met jou.
+
+Sla hem neer zoals je al het andere neerslaat. Het wordt niet zo makkelijk als
+Kestrel.
+---
+@Signals Officer
+Blijft over: Verrick, aan de overkant van het water.
+
+Geen route over land. Geen hoeveelheid marcheren brengt een leger daar, en
+hier lopen de meeste mensen vast.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+En we zijn §**niet met hen in oorlog**§. Kestrel was al vijandig toen we
+kwamen; Verrick heeft niets gedaan, en je kunt niet landen bij een land
+waarmee je in vrede leeft.
+
+Dus verklaren we de oorlog. Elke weergave behalve Bevolking, en klik op een
+van hun provincies.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Hun provinciepaneel toont wat we hen mogen aandoen, met daartussen §**Oorlog
+verklaren**§. Daarboven staat het §**oorlogsdoel**§: wat je zegt dat je wilt.
+Klik erop om erdoorheen te bladeren.
+
+Het doel is geen versiering: de rest van de wereld beoordeelt je erop, en
+later wordt er bij een staakt-het-vuren over gesteggeld.
+---
+@Signals Officer
+Verklaar hem, en §**beëindig dan de beurt**§. Een verklaring is een bevel als
+elk ander: het wordt nu ingediend en gebeurt wanneer de beurt wordt
+afgehandeld. Er verandert niets op de kaart tot je op de knop drukt.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Hier is de hele oversteek, in vier zetten. Selecteer een van onze
+kustprovincies, een met een §**haven**§ en manschappen erin.
+---
+@Signals Officer
+:: point=panel.province
+Er moeten §**manschappen in staan**§. Inschepen tovert geen leger uit het
+niets: het zet het garnizoen dat er al is op een boot, dus een haven in een
+lege provincie scheept niets in.
+
+Laat er eerst manschappen heen marcheren als het moet.
+---
+@Signals Officer
+:: point=panel.province
+Dan, in het paneel van die provincie: §**Leger inschepen**§. Gratis, één beurt.
+
+Druk erop en beëindig de beurt. Het garnizoen verlaat de provincie en wordt
+een §**boot**§ voor de kust, met hen als bemanning.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Ga nu naar de weergave §**Marine**§. Je kunt een schip geen bevel geven vanaf
+de bevolkingskaart: de boot staat er niet op.
+---
+@Signals Officer
+Selecteer de boot. Druk op §**Verplaatsen**§, en klik dan (dit is het deel
+dat niemand raadt) op §**land**§.
+
+Water verplaatst hem. Een kust §**zet de manschappen daar aan land**§. Dat is
+de landing; daar is geen aparte knop voor.
+---
+@Signals Officer
+:: until=destroyed:VER
+Dus: manschappen in een havenprovincie, inschepen, beurt beëindigen,
+marineweergave, boot verplaatsen, op land klikken.
+
+En ga §**via Hallow Rock**§. Dat is geen kortere weg, het is de route: een
+boot komt maar zo ver, en de kust van Verrick ligt in één keer buiten bereik.
+Land op de rots, beëindig de beurt, en steek dan de tweede helft over.
+
+En houd de boot uit de buurt van hun torpedobootjager. Een geladen boot zinkt
+met iedereen aan boord.
+---
+@Signals Officer
+:: point=tab.claims
+En maak aanspraak op de grond voordat je hem inneemt, niet erna. Je weet nu
+waarom.
+---
+@Signals Officer
+Dat is alles. Economie, onderzoek, politiek, onrust, aanspraken, legers,
+schepen.
+
+De rest is detail, en dat detail leer je door ervan te verliezen.
+---
+@Signals Officer
+:: act=then:outro
+En dat was het eiland. Kom met me mee terug naar het menu. De laatste twee
+dingen zijn niet hier beneden.

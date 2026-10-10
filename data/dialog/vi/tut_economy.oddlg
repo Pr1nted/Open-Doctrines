@@ -1,0 +1,40 @@
+// Bản dịch — kinh tế.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Kinh tế — mở nó ra. Mọi thứ khác trong trò chơi đều là cuộc tranh cãi về việc
+tiêu những gì nó làm ra như thế nào.
+---
+@Signals Officer
+§**Công nghiệp**§ lớn lên ở nơi đã có người. Một nhà máy ở tỉnh trống là một
+cái nhà kho đắt tiền — đầu vào là dân số, không phải tòa nhà.
+---
+@Signals Officer
+Vì thế mỗi tỉnh đều cho biết nó gánh được bao nhiêu: §**Cấp II trên VI**§, và khi
+đầy thì nó cũng nói vậy. Con người, họ sống dày đặc đến đâu, địa hình, và những
+gì chôn dưới đất — bốn thứ đó quyết định mức trần, và không khoản tiền nào xê
+dịch được nó.
+---
+@Signals Officer
+Thu nhập đến mỗi lượt một lần, đúng vào lượt. Cam kết nhiều hơn số bạn có thì
+phần thiếu hụt sẽ không lịch sự chờ đợi: nó bị trừ vào mức sẵn sàng chiến đấu,
+và bạn sẽ phát hiện ra điều đó giữa một trận đánh.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Ra lại, rồi ta xem xét một tỉnh duy nhất.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Nhấp vào một tỉnh của ta. Với từng tỉnh, bảng cho thấy nó sản xuất gì và nắm
+giữ gì. Tài nguyên đã chế biến đáng giá hơn khi mới đào lên, nên một tỉnh công
+nghiệp nằm cạnh một tỉnh giàu tài nguyên đáng giá hơn từng tỉnh đứng riêng.
+---
+@Signals Officer
+Còn chính sách là một §**hóa đơn thường trực**§, không phải món hàng mua đứt.
+Mỗi chính sách bạn duy trì đều bị trừ mỗi lượt, mãi mãi, dù nó có còn tác dụng
+gì hay không.
+
+Kinh tế là vậy đó. Còn gì nữa không?

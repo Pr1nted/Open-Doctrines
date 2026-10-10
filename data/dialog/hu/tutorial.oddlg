@@ -1,0 +1,308 @@
+// Fordítás - Mia leckéje. A ::, a beszélők és a {key=...} azonosítók.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Nos. Ashford. Hét tartomány, egy szomszéd, aki már most utál minket, és egy
+sziget, ahová gyalog nem lehet eljutni.
+
+Elég kicsi ahhoz, hogy tanuljunk rajta. Csak ezért vagyunk itt.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kattints bármelyik tartományra, és ez a panel elmondja, mi az: kié, kik élnek
+ott, mit termel, és mennyire állnak közel ahhoz, hogy fellázadjanak miatta.
+
+Mindent, amit ebben a játékban csinálsz, egy tartománnyal csinálsz.
+---
+@Signals Officer
+:: point=view.population
+Az alsó sáv nem nyolc gomb. Nyolcféle nézet UGYANARRA a térképre, és az egész
+játékot azzal töltöd majd, hogy váltogatsz közöttük.
+
+Ez itt minden tartományt aszerint színez, hányan élnek benne.
+---
+@Signals Officer
+:: point=view.industry
+Ipar. Hol vannak a gyárak, és így honnan jön a pénz és a felszerelés.
+
+A népesség és az ipar együtt megmutatja, mely tartományokat érdemes
+elfoglalni, és melyek csak puszta föld.
+---
+@Signals Officer
+:: point=view.defence
+A Védelem az erődöket mutatja. A sötét azt jelenti, hogy valaki beásta magát, és
+egy sötét terület elleni támadás jóval többe kerül, mint a számok sugallják.
+---
+@Signals Officer
+:: point=view.relations
+Kapcsolatok: ki kivel áll háborúban, és ki kinek ad garanciát. Nézd meg,
+mielőtt belekezdesz valamibe -- az itt elvesztett háborúk fele három ország
+ellen folyt, nem egy ellen.
+---
+@Signals Officer
+:: point=view.army
+Hadsereg. A térkép összes helyőrsége egyszerre, a tieid és az övéik is.
+
+Ebben a nézetben legyél, amikor embereket mozgatsz, mert egyedül ez mutatja
+meg, mi vár rájuk.
+---
+@Signals Officer
+:: point=view.navy
+A Haditengerészet ugyanezt teszi a hajókkal, és innen rakodod be a
+szállítóhajókat.
+
+A Nyersanyagok és az Országnevek az utolsó kettő, és azt teszik, amit a nevük
+mond.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Először §**a Gazdaság**§, mert minden mást ebből fizetsz.
+
+Nyisd meg.
+---
+@Signals Officer
+Az ipar az, amivel építesz, és ott nő, ahol már van népesség. Építs gyárat egy
+üres helyre, és vettél egy nagyon drága fészert.
+
+A bevétel körönként egyszer érkezik. Költsd el, mielőtt megvan, és a hiányt a
+harckészültség fizeti meg.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Most zárd be -- ugyanazzal a gombbal. A panel eltakarja a térképet, és amíg itt
+vagy, odakint semmit sem tudok megmutatni.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Következik a §**Kutatás**§. Nyisd meg.
+---
+@Signals Officer
+Semmi, amit itt elkezdesz, nem készül el ebben a körben, és a legtöbb jóval
+azután készül el, hogy már el is felejtetted, hogy akartad.
+
+Pontosan ezért érdemes korán elkezdeni.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+És megint ki.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Irány be.
+---
+@Signals Officer
+A politikáknak fenntartási költségük van, nem egyszeri áruk -- állandó számla,
+és elmozdítják, hol áll az ország politikailag.
+
+A sorkatonaság feltölti a sorokat. Közben olyan embereket is termel, akik nem
+akartak a sorokban lenni, és ezt a számot kell figyelni.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+És ki.
+---
+@Signals Officer
+Ez a szám az §**elégedetlenség**§.
+
+A magas elégedetlenségű tartomány abbahagyja a fizetést, és szervezkedni kezd.
+Ha elég sokáig nem törődsz vele, elmegy -- az iparával, a népességével és a
+rólad alkotott véleményével együtt.
+
+Figyelmeztetést kapsz. Másodikat nem mindig.
+---
+@Signals Officer
+:: point=view.relations
+Még egy dolog a panelek előtt: egy háborúnak nem kell azzal végződnie, hogy
+valaki meghal.
+
+A §**tűzszüneti**§ és §**kereskedelmi**§ ajánlatok ablakként érkeznek, rajtuk a
+feltételekkel -- ki hagyja abba a harcot, ki mit ad fel. Olvasd el a
+feltételeket. Ha elfogadod, a háború ezekkel a feltételekkel ér véget, nem
+kedvesebbekkel.
+---
+@Signals Officer
+Te is kezdeményezhetsz egyet a kapcsolatok nézetből: válassz egy országot,
+amellyel háborúban állsz, és kérd. Igent mondanak, ha vesztésre állnak, és
+nemet, ha nem, és nagyjából ennyi a diplomácia ebben a játékban.
+
+A §**kereskedelmi megállapodás**§ ugyanez háború nélkül: áru pénzért, minden
+körben, amíg valaki fel nem bontja.
+---
+@Signals Officer
+És ebben a leckében senki sem fog neked egyiket sem felajánlani. Megmondtam
+nekik.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Utolsó panel. Az §**Igények**§ teszik legitimmé a háborút.
+---
+@Signals Officer
+Érvényesíts egy meglévő igényt, és a világ vállat von. Foglalj el olyan
+földet, amelyre sosem tartottál igényt, és mindenki, aki eddig bizonytalan
+volt veled kapcsolatban, többé nem az.
+
+Az igényt a háború ELŐTT jelentsd be. Az utólagos senkit sem téveszt meg.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Zárd be, és menjünk, használjunk is valamit ebből.
+---
+@Signals Officer
+Most a hadsereg.
+
+Jelölj ki egy saját tartományt, tartsd lenyomva a mozgatás billentyűjét
+(§{key=army_move}§), és kattints oda, ahová az embereknek menniük kell. Csak
+szomszédos tartományba -- a hadsereg gyalogol, nem teleportál.
+---
+@Signals Officer
+A tüzérség billentyűje: §{key=artillery_wheel}§. Tartsd lenyomva, és kinyílik a
+kerék: az aknavetőktől olyan dolgokig, amelyeket inkább nem írnék le.
+
+A hajóknak sajátjuk van: §{key=ship_move}§ a mozgatás, §{key=ship_wheel}§ a
+lövegeik, §{key=ship_engage}§ a harc kezdeményezése.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+A hadseregek sem a semmiből jelennek meg. §**Toborzod őket**§, tartományonként,
+az ott élő emberekből.
+
+Jelöld ki az egyik tartományunkat, és nézd meg a panelt.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Van rajta egy csúszka és egy §**toborzás**§ gomb. A csúszka azt adja meg, mennyit
+veszel el ebben a körben abból, amit a tartomány nélkülözni tud -- legfeljebb
+nagyjából a népesség ötödét, kevesebbet ott, ahol elégedetlenek az emberek.
+
+Pénzbe kerül, és az emberek a következő körben érkeznek. Rendelj most.
+---
+@Signals Officer
+Az emberektől megfosztott tartományba bárki besétálhat, a népességétől
+megfosztott pedig örökre szegényebb. A toborzás költés, nem termelés.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Mielőtt bárkit mozgatnál: §**semmi sem történik, amíg be nem fejezed a kört.**§
+
+Talán észrevetted, hogy eddig szürke volt. Én voltam.
+
+Parancsokat adsz. Ott várnak. Megnyomod ezt, és mind egyszerre megtörténnek --
+ezért dőlhet el egy egész hadjárat egyetlen körben, ha jók voltak a parancsok.
+---
+@Signals Officer
+Kestrel tartja a szigetünk keleti végét, már háborúban áll velünk, és
+negyvennyolcezer embere van.
+
+Nekünk hétszázhúszezer.
+---
+@Signals Officer
+:: until=destroyed:KES
+Szóval csináld meg §**egy kör alatt**§. Adj parancsot minden tartományuk
+elfoglalására -- mind a négyre, egymás után, mielőtt bármit befejeznél --,
+aztán nyomd meg a Kör végrehajtása gombot, és nézd, ahogy az egész lezajlik.
+
+Ez a játék ritmusa. Minden más részletkérdés.
+---
+@Signals Officer
+:: act=rebellion
+... Gond van otthon.
+
+Az imént elfoglalt tartományokban túlcsordult az elégedetlenség. Kikiáltották
+a függetlenségüket, és nem kérdeznek.
+---
+@Signals Officer
+:: until=rebels:none
+Erről beszéltem. A lázadás most már ország -- vannak tartományai, emberei, és
+közös határa veled.
+
+Verd le ugyanúgy, ahogy bármi mást. Nem lesz olyan könnyű, mint Kestrel volt.
+---
+@Signals Officer
+Marad Verrick, a víz túloldalán.
+
+Nincs szárazföldi út. Semennyi meneteléssel nem jut el oda hadsereg, és a
+legtöbben itt akadnak el.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+És §**nem állunk háborúban velük**§. Kestrel eleve ellenségesen fogadott minket;
+Verrick semmit sem tett, és nem szállhatsz partra olyan országban, amellyel
+békében vagy.
+
+Úgyhogy hadat üzenünk. Bármelyik nézet a Népesség kivételével, és kattints az
+egyik tartományukra.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+A tartománypaneljük felsorolja, mit tehetünk velük, köztük a §**Hadüzenet**§
+lehetőséget. Fölötte van a §**háborús cél**§ -- amit állításod szerint akarsz.
+Kattints rá a váltogatáshoz.
+
+A cél nem dísz: a világ ez alapján ítél meg, és később egy tűzszünetnél erről
+fognak vitatkozni.
+---
+@Signals Officer
+Üzenj hadat -- aztán §**fejezd be a kört**§. A hadüzenet is olyan parancs, mint
+bármelyik másik: most iktatják, és akkor történik meg, amikor a kör lezajlik.
+A térképen semmi sem változik, amíg meg nem nyomod a gombot.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Íme az egész átkelés, négy lépésben. Jelöld ki az egyik part menti
+tartományunkat -- olyat, amelyben van §**kikötő**§ és vannak emberek.
+---
+@Signals Officer
+:: point=panel.province
+§**Embereknek kell benne állniuk**§. A behajózás nem varázsol elő hadsereget
+sehonnan -- a már ott lévő helyőrséget teszi hajóra, így egy üres tartomány
+kikötője semmit sem hajóz be.
+
+Ha kell, előbb menetelj be oda néhány embert.
+---
+@Signals Officer
+:: point=panel.province
+Aztán a tartomány paneljén: §**Hadsereg behajózása**§. Ingyenes, egy kör.
+
+Nyomd meg, és fejezd be a kört. A helyőrség elhagyja a tartományt, és
+§**hajóvá**§ válik a part előtt, legénységként szállítva az embereket.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Most menj a §**Haditengerészet**§ nézetbe. A népességi térképről nem adhatsz
+parancsot hajónak -- a hajó nincs rajta.
+---
+@Signals Officer
+Jelöld ki a hajót. Nyomd meg a §**Mozgás**§ gombot, aztán -- ezt senki sem
+találja ki -- kattints a §**szárazföldre**§.
+
+A víz mozgatja. A part §**ott partra teszi az embereket**§. Ez a partraszállás;
+nincs rá külön gomb.
+---
+@Signals Officer
+:: until=destroyed:VER
+Tehát: emberek egy kikötős tartományban, behajózás, kör vége, haditengerészeti
+nézet, hajó mozgatása, kattintás a szárazföldre.
+
+És menj §**Hallow Rockon keresztül**§. Ez nem rövidítés, hanem az útvonal: egy
+hajó csak bizonyos távolságra visz, és Verrick partja egy szuszra azon túl
+van. Szállj partra a sziklán, fejezd be a kört, aztán tedd meg a második felét.
+
+És tartsd távol a hajót a rombolójuktól. A megrakott hajó mindenkivel együtt
+süllyed el.
+---
+@Signals Officer
+:: point=tab.claims
+És az igényt az elfoglalás előtt jelentsd be, ne utána. Most már tudod, miért.
+---
+@Signals Officer
+Ennyi az egész. Gazdaság, kutatás, politika, elégedetlenség, igények,
+hadseregek, hajók.
+
+Minden más részletkérdés, és a részleteket úgy tanulod meg, hogy vesztesz
+miattuk.
+---
+@Signals Officer
+:: act=then:outro
+És ez a sziget. Gyere vissza velem a menübe -- az utolsó két dolog nem idelent
+van.

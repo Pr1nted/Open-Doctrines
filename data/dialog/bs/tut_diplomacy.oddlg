@@ -1,0 +1,95 @@
+// Prijevod - savezi, primirja i ostatak diplomatije.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatija. Sva je na jednom spisku, a spisak pripada §**državi**§ -- pa do
+njega dolazite klikom na nečiju zemlju.
+
+Čekat ću na svakom koraku. Ovdje ništa nije brzo.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Prvo prikaz §**Odnosi**§. On boji kartu prema tome ko je s kim u ratu, ko je
+u savezu i ko je kome garantovao.
+---
+@Signals Officer
+Pogledajte ga prije nego što išta započnete. Pola ratova koje ljudi ovdje
+izgube vođeno je protiv tri države, a ne jedne -- i sve tri su bile na ovoj
+karti prije prvog pucnja.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Sada kliknite pokrajinu koja pripada §**Verricku**§, preko vode.
+
+Ne Kestrel: s njima smo već u ratu, a država s kojom ste u ratu nudi tačno
+jednu stvar. Doći ćemo i do nje -- a dok ne odaberete nekoga s kim smo u miru,
+ova će stranica jednostavno čekati.
+---
+@Signals Officer
+Njihova je ploča dobila spisak. Šta je na njemu zavisi isključivo od toga šta
+ste vas dvoje već jedno drugom -- nikad ne birate iz svih mogućnosti, samo iz
+onih koje vaš trenutni odnos dozvoljava.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Najblaže na njemu je §**pakt o nenapadanju**§: obećanje da nećete napasti, i
+ništa više.
+
+Zatražite ga. Traženje ništa ne košta.
+---
+@Signals Officer
+Podneseno -- a sad pogledajte spisak. §**Sve ostalo je posivjelo**§, a stavka
+koju ste upravo upotrijebili pretvorila se u §**Otkaži**§.
+
+Jedan zahtjev odjednom prema jednoj državi. To nije greška na koju ste
+naletjeli, to je pravilo: oni odgovaraju na ono što ste zadnje rekli, i dok ne
+odgovore, jedini vam je potez da to povučete.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Zato završite potez. Zahtjev odlazi, oni odgovaraju i spisak se vraća.
+
+Mogu odbiti. To je njihova stvar, a ne vaš propust.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Opet Verrick. §**Savez**§ je sljedeća stepenica -- ne samo obećanje da nećete
+napasti, nego obećanje da ćete se pridružiti.
+
+Zatražite ga.
+---
+@Signals Officer
+Sa saveznikom se pojavljuje još jedna stavka: §**Poziv na oružje**§, koja ga
+uvlači u rat koji već vodite.
+
+I to može odbiti. Saveznik koji odbije dvaput je saveznik na papiru, i
+otprilike toliko i vrijedi.
+---
+@Signals Officer
+Dvije koje niste upotrijebili: §**garancija**§ je ona jednostrana -- obećavate
+da ćete braniti nekoga ko vama nije obećao ništa. Male države ih skupljaju;
+velike ih dijele da bi kupile mir.
+
+A §**trgovina**§ je roba za novac svaki potez, dok je neko ne otkaže. To je
+jedina stavka od koje ste oboje bogatiji, i zato je ljudi zaborave.
+---
+@Signals Officer
+Kad se pakt potpiše, pogledajte šta nestaje sa spiska: §**Objavi rat
+nestaje**§. Pakt prvo morate prekršiti, javno, gdje vas svi vide.
+
+To je svrha pakta. Nije štit, nego svjedok.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+A u §**ratu**§ cijeli se spisak sažme u jednu stavku: §**Zatraži
+primirje**§. Vraća se s uslovima -- ko prestaje, a ko šta zadržava.
+
+Prihvataju kad gube, a odbijaju kad ne gube. Nikakvo traženje ne mijenja šta
+je od toga istina.
+---
+@Signals Officer
+Kestrel je na ovoj karti crven, i to je spisak koji bi vam pokazali.
+---
+@Signals Officer
+To je diplomatija. Još nešto?

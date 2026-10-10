@@ -1,0 +1,62 @@
+// Prijevod - robno gospodarstvo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+U §**robnom svijetu**§ pokrajina ne stvara samo novac. Ona kopa sirovine, a
+njezine tvornice od njih rade robu -- i roba, a ne novac, hrani vaš narod i
+omogućuje vam gradnju. Otvorite gospodarstvo.
+---
+@Signals Officer
+Postoje četiri. §**Roba široke potrošnje**§ je ono od čega vaš narod živi.
+§**Strojevi**§ grade industriju, utvrde i luke. §**Gorivo**§ pokreće brodove i
+vojske. §**Streljivo**§ novači vojnike i puni topništvo. Zlato ostaje novac.
+---
+@Signals Officer
+A svaka dolazi iz zemlje kroz tvornicu. §**Guma i dragulji**§ postaju roba
+široke potrošnje; §**metal**§ postaje strojevi i streljivo; §**nafta**§ postaje
+gorivo. Nema nalazišta, nema robe -- pa vas nestašica upućuje na pokrajinu koju
+treba zauzeti ili tvornicu koju treba preusmjeriti.
+---
+@Signals Officer
+U robnoj igri gospodarstvo dobiva karticu §**Roba**§ pri vrhu. Na njoj su sve
+četiri, jedna uz drugu: što imate, što proizvodite u odnosu na ono što trebate
+svaki potez, i -- broj koji je važan -- §**pokrivenost**§.
+---
+@Signals Officer
+Pokrivenost je koliko poteza zaliha traje uz vašu trenutačnu potrošnju. Devet
+poteza je udobno; ispod dva je upozorenje; prazno je nestašica koja se događa
+upravo sada. To je pošteno očitanje -- ne velika hrpa dotjerana da izgleda kao
+obilje, nego koliko vam vremena ta hrpa zaista kupuje.
+---
+@Signals Officer
+Roba široke potrošnje jedina je roba koja je ujedno i politička činjenica.
+Potrošeno naspram željenog vaš je §**životni standard**§: držite ljude sitima i
+država raste; pustite da padne i glad se vraća kao nemiri.
+---
+@Signals Officer
+Ostale tri su dopuštenja. Gradite industriju i trošite strojeve; plovite flotom
+i trošite gorivo; novačite i trošite streljivo. Ponestane li vam, radnja
+jednostavno posivi -- rat ne čeka skladište.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Gdje se roba proizvodi, određuje se po pokrajini. Kliknite jednu od naših: na
+njezinoj ploči usmjeravate što njezine tvornice izrađuju, ili to prepustite
+gospodarstvu, koje šalje besposlene tvornice na ono čega vam najviše nedostaje.
+---
+@Signals Officer
+:: point=btn.settings
+Dva prekidača nalaze se pod §**Postavke -> Eksperimentalno**§. Jedan uključuje
+robno gospodarstvo za vaš sljedeći novi svijet. Drugi,
+§**Trgovinski višak sa saveznicima**§, uključuje se po želji: kad saveznik
+oskudijeva, vaša suvišna roba ide njemu. Često nitko ne oskudijeva, pa miruje
+-- to je pomoć u pripravnosti, a ne porez na vaše zalihe.
+---
+@Signals Officer
+To je robno gospodarstvo: kopaj, proizvedi, nahrani i potroši. Pazite na
+pokrivenost, držite narod sitim i nikad ne započinjite rat koji vaše streljivo
+ne može dovršiti.
+
+Još nešto?

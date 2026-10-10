@@ -1,0 +1,31 @@
+// Översättning av tut_research.oddlg -- forskning.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Forskning. Öppna den -- klagomålet är alltid detsamma -- inget du påbörjar
+verkar någonsin bli klart -- och det är ingen bugg, det är meningen.
+---
+@Signals Officer
+Allt här mäts i drag du inte har spelat än. Något du påbörjar nu blir klart
+långt efter att du har glömt att du ville ha det, vilket betyder att den enda
+dåliga tidpunkten att börja är senare.
+---
+@Signals Officer
+Den tar av samma pengar som armén. Ett land som forskar på allt ställer inte
+upp någonting, och ett land som ställer upp allt utkämpar fortfarande förra
+årtiondets krig om tjugo drag.
+
+Välj ett spår. Välj inte alla.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Stäng den igen -- §**x**§:et i hörnet.
+---
+@Signals Officer
+Färdigt arbete gäller inte i efterhand. Ny utrustning når nya förband först,
+så draget då något blir klart är draget att titta på vad du bygger, inte
+draget att slappna av.
+
+Det var forskning. Något mer?

@@ -1,0 +1,78 @@
+// Traducere - revendicări, agitație și rebeliune.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Revendicări și agitație. Deschideți panoul de revendicări. Sunt un singur
+subiect, orice ar spune interfața.
+---
+@Signals Officer
+O §**revendicare**§ e diferența dintre un război pe care lumea îl tolerează și
+un război care îi unește pe toți împotriva dumneavoastră. Faceți valabilă una
+pe care o aveți și reglați o nemulțumire; luați teren pe care nu l-ați
+revendicat niciodată și nemulțumirea sunteți dumneavoastră.
+---
+@Signals Officer
+Faceți revendicarea §**înainte**§ de război, nu după. O revendicare depusă în
+tura de după ce ați luat provincia nu păcălește pe nimeni și costă la fel.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Închideți-l.
+---
+@Signals Officer
+§**Agitația**§ e ce îi face terenului cucerirea lui. Provinciile cucerite o
+resimt, minoritățile și mai mult, iar serviciul militar și cenzura vă cumpără
+amândouă putere acum în schimbul agitației mai târziu.
+---
+@Signals Officer
+Peste un prag, o provincie nu mai plătește și începe să se organizeze. Peste
+următorul pleacă -- și pleacă drept §**țară**§, cu industria dumneavoastră, cu
+populația dumneavoastră și cu o părere foarte precisă despre dumneavoastră.
+
+Primiți un avertisment. Nu primiți întotdeauna și un al doilea.
+---
+@Signals Officer
+Leacurile sunt nepopulare sau lente: puneți garnizoană, cheltuiți bani pe ea
+sau dați-i ce vrea. Alegeți devreme, pentru că toate trei au nevoie de ture
+ca să funcționeze.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Cheltuiala pe ea e locul unde se irosește cel mai mult. Deschideți Politică,
+apoi §**Districte**§.
+
+---
+@Signals Officer
+Bugetul cădea odinioară pe toată țara deodată -- aceeași greutate pe un ținut
+liniștit ca pe cel care se înarmează. Așa că tăiați țara în bucăți. Un
+§**district**§ e o bucată pe care o guvernați ca unitate: pictați provincii în
+el, dați-i o culoare, dați-i o §**cotă**§. Cotele însumează mereu o sută, pentru
+că există un singur buget.
+
+---
+@Signals Officer
+Ce contează e cota din §**bani**§ față de cota din §**teritoriu**§. Un district
+care are o zecime din țară cu o zecime din buget e ținut sub control exact ca
+înainte -- așa că împărțirea nu schimbă nimic până nu faceți cotele inegale.
+
+---
+@Signals Officer
+Desenați un district mic în jurul problemei, dați-i un sfert din bani, și e
+ținut sub control de câteva ori mai strict; panoul vă spune cifra. Toți
+ceilalți plătesc pentru asta, și asta e decizia. Există un buton «Împarte
+egal»: un loc rezonabil de pornire și rareori locul unde să rămâneți.
+
+Un district își adoptă și propria §**lege regională**§: o interdicție de
+circulație, o scutire de taxe, ce limbă folosesc tribunalele. Mici, locale,
+și fiecare e un compromis.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Închideți-l.
+
+---
+@Signals Officer
+Asta e agitația. Altceva?

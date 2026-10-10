@@ -1,0 +1,65 @@
+// Vertaling: de goedereneconomie.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+In een §**goederenwereld**§ maakt een provincie niet alleen geld. Ze delft
+grondstoffen en haar fabrieken maken daar goederen van, en goederen, geen
+contant geld, voeden je volk en laten je bouwen. Open de economie.
+---
+@Signals Officer
+Het zijn er vier. §**Consumptiegoederen**§ eet je volk op. §**Machines**§
+bouwen industrie, forten en havens. §**Brandstof**§ beweegt schepen en
+legers. §**Munitie**§ werft soldaten en vuurt artillerie af. Goud blijft geld.
+---
+@Signals Officer
+En elk komt uit de grond via een fabriek. §**Rubber en edelstenen**§ worden
+consumptiegoederen; §**metaal**§ wordt machines en munitie; §**olie**§ wordt
+brandstof. Geen afzetting, geen goed. Een tekort wijst je dus op een
+provincie om in te nemen of een fabriek om om te zetten.
+---
+@Signals Officer
+In een goederenspel krijgt de economie bovenaan een tabblad §**Goederen**§.
+Daar staan de vier naast elkaar: wat je hebt, wat je maakt tegenover wat je
+elke beurt nodig hebt, en het getal dat ertoe doet: §**Dekking**§.
+---
+@Signals Officer
+Dekking is hoeveel beurten een voorraad meegaat bij je huidige verbruik.
+Negen beurten is ruim; onder de twee is een waarschuwing; leeg is een tekort
+dat nu plaatsvindt. Het is de eerlijke meting: geen grote stapel die zich
+voordoet als overvloed, maar hoe lang de stapel je werkelijk oplevert.
+---
+@Signals Officer
+Consumptiegoederen zijn het enige goed dat ook een politiek feit is. Gegeten
+tegenover gewenst is je §**Levensstandaard**§: houd mensen gevoed en het land
+groeit; laat het wegglijden en de honger komt terug als onrust.
+---
+@Signals Officer
+De andere drie zijn vergunningen. Bouw industrie en je besteedt machines; vaar
+uit met een vloot en je verbrandt brandstof; werf en je put uit munitie. Raak
+je erdoorheen, dan wordt de actie gewoon grijs. De oorlog wacht niet op het
+magazijn.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Waar een goed wordt gemaakt, stel je per provincie in. Klik op een van de
+onze: in het paneel bepaal je wat de fabrieken bouwen, of je laat het zo en
+de economie verdeelt voor je, en stuurt stilstaande fabrieken naar waar je
+het grootste tekort aan hebt.
+---
+@Signals Officer
+:: point=btn.settings
+Twee schakelaars zitten in §**Instellingen -> Experimenteel**§. De ene zet de
+goedereneconomie aan voor je volgende nieuwe wereld. De andere,
+§**Handelsoverschot met bondgenoten**§, is optioneel: als een bondgenoot
+tekortkomt, gaan jouw overtollige goederen naar hem. Vaak komt niemand tekort,
+dus staat hij stil. Het is hulp die klaarstaat, geen belasting op je
+voorraden.
+---
+@Signals Officer
+Dat is de goedereneconomie: delven, maken, voeden en uitgeven. Let op de
+dekking, houd je volk gevoed, en begin nooit een oorlog die je munitie niet
+kan afmaken.
+
+Nog iets?

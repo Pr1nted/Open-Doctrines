@@ -1,0 +1,304 @@
+// Tərcümə - Mia-nın dərsi, təlim xəritəsində. Ashford, Kestrel, Verrick və Hallow Rock xəritədəki adlardır.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Belə. Ashford. Yeddi vilayət, bizi indidən sevməyən bir qonşu və piyada
+gedə bilmədiyimiz bir ada.
+
+Öyrənmək üçün kifayət qədər kiçikdir. Burada olmağımızın bütün səbəbi də budur.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+İstənilən vilayətə klikləyin, bu panel onun nə olduğunu deyəcək: kimindir, orada
+kim yaşayır, nə istehsal edir və bu barədə üsyana nə qədər yaxındırlar.
+
+Bu oyunda nə edirsinizsə, bir vilayətə edirsiniz.
+---
+@Signals Officer
+:: point=view.population
+Aşağıdakı zolaq səkkiz düymə deyil. Bu, EYNİ xəritəyə baxmağın səkkiz yoludur
+və bütün oyun boyu onların arasında keçid edəcəksiniz.
+
+Bu görünüş hər vilayəti orada yaşayan insanların sayına görə rəngləyir.
+---
+@Signals Officer
+:: point=view.industry
+Sənaye. Fabriklərin harada olduğu, deməli, pulun və təchizatın haradan gəldiyi.
+
+Əhali və sənaye birlikdə hansı vilayətlərin tutulmağa dəyər olduğunu, hansılarının
+isə sadəcə torpaq olduğunu göstərir.
+---
+@Signals Officer
+:: point=view.defence
+Müdafiə istehkamları göstərir. Tünd rəng kiminsə orada möhkəmləndiyi deməkdir,
+tünd torpağa hücum isə rəqəmlərin göstərdiyindən qat-qat baha başa gəlir.
+---
+@Signals Officer
+:: point=view.relations
+Münasibətlər: kim kimlə müharibədədir, kim kimə zəmanət verir. Bir iş
+başlamazdan əvvəl buna baxın — burada uduzulan müharibələrin yarısı bir yox, üç
+ölkəyə qarşı olub.
+---
+@Signals Officer
+:: point=view.army
+Ordu. Xəritədəki bütün qarnizonlar bir anda, həm sizinkilər, həm onlarınkı.
+
+Əsgərləri hərəkət etdirərkən məhz bu görünüşdə olun, çünki onları nəyin
+gözlədiyini göstərən yeganə görünüş budur.
+---
+@Signals Officer
+:: point=view.navy
+Donanma eyni şeyi gəmilər üçün edir, nəqliyyat gəmilərini də buradan yükləyirsiniz.
+
+Resurslar və Ölkə adları son ikisidir, nə etdikləri adlarından bəllidir.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Əvvəlcə §**İqtisadiyyat**§, çünki qalan hər şeyin pulu oradan ödənilir.
+
+Onu açın.
+---
+@Signals Officer
+Sənaye tikmək üçün əlinizdə olandır və o, artıq əhali olan yerdə böyüyür. Boş
+bir yerə fabrik qoysanız, çox baha bir daxma almış olursunuz.
+
+Gəlir hər gedişdə bir dəfə gəlir. Onu əldə etməmiş xərcləsəniz, kəsir döyüş
+hazırlığından çıxılır.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+İndi yenidən bağlayın — eyni düymə ilə. Panel xəritəni örtür, siz burada
+olduqca mən sizə orada heç nə göstərə bilmərəm.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Sonra §**Tədqiqat**§. Açın.
+---
+@Signals Officer
+Burada başladığınız heç nə bu gediş bitmir, çoxu isə onu istədiyinizi
+unutduğunuzdan xeyli sonra bitir.
+
+Elə buna görə də tez başlamağa dəyər.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Yenidən çıxın.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Siyasət**§. Buyurun, içəri.
+---
+@Signals Officer
+Siyasətlər birdəfəlik ödəniş deyil, saxlanma xərcidir — onlar daimi hesabdır və
+ölkənin siyasi mövqeyini dəyişir.
+
+Hərbi mükəlləfiyyət sıraları doldurur. O, həm də sıralarda olmaq istəməyən
+insanlar yaradır, izləməli olduğunuz rəqəm də budur.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Və çıxın.
+---
+@Signals Officer
+O rəqəm §**narazılıqdır**§.
+
+Narazılığı yüksək olan vilayət ödəməyi dayandırır və təşkilatlanmağa başlayır.
+Kifayət qədər uzun müddət məhəl qoymasanız, çıxıb gedir — sənayesi, əhalisi və
+sizin haqqınızdakı fikri ilə birlikdə.
+
+Sizə xəbərdarlıq edilir. Hər dəfə ikincisi edilmir.
+---
+@Signals Officer
+:: point=view.relations
+Panellərdən əvvəl daha bir şey: müharibə mütləq kiminsə ölümü ilə bitməli deyil.
+
+§**Atəşkəs**§ və §**ticarət**§ təklifləri üzərində şərtlər yazılmış bir pəncərə
+kimi gəlir — kim döyüşü dayandırır, kim nədən əl çəkir. Şərtləri oxuyun. Qəbul
+etsəniz, müharibə xoş şərtlərlə yox, məhz o şərtlərlə bitir.
+---
+@Signals Officer
+Özünüz də Münasibətlər görünüşündən belə bir təklif aça bilərsiniz: müharibədə
+olduğunuz bir ölkəni seçin və soruşun. Uduzanda "hə", uduzmayanda "yox" deyirlər,
+bu oyundakı diplomatiyanın çoxu da elə budur.
+
+§**Ticarət sazişi**§ müharibəsiz eyni formadır: hər gediş pul müqabilində mal,
+kimsə ləğv edənə qədər.
+---
+@Signals Officer
+Bu dərs boyu heç kim sizə bunların heç birini təklif etməyəcək. Onlara demişəm.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Son panel. §**İddialar**§ müharibəni qanuni edən şeydir.
+---
+@Signals Officer
+Əlinizdəki iddianı irəli sürsəniz, dünya çiyinlərini çəkər. Heç vaxt iddia
+etmədiyiniz torpağı alsanız, sizin barənizdə tərəddüd edən hər kəs tərəddüd
+etməyi dayandırar.
+
+İddianı müharibədən ƏVVƏL qaldırın. Sonradan verilən iddia heç kimi aldatmır.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Bağlayın, gedək bunların bir qismini işə salaq.
+---
+@Signals Officer
+İndi ordu.
+
+Sizə məxsus bir vilayəti seçin, §{key=army_move}§ düyməsini basılı saxlayın və
+əsgərlərin getməli olduğu yerə klikləyin. Yalnız qonşu vilayətə — ordu yeriyir,
+teleport olmur.
+---
+@Signals Officer
+Artilleriya §{key=artillery_wheel}§ düyməsindədir. Basılı saxlayın, çarx açılır:
+minaatanlardan tutmuş yazıya keçirmək istəmədiyim şeylərə qədər.
+
+Gəmilərin öz düymələri var: hərəkət üçün §{key=ship_move}§, topları üçün
+§{key=ship_wheel}§, döyüşə girmək üçün §{key=ship_engage}§.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ordular da göydən düşmür. §**Onları səfərbər edirsiniz**§, vilayət-vilayət,
+orada yaşayan insanlardan.
+
+Bizim vilayətlərdən birini seçin və panelə baxın.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Orada sürgü və §**Səfərbər et**§ düyməsi var. Sürgü həmin vilayətin ayıra
+biləcəyindən bu gediş nə qədərini götürdüyünüzü göstərir — ən çoxu əhalisinin
+təxminən beşdə biri, insanların narazı olduğu yerdə daha az.
+
+Bu pula başa gəlir, əsgərlər isə növbəti gediş gəlir. İndi bir qədər sifariş edin.
+---
+@Signals Officer
+Əsgərlərini apardığınız vilayət hər kəsin girə biləcəyi vilayətdir, insanlarını
+apardığınız vilayət isə həmişəlik kasıblayır. Səfərbərlik nəyisə xərcləməkdir,
+qazanmaq yox.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Kimisə yerindən tərpətməzdən əvvəl: §**gedişi bitirməyincə heç nə baş vermir.**§
+
+Yəqin fikir vermisiniz ki, indiyədək bu düymə boz idi. O mən idim.
+
+Əmr verirsiniz. Onlar gözləyir. Bunu basırsınız və hamısı birdən baş verir —
+buna görə də, əmrlər yaxşı olubsa, bütöv bir yürüş tək bir gedişdə həll oluna
+bilər.
+---
+@Signals Officer
+Kestrel adamızın şərq ucunu tutur, onlar artıq bizimlə müharibədədir və cəmi
+qırx səkkiz min əsgərləri var.
+
+Bizimsə yeddi yüz iyirmi min.
+---
+@Signals Officer
+:: until=destroyed:KES
+Ona görə də bunu §**bir gedişdə**§ edin. Onların hər vilayətinin tutulmasını
+əmr edin — dördünü də, bir-birinin ardınca, heç nəyi bitirmədən — sonra
+Gedişi icra et düyməsini basın və hamısının necə həll olunduğuna baxın.
+
+Bu oyunun ritmi budur. Qalan hər şey təfərrüatdır.
+---
+@Signals Officer
+:: act=rebellion
+... Evdə probleminiz var.
+
+İndicə aldığınız vilayətlərdə narazılıq həddi aşıb. Onlar özlərini müstəqil
+elan ediblər və sizdən icazə istəmirlər.
+---
+@Signals Officer
+:: until=rebels:none
+Dediyim budur. Üsyan indi bir ölkədir — onun vilayətləri, əsgərləri və sizinlə
+sərhədi var.
+
+Onu da hər şeyi yatırdığınız kimi yatırın. Kestrel qədər asan olmayacaq.
+---
+@Signals Officer
+Qalır Verrick, suyun o tayında.
+
+Quru yolu yoxdur. Nə qədər yürüş etsəniz də, ordu ora çatmayacaq, çoxları da
+məhz burada ilişib qalır.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Üstəlik biz onlarla §**müharibədə deyilik**§. Kestrel bizə artıq düşmən kimi
+gəlmişdi; Verrick isə heç nə etməyib, sülhdə olduğunuz ölkəyə isə desant
+çıxara bilməzsiniz.
+
+Deməli, müharibə elan edirik. Əhali görünüşündən başqa istənilən görünüşdə
+onların vilayətlərindən birinə klikləyin.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Onların vilayət paneli onlara qarşı nə edə biləcəyimizi sadalayır, aralarında
+§**Müharibə elan et**§ də var. Onun üstündə §**müharibə məqsədi**§ durur — nəyin
+dalınca olduğunuzu bəyan etdiyiniz şey. Dəyişmək üçün üzərinə klikləyin.
+
+Məqsəd bəzək deyil: dünyanın qalanı sizi ona görə mühakimə edir, sonra atəşkəs
+də məhz onun üstündə müzakirə olunacaq.
+---
+@Signals Officer
+Elan edin — sonra §**gedişi bitirin**§. Elan da istənilən başqa əmr kimidir:
+indi qeydə alınır, gediş həll olunanda baş verir. Düyməni basmayınca xəritədə
+heç nə dəyişmir.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Bütün keçid dörd addımdır. Sahildəki vilayətlərimizdən birini seçin — içində
+§**liman**§ və əsgər olanını.
+---
+@Signals Officer
+:: point=panel.province
+Orada §**əsgər dayanmalıdır**§. Gəmiyə mindirmə ordunu haradansa çağırmır — o,
+artıq orada olan qarnizonu qayığa mindirir, yəni boş vilayətdəki liman heç
+kimi mindirmir.
+
+Lazım gəlsə, əvvəlcə ora əsgər yeridin.
+---
+@Signals Officer
+:: point=panel.province
+Sonra həmin vilayətin panelində: §**Ordunu gəmiyə mindir**§. Pulsuz, bir gediş.
+
+Basın və gedişi bitirin. Qarnizon vilayəti tərk edir və sahil yaxınlığında
+§**qayığa**§ çevrilir, onları ekipaj kimi aparır.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+İndi §**Donanma**§ görünüşünə keçin. Əhali xəritəsindən gəmiyə əmr verə
+bilməzsiniz — qayıq orada görünmür.
+---
+@Signals Officer
+Qayığı seçin. §**Hərəkət**§ düyməsini basın, sonra isə — bunu heç kim təxmin
+etmir — §**quruya**§ klikləyin.
+
+Su onu hərəkət etdirir. Sahil isə §**əsgərləri orada quruya çıxarır**§. Desant
+budur; bunun üçün ayrıca düymə yoxdur.
+---
+@Signals Officer
+:: until=destroyed:VER
+Deməli: əsgərlər liman vilayətində, gəmiyə mindirin, gedişi bitirin, Donanma
+görünüşü, qayığı hərəkət etdirin, quruya klikləyin.
+
+Və §**Hallow Rock üzərindən**§ gedin. Bu qısa yol deyil, marşrutdur: qayıq
+yalnız müəyyən məsafəyə qədər üzə bilir, Verrick sahili isə bir dəfəyə bundan
+uzaqdır. Qayaya çıxın, gedişi bitirin, sonra ikinci yarını keçin.
+
+Qayığı onların esminesindən də uzaq saxlayın. Yüklü qayıq içindəki hər kəslə
+birlikdə batır.
+---
+@Signals Officer
+:: point=tab.claims
+Torpağa iddianı onu almazdan əvvəl qaldırın, sonra yox. Səbəbini artıq
+bilirsiniz.
+---
+@Signals Officer
+Hamısı bu qədər. İqtisadiyyat, tədqiqat, siyasət, narazılıq, iddialar,
+ordular, gəmilər.
+
+Qalan hər şey təfərrüatdır, təfərrüatı da ona uduzaraq öyrənəcəksiniz.
+---
+@Signals Officer
+:: act=then:outro
+Ada da bu qədər. Mənimlə menyuya qalxın — son iki şey burada, aşağıda deyil.

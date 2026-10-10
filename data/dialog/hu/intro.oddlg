@@ -1,0 +1,57 @@
+// Fordítás. A :: sorok és a beszélők nevei azonosítók - nem fordítandók.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Halló, ki az?
+---
+@
+...
+---
+@Pr1nted
+Ó... Új vagy itt... Mi? §**még sosem irányítottál országot?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Tudod mit? Az én hibám...
+---
+@Pr1nted
+:: enter=type speed=42
+Csakhogy nincs elég időm, hogy magam tartsam meg az oktatást, úgyhogy egy
+barátomra bízlak, jó? Időre van szükségem, a jövőbeli frissítéseket is meg kell
+csinálni, nem?
+---
+@Signals Officer
+Halló? Mi van, §**Pr1nted**§?
+---
+@Pr1nted
+Öhm... Szia Mia, kérnék egy /icipici szívességet,/ körbevezetnél egy új játékost?
+---
+@Signals Officer
+</Sóhaj/>
+---
+@Pr1nted
+**Ugyan 'már'!** Mégis miért fizetlek?
+---
+@Signals Officer
+Jól van... Rendben, rendben.
+---
+@Pr1nted
+Remek! Szóval Mia kisasszony körbevezet, megmutatja, hogyan működik a játék, és
+az alapokat, vagy ha az alapokat már ismered, de a részletekről beszélnél,
+most szólj,
+> Mutasd az alapokat -> basics
+> Az alapokat ismerem, beszéljünk a részletekről -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Remek, kezdjük.
+---
+@Pr1nted
+:: act=tune_out
+Remek, remélem, kijöttök egymással! Pr1nted, vége.

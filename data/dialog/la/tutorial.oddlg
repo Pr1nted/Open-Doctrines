@@ -1,0 +1,302 @@
+// Translatio Latina - lectio Miae. ::, loquentes et {key=...} notae sunt.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Age. Ashford. Septem provinciae, unus vicinus qui nos iam odit, et insula ad
+quam pedibus ire non possumus.
+
+Satis parva ut in ea discamus. Haec tota causa est cur hic simus.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Quamlibet provinciam preme, et haec tabella tibi dicet quid sit: cuius sit,
+qui ibi habitent, quid gignat, et quam prope sint ut propter id tumultuentur.
+
+Quidquid in hoc ludo facis, provinciae alicui facis.
+---
+@Signals Officer
+:: point=view.population
+Fascia infima non octo bullae sunt. Octo modi sunt EANDEM tabulam spectandi,
+et totum ludum inter eos mutando consumes.
+
+Hic conspectus quamque provinciam pingit secundum numerum hominum qui in ea
+habitant.
+---
+@Signals Officer
+:: point=view.industry
+Fabrica. Ubi officinae sint, et proinde unde pecunia et arma veniant.
+
+Populus et fabrica una tibi dicunt quae provinciae capi mereantur et quae
+nihil nisi solum sint.
+---
+@Signals Officer
+:: point=view.defence
+Defensio castella ostendit. Obscurum significat aliquem se munivisse, et
+impetus in terram obscuram multo pluris constat quam numeri suadent.
+---
+@Signals Officer
+:: point=view.relations
+Relationes: quis cum quo bellum gerat, et quis cui fidem praestet. Inspice
+antequam aliquid incipias -- dimidium bellorum quae hic amittuntur cum tribus
+civitatibus gestum est, non cum una.
+---
+@Signals Officer
+:: point=view.army
+Exercitus. Omnia praesidia tabulae simul, tua et illorum.
+
+In hoc conspectu esse debes dum milites moves, quia solus ostendit quid eos
+exspectet.
+---
+@Signals Officer
+:: point=view.navy
+Classis idem pro navibus facit, et inde naves onerarias oneras.
+
+Copiae et Nomina civitatum postremi duo sunt, et faciunt quod nomine dicunt.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Oeconomia**§ prima, quia omnia cetera ex ea solvuntur.
+
+Aperi eam.
+---
+@Signals Officer
+Fabrica est qua aedificas, et crescit ubi populus iam est. Officinam in loco
+vacuo pone, et tugurium carissimum emisti.
+
+Reditus semel quaque vice advenit. Expende eum antequam habeas, et quod deest
+ex promptitudine exercitus detrahitur.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Nunc eam rursus claude -- eadem bulla. Tabella tabulam tegit, et dum hic es
+nihil tibi foris ostendere possum.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+§**Investigatio**§ deinde. Aperi eam.
+---
+@Signals Officer
+Nihil quod hic incipis hac vice perficitur, et pleraque perficiuntur multo
+postquam oblitus es te ea voluisse.
+
+Quae ipsa causa est cur mature incipere expediat.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Rursus foras.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Res publica**§. Intra.
+---
+@Signals Officer
+Rationes publicae non pretio semel soluto, sed sumptu assiduo constant --
+debitum perpetuum sunt, et movent quo loco civitas in re publica stet.
+
+Dilectus ordines implet. Facit etiam homines qui in ordinibus esse noluerunt,
+et hic est numerus observandus.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Et foras.
+---
+@Signals Officer
+Ille numerus est §**tumultus**§.
+
+Provincia magno tumultu solvere desinit et se ordinare incipit. Neglege eam
+satis diu et abit -- cum fabrica sua, populo suo, et opinione sua de te.
+
+Monitionem accipis. Alteram non semper.
+---
+@Signals Officer
+:: point=view.relations
+Unum adhuc ante tabellas: bellum non necesse est morte alicuius finiri.
+
+Oblationes §**indutiarum**§ et §**commercii**§ ut fenestra cum condicionibus
+adveniunt -- quis pugnare desinat, quis quid cedat. Condiciones lege. Accipe, et
+bellum his condicionibus finitur, non benignioribus.
+---
+@Signals Officer
+Tu quoque unam aperire potes ex conspectu relationum: elige civitatem cum qua
+bellum geris et pete. Annuunt cum vincuntur, abnuunt cum non vincuntur, quae
+maxima pars est diplomatiae in hoc ludo.
+
+§**Foedus commercii**§ eadem forma est sine bello: bona pro pecunia, quaque
+vice, donec aliquis abroget.
+---
+@Signals Officer
+Et nemo tibi alterutrum hac lectione offeret. Eis praecepi ne offerrent.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Ultima tabella. §**Vindiciae**§ sunt quibus bellum legitimum fit.
+---
+@Signals Officer
+Vindiciam quam habes urge, et mundus umeros contrahit. Terram cape quam
+numquam vindicavisti, et omnes qui de te dubitabant dubitare desinunt.
+
+Vindiciam ANTE bellum fac. Postea facta nemini imponit.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Claude eam, et eamus ut aliquid horum adhibeamus.
+---
+@Signals Officer
+Nunc exercitus.
+
+Provinciam tuam elige, tene §{key=army_move}§ et preme quo milites ire
+debeant. In provinciam finitimam tantum -- exercitus ambulat, non transvolat.
+---
+@Signals Officer
+Tormenta in §{key=artillery_wheel}§ sunt. Tene, et rota aperitur: a tormentis
+brevibus usque ad res quas scripto mandare nolim.
+
+Naves suas habent: §{key=ship_move}§ ut moveantur, §{key=ship_wheel}§ pro
+tormentis earum, §{key=ship_engage}§ ut proelium quaerant.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Nec exercitus ex nihilo apparent. §**Eos conscribis**§, provinciam per
+provinciam, ex hominibus qui ibi habitant.
+
+Unam ex nostris elige et tabellam inspice.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Est regula et bulla §**Conscribere**§. Regula indicat quantum ex eo quod
+provincia praebere potest hac vice sumas -- summum fere quintam partem populi,
+minus ubi homines non contenti sunt.
+
+Pecuniam constat, et milites proxima vice adveniunt. Nunc aliquos iube.
+---
+@Signals Officer
+Provinciam militibus spoliatam quivis ingredi potest, et hominibus spoliata
+in perpetuum pauperior est. Conscribere est aliquid impendere, non facere.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Antequam quemquam moveas: §**nihil fit donec vicem finias.**§
+
+Fortasse animadvertisti hanc bullam usque adhuc exstinctam fuisse. Id ego feci.
+
+Iussa das. Manent. Hanc premis, et tunc omnia simul fiunt -- quam ob rem tota
+expeditio una vice decerni potest, si iussa bona fuerunt.
+---
+@Signals Officer
+Kestrel finem orientalem insulae nostrae tenet, iam nobiscum bellum gerit, et
+duodequinquaginta milia militum habet.
+
+Nos septingenta viginti milia habemus.
+---
+@Signals Officer
+:: until=destroyed:KES
+Itaque fac §**una vice**§. Iube omnes eorum provincias capi -- omnes quattuor,
+aliam post aliam, antequam quidquam finias -- deinde preme Vicem exsequi et
+specta omnia simul dirimi.
+
+Hic est numerus huius ludi. Cetera sunt minutiae.
+---
+@Signals Officer
+:: act=rebellion
+... Domi negotium habes.
+
+Tumultus in provinciis quas modo cepisti modum excessit. Se ipsas liberas
+declaraverunt, nec rogant.
+---
+@Signals Officer
+:: until=rebels:none
+Hoc est quod dicebam. Rebellio nunc civitas est -- provincias habet, milites,
+et fines tecum communes.
+
+Opprime eam eodem modo quo quidvis aliud opprimis. Non tam facilis erit quam
+Kestrel fuit.
+---
+@Signals Officer
+Restat Verrick, trans aquam.
+
+Nullum iter terrestre. Nulla itinerum copia exercitum illuc perducit, et hic
+plerique haerent.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Et §**bellum cum eis non gerimus**§. Kestrel iam hostilis ad nos venit;
+Verrick nihil fecit, nec in civitatem cum qua pacem habes exscensionem facere
+potes.
+
+Itaque bellum indicimus. Quilibet conspectus praeter Populum, et unam ex eorum
+provinciis preme.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Tabella provinciae eorum enumerat quid eis facere liceat, inter quae §**Bellum
+indicere**§. Supra est §**finis belli**§ -- quod te petere dicis. Preme ut
+mutes.
+
+Finis non ornamentum est: ex eo reliquus mundus te iudicat, et de eo postea in
+indutiis disceptabitur.
+---
+@Signals Officer
+Indice -- deinde §**vicem fini**§. Declaratio iussum est ut quodvis aliud: nunc
+mandatur, et fit cum vicis dirimitur. Nihil in tabula mutatur donec bullam
+premas.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Ecce tota transvectio, quattuor motibus. Elige unam ex provinciis nostris
+maritimis -- unam cum §**portu**§ et militibus in ea.
+---
+@Signals Officer
+:: point=panel.province
+§**Milites in ea stantes**§ requirit. Imponere exercitum nusquam evocat --
+praesidium quod iam ibi est in navem ponit, itaque portus provinciae vacuae
+nihil imponit.
+
+Si opus est, aliquos prius eo duc.
+---
+@Signals Officer
+:: point=panel.province
+Deinde, in tabella illius provinciae: §**Exercitum imponere**§. Gratis, unam
+vicem durat.
+
+Preme et vicem fini. Praesidium provinciam relinquit et §**navis**§ fit prope
+litus, quae milites ut nautas vehit.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Nunc ad conspectum §**Classis**§ i. Navi iussum ex tabula populi dare non
+potes -- navis in ea non est.
+---
+@Signals Officer
+Navem elige. Preme §**Movere**§, et deinde -- hoc est quod nemo coniicit --
+preme in §**terram**§.
+
+Aqua eam movet. Litus §**milites ibi in terram exponit**§. Haec est exscensio;
+nulla bulla separata ei est.
+---
+@Signals Officer
+:: until=destroyed:VER
+Ergo: milites in provincia cum portu, imponere, vicem finire, conspectus
+classis, navem movere, terram premere.
+
+Et i §**per Hallow Rock**§. Non compendium est, sed iter: navis tantum certo
+spatio vehit, et litus Verrick ultra id uno cursu iacet. In scopulo exscende,
+vicem fini, deinde alteram partem transi.
+
+Et navem procul a nave eorum eversoria tene. Navis onusta cum omnibus vectoribus
+mergitur.
+---
+@Signals Officer
+:: point=tab.claims
+Et terram vindica antequam capias, non postea. Nunc scis cur.
+---
+@Signals Officer
+Haec sunt omnia. Oeconomia, investigatio, res publica, tumultus, vindiciae,
+exercitus, naves.
+
+Cetera sunt minutiae, et minutias disces ab eis victus.
+---
+@Signals Officer
+:: act=then:outro
+Et haec est insula. Mecum ad indicem redi -- duae res postremae non hic infra
+sunt.

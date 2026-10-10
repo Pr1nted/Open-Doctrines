@@ -1,0 +1,78 @@
+// Översättning av tut_unrest.oddlg -- anspråk, oro och uppror.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Anspråk och oro. Öppna panelen för anspråk. Det här är ett och samma ämne,
+vad gränssnittet än säger.
+---
+@Signals Officer
+Ett §**anspråk**§ är skillnaden mellan ett krig som världen tolererar och ett
+krig som enar alla mot dig. Driv ett du har och du gör upp om ett gammalt
+groll; ta mark du aldrig gjort anspråk på och det är du som är grollet.
+---
+@Signals Officer
+Gör anspråket §**före**§ kriget, inte efter. Ett anspråk som lämnas in draget
+efter att du tog provinsen lurar ingen och kostar lika mycket.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Stäng den.
+---
+@Signals Officer
+§**Oro**§ är vad det gör med marken att ta mark. Erövrade provinser tar illa
+upp, minoriteter tar ännu mer illa upp, och värnplikt och censur köper dig
+båda styrka nu mot oro senare.
+---
+@Signals Officer
+Över en gräns slutar en provins betala och börjar organisera sig. Över nästa
+lämnar den -- och den lämnar som ett §**land**§, med din industri, din
+befolkning och en mycket bestämd åsikt om dig.
+
+Du får en varning. Du får inte alltid en andra.
+---
+@Signals Officer
+Botemedlen är impopulära eller långsamma: lägg en garnison där, spendera på
+den, eller ge den vad den vill ha. Välj tidigt, för alla tre tar flera drag
+att verka.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Det är spendering som det mesta går till spillo på. Öppna Politik, sedan
+§**Distrikt**§.
+
+---
+@Signals Officer
+Budgeten brukade falla på hela landet på en gång -- samma tyngd på ett lugnt
+grevskap som på det som håller på att beväpna sig. Så skär upp landet. Ett
+§**distrikt**§ är en bit av det som du styr som en enhet: måla in provinser i
+det, ge det en färg, ge det en §**andel**§. Andelarna blir alltid hundra
+tillsammans, för det finns bara en budget.
+
+---
+@Signals Officer
+Det som räknas är andelen av §**pengarna**§ mot andelen av §**marken**§. Ett
+distrikt som rymmer en tiondel av landet på en tiondel av budgeten hålls i
+schack precis som förut -- så uppdelningen ändrar ingenting förrän du gör
+andelarna ojämna.
+
+---
+@Signals Officer
+Rita ett litet distrikt runt bråket, ge det en fjärdedel av pengarna, så
+övervakas det flera gånger hårdare; panelen säger dig siffran. Överallt annars
+betalar för det, och det är beslutet. Det finns en knapp för att dela lika:
+ett förnuftigt ställe att börja på och sällan stället att stanna på.
+
+Ett distrikt antar också sin egen §**regionallag**§: utegångsförbud,
+skattelättnad, vilket språk domstolarna använder. Litet, lokalt, och var och
+en en avvägning.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Stäng den.
+
+---
+@Signals Officer
+Det var oro. Något mer?

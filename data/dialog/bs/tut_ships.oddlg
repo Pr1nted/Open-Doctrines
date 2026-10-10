@@ -1,0 +1,49 @@
+// Prijevod - pomorski prelazak, detaljno.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Brodovi, dakle. Ovo je ono što zaustavi većinu ljudi, i zaustavi ih svaki put
+na istom mjestu: vojska je na obali i ništa se ne dešava.
+---
+@Signals Officer
+Vojska sama ne prelazi vodu, i ne postoji naredba "ukrcaj se na onaj brod".
+To radi pokrajina.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Odaberite obalnu pokrajinu koja ima §**luku**§ I §**ljude u njoj**§.
+Ukrcavanje premješta garnizon koji je već tamo; prazna luka ne ukrcava baš
+ništa, i odatle počinje većina zabune.
+
+Njena ploča ima §**Ukrcaj vojsku**§ -- besplatno, jedan potez. Pritisnite ga
+i završite potez.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Ljudi su sada §**brod**§ uz obalu. Idite u prikaz §**Mornarica**§ -- brodovi ne
+primaju naredbe ni iz jednog od preostalih sedam.
+
+§{key=ship_move}§ ga pomjera, §{key=ship_wheel}§ otvara njegove topove,
+§{key=ship_engage}§ mu naređuje da započne borbu.
+---
+@Signals Officer
+Za iskrcavanje: odaberite brod, pritisnite §**Pomjeri**§ i kliknite na
+§**kopno**§.
+
+Voda ga pomjera. Kopno ga iskrcava. Jedno dugme radi oboje, i zato ljudi plove
+tamo-amo tražeći ono drugo.
+---
+@Signals Officer
+Dvije stvari koje vam niko ne kaže.
+
+Natovaren transport je meta i tone s ljudima na sebi. A iskrcavanje u branjenu
+pokrajinu stiže umorno -- zauzmite praznu obalu do nje i pješačite, umjesto da
+se iskrcate pravo na utvrdu.
+---
+@Signals Officer
+§**Hallow Rock**§, u moreuzu, nije neobavezan. Brod ima domet, a udaljeno
+ostrvo je izvan njega -- pa je stijena prvo iskrcavanje, a drugi skok kreće
+odatle.
+
+To su brodovi. Još nešto?

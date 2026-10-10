@@ -404,6 +404,11 @@ Script parse(const std::string& source) {
                     // <wave> is the one pair that is not the same character
                     // at both ends, so its closer is '>' and never '<'.
                     if (d.ch == '<' && (nowFx & FX_WAVE)) break;
+                    // "->" IS AN ARROW. A '-' with a space behind it and '>'
+                    // in front passed canOpen, so "Settings -> Experimental"
+                    // struck through everything up to the next dash -- in the
+                    // goods lesson, in every language.
+                    if (d.ch == '-' && i + 1 < line.size() && line[i + 1] == '>') break;
                     const bool on = (nowFx & d.bit) != 0;
                     if (on ? canClose(line, i, 1) : canOpen(line, i, 1)) {
                         toggleFx(d.bit); i += 1; handled = true;

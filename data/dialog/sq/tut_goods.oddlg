@@ -1,0 +1,66 @@
+// Përkthim - ekonomia e mallrave.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Në një §**botë mallrash**§, një provincë nuk bën thjesht para. Nxjerr lëndë
+të para dhe fabrikat e saj i kthejnë në mallra -- dhe mallrat, jo paratë në
+dorë, janë ato që ushqejnë popullin tuaj dhe ju lejojnë të ndërtoni. Hapni
+ekonominë.
+---
+@Signals Officer
+Janë katër. §**Mallra konsumi**§, që i ha populli juaj. §**Makineri**§, që
+ndërton industri, fortesa dhe porte. §**Karburanti**§, që lëviz anije dhe
+ushtri. §**Municione**§, që rekrutojnë ushtarë dhe qëllojnë me artileri. Ari
+mbetet para.
+---
+@Signals Officer
+Dhe secili vjen nga toka përmes një fabrike. §**Goma dhe gurët e çmuar**§
+bëhen mallra konsumi; §**metali**§ bëhet makineri dhe municione; §**nafta**§
+bëhet karburant. Pa depozitë, pa mall -- ndaj një mungesë ju tregon një
+provincë për ta marrë ose një fabrikë për ta ridrejtuar.
+---
+@Signals Officer
+Në një lojë me mallra, ekonomia merr një skedë §**Mallrat**§ lart. Ajo rendit
+të katërt krah për krah: çfarë keni, çfarë prodhoni përkundrejt asaj që ju
+duhet çdo radhë, dhe -- numri që ka rëndësi -- §**Mbulimi**§.
+---
+@Signals Officer
+Mbulimi është sa radhë zgjat një rezervë me konsumin tuaj aktual. Nëntë radhë
+është rehat; nën dy është paralajmërim; bosh do të thotë mungesë që po ndodh
+tani. Është leximi i ndershëm -- jo një grumbull i madh i veshur si bollëk,
+por sa kohë ju blen vërtet ai grumbull.
+---
+@Signals Officer
+Mallrat e konsumit janë i vetmi mall që është edhe fakt politik. Ajo që
+konsumohet përkundrejt asaj që dëshirohet është §**Standardi i jetesës**§:
+mbajini njerëzit të ushqyer dhe vendi rritet; lëreni të bjerë dhe uria kthehet
+si trazira.
+---
+@Signals Officer
+Tre të tjerat janë leje. Ndërtoni industri dhe shpenzoni makineri; nxirrni një
+flotë në det dhe digjni karburant; rekrutoni dhe tërhiqni municione. Nëse nuk
+mjaftojnë, veprimi thjesht bëhet gri -- lufta nuk e pret magazinën.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Ku prodhohet një mall vendoset për çdo provincë. Klikoni një nga tonat: në
+panelin e saj drejtoni çfarë ndërtojnë fabrikat e saj, ose e lini dhe
+ekonomia shpërndan për ju, duke i dërguar fabrikat e papuna te ajo që ju
+mungon më shumë.
+---
+@Signals Officer
+:: point=btn.settings
+Dy çelësa ndodhen te §**Cilësimet -> Eksperimentale**§. Njëri e ndez
+ekonominë e mallrave për botën tuaj të re të ardhshme. Tjetri, §**Suficit
+tregtar me aleatët**§, është opsional: kur një aleati i mungon diçka, mallrat
+tuaja të tepërta shkojnë te ai. Shpesh askujt nuk i mungon asgjë, ndaj qëndron
+i papunë -- është ndihmë e mbajtur gati, jo taksë mbi rezervat tuaja.
+---
+@Signals Officer
+Kjo është ekonomia e mallrave: nxirr, prodho, ushqe dhe shpenzo. Ndiqni
+mbulimin, mbajeni popullin të ushqyer, dhe mos nisni kurrë një luftë që
+municionet tuaja nuk mund ta mbarojnë.
+
+Diçka tjetër?

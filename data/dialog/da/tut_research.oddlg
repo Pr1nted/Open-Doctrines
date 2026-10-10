@@ -1,0 +1,31 @@
+// Oversættelse af tut_research.oddlg -- forskning.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Forskning. Åbn den -- klagen er altid den samme -- intet, du starter, ser ud til
+nogensinde at blive færdigt -- og det er ikke en fejl, det er meningen.
+---
+@Signals Officer
+Alt her måles i ture, du ikke har spillet endnu. Noget, du starter nu, bliver
+færdigt længe efter, at du har glemt, at du ville have det, hvilket betyder, at
+det eneste dårlige tidspunkt at starte er senere.
+---
+@Signals Officer
+Den tager af de samme penge som hæren. Et land, der forsker i alt, stiller intet
+i felten, og et land, der stiller alt i felten, kæmper stadig sidste årtis krig
+om tyve ture.
+
+Vælg et spor. Vælg ikke dem alle.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Luk den igen -- §**x**§'et i hjørnet.
+---
+@Signals Officer
+Færdigt arbejde virker ikke bagudrettet. Nyt udstyr når nye enheder først, så
+den tur, hvor noget bliver færdigt, er turen til at se på, hvad du bygger, ikke
+turen til at slappe af.
+
+Det var forskning. Andet?

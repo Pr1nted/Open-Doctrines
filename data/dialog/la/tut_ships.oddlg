@@ -1,0 +1,48 @@
+// Translatio Latina - transvectio navalis, accurate.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Naves igitur. Hoc est quod plurimos sistit, et eodem loco semper sistit:
+exercitus ad litus stat et nihil fit.
+---
+@Signals Officer
+Exercitus aquam per se non transit, nec ullum iussum est "in illam navem
+impone". Provincia id facit.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Elige provinciam maritimam quae §**portum**§ habeat ET §**milites in ea
+stantes**§. Imponere praesidium movet quod iam ibi est; portus vacuus nihil
+omnino imponit, et hinc plerumque confusio incipit.
+
+Tabella eius §**Exercitum imponere**§ habet -- gratis, unam vicem durat. Preme et
+vicem fini.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Milites nunc §**navis**§ prope litus sunt. Ad conspectum §**Classis**§ i --
+naves ex nullo ceterorum septem conspectuum iussa accipiunt.
+
+§{key=ship_move}§ eam movet, §{key=ship_wheel}§ tormenta eius aperit,
+§{key=ship_engage}§ eam proelium quaerere iubet.
+---
+@Signals Officer
+Ut exscendas: navem elige, preme §**Movere**§, et preme in §**terram**§.
+
+Aqua eam movet. Terra eam exonerat. Una bulla utrumque facit, quam ob rem
+homines huc illuc navigant alteram quaerentes.
+---
+@Signals Officer
+Duae res quas nemo tibi dicit.
+
+Navis oneraria onusta scopus est, et cum militibus vectis mergitur. Et
+exscensio in provinciam defensam fessa advenit -- litus vacuum finitimum cape
+et pedibus perge, potius quam in castellum exscendas.
+---
+@Signals Officer
+§**Hallow Rock**§, in freto, non est arbitrii. Navis spatium certum habet, et
+insula longinqua extra id iacet -- itaque scopulus est prima exscensio, et
+saltus alter inde proficiscitur.
+
+Haec de navibus. Num quid aliud?

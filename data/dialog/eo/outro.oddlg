@@ -1,0 +1,32 @@
+// Traduko - la fino, al kiu kondukas ĉiu vojo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Ĉi tien supren, do. Du aferoj, kiuj ne estas sur iu ajn mapo.
+
+§**Konservitaj ludoj.**§ Vera mondo surskribas sin mem dum vi ludas kaj atendas
+vin tie. La nia ne -- nenio, kion vi ĵus faris, estis konservita, kio estas
+iom la celo de ekzerca insulo.
+---
+@Signals Officer
+:: point=menu.2
+§**Plurludanta.**§ Unu maŝino gastigas, kaj ĉiuj aliaj aliĝas al ĝi. Vico
+solviĝas, kiam ĉiuj ludantoj diris, ke ili estas pretaj, do ludo iras laŭ la
+rapido de la plej malrapida.
+
+Ludu kun homoj, kiuj respondas al siaj mesaĝoj.
+---
+@Pr1nted
+Ankoraŭ viva? Bone. Ŝi estas zorgema, tion mi konfesu.
+
+Ĉu vi volas trairi ion alian, aŭ ĉu ni finis?
+> Reiru malsupren kaj traktu ion specifan -> world:specifics
+> Tio estas ĉio, dankon
+---
+@Pr1nted
+:: act=end_tutorial
+Bone. Iru kaj perdu kelkajn, tiel oni lernas.
+
+Pr1nted, fino.

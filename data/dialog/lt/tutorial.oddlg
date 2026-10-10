@@ -1,0 +1,305 @@
+// Vertimas -- Mios pamoka. :: eilutės, kalbėtojai ir {key=...} yra identifikatoriai.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Taip. Ashford. Septynios provincijos, vienas kaimynas, kuris mūsų jau nemėgsta,
+ir sala, iki kurios pėsčiomis nenueisi.
+
+Pakankamai maža, kad būtų galima mokytis. Būtent todėl mes čia.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Spustelėkite bet kurią provinciją, ir šis skydelis pasakys, kas ji: kam ji
+priklauso, kas joje gyvena, ką ji gamina ir kiek jos gyventojams liko iki maišto.
+
+Viską, ką darote šiame žaidime, darote provincijai.
+---
+@Signals Officer
+:: point=view.population
+Juosta apačioje nėra aštuoni mygtukai. Tai aštuoni būdai žiūrėti į TĄ PATĮ
+žemėlapį, ir jūs visą žaidimą perjunginėsite juos.
+
+Šis nuspalvina kiekvieną provinciją pagal tai, kiek žmonių joje gyvena.
+---
+@Signals Officer
+:: point=view.industry
+Pramonė. Kur yra gamyklos, taigi iš kur ateina pinigai ir įranga.
+
+Gyventojai ir pramonė kartu pasako, kurias provincijas verta užimti, o kurios yra
+tik žemė.
+---
+@Signals Officer
+:: point=view.defence
+Gynyba rodo fortus. Tamsu reiškia, kad kažkas įsitvirtino, ir puolimas į tamsią
+žemę kainuoja kur kas daugiau, nei rodo skaičiai.
+---
+@Signals Officer
+:: point=view.relations
+Santykiai: kas su kuo kariauja ir kas kam suteikia garantijas. Pažiūrėkite prieš
+ką nors pradėdami -- pusė karų, kuriuos žmonės čia pralaimi, buvo prieš tris
+šalis, ne vieną.
+---
+@Signals Officer
+:: point=view.army
+Armija. Visi garnizonai žemėlapyje vienu metu, jūsų ir jų.
+
+Šiame vaizde reikia būti, kai judinate vyrus, nes tik jis rodo, kas jų laukia.
+---
+@Signals Officer
+:: point=view.navy
+Laivynas daro tą patį su laivais, ir iš jo jūs pakraunate transportus.
+
+Ištekliai ir Šalių pavadinimai yra paskutiniai du, ir jie daro tai, ką žada.
+---
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+Pirmiausia §**Ekonomika**§, nes iš jos apmokama visa kita.
+
+Atidarykite ją.
+---
+@Signals Officer
+Pramonė yra tai, kuo statote, ir ji auga ten, kur jau yra gyventojų. Pastatykite
+gamyklą tuščioje vietoje ir būsite nusipirkę labai brangią daržinę.
+
+Pajamos ateina kartą per ėjimą. Išleiskite jas anksčiau, nei jas turite, ir
+trūkumas bus atimtas iš kovinės parengties.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Dabar vėl uždarykite ją -- tuo pačiu mygtuku. Skydelis uždengia žemėlapį, ir aš
+negaliu jums nieko ten parodyti, kol esate čia viduje.
+---
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Toliau §**Tyrimai**§. Atidarykite juos.
+---
+@Signals Officer
+Niekas, ką čia pradedate, nesibaigia per šį ėjimą, o dauguma baigiasi gerokai
+po to, kai jau būsite pamiršę, kad to norėjote.
+
+Būtent todėl verta pradėti anksti.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Vėl lauk.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+§**Politika**§. Prašom vidun.
+---
+@Signals Officer
+Politikos kainuoja išlaikymą, o ne vienkartinę sumą -- tai nuolatinė sąskaita,
+ir jos pastumia šalies politinę padėtį.
+
+Šaukimas pripildo gretas. Jis taip pat sukuria žmonių, kurie nenorėjo būti
+gretose, ir būtent tą skaičių reikia stebėti.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Ir lauk.
+---
+@Signals Officer
+Tas skaičius yra §**neramumai**§.
+
+Provincija su dideliais neramumais nustoja mokėti ir pradeda organizuotis.
+Ignoruokite tai pakankamai ilgai, ir ji išeina -- su savo pramone, savo
+gyventojais ir savo nuomone apie jus.
+
+Įspėjimą gausite. Antro -- ne visada.
+---
+@Signals Officer
+:: point=view.relations
+Dar vienas dalykas prieš skydelius: karas nebūtinai turi baigtis kieno nors
+mirtimi.
+
+§**Paliaubų**§ ir §**prekybos**§ pasiūlymai ateina kaip langas su sąlygomis --
+kas nustoja kovoti, kas ko atsisako. Perskaitykite sąlygas. Sutikite, ir karas
+baigsis tomis sąlygomis, o ne maloniomis.
+---
+@Signals Officer
+Galite tokį atidaryti ir patys, iš santykių vaizdo: pasirinkite šalį, su kuria
+kariaujate, ir paprašykite. Jie sutinka, kai pralaimi, ir atsisako, kai ne, ir
+tai yra didžioji dalis šio žaidimo diplomatijos.
+
+§**Prekybos sutartis**§ yra tas pats, tik be karo: prekės už pinigus, kiekvieną
+ėjimą, kol kas nors ją atšauks.
+---
+@Signals Officer
+Ir per šią pamoką niekas jums nepasiūlys nei vieno, nei kito. Liepiau jiems to
+nedaryti.
+---
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Paskutinis skydelis. §**Pretenzijos**§ yra tai, kas karą paverčia teisėtu.
+---
+@Signals Officer
+Įgyvendinkite turimą pretenziją, ir pasaulis gūžteli pečiais. Užimkite žemę, į
+kurią niekada nepretendavote, ir visi, kurie dar abejojo jumis, nustoja abejoti.
+
+Pareikškite pretenziją PRIEŠ karą. Pareikšta po to nieko neapgauna.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Uždarykite ją, ir eisime ką nors iš to panaudoti.
+---
+@Signals Officer
+Dabar armija.
+
+Pasirinkite savo provinciją, laikykite §{key=army_move}§ ir spustelėkite, kur
+vyrai turi eiti. Tik į kaimyninę provinciją -- armija eina pėsčiomis, ji
+nesiteleportuoja.
+---
+@Signals Officer
+Artilerija yra ant §{key=artillery_wheel}§. Laikykite, ir atsidaro ratas: nuo
+minosvaidžių iki dalykų, kurių verčiau nerašyčiau.
+
+Laivai turi savo: §{key=ship_move}§ judėti, §{key=ship_wheel}§ jų pabūklams,
+§{key=ship_engage}§ pradėti kautynes.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Armijos irgi neatsiranda iš niekur. §**Jūs jas verbuojate**§, provinciją po
+provincijos, iš ten gyvenančių žmonių.
+
+Pasirinkite vieną iš mūsų ir pažiūrėkite į skydelį.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=recruiting
+Ten yra slankiklis ir mygtukas §**Verbuoti**§. Slankiklis nustato, kiek iš to, ką
+provincija gali skirti, imate šį ėjimą -- daugiausia maždaug penktadalį
+gyventojų, mažiau ten, kur žmonės nepatenkinti.
+
+Tai kainuoja pinigų, o vyrai atvyksta kitą ėjimą. Užverbuokite keletą dabar.
+---
+@Signals Officer
+Provincija, iš kurios išėmėte vyrus, yra provincija, į kurią gali įžengti bet
+kas, o provincija, iš kurios išėmėte žmones, lieka skurdesnė visiems laikams.
+Verbavimas yra kažko išleidimas, o ne sukūrimas.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 act=unlock_turn
+Prieš ką nors judindami: §**niekas nevyksta, kol nebaigiate ėjimo.**§
+
+Gal pastebėjote, kad iki šiol jis buvo pilkas. Tai buvau aš.
+
+Jūs duodate įsakymus. Jie laukia. Paspaudžiate šį, ir tada visi jie įvyksta
+vienu metu -- todėl visa kampanija gali būti išspręsta per vieną ėjimą, jei
+įsakymai buvo geri.
+---
+@Signals Officer
+Kestrel valdo rytinį mūsų salos galą, jie jau kariauja su mumis, ir jie turi
+keturiasdešimt aštuonis tūkstančius vyrų.
+
+Mes turime septynis šimtus dvidešimt tūkstančių.
+---
+@Signals Officer
+:: until=destroyed:KES
+Tad padarykite tai §**per vieną ėjimą**§. Įsakykite užimti kiekvieną jų
+provinciją -- visas keturias, vieną po kitos, nieko nebaigdami -- ir tada
+paspauskite Vykdyti ėjimą ir stebėkite, kaip viskas išsisprendžia.
+
+Tai šio žaidimo ritmas. Visa kita -- detalės.
+---
+@Signals Officer
+:: act=rebellion
+... Jūs turite problemą namuose.
+
+Neramumai ką tik užimtose provincijose peržengė ribą. Jos pasiskelbė
+nepriklausomomis ir nieko neklausia.
+---
+@Signals Officer
+:: until=rebels:none
+Štai ką turėjau omenyje. Sukilimas dabar yra šalis -- jis turi provincijų, vyrų
+ir sieną su jumis.
+
+Numalšinkite jį taip pat, kaip malšinate bet ką kita. Tai nebus taip lengva kaip
+su Kestrel.
+---
+@Signals Officer
+Lieka Verrick, už vandens.
+
+Sausumos kelio nėra. Joks žygiavimas armijos ten nenuves, ir čia dauguma žmonių
+įstringa.
+---
+@Signals Officer
+:: point=view.relations until=selected:foreign
+Ir mes §**su jais nekariaujame**§. Kestrel atėjo pas mus jau priešiški; Verrick
+nieko nepadarė, o išsilaipinti šalyje, su kuria esate taikoje, negalima.
+
+Tad paskelbsime karą. Bet kuris vaizdas, išskyrus "Gyventojai", ir
+spustelėkite vieną jų provinciją.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=war:VER
+Jų provincijos skydelyje surašyta, ką galime jiems padaryti, tarp jų ir
+§**Paskelbti karą**§. Virš jo yra §**karo tikslas**§ -- tai, ko jūs neva
+siekiate. Spustelėkite jį, kad perjungtumėte.
+
+Tikslas nėra puošmena: pagal jį jus vertina likęs pasaulis, ir dėl jo vėliau bus
+ginčijamasi derybose dėl paliaubų.
+---
+@Signals Officer
+Paskelbkite jį -- ir tada §**baikite ėjimą**§. Paskelbimas yra įsakymas kaip ir
+bet kuris kitas: jis pateikiamas dabar ir įvyksta, kai ėjimas išsisprendžia.
+Žemėlapyje niekas nepasikeičia, kol nepaspaudžiate mygtuko.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Štai visas perkėlimas keturiais žingsniais. Pasirinkite vieną iš mūsų pakrantės
+provincijų -- tokią, kurioje yra §**uostas**§ ir vyrų.
+---
+@Signals Officer
+:: point=panel.province
+Joje turi būti §**vyrų vietoje**§. Įlaipinimas neiškviečia armijos iš niekur --
+jis į valtį sodina garnizoną, kuris jau ten yra, tad uostas tuščioje provincijoje
+nieko neįlaipina.
+
+Jei reikia, pirmiausia atžygiuokite ten keletą.
+---
+@Signals Officer
+:: point=panel.province
+Tada tos provincijos skydelyje: §**Įlaipinti armiją**§. Nemokamai, vienas ėjimas.
+
+Paspauskite jį ir baikite ėjimą. Garnizonas palieka provinciją ir tampa
+§**valtimi**§ prie kranto, kurios įgula yra jie patys.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Dabar eikite į vaizdą §**Laivynas**§. Laivui negalima duoti įsakymo iš gyventojų
+žemėlapio -- valties ten nėra.
+---
+@Signals Officer
+Pasirinkite valtį. Paspauskite §**Judėti**§, ir tada -- šios dalies niekas
+neatspėja -- spustelėkite §**sausumą**§.
+
+Vanduo ją perkelia. Krantas §**išlaipina vyrus ten**§. Tai ir yra išsilaipinimas;
+atskiro mygtuko jam nėra.
+---
+@Signals Officer
+:: until=destroyed:VER
+Taigi: vyrai uosto provincijoje, įlaipinti, baigti ėjimą, Laivyno vaizdas,
+perkelti valtį, spustelėti sausumą.
+
+Ir plaukite §**per Hallow Rock**§. Tai ne trumpesnis kelias, tai maršrutas:
+valtis nuplaukia tik tam tikrą atstumą, o Verrick pakrantė vienu kartu yra
+toliau. Išsilaipinkite ant uolos, baikite ėjimą, tada perplaukite antrąją pusę.
+
+Ir laikykite valtį atokiau nuo jų eskadrinio minininko. Pakrauta valtis nuskęsta
+su visais, kas joje yra.
+---
+@Signals Officer
+:: point=tab.claims
+Ir pareikškite pretenziją į žemę prieš ją užimdami, o ne po to. Dabar jau
+žinote, kodėl.
+---
+@Signals Officer
+Tai ir viskas. Ekonomika, tyrimai, politika, neramumai, pretenzijos, armijos,
+laivai.
+
+Visa kita -- detalės, ir detales išmoksite pralaimėdami joms.
+---
+@Signals Officer
+:: act=then:outro
+Ir tai yra sala. Grįžkite su manimi į meniu -- paskutiniai du dalykai yra ne čia
+apačioje.

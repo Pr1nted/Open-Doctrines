@@ -1,0 +1,32 @@
+// Vertimas -- bendra visų kelių pabaiga. :: eilutės ir "world:" tikslai yra identifikatoriai.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Na, čia viršuje. Du dalykai, kurių nėra jokiame žemėlapyje.
+
+§**Išsaugojimai.**§ Tikras pasaulis pats save užrašo, kol žaidžiate, ir laukia
+jūsų ten. Mūsiškis ne -- niekas iš to, ką ką tik darėte, nebuvo išsaugota, ir
+būtent tam treniruočių sala ir skirta.
+---
+@Signals Officer
+:: point=menu.2
+§**Kelių žaidėjų žaidimas.**§ Vienas kompiuteris priima žaidimą, o visi kiti
+prie jo prisijungia. Ėjimas išsisprendžia, kai kiekvienas žaidėjas pasako, kad
+yra pasiruošęs, todėl žaidimas juda lėčiausiojo tempu.
+
+Žaiskite su žmonėmis, kurie atsako į žinutes.
+---
+@Pr1nted
+Dar kvėpuojate? Gerai. Ji kruopšti, to iš jos neatimsi.
+
+Norite dar ką nors aptarti, ar baigiame?
+> Grįžkime žemyn ir aptarkime ką nors konkretaus -> world:specifics
+> Tai viskas, ačiū
+---
+@Pr1nted
+:: act=end_tutorial
+Gerai. Eikite ir pralaimėkite keletą, taip viskas ir įsisavinama.
+
+Pr1nted atsijungia.

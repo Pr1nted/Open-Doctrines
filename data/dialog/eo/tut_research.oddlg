@@ -1,0 +1,31 @@
+// Traduko - esplorado.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.research gate=1 until=open:research
+Esplorado. Malfermu ĝin -- la plendo estas ĉiam la sama -- nenio, kion vi
+komencas, iam ŝajnas finiĝi -- kaj tio ne estas cimo, tio estas la celo.
+---
+@Signals Officer
+Ĉio ĉi tie estas mezurata per vicoj, kiujn vi ankoraŭ ne ludis. Io, kion vi
+komencas nun, alvenas longe post kiam vi forgesis, ke vi deziris ĝin, kio
+signifas, ke la sola malbona tempo por komenci estas poste.
+---
+@Signals Officer
+Ĝi ĉerpas el la sama mono kiel la armeo. Lando, kiu esploras ĉion, surkampigas
+nenion, kaj lando, kiu surkampigas ĉion, post dudek vicoj ankoraŭ batalas la
+militon de la pasinta jardeko.
+
+Elektu unu vojon. Ne elektu ĉiujn.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:research
+Fermu ĝin denove -- la §**x**§ en la angulo.
+---
+@Signals Officer
+Finita laboro ne efikas retroaktive. Nova ekipaĵo unue atingas novajn
+formaciojn, do la vico, en kiu io finiĝas, estas la vico por rigardi, kion vi
+konstruas, ne la vico por ripozi.
+
+Tio estas la esplorado. Ĉu io alia?

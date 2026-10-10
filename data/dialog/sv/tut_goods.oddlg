@@ -1,0 +1,62 @@
+// Översättning av tut_goods.oddlg -- varuekonomin.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+I en §**varuvärld**§ tjänar en provins inte bara pengar. Den gräver fram
+råvaror och dess fabriker gör om dem till varor -- och det är varor, inte
+kontanter, som föder ditt folk och låter dig bygga. Öppna ekonomin.
+---
+@Signals Officer
+Det finns fyra. §**Konsumtionsvaror**§ lever ditt folk på. §**Maskiner**§ bygger
+industri, fästningar och hamnar. §**Bränsle**§ flyttar fartyg och arméer.
+§**Ammunition**§ rekryterar soldater och avfyrar artilleri. Guld förblir pengar.
+---
+@Signals Officer
+Och var och en kommer ur marken via en fabrik. §**Gummi och ädelstenar**§
+blir konsumtionsvaror; §**metall**§ blir maskiner och ammunition; §**olja**§
+blir bränsle. Ingen fyndighet, ingen vara -- så en brist pekar dig mot en
+provins att ta eller en fabrik att ställa om.
+---
+@Signals Officer
+I ett varuspel får ekonomin en flik §**Varor**§ längst upp. Den listar de
+fyra sida vid sida: vad du har, vad du tillverkar mot vad du behöver varje
+drag, och -- siffran som räknas -- §**Täckning**§.
+---
+@Signals Officer
+Täckning är hur många drag ett lager räcker med din nuvarande förbrukning. Nio
+drag är bekvämt; under två är en varning; tomt är en brist som pågår nu. Det är
+den ärliga avläsningen -- inte ett stort lager utklätt till överflöd, utan hur
+länge lagret faktiskt räcker.
+---
+@Signals Officer
+Konsumtionsvaror är den enda vara som också är ett politiskt faktum. Det som
+äts mot det som önskas är din §**Levnadsstandard**§: håll folket mätt så växer
+landet; låt den glida så kommer hungern tillbaka som oro.
+---
+@Signals Officer
+De andra tre är tillstånd. Bygg industri och du förbrukar maskiner; segla en
+flotta och du bränner bränsle; rekrytera och du tar av ammunitionen. Tar det
+slut blir handlingen helt enkelt grå -- kriget väntar inte på lagret.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Var en vara tillverkas bestäms per provins. Klicka på en av våra: i dess panel
+styr du vad fabrikerna bygger, eller låter bli, så fördelar ekonomin åt dig och
+skickar lediga fabriker på det du har minst av.
+---
+@Signals Officer
+:: point=btn.settings
+Två reglage finns i §**Inställningar -> Experimentell**§. Det ena slår på
+varuekonomin för din nästa nya värld. Det andra, §**Handla överskott med allierade**§,
+är frivilligt: när en allierad får brist går dina överblivna varor till dem.
+Ofta har ingen brist, så det står stilla -- det är hjälp i beredskap, inte en
+skatt på dina förråd.
+---
+@Signals Officer
+Det var varuekonomin: gräv, tillverka, föd och spendera. Håll koll på
+täckningen, håll folket mätt, och starta aldrig ett krig som din ammunition
+inte kan avsluta.
+
+Något mer?

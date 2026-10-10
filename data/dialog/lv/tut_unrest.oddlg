@@ -1,0 +1,75 @@
+// Tulkojums -- pretenzijas, nemieri un dumpis.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Pretenzijas un nemieri. Atveriet pretenziju paneli. Tā ir viena tēma, lai ko arī saskarne teiktu.
+---
+@Signals Officer
+§**Pretenzija**§ ir atšķirība starp karu, ko pasaule panes, un karu, kas apvieno
+visus pret jums. Īstenojiet pretenziju, kas jums ir, un jūs nokārtojat sāpīgu
+jautājumu; ieņemiet zemi, uz kuru nekad neesat pretendējuši, un sāpīgais
+jautājums esat jūs.
+---
+@Signals Officer
+Izvirziet pretenziju §**pirms**§ kara, nevis pēc tam. Pretenzija, kas izvirzīta
+gājienu pēc provinces ieņemšanas, nevienu neapmāna un maksā tikpat.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Aizveriet to.
+---
+@Signals Officer
+§**Nemieri**§ ir tas, ko zemes ieņemšana nodara zemei. Iekarotās provinces to
+neieredz, minoritātes vēl vairāk, un iesaukšana un cenzūra abas nopērk spēku
+tagad uz nemieru rēķina vēlāk.
+---
+@Signals Officer
+Pēc noteikta sliekšņa province pārstāj maksāt un sāk organizēties. Pēc nākamā tā
+aiziet -- un aiziet kā §**valsts**§, ar jūsu rūpniecību, jūsu iedzīvotājiem un
+ļoti konkrētu viedokli par jums.
+
+Brīdinājumu jūs saņemsiet. Otru -- ne vienmēr.
+---
+@Signals Officer
+Zāles ir nepopulāras vai lēnas: novietojiet tur garnizonu, tērējiet tai naudu
+vai dodiet tai to, ko tā grib. Izvēlieties agri, jo visām trim vajag gājienus,
+lai iedarbotos.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Tieši tēriņos lielākā daļa aiziet zudumā. Atveriet Politiku, tad
+§**Apriņķi**§.
+
+---
+@Signals Officer
+Budžets agrāk krita uz visu valsti uzreiz -- tāds pats svars uz klusu pagastu
+kā uz to, kas bruņojas. Tāpēc sadaliet valsti. §**Apriņķis**§ ir tās daļa, ko
+pārvaldāt kā vienību: iekrāsojiet tajā provinces, dodiet tam krāsu, dodiet tam
+§**daļu**§. Daļas vienmēr kopā dod simtu, jo budžets ir tikai viens.
+
+---
+@Signals Officer
+Svarīga ir §**naudas**§ daļa pret §**zemes**§ daļu. Apriņķi, kurā ir desmitā
+daļa valsts ar desmito daļu budžeta, uzrauga tieši tāpat kā iepriekš -- tāpēc
+sadalīšana neko nemaina, kamēr nepadarāt daļas nevienādas.
+
+---
+@Signals Officer
+Uzzīmējiet mazu apriņķi ap nemieru perēkli, iedodiet tam ceturto daļu naudas,
+un to uzraudzīs vairākas reizes stingrāk; panelis pasaka skaitli. Visur citur par
+to maksā, un tieši tas ir lēmums. Ir poga sadalīšanai vienādi: saprātīga vieta,
+kur sākt, un reti vieta, kur palikt.
+
+Apriņķis arī pieņem savu §**reģionālo likumu**§: komandantstundu, nodokļu
+brīvdienas, valodu, kurā runā tiesas. Mazs, vietējs, un katrs ir kompromiss.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Aizveriet to.
+
+---
+@Signals Officer
+Tie ir nemieri. Vēl kaut kas?

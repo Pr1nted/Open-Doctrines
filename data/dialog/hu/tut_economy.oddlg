@@ -1,0 +1,41 @@
+// Fordítás - a gazdaság.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+A gazdaság -- nyisd meg. A játékban minden más csak vita arról, hogyan költsd
+el, amit ez megtermel.
+---
+@Signals Officer
+Az §**ipar**§ ott nő, ahol már vannak emberek. Egy gyár egy üres tartományban
+drága fészer -- a népesség a nyersanyag, nem az épület.
+---
+@Signals Officer
+Ezért minden tartomány kiírja, mennyit bír el: §**II / VI szint**§, és ha
+megtelt, azt is jelzi. Az emberek, hogy milyen sűrűn élnek, a talaj, és ami el
+van temetve benne -- ez a négy szabja meg a plafont, és semennyi pénz nem
+mozdítja el.
+---
+@Signals Officer
+A bevétel körönként egyszer érkezik, a kör végén. Vállalj többet, mint amennyid
+van, és a hiány nem vár udvariasan: a harckészültségből jön le, és egy
+csatában tudod meg.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:economy
+Ki innen, és nézzünk meg inkább egyetlen tartományt.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kattints az egyik tartományunkra. A panel tartományonként mutatja, mit termel
+és mit tartalmaz. A nyersanyag feldolgozva többet ér, mint kiásva, így egy
+ipari tartomány egy gazdag mellett többet ér, mint bármelyik a kettő közül
+egymagában.
+---
+@Signals Officer
+A politikák pedig §**állandó számlát**§ jelentenek, nem vásárlást. Mindegyiket,
+amelyet fenntartasz, minden körben levonják, örökké, akár csinál még valamit,
+akár nem.
+
+Ennyi a gazdaságról. Még valami?

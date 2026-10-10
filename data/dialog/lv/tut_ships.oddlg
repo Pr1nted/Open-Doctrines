@@ -1,0 +1,48 @@
+// Tulkojums -- pārcelšanās pār ūdeni, sīkāk.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Tātad kuģi. Šis aptur lielāko daļu cilvēku, un aptur viņus katru reizi tajā pašā
+vietā: armija ir pie krasta, un nekas nenotiek.
+---
+@Signals Officer
+Armija pati ūdeni nešķērso, un pavēles "kāpt tajā kuģī" nav. To dara province.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:own
+Izvēlieties piekrastes provinci, kurā ir §**osta**§ UN §**vīri uz vietas**§.
+Iekraušana pārvieto garnizonu, kas jau tur ir; tukša osta neiekrauj neko, un tieši
+tur sākas lielākā daļa apjukuma.
+
+Tās panelī ir §**Iekraut armiju**§ -- bez maksas, viens gājiens. Nospiediet to un
+pabeidziet gājienu.
+---
+@Signals Officer
+:: point=view.navy gate=1 until=view:navy
+Vīri tagad ir §**laiva**§ pie krasta. Atveriet skatu §**Flote**§ -- kuģi neklausa
+pavēlēm nevienā no pārējiem septiņiem.
+
+§{key=ship_move}§ to pārvieto, §{key=ship_wheel}§ atver tās lielgabalus,
+§{key=ship_engage}§ liek tai sākt kauju.
+---
+@Signals Officer
+Lai izsēstos: izvēlieties laivu, nospiediet §**Pārvietot**§ un noklikšķiniet uz
+§**sauszemes**§.
+
+Ūdens to pārvieto. Sauszeme to izkrauj. Viena poga dara abus, tāpēc cilvēki
+kuģo šurpu turpu, meklējot otru.
+---
+@Signals Officer
+Divas lietas, ko neviens nepasaka.
+
+Piekrauts transports ir mērķis, un tas nogrimst kopā ar vīriem. Un izsēšanās
+aizsargātā provincē ierodas nogurusi -- ieņemiet tukšo krastu blakus un ejiet
+kājām, nevis izsēdieties tieši uz forta.
+---
+@Signals Officer
+§**Hallow Rock**§ šaurumā nav izvēles jautājums. Laivai ir darbības rādiuss, un
+tālā sala ir ārpus tā -- tāpēc klints ir pirmā izsēšanās, un otrais lēciens
+notiek no turienes.
+
+Tie ir kuģi. Vēl kaut kas?

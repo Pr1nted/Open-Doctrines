@@ -1,0 +1,79 @@
+// Vertaling: aanspraken, onrust en opstand.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Aanspraken en onrust. Open het aansprakenpaneel. Het is één onderwerp, wat de
+interface ook zegt.
+---
+@Signals Officer
+Een §**aanspraak**§ is het verschil tussen een oorlog die de wereld duldt en
+een oorlog die iedereen tegen je verenigt. Maak er een geldend die je hebt en
+je vereffent een grief; neem grond die je nooit hebt opgeëist en jij bent de
+grief.
+---
+@Signals Officer
+Maak de aanspraak §**voor**§ de oorlog, niet erna. Een aanspraak die de beurt
+na de verovering wordt ingediend, houdt niemand voor de gek en kost hetzelfde.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Sluit het.
+---
+@Signals Officer
+§**Onrust**§ is wat het innemen van grond met die grond doet. Veroverde
+provincies nemen het je kwalijk, minderheden nog meer, en dienstplicht en
+censuur kopen je allebei kracht nu tegen onrust later.
+---
+@Signals Officer
+Voorbij een drempel stopt een provincie met betalen en begint ze zich te
+organiseren. Voorbij de volgende vertrekt ze, en ze vertrekt als §**land**§,
+met jouw industrie, jouw bevolking en een heel specifieke mening over jou.
+
+Je krijgt een waarschuwing. Niet altijd een tweede.
+---
+@Signals Officer
+De remedies zijn impopulair of traag: leg er een garnizoen, besteed er geld
+aan, of geef haar wat ze wil. Kies vroeg, want alle drie hebben beurten nodig
+om te werken.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Bij het geld eraan besteden gaat het meeste verloren. Open Politiek, dan
+§**Districten**§.
+
+---
+@Signals Officer
+Het budget viel vroeger over het hele land tegelijk: hetzelfde gewicht op een
+rustig graafschap als op het graafschap dat zich bewapent. Dus snijd het land
+op. Een §**district**§ is een stuk ervan dat je als één geheel bestuurt: schilder
+er provincies in, geef het een kleur, geef het een §**aandeel**§. De aandelen
+tellen altijd op tot honderd, want er is maar één budget.
+
+---
+@Signals Officer
+Waar het om gaat, is het aandeel van het §**geld**§ tegenover het aandeel van
+de §**grond**§. Een district met een tiende van het land op een tiende van het
+budget wordt precies zo bewaakt als eerst, dus opdelen verandert niets tot je
+de aandelen ongelijk maakt.
+
+---
+@Signals Officer
+Teken een klein district om het probleem heen, geef het een kwart van het geld,
+en het wordt een aantal keren strenger bewaakt; het paneel vertelt je het
+cijfer. Al het andere betaalt ervoor, en dat is de beslissing. Er is een knop
+om gelijk te verdelen: een verstandig begin en zelden een plek om te blijven.
+
+Een district voert ook zijn eigen §**regionale wet**§: een avondklok, een
+belastingvakantie, welke taal de rechtbanken gebruiken. Klein, lokaal, en elk
+een ruil.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Sluit het.
+
+---
+@Signals Officer
+Dat is onrust. Nog iets?

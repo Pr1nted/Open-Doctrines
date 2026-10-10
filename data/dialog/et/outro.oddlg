@@ -1,0 +1,32 @@
+// Tõlge -- kõigi radade ühine lõpp. ::-read ja "world:"-sihtmärgid on identifikaatorid.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: act=to_menu point=menu.1
+Siin üleval siis. Kaks asja, mida pole üheski kaardil.
+
+§**Salvestused.**§ Päris maailm kirjutab end mängu ajal ise üles ja ootab teid
+seal. Meie oma mitte -- midagi sellest, mida te just tegite, ei säilitatud, ja
+harjutussaare puhul ongi see mõte.
+---
+@Signals Officer
+:: point=menu.2
+§**Mitmikmäng.**§ Üks masin on host ja kõik teised liituvad sellega. Käik
+laheneb, kui iga mängija on öelnud, et on valmis, nii et mäng liigub kõige
+aeglasema tempos.
+
+Mängige inimestega, kes oma sõnumitele vastavad.
+---
+@Pr1nted
+Veel elus? Hea. Ta on põhjalik, seda pean talle tunnistama.
+
+Kas tahate veel midagi läbi võtta, või oleme valmis?
+> Lähme tagasi alla ja võtame midagi konkreetset läbi -> world:specifics
+> See on kõik, aitäh
+---
+@Pr1nted
+:: act=end_tutorial
+Hea küll. Minge ja kaotage paar mängu, nii see selgeks saab.
+
+Pr1nted lõpetab.

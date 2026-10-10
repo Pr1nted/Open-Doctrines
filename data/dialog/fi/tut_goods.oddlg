@@ -1,0 +1,65 @@
+// Käännös: tavaratalous.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Tavaramaailmassa**§ maakunta ei vain tee rahaa. Se kaivaa raaka-aineita,
+ja sen tehtaat muuttavat ne tavaroiksi, ja juuri tavarat, eivät käteinen,
+ruokkivat kansasi ja antavat sinun rakentaa. Avaa talous.
+---
+@Signals Officer
+Niitä on neljä. §**Kulutustavarat**§ kansasi kuluttaa. §**Koneet**§
+rakentavat teollisuutta, linnoituksia ja satamia. §**Polttoaine**§ liikuttaa
+aluksia ja armeijoita. §**Ammukset**§ värväävät sotilaita ja ampuvat
+tykistöä. Kulta pysyy rahana.
+---
+@Signals Officer
+Ja jokainen tulee maasta tehtaan kautta. §**Kumista ja jalokivistä**§ tulee
+kulutustavaroita; §**metallista**§ koneita ja ammuksia; §**öljystä**§
+polttoainetta. Ei esiintymää, ei tavaraa, joten pula osoittaa sinulle
+maakunnan, joka vallata, tai tehtaan, joka suunnata uudelleen.
+---
+@Signals Officer
+Tavarapelissä talouteen ilmestyy ylälaitaan §**Tavarat**§-välilehti. Se
+listaa neljä tavaraa rinnakkain: mitä sinulla on, mitä teet suhteessa siihen,
+mitä tarvitset joka vuoro, ja se luku, jolla on väliä: §**Riittävyys**§.
+---
+@Signals Officer
+Riittävyys kertoo, kuinka monta vuoroa varasto riittää nykyisellä
+kulutuksella. Yhdeksän vuoroa on mukava; alle kaksi on varoitus; tyhjä on
+pula, joka tapahtuu nyt. Se on rehellinen lukema: ei iso kasa, joka näyttää
+yltäkylläisyydeltä, vaan se, kuinka kauan kasa oikeasti kestää.
+---
+@Signals Officer
+Kulutustavarat ovat ainoa tavara, joka on myös poliittinen tosiasia. Kulutettu
+suhteessa haluttuun on §**Elintaso**§: pidä ihmiset ruokittuina, niin maa
+kasvaa; anna sen lipsua, niin nälkä palaa levottomuutena.
+---
+@Signals Officer
+Muut kolme ovat lupia. Rakenna teollisuutta, niin kulutat koneita; purjehdi
+laivastolla, niin poltat polttoainetta; värvää, niin otat ammuksia. Jos ne
+loppuvat, toiminto yksinkertaisesti harmaantuu. Sota ei odota varastoa.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Missä tavara tehdään, asetetaan maakunnittain. Napsauta yhtä meidän
+maakunnistamme: sen paneelista ohjaat, mitä sen tehtaat rakentavat, tai jätät
+sen, jolloin talous jakaa puolestasi ja lähettää joutilaat tehtaat tekemään
+sitä, mistä sinulla on suurin pula.
+---
+@Signals Officer
+:: point=btn.settings
+Kaksi kytkintä löytyy kohdasta §**Asetukset -> Kokeellinen**§. Yksi kytkee
+tavaratalouden päälle seuraavaan uuteen maailmaasi. Toinen,
+§**Kauppaylijäämä liittolaisten kanssa**§, on valinnainen: kun liittolaiselta
+loppuu jotain, ylimääräiset tavarasi menevät sille. Usein kenelläkään ei ole
+pulaa, joten se on käyttämättä. Se on valmiina pidettyä apua, ei vero
+varastoillesi.
+---
+@Signals Officer
+Siinä tavaratalous: kaiva, valmista, ruoki ja käytä. Seuraa riittävyyttä,
+pidä kansasi ruokittuna, äläkä koskaan aloita sotaa, jota ammuksesi eivät
+riitä lopettamaan.
+
+Muuta?

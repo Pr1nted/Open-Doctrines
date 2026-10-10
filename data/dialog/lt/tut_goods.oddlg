@@ -1,0 +1,65 @@
+// Vertimas -- prekių ekonomika.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.economy gate=1 until=open:economy
+§**Prekių pasaulyje**§ provincija ne tik uždirba pinigus. Ji kasa žaliavas, o jos
+gamyklos paverčia jas prekėmis -- ir būtent prekės, o ne pinigai, maitina jūsų
+žmones ir leidžia jums statyti. Atidarykite ekonomiką.
+---
+@Signals Officer
+Jų yra keturios. §**Vartojimo prekės**§ -- tai, ką vartoja jūsų žmonės.
+§**Mašinos**§ stato pramonę, fortus ir uostus. §**Kuras**§ judina laivus ir
+armijas. §**Amunicija**§ reikalinga kariams verbuoti ir artilerijai šaudyti.
+Auksas lieka pinigais.
+---
+@Signals Officer
+Ir kiekviena ateina iš žemės per gamyklą. §**Guma ir brangakmeniai**§ tampa
+vartojimo prekėmis; §**metalas**§ tampa mašinomis ir amunicija; §**nafta**§
+tampa kuru. Nėra telkinio, nėra prekės -- tad trūkumas nurodo jums provinciją,
+kurią reikia užimti, arba gamyklą, kurią reikia perorientuoti.
+---
+@Signals Officer
+Prekių žaidime ekonomikoje viršuje atsiranda kortelė §**Prekės**§. Joje visos
+keturios greta: kiek turite, kiek pagaminate palyginti su tuo, kiek reikia kas
+ėjimą, ir -- svarbiausias skaičius -- §**Užteks**§.
+---
+@Signals Officer
+"Užteks" rodo, kiek ėjimų atsargų užteks esant dabartiniam suvartojimui. Devyni
+ėjimai -- patogu; mažiau nei du -- įspėjimas; tuščia -- trūkumas, vykstantis
+dabar. Tai sąžiningas rodmuo -- ne didelė krūva, apsimetanti gausa, o kiek laiko
+krūva jums iš tikrųjų nuperka.
+---
+@Signals Officer
+Vartojimo prekės yra vienintelė prekė, kuri kartu yra ir politinis faktas.
+Suvartota palyginti su norima yra jūsų §**gyvenimo lygis**§: laikykite žmones
+sočius, ir šalis auga; leiskite jam smukti, ir badas sugrįžta neramumais.
+---
+@Signals Officer
+Kitos trys yra leidimai. Statykite pramonę, ir išleidžiate mašinas; plaukite su
+laivynu, ir deginate kurą; verbuokite, ir naudojate amuniciją. Pritrūkus
+veiksmas tiesiog tampa pilkas -- karas nelaukia sandėlio.
+---
+@Signals Officer
+:: point=panel.province until=selected:any
+Kur prekė gaminama, nustatoma kiekvienai provincijai atskirai. Spustelėkite
+vieną iš mūsų: jos skydelyje nurodote, ką gamina jos gamyklos, arba palikite, ir
+ekonomika paskirstys už jus, nukreipdama dykinėjančias gamyklas į tai, ko jums
+labiausiai trūksta.
+---
+@Signals Officer
+:: point=btn.settings
+Du jungikliai yra skiltyje §**Nustatymai -> Eksperimentinis**§. Vienas įjungia
+prekių ekonomiką jūsų kitam naujam pasauliui. Kitas,
+§**Prekybos perteklius su sąjungininkais**§, yra pasirinktinis: kai
+sąjungininkui ko nors trūksta, jūsų atliekamos prekės keliauja jam. Dažnai
+niekam netrūksta, tad jis stovi be darbo -- tai parengta pagalba, o ne mokestis
+jūsų atsargoms.
+---
+@Signals Officer
+Tai prekių ekonomika: kasyba, gamyba, maitinimas ir išlaidos. Stebėkite
+"Užteks", laikykite savo žmones sočius ir niekada nepradėkite karo, kurio jūsų
+amunicija negali užbaigti.
+
+Dar kas nors?

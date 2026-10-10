@@ -1,0 +1,57 @@
+// Tradução: o Pr1nted entrega o novo jogador à Mia.
+
+:: anchor=left size=20 pad=26 enter=type speed=42 line=1.4
+
+@Pr1nted
+Olá, quem fala?
+---
+@
+...
+---
+@Pr1nted
+Ah... É novo por aqui... O quê? §**Nunca governou um país?**§
+---
+@
+...
+---
+@Pr1nted
+:: delay=1.1
+... Sabe que mais? A culpa é minha...
+---
+@Pr1nted
+:: enter=type speed=42
+Mas não tenho tempo para dar o tutorial eu próprio, por isso vou deixá-lo com
+uma amiga minha, está bem? Preciso de tempo, tenho de fazer as próximas
+atualizações, certo?
+---
+@Signals Officer
+Estou? O que foi, §**Pr1nted**§?
+---
+@Pr1nted
+Hum... Olá Mia, preciso de um /favorzinho de nada,/ podes mostrar isto tudo a
+um jogador novo?
+---
+@Signals Officer
+</Suspiro/>
+---
+@Pr1nted
+**Ora 'vá' lá!** Pago-te para quê?
+---
+@Signals Officer
+Pronto... Está bem, está bem.
+---
+@Pr1nted
+Ótimo! A menina Mia vai mostrar-lhe tudo, como o jogo funciona e o básico.
+Ou, se já sabe o básico mas quer falar de pormenores, diga-nos agora,
+> Quero aprender o básico -> basics
+> Já sei o básico, vamos aos pormenores -> specifics
+---
+@
+{choice}
+---
+@Signals Officer
+Muito bem, vamos começar.
+---
+@Pr1nted
+:: act=tune_out
+Ótimo, espero que se deem bem! Pr1nted, terminado.

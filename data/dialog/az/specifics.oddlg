@@ -1,0 +1,16 @@
+// Tərcümə - mövzu menyusu, əsasları bildiyini deyən oyunçu üçün.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Yaxşı, ümumi şəkli bilirsiniz. Bəs əslində nə istəyirsiniz?
+
+Birini seçin, onu ətraflı izah edim. Qurtaranda yenə soruşun.
+> Gəmilər, limanlar və ordunu sudan keçirmək -> script:tut_ships
+> Tədqiqat və başladığım heç nəyin niyə bitmədiyi -> script:tut_research
+> İqtisadiyyat, sənaye və pulun haradan gəldiyi -> script:tut_economy
+> Mal iqtisadiyyatı: xalqı doyurmaq, müharibəni yanacaqla təmin etmək -> script:tut_goods
+> İddialar, narazılıq və vilayətləri öz xalqına itirmək -> script:tut_unrest
+> İttifaqlar, atəşkəslər və diplomatiyanın qalanı -> script:tut_diplomacy
+> Müharibə dumanı: nəyi görürəm və qalanına necə casusluq edim -> script:tut_fog
+> Başqa heç nə, qurtardım -> script:outro

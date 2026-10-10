@@ -1,0 +1,95 @@
+// Tərcümə - ittifaqlar, atəşkəslər və diplomatiyanın qalanı.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomatiya. Hamısı bir siyahıdadır, siyahı isə bir §**ölkəyə**§ məxsusdur —
+ona görə ona kiminsə torpağına klikləyərək çatırsınız.
+
+Hər addımda gözləyəcəyəm. Burada heç nə tez olmur.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Əvvəlcə §**Münasibətlər**§ görünüşü. O, xəritəni kimin kimlə müharibədə olduğuna,
+kimin müttəfiq olduğuna və kimin kimə zəmanət verdiyinə görə rəngləyir.
+---
+@Signals Officer
+Nəyəsə başlamazdan əvvəl ona baxın. Burada uduzulan müharibələrin yarısı bir
+yox, üç ölkəyə qarşı olub — üçü də ilk atəşdən əvvəl bu xəritədə idi.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+İndi suyun o tayında, §**Verrick**§-ə məxsus bir vilayətə klikləyin.
+
+Kestrel-ə yox: onlarla artıq müharibədəyik, müharibədə olduğunuz ölkə isə cəmi
+bir şey təklif edir. O birinə də gələcəyik — sülhdə olduğumuz birini seçməyincə
+bu səhifə sadəcə gözləyəcək.
+---
+@Signals Officer
+Onların panelində bir siyahı peyda oldu. İçində nə olduğu tamamilə ikinizin
+bir-birinə artıq kim olduğunuzdan asılıdır — heç vaxt bütün variantlardan
+seçmirsiniz, yalnız indiki münasibətinizin icazə verdiklərindən.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Oradakı ən yumşaq şey §**hücum etməmək paktıdır**§: hücum etməmək vədi, artıq
+heç nə.
+
+Birini istəyin. İstəmək pulsuzdur.
+---
+@Signals Officer
+Göndərildi — indi siyahıya baxın. §**Qalan hər şey boz oldu**§, indicə istifadə
+etdiyiniz bənd isə §**Ləğv et**§ düyməsinə çevrildi.
+
+Bir ölkəyə eyni anda bir sorğu. Bu, rastlaşdığınız xəta deyil, qaydadır: onlar
+dediyiniz son sözə cavab verirlər, cavab verənə qədər yeganə gedişiniz onu geri
+götürməkdir.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Elə isə gedişi bitirin. Sorğu gedir, onlar cavab verir, siyahı geri qayıdır.
+
+İmtina edə bilərlər. Bu, onların işidir, sizin qüsurunuz yox.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Yenə Verrick. §**İttifaq**§ növbəti pillədir — sadəcə hücum etməmək vədi yox,
+qoşulmaq vədi.
+
+Birini istəyin.
+---
+@Signals Officer
+Müttəfiq olanda daha bir bənd peyda olur: §**Silaha çağırış**§, onları artıq
+apardığınız müharibəyə sürükləyir.
+
+Ondan da imtina edə bilərlər. İki dəfə imtina edən müttəfiq kağız üzərində
+müttəfiqdir, dəyəri də o qədərdir.
+---
+@Signals Officer
+İstifadə etmədiyiniz ikisi: §**zəmanət**§ birtərəflisidir — sizə heç nə vəd
+etməyən birini qorumağı vəd edirsiniz. Kiçik ölkələr onları yığır; böyüklər
+sakitlik almaq üçün paylayır.
+
+§**Ticarət**§ isə kimsə ləğv edənə qədər hər gediş pul müqabilində maldır. Hər
+ikinizi varlandıran yeganə bənd budur, insanların onun varlığını unutmasının
+səbəbi də budur.
+---
+@Signals Officer
+Pakt imzalanandan sonra siyahıdan nəyin getdiyinə baxın: §**Müharibə elan et
+yox olur**§. Əvvəlcə paktı pozmalısınız, açıq şəkildə, hamının gözü önündə.
+
+Pakt elə bunun üçündür. O, qalxan deyil, şahiddir.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+§**Müharibədə**§ isə bütün siyahı bir bəndə enir: §**Atəşkəs istə**§. O, şərtlərlə
+geri qayıdır — kim dayanır, kim nəyi saxlayır.
+
+Uduzanda qəbul edir, uduzmayanda rədd edirlər. Nə qədər soruşsanız da,
+bunlardan hansının doğru olduğu dəyişmir.
+---
+@Signals Officer
+Kestrel bu xəritədə qırmızıdır, sizə göstərəcəkləri siyahı da məhz odur.
+---
+@Signals Officer
+Diplomatiya bu qədər. Başqa nə?

@@ -1,0 +1,79 @@
+// Oversættelse af tut_unrest.oddlg -- krav, uro og oprør.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.claims gate=1 until=open:claims
+Krav og uro. Åbn kravpanelet. Det er ét og samme emne, uanset hvad
+brugerfladen siger.
+---
+@Signals Officer
+Et §**krav**§ er forskellen mellem en krig, verden tolererer, og en krig, der
+samler alle mod dig. Gør et krav, du har, gældende, og du afregner en gammel
+uoverensstemmelse; tag land, du aldrig har gjort krav på, og så er det dig,
+der er uoverensstemmelsen.
+---
+@Signals Officer
+Rejs kravet §**før**§ krigen, ikke efter. Et krav, der indgives turen efter, at
+du tog provinsen, narrer ingen og koster det samme.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:claims
+Luk den.
+---
+@Signals Officer
+§**Uro**§ er det, det gør ved landet at tage land. Erobrede provinser bryder
+sig ikke om det, mindretal bryder sig endnu mindre om det, og værnepligt og
+censur køber dig begge styrke nu mod uro senere.
+---
+@Signals Officer
+Over en tærskel holder en provins op med at betale og begynder at organisere
+sig. Over den næste forlader den dig -- og den går som et §**land**§, med din
+industri, din befolkning og en meget bestemt mening om dig.
+
+Du får en advarsel. Du får ikke altid en til.
+---
+@Signals Officer
+Kurene er upopulære eller langsomme: læg en garnison der, brug penge på den,
+eller giv den, hvad den vil have. Vælg tidligt, for alle tre tager flere ture
+om at virke.
+---
+@Signals Officer
+:: point=tab.politics gate=1 until=open:politics
+Det er pengeforbruget, det meste går til spilde på. Åbn Politik, derefter
+§**Distrikter**§.
+
+---
+@Signals Officer
+Budgettet plejede at falde på hele landet på én gang -- samme vægt på et roligt
+amt som på det, der er ved at bevæbne sig. Så skær landet op. Et §**distrikt**§
+er et stykke af det, som du styrer som en enhed: mal provinser ind i det, giv
+det en farve, giv det en §**andel**§. Andelene giver altid hundrede tilsammen,
+for der er kun ét budget.
+
+---
+@Signals Officer
+Det, der tæller, er andelen af §**pengene**§ mod andelen af §**landet**§. Et
+distrikt, der rummer en tiendedel af landet på en tiendedel af budgettet,
+holdes i ave præcis som før -- så opdelingen ændrer intet, før du gør andelene
+ulige.
+
+---
+@Signals Officer
+Tegn et lille distrikt rundt om balladen, giv det en fjerdedel af pengene, og
+det holdes i ave flere gange hårdere; panelet fortæller dig tallet. Alle andre
+steder betaler for det, og det er beslutningen. Der er en knap til at dele
+ligeligt: et fornuftigt sted at begynde og sjældent stedet at blive.
+
+Et distrikt vedtager også sin egen §**regionallov**§: udgangsforbud,
+skattefritagelse, hvilket sprog domstolene bruger. Lille, lokal, og hver af dem
+en afvejning.
+
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:politics
+Luk den.
+
+---
+@Signals Officer
+Det var uro. Andet?

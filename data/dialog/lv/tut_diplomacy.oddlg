@@ -1,0 +1,95 @@
+// Tulkojums -- savienības, pamieri un pārējā diplomātija.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+Diplomātija. Tā visa ir vienā sarakstā, un saraksts pieder §**valstij**§ --
+tāpēc jūs to sasniedzat, noklikšķinot uz kāda zemes.
+
+Es gaidīšu katrā solī. Nekas šeit nenotiek ātri.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Vispirms skats §**Attiecības**§. Tas iekrāso karti pēc tā, kurš ar kuru karo,
+kurš ir sabiedrots un kurš kuram ir devis garantiju.
+---
+@Signals Officer
+Paskatieties uz to, pirms kaut ko sākat. Puse karu, ko cilvēki šeit zaudē, bija
+pret trim valstīm, nevis vienu -- un visas trīs bija šajā kartē jau pirms pirmā
+šāviena.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=selected:atpeace
+Tagad noklikšķiniet uz provinces, kas pieder §**Verrick**§, aiz ūdens.
+
+Ne Kestrel: ar viņiem mēs jau karojam, un valsts, ar kuru karojat, piedāvā tieši
+vienu lietu. Pie tās mēs vēl nonāksim -- un kamēr neizvēlēsieties kādu, ar ko
+esam mierā, šī lapa vienkārši gaidīs.
+---
+@Signals Officer
+Viņu panelī ir parādījies saraksts. Kas tajā ir, pilnībā atkarīgs no tā, kas jūs
+jau esat viens otram -- jūs nekad neizvēlaties no visām iespējām, tikai no tām,
+ko atļauj jūsu pašreizējās attiecības.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_nap
+Maigākais tajā ir §**neuzbrukšanas pakts**§: solījums neuzbrukt, un nekas vairāk.
+
+Palūdziet to. Palūgt neko nemaksā.
+---
+@Signals Officer
+Iesniegts -- un tagad paskatieties uz sarakstu. §**Viss pārējais ir kļuvis pelēks**§,
+un ieraksts, ko tikko izmantojāt, ir pārvērties par §**Atcelt**§.
+
+Viens pieprasījums vienlaikus vienai valstij. Tā nav kļūda, uz ko esat uzdūrušies,
+tas ir noteikums: viņi atbild uz pēdējo, ko teicāt, un kamēr viņi nav atbildējuši,
+jūsu vienīgā iespēja ir to atsaukt.
+---
+@Signals Officer
+:: point=button.end_turn gate=1 until=turns:1
+Tāpēc pabeidziet gājienu. Pieprasījums aiziet, viņi atbild, un saraksts atgriežas.
+
+Viņi var atteikt. Tā ir viņu darīšana, nevis jūsu vaina.
+---
+@Signals Officer
+:: point=panel.province gate=1 until=filed:request_alliance
+Atkal Verrick. §**Savienība**§ ir nākamais pakāpiens -- ne tikai solījums
+neuzbrukt, bet solījums pievienoties.
+
+Palūdziet to.
+---
+@Signals Officer
+Ar sabiedroto parādās vēl viens ieraksts: §**Aicinājums pie ieročiem**§, kas
+ievelk viņus karā, ko jūs jau karojat.
+
+Arī to viņi var atteikt. Sabiedrotais, kas atsaka divreiz, ir sabiedrotais uz
+papīra, un apmēram tikpat arī vērts.
+---
+@Signals Officer
+Divi, ko neesat izmantojuši: §**garantija**§ ir vienpusējā -- jūs apsolāt
+aizstāvēt kādu, kas jums neko nav apsolījis. Mazas valstis tās krāj; lielās tās
+izdala, lai nopirktu mieru.
+
+Un §**tirdzniecība**§ ir preces pret naudu katru gājienu, līdz kāds to atceļ. Tas
+ir vienīgais ieraksts, kas padara jūs abus bagātākus, un tieši tāpēc cilvēki
+aizmirst, ka tāds vispār ir.
+---
+@Signals Officer
+Kad pakts parakstīts, vērojiet, kas pazūd no saraksta: §**Pieteikt karu
+pazūd**§. Vispirms pakts ir jālauž, publiski, kur visi redz, kā jūs to darāt.
+
+Tam pakts ir domāts. Tas nav vairogs, tas ir liecinieks.
+---
+@Signals Officer
+:: point=view.relations gate=1 until=view:relations
+Un §**kara**§ laikā viss saraksts sarūk līdz vienam ierakstam: §**Lūgt pamieru**§.
+Tas atgriežas ar noteikumiem -- kurš beidz un kurš ko patur.
+
+Viņi piekrīt, kad zaudē, un atsaka, kad nezaudē. Nekāda lūgšanās nemaina, kurš
+no tiem ir patiess.
+---
+@Signals Officer
+Kestrel šajā kartē ir sarkanā krāsā, un tas ir saraksts, ko viņi jums parādītu.
+---
+@Signals Officer
+Tā ir diplomātija. Vēl kaut kas?
