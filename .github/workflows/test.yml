@@ -95,6 +95,10 @@ jobs:
     # so the number has to follow it. 120 is double the measured run and still
     # a third of the cross-compile jobs' 180, which is the bounded wait a
     # genuine hang should cost.
+    #
+    # SO THIS NUMBER IS SIZED FOR COMPILE TIME, not for the tests. A job here
+    # at ninety minutes is a slow toolchain, not a hung test; look at the build
+    # steps before going looking for one.
     timeout-minutes: 120
     strategy:
       fail-fast: false     # one platform failing must not hide the others

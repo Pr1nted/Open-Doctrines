@@ -50,9 +50,30 @@ def main() -> int:
     for pattern in ("src/*.cpp", "src/*.h", "src/ai/*.cpp", "src/ai/*.h",
                     "src/*/*.cpp", "src/*/*.h", "tools/*.py", "tools/*.sh"):
         for path in glob.glob(os.path.join(ROOT, pattern)):
+            if os.path.abspath(path) == os.path.abspath(__file__):
+                continue      # never count this script's own mentions
             with open(path, encoding="utf-8", errors="replace") as fh:
                 present |= set(TOKEN.findall(fh.read()))
             read += 1
+    # A CANARY, because `read == 0` is too weak. The Windows bug read NO files,
+    # which that catches -- but reading a wrong SUBSET passes it and still
+    # reports phantoms: run this from a tree with docs/ai/LOOP.md and no src/
+    # and it reads only itself, `read` is 1, and it names 32 switches as
+    # missing. OD_ENV is the accessor every gate in the codebase goes through,
+    # so if the haystack does not contain it the read is broken, whatever its
+    # file count. This distinguishes "I looked and they are absent" from "I did
+    # not look properly", which is the whole job of a check about absence.
+    # The canary must not be satisfied by this script's OWN text. The first
+    # version was: it names OD_ENV in this very comment, so a haystack
+    # consisting of nothing but this file contained the canary and the guard
+    # passed. Self-exclusion is right regardless -- the PLACEHOLDERS set and
+    # these comments mention OD_ tokens, which could mask a real phantom.
+    CANARY = "OD_ENV"
+    if read and CANARY not in present:
+        print(f"check_ai_instruments: read {read} file(s) but not {CANARY}, which "
+              f"every gate uses -- the read is broken, so this is NOT a report "
+              f"that the instruments are missing")
+        return 1
     # And say so rather than reporting phantoms, if the haystack is empty.
     if read == 0:
         print("check_ai_instruments: read no source or tool files -- the check "

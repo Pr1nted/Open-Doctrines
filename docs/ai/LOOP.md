@@ -1119,3 +1119,23 @@ benched run (od_bench keeps only stdout).
   pinned at a stale commit looks like a valid comparison point and is not.
   Journal 538's `od-lenscheck` was removed as soon as the lens landed; the
   recipe is item 230 and takes one command to rebuild.
+- **Clearing a suspect clears the HYPOTHESIS you tested, not the file.** I
+  inspected `mpLoadMail`, confirmed its `json::parse` was the non-throwing form,
+  and reported the mail path as clean; the segfault was an `items()` call on a
+  temporary 38 lines lower in that same function (journal 541). Journal 537 was
+  the same error — a `grep` over `src/` became "the file does not exist in the
+  tree". Say what the test covered: "class X is absent from this function; I
+  have not read the rest of it."
+- **Refuse to infer one job's cause from another's fix.** Four Linux jobs shared
+  one symptom and had two causes. Asking for the x64/x86/riscv64 logs
+  specifically, rather than accepting that an armv7 timeout fix covered them,
+  is what kept a real lifetime bug from being filed as a timeout.
+- **A check about absence needs a canary it cannot satisfy from its own text.**
+  `check_ai_instruments.py` reported all 33 switches as phantoms on Windows
+  because a shell glob failed and `2>/dev/null` hid it (journal 542). A file
+  count is not the guard: reading a wrong SUBSET passes `read > 0` and still
+  reports phantoms. Assert that a token which must exist (`OD_ENV`) was found,
+  and exclude the checker's own file so its comments cannot satisfy the canary.
+- **Break-testing covers the cases you thought of, on the platform you ran.**
+  That checker was break-tested — phantom inserted, exit 1; removed, exit 0 —
+  and still shipped a defect that only appeared on Windows.

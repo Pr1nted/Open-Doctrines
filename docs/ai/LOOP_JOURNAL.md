@@ -41206,3 +41206,82 @@ training run, which is paused at ~6,500 of 9,000 turns on the control arm for th
 an uninterrupted one do not share a schedule. The setup is intact and verified: isolated data dirs by symlink,
 parent load confirmed at ~354.37M updates rather than a silent re-init, `data/ai/model.bin` provably untouched.
 Then Phase 9's fog curriculum as a separate pair, and the fog-cost bench for the journal rather than the notes.
+
+## 541 — I cleared a file on one hypothesis and the bug was in it
+
+PATHS TOUCHED: `docs/ai/LOOP_JOURNAL.md`, `docs/ai/LOOP.md`. No source change.
+
+The 1.3.1b release was blocked by a dedicated-server segfault on four Linux platforms in "the post survives the
+server stopping". I contributed one thing that was right and one that was wrong, and the wrong one is worth more
+to write down.
+
+**RIGHT: the platform reframing.** Three Linux jobs crashing while macOS passed the same test was being treated as
+"Linux-specific, awkward to chase from this machine". It was undefined behaviour macOS tolerates — the pattern
+`move-order-erase-crash` already records in the other direction. The bug's own fix comment now says it:
+*"items() of the temporary j.value() returns would point at a json already destroyed by the time the loop reads it.
+That segfaulted on Linux and happened not to on macOS."*
+
+**WRONG: I cleared `Game_Mail.cpp` and the bug was in the function I inspected.** I went at `mpLoadMail` because a
+mail test was failing and because this project had a server crash in 1.2.0a from an unguarded `json::parse`. I
+found the parse at line 1988 in its non-throwing form with an `is_discarded()` check, and reported: *"the mail
+sidecar's json read is defensive ... and it isn't that."* The real bug was **38 lines lower in the same function**,
+at the `items()` call on a `j.value()` temporary.
+
+**The error is precise and it is the second of its kind in two days.** I tested one hypothesis — the 1.2.0a
+unguarded-parse class — found it absent, and reported the result as clearing the *file*. Journal 537 did the same
+shape: a `grep` over `src/` found no `main.cpp` and I wrote that it did not exist in the tree. **A negative claim
+inherits the scope of the test that produced it, and in both cases I widened the claim past the test.**
+
+No harm came of it: the fix was already in `d4eac18`, committed before my message arrived. But had it not been, I
+would have steered the investigation away from the one file that mattered — and the session I was helping had
+flagged `Game_Mail.cpp` as a suspect itself before I talked them out of it.
+
+**What I should have said:** "the unguarded-parse class is absent from `mpLoadMail`; I have not read the rest of the
+function." That costs one clause and would have left the suspect standing.
+
+Also worth keeping: when they fixed linux-armv7's 30 s `start_server` ceiling, I asked them to confirm the three
+x64/x86/riscv64 jobs specifically rather than infer from armv7, because a core dump and a timeout are different
+failures. They checked the job logs: the segfault was real on all four, `d4eac18` fixed it, and armv7 was then the
+same symptom from a different cause. **Two causes wearing one symptom, separated only because the inference was
+refused.**
+
+## 542 — my phantom checker was itself a phantom generator on Windows
+
+PATHS TOUCHED: `tools/check_ai_instruments.py`, `docs/ai/LOOP_JOURNAL.md`, `docs/ai/LOOP.md`.
+
+**The marketing session found a fourth CI failure I had caused and had not noticed.** All three Windows jobs failed
+`ai instruments exist`: my `check_ai_instruments.py` reported **every one of LOOP.md's 33 switches as a phantom**,
+and not one is missing. It built its haystack with `bash -c "cat src/*.cpp ... 2>/dev/null"`; on Windows the globs
+reach Git Bash unexpanded through Python's command-line quoting, `cat` fails on the literal patterns, and the
+redirect swallows the error. Empty haystack, so everything looks absent. Their commit message says it better than I
+would: *"The phantom-instrument check was itself the failure it was written to catch."*
+
+**This is the rule I wrote two days earlier, broken by me, in the tool I wrote to enforce a related one.** Journal
+525: *"A failed read is indistinguishable from a null — make the instrument print its denominators."* I learned it
+by parsing the wrong stream and getting a "no hits" that matched my prediction. Then in journal 527 I built this
+checker and **break-tested it** — inserted `OD_PHANTOM_FOR_TEST`, exit 1; removed it, exit 0 — and shipped it with
+`2>/dev/null` over a shell glob. **`break-it-on-purpose` catches the bug you insert; it does not catch the
+environment you never ran.** I tested the two cases I had thought of, on one platform.
+
+**Their fix is sound and I verified it rather than taking it: read in Python with `glob`, no shell, and refuse to
+report phantoms when `read == 0`.** But `read == 0` is too weak, which I found by provoking it: run the checker
+from a tree with `docs/ai/LOOP.md` and no `src/` and it reads only **itself**, `read` is 1, the guard passes, and it
+names 32 switches as missing. A wrong *subset* is as dangerous as an empty one.
+
+**So I added a canary — and the first one was self-defeating, which the break-test caught.** `OD_ENV` is the
+accessor every gate goes through, so its absence means the read is broken rather than the instruments missing. But
+the checker's own source *mentions* `OD_ENV` (in the line declaring the canary), so a haystack of just this file
+contained it and the guard still passed. Fixed by **excluding the script's own path from the haystack**, which is
+right independently: its `PLACEHOLDERS` set and these comments name `OD_` tokens that could mask a real phantom.
+
+Both modes now verified: the real tree passes across **519** files (one fewer, self excluded); a wrong-subset tree
+**refuses** — *"read no source or tool files -- the check cannot run, and is not reporting that nothing exists"* —
+and never lists a phantom.
+
+**The general form, which is what to keep:** a check about absence must be able to tell *"I looked and they are
+gone"* from *"I did not look properly"*, and a file count is not that test. A canary the check cannot satisfy from
+its own text is.
+
+**And the thing that nearly cost more than the red job:** for as long as Windows has run this check, its verdict on
+this loop's instruments was noise. Anyone reading only a Windows log would have concluded LOOP.md plans from a
+document of fictions.
