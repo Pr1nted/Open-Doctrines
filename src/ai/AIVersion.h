@@ -31,7 +31,7 @@
  * repeatedly mistaken for each other.
  *
  * ── RULES HISTORY ──
- *   6.x  1.3.1b. Three behaviour changes a bench can see, so this is RULES and
+ *   6.x  1.3.1b. Four behaviour changes a bench can see, so this is RULES and
  *        not PATCH -- model files are NOT refused.
  *
  *        The AI can switch a monument back ON. The dial only ever switched them
@@ -64,6 +64,15 @@
  *        turn and then went dead: 1 of 14 turns. An AI that enacts one now gets
  *        indoctrinationPct/popModPct for the full run and pays cost_per_turn
  *        for it, so nothing is comparable across this change.
+ *
+ *        Forts are not industry. industryCostPct -- Cost Efficiency's -50% and
+ *        17 of 59 doctrines -- now prices industry and specialisation only.
+ *        The panel's fort button never applied it, but upgradeQuote and the
+ *        four AI fort sites (the economy gate, the fort action, fortifyReflex,
+ *        the siege helper) did, so the same fort had two prices. It also ran
+ *        backwards: Fortress Doctrine carries -14 and made forts 14% DEARER.
+ *        Eight doctrines' AIs now pay more for forts and nine pay less, so the
+ *        sign of the effect depends on what each AI enacts. Not benched.
  *
  *   4.x  districts became something the AI does rather than something it
  *        draws. It passes regional law where a district is in trouble (priced
