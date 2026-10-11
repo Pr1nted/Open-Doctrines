@@ -84,7 +84,18 @@ jobs:
     # and Windows over 30: it was cancelled mid-suite with thousands of checks
     # passed and none failed. A cap that cuts off honest work teaches people to
     # ignore red, which is worse than a slow run.
-    timeout-minutes: 60
+    #
+    # AND 60 IS NOT NOW EITHER, for the same reason one step further on.
+    # windows-x64 spent 54 minutes of it on 06fde58 and then crossed the line
+    # on b6c70d3, which GitHub reports as `cancelled` -- a verdict that reads
+    # like somebody pressed a button. Timing the sections says where it goes:
+    # of 54.7 minutes, 31.4 are COMPILING (test targets 17.2, game 5.1,
+    # dedicated server 4.6, windowed server 4.5) and the tests themselves are
+    # 22. Nothing is pathological; MSVC is slow and the suite keeps growing,
+    # so the number has to follow it. 120 is double the measured run and still
+    # a third of the cross-compile jobs' 180, which is the bounded wait a
+    # genuine hang should cost.
+    timeout-minutes: 120
     strategy:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
