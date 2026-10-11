@@ -43,8 +43,19 @@ import odver  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The commit identity every release is authored as, per project convention.
+#
+# NOT EMPTY. This was `AUTHOR_EMAIL = ""`, commented "deliberately empty",
+# which contradicted the line above it: the convention is the noreply address,
+# and every ordinary commit in this repository uses it. An author with no email
+# is one GitHub cannot attribute, so the release commits -- the most looked-at
+# commits here -- were the only ones showing as an unlinked name. Four of them
+# already do: 1.1.1a, 1.2.1a, 1.2.2a and gearbox-v1.3, plus gearbox-v1.4, which
+# is what turned this up. They stay that way; rewriting a pushed main to fix a
+# cosmetic field would leave more residue than it cleared, and the superseded
+# commits would remain fetchable anyway. Release 1.3.0b has it right, so this
+# restores what that did rather than inventing a new identity.
 AUTHOR_NAME = "Pr1nted"
-AUTHOR_EMAIL = ""          # deliberately empty
+AUTHOR_EMAIL = "111568178+Pr1nted@users.noreply.github.com"
 
 # What a shipped copy of data/ is allowed to contain.
 #
@@ -234,8 +245,8 @@ def commit_and_tag(paths, message, tag, dry_run, no_push):
         return
 
     run(["git", "add"] + paths)
-    # An empty email is intentional and has to be spelled this way; git will not
-    # take --author="Pr1nted" without the angle brackets.
+    # The angle brackets are not optional: git will not take --author="Pr1nted"
+    # without them, whatever is inside.
     run(["git", "commit",
          "--author", f"{AUTHOR_NAME} <{AUTHOR_EMAIL}>",
          "-m", message])
