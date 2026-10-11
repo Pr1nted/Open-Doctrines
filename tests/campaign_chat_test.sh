@@ -24,16 +24,53 @@ run_round() {   # <label> <address-or-empty>
     start_server "$work/server-$label.log" || { bad "the server opens ($label)"; tail -20 "$work/server-$label.log"; return; }
     ok "the server opens ($label)"
 
+    local alog="$work/alice-$label.log" blog="$work/bob-$label.log"
+    # --seconds is a CEILING, not a schedule: the round below ends when the
+    # conversation has happened, so a generous one costs nothing on a healthy
+    # run and keeps a slow relay handshake from eating the talking time.
     "$cli" --issuer "$issuer" --address "$addr" --code TEST-GAME --token dev-alice \
            --chat "alice one" --chat "alice two" --chat "alice three" --chat "alice four" \
-           --seconds 30 > "$work/alice-$label.log" 2>&1 &
+           --seconds 120 > "$alog" 2>&1 &
     local a=$!; pids+=("$a")
     "$cli" --issuer "$issuer" --address "$addr" --code TEST-GAME --token dev-bob \
-           --chat "bob one" --chat "bob two" --seconds 30 > "$work/bob-$label.log" 2>&1 &
+           --chat "bob one" --chat "bob two" --seconds 120 > "$blog" 2>&1 &
     local b=$!; pids+=("$b")
-    sleep 4
+
+    # THE OPERATOR SPEAKS TO WHOEVER IS CONNECTED. `say` sends a lobby line
+    # live and there is no replay of it for a player who was still joining, so
+    # saying it on a timer is a bet on how long a handshake takes. Four seconds
+    # won that bet for a direct connection on every runner and lost it for a
+    # relayed one on Windows -- which is the whole of why "alice hears the
+    # operator (relay)" had been red on windows-x64 and windows-arm64 since
+    # 2026-10-05, with the relay itself working fine: bob's lines reached alice
+    # through it in the same round. Their own first line is the proof that they
+    # are in, because campaign_client chats only once the host has given it a
+    # peer id.
+    local joined=0
+    wait_for_line "$alog" '^SAID alice one' 300 "$a" &&
+        wait_for_line "$blog" '^SAID bob one' 300 "$b" && joined=1
+    check "both players are in before the operator speaks ($label)" "[ $joined = 1 ]" \
+          "alice: $(tail -1 "$alog" 2>/dev/null) | bob: $(tail -1 "$blog" 2>/dev/null)"
     printf 'say from the operator\n' >> "$work/commands.txt"
+
+    # Then wait for the last thing each of them should hear rather than for the
+    # clock. A ceiling reached here is not reported: the checks below say what
+    # is missing, and they say it about the line rather than about the wait.
+    for log in "$alog" "$blog"; do
+        wait_for_line "$log" '^CHAT from=[0-9]+ alice four' 300
+        wait_for_line "$log" '^CHAT from=[0-9]+ from the operator' 300
+    done
+    kill -TERM "$a" "$b" 2>/dev/null
     wait "$a" "$b" 2>/dev/null
+
+    # Said at all, before asking whether it was heard. Without this, "nobody
+    # hears the operator" is two different failures wearing one face: a line
+    # the server refused to send (`say` warns and returns when the session is
+    # not open) and a line the players missed. The next person to see this red
+    # should not have to tell them apart from scratch.
+    check "the server said it ($label)" \
+          "grep -q '^\[Server\] from the operator' '$work/server-$label.log'" \
+          "$(grep -iE 'operator|nobody to say that' "$work/server-$label.log" | tail -3)"
 
     for who in alice bob; do
         local log="$work/$who-$label.log"

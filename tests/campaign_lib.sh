@@ -76,13 +76,48 @@ open(p, "w").write(s)
 EOF
 }
 
+# How long to wait for a server to open a session, in tenths of a second.
+#
+# THIRTY SECONDS IS A NATIVE NUMBER. linux-armv7 and linux-riscv64 run the whole
+# suite under qemu-user-static, where loading the world costs several times what
+# it does natively -- armv7 spent longer than the whole budget on the load alone
+# and the harness reported "the server comes back FAILED" for a server that was
+# simply still working. That reads as a crash and is not one.
+#
+# Waiting longer costs nothing when the server is healthy, because the loop
+# returns the moment the log says "session open", and nothing when it dies,
+# because kill -0 returns at once. The only case that pays is a server that
+# hangs, and three minutes is still a bounded wait for that.
+: "${OD_SERVER_OPEN_TRIES:=1800}"
+
 start_server() {
     "$srv" --config "$cfg" --data "$work/data" < /dev/null > "$1" 2>&1 &
     server_pid=$!
     pids+=("$server_pid")
-    for _ in $(seq 1 300); do
+    for _ in $(seq 1 "$OD_SERVER_OPEN_TRIES"); do
         grep -q "session open" "$1" && return 0
         kill -0 "$server_pid" 2>/dev/null || return 1
+        sleep 0.1
+    done
+    return 1
+}
+
+# Wait, bounded, for a line to appear in a log. Returns 0 the moment it does.
+#
+# This is here so a test can wait for a THING THAT HAPPENED instead of sleeping
+# for however long that thing is guessed to take. A guessed sleep is right on
+# the machine it was written on and wrong on the slowest one in the matrix, and
+# it fails there as a missing feature rather than as a slow one.
+#
+# Nothing is reported from in here: a ceiling reached returns 1 and the caller
+# decides whether that is a failed check or a condition it can carry on
+# without. With a pid, it also gives up the moment that process is gone, so a
+# client that died does not cost the whole ceiling.
+wait_for_line() {   # <file> <extended-regex> [tries] [pid]
+    local tries="${3:-100}"
+    for _ in $(seq 1 "$tries"); do
+        grep -qE "$2" "$1" 2>/dev/null && return 0
+        [ -n "${4:-}" ] && { kill -0 "$4" 2>/dev/null || return 1; }
         sleep 0.1
     done
     return 1
