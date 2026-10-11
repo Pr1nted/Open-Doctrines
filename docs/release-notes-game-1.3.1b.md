@@ -56,3 +56,15 @@ arrived with the people who turned up for 1.3.0b.
   then pick it from a map's info button. AI countries are held to the fog
   too, and until they are retrained for it they play somewhat weaker in fog
   worlds. See docs/fog-of-war.md.
+
+- **A map's scripts can ask what a country sees, and grant it more.** Under fog
+  a province is not visible or not, it is visible *to somebody*, so
+  `province.N.visible_to.ISO` takes a country code, alongside `seen_turn` and
+  `known_owner` — what that country believes, which is the truth only while it
+  is looking. `fog reveal`, `fog sight` and `fog clear` hand a country standing
+  sight of a province or an area: a watchpost rather than an uncovering, folded
+  in on every recompute and saved with the world, so *this country has watched
+  the straits since 1936* is still true after a reload. On a map made without
+  fog all of it answers as though the world were visible, so a script needs no
+  special case. Mods reach the same thing through Gearbox 1.4. See
+  docs/scripting.md.
