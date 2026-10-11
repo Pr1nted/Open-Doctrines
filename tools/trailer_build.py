@@ -452,8 +452,16 @@ def shot_marks(out, names, dur, overlay, words=None, lift=1.0):
         cap = "%s.c%d.png" % (out, i)
         caption_png(cap, None, parts=words, active=i)
         seg = "%s.s%d.mp4" % (out, i)
-        fg = "[0:v]fade=t=in:st=0:d=0.22[pic];[1:v]null[cap];" + \
-             tail("pic", cap, per, fade=0.18, lift=lift)
+        # FADE ONLY ON THE FIRST BEAT. Fading the mark in and the caption out
+        # and back on every one of four beats meant that at 0.6 s each the shot
+        # was almost entirely transition -- it read as a flicker rather than as
+        # a list of platforms. The word list is ONE continuous thing with a
+        # different word lit, so between beats the picture cuts and the caption
+        # does not move at all.
+        pic = "fade=t=in:st=0:d=0.22" if i == 0 else "null"
+        cfade = 0.18 if i == 0 else 0.02
+        fg = "[0:v]%s[pic];[1:v]null[cap];" % pic + \
+             tail("pic", cap, per, fade=cfade, lift=lift)
         run(["-loop", "1", "-framerate", str(FPS), "-t", str(per), "-i", img]
             + cap_in(cap, per)
             + ["-filter_complex", fg, "-map", "[o]", "-t", str(per)]

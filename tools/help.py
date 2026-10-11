@@ -363,6 +363,10 @@ GROUPS = [
         # modelled from primitives so every frame is this project's own.
         "trailer_timelapse.sh",
         "trailer_blender.py",
+        "trailer_blender.sh",
+        # The sign-off sting: the wordmark assembling itself out of provinces,
+        # with the march's own cadence under it.
+        "trailer_outro.py",
     ]),
 ]
 

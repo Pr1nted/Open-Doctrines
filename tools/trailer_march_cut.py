@@ -178,6 +178,7 @@ TLDIR = os.path.join(WORK, "tl")
 POL   = os.path.join(TLDIR, "political-fast.mp4")
 TRP   = os.path.join(TLDIR, "troops-fast.mp4")
 FLYV  = os.path.join(WORK, "fly-desk.mp4")
+OUTRO = os.path.join(WORK, "outro-trailer.mp4")
 
 # 820 turns of Quick Start in 19.7 s. A shot has to END inside that, so no
 # clip starts later than about turn 640 -- the transition pad runs past the
@@ -231,7 +232,7 @@ SHOTS = [
     (15, "0:24.6", 0.68, "freeze", (P("globe-population"),), None,
                    dict(focus=(0.46, 0.44), push=0.06, lift=1.15, into="cut")),
     (16, "0:25.3", 0.68, "freeze", (P("specifics"),), None,
-                   dict(focus=(0.70, 0.38), zoom=1.25, into="cut")),
+                   dict(focus=(0.88, 0.08), zoom=1.55, into="cut")),
     (17, "0:26.0", 0.68, "freeze", (P("editor-districts"),), None,
                    dict(focus=(0.40, 0.45), zoom=1.5, into="cut")),
     (18, "0:26.6", 2.96, "clip",   (POL, tn(320), 1.0, W_),
@@ -263,23 +264,23 @@ SHOTS = [
     (30, "0:55.1", 3.17, "freeze", (K("kicker"),), None, dict(push=0.02, into="dip")),
 
     # ---- FULL 0:58.2 -- everything, octave doubled --------------------------
-    (31, "0:58.2", 1.90, "freeze", (P("globe-navy"),), None,
+    (31, "0:58.2", 1.50, "freeze", (P("globe-navy"),), None,
                    dict(focus=(0.46, 0.43), push=0.07, lift=1.18, into="dip")),
-    (32, "1:00.1", 1.80, "clip",   (TRP, tn(400), 1.0, FAREAST), None,
+    (32, "1:00.1", 1.50, "clip",   (TRP, tn(400), 1.0, FAREAST), None,
                    dict(drift=(-7, 0), into="smear")),
-    (33, "1:01.9", 1.80, "freeze", (P("diplomacy"),), "they argue back",
-                   dict(focus=(0.80, 0.30), zoom=1.7, into="mix")),
+    (33, "1:01.9", 1.80, "freeze", (P("diplomacy"),), None,
+                   dict(focus=(0.50, 0.72), push=0.035, pull=True, into="mix")),
     (34, "1:03.7", 1.80, "freeze", (P("tutorial"),), None,
-                   dict(focus=(0.76, 0.45), zoom=1.7, into="cut")),
-    (35, "1:05.5", 1.80, "freeze", (P("topic-economy"),), None,
-                   dict(focus=(0.76, 0.42), zoom=1.7, into="cut")),
+                   dict(focus=(0.50, 0.72), push=0.035, into="cut")),
+    (35, "1:05.5", 1.55, "freeze", (P("state-industry"),), None,
+                   dict(focus=(0.28, 0.42), zoom=1.2, lift=1.75, into="cut")),
     (36, "1:07.3", 1.80, "freeze", (P("mp-lobby"),), "and against each other",
                    dict(focus=(0.48, 0.44), zoom=1.25, lift=1.55, into="smear")),
     (37, "1:09.1", 1.80, "freeze", (P("templeos-game"),), None,
                    dict(focus=(0.50, 0.45), push=0.06, lift=1.10, into="mix")),
-    (38, "1:10.9", 1.80, "clip",   (POL, tn(600), 1.0, SAMER), None,
+    (38, "1:10.9", 1.40, "clip",   (POL, tn(600), 1.0, SAMER), None,
                    dict(drift=(4, 0), into="cut")),
-    (39, "1:12.7", 1.86, "marks",  ("windows", "apple", "linux", "browser"), None,
+    (39, "1:12.7", 3.21, "marks",  ("windows", "apple", "linux", "browser"), None,
                    dict(into="dip")),
 
     # ---- WIDE 1:14.6 -- the 3-D shot.  Modelled in tools/trailer_blender.py,
@@ -289,13 +290,20 @@ SHOTS = [
     (40, "1:14.6", 5.45, "clip",   (FLYV, 0.0, 1.0, None),
                    "even the fly has a save file", dict(into="dip")),
 
-    # ---- LOGO 1:20.1 -- four wars on the hurrah rests, then the name -------
-    (41, "1:20.1", 0.45, "clip",   (TRP, tn(430), 1.0, EUROPE), None, dict(into="dip")),
-    (42, "1:20.5", 0.69, "clip",   (TRP, tn(480), 1.0, SASIA), None, dict(into="cut")),
-    (43, "1:21.2", 0.68, "clip",   (TRP, tn(540), 1.0, FAREAST), None, dict(into="cut")),
-    (44, "1:21.9", 0.68, "clip",   (TRP, tn(600), 1.0, AFRICA), None, dict(into="cut")),
-    (45, "1:22.6", 1.59, "clip",   (POL, tn(640), 1.0, W_), None, dict(into="cut")),
-    (46, "1:24.1", 6.06, "logo",   "big", "open-doctrines.com",
+    # ---- LOGO 1:20.1 -- the sign-off, as ONE animated card ------------------
+    # This used to be four hard cuts on the hurrah rests, a settling world map
+    # and a static logo held for six seconds. tools/trailer_outro.py replaces
+    # all six with a single shot in which the wordmark ASSEMBLES ITSELF out of
+    # map tiles while the political timelapse keeps running behind it -- which
+    # is what the brief asked for from the start: an end that animates into the
+    # logo over changing wars.
+    #
+    # It is cut to the march rather than to a fraction of its own length: the
+    # last tile lands at t=4.09, which is 1:24.15, which is the cadence. The
+    # four hurrah hits at 0.46, 1.14, 1.82 and 2.50 now fall while the tiles
+    # are still in the air, so the drum drives the assembly instead of cutting
+    # against it. Rendered --raw: the grade, vignette and grain are the cut's.
+    (41, "1:20.1", 10.15, "clip",  (OUTRO, 0.0, 1.0, None), None,
                    dict(into="dip", fade_out=1.6)),
 ]
 

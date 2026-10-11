@@ -90,7 +90,16 @@ Three traps in that set, all of which shipped into a cut before being caught:
 
 - **Names do not mean what they look like.** The tour's `world-map.png` is the
   PAUSE MENU. `docs/img/world-map.png` is the world map. They are different
-  pictures with the same filename in different directories.
+  pictures with the same filename in different directories -- which is exactly
+  why this one came back: copying a fresh tour's output wholesale into
+  `assets/plates/` overwrote the good plate with the menu, and the cut
+  captioned it "1,641 provinces" for the second time. The tour's screen now
+  lives beside it as `pause-menu.png`, under the name it deserves. Before
+  copying a new tour in, DIFF it against the plates already there and look at
+  what changed; a contact sheet will not catch it, because dark menu text on a
+  dark map reads as "a map" at thumbnail size. `province` (the tour's is a
+  regional view, not the world) and `monuments-map` (keyboard, below) need the
+  same exclusion.
 - **Some shots carry a touch keyboard.** `monuments-map` and `monuments-globe`
   are the on-screen-keyboard variants, and half the frame is keys.
 - **`claims-uk` is in Ukrainian**, because it is the localisation shot. There
@@ -372,6 +381,109 @@ with forty turns instead of twelve changes the world without changing the
 frame. Fixing that means giving `struct Shot` its own framing and resolving a
 spread of focus provinces after load -- a real change, in C++, not a change to
 this cut.
+
+## Delivering it to YouTube
+
+`docs/trailer/assets/march-cut-youtube.mp4`, built from the assembly with the
+VIDEO COPIED -- re-encoding a finished master only adds a generation of loss and
+YouTube re-encodes it again at the other end anyway.
+
+**The audio was already on target and that is worth knowing before touching it.**
+The march measured -14.8 LUFS integrated against YouTube's -14, so there was
+nothing to normalise; the only real defect was a true peak of -0.9 dBFS, which
+is hot enough that a lossy re-encode's inter-sample peaks can cross 0 and clip
+on some decoders. Streaming delivery wants -1.0 dBTP or lower.
+
+**Do not let loudnorm pick its own mode here.** Asked for I=-14 it chooses
+`dynamic`, which compresses -- and the hole at 0:29.6 is the entire point of
+this score. Forcing `linear=true` with the target set to the measured value
+makes the filter's only real job the peak limit:
+
+| | before | after |
+|---|---|---|
+| Integrated | -14.8 LUFS | -13.7 LUFS |
+| True peak | -0.9 dBFS | **-1.5 dBFS** |
+| LRA | 5.4 LU | 4.4 LU |
+| Drop into the STOP | 17.3 dB | **17.3 dB** |
+
+The last row is the check that matters: the stop is exactly as deep as it was,
+so the 1 LU of range that went is the limiter shaving crash transients and not
+the music being squashed. At -13.7 YouTube will pull it ~0.3 dB, which is
+inaudible and better than arriving quiet.
+
+**Dark gradients are the real YouTube risk** for a cut graded this low -- they
+band badly through VP9. The grain already in `PRINT` (`noise=alls=5:allf=t+u`)
+is what prevents it, so that filter is load-bearing for delivery and not just a
+look.
+
+## The outro
+
+`tools/trailer_outro.py`. The brief asked for "an end that animates into the
+logo of Open Doctrines, with a background of changing wars", and named
+Minecraft's channel outro -- the one where the logo assembles out of blocks.
+The translation is obvious once stated: **this game's blocks are provinces**.
+
+    python3 tools/trailer_outro.py                   # 9 s, 1920x1080, scored
+    python3 tools/trailer_outro.py --alpha           # transparent .mov
+
+675 map tiles fly in from outside the frame, land with an overshoot, and a gold
+sweep crosses them left to right and converts them into the wordmark. The
+political timelapse runs behind the whole thing, so the "changing wars" are a
+real game rather than a loop of stock.
+
+**The tile positions come from the logo, not from a copy of it.**
+`assets/wordmark-gold.png` is sampled on a grid and every cell whose alpha is
+mostly covered becomes a tile, so the outro cannot drift from the brand:
+regenerate the wordmark and the outro follows.
+
+**The colours are the game's**, sampled off the political plate -- saturated
+pixels, quantised, most common first -- rather than chosen to look map-ish.
+
+**The background is blurred, and that is a fix rather than a style.** The
+timelapse draws armies and cities as small white squares which, at tile size,
+are indistinguishable from tiles still in flight; a sharp background read as a
+logo that never finished assembling. Three pixels of blur separates figure from
+ground.
+
+**The sting is the march's own ending**, cut from `march.wav` at 79.60-88.60
+rather than written again. That lands the four hurrah hits at t=0.91, 1.59,
+2.27 and 2.95 while the tiles are still flying, and the cadence at t=4.55 --
+inside the gold sweep, which runs 3.78 to 5.58. The two were not tuned to each
+other; they agree because both were built on the same grid.
+
+Tiles are drawn as rotated POLYGONS, not rotated sprites: four corners through
+a rotation matrix costs a fraction of a per-tile resample, which is the
+difference between a minute's render and ten.
+
+**A polygon from -h to +h covers 2h+1 pixels, not 2h.** Setting `half` to
+cell/2 therefore drew an ELEVEN pixel tile on a ten pixel grid: every adjacent
+pair overlapped by a pixel and fused into a blob, while isolated tiles stayed
+discrete squares -- so the logo read as tiles of different sizes, which is
+exactly what it was criticised for. `--gutter` (default 2) solves for the width
+instead of halving the cell. Measured on the alpha render, every tile is now
+8x8: 5,400 horizontal runs and 5,400 vertical runs, all of length 8, no fusing.
+
+**The URL was a domain that does not exist.** Both this and the Steam cut's end
+card said `open-doctrines.com`, which is NXDOMAIN; the site is
+`opendoctrines.pages.dev`, which is what the older trip-hop cut had always
+used. An end card's one job is leaving somebody able to find the game again, so
+this was the most expensive kind of small bug.
+
+IT IS NOW THE TRAILER'S ENDING. Shots 41-46 -- four hard cuts on the hurrah
+rests, a settling world map and a six-second static logo -- are one shot:
+`--raw --land 4.09 --url-at 5.60`, rendered at 1920x884 so the cut's own
+FIT_CLIP, grade, vignette and grain are the only ones applied.
+
+`--land` is why it works. The timings are absolute seconds, not fractions of
+the clip, so the last tile arrives at t=4.09 of a shot that starts at 1:20.05
+-- which is 1:24.15, which is the cadence. The four hurrah hits at 0.46, 1.14,
+1.82 and 2.50 now land while the tiles are still in the air, so the drum drives
+the assembly instead of cutting against it.
+
+The wordmark measures dimmer inside the cut (mean 22.7 against the standalone's
+36.4) and that is the vignette, not a problem: the 95th percentile is 149
+against 151, so the gold itself is as bright as ever and only the surround has
+gone down.
 
 ## What this needs that does not exist yet
 
