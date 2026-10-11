@@ -28,12 +28,20 @@ run_round() {   # <label> <address-or-empty>
     # --seconds is a CEILING, not a schedule: the round below ends when the
     # conversation has happened, so a generous one costs nothing on a healthy
     # run and keeps a slow relay handshake from eating the talking time.
+    # --chat-after-peers 2: NEITHER SPEAKS UNTIL BOTH ARE IN. A lobby line is
+    # live and is never replayed to a late joiner, so "every line each of them
+    # says reaches both" is not a property that exists until both have joined.
+    # Without it the first to connect races the second, and on macOS CI bob won:
+    # he said "bob one" into a session alice was still joining, alice counted
+    # five lines instead of six, and the failure read as a dropped message
+    # rather than as a question asked too early.
     "$cli" --issuer "$issuer" --address "$addr" --code TEST-GAME --token dev-alice \
            --chat "alice one" --chat "alice two" --chat "alice three" --chat "alice four" \
-           --seconds 120 > "$alog" 2>&1 &
+           --chat-after-peers 2 --seconds 120 > "$alog" 2>&1 &
     local a=$!; pids+=("$a")
     "$cli" --issuer "$issuer" --address "$addr" --code TEST-GAME --token dev-bob \
-           --chat "bob one" --chat "bob two" --seconds 120 > "$blog" 2>&1 &
+           --chat "bob one" --chat "bob two" \
+           --chat-after-peers 2 --seconds 120 > "$blog" 2>&1 &
     local b=$!; pids+=("$b")
 
     # THE OPERATOR SPEAKS TO WHOEVER IS CONNECTED. `say` sends a lobby line

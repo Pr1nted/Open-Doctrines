@@ -28,6 +28,7 @@
 //                   [--claim <cid> | --claim-first | --claim-index N]
 //                   [--submit | --submit-after SECONDS] [--marker TEXT]
 //                   [--seconds N] [--until "<line prefix>"]
+//                   [--chat-after-peers N]
 //                   [--tor-port N | --tor-data DIR] [--tor-all]
 //                   [--mail-to CID | --mail-to-index N] [--mail-body TEXT] [--secret TEXT]
 //                   [--chat TEXT]...
@@ -80,6 +81,7 @@ int main(int argc, char** argv) {
     int mailTo = 0, mailToIndex = -1;  // write one letter to this country, once in game
     std::string mailBody, secret;      // secret: report whether a snapshot carries it
     std::vector<std::string> chatLines;
+    int chatAfterPeers = 0;        // hold the first line until this many are here
     double submitAfter = 0.0;      // seconds after a turn opens; a late player
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -95,6 +97,7 @@ int main(int argc, char** argv) {
         else if (a == "--marker") marker = next();
         else if (a == "--seconds") seconds = std::atof(next().c_str());
         else if (a == "--submit-after") { submit = true; submitAfter = std::atof(next().c_str()); }
+        else if (a == "--chat-after-peers") chatAfterPeers = std::atoi(next().c_str());
         else if (a == "--until") g_until = next();
         else if (a == "--tor-port") socks5::setPort(std::atoi(next().c_str()));
         else if (a == "--tor-all") socks5::setRouteAll(true);
@@ -230,7 +233,14 @@ int main(int argc, char** argv) {
 
         // Lines to say, one every 2.5 s -- inside the host's rate limit, so
         // every one of them must arrive.
+        // --chat-after-peers HOLDS THE FIRST LINE UNTIL THE OTHERS ARE HERE.
+        // A lobby line is live: it reaches whoever is connected when it is
+        // said and is never replayed to a late joiner. So "every line each of
+        // them says reaches BOTH" is only a property a test can ask about once
+        // both are in, and without this the first speaker races the second
+        // joiner. It is not a timer -- it waits for the roster to say so.
         if (chatSent < chatLines.size() && me != 0 && elapsed >= chatAt &&
+            (int)session.roster().size() >= chatAfterPeers &&
             session.phase() == NetSession::Phase::Lobby) {
             if (session.sendChat(chatLines[chatSent])) {
                 say("SAID " + chatLines[chatSent]);
