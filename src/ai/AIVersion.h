@@ -31,6 +31,40 @@
  * repeatedly mistaken for each other.
  *
  * ── RULES HISTORY ──
+ *   6.x  1.3.1b. Three behaviour changes a bench can see, so this is RULES and
+ *        not PATCH -- model files are NOT refused.
+ *
+ *        The AI can switch a monument back ON. The dial only ever switched them
+ *        OFF, so a country that idled a great work through a lean spell left it
+ *        dark for ever and would then BUILD ANOTHER, paying a second build cost
+ *        for a benefit it already owned: 10 built, 9 idled, 0 revived on one
+ *        world. Reviving is strictly better than buying -- no build cost, the
+ *        same standing slot, the same effect -- so it comes first, cheapest
+ *        idled slot, one a turn, behind the same affordability gates a purchase
+ *        passes. Benched a NULL at 16 seeds (land 36.0 -> 33.9, p 0.50) with
+ *        bankruptcies 0 in both arms, and the revive dwell is >= kPatience on
+ *        every world, so it is a dial and not journal 435's ratchet.
+ *        OD_MONUMENT_REACTIVATE=0 restores the old behaviour. Journals 530-534.
+ *
+ *        AI countries decide through the fog. In a fog world every other
+ *        country's provinces, population, army, hulls, industry, forts and
+ *        ports are read through Game::fogEstimate instead of the truth. NON-FOG
+ *        WORLDS ARE BIT-IDENTICAL, measured rather than assumed: a worktree at
+ *        HEAD without the lens and the tree with it both score 38.1 on seed
+ *        520103 over 400 turns, and fog + OD_FOG_AI_TRUTH=1 scores 38.1 too, so
+ *        the escape hatch is exact at full length. EXPECT FOG WORLDS TO PLAY
+ *        WEAKER until a retrain: the lens feeds estimates into features the
+ *        shipped model learned on truth, which journals 501-507 measured as a
+ *        null or worse five times. That is the feature's cost, not a defect.
+ *        Journal 538.
+ *
+ *        Campaign doctrines stay in force for their whole countdown (#16).
+ *        turnsRemaining falls below -1 and every "in force" test asked for
+ *        == 0, so a campaign's levers, upkeep and tenure applied on its first
+ *        turn and then went dead: 1 of 14 turns. An AI that enacts one now gets
+ *        indoctrinationPct/popModPct for the full run and pays cost_per_turn
+ *        for it, so nothing is comparable across this change.
+ *
  *   4.x  districts became something the AI does rather than something it
  *        draws. It passes regional law where a district is in trouble (priced
  *        as a share of GROSS income, because an AI treasury is near zero and a
@@ -91,7 +125,7 @@ namespace ai {
 
 inline constexpr const char* NAME        = "ParrotZero";
 inline constexpr int         ARCH        = 8;   // == the model file format byte
-inline constexpr int         RULES       = 5;   // 8.5.0: the monument reflex ships on (journal 437)
+inline constexpr int         RULES       = 6;   // 8.6.0: see the RULES HISTORY entry for 6.x
 inline constexpr int         PATCH       = 0;
 
 /// "ParrotZero 8.1.0"

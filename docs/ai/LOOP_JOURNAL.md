@@ -41001,3 +41001,151 @@ trade — but only if the two land together.
 
 That changes this loop's own PENDING COMMIT discipline for once: the list below is no longer independently
 committable.
+
+**RESOLUTION of the commit hazard above: it landed atomically, so the hazard never fired.** The policy-fix session
+committed everything together as **7d5141f** on the owner's instruction. Verified here rather than assumed:
+- `git diff 7d5141f -- src/ai docs/ai src/Game_Agent.cpp src/Game_AITrain.cpp src/server/ServerMain.cpp` is
+  **empty** — nothing of this loop's was left behind or caught mid-edit.
+- The read-only lock is complete and wired at **seven** entry points: `AISystem.h` (the inline
+  `lockReadOnlyModel`), both save guards live (`s_readOnlyModel || s_readOnlyLocked` at two sites), and callers in
+  `Game_Agent.cpp` (1), `Game_AITrain.cpp` (2), `ServerMain.cpp` (1) and the root `main.cpp` (3 — theirs).
+- Journal 537 with both its corrections, and items 225-229, are all in the commit.
+- **Commit is clean of attribution trailers** and authored `Pr1nted <111568178+Pr1nted@users.noreply.github.com>`.
+
+**THE ONE FILE LEFT OUT IS `data/ai/model.bin`, AND THIS LOOP HAS THE ANSWER FOR IT.** Its working copy is the
+other session's accidental six-turn `--simulate` write sitting on top of the reference. **HEAD's blob is the
+reference model every bench in journals 490-536 used** — verified by extracting it and reproducing seed 520103 →
+**40.1**, exactly as recorded. So the committed version is strictly the better bytes and the working copy holds
+nothing anyone wants: six turns learned during a fog integration test.
+
+**Recommendation to the owner: `git checkout -- data/ai/model.bin`.** Not run here — it is a destructive restore of
+a path this loop did not write, and the loop does not `git checkout` other people's paths. No urgency either way,
+because benches now read the committed blob out of `cmake-build-pin/`, so `data/ai/` can sit in any state.
+
+**JOURNAL 536's RESULT, at last — and the adopt rule I wrote fires for adoption while being too weak to mean it.**
+
+Binary `cc5d8bf3` and model `adb32ac8` (the recovered reference), **one distinct pin hash across all 32 runs**,
+16 fresh seeds of set 4, paired:
+
+| | off | on |
+|---|---|---|
+| land share | 38.7 | **33.4** — **−5.29pp, better 6/16, perm p 0.2658**, sd **18.0** |
+| monuments built | 264 | **204** |
+| **levelled up** | **0** | **238** (median 16, none-zero on every seed) |
+| **bankruptcy events** | **0** | **0** |
+| collapses (<5%) | 0 | 0 |
+
+**The mechanism is unambiguous**: 238 upgrades, every seed, and builds fall 264 → 204, so the AI deepens what it
+owns instead of buying another — exactly as designed, and no bankruptcies anywhere.
+
+**Scored against the pre-registration: four clauses hold, one misses by 0.29pp.** I predicted land share between
+**−5pp and +2pp** (got **−5.29**), p > 0.05 (0.2658 ✓), better on 6-10 of 16 (6 ✓), upgrades > 0 everywhere (✓),
+bankruptcies flat (✓).
+
+**AND MY ADOPT RULE IS MET, BUT I AM NOT ADOPTING, AND THE REASON IS NOT THAT I DISLIKE THE ANSWER.** The rule was
+"flip ON if p > 0.05 or the point estimate is ≥ 0, AND bankruptcies do not rise" — p is 0.27 and bankruptcies are
+0, so by its letter the default flips on. **The rule is unsound, and the arithmetic says so:** sd of the paired
+difference is **18.0**, so the standard error of the mean is **4.50** and the smallest harm this test could detect
+at 80% power is about **12.6pp**. The 95% interval on −5.29pp is **[−14.1, +3.5]**. So "p > 0.05 ⇒ adopt" waves
+through *any* harm smaller than ~12pp, and the measurement cannot tell "costs nothing" from "costs 14pp". Ten of
+sixteen seeds are worse; per-seed swings run −48.1 to +28.0.
+
+**So the default stays OFF and this goes to the user as a decision, not as a measurement.** This is not the move I
+criticised in journal 528 — I am not relaxing a falsifier to keep a result I like. The opposite: I am declining to
+*adopt* on a test I can demonstrate has no power to clear what it claims to clear, and saying so instead of quietly
+inverting the rule. `ask-whether-both-sides-can-measure` and `bench-resolution-limit` (~10 points) both apply, and
+I should have run the power arithmetic when I wrote the rule rather than after reading the result
+(`read-an-effect-against-its-chance-value`).
+
+**What the user is deciding**, with everything measured: the capability is real and works (238 upgrades, substituting
+for 60 builds, zero bankruptcies), and the cost is somewhere in [−14, +3.5]pp of France's land share on a seat whose
+noise is 18pp. Resolving it to ±3pp would need roughly **140 seeds an arm** at this variance — about 23 hours of
+bench. `OD_MONUMENT_UPGRADE=1` enables it meanwhile.
+
+## 538 — the fog lens, verified inert in non-fog (and my first attempt at it was the wrong test)
+
+PATHS TOUCHED: `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`. No source change — this is the verification this
+loop promised the fog session for their Phase 4.
+
+**MY FIRST ATTEMPT WAS CONFOUNDED AND I NEARLY REPORTED IT AS A FAILURE.** I compared the pinned binary
+`cc5d8bf3` (40.1 on seed 520103) against the lens build `d6bc1330` (38.1) and had a non-identity. But the pin
+predates commit **7d5141f**, which landed fog Phases 1-3, the #16 campaign fix (declared RULES-level), Phase 5's
+research nodes, my read-only lock **and** other sessions' net/deploy/translation work. A two-binary comparison
+across that is not a test of the lens; it is a test of a release. The 2.0pp was never attributable.
+
+**THE VALID ISOLATION IS A DETACHED WORKTREE AT HEAD**, because the lens is the uncommitted part: HEAD has the whole
+of 7d5141f and none of the lens. Built `od-lenscheck` at 7d5141f and compared like for like, same pinned model
+`adb32ac8`, same seed, 400 turns, non-fog:
+
+| binary | lens | seat |
+|---|---|---|
+| `bc61bd45` (HEAD worktree) | absent | **38.1** |
+| `d6bc1330` (working tree) | present | **38.1** |
+
+**Identical.** The only other difference between the two is an uncommitted `src/Game_Mail.cpp`, which a headless
+eval with no players never reaches. So **the lens does not touch non-fog AI play** — which its own guard
+(`fogLensEnter` returns before anything when `!g.fogOn()`) predicts, and this measures.
+
+**AND THE ESCAPE HATCH IS EXACT AT SCALE.** The fog session's own check was 6 turns under `--simulate` on a decision
+hash; this is 400 turns on a scored seat, one binary: no fog **38.1**, fog + `OD_FOG_AI_TRUTH=1` **38.1**. So a fog
+world with the AI reading truth plays identically to no fog at full length, not just for six turns.
+
+**WHAT IS STILL NOT COVERED**, from their own list and worth repeating because it is the honest boundary: raw reads
+of `m_provinceArmies`/`m_ships` outside `m_stats` (the navy reflexes can still see foreign hulls anywhere),
+`m_world` aggregates built from truth in `beginTurn`, and no `FEATURE_COUNT` widen. And the standing point from
+journals 501-507: in fog worlds the lens feeds *estimates* into features a frozen net learned on truth, so fog-world
+AI strength will drop until a retrain — expected, not a defect.
+
+**Kept: `/Users/vladyavdoshenko/CLionProjects/od-lenscheck`, a detached worktree at HEAD with its own build.** It is
+the only instrument that can isolate an uncommitted change from a committed release, which is now a recurring need
+(their Phases 3-7 are all uncommitted when they ask). `git worktree remove` when the fog work lands.
+
+## 539 — the training run (item 231), authorised by the user
+
+PATHS TOUCHED: `docs/ai/LOOP_JOURNAL.md`, `docs/ai/BACKLOG.md`. No source change — every gate is already built.
+
+**Authorised by the user ("start the training run").** This is item 181/231's run: **all seven gates on against all
+seven off**, from the same parent, to find out whether any of them is worth anything to a model that can learn to
+use it. Six benched as nulls on the frozen net and one is unresolved; LOOP.md's standing conclusion is that a frozen
+net cannot use a changed input, so this is the only instrument that can price them.
+
+**NOT in this run, deliberately: the fog curriculum (Phase 9, `OD_FOG_FRAC`).** Mixing it in would conflate "do the
+gates help a trained model" with "does fog-mixed training produce a model that plays fog worlds well" — two
+questions wanting different arms. Four arms is ~40 h. Phase 9 is the next run.
+
+**ARMS**, identical but for the gates, both from parent `adb32ac8` (HEAD's committed model, the verified reference):
+- **off**: `env -u` each of the seven.
+- **on**: `OD_PEACE_EFFECTIVE=1 OD_FEAT_RESCALE=1 OD_FEAT_WARAGE=1 OD_FEAT_EFFARMY=1 OD_RESEARCH_FORK_LAST=1
+  OD_REATTACK_REPULSE=1 OD_MONUMENT_UPGRADE=1`.
+- Both: `OD_DIPLO_PACT_WEIGHT=2.5 OD_LR_SCALE=0.25`, `--train-ai 3 3000 0 <seed> --vs-script`, STAGNATION_TURNS at
+  its default 400 — LOOP.md's recipe of record, three maps so a frozen world rotates rather than ending the session.
+
+**SEQUENTIAL, NOT PARALLEL, and the reason is recorded.** Swap is 3.21 of 4.10 GB used with 3.39 GB free+inactive,
+training loads ~2 GB per map, and LOOP.md's memory rule is that two trainers plus another session's evals is how
+this machine went into swap with 66 MB free. Other sessions are active. One arm at a time.
+
+**SINGLE WORKER, not the recipe's `--worker 1 --workers 2`**, for the same reason — a 2-worker pool doubles the
+footprint. Both arms use the same configuration, so the A/B is internally consistent; it is not comparable with old
+ladder steps, which is fine because this is not a ladder step.
+
+**SMOKE-TESTED BEFORE COMMITTING THE HOURS**, because four separate things could have silently wasted the run:
+- the parent **loads** rather than re-initialising — "Model loaded ... (6.1 MB)", update count **354,366,408**, i.e.
+  continuing from ~354.36M and not from zero (`parent-must-match-the-code`, where a shape mismatch silently
+  re-inits);
+- writes land in the **arm's** `data/ai/`, and **`data/ai/model.bin` is untouched** (still `7c430a4f`) — the skill's
+  one hard prohibition;
+- the league checkpoint also goes to the arm dir;
+- 20 turns took 1.3 min, so ~3.9 s/turn → **~9.75 h per arm** at the full 9,000 turns, though STAGNATION_TURNS may
+  end a session earlier.
+
+**The isolation is by symlink**: each arm's `data/` symlinks the real read-only trees (8.6 GB, so copying was out)
+and has real `ai/` and `saves/` directories, so nothing the trainer writes can reach the repository's data.
+
+**PREDICTION: at most one of the seven survives, and the honest expectation is none.** Memory `rules-beat-training`
+records that every real gain in this project was a hand-written rule, `training-degrades-the-model` that a
+fixed-league recipe helped on 1 of 8 seeds, and `training-runs-need-repeats` that the training sd is ~112 — so a
+single pair cannot resolve a 50-point effect anyway. **What this run can do is tell us whether the gates are worth a
+repeated experiment**, not whether they work.
+
+**FALSIFIED / interesting IF** the on arm beats the off arm by more than the ~112 training sd, which would make it
+the first trained gain this loop has produced.

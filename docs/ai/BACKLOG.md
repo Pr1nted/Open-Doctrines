@@ -5774,11 +5774,25 @@ three worlds. Inert when off (0 upgrades, seed 520103 reproduces 40.1).
 sum it used to keep, and [[ai-treasuries-run-at-zero]] plus journal 414 give a mechanism for that to cost an army.
 Three worlds ran +0.1 / −7.5 / −29.7 — not evidence at 3 seeds (sd 12–20), not shippable either.
 
-**Run:** `OD_MONUMENT_UPGRADE=1` vs unset, 16 fresh seeds, pinned binary (`tools/pin_server.sh`), 1914:FRA:rung.
-Statistic: paired sign of per-seat land share, with `[MONUMENT]` upgrades/builds and bankruptcy events beside it.
-**Adopt only if land share does not fall and bankruptcies do not rise** — and note the over-gating (the upgrade
-inherits the next-slot room test it does not incur) is a deliberate conservatism that can be relaxed in a later
-arm if upgrades prove too rare.
+**MEASURED (journal 536): the mechanism works, the cost is unresolved, the default stays OFF — the user's call.**
+16 fresh seeds (set 4), pin `cc5d8bf3` + recovered model `adb32ac8`, one hash across all 32 runs:
+
+| | off | on |
+|---|---|---|
+| land share | 38.7 | 33.4 — **−5.29pp, 6/16, p 0.2658**, sd 18.0 |
+| built | 264 | 204 |
+| **levelled up** | 0 | **238** (median 16, every seed) |
+| bankruptcies / collapses | 0 / 0 | 0 / 0 |
+
+**The adopt rule I pre-registered fires, and is unsound.** "p > 0.05 ⇒ adopt" waves through any harm under
+~**12.6pp** at this variance (SE 4.50; 95% CI on −5.29 is **[−14.1, +3.5]**). Ten of sixteen seeds are worse. So
+the test cannot tell "costs nothing" from "costs 14pp" — [[bench-resolution-limit]],
+[[ask-whether-both-sides-can-measure]]. Power should have been computed when the rule was written
+([[read-an-effect-against-its-chance-value]]).
+
+**For the user:** real capability (238 upgrades substituting for 60 builds, no bankruptcies) against a cost
+somewhere in [−14, +3.5]pp. Resolving to ±3pp needs ~**140 seeds an arm** (~23 h). `OD_MONUMENT_UPGRADE=1` enables
+it.
 
 ## 225. Pin the MODEL too, not just the binary (journal 537)
 
@@ -5872,3 +5886,50 @@ commit stays atomic. Explicit permission given for that line only; the rest of `
 
 **Bench note: RULES-level change, so numbers do not cross it.** Journal 536's run is insulated — both arms use the
 pinned binary `cc5d8bf3`, built before the fix, verified unchanged across every run.
+
+## 230. A detached worktree at HEAD is the only way to isolate an uncommitted change (journal 538)
+
+Journal 538's first attempt compared the pinned binary against the lens build and found 40.1 vs 38.1 — a
+non-identity that was **not the lens**: the pin predated commit 7d5141f, which bundled fog Phases 1-3, the #16
+RULES fix, Phase 5 and other sessions' work. Comparing across a release cannot test one uncommitted change.
+
+**The instrument:** `git worktree add --detach <dir> HEAD`, build the server there, and compare against the working
+tree. HEAD has everything committed and none of the uncommitted change, so the two binaries differ by exactly that
+change. A worktree is a full checkout, so it has its own `data/` and the server's `<bindir>/../data` resolution
+works ([[server-finds-data-beside-itself]]) — and pass `OD_EVAL_MODEL` absolutely so both runs share one model.
+
+Result it delivered: lens absent **38.1**, lens present **38.1**, non-fog, 400 turns. Inert.
+
+Kept at `/Users/vladyavdoshenko/CLionProjects/od-lenscheck` (HEAD = 7d5141f) with `cmake-build-lens/`. Remove it
+once the fog work is committed; rebuild it whenever a peer asks for a verification of uncommitted code.
+
+## 231. FOR THE USER — the training run is no longer an optimisation, it is the gate on a shipped feature
+
+**This supersedes item 181's framing.** That item asked for one training run to settle three gates. The payload is
+now seven gates **plus a shipped feature that needs it to work properly**, so the decision has changed character.
+
+**Fog of war is landed** (commits 7d5141f and f4c9a71 — all phases, including the AI lens this loop verified inert
+in non-fog, journal 538). In fog worlds the lens feeds *estimates* into features the net learned on **truth**.
+Journals 501-507 measured that exact shape five times, every one null or worse, and LOOP.md's standing conclusion is
+that a frozen net cannot use a changed input. **So fog ships with a weaker AI until a retrain** — the release notes
+say so, which is honest, but it is a real cost to a headline feature.
+
+**What one training run would now settle**, all built, all verified inert, all unjudgeable on a frozen model:
+
+| gate | what it is | frozen-model result |
+|---|---|---|
+| `OD_PEACE_EFFECTIVE` | ceasefire mask reads width-capped armies | unjudgeable (j492) |
+| `OD_FEAT_RESCALE` | floors the population/army features | null (j501) |
+| `OD_FEAT_WARAGE` | gives the war head war-duration input | null (j504) |
+| `OD_FEAT_EFFARMY` | clamps f[22]/f[52]/f[62] at saturation | null (j506-507) |
+| `OD_RESEARCH_FORK_LAST` | the other side of ten mutex forks | null (j515) |
+| `OD_REATTACK_REPULSE` | no next-turn re-order after a repulse | null (j519) |
+| `OD_MONUMENT_UPGRADE` | the AI levels its monuments | cost unresolved, [−14, +3.5]pp (j536) |
+| **fog curriculum** | **Phase 9: `OD_FOG_FRAC` mixed training** | **not startable without it** |
+
+**Cost:** ~8 h/arm (item 181's measured figure), all-on against all-off first. **Nothing in this loop can price any
+of the eight without it**, which is why journals 525-538 have been maintenance, verification and negative results
+rather than gains — correctly, but it is the ceiling.
+
+Phase 9 is this loop's to run (the fog session handed it over); it is **not this loop's to authorise**, because it
+is an 8-hour machine commitment and the model it produces replaces the reference every bench uses.

@@ -1109,3 +1109,13 @@ benched run (od_bench keeps only stdout).
   single-sourced and is usually right — but say so loudly in PENDING COMMIT,
   because this loop's paths have been committed selectively before and the
   build breaks without the header.
+- **Compute the detectable effect size when you WRITE the adopt rule, not
+  after.** Journal 536 pre-registered "p > 0.05 ⇒ adopt", which at sd 18 and
+  n 16 waves through any harm under ~12.6pp — so a −5.29pp result "passed" a
+  test that could not have caught −14pp. An adopt-on-a-null rule is only sound
+  when the null has power against the harm it is clearing. State the minimum
+  detectable effect alongside the threshold.
+- **Remove a verification worktree when HEAD moves.** A detached worktree
+  pinned at a stale commit looks like a valid comparison point and is not.
+  Journal 538's `od-lenscheck` was removed as soon as the lens landed; the
+  recipe is item 230 and takes one command to rebuild.
