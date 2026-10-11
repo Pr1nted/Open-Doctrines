@@ -895,7 +895,10 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         if (!m_mpVoiceLink.empty())
             console.info("voice link offered to players: " + m_mpVoiceLink);
         console.info(llmConfigured()
-            ? "language model: " + m_config.llmModel + " at " + m_config.llmEndpoint +
+            ? "language model: " + m_config.llmModel +
+              (m_config.llmFallbackModels.empty() ? std::string()
+                                                  : " (then " + m_config.llmFallbackModels + ")") +
+              " at " + m_config.llmEndpoint +
               " answers for every country nobody holds"
             : std::string("language model: off (llmEnabled, llmEndpoint and llmModel in ") +
               m_configPath + ")");

@@ -2,10 +2,11 @@
 # Does a real hosted model answer the game's letters? (Groq by default.)
 #
 #   copy the API key, then:   tests/llm_endpoint_live_test.sh --from-clipboard
+#   which models it may use:  tests/llm_endpoint_live_test.sh --from-clipboard --list-models
 #   or:                       OD_LLM_KEY=... tests/llm_endpoint_live_test.sh
 #
 #   OD_LLM_ENDPOINT   default https://api.groq.com/openai/v1
-#   OD_LLM_MODEL      default llama-3.1-8b-instant
+#   OD_LLM_MODEL      default openai/gpt-oss-20b
 #
 # Runs the real OpenDoctrinesServer on Modern Day with that model behind it,
 # a scripted player writes to a country nobody holds, and the model's reply has
@@ -25,7 +26,15 @@ fi
 [ -n "$key" ] || { echo "no key: copy it and pass --from-clipboard, or set OD_LLM_KEY"; exit 2; }
 export OD_LLM_KEY="$key"
 endpoint="${OD_LLM_ENDPOINT:-https://api.groq.com/openai/v1}"
-model="${OD_LLM_MODEL:-llama-3.1-8b-instant}"
+# --list-models (after --from-clipboard): what this key may use, names only.
+# Hosted APIs retire models -- llama-3.1-8b-instant went -- so this is how a
+# new name is chosen.
+if [ "${2:-}" = "--list-models" ]; then
+    curl -s "$endpoint/models" -H "Authorization: Bearer $OD_LLM_KEY" |
+        python3 -c "import json,sys; d=json.load(sys.stdin); print('\n'.join(sorted(m['id'] for m in d.get('data',[]))) or d)"
+    exit 0
+fi
+model="${OD_LLM_MODEL:-openai/gpt-oss-20b}"
 echo "endpoint $endpoint, model $model, key of ${#key} characters (not shown)"
 
 . "$(dirname "$0")/campaign_lib.sh"
@@ -45,16 +54,31 @@ start_server "$work/server.log" || { bad "the server opens"; tail -20 "$work/ser
 ok "the server opens with the model configured"
 client dev-alice --claim-index 0 --mail-to-index 7 \
        --mail-body "We propose a trade agreement between our two countries. What do you say?" \
-       --submit --submit-after 1 --seconds 300 --until BOTMAIL > "$work/alice.log" 2>&1
+       --submit --submit-after 1 --seconds 600 --until BOTMAIL > "$work/alice.log" 2>&1
 reply="$(sed -n 's/^BOTMAIL .*body=//p' "$work/alice.log" | head -1)"
 check "the model answered, and the reply reached the player" "[ -n \"\$reply\" ]" \
       "$(grep -E '\[LLM|\[ADVISOR|language model|HTTP [0-9]{3}|refused' "$work/server.log" | tail -6)"
 [ -n "$reply" ] && printf '      reply: %s\n' "$reply"
 check "the key is nowhere in the server's log" "! grep -qF \"\$OD_LLM_KEY\" '$work/server.log'"
 check "nor in the player's" "! grep -qF \"\$OD_LLM_KEY\" '$work/alice.log'"
+grep -E '^\[LLM\]' "$work/server.log" | sed 's/^/      /' | head -5
 kill -TERM "$server_pid"; wait "$server_pid" 2>/dev/null
-# The config file holds it by design (as on Render); this sandbox is deleted.
-rm -rf "$work"
+# The config file holds the key by design (as on Render), so it goes. The logs
+# stay, for a failure to be explained -- scrubbed of the key first, though the
+# check above already says it is not in them.
+rm -f "$work/data/config.json"
+python3 - "$work" <<'PY'
+import os, sys
+key = os.environ["OD_LLM_KEY"]
+for root, _, files in os.walk(sys.argv[1]):
+    for f in files:
+        if f.endswith(".log"):
+            p = os.path.join(root, f)
+            s = open(p, errors="replace").read()
+            if key in s:
+                open(p, "w").write(s.replace(key, "***"))
+PY
+echo "logs kept in $work (no key in them)"
 echo
 if [ "$fail" = 0 ]; then echo "llm endpoint live: all checks passed"; else echo "llm endpoint live: FAILED"; fi
 exit "$fail"

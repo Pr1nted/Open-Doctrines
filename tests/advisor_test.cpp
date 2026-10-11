@@ -396,6 +396,23 @@ int main() {
         ok(local.size() >= 16 &&
            local.compare(local.size() - 16, 16, ",\"stream\":false}") == 0,
            "and the body still ends with the tail the tools builder splices onto");
+        // Models that reason first are asked to reason little, and given room:
+        // at the default effort a 220-token budget is spent before the letter.
+        const std::string oss = chatRequestBody(turns, "openai/gpt-oss-20b");
+        ok(oss.find("\"reasoning_effort\":\"low\"") != std::string::npos &&
+           oss.find("\"max_tokens\":640") != std::string::npos,
+           "a hosted gpt-oss is asked for low reasoning, with room to finish");
+        ok(chatRequestBody(turns, "qwen/qwen3.8-27b").find("\"reasoning_effort\":\"none\"") !=
+               std::string::npos, "a hosted Qwen 3 for none");
+        ok(body.find("reasoning_effort") == std::string::npos &&
+           body.find("\"max_tokens\":220") != std::string::npos,
+           "and a model that does not reason is left as it was");
+        ok(chatRequestBody(turns, "gpt-oss:20b", 220, true).find("reasoning_effort") ==
+               std::string::npos, "nor is a local runner told anything");
+        const std::string ossTools = chatRequestBodyWithTools(turns, "openai/gpt-oss-20b");
+        ok(ossTools.find("\"reasoning_effort\":\"low\"") != std::string::npos &&
+               ossTools.find("\"tools\"") != std::string::npos,
+           "the tools request carries it too");
         const std::string localTools = chatRequestBodyWithTools(turns, "m", 220, true);
         ok(localTools.find("\"tools\"") != std::string::npos &&
            localTools.find("keep_alive") != std::string::npos,

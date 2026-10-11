@@ -24,7 +24,9 @@
 #   PORT               the port the platform routes to (Render sets it)
 #   OD_LLM_ENDPOINT    an OpenAI-style chat API for the countries nobody plays,
 #                      e.g. https://api.groq.com/openai/v1; unset: no AI letters
-#   OD_LLM_MODEL       the model there, e.g. llama-3.1-8b-instant
+#   OD_LLM_MODEL       the model there, e.g. openai/gpt-oss-20b
+#   OD_LLM_FALLBACK_MODELS  more models, comma-separated, asked in order when
+#                      one has used its daily allowance (each has its own)
 #   OD_LLM_KEY         its API key. Written into data/config.json on every start
 #                      and nowhere else: campaign_sync.sh copies only the account
 #                      issuer and the server credential out of that file, so the
@@ -116,7 +118,8 @@ c = json.load(open(p)) if os.path.exists(p) else {}
 e = os.environ
 if e.get("OD_LLM_ENDPOINT") and e.get("OD_LLM_MODEL"):
     c.update({"llmEnabled": True, "llmEndpoint": e["OD_LLM_ENDPOINT"],
-              "llmModel": e["OD_LLM_MODEL"], "llmApiKey": e.get("OD_LLM_KEY", "")})
+              "llmModel": e["OD_LLM_MODEL"], "llmApiKey": e.get("OD_LLM_KEY", ""),
+              "llmFallbackModels": e.get("OD_LLM_FALLBACK_MODELS", "")})
 else:
     c["llmEnabled"] = False
 json.dump(c, open(p, "w"), indent=2)
@@ -166,10 +169,22 @@ PY
 # hours -- would otherwise only ever be saved stale. A restart would then
 # restore a token the account service has forgotten.
 if [ -n "${OD_CAMPAIGN_REPO:-}" ]; then
-    ( n=0; while sleep "${OD_BEAT_SECONDS:-300}"; do
+    # And only when something changed: a push clones the repository first --
+    # the world, twice, a few MB and growing -- and the free plan meters
+    # bandwidth (5 GB a month). Unchanged, the hour costs a heartbeat.
+    # `|| true`, and `set +e` in the loop: this script runs under `set -e` and
+    # `pipefail`, and on a NEW campaign saves/ is empty, so cat fails -- which
+    # killed this whole loop before its first heartbeat. No heartbeat, and the
+    # lock looks abandoned: a redeploy then started a second server on the same
+    # campaign while the first was still running it.
+    fingerprint() { cat "$data/account.json" "$cfg" "$data"/saves/* 2>/dev/null | cksum || true; }
+    ( set +e; n=0; last="$(fingerprint)"; while sleep "${OD_BEAT_SECONDS:-300}"; do
           n=$((n + 1))
-          if [ $((n % 12)) = 0 ]; then /opt/od/campaign_sync.sh push >/dev/null 2>&1 || true
-          else /opt/od/campaign_sync.sh heartbeat >/dev/null 2>&1 || true; fi
+          if [ $((n % 12)) = 0 ] && [ "$(fingerprint)" != "$last" ]; then
+              /opt/od/campaign_sync.sh push >/dev/null 2>&1 && last="$(fingerprint)"
+          else
+              /opt/od/campaign_sync.sh heartbeat >/dev/null 2>&1 || true
+          fi
       done ) &
     beat_pid=$!
 fi

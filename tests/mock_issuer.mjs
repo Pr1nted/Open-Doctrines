@@ -115,6 +115,9 @@ function readBody(req) {
 // apart, and so "everyone ended up with the same seat" cannot pass by accident.
 let issued = 0;
 let llmRequests = 0;
+let llm429Sent = 0;
+let llmDailyRefused = 0;
+const llmAnsweredBy = [];
 const llmPrompts = [];
 let sessionOpens = 0, sessionReopens = 0, tokenRefreshes = 0, lastSessionBody = null;
 
@@ -169,7 +172,25 @@ const server = createServer(async (req, res) => {
     // would SAY is not this test's business. /llm-stats counts the asking.
     if (req.method === "POST" && path === "/v1/chat/completions") {
         const body = await readBody(req);
+        // MOCK_LLM_DAILY_SPENT=a,b: these models have used their DAILY allowance,
+        // refused in Groq's words, so a caller is pushed onto its fallbacks.
+        const spent = (process.env.MOCK_LLM_DAILY_SPENT || "").split(",").filter(Boolean);
+        if (body && spent.includes(body.model)) {
+            llmDailyRefused += 1;
+            res.writeHead(429, { "Content-Type": "application/json" });
+            return res.end(JSON.stringify({ error: { code: "rate_limit_exceeded", type: "tokens",
+                message: `Rate limit reached for model \`${body.model}\` service tier \`on_demand\` on tokens per day (TPD): Limit 200000, Used 199500, Requested 2927. Please try again in 7m12.5s.` } }));
+        }
+        // MOCK_LLM_429_FIRST=N: refuse the first N as a free tier does, in
+        // Groq's own words, so a caller that gives up on 429 is caught.
+        if (llm429Sent < Number(process.env.MOCK_LLM_429_FIRST || 0)) {
+            llm429Sent += 1;
+            res.writeHead(429, { "Content-Type": "application/json" });
+            return res.end(JSON.stringify({ error: { code: "rate_limit_exceeded", type: "tokens",
+                message: "Rate limit reached for model `test` on tokens per minute (TPM): Limit 8000, Used 7000, Requested 2927. Please try again in 1.5s." } }));
+        }
         llmRequests += 1;
+        llmAnsweredBy.push(String(body?.model ?? ""));
         // A slow model, on request: MOCK_LLM_DELAY_MS, as a CPU-bound one is.
         const slow = Number(process.env.MOCK_LLM_DELAY_MS || 0);
         if (slow > 0) await new Promise(r => setTimeout(r, slow));
@@ -179,7 +200,8 @@ const server = createServer(async (req, res) => {
                        content: "Our ministry has read your letter and will consider it carefully." } }] });
     }
     if (req.method === "GET" && path === "/llm-stats") {
-        return json(res, { requests: llmRequests, prompts: llmPrompts });
+        return json(res, { requests: llmRequests, refused: llm429Sent, dailyRefused: llmDailyRefused,
+                           answeredBy: llmAnsweredBy, prompts: llmPrompts });
     }
 
     if (req.method === "POST" && path === "/server/register") {

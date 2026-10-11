@@ -1995,7 +1995,8 @@ void Game::mpLoadMail() {
     // before the letter it answers, and filing them in that order put the
     // answer above the question in the recipient's thread.
     std::vector<nlohmann::json> entries;
-    for (const auto& e : j.value("mail", nlohmann::json::array())) entries.push_back(e);
+    const nlohmann::json all = j.value("mail", nlohmann::json::array());
+    for (const auto& e : all) entries.push_back(e);
     std::stable_sort(entries.begin(), entries.end(), [](const nlohmann::json& a, const nlohmann::json& b) {
         return a.value("written", 0) < b.value("written", 0);
     });
@@ -2017,9 +2018,14 @@ void Game::mpLoadMail() {
     }
     m_mpMailIds.clear();
     m_mpMailTheirId.clear();
-    for (const auto& [k, v] : j.value("ids", nlohmann::json::object()).items())
+    // Named, not iterated in place: items() of the temporary j.value() returns
+    // would point at a json already destroyed by the time the loop reads it.
+    // That segfaulted on Linux and happened not to on macOS.
+    const nlohmann::json ids = j.value("ids", nlohmann::json::object());
+    const nlohmann::json theirs = j.value("theirs", nlohmann::json::object());
+    for (const auto& [k, v] : ids.items())
         if (v.is_number_integer()) m_mpMailIds[k] = v.get<int>();
-    for (const auto& [k, v] : j.value("theirs", nlohmann::json::object()).items())
+    for (const auto& [k, v] : theirs.items())
         if (v.is_number_integer()) m_mpMailTheirId[std::atoi(k.c_str())] = v.get<int>();
     m_mpMailWritten = ss.str();
     LoadLog() << "  restored " << n << " letter(s) from " << mailSidecar(m_currentSavePath)

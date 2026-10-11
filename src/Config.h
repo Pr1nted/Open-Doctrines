@@ -407,6 +407,14 @@ struct Config {
     std::string llmEndpoint;
     std::string llmModel;
     std::string llmApiKey;
+    /**
+     * Models to fall back to, in order, comma-separated, at the same endpoint
+     * and with the same key. A free API limits each model per DAY (Groq: 200k
+     * tokens), separately; when one is spent, the next is asked, and the spent
+     * one rests until the API says it may be used again. Empty: just llmModel.
+     * Kept apart from llmModel, which the local-runner setup pulls by name.
+     */
+    std::string llmFallbackModels;
 
     /**
      * Proves WHICH server this machine is, when hosting.

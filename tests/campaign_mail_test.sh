@@ -28,6 +28,10 @@ set -u
 # Slower than a turn here (each resolves in a few seconds once both players
 # have submitted), as a model on a CPU is.
 export MOCK_LLM_DELAY_MS=20000
+# And rate-limited at first, as a free API is: two 429s before it answers.
+export MOCK_LLM_429_FIRST=2
+# And the main model's DAILY allowance already spent: the fallback must answer.
+export MOCK_LLM_DAILY_SPENT=test-model
 . "$(dirname "$0")/campaign_lib.sh"
 campaign_setup "${1:-$campaign_root/build}" campaignmail
 campaign_config map='"map"' turn-seconds=25 resume-grace-seconds=5 \
@@ -38,7 +42,8 @@ python3 - "$work/data/config.json" "$issuer" <<'EOF'
 import json, sys
 p, issuer = sys.argv[1], sys.argv[2]
 c = json.load(open(p))
-c.update({"llmEnabled": True, "llmEndpoint": issuer + "/v1", "llmModel": "test-model"})
+c.update({"llmEnabled": True, "llmEndpoint": issuer + "/v1", "llmModel": "test-model",
+          "llmFallbackModels": "test-model-2, test-model-3"})
 json.dump(c, open(p, "w"))
 EOF
 
@@ -76,6 +81,12 @@ check "and not before the turn it was posted on" \
 curl -s "$issuer/llm-stats" > "$work/llm-stats.json"
 check "Alice's letter reached the host's model" \
       "grep -q 'Alice writes privately' '$work/llm-stats.json'" "$(head -c 300 "$work/llm-stats.json")"
+check "a rate-limited model is waited for, not given up on" \
+      "python3 -c \"import json,sys; d=json.load(open('$work/llm-stats.json')); sys.exit(d['refused'] != 2)\" && grep -q 'is rate-limited; asking again in' '$work/server.log'" \
+      "$(python3 -c "import json; print('refused:', json.load(open('$work/llm-stats.json')).get('refused'))")"
+check "a model whose day is spent hands the letter to the next" \
+      "python3 -c \"import json,sys; d=json.load(open('$work/llm-stats.json')); sys.exit(not (d['dailyRefused'] >= 1 and d['answeredBy'] and set(d['answeredBy']) == {'test-model-2'}))\" && grep -q 'test-model has used its daily allowance.*trying test-model-2' '$work/server.log'" \
+      "$(python3 -c "import json; d=json.load(open('$work/llm-stats.json')); print('daily refusals:', d.get('dailyRefused'), 'answered by:', d.get('answeredBy'))")"
 check "one letter, one request, however many turns it took" \
       "python3 -c \"import json,sys; sys.exit(json.load(open('$work/llm-stats.json'))['requests'] != 1)\"" \
       "$(python3 -c "import json; print('requests:', json.load(open('$work/llm-stats.json'))['requests'])")"

@@ -50,6 +50,10 @@ services:
       - key: OD_LLM_ENDPOINT
         value: https://api.groq.com/openai/v1
       - key: OD_LLM_MODEL
-        value: llama-3.1-8b-instant
+        value: openai/gpt-oss-20b
+      # Each has its own daily allowance on Groq's free tier (200k tokens); when
+      # one is spent the next answers. Three triples the letters a day.
+      - key: OD_LLM_FALLBACK_MODELS
+        value: openai/gpt-oss-120b,qwen/qwen3.8-27b
       - key: OD_LLM_KEY            # the Groq API key
         sync: false

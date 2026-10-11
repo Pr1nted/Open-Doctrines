@@ -254,6 +254,7 @@ bool Config::load(const std::string& path) {
         llmModel.clear();
     }
     llmApiKey         = findConfigString(json, "llmApiKey", "");
+    llmFallbackModels = findConfigString(json, "llmFallbackModels", "");
 
     // An EMPTY value in the file means "nobody ever set one", not "this build
     // has no service". save() writes every field on every settings change, so a
@@ -390,6 +391,7 @@ bool Config::save(const std::string& path) {
     file << "  \"llmEndpoint\": \"" << llmEndpoint << "\",\n";
     file << "  \"llmModel\": \"" << llmModel << "\",\n";
     file << "  \"llmApiKey\": \"" << llmApiKey << "\",\n";
+    file << "  \"llmFallbackModels\": \"" << llmFallbackModels << "\",\n";
     file << "  \"serverCredential\": \"" << serverCredential << "\",\n";
     file << "  \"accountAgreed\": " << (accountAgreed ? "true" : "false") << ",\n";
     file << "  \"keybinds\": [";

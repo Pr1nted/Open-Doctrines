@@ -62,6 +62,73 @@ std::vector<Answer> g_answers;
 int g_inFlight = 0;
 /// Correspondences with a request out right now. See runAdvisors.
 std::set<long long> g_asking;
+
+/// One request at a time to a REMOTE model API. See askRemote below.
+std::mutex g_remoteLock;
+
+/**
+ * How long a rate-limited API asked us to wait: "Please try again in 3.24s"
+ * (Groq, OpenAI) or "in 1m2.5s". 10 s when it does not say; at most a minute.
+ */
+/**
+ * How long a rate-limited API asked us to wait: "Please try again in 3.24s"
+ * (Groq, OpenAI), "in 375ms", or "in 7m12.5s". -1 when it does not say.
+ */
+double retryAfterRaw(const std::string& body) {
+    const size_t at = body.find("try again in ");
+    if (at == std::string::npos) return -1.0;
+    const char* p = body.c_str() + at + 13;
+    char* end = nullptr;
+    double v = std::strtod(p, &end);
+    if (end == p) return -1.0;
+    if (end[0] == 'm' && end[1] == 's') return v / 1000.0;        // "375ms"
+    if (end[0] == 'h') {                                            // "1h2m3s"
+        v *= 3600.0;
+        const char* q = end + 1;
+        const double m = std::strtod(q, &end);
+        if (end != q && *end == 'm') { v += m * 60.0; q = end + 1; v += std::strtod(q, nullptr); }
+        return v;
+    }
+    if (end[0] == 'm') return v * 60.0 + std::strtod(end + 1, nullptr);   // "1m2.5s"
+    return v;                                                       // "3.24s"
+}
+
+/** The wait before asking the same model again: what it said, +1 s, at most a minute. */
+double retryAfterSeconds(const std::string& body) {
+    const double v = retryAfterRaw(body);
+    return std::clamp((v < 0 ? 10.0 : v) + 1.0, 1.0, 60.0);
+}
+
+/**
+ * Whether a 429 is the DAILY allowance rather than the per-minute one. Waiting
+ * a minute does nothing for that; the next model in line does. Groq says
+ * "tokens per day (TPD)" or "requests per day (RPD)".
+ */
+bool dailyLimit(const std::string& body) {
+    return body.find("per day") != std::string::npos ||
+           body.find("(TPD)") != std::string::npos || body.find("(RPD)") != std::string::npos;
+}
+
+/// Models whose daily allowance is spent, and when they may be asked again.
+/// Under g_lock. In memory only: after a restart the first refusal says so again.
+std::map<std::string, std::chrono::steady_clock::time_point> g_modelResting;
+
+/** The first of `models` that is not resting, or empty if every one is. */
+std::string pickModel(const std::vector<std::string>& models) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> g(g_lock);
+    for (const std::string& m : models) {
+        auto it = g_modelResting.find(m);
+        if (it == g_modelResting.end() || it->second <= now) return m;
+    }
+    return {};
+}
+
+void restModel(const std::string& model, double seconds) {
+    std::lock_guard<std::mutex> g(g_lock);
+    g_modelResting[model] = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds((long long)(seconds * 1000));
+}
 long long askingKey(int from, int to, int groupId) {
     return ((long long)from << 32) | (groupId ? (0x40000000LL | groupId) : (long long)to);
 }
@@ -325,7 +392,21 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
     const std::string key = llm::isLocal(m_config.llmEndpoint) ? std::string() : m_config.llmApiKey;
 
     const std::string me = persona.countryName;
-    const std::string model = m_config.llmModel;
+    // The main model, then the fallbacks, each once. See Config::llmFallbackModels.
+    std::vector<std::string> models{m_config.llmModel};
+    {
+        std::string item;
+        std::stringstream list(m_config.llmFallbackModels);
+        while (std::getline(list, item, ',')) {
+            const size_t a = item.find_first_not_of(" \t");
+            const size_t b = item.find_last_not_of(" \t");
+            if (a == std::string::npos) continue;
+            item = item.substr(a, b - a + 1);
+            if (std::find(models.begin(), models.end(), item) == models.end())
+                models.push_back(item);
+        }
+    }
+    std::string model = m_config.llmModel;
 
     // What the model may look up, ANSWERED ON THIS THREAD.
     //
@@ -438,8 +519,8 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
     // Computed out here and captured by value: the worker deliberately does not
     // hold `this`, and the endpoint is configuration rather than per-request state.
     const bool localRunner = llm::isLocal(m_config.llmEndpoint);
-    odasync::run([fromCountry, toCountry, groupId, url, key, me, model, turns, lookups, normArg,
-                 localRunner, timeout = 45000]() mutable {
+    odasync::run([fromCountry, toCountry, groupId, url, key, me, model, models, turns, lookups,
+                 normArg, localRunner, timeout = 45000]() mutable {
         std::string reply;
         int disposition = 0;
         std::string goal;
@@ -452,24 +533,114 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
         // forever, and a letter is not worth a minute of somebody's turn. After
         // the last round the tools are withdrawn, so the final request can only
         // be answered with prose.
-        for (int round = 0; round <= llm::kMaxToolRounds; ++round) {
-            const bool offerTools = (round < llm::kMaxToolRounds);
+        // ── A HOSTED MODEL LOOKS THINGS UP ONCE ──
+        //
+        // Every request carries the whole briefing (~1,700 tokens) and the
+        // tool list, so three rounds of lookups and a final answer came to
+        // ~16,000 tokens a letter: two minutes of a free tier's per-minute
+        // allowance and a twelfth of its day. One round -- the model may still
+        // ask several things at once in it -- then the letter: ~7,000 tokens,
+        // inside a minute. A model on this machine costs nothing per token and
+        // keeps every round.
+        const int maxRounds = localRunner ? llm::kMaxToolRounds : 1;
+        for (int round = 0; round <= maxRounds; ++round) {
+            const bool offerTools = (round < maxRounds);
+            // Whichever model still has allowance today. Every one spent: the
+            // letter waits for a later turn, like any other unanswered one.
+            model = pickModel(models);
+            if (model.empty()) {
+                std::fprintf(stderr, "[LLM] every model has used its daily allowance; "
+                                     "this letter waits\n");
+                std::fflush(stderr);
+                break;
+            }
             // The residency hint goes only to a runner on this machine: see
             // llm::LOCAL_KEEP_ALIVE. A remote API is not holding the player's RAM.
-            const std::string body = offerTools
-                                   ? llm::chatRequestBodyWithTools(turns, model, 220, localRunner)
-                                   : llm::chatRequestBody(turns, model, 220, localRunner);
+            const auto bodyFor = [&](const std::string& m) {
+                return offerTools ? llm::chatRequestBodyWithTools(turns, m, 220, localRunner)
+                                  : llm::chatRequestBody(turns, m, 220, localRunner);
+            };
             HttpRequest req;
             req.method = "POST";
             req.url = url;
-            req.body = body;
+            req.body = bodyFor(model);
             req.bearer = key;
             req.timeoutMs = timeout;
             // A local runner is plain http on loopback, which is the one place
             // a bearer-free request over http is not a mistake.
             req.allowInsecure = true;
-            const HttpResponse res = httpRequest(req);
-            if (!res.ok()) break;
+            // ── A FREE API IS A RATE-LIMITED ONE ──
+            //
+            // Groq's free tier allows 8,000 tokens a minute, and one request
+            // here is ~3,000 -- the briefing travels with every letter -- so
+            // a reply that looks something up, or two countries answering at
+            // the turn, ran into 429 and the letter was simply never written.
+            // So: one remote request at a time, and on 429 wait as long as
+            // the API says (at most a minute) and ask again. A day-long turn
+            // has time for that. A local runner is not serialised; it never
+            // answers 429, so the retry costs it nothing (and lets a stand-in
+            // on loopback test this). Not on web, where this is the main thread.
+            HttpResponse res;
+#ifdef __EMSCRIPTEN__
+            res = httpRequest(req);
+#else
+            for (int attempt = 0;; ++attempt) {
+                std::unique_lock<std::mutex> one(g_remoteLock, std::defer_lock);
+                if (!localRunner) one.lock();
+                res = httpRequest(req);
+                if (res.status != 429) break;
+                // ── SPENT FOR THE DAY: THE NEXT MODEL, NOT A WAIT ──
+                if (dailyLimit(res.body)) {
+                    const double raw = retryAfterRaw(res.body);
+                    const double rest = raw > 0 ? raw + 5.0 : 3600.0;
+                    restModel(model, rest);
+                    const std::string next = pickModel(models);
+                    std::fprintf(stderr, "[LLM] %s has used its daily allowance (back in %.0f min); %s\n",
+                                 model.c_str(), rest / 60.0,
+                                 next.empty() ? "no other model left" : ("trying " + next).c_str());
+                    std::fflush(stderr);
+                    if (next.empty()) break;
+                    model = next;
+                    req.body = bodyFor(model);
+                    --attempt;   // a switch is not a retry; models are finite
+                    continue;
+                }
+                if (attempt >= 5) break;
+                const double wait = retryAfterSeconds(res.body);
+                std::fprintf(stderr, "[LLM] %s is rate-limited; asking again in %.0fs\n",
+                             model.c_str(), wait);
+                std::this_thread::sleep_for(std::chrono::milliseconds((long long)(wait * 1000)));
+            }
+#endif
+            if (!res.ok()) {
+                // ── SAID, NOT SWALLOWED ──
+                //
+                // This used to break out silently, so a model that refused
+                // every request -- a wrong key, a retired model name, a field
+                // the API does not take -- looked from outside like a country
+                // that chose not to write, forever. On a server nobody watches
+                // a screen; the log is all there is. The status and the start
+                // of the API's own message: never the key, which is a header
+                // and is not echoed back.
+                std::fprintf(stderr, "[LLM] %s at %s: HTTP %d%s%s %s\n", model.c_str(),
+                             url.c_str(), res.status, res.error.empty() ? "" : " -- ",
+                             res.error.c_str(), res.body.substr(0, 300).c_str());
+                std::fflush(stderr);
+                // ── A REFUSED TOOL CALL IS NOT A REFUSED LETTER ──
+                //
+                // Hosted APIs answer 400 when a small model writes a tool call
+                // they cannot parse (Groq: "tool_use_failed"), and a request
+                // offering several tools gives a small model every chance to.
+                // Asked again WITHOUT tools -- the final round's request, which
+                // is just the letter -- it can still answer. Any other refusal
+                // would refuse that too, so it is not retried.
+                if (offerTools && res.status >= 400 && res.status < 500 &&
+                    res.status != 401 && res.status != 403 && res.status != 429) {
+                    round = maxRounds - 1;   // the loop's ++ makes it the last
+                    continue;
+                }
+                break;
+            }
 
             const auto calls = offerTools ? llm::toolCallsFromResponse(res.body)
                                           : std::vector<llm::ToolCall>{};

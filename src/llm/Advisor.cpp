@@ -829,10 +829,27 @@ std::string chatRequestBody(const std::vector<Turn>& turns, const std::string& m
         }
         b << "}";
     }
+    // ── MODELS THAT THINK BEFORE THEY WRITE ──
+    //
+    // The hosted free models now on offer reason first (gpt-oss, Qwen 3), and
+    // the reasoning is spent from the same allowance as the letter: at the
+    // default effort a 220-token budget can be gone before a word is written,
+    // and every thought counts against a free tier's daily tokens. So they are
+    // asked to think as little as they allow, and given room to finish. Only
+    // for a remote API: what a local runner accepts here is its own business.
+    std::string reasoning;
+    if (!localRunner) {
+        if (model.find("gpt-oss") != std::string::npos)    reasoning = "low";
+        else if (model.find("qwen3") != std::string::npos) reasoning = "none";
+    }
+    // Room for a little thought and a short letter. A free tier counts this
+    // against its per-minute allowance before a word is written, so no more.
+    if (!reasoning.empty() && maxTokens < 640) maxTokens = 640;
     b << "],\"max_tokens\":" << maxTokens
       // Warm rather than wild. A diplomat who is too predictable is a template
       // and one who is too random stops tracking the conversation.
       << ",\"temperature\":0.85";
+    if (!reasoning.empty()) b << ",\"reasoning_effort\":\"" << reasoning << "\"";
     // LET A LOCAL MODEL GO WHEN IT IS DONE. See LOCAL_KEEP_ALIVE. Verified
     // against a running Ollama that the field parses rather than 400s: a
     // request carrying it and one without it return the identical error for a
