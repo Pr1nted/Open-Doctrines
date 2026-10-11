@@ -41149,3 +41149,60 @@ repeated experiment**, not whether they work.
 
 **FALSIFIED / interesting IF** the on arm beats the off arm by more than the ~112 training sd, which would make it
 the first trained gain this loop has produced.
+
+**PAUSED for the 1.3.1b release.** The marketing session asked for the machine for five-platform CI and a release
+beats an experiment. Stopped rather than SIGSTOPped, because CPU was not the only contention — swap was over 4 GB
+and a suspended trainer keeps its ~2 GB.
+
+**Where it got to: the control arm reached map 3 turn 500 of 3000, i.e. ~6,500 of 9,000 turns**, and its
+partially-trained model survives at `cmake-build-pin/train-off/data/ai/model.bin`. I will **restart both arms from
+the clean parent** rather than resume: a resumed arm and an uninterrupted one do not share a schedule, and the
+whole point of the pair is that they differ only by the seven gates. The partial model is kept as a fallback, not as
+an arm.
+
+Real cost of the pause: ~1.8 h of the control arm. Cheap against a release, and the setup (isolated data dirs,
+verified parent load, `data/ai/model.bin` untouched) is all reusable — the restart is one command.
+
+**Release state, verified from here:** tree clean (0 dirty paths), so `release.py` will run. `AIVersion.h` at
+**8.6.0** with the three RULES entries went into `06fde58` along with this loop's three docs files; the thirteen
+LLM/mail/server/Render files went into `d4eac18` and are not this loop's. `data/ai/model.bin` was restored to the
+committed reference **before** my message arrived, on the fog session's warning — and the marketing session
+had previously believed the 3,704,049-byte copy was canonical, so the measurement that settled it (extract HEAD's
+blob, run seed 520103, get 40.1 against the journal) prevented a release shipping a model polluted by a fog
+integration test.
+
+## 540 — what the loop contributed to 1.3.1b, and why none of it was an experiment
+
+PATHS TOUCHED: `docs/ai/LOOP_JOURNAL.md`. Housekeeping, recorded because the loop's value this stretch was
+verification and catching things, not a measured gain, and that is worth being able to find later.
+
+**The AI side of 1.3.1b is ready.** `AIVersion.h` at **8.6.0** with a RULES entry naming all three shipped
+behaviour changes (`06fde58`); the reference model restored to the committed blob and double-digested by two
+sessions (sha256 `adb32ac8`, md5 `4a137043`); every experimental gate default-off and verified inert; non-fog worlds
+measured bit-identical to the fog lens.
+
+**Four things this loop caught that would have shipped:**
+1. **A model polluted by a fog integration test.** `data/ai/model.bin` had been overwritten by a `--simulate` run
+   that learned online for six turns. Two other sessions disagreed about which copy was canonical and one was
+   actively protecting the polluted one. Settled by measurement rather than recollection — extract HEAD's blob, run
+   seed 520103, get **40.1**, the figure in journals 531/533/536.
+2. **An AI version that no longer described the build.** 8.5.0 against three RULES-level changes.
+3. **A release note whose bolded claim was false while its sentence was true.** "Normal worlds are completely
+   unaffected" is correct of the fog lens and wrong of the release, because the monument revive and #16 both change
+   normal-world AI behaviour. The trailing clause scoped it and nobody reads trailing clauses. Now
+   "Fog changes nothing in worlds without it".
+4. **Two missing AI changes** in notes that mentioned monuments once, in a list, and #16 not at all.
+
+**And one thing this loop got wrong and was corrected on:** I anchored the windows-x86 CI failure on the SDK's
+ABI change, when it is on the push *before* the fog SDK commit and cannot be that. The marketing session caught it.
+
+**THE HONEST SUMMARY OF JOURNALS 525-540: no gains, and that is the correct output.** Every lever class a frozen
+model can answer has been searched twice and is exhausted (journal 525); the width line closed as a measured
+negative (520-524); the re-attack line closed as a measured negative (516-519); the monument revive is a null that
+fixed a real defect (530-534) and the upgrade's cost is unresolvable at this variance (536). What remains needs the
+training run, which is paused at ~6,500 of 9,000 turns on the control arm for the release.
+
+**Restart, when the machine comes back:** both arms from the clean parent — not a resume, because a resumed arm and
+an uninterrupted one do not share a schedule. The setup is intact and verified: isolated data dirs by symlink,
+parent load confirmed at ~354.37M updates rather than a silent re-init, `data/ai/model.bin` provably untouched.
+Then Phase 9's fog curriculum as a separate pair, and the fog-cost bench for the journal rather than the notes.
