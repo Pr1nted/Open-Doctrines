@@ -237,7 +237,7 @@ struct ModLimits {
 // simply is not there. sdk/compat/abi-1.0.json and abi-1.1.json freeze the two
 // earlier surfaces and tools/check_abi_compat.py holds this to it.
 inline constexpr int kHostGearboxMajor = 1;
-inline constexpr int kHostGearboxMinor = 3;
+inline constexpr int kHostGearboxMinor = 4;
 
 struct ModManifest {
     int schema = 0;
