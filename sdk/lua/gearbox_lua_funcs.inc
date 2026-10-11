@@ -114,6 +114,30 @@
     {"setCountryNationalised", gbxlua_set_country_nationalised},
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
+/* ---- Fog (13) ---- */
+#if GBX_WITH_FOG
+    {"fogEnabled", gbxlua_fog_enabled},
+    {"fogCountrySees", gbxlua_fog_country_sees},
+    {"fogProvinceVisible", gbxlua_fog_province_visible},
+    {"fogProvinceSeenTurn", gbxlua_fog_province_seen_turn},
+    {"fogKnownOwner", gbxlua_fog_known_owner},
+    {"fogPointVisible", gbxlua_fog_point_visible},
+    {"fogShipVisible", gbxlua_fog_ship_visible},
+    {"fogIntelGarrison", gbxlua_fog_intel_garrison},
+    {"fogIntelPopulation", gbxlua_fog_intel_population},
+    {"fogIntelIndustry", gbxlua_fog_intel_industry},
+    {"fogIntelFort", gbxlua_fog_intel_fort},
+    {"fogIntelPort", gbxlua_fog_intel_port},
+    {"fogGrantCount", gbxlua_fog_grant_count},
+#endif /* GBX_WITH_FOG */
+
+/* ---- Fog.Write (3) ---- */
+#if GBX_WITH_FOG_WRITE
+    {"fogAddSight", gbxlua_fog_add_sight},
+    {"fogRevealProvince", gbxlua_fog_reveal_province},
+    {"fogClearGrants", gbxlua_fog_clear_grants},
+#endif /* GBX_WITH_FOG_WRITE */
+
 /* ---- GameState.Read (13) ---- */
 #if GBX_WITH_GAMESTATE_READ
     {"turnNumber", gbxlua_turn_number},

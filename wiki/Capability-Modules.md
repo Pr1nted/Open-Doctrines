@@ -41,6 +41,8 @@ it asked for**.
 | `Scripts` | Adding commands to the map script language | `command_add`, `command_remove`, `command_count`, `command_name`, `command_text`, `command_args` | yes | implemented |
 | `Render` | Tinting provinces and labelling them on the map | `province_tint`, `province_label`, `clear`, `tint_count`, `label_count` | yes | implemented |
 | `Content` | Adding doctrines, research nodes, troop and artillery types and district laws | `add`, `count`, `id_at`, `owner_of`, `remove` | yes | implemented |
+| `Fog` | Read what a country can see and what it remembers under fog of war | `fog_enabled`, `fog_country_sees`, `fog_province_visible`, `fog_province_seen_turn`, `fog_known_owner`, `fog_point_visible`, `fog_ship_visible`, `fog_intel_garrison`, `fog_intel_population`, `fog_intel_industry`, `fog_intel_fort`, `fog_intel_port`, `fog_grant_count` | yes | implemented |
+| `Fog.Write` | Grant a country sight of places it could not otherwise see | `fog_add_sight`, `fog_reveal_province`, `fog_clear_grants` | yes | implemented |
 
 `GameProcess` grants no imports — it gates whether the host *calls* your
 `mod_pre_turn` / `mod_post_turn` exports.

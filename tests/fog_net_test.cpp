@@ -15,6 +15,7 @@
 #include "json.hpp"
 
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <string>
 
@@ -203,6 +204,56 @@ int main(int argc, char** argv) {
     const auto* cm = client.intel(seat, hidden);
     check(hm && cm && hm->seenTurn == cm->seenTurn && hm->garrison == cm->garrison,
           "the client's memory is the host's, for this seat");
+
+    // --- sight grants (gearbox:fog.write, and the `fog` script keyword) ------
+    //
+    // A grant is only worth having if it SURVIVES: recomputeFog() rebuilds
+    // every country's sight from scratch, and a save reloads from bytes. Both
+    // are the ways this feature would quietly stop working.
+    printf("\n== sight grants ==\n");
+    {
+        int unseen = 0;
+        for (size_t pid = 1; pid < host.m_provinceCountryLookup.size(); ++pid)
+            if (!host.provinceVisibleTo(seat, (int)pid) &&
+                host.m_provinceCountryLookup[pid] > 0) { unseen = (int)pid; break; }
+        check(unseen > 0, "a province the seat cannot see");
+
+        check(host.fogGrantCount(seat) == 0, "no grants to begin with");
+        check(host.fogRevealProvince(seat, unseen), "a province can be granted");
+        host.recomputeFog();
+        check(host.provinceVisibleTo(seat, unseen), "and the grant survives a recompute");
+        check(host.fogGrantCount(seat) == 1, "and is counted");
+
+        // Granting the same province twice is not two grants.
+        check(host.fogRevealProvince(seat, unseen), "re-granting is harmless");
+        check(host.fogGrantCount(seat) == 1, "and does not double-count");
+
+        // A circle grant, and the radius clamp that stops "switch the fog off"
+        // being spelled as a watchpost.
+        check(host.fogAddSight(seat, 100.0f, 100.0f, 250.0f), "a circle can be granted");
+        check(host.fogGrantCount(seat) == 2, "circles count too");
+        check(!host.fogAddSight(seat, 0.0f, 0.0f, std::numeric_limits<float>::quiet_NaN()),
+              "a NaN radius is refused");
+
+        // The round trip, which is what a reload does.
+        const std::string blob = host.fogGrantsBlob();
+        check(!blob.empty() && blob.compare(0, 5, "ODFG1") == 0, "grants encode");
+        Game fresh;
+        fresh.m_fogOfWar = true;
+        fresh.loadFogGrants(blob);
+        check(fresh.fogGrantCount(seat) == 2, "and decode back to the same count");
+        check(fresh.fogGrantsBlob() == blob, "byte for byte");
+
+        // Garbage must not be mistaken for grants.
+        Game junk;
+        junk.m_fogOfWar = true;
+        junk.loadFogGrants("ODFG1\xff\xff\xff\x7f");
+        check(junk.fogGrantCount(seat) == 0, "a truncated blob grants nothing");
+
+        check(host.fogClearGrants(seat) == 2, "clearing reports what it removed");
+        host.recomputeFog();
+        check(!host.provinceVisibleTo(seat, unseen), "and the sight goes with it");
+    }
 
     printf("\n%s\n", failures ? "FAILED" : "all ok");
     return failures ? 1 : 0;

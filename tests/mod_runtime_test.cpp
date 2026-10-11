@@ -209,6 +209,24 @@ int main(int argc, char** argv) {
         uint32_t neuralFeatures(uint32_t, float*, uint32_t) override { return 0; }
         uint32_t neuralRewardCount() override { return 0; }
         double neuralRewardMean(uint32_t) override { return 0; }
+        // Fog: this stub is a world without it, which is the case every read
+        // answers as "visible" for and every write refuses.
+        bool fogEnabled() override { return false; }
+        bool fogCountrySees(uint32_t) override { return false; }
+        bool fogProvinceVisible(uint32_t, uint32_t) override { return true; }
+        int32_t fogProvinceSeenTurn(uint32_t, uint32_t) override { return -1; }
+        uint32_t fogKnownOwner(uint32_t, uint32_t) override { return owner; }
+        bool fogPointVisible(uint32_t, double, double) override { return true; }
+        bool fogShipVisible(uint32_t, uint32_t) override { return true; }
+        long long fogIntelGarrison(uint32_t, uint32_t) override { return 0; }
+        long long fogIntelPopulation(uint32_t, uint32_t) override { return 0; }
+        int32_t fogIntelIndustry(uint32_t, uint32_t) override { return 0; }
+        int32_t fogIntelFort(uint32_t, uint32_t) override { return 0; }
+        int32_t fogIntelPort(uint32_t, uint32_t) override { return 0; }
+        int32_t fogGrantCount(uint32_t) override { return 0; }
+        bool fogAddSight(uint32_t, double, double, double) override { return false; }
+        bool fogRevealProvince(uint32_t, uint32_t) override { return false; }
+        int32_t fogClearGrants(uint32_t) override { return 0; }
     } turnWorld;
     g_modGame = &turnWorld;
 

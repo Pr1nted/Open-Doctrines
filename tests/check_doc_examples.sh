@@ -27,7 +27,20 @@ if [ -z "$CC" ]; then
              /opt/homebrew/Cellar/emscripten/*/libexec/llvm/bin/clang \
              /usr/local/Cellar/emscripten/*/libexec/llvm/bin/clang; do
         [ -x "$c" ] || continue
-        if "$c" --print-targets 2>/dev/null | grep -qi wasm32; then CC="$c"; break; fi
+        # --print-targets is not enough: Apple's clang lists wasm32 and then
+        # cannot LINK one, because the toolchain ships no wasm-ld. The failure
+        # is a posix_spawn of a linker that is not there, which reads as a
+        # broken doc example rather than a missing toolchain. Probe a real
+        # compile AND link. Same trap as tests/build_capability_mods.sh.
+        "$c" --print-targets 2>/dev/null | grep -qi wasm32 || continue
+        probe_c="${TMPDIR:-/tmp}/od_doc_probe_$$.c"
+        probe_wasm="${TMPDIR:-/tmp}/od_doc_probe_$$.wasm"
+        if printf 'int f(void){return 0;}\n' > "$probe_c" 2>/dev/null &&
+           "$c" --target=wasm32 -nostdlib -Wl,--no-entry -o "$probe_wasm" \
+                "$probe_c" >/dev/null 2>&1; then
+            rm -f "$probe_c" "$probe_wasm"; CC="$c"; break
+        fi
+        rm -f "$probe_c" "$probe_wasm"
     done
 fi
 [ -n "$CC" ] || { echo "no wasm32-capable clang; skipping doc example check"; exit 0; }

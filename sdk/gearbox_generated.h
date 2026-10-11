@@ -306,6 +306,133 @@ uint32_t gearbox_self_peer(void);
 GEARBOX_IMPORT("net", "is_host")
 uint32_t gearbox_is_host(void);
 
+/* Whether this world was created with fog of war. 0 in a world without it,
+ * where every lookup below answers as though everything were visible.
+ * gearbox:fog "fog_enabled"
+ * `()i`
+ */
+GEARBOX_IMPORT("fog", "fog_enabled")
+uint32_t gearbox_fog_enabled(void);
+
+/* Whether this country has a fog of its own. 0 for the spectator, for an
+ * unknown country, and in a world without fog.
+ * gearbox:fog "fog_country_sees"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("fog", "fog_country_sees")
+uint32_t gearbox_fog_country_sees(gearbox_country country);
+
+/* Whether the country can see the province THIS turn -- not whether it
+ * remembers it. 1 for every province in a world without fog.
+ * gearbox:fog "fog_province_visible"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_province_visible")
+uint32_t gearbox_fog_province_visible(gearbox_country country, gearbox_province province);
+
+/* The turn the country last saw the province, or -1 if it never has. A
+ * province it can see right now returns the current turn.
+ * gearbox:fog "fog_province_seen_turn"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_province_seen_turn")
+uint32_t gearbox_fog_province_seen_turn(gearbox_country country, gearbox_province province);
+
+/* Who the country BELIEVES owns the province, which is the real owner only
+ * while it can see it. A province never seen keeps the owner it had on the
+ * starting map, because the atlas is public. GEARBOX_INVALID if unknown.
+ * gearbox:fog "fog_known_owner"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_known_owner")
+uint32_t gearbox_fog_known_owner(gearbox_country country, gearbox_province province);
+
+/* Whether a point in map pixels falls inside any of the country's sight.
+ * The map wraps east-west and so does this.
+ * gearbox:fog "fog_point_visible"
+ * `(iFF)i`
+ */
+GEARBOX_IMPORT("fog", "fog_point_visible")
+uint32_t gearbox_fog_point_visible(gearbox_country country, double x, double y);
+
+/* Whether the country can see that ship this turn.
+ * gearbox:fog "fog_ship_visible"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_ship_visible")
+uint32_t gearbox_fog_ship_visible(gearbox_country country, uint32_t ship);
+
+/* Troops the country last saw in the province, all flags counted. 0 if it
+ * has never seen it. This is memory, not truth: it is what was there then.
+ * gearbox:fog "fog_intel_garrison"
+ * `(ii)I`
+ */
+GEARBOX_IMPORT("fog", "fog_intel_garrison")
+int64_t gearbox_fog_intel_garrison(gearbox_country country, gearbox_province province);
+
+/* Population the country last saw in the province, or 0 if never seen.
+ * gearbox:fog "fog_intel_population"
+ * `(ii)I`
+ */
+GEARBOX_IMPORT("fog", "fog_intel_population")
+int64_t gearbox_fog_intel_population(gearbox_country country, gearbox_province province);
+
+/* Industry level the country last saw in the province, or 0 if never seen.
+ * gearbox:fog "fog_intel_industry"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_intel_industry")
+uint32_t gearbox_fog_intel_industry(gearbox_country country, gearbox_province province);
+
+/* Fortification level the country last saw, or 0 if never seen.
+ * gearbox:fog "fog_intel_fort"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_intel_fort")
+uint32_t gearbox_fog_intel_fort(gearbox_country country, gearbox_province province);
+
+/* Port level the country last saw, or 0 if never seen.
+ * gearbox:fog "fog_intel_port"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog", "fog_intel_port")
+uint32_t gearbox_fog_intel_port(gearbox_country country, gearbox_province province);
+
+/* How many sight grants the country currently holds, from every mod and
+ * script together. 0 if none.
+ * gearbox:fog "fog_grant_count"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("fog", "fog_grant_count")
+uint32_t gearbox_fog_grant_count(gearbox_country country);
+
+/* Give the country a standing sight circle at a point in map pixels. It is
+ * folded in every time the fog is recomputed, saved with the world and
+ * survives a reload, so it is a watchpost rather than a one-turn reveal.
+ * Radius is clamped to something sane. 0 if the country or radius is bad.
+ * gearbox:fog.write "fog_add_sight"
+ * `(iFFF)i`
+ */
+GEARBOX_IMPORT("fog.write", "fog_add_sight")
+uint32_t gearbox_fog_add_sight(gearbox_country country, double x, double y, double radius);
+
+/* Give the country standing sight of one province, on the same terms as
+ * fog_add_sight. Revealing a province it can already see is harmless.
+ * gearbox:fog.write "fog_reveal_province"
+ * `(ii)i`
+ */
+GEARBOX_IMPORT("fog.write", "fog_reveal_province")
+uint32_t gearbox_fog_reveal_province(gearbox_country country, gearbox_province province);
+
+/* Drop every sight grant the country holds, from every mod and script.
+ * Returns how many were removed. The fog returns to what the rules give it
+ * on the next recompute.
+ * gearbox:fog.write "fog_clear_grants"
+ * `(i)i`
+ */
+GEARBOX_IMPORT("fog.write", "fog_clear_grants")
+uint32_t gearbox_fog_clear_grants(gearbox_country country);
+
 /* Reads one of your own keys. Two-call sizing: returns the full value
  * length and writes at most cap bytes. Returns GEARBOX_INVALID if the key
  * is absent -- which is NOT the same as a zero-length value, so you can

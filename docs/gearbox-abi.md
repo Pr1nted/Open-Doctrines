@@ -55,6 +55,8 @@ memory after a call returns, and you must not keep one of the host's.
 | `Scripts` | `gearbox:scripts` | Adding commands to the map script language | yes | implemented |
 | `Render` | `gearbox:render` | Tinting provinces and labelling them on the map | yes | implemented |
 | `Content` | `gearbox:content` | Adding doctrines, research nodes, troop and artillery types and district laws | yes | implemented |
+| `Fog` | `gearbox:fog` | Read what a country can see and what it remembers under fog of war | yes | implemented |
+| `Fog.Write` | `gearbox:fog.write` | Grant a country sight of places it could not otherwise see | yes | implemented |
 
 Requesting a module marked *not implemented* means the imports do not
 exist, so your mod is **refused at load** with a diagnostic naming the
@@ -794,6 +796,249 @@ That peer's display name -- deliberately NOT their account id or issuer. A mod h
 **Returns** `i32`.
 
 The largest payload net/send will accept. Chunk against this rather than discovering the limit by having a message dropped.
+
+### `gearbox:fog`
+
+Requires the **Fog** capability.
+
+#### `fog_enabled`
+
+```wat
+(import "gearbox:fog" "fog_enabled" (func $x (result i32)))
+```
+
+**Returns** `i32`.
+
+Whether this world was created with fog of war. 0 in a world without it, where every lookup below answers as though everything were visible.
+
+#### `fog_country_sees`
+
+```wat
+(import "gearbox:fog" "fog_country_sees" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns** `i32`.
+
+Whether this country has a fog of its own. 0 for the spectator, for an unknown country, and in a world without fog.
+
+#### `fog_province_visible`
+
+```wat
+(import "gearbox:fog" "fog_province_visible" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+Whether the country can see the province THIS turn -- not whether it remembers it. 1 for every province in a world without fog.
+
+#### `fog_province_seen_turn`
+
+```wat
+(import "gearbox:fog" "fog_province_seen_turn" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+The turn the country last saw the province, or -1 if it never has. A province it can see right now returns the current turn.
+
+#### `fog_known_owner`
+
+```wat
+(import "gearbox:fog" "fog_known_owner" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+Who the country BELIEVES owns the province, which is the real owner only while it can see it. A province never seen keeps the owner it had on the starting map, because the atlas is public. GEARBOX_INVALID if unknown.
+
+#### `fog_point_visible`
+
+```wat
+(import "gearbox:fog" "fog_point_visible" (func $x (param i32 f64 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `x` | `f64` | — |
+| `y` | `f64` | — |
+
+**Returns** `i32`.
+
+Whether a point in map pixels falls inside any of the country's sight. The map wraps east-west and so does this.
+
+#### `fog_ship_visible`
+
+```wat
+(import "gearbox:fog" "fog_ship_visible" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `ship` | `i32` | — |
+
+**Returns** `i32`.
+
+Whether the country can see that ship this turn.
+
+#### `fog_intel_garrison`
+
+```wat
+(import "gearbox:fog" "fog_intel_garrison" (func $x (param i32 i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i64`.
+
+Troops the country last saw in the province, all flags counted. 0 if it has never seen it. This is memory, not truth: it is what was there then.
+
+#### `fog_intel_population`
+
+```wat
+(import "gearbox:fog" "fog_intel_population" (func $x (param i32 i32) (result i64)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i64`.
+
+Population the country last saw in the province, or 0 if never seen.
+
+#### `fog_intel_industry`
+
+```wat
+(import "gearbox:fog" "fog_intel_industry" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+Industry level the country last saw in the province, or 0 if never seen.
+
+#### `fog_intel_fort`
+
+```wat
+(import "gearbox:fog" "fog_intel_fort" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+Fortification level the country last saw, or 0 if never seen.
+
+#### `fog_intel_port`
+
+```wat
+(import "gearbox:fog" "fog_intel_port" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+Port level the country last saw, or 0 if never seen.
+
+#### `fog_grant_count`
+
+```wat
+(import "gearbox:fog" "fog_grant_count" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns** `i32`.
+
+How many sight grants the country currently holds, from every mod and script together. 0 if none.
+
+### `gearbox:fog.write`
+
+Requires the **Fog.Write** capability.
+
+#### `fog_add_sight`
+
+```wat
+(import "gearbox:fog.write" "fog_add_sight" (func $x (param i32 f64 f64 f64) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `x` | `f64` | — |
+| `y` | `f64` | — |
+| `radius` | `f64` | — |
+
+**Returns** `i32`.
+
+Give the country a standing sight circle at a point in map pixels. It is folded in every time the fog is recomputed, saved with the world and survives a reload, so it is a watchpost rather than a one-turn reveal. Radius is clamped to something sane. 0 if the country or radius is bad.
+
+#### `fog_reveal_province`
+
+```wat
+(import "gearbox:fog.write" "fog_reveal_province" (func $x (param i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns** `i32`.
+
+Give the country standing sight of one province, on the same terms as fog_add_sight. Revealing a province it can already see is harmless.
+
+#### `fog_clear_grants`
+
+```wat
+(import "gearbox:fog.write" "fog_clear_grants" (func $x (param i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns** `i32`.
+
+Drop every sight grant the country holds, from every mod and script. Returns how many were removed. The fog returns to what the rules give it on the next recompute.
 
 ### `wasi_snapshot_preview1`
 

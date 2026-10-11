@@ -308,8 +308,8 @@ export interface Draft {
 // sdk/abi.json, so the next capability cannot land without this following it.
 const KNOWN_MODULES = [
     "Assets", "Audio", "Content", "Core", "Core.Protected", "Country",
-    "Diplomacy", "Economy.Read", "Economy.Write", "GameProcess",
-    "GameState.Read", "GameState.Write", "Map", "MapEditor",
+    "Diplomacy", "Economy.Read", "Economy.Write", "Fog", "Fog.Write",
+    "GameProcess", "GameState.Read", "GameState.Write", "Map", "MapEditor",
     "Military.Read", "Military.Write", "Net", "Neural", "Neural.Decide",
     "Politics.Read", "Politics.Write", "Render", "Research.Read",
     "Research.Write", "Scripts", "Storage", "UI",

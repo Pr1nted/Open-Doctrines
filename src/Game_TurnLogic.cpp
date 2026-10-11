@@ -786,7 +786,13 @@ void Game::processTurn() {
         // What every country remembers seeing. History, not state: it cannot be
         // rebuilt by replaying the turns, because it depends on who could see
         // what at the time.
-        if (m_fogOfWar) rebelFiles.push_back({"fog/memory.bin", fogMemoryBlob()});
+        if (m_fogOfWar) {
+            rebelFiles.push_back({"fog/memory.bin", fogMemoryBlob()});
+            // Grants are a separate entry; an empty one is simply not written,
+            // so a world nobody granted anything in saves exactly as before.
+            std::string gb = fogGrantsBlob();
+            if (!gb.empty()) rebelFiles.push_back({"fog/grants.bin", std::move(gb)});
+        }
         std::string stateJson = saveStateJson();
         // TIMED, and reported below with the rest.
         //

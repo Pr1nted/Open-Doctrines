@@ -432,6 +432,50 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         }
 
         // stop — end the script here, without it being an error.
+        // fog reveal <ISO> <pid>
+        // fog sight  <ISO> <x> <y> <radius>
+        // fog clear  <ISO>
+        //
+        // ONE keyword with subcommands rather than three. Every word the
+        // language takes is a word a mod can never register again
+        // (ScriptCommands.h), so the language spends them one at a time.
+        //
+        // A grant is a WATCHPOST: it is folded into the country's sight every
+        // time the fog is recomputed and it is saved with the world, so a
+        // scenario can say "this country has watched the straits since 1936"
+        // and have it still be true after a reload.
+        if (kw == "fog") {
+            if (tokens.size() < 3) {
+                addError(scriptName, lineIdx + 1,
+                         "fog: expected reveal/sight/clear and a country");
+                lineIdx++; continue;
+            }
+            const std::string sub = tokens[1];
+            const std::string iso = evalExpr(tokens[2], localVars).asString();
+            int cid = -1;
+            for (auto& [id, c] : m_game->m_countries.getAll())
+                if (c.isoA3 == iso) { cid = id; break; }
+            if (cid < 0) {
+                addError(scriptName, lineIdx + 1, "fog: unknown country " + iso);
+            } else if (sub == "reveal" && tokens.size() >= 4) {
+                m_game->fogRevealProvince(cid,
+                    (int)evalExpr(tokens[3], localVars).asInt());
+            } else if (sub == "sight" && tokens.size() >= 6) {
+                m_game->fogAddSight(cid,
+                    (float)evalExpr(tokens[3], localVars).asFloat(),
+                    (float)evalExpr(tokens[4], localVars).asFloat(),
+                    (float)evalExpr(tokens[5], localVars).asFloat());
+            } else if (sub == "clear") {
+                m_game->fogClearGrants(cid);
+            } else {
+                addError(scriptName, lineIdx + 1,
+                         "fog: expected 'reveal <ISO> <pid>', "
+                         "'sight <ISO> <x> <y> <r>' or 'clear <ISO>'");
+            }
+            lineIdx++;
+            continue;
+        }
+
         if (kw == "stop") { m_stopped = true; lineIdx++; return true; }
 
         // try / catch / endtry
@@ -1822,6 +1866,34 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
                                              d.policies.end());
             return {};
         }
+    }
+
+    // fog.enabled -- whether this world has fog at all, so a script can be
+    // written once and do nothing on a map that was created without it.
+    if (dots.size() == 2 && dots[0] == "fog" && dots[1] == "enabled")
+        return ScriptValue::makeInt(m_game->fogOn() ? 1 : 0);
+
+    // province.ID.visible_to.ISO, .seen_turn.ISO, .known_owner.ISO
+    //
+    // FOUR parts, not three, because fog has no answer without a country to
+    // answer for: "is this province visible" is not a question, "is it visible
+    // to France" is. Everything here reports as if the map were fully visible
+    // in a world without fog, which is what the engine's own accessors do.
+    if (dots.size() >= 4 && dots[0] == "province" &&
+        (dots[2] == "visible_to" || dots[2] == "seen_turn" ||
+         dots[2] == "known_owner")) {
+        int pid = 0;
+        try { pid = std::stoi(dots[1]); } catch (...) { return ScriptValue{}; }
+        int cid = -1;
+        for (auto& [id, c] : m_game->m_countries.getAll())
+            if (c.isoA3 == dots[3]) { cid = id; break; }
+        if (cid < 0) return ScriptValue{};
+        if (dots[2] == "visible_to")
+            return ScriptValue::makeInt(m_game->provinceVisibleTo(cid, pid) ? 1 : 0);
+        if (dots[2] == "seen_turn")
+            return ScriptValue::makeInt(m_game->modFogProvinceSeenTurn(cid, pid));
+        const Country* kc = m_game->m_countries.getCountry(m_game->knownOwner(cid, pid));
+        return ScriptValue::makeStr(kc ? kc->isoA3 : "");
     }
 
     // province.ID.property

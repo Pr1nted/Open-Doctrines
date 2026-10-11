@@ -114,6 +114,30 @@
     JS_CFUNC_DEF("setCountryNationalised", 3, gbxjs_set_country_nationalised),
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
+/* ---- Fog (13) ---- */
+#if GBX_WITH_FOG
+    JS_CFUNC_DEF("fogEnabled", 0, gbxjs_fog_enabled),
+    JS_CFUNC_DEF("fogCountrySees", 1, gbxjs_fog_country_sees),
+    JS_CFUNC_DEF("fogProvinceVisible", 2, gbxjs_fog_province_visible),
+    JS_CFUNC_DEF("fogProvinceSeenTurn", 2, gbxjs_fog_province_seen_turn),
+    JS_CFUNC_DEF("fogKnownOwner", 2, gbxjs_fog_known_owner),
+    JS_CFUNC_DEF("fogPointVisible", 3, gbxjs_fog_point_visible),
+    JS_CFUNC_DEF("fogShipVisible", 2, gbxjs_fog_ship_visible),
+    JS_CFUNC_DEF("fogIntelGarrison", 2, gbxjs_fog_intel_garrison),
+    JS_CFUNC_DEF("fogIntelPopulation", 2, gbxjs_fog_intel_population),
+    JS_CFUNC_DEF("fogIntelIndustry", 2, gbxjs_fog_intel_industry),
+    JS_CFUNC_DEF("fogIntelFort", 2, gbxjs_fog_intel_fort),
+    JS_CFUNC_DEF("fogIntelPort", 2, gbxjs_fog_intel_port),
+    JS_CFUNC_DEF("fogGrantCount", 1, gbxjs_fog_grant_count),
+#endif /* GBX_WITH_FOG */
+
+/* ---- Fog.Write (3) ---- */
+#if GBX_WITH_FOG_WRITE
+    JS_CFUNC_DEF("fogAddSight", 4, gbxjs_fog_add_sight),
+    JS_CFUNC_DEF("fogRevealProvince", 2, gbxjs_fog_reveal_province),
+    JS_CFUNC_DEF("fogClearGrants", 1, gbxjs_fog_clear_grants),
+#endif /* GBX_WITH_FOG_WRITE */
+
 /* ---- GameState.Read (13) ---- */
 #if GBX_WITH_GAMESTATE_READ
     JS_CFUNC_DEF("turnNumber", 0, gbxjs_turn_number),

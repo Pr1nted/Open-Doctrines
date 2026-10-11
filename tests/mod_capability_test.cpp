@@ -66,38 +66,14 @@ std::vector<uint8_t> readFile(const std::string& path) {
 // Every capability a generated mod can ask for. Core is always granted: a mod
 // without it cannot log, and Core is what abi.json gives a null capability.
 uint32_t bitFor(const std::string& cap) {
-    static const struct { const char* name; uint32_t bit; } kMap[] = {
-        {"Core", MODULE_CORE},
-        {"Core.Protected", MODULE_CORE_PROTECTED},
-        {"GameState.Read", MODULE_GAMESTATE_READ},
-        {"GameState.Write", MODULE_GAMESTATE_WRITE},
-        {"GameProcess", MODULE_GAMEPROCESS},
-        {"Neural", MODULE_NEURAL},
-        {"Neural.Decide", MODULE_NEURAL_DECIDE},
-        {"UI", MODULE_UI},
-        {"Map", MODULE_MAP},
-        {"MapEditor", MODULE_MAPEDITOR},
-        {"Diplomacy", MODULE_DIPLOMACY},
-        {"Assets", MODULE_ASSETS},
-        {"Storage", MODULE_STORAGE},
-        {"Audio", MODULE_AUDIO},
-        {"Net", MODULE_NET},
-        {"Military.Read", MODULE_MILITARY_READ},
-        {"Military.Write", MODULE_MILITARY_WRITE},
-        {"Research.Read", MODULE_RESEARCH_READ},
-        {"Research.Write", MODULE_RESEARCH_WRITE},
-        {"Politics.Read", MODULE_POLITICS_READ},
-        {"Politics.Write", MODULE_POLITICS_WRITE},
-        {"Economy.Read", MODULE_ECONOMY_READ},
-        {"Economy.Write", MODULE_ECONOMY_WRITE},
-        {"Country", MODULE_COUNTRY},
-        {"Scripts", MODULE_SCRIPTS},
-        {"Render", MODULE_RENDER},
-        {"Content", MODULE_CONTENT},
-    };
-    for (const auto& e : kMap)
-        if (cap == e.name) return e.bit;
-    return 0;
+    // ONE LIST, NOT TWO. This was a hand-kept copy of the table in
+    // ModPackage.cpp, so every capability added to the game failed here until
+    // somebody remembered to add it twice -- a test that reports "the
+    // capability has a module bit: false" about a capability that plainly has
+    // one, which reads as a bug in the feature rather than in the test.
+    // modModuleFromName() is the thing the game itself resolves names with and
+    // it already answers 0 for unknown, which is exactly what this wants.
+    return modModuleFromName(cap);
 }
 
 std::string manifestFor(const std::string& id, const std::string& cap) {

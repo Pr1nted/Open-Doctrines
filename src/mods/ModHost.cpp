@@ -2027,6 +2027,95 @@ uint32_t neural_model_loaded(ExecEnv e) {
 // --------------------------------------------------------------- table ----
 
 // A capability of 0 means "always available". Core uses it rather than
+// --- fog of war -------------------------------------------------------------
+//
+// Reads need no capability check beyond the table's MODULE_FOG: the host only
+// resolves an import a mod was granted. Writes check again anyway, because
+// has() is also what a REVOKED capability answers -- a grant can be taken away
+// between the link and the call.
+
+int32_t fog_enabled(ExecEnv e) {
+    (void)e; return g_modGame && g_modGame->fogEnabled() ? 1 : 0;
+}
+int32_t fog_country_sees(ExecEnv e, uint32_t cid) {
+    (void)e; return g_modGame && g_modGame->fogCountrySees(cid) ? 1 : 0;
+}
+int32_t fog_province_visible(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame && g_modGame->fogProvinceVisible(cid, pid) ? 1 : 0;
+}
+int32_t fog_province_seen_turn(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogProvinceSeenTurn(cid, pid) : -1;
+}
+uint32_t fog_known_owner(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogKnownOwner(cid, pid) : kInvalid;
+}
+int32_t fog_point_visible(ExecEnv e, uint32_t cid, double x, double y) {
+    (void)e; return g_modGame && g_modGame->fogPointVisible(cid, x, y) ? 1 : 0;
+}
+int32_t fog_ship_visible(ExecEnv e, uint32_t cid, uint32_t ship) {
+    (void)e; return g_modGame && g_modGame->fogShipVisible(cid, ship) ? 1 : 0;
+}
+int64_t fog_intel_garrison(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogIntelGarrison(cid, pid) : 0;
+}
+int64_t fog_intel_population(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogIntelPopulation(cid, pid) : 0;
+}
+int32_t fog_intel_industry(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogIntelIndustry(cid, pid) : 0;
+}
+int32_t fog_intel_fort(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogIntelFort(cid, pid) : 0;
+}
+int32_t fog_intel_port(ExecEnv e, uint32_t cid, uint32_t pid) {
+    (void)e; return g_modGame ? g_modGame->fogIntelPort(cid, pid) : 0;
+}
+int32_t fog_grant_count(ExecEnv e, uint32_t cid) {
+    (void)e; return g_modGame ? g_modGame->fogGrantCount(cid) : 0;
+}
+
+int32_t fog_add_sight(ExecEnv e, uint32_t cid, double x, double y, double r) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_FOG_WRITE) || !g_modGame) return 0;
+    const bool ok = g_modGame->fogAddSight(cid, x, y, r);
+    // Logged always, not only on failure: a grant changes what ANOTHER player
+    // can see, which is the kind of thing a player reading the mod log should
+    // find there without having to suspect it first.
+    pushLog(mi->id(), ok ? 1 : 2,
+            ok ? "granted a country standing sight via Fog.Write"
+               : "sight grant refused");
+    if (ok)
+        ModConflicts::get().recordWrite(mi->id(),
+            "fog:" + std::to_string(cid) + ":sight", "circle");
+    return ok ? 1 : 0;
+}
+
+int32_t fog_reveal_province(ExecEnv e, uint32_t cid, uint32_t pid) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_FOG_WRITE) || !g_modGame) return 0;
+    const bool ok = g_modGame->fogRevealProvince(cid, pid);
+    pushLog(mi->id(), ok ? 1 : 2,
+            ok ? "revealed a province to a country via Fog.Write"
+               : "province reveal refused");
+    if (ok)
+        ModConflicts::get().recordWrite(mi->id(),
+            "fog:" + std::to_string(cid) + ":sight",
+            "province:" + std::to_string(pid));
+    return ok ? 1 : 0;
+}
+
+int32_t fog_clear_grants(ExecEnv e, uint32_t cid) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_FOG_WRITE) || !g_modGame) return 0;
+    const int32_t n = g_modGame->fogClearGrants(cid);
+    // Clearing drops grants made by OTHER mods too -- the engine keeps one
+    // list per country, not one per mod -- so it is logged even when it
+    // removed nothing.
+    pushLog(mi->id(), 1, "cleared " + std::to_string(n) +
+                         " sight grant(s) via Fog.Write");
+    return n;
+}
+
 // MODULE_CORE so that the module genuinely cannot be revoked -- a hand-edited
 // grants file cannot leave a mod unable to log its own failure.
 const ModHostFn kHostFunctions[] = {
@@ -2105,6 +2194,24 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:scripts", "command_text", "(ii)i", (void*)scr_command_text, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_args", "(ii)i", (void*)scr_command_args, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_add", "(ii)i", (void*)scr_command_add, MODULE_SCRIPTS},
+    {"gearbox:fog", "fog_enabled",            "()i",     (void*)fog_enabled,            MODULE_FOG},
+    {"gearbox:fog", "fog_country_sees",       "(i)i",    (void*)fog_country_sees,       MODULE_FOG},
+    {"gearbox:fog", "fog_province_visible",   "(ii)i",   (void*)fog_province_visible,   MODULE_FOG},
+    {"gearbox:fog", "fog_province_seen_turn", "(ii)i",   (void*)fog_province_seen_turn, MODULE_FOG},
+    {"gearbox:fog", "fog_known_owner",        "(ii)i",   (void*)fog_known_owner,        MODULE_FOG},
+    {"gearbox:fog", "fog_point_visible",      "(iFF)i",  (void*)fog_point_visible,      MODULE_FOG},
+    {"gearbox:fog", "fog_ship_visible",       "(ii)i",   (void*)fog_ship_visible,       MODULE_FOG},
+    {"gearbox:fog", "fog_intel_garrison",     "(ii)I",   (void*)fog_intel_garrison,     MODULE_FOG},
+    {"gearbox:fog", "fog_intel_population",   "(ii)I",   (void*)fog_intel_population,   MODULE_FOG},
+    {"gearbox:fog", "fog_intel_industry",     "(ii)i",   (void*)fog_intel_industry,     MODULE_FOG},
+    {"gearbox:fog", "fog_intel_fort",         "(ii)i",   (void*)fog_intel_fort,         MODULE_FOG},
+    {"gearbox:fog", "fog_intel_port",         "(ii)i",   (void*)fog_intel_port,         MODULE_FOG},
+    {"gearbox:fog", "fog_grant_count",        "(i)i",    (void*)fog_grant_count,        MODULE_FOG},
+
+    {"gearbox:fog.write", "fog_add_sight",       "(iFFF)i", (void*)fog_add_sight,       MODULE_FOG_WRITE},
+    {"gearbox:fog.write", "fog_reveal_province", "(ii)i",   (void*)fog_reveal_province, MODULE_FOG_WRITE},
+    {"gearbox:fog.write", "fog_clear_grants",    "(i)i",    (void*)fog_clear_grants,    MODULE_FOG_WRITE},
+
     {"gearbox:scripts", "command_remove", "(ii)i", (void*)scr_command_remove, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_count", "()i", (void*)scr_command_count, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_name", "(iii)i", (void*)scr_command_name, MODULE_SCRIPTS},

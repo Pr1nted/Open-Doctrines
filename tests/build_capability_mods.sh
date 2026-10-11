@@ -15,9 +15,24 @@ root="$(dirname "$here")"
 out="${1:-$root/build/capmods}"
 
 find_clang() {
+    local probe_c probe_wasm
+    probe_c="${TMPDIR:-/tmp}/od_wasm_probe_$$.c"
+    probe_wasm="${TMPDIR:-/tmp}/od_wasm_probe_$$.wasm"
     for c in "$@"; do
         [ -n "$c" ] && [ -x "$c" ] || continue
-        if "$c" --print-targets 2>/dev/null | grep -qi wasm32; then echo "$c"; return 0; fi
+        # --print-targets is NOT enough. Apple's clang lists wasm32 among its
+        # targets and then cannot LINK one, because the toolchain ships no
+        # wasm-ld: the failure is a posix_spawn of a linker that is not there,
+        # which looks like a broken fixture rather than a missing toolchain.
+        # So the test is a real compile AND link of an empty module.
+        "$c" --print-targets 2>/dev/null | grep -qi wasm32 || continue
+        if printf 'int f(void){return 0;}\n' > "$probe_c" 2>/dev/null &&
+           "$c" --target=wasm32 -nostdlib -Wl,--no-entry -o "$probe_wasm" \
+                "$probe_c" >/dev/null 2>&1; then
+            rm -f "$probe_c" "$probe_wasm"
+            echo "$c"; return 0
+        fi
+        rm -f "$probe_c" "$probe_wasm"
     done
     if command -v emcc >/dev/null 2>&1; then
         em="$(dirname "$(readlink -f "$(command -v emcc)")")/../upstream/bin/clang"

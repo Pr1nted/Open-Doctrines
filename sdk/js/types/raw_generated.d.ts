@@ -215,6 +215,101 @@ declare namespace GearboxRaw {
   // `()i`
   function isHost(): number;
 
+  // Whether this world was created with fog of war. 0 in a world without it,
+  // where every lookup below answers as though everything were visible.
+  // gearbox:fog "fog_enabled"
+  // `()i`
+  function fogEnabled(): number;
+
+  // Whether this country has a fog of its own. 0 for the spectator, for an
+  // unknown country, and in a world without fog.
+  // gearbox:fog "fog_country_sees"
+  // `(i)i`
+  function fogCountrySees(country: number): number;
+
+  // Whether the country can see the province THIS turn -- not whether it
+  // remembers it. 1 for every province in a world without fog.
+  // gearbox:fog "fog_province_visible"
+  // `(ii)i`
+  function fogProvinceVisible(country: number, province: number): number;
+
+  // The turn the country last saw the province, or -1 if it never has. A
+  // province it can see right now returns the current turn.
+  // gearbox:fog "fog_province_seen_turn"
+  // `(ii)i`
+  function fogProvinceSeenTurn(country: number, province: number): number;
+
+  // Who the country BELIEVES owns the province, which is the real owner only
+  // while it can see it. A province never seen keeps the owner it had on the
+  // starting map, because the atlas is public. GEARBOX_INVALID if unknown.
+  // gearbox:fog "fog_known_owner"
+  // `(ii)i`
+  function fogKnownOwner(country: number, province: number): number;
+
+  // Whether a point in map pixels falls inside any of the country's sight.
+  // The map wraps east-west and so does this.
+  // gearbox:fog "fog_point_visible"
+  // `(iFF)i`
+  function fogPointVisible(country: number, x: number, y: number): number;
+
+  // Whether the country can see that ship this turn.
+  // gearbox:fog "fog_ship_visible"
+  // `(ii)i`
+  function fogShipVisible(country: number, ship: number): number;
+
+  // Troops the country last saw in the province, all flags counted. 0 if it
+  // has never seen it. This is memory, not truth: it is what was there then.
+  // gearbox:fog "fog_intel_garrison"
+  // `(ii)I`
+  function fogIntelGarrison(country: number, province: number): number;
+
+  // Population the country last saw in the province, or 0 if never seen.
+  // gearbox:fog "fog_intel_population"
+  // `(ii)I`
+  function fogIntelPopulation(country: number, province: number): number;
+
+  // Industry level the country last saw in the province, or 0 if never seen.
+  // gearbox:fog "fog_intel_industry"
+  // `(ii)i`
+  function fogIntelIndustry(country: number, province: number): number;
+
+  // Fortification level the country last saw, or 0 if never seen.
+  // gearbox:fog "fog_intel_fort"
+  // `(ii)i`
+  function fogIntelFort(country: number, province: number): number;
+
+  // Port level the country last saw, or 0 if never seen.
+  // gearbox:fog "fog_intel_port"
+  // `(ii)i`
+  function fogIntelPort(country: number, province: number): number;
+
+  // How many sight grants the country currently holds, from every mod and
+  // script together. 0 if none.
+  // gearbox:fog "fog_grant_count"
+  // `(i)i`
+  function fogGrantCount(country: number): number;
+
+  // Give the country a standing sight circle at a point in map pixels. It is
+  // folded in every time the fog is recomputed, saved with the world and
+  // survives a reload, so it is a watchpost rather than a one-turn reveal.
+  // Radius is clamped to something sane. 0 if the country or radius is bad.
+  // gearbox:fog.write "fog_add_sight"
+  // `(iFFF)i`
+  function fogAddSight(country: number, x: number, y: number, radius: number): number;
+
+  // Give the country standing sight of one province, on the same terms as
+  // fog_add_sight. Revealing a province it can already see is harmless.
+  // gearbox:fog.write "fog_reveal_province"
+  // `(ii)i`
+  function fogRevealProvince(country: number, province: number): number;
+
+  // Drop every sight grant the country holds, from every mod and script.
+  // Returns how many were removed. The fog returns to what the rules give it
+  // on the next recompute.
+  // gearbox:fog.write "fog_clear_grants"
+  // `(i)i`
+  function fogClearGrants(country: number): number;
+
   // Reads one of your own keys. Two-call sizing: returns the full value
   // length and writes at most cap bytes. Returns GEARBOX_INVALID if the key
   // is absent -- which is NOT the same as a zero-length value, so you can

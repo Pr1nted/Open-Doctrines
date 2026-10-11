@@ -18,6 +18,8 @@ into your memory after a call returns.
 - **Assets** (`gearbox:assets`): [size](#size), [read](#read)
 - **Audio** (`gearbox:audio`): [play](#play), [stop](#stop), [set_volume](#set-volume), [is_playing](#is-playing)
 - **Net** (`gearbox:net`): [send](#send), [recv](#recv), [peer_count](#peer-count), [self_peer](#self-peer), [is_host](#is-host), [peer_at](#peer-at), [peer_name](#peer-name), [max_message_bytes](#max-message-bytes)
+- **Fog** (`gearbox:fog`): [fog_enabled](#fog-enabled), [fog_country_sees](#fog-country-sees), [fog_province_visible](#fog-province-visible), [fog_province_seen_turn](#fog-province-seen-turn), [fog_known_owner](#fog-known-owner), [fog_point_visible](#fog-point-visible), [fog_ship_visible](#fog-ship-visible), [fog_intel_garrison](#fog-intel-garrison), [fog_intel_population](#fog-intel-population), [fog_intel_industry](#fog-intel-industry), [fog_intel_fort](#fog-intel-fort), [fog_intel_port](#fog-intel-port), [fog_grant_count](#fog-grant-count)
+- **Fog.Write** (`gearbox:fog.write`): [fog_add_sight](#fog-add-sight), [fog_reveal_province](#fog-reveal-province), [fog_clear_grants](#fog-clear-grants)
 - **WasiStub** (`wasi_snapshot_preview1`): [fd_write](#fd-write), [proc_exit](#proc-exit), [random_get](#random-get), [clock_time_get](#clock-time-get), [environ_sizes_get](#environ-sizes-get), [environ_get](#environ-get), [args_sizes_get](#args-sizes-get), [args_get](#args-get), [fd_close](#fd-close), [fd_fdstat_get](#fd-fdstat-get), [fd_prestat_get](#fd-prestat-get), [fd_prestat_dir_name](#fd-prestat-dir-name), [fd_read](#fd-read), [fd_seek](#fd-seek), [path_open](#path-open), [clock_res_get](#clock-res-get), [sched_yield](#sched-yield), [fd_advise](#fd-advise), [fd_allocate](#fd-allocate), [fd_datasync](#fd-datasync), [fd_sync](#fd-sync), [fd_fdstat_set_flags](#fd-fdstat-set-flags), [fd_filestat_get](#fd-filestat-get), [fd_tell](#fd-tell), [fd_renumber](#fd-renumber), [fd_filestat_set_size](#fd-filestat-set-size), [fd_filestat_set_times](#fd-filestat-set-times), [fd_pread](#fd-pread), [fd_pwrite](#fd-pwrite), [fd_readdir](#fd-readdir), [path_create_directory](#path-create-directory), [path_remove_directory](#path-remove-directory), [path_unlink_file](#path-unlink-file), [path_filestat_get](#path-filestat-get), [path_symlink](#path-symlink), [path_readlink](#path-readlink), [path_rename](#path-rename), [path_link](#path-link), [path_filestat_set_times](#path-filestat-set-times), [poll_oneoff](#poll-oneoff), [sock_accept](#sock-accept), [sock_recv](#sock-recv), [sock_send](#sock-send), [sock_shutdown](#sock-shutdown)
 - **Storage** (`gearbox:storage`): [get](#get), [set](#set), [remove](#remove)
 - **Map** (`gearbox:map`): [width](#width), [height](#height), [province_count](#province-count), [province_at](#province-at), [province_name](#province-name), [province_center_x](#province-center-x), [province_center_y](#province-center-y), [province_is_land](#province-is-land), [province_neighbor_count](#province-neighbor-count), [province_neighbor_at](#province-neighbor-at), [province_is_coastal](#province-is-coastal), [sea_route_exists](#sea-route-exists), [point_is_land](#point-is-land)
@@ -766,6 +768,249 @@ That peer's display name -- deliberately NOT their account id or issuer. A mod h
 **Returns:** `i32`
 
 The largest payload net/send will accept. Chunk against this rather than discovering the limit by having a message dropped.
+
+## Fog
+
+Import module `gearbox:fog`. Requires the `Fog` capability in your manifest.
+
+### fog_enabled
+
+```wat
+(import "gearbox:fog" "fog_enabled" (func (result i32)))
+```
+
+**Returns:** `i32`
+
+Whether this world was created with fog of war. 0 in a world without it, where every lookup below answers as though everything were visible.
+
+### fog_country_sees
+
+```wat
+(import "gearbox:fog" "fog_country_sees" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns:** `i32`
+
+Whether this country has a fog of its own. 0 for the spectator, for an unknown country, and in a world without fog.
+
+### fog_province_visible
+
+```wat
+(import "gearbox:fog" "fog_province_visible" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Whether the country can see the province THIS turn -- not whether it remembers it. 1 for every province in a world without fog.
+
+### fog_province_seen_turn
+
+```wat
+(import "gearbox:fog" "fog_province_seen_turn" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+The turn the country last saw the province, or -1 if it never has. A province it can see right now returns the current turn.
+
+### fog_known_owner
+
+```wat
+(import "gearbox:fog" "fog_known_owner" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Who the country BELIEVES owns the province, which is the real owner only while it can see it. A province never seen keeps the owner it had on the starting map, because the atlas is public. GEARBOX_INVALID if unknown.
+
+### fog_point_visible
+
+```wat
+(import "gearbox:fog" "fog_point_visible" (func (param i32 f64 f64) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `x` | `f64` |  |
+| `y` | `f64` |  |
+
+**Returns:** `i32`
+
+Whether a point in map pixels falls inside any of the country's sight. The map wraps east-west and so does this.
+
+### fog_ship_visible
+
+```wat
+(import "gearbox:fog" "fog_ship_visible" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `ship` | `i32` |  |
+
+**Returns:** `i32`
+
+Whether the country can see that ship this turn.
+
+### fog_intel_garrison
+
+```wat
+(import "gearbox:fog" "fog_intel_garrison" (func (param i32 i32) (result i64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i64`
+
+Troops the country last saw in the province, all flags counted. 0 if it has never seen it. This is memory, not truth: it is what was there then.
+
+### fog_intel_population
+
+```wat
+(import "gearbox:fog" "fog_intel_population" (func (param i32 i32) (result i64)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i64`
+
+Population the country last saw in the province, or 0 if never seen.
+
+### fog_intel_industry
+
+```wat
+(import "gearbox:fog" "fog_intel_industry" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Industry level the country last saw in the province, or 0 if never seen.
+
+### fog_intel_fort
+
+```wat
+(import "gearbox:fog" "fog_intel_fort" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Fortification level the country last saw, or 0 if never seen.
+
+### fog_intel_port
+
+```wat
+(import "gearbox:fog" "fog_intel_port" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Port level the country last saw, or 0 if never seen.
+
+### fog_grant_count
+
+```wat
+(import "gearbox:fog" "fog_grant_count" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns:** `i32`
+
+How many sight grants the country currently holds, from every mod and script together. 0 if none.
+
+## Fog.Write
+
+Import module `gearbox:fog.write`. Requires the `Fog.Write` capability in your manifest.
+
+### fog_add_sight
+
+```wat
+(import "gearbox:fog.write" "fog_add_sight" (func (param i32 f64 f64 f64) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `x` | `f64` |  |
+| `y` | `f64` |  |
+| `radius` | `f64` |  |
+
+**Returns:** `i32`
+
+Give the country a standing sight circle at a point in map pixels. It is folded in every time the fog is recomputed, saved with the world and survives a reload, so it is a watchpost rather than a one-turn reveal. Radius is clamped to something sane. 0 if the country or radius is bad.
+
+### fog_reveal_province
+
+```wat
+(import "gearbox:fog.write" "fog_reveal_province" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+| `province` | `i32` | opaque province handle |
+
+**Returns:** `i32`
+
+Give the country standing sight of one province, on the same terms as fog_add_sight. Revealing a province it can already see is harmless.
+
+### fog_clear_grants
+
+```wat
+(import "gearbox:fog.write" "fog_clear_grants" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `country` | `i32` | opaque country handle |
+
+**Returns:** `i32`
+
+Drop every sight grant the country holds, from every mod and script. Returns how many were removed. The fog returns to what the rules give it on the next recompute.
 
 ## WasiStub
 

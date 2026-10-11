@@ -47,6 +47,8 @@ const ModuleEntry kModules[] = {
     {"Core.Protected",  MODULE_CORE_PROTECTED},
     {"Country",         MODULE_COUNTRY},
     {"Scripts",         MODULE_SCRIPTS},
+    {"Fog",             MODULE_FOG},
+    {"Fog.Write",       MODULE_FOG_WRITE},
     {"Render",          MODULE_RENDER},
     {"Content",         MODULE_CONTENT},
 };

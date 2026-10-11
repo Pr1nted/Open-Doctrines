@@ -8,6 +8,8 @@
 // truth", so a non-fog world behaves byte for byte as it did before this file.
 
 #include "Game.h"
+
+#include <cstring>   // memcpy, for the grant blob
 #include "GameInternals.h"
 #include "SaveManager.h"
 
@@ -161,6 +163,22 @@ void Game::recomputeFog() {
             it->second.provinces.set((size_t)pid);
             for (int nb : w.neighbors[(size_t)pid])
                 if (nb > 0 && nb <= maxPid) it->second.provinces.set((size_t)nb);
+        }
+    }
+
+    // Sight a mod or a map script granted (gearbox:fog.write). Folded in HERE,
+    // into the country's own sight and before sharing, so a granted watchpost
+    // reaches an ally one hop exactly as a coast watch does. The spy grants
+    // below are deliberately the other way round.
+    for (const auto& [gcid, g] : m_fogGrants) {
+        auto it = own.find(gcid);
+        if (it == own.end()) continue;          // dead or fogless country
+        for (int pid : g.provinces)
+            if (pid > 0 && pid <= maxPid) it->second.provinces.set((size_t)pid);
+        for (const odfog::SightCircle& c : g.circles) {
+            it->second.sea.push_back(c);        // the renderer draws it too
+            idx.provincesIn(c, [&](int pid) { it->second.provinces.set((size_t)pid); });
+            idx.shipsIn(c, [&](int si) { it->second.ships.set((size_t)si); });
         }
     }
 
@@ -322,6 +340,111 @@ const std::vector<int>& Game::displayOwners() const {
 
 // --- persistence -------------------------------------------------------------
 
+// --- sight grants (gearbox:fog.write) ---------------------------------------
+
+// A circle has to be big enough to contain something and small enough not to be
+// the whole map: a radius of 0 would be a grant that does nothing and silently
+// look like a bug, and one of 100000 would be "switch the fog off" written as
+// if it were a watchpost.
+static constexpr float kGrantMinRadius = 8.0f;
+static constexpr float kGrantMaxRadius = 4096.0f;
+
+bool Game::fogAddSight(int cid, float x, float y, float radius) {
+    if (cid <= 0 || cid >= 65536) return false;
+    if (!(radius == radius) || !(x == x) || !(y == y)) return false;   // NaN
+    const float r = std::clamp(radius, kGrantMinRadius, kGrantMaxRadius);
+    m_fogGrants[cid].circles.push_back({x, y, r});
+    m_fogTurn = -1;                     // the fog is now stale; next read rebuilds
+    return true;
+}
+
+bool Game::fogRevealProvince(int cid, int pid) {
+    if (cid <= 0 || cid >= 65536 || pid <= 0) return false;
+    auto& v = m_fogGrants[cid].provinces;
+    if (std::find(v.begin(), v.end(), pid) != v.end()) return true;    // already granted
+    v.push_back(pid);
+    m_fogTurn = -1;
+    return true;
+}
+
+int Game::fogClearGrants(int cid) {
+    auto it = m_fogGrants.find(cid);
+    if (it == m_fogGrants.end()) return 0;
+    const int n = (int)(it->second.provinces.size() + it->second.circles.size());
+    m_fogGrants.erase(it);
+    if (n) m_fogTurn = -1;
+    return n;
+}
+
+int Game::fogGrantCount(int cid) const {
+    auto it = m_fogGrants.find(cid);
+    if (it == m_fogGrants.end()) return 0;
+    return (int)(it->second.provinces.size() + it->second.circles.size());
+}
+
+// Its own save entry rather than a field inside the memory blob: the memory
+// format is versioned and shared with the multiplayer path, and widening it to
+// carry grants would make every old save a decode failure for a feature that
+// did not exist when it was written.
+std::string Game::fogGrantsBlob() const {
+    if (!m_fogOfWar || m_fogGrants.empty()) return {};
+    std::vector<int> cids;
+    for (const auto& [c, g] : m_fogGrants) cids.push_back(c);
+    std::sort(cids.begin(), cids.end());        // same world, same bytes
+    std::string out = "ODFG1";
+    auto put32 = [&out](uint32_t v) {
+        out.push_back((char)(v & 0xFF));        out.push_back((char)((v >> 8) & 0xFF));
+        out.push_back((char)((v >> 16) & 0xFF)); out.push_back((char)((v >> 24) & 0xFF));
+    };
+    auto putf = [&put32](float f) { uint32_t u; std::memcpy(&u, &f, 4); put32(u); };
+    put32((uint32_t)cids.size());
+    for (int c : cids) {
+        const FogGrants& g = m_fogGrants.at(c);
+        put32((uint32_t)c);
+        put32((uint32_t)g.provinces.size());
+        for (int p : g.provinces) put32((uint32_t)p);
+        put32((uint32_t)g.circles.size());
+        for (const auto& k : g.circles) { putf(k.x); putf(k.y); putf(k.r); }
+    }
+    return out;
+}
+
+void Game::loadFogGrants(const std::string& blob) {
+    m_fogGrants.clear();
+    if (!m_fogOfWar || blob.size() < 9 || blob.compare(0, 5, "ODFG1") != 0) return;
+    size_t at = 5;
+    auto get32 = [&](uint32_t& v) {
+        if (at + 4 > blob.size()) return false;
+        v = (uint8_t)blob[at] | ((uint32_t)(uint8_t)blob[at+1] << 8)
+          | ((uint32_t)(uint8_t)blob[at+2] << 16) | ((uint32_t)(uint8_t)blob[at+3] << 24);
+        at += 4; return true;
+    };
+    uint32_t n = 0;
+    if (!get32(n) || n > 65536) return;
+    for (uint32_t i = 0; i < n; ++i) {
+        uint32_t cid = 0, np = 0, nc = 0;
+        if (!get32(cid) || !get32(np) || np > 1u << 20) { m_fogGrants.clear(); return; }
+        FogGrants g;
+        g.provinces.reserve(np);
+        for (uint32_t k = 0; k < np; ++k) {
+            uint32_t p = 0;
+            if (!get32(p)) { m_fogGrants.clear(); return; }
+            g.provinces.push_back((int)p);
+        }
+        if (!get32(nc) || nc > 1u << 20) { m_fogGrants.clear(); return; }
+        g.circles.reserve(nc);
+        for (uint32_t k = 0; k < nc; ++k) {
+            uint32_t a = 0, b = 0, c = 0;
+            if (!get32(a) || !get32(b) || !get32(c)) { m_fogGrants.clear(); return; }
+            float x, y, r;
+            std::memcpy(&x, &a, 4); std::memcpy(&y, &b, 4); std::memcpy(&r, &c, 4);
+            g.circles.push_back({x, y, r});
+        }
+        if (cid > 0 && cid < 65536) m_fogGrants[(int)cid] = std::move(g);
+    }
+    m_fogTurn = -1;
+}
+
 std::string Game::fogMemoryBlob() const {
     if (!m_fogOfWar) return {};
     std::vector<int> cids;
@@ -358,6 +481,7 @@ void Game::loadFogMemory(const std::string& blob) {
 void Game::fogAfterLoad(const std::string& savePath) {
     if (!m_fogOfWar) return;
     loadFogMemory(SaveManager::readEntry(savePath, "fog/memory.bin"));
+    loadFogGrants(SaveManager::readEntry(savePath, "fog/grants.bin"));
     // OD_FOG_DUMP=<path>: write the memory exactly as loaded, before this
     // turn's recompute adds to it. Comparing it with the save's own
     // fog/memory.bin proves the round trip is byte-exact.

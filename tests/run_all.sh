@@ -42,7 +42,7 @@ fi
 step() { printf '\n=== %s ===\n' "$1"; }
 
 step "fixture mods"
-"$root/tests/build_test_mods.sh" "$build/testmods" || fail=1
+"$root/tests/build_test_mods.sh" "$build/testmods" || note_fail "build the test mods"
 
 # ONE MOD PER CAPABILITY, generated from sdk/abi.json and compiled with the
 # same toolchain the fixtures above use. These call every import in every
@@ -50,8 +50,8 @@ step "fixture mods"
 # them. Generated rather than written so they cannot fall behind the ABI they
 # are testing -- which is the failure mode of a hand-written coverage test.
 step "capability mods"
-"$root/tools/gen_capability_mods.py" "$build/capmods" >/dev/null || fail=1
-"$root/tests/build_capability_mods.sh" "$build/capmods" || fail=1
+"$root/tools/gen_capability_mods.py" "$build/capmods" >/dev/null || note_fail "generate the capability mods"
+"$root/tests/build_capability_mods.sh" "$build/capmods" || note_fail "build the capability mods"
 
 step "build test targets"
 # --config Release for the multi-config generators. Visual Studio and Xcode
@@ -404,7 +404,7 @@ run "translatable strings" python3 "$root/tools/i18n_extract.py" --check
 run "translation lint"     python3 "$root/tools/i18n_sync.py" --lint
 
 step "the same seed plays the same game"
-"$root/tests/determinism_check.sh" "$build" || fail=1
+"$root/tests/determinism_check.sh" "$build" || note_fail "determinism"
 run "gif decodes back" $PY "$root/tests/gif_encoder_check.py" "$build/giftest"
 run "png decodes back" $PY "$root/tests/png_write_check.py" "$build/pngtest"
 
@@ -584,7 +584,7 @@ print("  manifest: valid XML, UTF-8 code page declared")
 PY
 
 step "documented example"
-"$root/tests/check_doc_examples.sh" "$build/doccheck" "$bin/odmod-check" || fail=1
+"$root/tests/check_doc_examples.sh" "$build/doccheck" "$bin/odmod-check" || note_fail "doc examples"
 
 step "shipped example mods"
 # Every .odmod that has been built, in any language. Each must load, and each
@@ -629,6 +629,14 @@ if [ $fail -eq 0 ]; then
     echo "ALL PASSED"
 else
     echo "SOMETHING FAILED:"
-    for s in "${failed_steps[@]}"; do echo "  - $s"; done
+    # ${a[@]} on an EMPTY array is unbound under set -u in bash 3.2, which
+    # is what macOS ships -- so a run that set fail without naming a step
+    # died here instead of reporting. Guarded, and every site above now
+    # names its step.
+    if [ ${#failed_steps[@]} -gt 0 ]; then
+        for s in "${failed_steps[@]}"; do echo "  - $s"; done
+    else
+        echo "  - (a step failed without naming itself; see the log above)"
+    fi
 fi
 exit $fail

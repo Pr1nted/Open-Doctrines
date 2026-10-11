@@ -189,6 +189,48 @@ province.ID.output        → (string) the good its factories are directed to
 province.ID.contested     → (bool) a battle is being fought over it
 ```
 
+Under fog of war a province is not simply visible or not — it is visible *to
+somebody*. Those three take a country code as a fourth part, because "is this
+province visible" is not a question a fogged map can answer:
+
+```
+fog.enabled                     → (bool) does this world have fog at all
+province.ID.visible_to.ISO      → (bool) can that country see it THIS turn
+province.ID.seen_turn.ISO       → (int) the turn it last saw it, -1 if never
+province.ID.known_owner.ISO     → (string) who it BELIEVES owns it, which is
+                                  the truth only while it can see it
+```
+
+On a map created without fog every one of these answers as though the whole
+world were visible, so a script can use them without checking `fog.enabled`
+first.
+
+### Granting sight
+
+```
+fog reveal ISO PROVINCE        # standing sight of one province
+fog sight  ISO X Y RADIUS      # standing sight of an area, in map pixels
+fog clear  ISO                 # drop every grant that country holds
+```
+
+A grant is a **watchpost, not a reveal**. The fog is rebuilt from scratch every
+turn, so a one-off uncovering would vanish immediately; these are held and
+folded in on every recompute, and they are saved with the world. That is what
+lets a scenario say *this country has watched the straits since 1936* and have
+it still be true after a reload.
+
+Granted sight joins the country's own, so it reaches an ally one hop exactly as
+a coast watch does. `fog clear` drops every grant on that country including
+ones a mod made, because the engine keeps one list per country rather than one
+per author.
+
+```
+if fog.enabled
+    fog sight GBR 2980 1180 260      # the Channel, watched
+    fog reveal GBR 1447              # and one province outright
+endif
+```
+
 Setting a garrison:
 ```
 set province.42.troops.militia 12000   # exactly that many militia

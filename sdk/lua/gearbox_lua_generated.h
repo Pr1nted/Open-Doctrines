@@ -1203,6 +1203,204 @@ static int gbxlua_set_country_nationalised(lua_State *L) {
 }
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
+/* ---- Fog (13) ---- */
+#if GBX_WITH_FOG
+
+/* gearbox:fog "fog_enabled" */
+/* Whether this world was created with fog of war. 0 in a world without it, */
+/* where every lookup below answers as though everything were visible. */
+/* gearbox:fog "fog_enabled" */
+/* `()i` */
+static int gbxlua_fog_enabled(lua_State *L) {
+    (void)L;
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_enabled());
+    return 1;
+}
+
+/* gearbox:fog "fog_country_sees" */
+/* Whether this country has a fog of its own. 0 for the spectator, for an */
+/* unknown country, and in a world without fog. */
+/* gearbox:fog "fog_country_sees" */
+/* `(i)i` */
+static int gbxlua_fog_country_sees(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_country_sees((uint32_t)(a1)));
+    return 1;
+}
+
+/* gearbox:fog "fog_province_visible" */
+/* Whether the country can see the province THIS turn -- not whether it */
+/* remembers it. 1 for every province in a world without fog. */
+/* gearbox:fog "fog_province_visible" */
+/* `(ii)i` */
+static int gbxlua_fog_province_visible(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_province_visible((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_province_seen_turn" */
+/* The turn the country last saw the province, or -1 if it never has. A */
+/* province it can see right now returns the current turn. */
+/* gearbox:fog "fog_province_seen_turn" */
+/* `(ii)i` */
+static int gbxlua_fog_province_seen_turn(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_province_seen_turn((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_known_owner" */
+/* Who the country BELIEVES owns the province, which is the real owner only */
+/* while it can see it. A province never seen keeps the owner it had on the */
+/* starting map, because the atlas is public. GEARBOX_INVALID if unknown. */
+/* gearbox:fog "fog_known_owner" */
+/* `(ii)i` */
+static int gbxlua_fog_known_owner(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_known_owner((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_point_visible" */
+/* Whether a point in map pixels falls inside any of the country's sight. */
+/* The map wraps east-west and so does this. */
+/* gearbox:fog "fog_point_visible" */
+/* `(iFF)i` */
+static int gbxlua_fog_point_visible(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    double a2 = (double)luaL_checknumber(L, 2);
+    double a3 = (double)luaL_checknumber(L, 3);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_point_visible((uint32_t)(a1), a2, a3));
+    return 1;
+}
+
+/* gearbox:fog "fog_ship_visible" */
+/* Whether the country can see that ship this turn. */
+/* gearbox:fog "fog_ship_visible" */
+/* `(ii)i` */
+static int gbxlua_fog_ship_visible(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_ship_visible((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_intel_garrison" */
+/* Troops the country last saw in the province, all flags counted. 0 if it */
+/* has never seen it. This is memory, not truth: it is what was there then. */
+/* gearbox:fog "fog_intel_garrison" */
+/* `(ii)I` */
+static int gbxlua_fog_intel_garrison(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_intel_garrison((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_intel_population" */
+/* Population the country last saw in the province, or 0 if never seen. */
+/* gearbox:fog "fog_intel_population" */
+/* `(ii)I` */
+static int gbxlua_fog_intel_population(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_intel_population((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_intel_industry" */
+/* Industry level the country last saw in the province, or 0 if never seen. */
+/* gearbox:fog "fog_intel_industry" */
+/* `(ii)i` */
+static int gbxlua_fog_intel_industry(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_intel_industry((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_intel_fort" */
+/* Fortification level the country last saw, or 0 if never seen. */
+/* gearbox:fog "fog_intel_fort" */
+/* `(ii)i` */
+static int gbxlua_fog_intel_fort(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_intel_fort((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_intel_port" */
+/* Port level the country last saw, or 0 if never seen. */
+/* gearbox:fog "fog_intel_port" */
+/* `(ii)i` */
+static int gbxlua_fog_intel_port(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_intel_port((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog "fog_grant_count" */
+/* How many sight grants the country currently holds, from every mod and */
+/* script together. 0 if none. */
+/* gearbox:fog "fog_grant_count" */
+/* `(i)i` */
+static int gbxlua_fog_grant_count(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_grant_count((uint32_t)(a1)));
+    return 1;
+}
+#endif /* GBX_WITH_FOG */
+
+/* ---- Fog.Write (3) ---- */
+#if GBX_WITH_FOG_WRITE
+
+/* gearbox:fog.write "fog_add_sight" */
+/* Give the country a standing sight circle at a point in map pixels. It is */
+/* folded in every time the fog is recomputed, saved with the world and */
+/* survives a reload, so it is a watchpost rather than a one-turn reveal. */
+/* Radius is clamped to something sane. 0 if the country or radius is bad. */
+/* gearbox:fog.write "fog_add_sight" */
+/* `(iFFF)i` */
+static int gbxlua_fog_add_sight(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    double a2 = (double)luaL_checknumber(L, 2);
+    double a3 = (double)luaL_checknumber(L, 3);
+    double a4 = (double)luaL_checknumber(L, 4);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_add_sight((uint32_t)(a1), a2, a3, a4));
+    return 1;
+}
+
+/* gearbox:fog.write "fog_reveal_province" */
+/* Give the country standing sight of one province, on the same terms as */
+/* fog_add_sight. Revealing a province it can already see is harmless. */
+/* gearbox:fog.write "fog_reveal_province" */
+/* `(ii)i` */
+static int gbxlua_fog_reveal_province(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_Integer a2 = luaL_checkinteger(L, 2);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_reveal_province((uint32_t)(a1), (uint32_t)(a2)));
+    return 1;
+}
+
+/* gearbox:fog.write "fog_clear_grants" */
+/* Drop every sight grant the country holds, from every mod and script. */
+/* Returns how many were removed. The fog returns to what the rules give it */
+/* on the next recompute. */
+/* gearbox:fog.write "fog_clear_grants" */
+/* `(i)i` */
+static int gbxlua_fog_clear_grants(lua_State *L) {
+    lua_Integer a1 = luaL_checkinteger(L, 1);
+    lua_pushinteger(L, (lua_Integer)gearbox_fog_clear_grants((uint32_t)(a1)));
+    return 1;
+}
+#endif /* GBX_WITH_FOG_WRITE */
+
 /* ---- GameState.Read (13) ---- */
 #if GBX_WITH_GAMESTATE_READ
 

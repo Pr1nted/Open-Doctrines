@@ -334,6 +334,55 @@ private:
     double neuralRewardMean(uint32_t i) override {
         return m_game->modNeuralRewardMean((int)i);
     }
+
+    // --- fog of war ---
+    bool fogEnabled() override { return m_game->modFogEnabled(); }
+    bool fogCountrySees(uint32_t cid) override {
+        return m_game->modFogCountrySees((int)cid);
+    }
+    bool fogProvinceVisible(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogProvinceVisible((int)cid, (int)pid);
+    }
+    int32_t fogProvinceSeenTurn(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogProvinceSeenTurn((int)cid, (int)pid);
+    }
+    uint32_t fogKnownOwner(uint32_t cid, uint32_t pid) override {
+        int o = m_game->modFogKnownOwner((int)cid, (int)pid);
+        return o <= 0 ? 0xFFFFFFFFu : (uint32_t)o;   // GEARBOX_INVALID, as elsewhere
+    }
+    bool fogPointVisible(uint32_t cid, double x, double y) override {
+        return m_game->modFogPointVisible((int)cid, x, y);
+    }
+    bool fogShipVisible(uint32_t cid, uint32_t ship) override {
+        return m_game->modFogShipVisible((int)cid, (int)ship);
+    }
+    long long fogIntelGarrison(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogIntelGarrison((int)cid, (int)pid);
+    }
+    long long fogIntelPopulation(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogIntelPopulation((int)cid, (int)pid);
+    }
+    int32_t fogIntelIndustry(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogIntelIndustry((int)cid, (int)pid);
+    }
+    int32_t fogIntelFort(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogIntelFort((int)cid, (int)pid);
+    }
+    int32_t fogIntelPort(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogIntelPort((int)cid, (int)pid);
+    }
+    int32_t fogGrantCount(uint32_t cid) override {
+        return m_game->modFogGrantCount((int)cid);
+    }
+    bool fogAddSight(uint32_t cid, double x, double y, double r) override {
+        return m_game->modFogAddSight((int)cid, x, y, r);
+    }
+    bool fogRevealProvince(uint32_t cid, uint32_t pid) override {
+        return m_game->modFogRevealProvince((int)cid, (int)pid);
+    }
+    int32_t fogClearGrants(uint32_t cid) override {
+        return m_game->modFogClearGrants((int)cid);
+    }
 };
 
 GameModAccess* g_access = nullptr;
@@ -457,6 +506,89 @@ long long Game::modProvincePopulation(int pid) const {
     auto it = m_provincePopulations.find(pid);
     return it == m_provincePopulations.end() ? 0 : it->second;
 }
+
+// --- fog of war -------------------------------------------------------------
+//
+// The accessors in Game_Fog.cpp already answer "visible" when there is no fog,
+// so these forward and only add the bounds checking the mod boundary owes: a
+// wasm module can pass any integer it likes.
+
+bool Game::modFogEnabled() const { return m_fogOfWar; }
+
+bool Game::modFogCountrySees(int cid) const {
+    // fogCountry() is true of any real country whether or not fog is on; the
+    // question a mod is asking here is "does this country have a fog", so the
+    // world's own setting has to be part of the answer.
+    return m_fogOfWar && fogCountry(cid);
+}
+
+bool Game::modFogProvinceVisible(int cid, int pid) const {
+    if (pid <= 0) return false;
+    return provinceVisibleTo(cid, pid);
+}
+
+int Game::modFogProvinceSeenTurn(int cid, int pid) const {
+    if (pid <= 0) return -1;
+    if (provinceVisibleTo(cid, pid)) return m_turnNumber;   // seeing it now
+    const odfog::ProvinceIntel* in = intel(cid, pid);
+    if (!in || in->seenTurn == odfog::kNeverSeen) return -1;
+    return (int)in->seenTurn;
+}
+
+int Game::modFogKnownOwner(int cid, int pid) const {
+    if (pid <= 0) return 0;
+    return knownOwner(cid, pid);
+}
+
+bool Game::modFogPointVisible(int cid, double x, double y) const {
+    if (!(x == x) || !(y == y)) return false;               // NaN
+    return fogPointVisibleTo(cid, (float)x, (float)y);
+}
+
+bool Game::modFogShipVisible(int cid, int ship) const {
+    if (ship < 0 || (size_t)ship >= m_ships.size()) return false;
+    return shipVisibleTo(cid, (size_t)ship);
+}
+
+long long Game::modFogIntelGarrison(int cid, int pid) const {
+    const odfog::ProvinceIntel* in = (pid > 0) ? intel(cid, pid) : nullptr;
+    return in ? (long long)in->garrison : 0;
+}
+
+long long Game::modFogIntelPopulation(int cid, int pid) const {
+    const odfog::ProvinceIntel* in = (pid > 0) ? intel(cid, pid) : nullptr;
+    return in ? (long long)in->population : 0;
+}
+
+int Game::modFogIntelIndustry(int cid, int pid) const {
+    const odfog::ProvinceIntel* in = (pid > 0) ? intel(cid, pid) : nullptr;
+    return in ? (int)in->industry : 0;
+}
+
+int Game::modFogIntelFort(int cid, int pid) const {
+    const odfog::ProvinceIntel* in = (pid > 0) ? intel(cid, pid) : nullptr;
+    return in ? (int)in->fort : 0;
+}
+
+int Game::modFogIntelPort(int cid, int pid) const {
+    const odfog::ProvinceIntel* in = (pid > 0) ? intel(cid, pid) : nullptr;
+    return in ? (int)in->port : 0;
+}
+
+int Game::modFogGrantCount(int cid) const { return fogGrantCount(cid); }
+
+bool Game::modFogAddSight(int cid, double x, double y, double radius) {
+    if (!m_fogOfWar) return false;        // nothing to grant sight through
+    if (!(x == x) || !(y == y) || !(radius == radius)) return false;
+    return fogAddSight(cid, (float)x, (float)y, (float)radius);
+}
+
+bool Game::modFogRevealProvince(int cid, int pid) {
+    if (!m_fogOfWar) return false;
+    return fogRevealProvince(cid, pid);
+}
+
+int Game::modFogClearGrants(int cid) { return fogClearGrants(cid); }
 
 int Game::modProvinceOwner(int pid) const {
     if (pid < 0 || (size_t)pid >= m_provinceCountryLookup.size()) return 0;

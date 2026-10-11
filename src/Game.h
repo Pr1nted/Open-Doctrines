@@ -1773,6 +1773,25 @@ public:
     int         modProvinceMonument(int pid) const;
     int         modProvinceMonumentLevel(int pid) const;
     bool        modProvinceMonumentActive(int pid) const;
+    // Fog of war, same door again (src/Game_Fog.cpp answers). Every read
+    // reports "visible" in a world without fog, because the accessors below
+    // already do -- so a mod written for fog needs no branch for its absence.
+    bool        modFogEnabled() const;
+    bool        modFogCountrySees(int cid) const;
+    bool        modFogProvinceVisible(int cid, int pid) const;
+    int         modFogProvinceSeenTurn(int cid, int pid) const;
+    int         modFogKnownOwner(int cid, int pid) const;
+    bool        modFogPointVisible(int cid, double x, double y) const;
+    bool        modFogShipVisible(int cid, int ship) const;
+    long long   modFogIntelGarrison(int cid, int pid) const;
+    long long   modFogIntelPopulation(int cid, int pid) const;
+    int         modFogIntelIndustry(int cid, int pid) const;
+    int         modFogIntelFort(int cid, int pid) const;
+    int         modFogIntelPort(int cid, int pid) const;
+    int         modFogGrantCount(int cid) const;
+    bool        modFogAddSight(int cid, double x, double y, double radius);
+    bool        modFogRevealProvince(int cid, int pid);
+    int         modFogClearGrants(int cid);
 
     // ── ABI 1.4: monuments, sector taxes, goods, directed factories,
     // nationalisation, battles ──
@@ -3038,6 +3057,24 @@ public:
     std::vector<int> m_fogDisplayOwners;  // what the player's map shows (empty = truth)
     int m_fogTurn = -1;                   // the turn the fog was last computed for
 
+    // --- Sight a mod or a map script granted (gearbox:fog.write) ---
+    //
+    // A WATCHPOST, NOT A REVEAL. recomputeFog() rebuilds every country's sight
+    // from scratch each turn, so a grant that was applied once would vanish on
+    // the next recompute. These are held instead and folded in every time, and
+    // they are saved with the world -- which is what lets a scenario say "this
+    // country has watched the straits since 1936" and have it still be true
+    // after a reload.
+    //
+    // They join the country's OWN sight, so they share one hop to allies
+    // exactly as a coast watch does. A spy network (m_intelGrants) is
+    // deliberately the other way round and stays private to the spy.
+    struct FogGrants {
+        std::vector<int> provinces;              // standing sight of a province
+        std::vector<odfog::SightCircle> circles; // standing sight of an area
+    };
+    std::unordered_map<int, FogGrants> m_fogGrants;
+
     bool fogOn() const { return m_fogOfWar; }
     // The two questions the map's markers ask: is this province / ship out of
     // the PLAYER's sight? False without fog, and false for a spectator.
@@ -3049,6 +3086,14 @@ public:
     }
     bool provinceVisibleTo(int cid, int pid) const;
     bool shipVisibleTo(int cid, size_t shipIndex) const;
+    // Sight grants (gearbox:fog.write). Each returns whether it changed
+    // anything; granting invalidates the fog so the next read recomputes.
+    bool fogAddSight(int cid, float x, float y, float radius);
+    bool fogRevealProvince(int cid, int pid);
+    int  fogClearGrants(int cid);
+    int  fogGrantCount(int cid) const;
+    std::string fogGrantsBlob() const;
+    void loadFogGrants(const std::string& blob);
     int knownOwner(int cid, int pid) const;
     const odfog::ProvinceIntel* intel(int cid, int pid) const;
     bool sharesIntel(int a, int b) const;

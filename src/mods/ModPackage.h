@@ -108,6 +108,18 @@ enum ModModuleBit : uint32_t {
     MODULE_CONTENT         = 1u << 27,
 
     MODULE_MAPEDITOR       = 1u << 21,
+
+    // Fog of war. Read is its own capability rather than part of
+    // GameState.Read because it answers a different question: not "what is
+    // true" but "what does THIS country believe", which is the one thing a
+    // mod could use to play a fogged game with the fog switched off.
+    MODULE_FOG             = 1u << 28,
+    // Writing it is separate again, and rarer: a grant changes what another
+    // player can see, so it is the capability a reviewer should look hardest
+    // at after Core.Protected.
+    MODULE_FOG_WRITE       = 1u << 29,
+    // Bits 30 and 31 are the last two in the mask. The next capability after
+    // those needs a wider type and a save-format decision, not another bit.
 };
 
 uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown

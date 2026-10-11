@@ -250,6 +250,117 @@ public final class GearboxRaw {
     @Import(module = "gearbox:net", name = "is_host")
     public static native int isHost();
 
+    // Whether this world was created with fog of war. 0 in a world without it,
+    // where every lookup below answers as though everything were visible.
+    // gearbox:fog "fog_enabled"
+    // `()i`
+    @Import(module = "gearbox:fog", name = "fog_enabled")
+    public static native int fogEnabled();
+
+    // Whether this country has a fog of its own. 0 for the spectator, for an
+    // unknown country, and in a world without fog.
+    // gearbox:fog "fog_country_sees"
+    // `(i)i`
+    @Import(module = "gearbox:fog", name = "fog_country_sees")
+    public static native int fogCountrySees(int country);
+
+    // Whether the country can see the province THIS turn -- not whether it
+    // remembers it. 1 for every province in a world without fog.
+    // gearbox:fog "fog_province_visible"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_province_visible")
+    public static native int fogProvinceVisible(int country, int province);
+
+    // The turn the country last saw the province, or -1 if it never has. A
+    // province it can see right now returns the current turn.
+    // gearbox:fog "fog_province_seen_turn"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_province_seen_turn")
+    public static native int fogProvinceSeenTurn(int country, int province);
+
+    // Who the country BELIEVES owns the province, which is the real owner only
+    // while it can see it. A province never seen keeps the owner it had on the
+    // starting map, because the atlas is public. GEARBOX_INVALID if unknown.
+    // gearbox:fog "fog_known_owner"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_known_owner")
+    public static native int fogKnownOwner(int country, int province);
+
+    // Whether a point in map pixels falls inside any of the country's sight.
+    // The map wraps east-west and so does this.
+    // gearbox:fog "fog_point_visible"
+    // `(iFF)i`
+    @Import(module = "gearbox:fog", name = "fog_point_visible")
+    public static native int fogPointVisible(int country, double x, double y);
+
+    // Whether the country can see that ship this turn.
+    // gearbox:fog "fog_ship_visible"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_ship_visible")
+    public static native int fogShipVisible(int country, int ship);
+
+    // Troops the country last saw in the province, all flags counted. 0 if it
+    // has never seen it. This is memory, not truth: it is what was there then.
+    // gearbox:fog "fog_intel_garrison"
+    // `(ii)I`
+    @Import(module = "gearbox:fog", name = "fog_intel_garrison")
+    public static native long fogIntelGarrison(int country, int province);
+
+    // Population the country last saw in the province, or 0 if never seen.
+    // gearbox:fog "fog_intel_population"
+    // `(ii)I`
+    @Import(module = "gearbox:fog", name = "fog_intel_population")
+    public static native long fogIntelPopulation(int country, int province);
+
+    // Industry level the country last saw in the province, or 0 if never seen.
+    // gearbox:fog "fog_intel_industry"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_intel_industry")
+    public static native int fogIntelIndustry(int country, int province);
+
+    // Fortification level the country last saw, or 0 if never seen.
+    // gearbox:fog "fog_intel_fort"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_intel_fort")
+    public static native int fogIntelFort(int country, int province);
+
+    // Port level the country last saw, or 0 if never seen.
+    // gearbox:fog "fog_intel_port"
+    // `(ii)i`
+    @Import(module = "gearbox:fog", name = "fog_intel_port")
+    public static native int fogIntelPort(int country, int province);
+
+    // How many sight grants the country currently holds, from every mod and
+    // script together. 0 if none.
+    // gearbox:fog "fog_grant_count"
+    // `(i)i`
+    @Import(module = "gearbox:fog", name = "fog_grant_count")
+    public static native int fogGrantCount(int country);
+
+    // Give the country a standing sight circle at a point in map pixels. It is
+    // folded in every time the fog is recomputed, saved with the world and
+    // survives a reload, so it is a watchpost rather than a one-turn reveal.
+    // Radius is clamped to something sane. 0 if the country or radius is bad.
+    // gearbox:fog.write "fog_add_sight"
+    // `(iFFF)i`
+    @Import(module = "gearbox:fog.write", name = "fog_add_sight")
+    public static native int fogAddSight(int country, double x, double y, double radius);
+
+    // Give the country standing sight of one province, on the same terms as
+    // fog_add_sight. Revealing a province it can already see is harmless.
+    // gearbox:fog.write "fog_reveal_province"
+    // `(ii)i`
+    @Import(module = "gearbox:fog.write", name = "fog_reveal_province")
+    public static native int fogRevealProvince(int country, int province);
+
+    // Drop every sight grant the country holds, from every mod and script.
+    // Returns how many were removed. The fog returns to what the rules give it
+    // on the next recompute.
+    // gearbox:fog.write "fog_clear_grants"
+    // `(i)i`
+    @Import(module = "gearbox:fog.write", name = "fog_clear_grants")
+    public static native int fogClearGrants(int country);
+
     // Reads one of your own keys. Two-call sizing: returns the full value
     // length and writes at most cap bytes. Returns GEARBOX_INVALID if the key
     // is absent -- which is NOT the same as a zero-length value, so you can

@@ -26,7 +26,7 @@ const std::unordered_set<std::string>& reserved() {
         "array", "break", "catch", "continue", "dialog", "else", "elseif",
         "endif", "endtry", "endwhile", "for", "foreach", "if", "include",
         "jump", "label", "list", "next", "print", "repeat", "set", "spawn",
-        "stop", "try", "unless", "while",
+        "stop", "try", "unless", "while", "fog",
         // Not keywords today, and the shape of a future one. A mod that takes
         // "function" or "return" now would have to be broken later to add it.
         "function", "return", "import", "export", "const", "var", "let",

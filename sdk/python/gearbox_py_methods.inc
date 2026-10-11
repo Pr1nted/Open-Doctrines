@@ -114,6 +114,30 @@
     {"setCountryNationalised", gbxpy_set_country_nationalised, METH_VARARGS, "Take a speciality sector into state hands, or release it, through the game's own nationalise / releaseNationalised. Taking one is refused when the country is at its cap; a released"},
 #endif /* GBX_WITH_ECONOMY_WRITE */
 
+/* ---- Fog (13) ---- */
+#if GBX_WITH_FOG
+    {"fogEnabled", gbxpy_fog_enabled, METH_NOARGS, "Whether this world was created with fog of war. 0 in a world without it, where every lookup below answers as though everything were visible."},
+    {"fogCountrySees", gbxpy_fog_country_sees, METH_VARARGS, "Whether this country has a fog of its own. 0 for the spectator, for an unknown country, and in a world without fog."},
+    {"fogProvinceVisible", gbxpy_fog_province_visible, METH_VARARGS, "Whether the country can see the province THIS turn -- not whether it remembers it. 1 for every province in a world without fog."},
+    {"fogProvinceSeenTurn", gbxpy_fog_province_seen_turn, METH_VARARGS, "The turn the country last saw the province, or -1 if it never has. A province it can see right now returns the current turn."},
+    {"fogKnownOwner", gbxpy_fog_known_owner, METH_VARARGS, "Who the country BELIEVES owns the province, which is the real owner only while it can see it. A province never seen keeps the owner it had on the starting map, because the atlas is"},
+    {"fogPointVisible", gbxpy_fog_point_visible, METH_VARARGS, "Whether a point in map pixels falls inside any of the country's sight. The map wraps east-west and so does this."},
+    {"fogShipVisible", gbxpy_fog_ship_visible, METH_VARARGS, "Whether the country can see that ship this turn."},
+    {"fogIntelGarrison", gbxpy_fog_intel_garrison, METH_VARARGS, "Troops the country last saw in the province, all flags counted. 0 if it has never seen it. This is memory, not truth: it is what was there then."},
+    {"fogIntelPopulation", gbxpy_fog_intel_population, METH_VARARGS, "Population the country last saw in the province, or 0 if never seen."},
+    {"fogIntelIndustry", gbxpy_fog_intel_industry, METH_VARARGS, "Industry level the country last saw in the province, or 0 if never seen."},
+    {"fogIntelFort", gbxpy_fog_intel_fort, METH_VARARGS, "Fortification level the country last saw, or 0 if never seen."},
+    {"fogIntelPort", gbxpy_fog_intel_port, METH_VARARGS, "Port level the country last saw, or 0 if never seen."},
+    {"fogGrantCount", gbxpy_fog_grant_count, METH_VARARGS, "How many sight grants the country currently holds, from every mod and script together. 0 if none."},
+#endif /* GBX_WITH_FOG */
+
+/* ---- Fog.Write (3) ---- */
+#if GBX_WITH_FOG_WRITE
+    {"fogAddSight", gbxpy_fog_add_sight, METH_VARARGS, "Give the country a standing sight circle at a point in map pixels. It is folded in every time the fog is recomputed, saved with the world and survives a reload, so it is a watchpos"},
+    {"fogRevealProvince", gbxpy_fog_reveal_province, METH_VARARGS, "Give the country standing sight of one province, on the same terms as fog_add_sight. Revealing a province it can already see is harmless."},
+    {"fogClearGrants", gbxpy_fog_clear_grants, METH_VARARGS, "Drop every sight grant the country holds, from every mod and script. Returns how many were removed. The fog returns to what the rules give it on the next recompute."},
+#endif /* GBX_WITH_FOG_WRITE */
+
 /* ---- GameState.Read (13) ---- */
 #if GBX_WITH_GAMESTATE_READ
     {"turnNumber", gbxpy_turn_number, METH_NOARGS, "The current turn. 0 when no world is loaded."},

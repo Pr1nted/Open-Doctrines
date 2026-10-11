@@ -520,6 +520,26 @@ struct ModGameAccess {
     virtual uint32_t neuralFeatures(uint32_t cid, float* out, uint32_t cap) = 0;
     virtual uint32_t neuralRewardCount() = 0;
     virtual double   neuralRewardMean(uint32_t index) = 0;
+
+    // --- fog of war (gearbox:fog, gearbox:fog.write) ---
+    // Every read answers as though everything were visible in a world without
+    // fog, so a mod written for fog does not have to branch on whether it is on.
+    virtual bool     fogEnabled() = 0;
+    virtual bool     fogCountrySees(uint32_t cid) = 0;
+    virtual bool     fogProvinceVisible(uint32_t cid, uint32_t pid) = 0;
+    virtual int32_t  fogProvinceSeenTurn(uint32_t cid, uint32_t pid) = 0;   // -1 never
+    virtual uint32_t fogKnownOwner(uint32_t cid, uint32_t pid) = 0;
+    virtual bool     fogPointVisible(uint32_t cid, double x, double y) = 0;
+    virtual bool     fogShipVisible(uint32_t cid, uint32_t ship) = 0;
+    virtual long long fogIntelGarrison(uint32_t cid, uint32_t pid) = 0;
+    virtual long long fogIntelPopulation(uint32_t cid, uint32_t pid) = 0;
+    virtual int32_t  fogIntelIndustry(uint32_t cid, uint32_t pid) = 0;
+    virtual int32_t  fogIntelFort(uint32_t cid, uint32_t pid) = 0;
+    virtual int32_t  fogIntelPort(uint32_t cid, uint32_t pid) = 0;
+    virtual int32_t  fogGrantCount(uint32_t cid) = 0;
+    virtual bool     fogAddSight(uint32_t cid, double x, double y, double radius) = 0;
+    virtual bool     fogRevealProvince(uint32_t cid, uint32_t pid) = 0;
+    virtual int32_t  fogClearGrants(uint32_t cid) = 0;
 };
 
 // Null whenever no world is loaded. Every GameState.Read native must cope with

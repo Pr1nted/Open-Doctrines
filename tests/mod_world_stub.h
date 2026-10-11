@@ -155,6 +155,26 @@ struct StubWorld : ModGameAccess {
     uint32_t neuralRewardCount() override { return 0; }
     double neuralRewardMean(uint32_t) override { return 0.0; }
 
+    // Fog of war. The stub world has none, which is the case every read
+    // reports "visible" for and every write refuses -- so a capability
+    // fixture calling these gets the same answers a fogless game gives.
+    bool fogEnabled() override { return false; }
+    bool fogCountrySees(uint32_t) override { return false; }
+    bool fogProvinceVisible(uint32_t, uint32_t) override { return true; }
+    int32_t fogProvinceSeenTurn(uint32_t, uint32_t) override { return -1; }
+    uint32_t fogKnownOwner(uint32_t, uint32_t pid) override { return provinceOwner(pid); }
+    bool fogPointVisible(uint32_t, double, double) override { return true; }
+    bool fogShipVisible(uint32_t, uint32_t) override { return true; }
+    long long fogIntelGarrison(uint32_t, uint32_t) override { return 0; }
+    long long fogIntelPopulation(uint32_t, uint32_t) override { return 0; }
+    int32_t fogIntelIndustry(uint32_t, uint32_t) override { return 0; }
+    int32_t fogIntelFort(uint32_t, uint32_t) override { return 0; }
+    int32_t fogIntelPort(uint32_t, uint32_t) override { return 0; }
+    int32_t fogGrantCount(uint32_t) override { return 0; }
+    bool fogAddSight(uint32_t, double, double, double) override { return false; }
+    bool fogRevealProvince(uint32_t, uint32_t) override { return false; }
+    int32_t fogClearGrants(uint32_t) override { return 0; }
+
     // ── ABI 1.2 ──
     // Answering "nothing" rather than pretending: these exist so the stub is
     // concrete, and the tests that care about districts, publication or the

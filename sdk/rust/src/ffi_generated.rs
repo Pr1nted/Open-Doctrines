@@ -358,6 +358,109 @@ extern "C" {
 
 }
 
+#[link(wasm_import_module = "gearbox:fog")]
+extern "C" {
+    /// Whether this world was created with fog of war. 0 in a world without it,
+    /// where every lookup below answers as though everything were visible.
+    /// gearbox:fog "fog_enabled"
+    /// `()i`
+    pub fn fog_enabled() -> u32;
+
+    /// Whether this country has a fog of its own. 0 for the spectator, for an
+    /// unknown country, and in a world without fog.
+    /// gearbox:fog "fog_country_sees"
+    /// `(i)i`
+    pub fn fog_country_sees(country: u32) -> u32;
+
+    /// Whether the country can see the province THIS turn -- not whether it
+    /// remembers it. 1 for every province in a world without fog.
+    /// gearbox:fog "fog_province_visible"
+    /// `(ii)i`
+    pub fn fog_province_visible(country: u32, province: u32) -> u32;
+
+    /// The turn the country last saw the province, or -1 if it never has. A
+    /// province it can see right now returns the current turn.
+    /// gearbox:fog "fog_province_seen_turn"
+    /// `(ii)i`
+    pub fn fog_province_seen_turn(country: u32, province: u32) -> u32;
+
+    /// Who the country BELIEVES owns the province, which is the real owner only
+    /// while it can see it. A province never seen keeps the owner it had on the
+    /// starting map, because the atlas is public. GEARBOX_INVALID if unknown.
+    /// gearbox:fog "fog_known_owner"
+    /// `(ii)i`
+    pub fn fog_known_owner(country: u32, province: u32) -> u32;
+
+    /// Whether a point in map pixels falls inside any of the country's sight.
+    /// The map wraps east-west and so does this.
+    /// gearbox:fog "fog_point_visible"
+    /// `(iFF)i`
+    pub fn fog_point_visible(country: u32, x: f64, y: f64) -> u32;
+
+    /// Whether the country can see that ship this turn.
+    /// gearbox:fog "fog_ship_visible"
+    /// `(ii)i`
+    pub fn fog_ship_visible(country: u32, ship: u32) -> u32;
+
+    /// Troops the country last saw in the province, all flags counted. 0 if it
+    /// has never seen it. This is memory, not truth: it is what was there then.
+    /// gearbox:fog "fog_intel_garrison"
+    /// `(ii)I`
+    pub fn fog_intel_garrison(country: u32, province: u32) -> i64;
+
+    /// Population the country last saw in the province, or 0 if never seen.
+    /// gearbox:fog "fog_intel_population"
+    /// `(ii)I`
+    pub fn fog_intel_population(country: u32, province: u32) -> i64;
+
+    /// Industry level the country last saw in the province, or 0 if never seen.
+    /// gearbox:fog "fog_intel_industry"
+    /// `(ii)i`
+    pub fn fog_intel_industry(country: u32, province: u32) -> u32;
+
+    /// Fortification level the country last saw, or 0 if never seen.
+    /// gearbox:fog "fog_intel_fort"
+    /// `(ii)i`
+    pub fn fog_intel_fort(country: u32, province: u32) -> u32;
+
+    /// Port level the country last saw, or 0 if never seen.
+    /// gearbox:fog "fog_intel_port"
+    /// `(ii)i`
+    pub fn fog_intel_port(country: u32, province: u32) -> u32;
+
+    /// How many sight grants the country currently holds, from every mod and
+    /// script together. 0 if none.
+    /// gearbox:fog "fog_grant_count"
+    /// `(i)i`
+    pub fn fog_grant_count(country: u32) -> u32;
+
+}
+
+#[link(wasm_import_module = "gearbox:fog.write")]
+extern "C" {
+    /// Give the country a standing sight circle at a point in map pixels. It is
+    /// folded in every time the fog is recomputed, saved with the world and
+    /// survives a reload, so it is a watchpost rather than a one-turn reveal.
+    /// Radius is clamped to something sane. 0 if the country or radius is bad.
+    /// gearbox:fog.write "fog_add_sight"
+    /// `(iFFF)i`
+    pub fn fog_add_sight(country: u32, x: f64, y: f64, radius: f64) -> u32;
+
+    /// Give the country standing sight of one province, on the same terms as
+    /// fog_add_sight. Revealing a province it can already see is harmless.
+    /// gearbox:fog.write "fog_reveal_province"
+    /// `(ii)i`
+    pub fn fog_reveal_province(country: u32, province: u32) -> u32;
+
+    /// Drop every sight grant the country holds, from every mod and script.
+    /// Returns how many were removed. The fog returns to what the rules give it
+    /// on the next recompute.
+    /// gearbox:fog.write "fog_clear_grants"
+    /// `(i)i`
+    pub fn fog_clear_grants(country: u32) -> u32;
+
+}
+
 #[link(wasm_import_module = "gearbox:storage")]
 extern "C" {
     /// Reads one of your own keys. Two-call sizing: returns the full value
