@@ -17,7 +17,15 @@ ok()    { printf '  %-64s ok\n' "$1"; }
 bad()   { printf '  %-64s FAILED\n' "$1"; [ -n "${2:-}" ] && printf '      %s\n' "$2"; fail=1; }
 check() { if eval "$2"; then ok "$1"; else bad "$1" "${3:-}"; fi; }
 
-campaign_cleanup() { for p in "${pids[@]}"; do kill -9 "$p" 2>/dev/null; done; }
+# ${a[@]} on an EMPTY array is unbound under set -u in bash 3.2, which macOS
+# ships -- so an early exit before any process started (a missing binary, say)
+# died in the EXIT trap with "pids[@]: unbound variable" and buried the real
+# message. Same trap as the one in run_all.sh's failure summary.
+campaign_cleanup() {
+    [ ${#pids[@]} -eq 0 ] && return 0
+    for p in "${pids[@]}"; do kill -9 "$p" 2>/dev/null; done
+    return 0
+}
 trap campaign_cleanup EXIT
 
 campaign_setup() {

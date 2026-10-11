@@ -46,7 +46,19 @@ extern "C" bool rlFramebufferComplete(unsigned int id);
 // wide as the map, and a mobile GL that will not accept it hands back a texture
 // that samples as solid black -- the map coming up empty on a phone while the
 // UI, whose textures are small, draws fine.
+//
+// THE CALLING CONVENTION IS NOT OPTIONAL ON WIN32. Every GL entry point there
+// is __stdcall (APIENTRY), so opengl32.lib exports it decorated as
+// _glGetIntegerv@8. Declaring it __cdecl, as this did, asks the linker for
+// _glGetIntegerv and gets "unresolved external symbol" -- but only on 32-bit
+// Windows, because x64 and ARM64 have one convention and ignore the keyword.
+// So the mistake built everywhere the project is usually built and broke
+// exactly one job.
+#if defined(_WIN32)
+extern "C" void __stdcall glGetIntegerv(unsigned int pname, int* data);
+#else
 extern "C" void glGetIntegerv(unsigned int pname, int* data);
+#endif
 #ifndef GL_MAX_TEXTURE_SIZE
 #define GL_MAX_TEXTURE_SIZE 0x0D33
 #endif
