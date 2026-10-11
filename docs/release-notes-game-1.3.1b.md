@@ -68,3 +68,8 @@ arrived with the people who turned up for 1.3.0b.
   fog all of it answers as though the world were visible, so a script needs no
   special case. Mods reach the same thing through Gearbox 1.4. See
   docs/scripting.md.
+
+- **Forts always cost full price.** The industry discount (Cost Efficiency's
+  "Industry cost -50%", and doctrines that move it) was also cutting the price
+  of forts when bought in bulk, ordered in multiplayer or built by the AI,
+  while the fort button charged full price. It now applies to industry only.

@@ -935,6 +935,42 @@ struct PolicyRules {
         reset();
     }
 
+    // ── FORTS ARE NOT INDUSTRY ──
+    //
+    // "Cost Efficiency" (Industry cost -50%) halves what an industry level
+    // costs. It was also halving forts on the bulk, multiplayer and AI paths,
+    // while the panel's fort button charged full price for the same fort.
+    void fortsAreNotIndustry() {
+        printf("\n-- forts are not industry --\n");
+        reset();
+        int pid = 0;
+        for (const auto& [p, pr] : game.m_provinces.getAllProvinces())
+            if (pr.countryId == cid) { pid = p; break; }
+        check(pid > 0, "a province to price");
+        if (!pid) return;
+        auto& ind = game.m_provinceIndustry[pid];
+        ind.level = 1;
+        ind.fortification = 0;
+        auto& done = game.m_countryResearched[cid];
+        const bool had = done.count("ind_cost") > 0;
+        for (int l = 1; l <= 10; ++l) done.insert("ind" + std::to_string(l));
+        for (int l = 1; l <= 6; ++l) done.insert("fort" + std::to_string(l));
+        float before = 0, after = 0, fortBefore = 0, fortAfter = 0;
+        int lv = 0, t = 0;
+        game.upgradeQuote(pid, "industry", before, lv, t, cid);
+        game.upgradeQuote(pid, "fortification", fortBefore, lv, t, cid);
+        done.insert("ind_cost");
+        game.m_researchEffectCache.clear();
+        game.upgradeQuote(pid, "industry", after, lv, t, cid);
+        game.upgradeQuote(pid, "fortification", fortAfter, lv, t, cid);
+        if (!had) done.erase("ind_cost");
+        game.m_researchEffectCache.clear();
+        check(after > 0 && std::fabs(after - before * 0.5f) < 0.01f,
+              "Cost Efficiency halves an industry level");
+        check(fortAfter == fortBefore && fortAfter == (float)FORT_COST[1],
+              "and leaves a fort at full price");
+    }
+
     // ── the other half: what a doctrine costs while it is being built ──
     //
     // The bill must never be able to exceed the sticker price, and it must
@@ -1851,6 +1887,7 @@ int main(int argc, char** argv) {
     t.run();
     t.tenure();
     t.campaignRuns();
+    t.fortsAreNotIndustry();
     t.upkeep();
     t.capital();
     t.grievance();

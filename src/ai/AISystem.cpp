@@ -4569,7 +4569,8 @@ void AISystem::validEconomy(int cid, std::vector<bool>& v) {
     int indPid = -1, indLvl = 0; float indCost = 0.0f;
     const bool indPossible = nextIndustryBuy(cid, indPid, indLvl, indCost);
     gate(1, indPossible, indPossible ? indCost : IND_COST[1] * indMod);
-    gate(2, !st.frontiers.empty(),                         FORT_COST[1] * indMod);
+    // Forts are not industry: no industry discount (see Game::upgradeQuote).
+    gate(2, !st.frontiers.empty(),                         (float)FORT_COST[1]);
     // Offered only when there is a harbour to actually buy, and priced at what
     // that one costs. This used to be a flat "treasury >= 60" with no question
     // of whether a port could be built at all, so a country whose every harbour
@@ -5938,8 +5939,8 @@ std::string AISystem::execEconomy(int cid, int action) {
             }
             if (bestPid < 0) return didNothing("fort: no eligible frontier");
             int nextLv = bestLvl + 1;
-            float cost = (float)FORT_COST[std::min(nextLv, 5)] *
-                         buildCostMod(g.getTotalEffect("industryCostPct", cid));
+            // Forts are not industry: no industry discount (see Game::upgradeQuote).
+            float cost = (float)FORT_COST[std::min(nextLv, 5)];
             if (c.treasury < cost) return didNothing("fort: cannot afford");
             c.treasury -= cost;
             money::add(money::BUY_FORT, -(double)cost);
@@ -8076,8 +8077,8 @@ void AISystem::fortifyReflex(int cid) {
     }
     if (bestPid < 0) return;
     const int nextLv = bestLvl + 1;
-    const float cost = (float)FORT_COST[std::min(nextLv, 5)] *
-                       buildCostMod(g.getTotalEffect("industryCostPct", cid));
+    // Forts are not industry: no industry discount (see Game::upgradeQuote).
+    const float cost = (float)FORT_COST[std::min(nextLv, 5)];
     if (c->treasury < cost) return;
     c->treasury -= cost;
     money::add(money::BUY_FORT, -(double)cost);
@@ -9025,8 +9026,8 @@ float AISystem::siegeEarmark(int cid) const {
     for (auto& fr : sIt->second.frontiers) {
         auto ind = m_g->m_provinceIndustry.find(fr.pid);
         const int fl = ind != m_g->m_provinceIndustry.end() ? ind->second.fortification : 0;
-        if (fl < cap) return (float)FORT_COST[std::min(fl + 1, 5)] *
-                             buildCostMod(m_g->getTotalEffect("industryCostPct", cid));
+        // Forts are not industry: no industry discount (see Game::upgradeQuote).
+        if (fl < cap) return (float)FORT_COST[std::min(fl + 1, 5)];
     }
     return 0.0f;
 }

@@ -6417,7 +6417,11 @@ bool Game::upgradeQuote(int provinceId, const char* type,
         const int level = (it != m_provinceIndustry.end()) ? it->second.fortification : 0;
         const int next = level + 1;
         if (next < 0 || next > FORT_MAX_LEVEL) return false;
-        cost = (float)FORT_COST[next] * costMod;
+        // NOT costMod. That is the INDUSTRY discount ("Industry cost -50%"),
+        // and forts are not industry: the panel's own fort button has always
+        // charged FORT_COST outright, so this path, the bulk button and the AI
+        // were selling the same fort at half price.
+        cost = (float)FORT_COST[next];
         nextLevel = next;
         turns = FORT_TURNS[next];
         return true;
