@@ -202,8 +202,8 @@ void NetIssuerClock::observe(long long serverTime, long long localTime) {
     // rather than resetting to "our clock is right", which is the assumption
     // this class exists to avoid.
     if (serverTime <= 0) return;
-    m_offset = serverTime - localTime;
-    m_known = true;
+    m_offset.store(serverTime - localTime, std::memory_order_relaxed);
+    m_known.store(true, std::memory_order_relaxed);
 }
 
 // ------------------------------------------------------------- jti reuse ----

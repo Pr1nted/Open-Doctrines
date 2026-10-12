@@ -80,7 +80,8 @@ constexpr size_t kMaxControlBytes = 125;
 // A handshake is a few hundred bytes. Anything approaching this is either
 // broken or probing.
 constexpr size_t kMaxHandshakeBytes = 16 * 1024;
-constexpr int    kHandshakeTimeoutMs = 10000;
+// The budget is kWsHandshakeTimeoutMs in WsHandshake.h (via WsServer.h),
+// shared with the client. It was 10000 here against the client's 20000.
 
 // ── KEEPALIVE, BOTH WAYS ──
 //
@@ -786,7 +787,7 @@ void WsServer::update() {
         if (!c.open && !c.closing) {
             const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 Clock::now() - c.since).count();
-            if (ms > kHandshakeTimeoutMs) s.drop(c);
+            if (ms > kWsHandshakeTimeoutMs) s.drop(c);
         }
     }
 

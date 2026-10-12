@@ -50,7 +50,8 @@ constexpr size_t kMaxMessageBytes = 16u * 1024 * 1024;
 // so, and enforcing it means the control path never allocates.
 constexpr size_t kMaxControlBytes = 125;
 
-constexpr int kHandshakeTimeoutMs = 20000;
+// The budget is kWsHandshakeTimeoutMs in WsHandshake.h, shared with the
+// server so the two halves cannot disagree about it again.
 constexpr int kPollIntervalMs = 20;
 
 // ── KEEPALIVE ──
@@ -331,7 +332,7 @@ bool WebSocket::Impl::handshake() {
     // sends one must not be able to make us buffer forever.
     std::string response;
     const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::milliseconds(kHandshakeTimeoutMs);
+                          std::chrono::milliseconds(kWsHandshakeTimeoutMs);
     while (response.find("\r\n\r\n") == std::string::npos) {
         if (std::chrono::steady_clock::now() > deadline) {
             setError("the server did not complete the handshake in time");

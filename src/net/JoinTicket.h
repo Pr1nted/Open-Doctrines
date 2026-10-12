@@ -43,6 +43,7 @@
 // display name, and whichever badges the PLAYER chose to present. See
 // net/PRIVACY.md and net/src/auth/ticket.ts.
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -125,17 +126,39 @@ public:
     void observe(long long serverTime, long long localTime);
 
     /** Our best estimate of the issuer's clock, given ours. */
-    long long now(long long localTime) const { return localTime + m_offset; }
+    long long now(long long localTime) const {
+        return localTime + m_offset.load(std::memory_order_relaxed);
+    }
 
     /** Seconds the local clock is behind (negative: ahead of) the issuer. */
-    long long offset() const { return m_offset; }
+    long long offset() const { return m_offset.load(std::memory_order_relaxed); }
 
     /** True once an issuer reply has been seen. */
-    bool known() const { return m_known; }
+    bool known() const { return m_known.load(std::memory_order_relaxed); }
 
 private:
-    long long m_offset = 0;
-    bool      m_known = false;
+    // ATOMIC BECAUSE THE WRITER AND THE READERS ARE DIFFERENT THREADS.
+    //
+    // observe() is called from the worker that fetches the issuer's keys,
+    // under NetHost's mutex (Host.cpp). now() is called from NetHost::update()
+    // on the main thread, which does NOT hold it -- once per pending peer in
+    // verifyTicket and once a tick in expirePending. That is a data race, and
+    // ThreadSanitizer reported it as one: a read at this line against a write
+    // in observe().
+    //
+    // Atomics rather than taking the mutex in the readers, because the value
+    // is advisory. It shifts a 120-second window on a token whose authenticity
+    // rests on a signature, as the class comment above says at length -- so a
+    // reader that sees the previous offset is correct, just less accurate for
+    // one tick. Putting the host's mutex on a per-tick path to protect a
+    // number nobody has to agree on would be the expensive way to fix the
+    // cheap half of the problem.
+    //
+    // Relaxed is enough, and the pairing is why: the two fields are written
+    // together but no reader needs them consistent with each other. now() uses
+    // only m_offset; known() and offset() are read by tests, single-threaded.
+    std::atomic<long long> m_offset{0};
+    std::atomic<bool>      m_known{false};
 };
 
 /**
