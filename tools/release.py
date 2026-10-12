@@ -266,8 +266,27 @@ def commit_and_tag(paths, message, tag, dry_run, no_push):
 def cmd_game(args):
     step("game release")
     current = odver.read()
-    nxt = current.bump(new_update=args.new_update, state=args.switch_state)
-    say(f"version {current} -> {nxt}")
+    # BUMP ONLY IF WHAT THE TREE SAYS IS ALREADY OUT -- the same rule, and the
+    # same reason, as cmd_sdk below.
+    #
+    # VERSION is bumped and committed by this tool, so after a release that had
+    # to be withdrawn the tree says 1.3.1b with no v1.3.1b tag. Bumping from
+    # there releases 1.3.2b, and 1.3.1b never exists: the notes, the launch
+    # copy, CHANGELOG.md and AIVersion.h's RULES history all name a version
+    # nobody can download. That is how a retagging turns into a hole in the
+    # numbering, and it is the whole reason this is automated rather than done
+    # by hand. 1.3.1b was tagged, found to fail on OpenBSD and linux-x64,
+    # untagged, and would have come back as 1.3.2b without this.
+    #
+    # --new-update and --switch-state are explicit requests to move, so they
+    # still move.
+    if args.new_update or args.switch_state or game_tag_exists(current):
+        nxt = current.bump(new_update=args.new_update, state=args.switch_state)
+        say(f"version {current} -> {nxt}")
+    else:
+        nxt = current
+        say(f"{current} is in the tree and has no tag: releasing it as it "
+            f"stands rather than bumping past it")
     if args.switch_state:
         say(f"state {odver.STATE_NAMES[current.state]} -> "
             f"{odver.STATE_NAMES[nxt.state]}")
@@ -413,6 +432,12 @@ def set_sdk_version(major, minor, dry_run):
 def sdk_tag_exists(major, minor):
     """Whether gearbox-vMAJOR.MINOR has already been tagged."""
     out = run(["git", "tag", "--list", f"gearbox-v{major}.{minor}"], capture=True)
+    return bool(out.strip())
+
+
+def game_tag_exists(version):
+    """Whether vVERSION has already been tagged."""
+    out = run(["git", "tag", "--list", f"v{version}"], capture=True)
     return bool(out.strip())
 
 
