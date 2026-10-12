@@ -305,13 +305,23 @@ def cmd_game(args):
     step("bump")
     if args.dry_run:
         say(f"[dry-run] would write VERSION = {nxt}")
+        say("[dry-run] would regenerate templeos/Sync.HH")
     else:
         odver.write(nxt)
         write_changelog("game", nxt, notes)
         say(f"VERSION = {nxt}")
+        # AND EVERYTHING GENERATED FROM VERSION. templeos/Sync.HH carries
+        # SY_VERSION, and tests/templeos_sync_test.sh compares it with the
+        # C++ -- so bumping VERSION without regenerating it makes the release
+        # commit the one commit that cannot pass its own test suite. 1.3.1b
+        # was tagged that way and linux-x64 went red on "templeos in sync with
+        # C++" minutes later, with nothing wrong except the order of two steps
+        # in here.
+        run(["python3", os.path.join(ROOT, "tools", "templeos_sync.py")], capture=True)
+        say("regenerated templeos/Sync.HH")
 
     step("commit")
-    commit_and_tag(["VERSION", "CHANGELOG.md"],
+    commit_and_tag(["VERSION", "CHANGELOG.md", "templeos/Sync.HH"],
                    f"Release {nxt}\n\n{notes}", f"v{nxt}",
                    args.dry_run, args.no_push)
 
@@ -323,6 +333,12 @@ def cmd_game(args):
     say("  4. uploads Windows and Linux to Steam, if Steam is configured --")
     say("     to the app, not to a branch. Promoting it is still a button")
     say("     you press. See docs/steam/README.md.")
+    say("")
+    say("AFTER the artifacts are published, and not before, because it pins")
+    say("their SHA-256 and the download 404s until then:")
+    say(f"  python3 tools/update_flatpak_release.py --set {nxt}")
+    say("That is why the suite's 'flatpak release pins' check warns rather")
+    say("than fails -- it cannot be satisfied at this point in a release.")
     if not os.environ.get("BUTLER_API_KEY"):
         warn("BUTLER_API_KEY is not set locally. That is fine -- the itch.io "
              "push uses the repository secret, and is skipped with a warning "

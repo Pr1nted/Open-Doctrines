@@ -29,6 +29,10 @@
 #include <system_error>
 #include <mutex>
 #include <set>
+// <sstream> for the stringstream that splits llmFallbackModels. macOS, Linux
+// and MSVC all reach it transitively; OpenBSD's libc++ only forward-declares
+// basic_stringstream in <iosfwd>, so it is the only platform that said so.
+#include <sstream>
 #include "util/Async.h"
 
 #include <chrono>
