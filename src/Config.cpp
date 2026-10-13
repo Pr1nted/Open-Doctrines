@@ -170,6 +170,7 @@ bool Config::load(const std::string& path) {
     if (uiScale < 0.75f) uiScale = 0.75f;
     if (uiScale > 2.0f) uiScale = 2.0f;
     skipViewingOrders = findBool(json, "skipViewingOrders", false);
+    mpAwayIdle = findBool(json, "mpAwayIdle", false);
     highDpi = findBool(json, "highDpi", true);
     debugMode = findBool(json, "debugMode", false);
     showFps = findBool(json, "showFps", true);
@@ -328,6 +329,7 @@ bool Config::save(const std::string& path) {
     file << "  \"uiScale\": " << uiScale << ",\n";
     file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
     file << "  \"skipViewingOrders\": " << (skipViewingOrders ? "true" : "false") << ",\n";
+    file << "  \"mpAwayIdle\": " << (mpAwayIdle ? "true" : "false") << ",\n";
     file << "  \"highDpi\": " << (highDpi ? "true" : "false") << ",\n";
     file << "  \"debugMode\": " << (debugMode ? "true" : "false") << ",\n";
     file << "  \"showFps\": " << (showFps ? "true" : "false") << ",\n";

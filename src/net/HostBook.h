@@ -40,6 +40,8 @@ struct SeatRecord {
     /** Display name, so the lobby can show who a held seat belongs to. */
     std::string name;
     uint16_t    countryId = 0;
+    /** Left idle, not AI-played, when they miss a turn (NetMsg::AwayPolicy). */
+    bool        awayIdle = false;
 };
 
 /** How the table was set up. Restored so a resumed game plays as it did. */

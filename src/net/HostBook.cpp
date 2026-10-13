@@ -53,7 +53,8 @@ std::string HostBook::encode() const {
         o << (written ? ",\n" : "\n")
           << "    {\"psid\": \"" << jsonEscape(s.psid)
           << "\", \"name\": \"" << jsonEscape(s.name)
-          << "\", \"countryId\": " << s.countryId << "}";
+          << "\", \"countryId\": " << s.countryId
+          << (s.awayIdle ? ", \"awayIdle\": true" : "") << "}";
         written++;
     }
     o << (written ? "\n  ]" : "]");
@@ -113,6 +114,7 @@ bool HostBook::decode(const std::string& json, HostBook& out) {
         s.name = httpJsonString(one, "name", 64);
         const long long cid = httpJsonNumber(one, "countryId", 0);
         s.countryId = (cid > 0 && cid <= 65535) ? (uint16_t)cid : 0;
+        s.awayIdle = one.find("\"awayIdle\": true") != std::string::npos;
 
         if (!s.psid.empty() && s.countryId != 0) out.seats.push_back(std::move(s));
         at = end + 1;

@@ -28,7 +28,7 @@
 set -u
 . "$(dirname "$0")/campaign_lib.sh"
 campaign_setup "${1:-$campaign_root/build}" campaignturnstate
-campaign_config map='"map"' turn-seconds=12 auto.start-at-players=2 auto.start-min-players=2
+campaign_config map='"map"' turn-seconds=12 auto.start-at-players=3 auto.start-min-players=3
 
 start_server "$work/server.log" || { bad "the server opens"; tail -20 "$work/server.log"; exit 1; }
 ok "the server opens"
@@ -40,11 +40,15 @@ client dev-alice --claim-index 0 --submit --submit-after 1 --seconds 400 \
 a=$!; pids+=("$a")
 client dev-carol --claim-index 1 --seconds 400 --until "TURNSTATE turn=$turns" > "$clog" 2>&1 &
 c=$!; pids+=("$c")
+# Dave never submits either, but has said "leave me idle if I miss a turn".
+dlog="$work/dave.log"
+client dev-dave --claim-index 2 --away-idle --seconds 400 --until "TURNSTATE turn=$turns" > "$dlog" 2>&1 &
+d=$!; pids+=("$d")
 
 # Bob arrives mid-game, as a spectator, once a few turns have been played.
 wait_for_line "$alog" '^TURNSTATE turn=3' 2400 "$a"
 client dev-bob --seconds 60 --until "TURNSTATE" > "$blog" 2>&1
-wait "$a" "$c" 2>/dev/null
+wait "$a" "$c" "$d" 2>/dev/null
 
 echo "=== every turn, the state with it ==="
 deltas="$(grep -c '^DELTA' "$alog")"
@@ -101,12 +105,21 @@ amine="$(grep '^TURNSTATE' "$alog" | sed -n 's/.* my=\([0-9]*\).*/\1/p' | sort -
 cmine="$(grep '^TURNSTATE' "$clog" | sed -n 's/.* my=\([0-9]*\).*/\1/p' | sort -u)"
 check "alice and carol each hold a country" "[ -n '$amine' ] && [ '$amine' != 0 ] && [ -n '$cmine' ] && [ '$cmine' != 0 ]" \
       "alice=$amine carol=$cmine"
-aseen="$(grep '^TURNSTATE' "$alog" | sed -n 's/.*\( alloc=.*\)/\1/p' | sort -u | wc -l | tr -d ' ')"
-cseen="$(grep '^TURNSTATE' "$clog" | sed -n 's/.*\( alloc=.*\)/\1/p' | sort -u | wc -l | tr -d ' ')"
+aseen="$(grep '^TURNSTATE' "$alog" | sed -n 's/.*\( alloc=[^ ]* active=[^ ]*\).*/\1/p' | sort -u | wc -l | tr -d ' ')"
+cseen="$(grep '^TURNSTATE' "$clog" | sed -n 's/.*\( alloc=[^ ]* active=[^ ]*\).*/\1/p' | sort -u | wc -l | tr -d ' ')"
 check "alice submitted, so the AI never touched her research" "[ '$aseen' = 1 ]" \
-      "$(grep '^TURNSTATE' "$alog" | sed -n 's/.*\( alloc=.*\)/\1/p' | sort -u | tr '\n' '|')"
+      "$(grep '^TURNSTATE' "$alog" | sed -n 's/.*\( alloc=[^ ]* active=[^ ]*\).*/\1/p' | sort -u | tr '\n' '|')"
 check "carol did not, so the AI played her (absent: AI)" "[ '$cseen' -gt 1 ]" \
-      "$(grep '^TURNSTATE' "$clog" | sed -n 's/.*\( alloc=.*\)/\1/p' | sort -u | tr '\n' '|')"
+      "$(grep '^TURNSTATE' "$clog" | sed -n 's/.*\( alloc=[^ ]* active=[^ ]*\).*/\1/p' | sort -u | tr '\n' '|')"
+dseen="$(grep '^TURNSTATE' "$dlog" | sed -n 's/.*\( alloc=[^ ]* active=[^ ]*\).*/\1/p' | sort -u | wc -l | tr -d ' ')"
+check "dave did not either, but asked to be left idle -- and was" "[ '$dseen' = 1 ]" \
+      "$(grep '^TURNSTATE' "$dlog" | sed -n 's/.*\( alloc=[^ ]* active=[^ ]*\).*/\1/p' | sort -u | tr '\n' '|')"
+
+# Money lives on the country record, which no delta carried: a player's own
+# treasury sat at its join-time value for the whole game.
+moneys="$(grep '^TURNSTATE turn=[1-9]' "$alog" | sed -n 's/.* money=\([^ ]*\).*/\1/p' | sort -u | wc -l | tr -d ' ')"
+check "alice's treasury reaches her, and moves with the turns" "[ '$moneys' -gt 1 ]" \
+      "$(grep '^TURNSTATE' "$alog" | sed -n 's/.*\( money=[^ ]*\).*/\1/p' | tr '\n' ' ')"
 
 kill -TERM "$server_pid"; wait "$server_pid" 2>/dev/null
 echo

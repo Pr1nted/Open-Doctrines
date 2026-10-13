@@ -1611,6 +1611,11 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
             broadcast(NetMsg::ChatFrom, c.encode());
             return;
         }
+        case NetMsg::AwayPolicy: {
+            if (payloadSize < 1) return;
+            lobby.setAwayIdle(peerId, payload[0] != 0);
+            return;
+        }
         case NetMsg::Mail: {
             NetMail m;
             if (!NetMail::decode(payload, payloadSize, m)) return;

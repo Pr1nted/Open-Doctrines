@@ -98,6 +98,15 @@ enum class NetMsg : uint16_t {
      * host ignores the id.
      */
     Mail          = 13,
+    /**
+     * "If I miss a turn's deadline, leave my country idle" -- one byte, 1 or 0.
+     *
+     * The host's `absent` rule is for everybody; this lets one player opt out
+     * of having the AI play them while they are away. Sent on every welcome and
+     * whenever the player changes it, so nothing about it has to be stored.
+     * Additive: an older host ignores the id, and the host's rule stands.
+     */
+    AwayPolicy    = 14,
 
     // ---- server -> client -------------------------------------------------
     Welcome  = 64,

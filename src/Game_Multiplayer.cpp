@@ -298,7 +298,8 @@ void Game::mpSaveSeats() {
         if (p.psid.empty() || p.countryId == 0) continue;
         // Written whether or not they are connected right now: somebody who
         // closed the game an hour ago is exactly who this is for.
-        book.seats.push_back({p.psid, p.name, p.countryId});
+        const LobbyMember* m = m_netHost->lobby().findByPsid(p.psid);
+        book.seats.push_back({p.psid, p.name, p.countryId, m && m->awayIdle});
     }
 
     // Where the campaign is, so a restart carries on rather than starts over.
@@ -1065,6 +1066,9 @@ void Game::mpDrainEvents() {
                 case NetSessionEvent::Kind::Welcomed: {
                     const NetWelcome& w = m_netSession->welcome();
                     m_mpWelcomedOnce = true;
+                    // Every welcome, rejoins included: the host keeps it only
+                    // as long as the connection, so it is simply told again.
+                    m_netSession->sendAwayPolicy(m_config.mpAwayIdle);
                     if (m_mpRejoin.active) {
                         // Back. The host sends the world again, and the game
                         // reloads it and drops us into our own country.
@@ -3457,7 +3461,8 @@ void Game::mpHostWorldReady() {
         // seat should be waiting for them.
         for (const std::string& psid : book.bans) m_netHost->lobby().ban(psid);
         for (const SeatRecord& seat : book.seats) {
-            if (m_netHost->lobby().reserveSeat(seat.psid, seat.name, seat.countryId))
+            if (m_netHost->lobby().reserveSeat(seat.psid, seat.name, seat.countryId,
+                                               seat.awayIdle))
                 held++;
         }
         if (held) m_netHost->broadcastLobby();
@@ -3699,6 +3704,14 @@ std::vector<uint8_t> Game::mpTurnStatePayload() {
     }
     nlohmann::json out = nlohmann::json::object();
     out["state"] = std::move(state);
+    // ── EVERY TREASURY ──
+    // Money lives on the country record, which neither a delta nor the state
+    // carries, so a player's own treasury stayed at whatever it was when they
+    // joined while their income came and went on the host.
+    nlohmann::json money = nlohmann::json::object();
+    for (const auto& [cid, c] : m_countries.getAll())
+        money[std::to_string(cid)] = c.treasury;
+    out["treasuries"] = std::move(money);
     const std::string rebels = buildRebelsJson();
     if (!rebels.empty()) {
         nlohmann::json r = nlohmann::json::parse(rebels, nullptr, false);
@@ -3751,6 +3764,13 @@ void Game::mpApplyHeldTurnState() {
     // real record replaces the placeholder its ISO is an invented "R04".
     if (j.contains("rebels") && j["rebels"].is_object())
         restoreRebelsJson(j["rebels"].dump(), std::string());
+    if (j.contains("treasuries") && j["treasuries"].is_object()) {
+        for (auto& [key, v] : j["treasuries"].items()) {
+            if (!v.is_number()) continue;
+            if (Country* c = m_countries.getCountry(std::atoi(key.c_str())))
+                c->treasury = v.get<double>();
+        }
+    }
     if (j.contains("state") && j["state"].is_object()) {
         // The loader overwrites what it is given and leaves the rest -- and
         // these are written sparsely, so an entry that ENDED (a peace, a
@@ -5106,7 +5126,10 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
     const int headH = 46;
     const bool voice = !m_mpVoiceLink.empty();
     const int hostRow = (host || voice) ? 30 : 0;
-    const int h = headH + (int)players.size() * rowH + 8 + hostRow;
+    // A player's own say in what happens to their country while they are away.
+    const bool seated = !host && m_playerCountryId > 0;
+    const int awayRow = seated ? 24 : 0;
+    const int h = headH + (int)players.size() * rowH + 8 + awayRow + hostRow;
     const int top = bottomY - h;
 
     DrawRectangleRounded({(float)x, (float)top, (float)w, (float)h}, 0.06f, 8,
@@ -5142,9 +5165,6 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
         const Country* c = m_countries.getCountry((int)p->countryId);
         std::string label = p->name.empty() ? std::string("someone") : p->name;
         if (c) label += "  (" + c->name + ")";
-        if (odText::charCount(label) > 30) label = odText::firstChars(label, 29) + "...";
-        DrawText(label.c_str(), x + 10, ry + 3, 13,
-                 in ? Color{150, 200, 165, 255} : Color{200, 200, 210, 255});
 
         // Disconnected but submitted is DONE, not missing: they did their part
         // and closed the game, which with a long turn is ordinary.
@@ -5175,11 +5195,51 @@ void Game::drawMpTurnPanel(int x, int bottomY) {
                                          : Color{195, 150, 130, 255};
             }
         }
-        DrawText(mark.c_str(), x + w - MeasureText(mark.c_str(), 12) - 10, ry + 4, 12,
-                 markColor);
+        // The name gets what the mark leaves. A fixed 30 characters ran a long
+        // one -- "Printed (Cooperative of Ukraine)" -- under "16 seconds left".
+        const int markW = MeasureText(mark.c_str(), 12);
+        const int room = w - 20 - markW - 10;
+        if (MeasureText(label.c_str(), 13) > room) {
+            int n = odText::charCount(label);
+            while (n > 4 && MeasureText((odText::firstChars(label, n) + "...").c_str(), 13) > room) --n;
+            label = odText::firstChars(label, n) + "...";
+        }
+        DrawText(label.c_str(), x + 10, ry + 3, 13,
+                 in ? Color{150, 200, 165, 255} : Color{200, 200, 210, 255});
+        DrawText(mark.c_str(), x + w - markW - 10, ry + 4, 12, markColor);
         ry += rowH;
     }
     (void)turn;
+
+    // ── IF I MISS THE DEADLINE ──
+    //
+    // The host's rule hands a missed turn to its AI, which then declares wars
+    // and moves armies in your name. This is the player's way out of that for
+    // their own country: missed turns leave it idle instead. Pressing Ready
+    // with no orders already means "do nothing this turn"; this is for the
+    // turns you are not there to press it. Sent to the host (AwayPolicy) and
+    // kept with the seat across a server restart.
+    if (seated) {
+        const Rectangle row{(float)(x + 8), (float)(ry + 2), (float)(w - 16), 20.0f};
+        const bool hov = !m_paused && CheckCollisionPointRec(getMouse(), row);
+        const Rectangle box{row.x + 2, row.y + 4, 12.0f, 12.0f};
+        const Color accent = hexToColor(m_config.accent());
+        DrawRectangleRoundedLines(box, 0.2f, 4,
+            m_config.mpAwayIdle ? accent : Color{120, 130, 150, 200});
+        if (m_config.mpAwayIdle)
+            DrawRectangleRounded({box.x + 2, box.y + 2, box.width - 4, box.height - 4},
+                                 0.2f, 4, accent);
+        DrawText(T("If I miss the deadline, do nothing"), (int)(box.x + 18), (int)row.y + 5, 12,
+                 hov ? WHITE : Color{190, 196, 210, 255});
+        if (hov) m_uiHint = T("Otherwise the host's AI plays your country for any turn you miss");
+        if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            Audio::get().playSfx("click_soft");
+            m_config.mpAwayIdle = !m_config.mpAwayIdle;
+            m_config.save(m_configPath);
+            if (m_netSession) m_netSession->sendAwayPolicy(m_config.mpAwayIdle);
+        }
+        ry += awayRow;
+    }
 
     // ── the buttons along the bottom ──
     //
@@ -6078,6 +6138,15 @@ bool Game::mpApplyTurnOrders(const std::vector<uint8_t>& payload, int turnNumber
 
     m_turnOrderLog = std::move(parsed);
     m_turnOrderLogTurn = turnNumber;
+    // ── AND SHOW THEM, AS A LOCAL GAME DOES ──
+    // The phase that draws these is entered at the end of processTurn(), which
+    // a player in a hosted game never runs -- the host does. So "Show orders"
+    // was ticked, the orders arrived every turn, and nothing was ever drawn.
+    // The same conditions as processTurn: somebody holding a country, the tick
+    // on, and something to show.
+    if (!mpIsHost() && m_playerCountryId > 0 && !m_config.skipViewingOrders &&
+        !m_turnOrderLog.empty())
+        m_turnState = TURN_VIEWING_ORDERS;
     return true;
 }
 

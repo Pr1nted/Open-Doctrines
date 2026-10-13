@@ -41,6 +41,7 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::LobbyMap:      return "LobbyMap";
         case NetMsg::SnapshotZ:     return "SnapshotZ";
         case NetMsg::Mail:          return "Mail";
+        case NetMsg::AwayPolicy:    return "AwayPolicy";
         case NetMsg::MailFrom:      return "MailFrom";
         case NetMsg::TurnState:     return "TurnState";
     }

@@ -966,6 +966,12 @@ bool NetSession::nextModMessage(NetModMsg& out) {
     return true;
 }
 
+void NetSession::sendAwayPolicy(bool idleWhenAway) {
+    if (!m_impl || !joined(phase())) return;
+    const std::vector<uint8_t> body{(uint8_t)(idleWhenAway ? 1 : 0)};
+    m_impl->socket.send(netEncodeFrame(NetMsg::AwayPolicy, body));
+}
+
 bool NetSession::sendChat(const std::string& text) {
     if (!m_impl || !joined(phase()) || text.empty()) return false;
     NetChat c;

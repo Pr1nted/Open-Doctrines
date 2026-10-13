@@ -74,6 +74,9 @@ struct LobbyMember {
      * of it, and is not recoverable into anything they would recognise.
      */
     bool malformed = false;
+
+    /** The player asked to be left idle, not AI-played, when they miss a turn. */
+    bool awayIdle = false;
 };
 
 struct LobbySettings {
@@ -174,7 +177,7 @@ public:
      * False when the psid is already present or the country is already held.
      */
     bool reserveSeat(const std::string& psid, const std::string& name,
-                     uint16_t countryId);
+                     uint16_t countryId, bool awayIdle = false);
 
     /**
      * Give up a seat being held for somebody who has not come back.
@@ -280,6 +283,8 @@ public:
      * has already moved on.
      */
     LobbyDenial withdrawOrders(uint16_t peerId, uint32_t turnNumber);
+    /** See NetMsg::AwayPolicy. */
+    void setAwayIdle(uint16_t peerId, bool idle);
 
     /** Records that a submission arrived for this turn and was unreadable. */
     LobbyDenial markMalformed(uint16_t peerId, uint32_t turnNumber);

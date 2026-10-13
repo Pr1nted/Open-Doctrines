@@ -205,6 +205,8 @@ public:
     /** False when it could not go -- not connected right now -- so the
      *  caller can keep the line instead of losing it. */
     bool sendChat(const std::string& text);
+    /** See NetMsg::AwayPolicy. A no-op until joined. */
+    void sendAwayPolicy(bool idleWhenAway);
 
     /**
      * Tell the host about another player.

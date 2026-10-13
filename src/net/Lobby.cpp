@@ -129,7 +129,7 @@ void Lobby::dropOffers(uint16_t peerId) {
 }
 
 bool Lobby::reserveSeat(const std::string& psid, const std::string& name,
-                        uint16_t countryId) {
+                        uint16_t countryId, bool awayIdle) {
     if (psid.empty() || countryId == 0) return false;
     if (findByPsid(psid)) return false;
     if (holderOf(countryId)) return false;
@@ -142,6 +142,9 @@ bool Lobby::reserveSeat(const std::string& psid, const std::string& name,
     m.name = name;
     m.countryId = countryId;
     m.connected = false;
+    // Kept across a restart: the one player this matters for is the one who
+    // is away, and so cannot say it again when the host comes back.
+    m.awayIdle = awayIdle;
     m_members.push_back(std::move(m));
     return true;
 }
@@ -383,6 +386,10 @@ LobbyDenial Lobby::submitOrders(uint16_t peerId, uint32_t turnNumber,
     me->submittedTurn = turnNumber;
     me->malformed = false;
     return LobbyDenial::None;
+}
+
+void Lobby::setAwayIdle(uint16_t peerId, bool idle) {
+    if (LobbyMember* me = mutableFind(peerId)) me->awayIdle = idle;
 }
 
 LobbyDenial Lobby::withdrawOrders(uint16_t peerId, uint32_t turnNumber) {

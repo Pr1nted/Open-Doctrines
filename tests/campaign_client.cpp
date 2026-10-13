@@ -29,7 +29,7 @@
 //                   [--claim <cid> | --claim-first | --claim-index N]
 //                   [--submit | --submit-after SECONDS] [--marker TEXT]
 //                   [--seconds N] [--until "<line prefix>"]
-//                   [--chat-after-peers N]
+//                   [--chat-after-peers N] [--away-idle]
 //                   [--tor-port N | --tor-data DIR] [--tor-all]
 //                   [--mail-to CID | --mail-to-index N] [--mail-body TEXT] [--secret TEXT]
 //                   [--chat TEXT]...
@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
     std::string mailBody, secret;      // secret: report whether a snapshot carries it
     std::vector<std::string> chatLines;
     int chatAfterPeers = 0;        // hold the first line until this many are here
+    bool awayIdle = false;         // --away-idle: "leave me idle if I miss a turn"
     double submitAfter = 0.0;      // seconds after a turn opens; a late player
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -101,6 +102,7 @@ int main(int argc, char** argv) {
         else if (a == "--seconds") seconds = std::atof(next().c_str());
         else if (a == "--submit-after") { submit = true; submitAfter = std::atof(next().c_str()); }
         else if (a == "--chat-after-peers") chatAfterPeers = std::atoi(next().c_str());
+        else if (a == "--away-idle") awayIdle = true;
         else if (a == "--until") g_until = next();
         else if (a == "--tor-port") socks5::setPort(std::atoi(next().c_str()));
         else if (a == "--tor-all") socks5::setRouteAll(true);
@@ -150,6 +152,7 @@ int main(int argc, char** argv) {
             switch (e.kind) {
                 case NetSessionEvent::Kind::Welcomed:
                     me = session.welcome().peerId;
+                    if (awayIdle) session.sendAwayPolicy(true);
                     say("WELCOMED peer=" + std::to_string(me) +
                         " spectator=" + (session.spectating() ? "1" : "0"));
                     break;
@@ -267,7 +270,11 @@ int main(int argc, char** argv) {
                     uint16_t mine = 0;
                     for (const NetPeer& p : session.roster())
                         if (p.peerId == me && me != 0) mine = p.countryId;
-                    std::string alloc = "0", active = "-";
+                    std::string alloc = "0", active = "-", money = "-";
+                    if (mine && j.is_object() && j.contains("treasuries")) {
+                        const std::string k = std::to_string(mine);
+                        if (j["treasuries"].contains(k)) money = j["treasuries"][k].dump();
+                    }
                     if (mine && j.is_object() && j.contains("state")) {
                         const auto& st = j["state"];
                         const std::string k = std::to_string(mine);
@@ -284,7 +291,8 @@ int main(int argc, char** argv) {
                     say("TURNSTATE turn=" + std::to_string(e.turnNumber) +
                         " rebels=" + std::to_string(rebels) + " named=" + std::to_string(named) +
                         " wars=" + w + " riso=" + ri + " mail=" + (mail ? "1" : "0") +
-                        " my=" + std::to_string(mine) + " alloc=" + alloc + " active=" + active);
+                        " my=" + std::to_string(mine) + " alloc=" + alloc + " active=" + active +
+                        " money=" + money);
                     break;
                 }
                 case NetSessionEvent::Kind::Rejected:

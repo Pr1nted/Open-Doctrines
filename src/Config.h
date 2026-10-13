@@ -100,6 +100,9 @@ struct Config {
      * Greater Diplomacy carries the same setting ("Skip Viewing AI Moves?").
      */
     bool skipViewingOrders = false;
+    // Hosted games: if I miss a turn's deadline, leave my country idle rather
+    // than letting the host's AI play it. Sent to the host (NetMsg::AwayPolicy).
+    bool mpAwayIdle = false;
     /**
      * Render at the display's real pixel density.
      *

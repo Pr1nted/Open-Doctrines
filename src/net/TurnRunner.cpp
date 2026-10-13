@@ -62,7 +62,10 @@ std::vector<TurnResolution> TurnRunner::resolve(const Lobby& lobby,
         // absent policy says. "Idle" is for a player who chose not to act; a
         // player whose orders were mangled did not choose anything, and
         // freezing their country would punish them for a transport failure.
-        r.aiPlays = malformedThisTurn || m_config.absent == NetAbsent::Ai;
+        // The player's own "leave me idle" overrides the host's AI rule for
+        // them -- but never a malformed submission, for the reason above.
+        r.aiPlays = malformedThisTurn ||
+                    (m_config.absent == NetAbsent::Ai && !m.awayIdle);
 
         const char* why = netSubstitutionReason(r.substitution);
         r.announcement = r.aiPlays
