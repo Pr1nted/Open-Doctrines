@@ -47,6 +47,11 @@
 
 namespace {
 
+// How long a TLS handshake may wait for the peer's next flight. Generous, as
+// the whole handshake goes through Tor when Tor is on; see open().
+constexpr int kTlsHandshakeTimeoutMs = 30000;
+
+
 std::string mbedError(int rc) {
     char buf[128];
     mbedtls_strerror(rc, buf, sizeof(buf));
@@ -620,14 +625,23 @@ bool TlsSocket::open(const std::string& host, uint16_t port, bool secure,
     mbedtls_ssl_set_bio(&m_impl->ssl, &m_impl->net,
                         mbedtls_net_send, mbedtls_net_recv,
                         mbedtls_net_recv_timeout);
-    if (m_readTimeoutMs > 0)
-        mbedtls_ssl_conf_read_timeout(&m_impl->conf, (uint32_t)m_readTimeoutMs);
-
+    // ── THE HANDSHAKE HAS ITS OWN BUDGET, NOT THE CALLER'S POLL ──
+    //
+    // The read timeout a caller sets is how long one READ may wait in its own
+    // loop -- the WebSocket sets 20 ms, so its single thread comes back round
+    // to flush the outbox. Applied to the handshake it meant: the server's
+    // whole first flight within 20 ms of the ClientHello, or fail. Any player
+    // more than 20 ms from Cloudflare got "SSL - The operation timed out" in a
+    // quarter of a second and could not join a relayed game at all; it went
+    // unnoticed from July because every machine it was tried on was closer.
+    mbedtls_ssl_conf_read_timeout(&m_impl->conf, (uint32_t)kTlsHandshakeTimeoutMs);
     while ((rc = mbedtls_ssl_handshake(&m_impl->ssl)) != 0) {
         if (rc == MBEDTLS_ERR_SSL_WANT_READ || rc == MBEDTLS_ERR_SSL_WANT_WRITE) continue;
         error = "could not establish a secure connection to " + host + ": " + mbedError(rc);
         return false;
     }
+    // From here, the caller's: mbedTLS reads it from the config on every read.
+    mbedtls_ssl_conf_read_timeout(&m_impl->conf, (uint32_t)std::max(0, m_readTimeoutMs));
     if (mbedtls_ssl_get_verify_result(&m_impl->ssl) != 0) {
         error = "the certificate presented by " + host + " could not be verified";
         return false;

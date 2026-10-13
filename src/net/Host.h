@@ -290,6 +290,15 @@ public:
                       const std::vector<uint8_t>& payload);
 
     /**
+     * The state a Delta does not carry (see NetMsg::TurnState), to everyone
+     * after a turn, or to one player after their snapshot. Deflated here.
+     * False, and nothing sent, if it would not fit a frame.
+     */
+    bool broadcastTurnState(uint32_t turnNumber, const std::vector<uint8_t>& payload);
+    bool sendTurnStateTo(uint16_t peerId, uint32_t turnNumber,
+                         const std::vector<uint8_t>& payload);
+
+    /**
      * Tell one player where this game's turns live, and give them the key.
      *
      * Sent automatically when a player is admitted holding a country. Call it

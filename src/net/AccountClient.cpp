@@ -13,6 +13,7 @@
 #include <thread>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include "../util/WebPersist.h"
 #endif
 
 #ifndef _WIN32
@@ -250,6 +251,13 @@ void AccountClient::Impl::saveToken(const std::string& value) {
     out << "{\"token\":\"" << httpJsonEscape(value) << "\",\"issuer\":\""
         << httpJsonEscape(issuerCopy()) << "\"}\n";
     out.flush();
+#ifdef __EMSCRIPTEN__
+    // ── IN A BROWSER, A FILE IS NOT KEPT UNTIL IT IS MARKED ──
+    // The web build's data/ is memory; WebPersist writes it to IndexedDB only
+    // once something says it changed. Nothing here did, so a sign-in lasted
+    // exactly as long as the tab: authorise, close or reload, signed out.
+    odPersistMark();
+#endif
     if (!out) {
         setMessage("Signed in, but the session could not be written to " + path +
                    " -- you will have to sign in again next launch.", true);
@@ -287,6 +295,9 @@ void AccountClient::Impl::clearToken() {
         path = tokenPath;
     }
     if (!path.empty()) std::remove(path.c_str());
+#ifdef __EMSCRIPTEN__
+    odPersistMark();   // or a reload would bring the old session back
+#endif
 }
 
 void AccountClient::Impl::applyAccountJson(const std::string& json) {

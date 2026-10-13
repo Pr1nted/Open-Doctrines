@@ -42,6 +42,7 @@ const char* netMsgName(NetMsg m) {
         case NetMsg::SnapshotZ:     return "SnapshotZ";
         case NetMsg::Mail:          return "Mail";
         case NetMsg::MailFrom:      return "MailFrom";
+        case NetMsg::TurnState:     return "TurnState";
     }
     return "Unknown";
 }

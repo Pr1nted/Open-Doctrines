@@ -679,6 +679,18 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
         startNewGameWithName(mapPath, config.worldName);
     } else {
         console.info("resuming " + config.loadSave);
+        // ── A RESUMED WORLD STILL HAS TO NAME ITS MAP ──
+        // Joiners are sent a map NAME and load it themselves; the snapshot
+        // carries no map. Only the new-world branch above set it, so after any
+        // restart -- which on a hosted campaign is every redeploy -- the world
+        // went out with an empty name, every joiner's decode refused it ("That
+        // server sent a world this build could not read") and nobody could
+        // get in. `map` is the campaign's own: nothing rewrites it once a
+        // world exists.
+        m_mpMapId = config.map;
+        if (!mpResolveMap(config.map, mapPath, mapName))
+            console.warn("this world's map '" + config.map + "' is not installed here; "
+                         "players will be told to install it.");
         startLoadedGame(fs::path(config.loadSave).filename().string());
     }
 

@@ -1066,18 +1066,24 @@ void Game::processCountryTurn(int countryId) {
     // Research progresses AFTER the AI's snapshot: a node completed here is
     // then visible as a delta in the learning step — progressing before the
     // snapshot made every completion invisible (and unrewarded, and uncounted).
-    if (m_ai && countryId != m_playerCountryId) m_ai->takeTurn(countryId);
+    if (m_ai && !humanHolds(countryId)) m_ai->takeTurn(countryId);
+    // A remote human's research still advances here: their orders set what
+    // is active, and only the local player's runs through addResearchPoints.
     if (countryId != m_playerCountryId) progressCountryResearch(countryId);
     // THE ONLY MOMENT A COUNTRY'S WHOLE TURN IS ON THE TABLE. It has decided,
     // and nothing it decided has been consumed yet. See m_turnOrderLog.
     // Where this country's pacification money goes. A reflex, not a decision
     // the policy net takes -- see updateAIDistricts.
-    if (!OD_ENV("OD_AI_DISTRICTS_OFF")) updateAIDistricts(countryId);
-    // What it is willing to say about itself, on the same terms the player has.
-    if (!OD_ENV("OD_AI_DISCLOSE_OFF")) updateAIDisclosure(countryId);
-    // And the law its districts run, which is the part of them that works
-    // without a pacification budget. See updateAIDistrictLaws.
-    if (!OD_ENV("OD_AI_DLAW_OFF")) updateAIDistrictLaws(countryId);
+    // None of these is the AI's to do for a remote human -- see humanHolds().
+    // Keyed on m_mpHumanCids alone, so a single-player game is unchanged.
+    if (!m_mpHumanCids.count(countryId)) {
+        if (!OD_ENV("OD_AI_DISTRICTS_OFF")) updateAIDistricts(countryId);
+        // What it is willing to say about itself, on the same terms the player has.
+        if (!OD_ENV("OD_AI_DISCLOSE_OFF")) updateAIDisclosure(countryId);
+        // And the law its districts run, which is the part of them that works
+        // without a pacification budget. See updateAIDistrictLaws.
+        if (!OD_ENV("OD_AI_DLAW_OFF")) updateAIDistrictLaws(countryId);
+    }
 
     recordTurnOrders(countryId);
     // How often wartime diplomacy was AVAILABLE, against how often anybody used
@@ -1178,7 +1184,10 @@ std::string Game::buildRebelsJson() const {
 
 void Game::restoreRebels(const std::string& savePath) {
     if (savePath.empty()) return;
-    std::string rebels = SaveManager::readEntry(savePath, "rebels.json");
+    restoreRebelsJson(SaveManager::readEntry(savePath, "rebels.json"), savePath);
+}
+
+void Game::restoreRebelsJson(const std::string& rebels, const std::string& savePath) {
     if (rebels.empty()) return;
     // Merges by id without clearing, so map countries are left alone
     m_countries.loadFromJson(rebels);
@@ -1190,8 +1199,10 @@ void Game::restoreRebels(const std::string& savePath) {
         for (auto& [cidStr, e] : j.items()) {
             int cid = atoi(cidStr.c_str());
             if (cid >= m_nextRebelCid) m_nextRebelCid = cid + 1;
-            std::string svg = SaveManager::readEntry(savePath, "rebellion/" + cidStr + ".svg");
-            if (!svg.empty()) m_rebelFlagSvgs[cid] = svg;
+            if (!savePath.empty()) {
+                std::string svg = SaveManager::readEntry(savePath, "rebellion/" + cidStr + ".svg");
+                if (!svg.empty()) m_rebelFlagSvgs[cid] = svg;
+            }
             // Rasterise the flag, exactly as createRebelCountry does at the
             // moment of the rebellion. Loading the record alone left the
             // texture map with no entry for the cid, so every restored

@@ -1003,6 +1003,15 @@ private:
     void mpOnWorldLoaded();
     /** Build the whole-world payload. Host only. */
     std::vector<uint8_t> mpBuildSnapshot();
+    // ── WHAT A DELTA DOES NOT CARRY (NetMsg::TurnState) ──
+    // The host writes it after every turn and after every snapshot; a client
+    // applies it once its world is at that turn, holding it until then.
+    std::vector<uint8_t> mpTurnStatePayload();
+    void mpSendTurnStateTo(uint16_t peerId);
+    void mpApplyTurnState(uint32_t turnNumber, const std::vector<uint8_t>& payload);
+    void mpApplyHeldTurnState();
+    uint32_t m_mpHeldTurnStateTurn = 0;
+    std::vector<uint8_t> m_mpHeldTurnState;
     /**
      * The world as it stands, for somebody who has just arrived in a game that
      * is already running.
@@ -4939,6 +4948,8 @@ private:
     // shape as countries.json so CountryMap::loadFromJson can merge them back.
     std::string buildRebelsJson() const;
     void restoreRebels(const std::string& savePath);
+    // The same from rebels.json text; `savePath` only supplies rebellion/*.svg.
+    void restoreRebelsJson(const std::string& rebels, const std::string& savePath);
     // Creates placeholder countries for any rebel cid that provinces reference
     // but m_countries doesn't have (old saves with no rebels.json). Keeps such
     // territory rendering as a coloured state instead of grey limbo.
@@ -5796,6 +5807,18 @@ private:
     // node flags; this reads m_countryResearched[cid]).
     bool isNodeAvailableFor(const ResearchNode& node, int countryId) const;
     void progressCountryResearch(int countryId);
+    // ── WHO THE AI MAY NOT PLAY ──
+    //
+    // A dedicated server holds no country (m_playerCountryId == 0), and every
+    // "not the player" test in the turn loop read that as "the AI plays
+    // everybody": a seated, connected player who had submitted their orders
+    // still had the AI take their whole turn on top of them -- declaring their
+    // wars, sending their orders. So the seats TurnRunner says are NOT
+    // AI-played are listed here for the length of one processTurn().
+    std::unordered_set<int> m_mpHumanCids;
+    bool humanHolds(int countryId) const {
+        return countryId == m_playerCountryId || m_mpHumanCids.count(countryId) != 0;
+    }
 
     // ── Pending Actions (queued for processing on next turn) ──
     std::vector<PendingDiplomaticAction> m_pendingDiplomaticActions;

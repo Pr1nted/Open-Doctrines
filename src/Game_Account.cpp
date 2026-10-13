@@ -20,6 +20,7 @@
 #include <cstring>
 #include <ctime>
 #include "util/OpenLink.h"
+#include "util/WebPersist.h"
 
 namespace {
 
@@ -168,6 +169,21 @@ void Game::openAccountMenu() {
 void Game::updateAccountMenu() {
     AccountClient& client = AccountClient::get();
     client.update();
+
+    // Signing in or out is written to the browser's storage NOW, not on the
+    // next twenty-second tick: the moment after "signed in" is exactly when a
+    // player closes the tab they authorised in. A no-op off the web.
+    {
+        static AccountClient::Status lastSeen = AccountClient::Status::Working;
+        const AccountClient::Status nowSeen = client.status();
+        const bool in = nowSeen == AccountClient::Status::SignedIn;
+        const bool wasIn = lastSeen == AccountClient::Status::SignedIn;
+        if (in != wasIn && (in || nowSeen == AccountClient::Status::SignedOut)) {
+            odPersistMark();
+            odPersistFlush(m_dataDir);
+        }
+        lastSeen = nowSeen;
+    }
 
     if (isMouseOverConsole()) return;
 

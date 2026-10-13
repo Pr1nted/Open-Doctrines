@@ -784,6 +784,17 @@ void NetSession::Impl::handleFrame(NetMsg type, const uint8_t* body, size_t size
             push(std::move(e));
             return;
         }
+        case NetMsg::TurnState: {
+            NetSnapshotZ z;
+            if (!NetSnapshotZ::decode(body, size, z)) return;
+            NetSessionEvent e{NetSessionEvent::Kind::TurnState};
+            if (!netInflate(z.deflated.data(), z.deflated.size(), z.rawSize,
+                            (size_t)kNetMaxFrameBytes * 4, e.payload))
+                return;
+            e.turnNumber = z.turnNumber;
+            push(std::move(e));
+            return;
+        }
         case NetMsg::TurnOrders: {
             NetTurnOrders to;
             if (!NetTurnOrders::decode(body, size, to)) return;

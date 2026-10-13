@@ -66,6 +66,8 @@ struct NetSessionEvent {
          * and nothing else. See NetMsg::TurnOrders.
          */
         TurnOrders,
+        /** The state a Delta does not carry; see NetMsg::TurnState. */
+        TurnState,
         Notice,          // "AI played X because ..."
         Chat,
         Mail,            // a letter for this player's country; see NetMsg::MailFrom

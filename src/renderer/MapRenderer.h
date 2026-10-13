@@ -230,6 +230,8 @@ public:
                            std::unordered_map<int, float>& radii_out);
     // Glow-only rebuild (when borders reload but provinces don't change)
     void rebuildGlowMap(const ProvinceMap& provinces);
+    /** A glow is built: it depends on province shapes only, so it stays right. */
+    bool hasGlowMap() const { return !m_provinceGlow.empty(); }
     // Glow from the compact id lookup (no province image), on the downscaled
     // border grid. Shared by buildProvinceData and rebuildGlowMap under Risky RAM.
     void buildCompactGlow(const ProvinceMap& provinces);

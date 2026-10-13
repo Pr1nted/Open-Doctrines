@@ -1838,6 +1838,38 @@ void NetHost::sendTurnOrdersTo(uint16_t peerId, uint32_t turnNumber,
     m_impl->toPeer(peerId, NetMsg::TurnOrders, t.encode());
 }
 
+namespace {
+// A TurnState frame, or empty when it cannot be built or would not be carried.
+std::vector<uint8_t> turnStateFrame(uint32_t turnNumber, const std::vector<uint8_t>& payload,
+                                    uint32_t ceiling) {
+    NetSnapshotZ z;
+    z.turnNumber = turnNumber;
+    z.rawSize = (uint32_t)payload.size();
+    z.deflated = netDeflate(payload);
+    if (z.deflated.empty()) return {};
+    std::vector<uint8_t> frame = z.encode();
+    if (frame.size() + 6 > ceiling) return {};
+    return frame;
+}
+}  // namespace
+
+bool NetHost::broadcastTurnState(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
+    const std::vector<uint8_t> frame = turnStateFrame(
+        turnNumber, payload, m_impl->viaRelay ? kNetRelayMaxFromHost : kNetMaxFrameBytes);
+    if (frame.empty()) return false;
+    m_impl->broadcast(NetMsg::TurnState, frame);
+    return true;
+}
+
+bool NetHost::sendTurnStateTo(uint16_t peerId, uint32_t turnNumber,
+                              const std::vector<uint8_t>& payload) {
+    const std::vector<uint8_t> frame = turnStateFrame(
+        turnNumber, payload, m_impl->viaRelay ? kNetRelayMaxFromHost : kNetMaxFrameBytes);
+    if (frame.empty()) return false;
+    m_impl->toPeer(peerId, NetMsg::TurnState, frame);
+    return true;
+}
+
 bool NetHost::sendSnapshot(uint16_t peerId, uint32_t turnNumber,
                            const std::vector<uint8_t>& payload) {
     // Deflated for a client that reads it: a campaign's world grows by every

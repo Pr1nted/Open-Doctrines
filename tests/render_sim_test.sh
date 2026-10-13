@@ -35,6 +35,9 @@ bad()   { printf '  %-66s FAILED\n' "$1"; [ -n "${2:-}" ] && printf '      %s\n'
 check() { if eval "$2"; then ok "$1"; else bad "$1" "${3:-}"; fi; }
 
 id="odsim$$"
+# Render's free plan gives a stopping service 30 s, and does not allow more
+# (maxShutdownDelaySeconds is refused on free). Stops here use the same.
+stop_s="${OD_SIM_STOP_SECONDS:-30}"
 net="$id-net"; vol="$id-repo"
 img="od-server:sim"; cimg="od-server:sim-build"
 peak_file="$(mktemp)"; echo 0 > "$peak_file"
@@ -150,7 +153,10 @@ check "the new instance is healthy while the old one still runs" "printf '%s' '$
 for _ in $(seq 1 30); do docker logs "$id-b" 2>&1 | grep -q "waiting for the previous instance" && break; sleep 2; done
 check "and it waits instead of hosting the same campaign twice" \
       "docker logs '$id-b' 2>&1 | grep -q 'waiting for the previous instance' && ! docker logs '$id-b' 2>&1 | grep -q 'session open'"
-docker stop -t 120 "$id-a" >/dev/null
+t_stop=$(date +%s); docker stop -t "$stop_s" "$id-a" >/dev/null; t_stop=$(( $(date +%s) - t_stop ))
+check "and did it inside Render free's ${stop_s}s shutdown window (${t_stop}s)" \
+      "[ '$t_stop' -lt '$stop_s' ] && [ \"\$(docker inspect -f '{{.State.ExitCode}}' '$id-a')\" != 137 ]" \
+      "exit $(docker inspect -f '{{.State.ExitCode}}' "$id-a"), ${t_stop}s"
 check "the old instance saved and let go when stopped" \
       "docker logs '$id-a' 2>&1 | grep -q 'campaign_sync: pushed' && docker logs '$id-a' 2>&1 | grep -q 'campaign_sync: released'" \
       "$(docker logs "$id-a" 2>&1 | grep -E 'campaign_sync|stopping|saving' | tail -5)"
@@ -183,7 +189,7 @@ turns="$(docker logs "$id-c" 2>&1 | grep -c 'resolved\.')"
 docker logs "$id-c" 2>&1 | grep -E '^\[[0-9:]+ INFO\] turn [0-9]+ resolved' | head -3
 
 echo "=== a restart in the middle of the game ==="
-docker stop -t 120 "$id-c" >/dev/null
+docker stop -t "$stop_s" "$id-c" >/dev/null
 instance "$id-d"
 wait_open "$id-d" 900
 check "it comes back into the game, not the lobby" \
@@ -209,7 +215,7 @@ check "peak memory stayed under 512 MB (${peak} MB)" "[ '$peak' -gt 0 ] && [ '$p
 oom=""; for c in "$id-d"; do oom="$oom$(docker inspect -f '{{.State.OOMKilled}}' "$c" 2>/dev/null)"; done
 check "nothing was killed for memory" "! printf '%s' '$oom' | grep -q true"
 
-docker stop -t 120 "$id-d" >/dev/null
+docker stop -t "$stop_s" "$id-d" >/dev/null
 echo
 echo "first open ${opened}s at 0.1 CPU; ${turns} turn(s) resolved; peak ${peak} MB"
 if [ "$fail" = 0 ]; then echo "render sim: all checks passed"; else echo "render sim: FAILED"; fi

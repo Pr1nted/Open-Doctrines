@@ -19,6 +19,7 @@
 //   ROSTER me=101 submitted=1 state=game
 //   TURN 4 deadline_ms=86399120
 //   SNAPSHOT turn=3
+//   TURNSTATE turn=3 rebels=2 named=2 wars=MDA-UKR riso=R01,R02 mail=0
 //   SUBMITTED 4
 //   ACKED 4          (the host's roster says it has them)
 //   REJECTED <reason>
@@ -36,11 +37,13 @@
 // --until stops as soon as a line starting with that text is printed, so a
 // script can wait for a specific moment without sleeping for a guessed time.
 
+#include "json.hpp"
 #include "net/LobbyMap.h"
 #include "net/NetProtocol.h"
 #include "net/Session.h"
 #include "net/Socks5.h"
 #include "net/TorClient.h"
+#include "net/WorldSync.h"
 
 #include <algorithm>
 #include <chrono>
@@ -205,17 +208,85 @@ int main(int argc, char** argv) {
                             std::chrono::steady_clock::now() - start).count() + submitAfter;
                     }
                     break;
-                case NetSessionEvent::Kind::Snapshot:
+                case NetSessionEvent::Kind::Snapshot: {
+                    // decoded=: whether the game itself could read it -- the
+                    // same NetWorldSnapshot::decode a joining game runs.
+                    NetWorldSnapshot decoded;
+                    const bool readable = NetWorldSnapshot::decode(e.payload.data(),
+                                                                   e.payload.size(), decoded);
+                    if (const char* dump = std::getenv("OD_DUMP_SNAPSHOT"))
+                        if (FILE* f = std::fopen(dump, "wb")) {
+                            std::fwrite(e.payload.data(), 1, e.payload.size(), f);
+                            std::fclose(f);
+                        }
                     say("SNAPSHOT turn=" + std::to_string(e.turnNumber) +
                         " bytes=" + std::to_string(e.payload.size()) +
+                        " decoded=" + (readable ? "1" : "0") +
+                        " turns=" + std::to_string(decoded.turns.size()) +
                         (secret.empty() ? std::string()
                          : std::string(" secret=") +
                            (std::search(e.payload.begin(), e.payload.end(), secret.begin(),
                                         secret.end()) != e.payload.end() ? "1" : "0")));
                     break;
+                }
                 case NetSessionEvent::Kind::Delta:
                     say("DELTA turn=" + std::to_string(e.turnNumber));
                     break;
+                case NetSessionEvent::Kind::TurnState: {
+                    // TURNSTATE turn=N rebels=R named=K wars=A-B,C-D mail=0
+                    // "named": rebel states that came with a real name and a
+                    // flag, which is what a client could not get before.
+                    // "mail=1" would be a leak -- letters are private.
+                    auto j = nlohmann::json::parse(e.payload.begin(), e.payload.end(),
+                                                   nullptr, false);
+                    int rebels = 0, named = 0;
+                    std::vector<std::string> wars, rebelIsos;
+                    bool mail = false;
+                    if (j.is_object()) {
+                        if (j.contains("rebels") && j["rebels"].is_object())
+                            for (auto& [cid, r] : j["rebels"].items()) {
+                                rebels++;
+                                rebelIsos.push_back(r.value("iso_a3", std::string()));
+                                const std::string n = r.value("name", std::string());
+                                if (!n.empty() && n.rfind("Rebel State", 0) != 0 &&
+                                    r.contains("flag_actual"))
+                                    named++;
+                            }
+                        if (j.contains("state") && j["state"].is_object()) {
+                            const auto& st = j["state"];
+                            mail = st.contains("mail");
+                            if (st.contains("relations"))
+                                for (auto& [a, ts] : st["relations"].items())
+                                    for (auto& [b, r] : ts.items())
+                                        if (a < b && r.value("war", false)) wars.push_back(a + "-" + b);
+                        }
+                    }
+                    // This seat's research budget and target. The AI moves
+                    // its research slider on almost every turn it plays, so a
+                    // human seat whose values never change was not played.
+                    uint16_t mine = 0;
+                    for (const NetPeer& p : session.roster())
+                        if (p.peerId == me && me != 0) mine = p.countryId;
+                    std::string alloc = "0", active = "-";
+                    if (mine && j.is_object() && j.contains("state")) {
+                        const auto& st = j["state"];
+                        const std::string k = std::to_string(mine);
+                        if (st.contains("countryResearchAlloc") && st["countryResearchAlloc"].contains(k))
+                            alloc = st["countryResearchAlloc"][k].dump();
+                        if (st.contains("countryResearchActive") && st["countryResearchActive"].contains(k))
+                            active = st["countryResearchActive"][k].get<std::string>();
+                    }
+                    std::sort(wars.begin(), wars.end());
+                    std::string w, ri;
+                    for (const auto& x : wars) w += (w.empty() ? "" : ",") + x;
+                    std::sort(rebelIsos.begin(), rebelIsos.end());
+                    for (const auto& x : rebelIsos) ri += (ri.empty() ? "" : ",") + x;
+                    say("TURNSTATE turn=" + std::to_string(e.turnNumber) +
+                        " rebels=" + std::to_string(rebels) + " named=" + std::to_string(named) +
+                        " wars=" + w + " riso=" + ri + " mail=" + (mail ? "1" : "0") +
+                        " my=" + std::to_string(mine) + " alloc=" + alloc + " active=" + active);
+                    break;
+                }
                 case NetSessionEvent::Kind::Rejected:
                     say("REJECTED " + session.error());
                     rc = 1;

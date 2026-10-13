@@ -4052,7 +4052,15 @@ void Game::reloadBorders() {
     // draws none, and each of these walks or copies the whole map raster.
     if (m_headless || !m_renderer) return;
     m_renderer->computeBorderTexture(m_provinces);
-    m_renderer->rebuildGlowMap(m_provinces);
+    // ── THE GLOW IS BUILT ONCE ──
+    // It is each province's outline, from province ids alone: owners never
+    // enter it, and nothing in a game moves a province's pixels. This ran on
+    // every call anyway -- every turn, on every client, a 33-million-pixel
+    // pass of about 1.3 s in a browser. Every world load clears it
+    // (buildProvinceData), so a new map is never drawn with an old outline.
+    // Built here only if the load did not build it, which happens when the
+    // borders came after it.
+    if (!m_renderer->hasGlowMap()) m_renderer->rebuildGlowMap(m_provinces);
     m_renderer->rebuildSelectionGlow();
     generatePoliticalTexture();
 }

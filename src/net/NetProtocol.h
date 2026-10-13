@@ -172,6 +172,20 @@ enum class NetMsg : uint16_t {
      * because one snapshot is shared by every joiner and letters are private.
      */
     MailFrom  = 84,
+
+    /**
+     * What a Delta does not carry, after each turn: relations, claims,
+     * identities, policies, the rebel states and their flags. A NetSnapshotZ
+     * whose payload Game::mpTurnStatePayload writes and mpApplyTurnState reads.
+     *
+     * A Delta is provinces, ships, armies and research. Everything else a turn
+     * changed reached a client once, in the snapshot it joined with, and never
+     * again -- so a war declared on turn 2 was on the host and not on anybody's
+     * Relations screen, conquest arrived without the war that caused it, and
+     * every rebel state was invented on the client as "Rebel State N" with no
+     * flag. Additive, like TurnOrders: an older build ignores the id.
+     */
+    TurnState = 85,
 };
 
 const char* netMsgName(NetMsg m);

@@ -80,7 +80,12 @@ check "it asked the service to reopen the saved code" \
 check "and said the session is long-lived" \
       "printf '%s' '$stats' | grep -q '\"longForm\":true'" "$stats"
 
-client dev-bob --seconds 20 --until "TURN" > "$work/bob2.log" 2>&1
+client dev-bob --seconds 30 --until "SNAPSHOT" > "$work/bob2.log" 2>&1
+# The world a resumed server sends must be one a game can LOAD, not just bytes:
+# the resume path left the map name empty, every joiner's decode refused it,
+# and nobody could get back in after a restart -- every redeploy, on a host.
+check "the resumed world can be read by a joining game" \
+      "grep -q '^SNAPSHOT .*decoded=1' '$work/bob2.log'" "$(grep '^SNAPSHOT' "$work/bob2.log")"
 check "Bob gets his own country back" "grep -q '^ROSTER me=$bob_cid ' '$work/bob2.log'" \
       "$(grep ROSTER "$work/bob2.log")"
 check "his orders from before the kill are still in" \

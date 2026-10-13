@@ -936,8 +936,10 @@ void Game::mpDrainEvents() {
                                                      mpSnapshotForJoiner()))
                             mpNote(T("A player asked for the world and it is too large to send."),
                                    true);
-                        else
+                        else {
+                            mpSendTurnStateTo(e.peerId);
                             mpSendMailHistory(e.peerId);
+                        }
                     }
                     break;
 
@@ -953,8 +955,10 @@ void Game::mpDrainEvents() {
                         e.peerId != m_netHost->lobby().hostPeerId()) {
                         if (m_fogOfWar ? fogSendSnapshot(e.peerId, mpCountryOfPeer(e.peerId))
                                        : m_netHost->sendSnapshot(e.peerId, (uint32_t)m_turnNumber,
-                                                                 mpSnapshotForJoiner()))
+                                                                 mpSnapshotForJoiner())) {
+                            mpSendTurnStateTo(e.peerId);
                             mpSendMailHistory(e.peerId);
+                        }
                     }
                     mpNote(TextFormat(T("%s joined"), e.text.c_str()));
                     break;
@@ -1136,6 +1140,9 @@ void Game::mpDrainEvents() {
                     // one, and is worth no message to the player: they did not
                     // ask for it and nothing about their game changed.
                     mpApplyTurnOrders(e.payload, (int)e.turnNumber);
+                    break;
+                case NetSessionEvent::Kind::TurnState:
+                    mpApplyTurnState(e.turnNumber, e.payload);
                     break;
                 case NetSessionEvent::Kind::LobbyMapKnown: {
                     const std::vector<uint8_t> bytes = m_netSession->lobbyMap();
@@ -1386,6 +1393,11 @@ void Game::drawMultiplayerMenu() {
             // hears no clicks -- a press meant for a country in the list used
             // to fall through to whatever lobby widget sat beneath it.
             const bool under = click && !m_mpPickingCountry;
+            // Open BEFORE this frame's lobby was drawn. The click that opens
+            // the picker must not also be the picker's first click: the
+            // "Choose a country" button lies over the picker's own map, so
+            // that same press landed inside it and the picker shut at once.
+            const bool pickerWasOpen = m_mpPickingCountry;
             drawMpLobby(mouse, under);
             // Down the right-hand side, out of the way of the roster.
             if (m_netHost || m_netSession) {
@@ -1394,7 +1406,7 @@ void Game::drawMultiplayerMenu() {
             }
             if (m_mpPickingCountry && m_mpPage == MpPage::Lobby &&
                 (m_netHost || m_netSession))
-                drawMpCountryPicker(mouse, click);
+                drawMpCountryPicker(mouse, click && pickerWasOpen);
             break;
         }
     }
@@ -1466,7 +1478,7 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
             if (click && forget.hovered) {
                 m_serverBook->remove(i);
                 m_serverBook->save();
-                break;    // the vector moved under us
+                return;   // the vector moved under us, and see the join below
             }
             if (click && edit.hovered) {
                 m_mpSelected = (int)i;
@@ -1484,7 +1496,10 @@ void Game::drawMpHub(Vector2 mouse, bool click) {
                 // there is something it genuinely does not know.
                 m_mpSelected = (int)i;
                 mpJoinSaved(i);
-                break;
+                // Return, not break: a break skipped `y += 52` below, so the
+                // board was laid out ON this row for the rest of the frame,
+                // the same click landed on it, and joining opened the board.
+                return;
             }
             y += 52;
         }
@@ -3500,7 +3515,10 @@ bool Game::mpHostStartGame(bool force, std::string& why) {
             continue;
         const bool sent = m_fogOfWar ? fogSendSnapshot(p.peerId, p.countryId)
                                      : m_netHost->sendSnapshot(p.peerId, (uint32_t)m_turnNumber, snapshot);
-        if (sent) mpSendMailHistory(p.peerId);
+        if (sent) {
+            mpSendTurnStateTo(p.peerId);
+            mpSendMailHistory(p.peerId);
+        }
     }
     uint16_t mine = 0;
     for (const NetPeer& p : m_netHost->lobby().roster())
@@ -3588,6 +3606,9 @@ void Game::mpOnWorldLoaded() {
         // than applied to the world being replaced; now there is one to apply
         // them to, and mpApplyDelta drops the ones this world already has.
         mpDrainQueuedDeltas();
+        // What the snapshot cannot say -- the rebel states -- and anything that
+        // came for a turn the queue has just reached.
+        mpApplyHeldTurnState();
         return;
     }
 }
@@ -3654,6 +3675,113 @@ std::vector<uint8_t> Game::mpBuildSnapshot() {
         }
     }
     return snap.encode();
+}
+
+std::vector<uint8_t> Game::mpTurnStatePayload() {
+    // Never in a fog world: this is everybody's state, and fog seats are each
+    // sent only what they can see.
+    if (m_fogOfWar) return {};
+    nlohmann::json state = nlohmann::json::parse(saveStateJson(), nullptr, false);
+    if (state.is_discarded() || !state.is_object()) return {};
+    // ── WHAT IS LEFT OUT, AND WHY ──
+    // mail: private, sent to each player separately. pending*, claimsPending*,
+    // withdraws: orders for the turn now open -- a client cleared its own when
+    // the delta landed, and the loader APPENDS these, so sending them would
+    // stack a copy onto the client every turn. loadedWith: also appended.
+    // simRng, turnNumber, fogOfWar: the host's, or already known.
+    for (auto it = state.begin(); it != state.end();) {
+        const std::string& k = it.key();
+        const bool drop = k == "mail" || k.rfind("pending", 0) == 0 ||
+                          k.rfind("claimsPending", 0) == 0 || k == "withdraws" ||
+                          k == "loadedWith" || k == "simRng" || k == "turnNumber" ||
+                          k == "fogOfWar";
+        it = drop ? state.erase(it) : std::next(it);
+    }
+    nlohmann::json out = nlohmann::json::object();
+    out["state"] = std::move(state);
+    const std::string rebels = buildRebelsJson();
+    if (!rebels.empty()) {
+        nlohmann::json r = nlohmann::json::parse(rebels, nullptr, false);
+        if (!r.is_discarded()) out["rebels"] = std::move(r);
+    }
+    const std::string text = out.dump();
+    return std::vector<uint8_t>(text.begin(), text.end());
+}
+
+void Game::mpSendTurnStateTo(uint16_t peerId) {
+    if (!m_netHost || m_fogOfWar) return;
+    const std::vector<uint8_t> payload = mpTurnStatePayload();
+    if (!payload.empty()) m_netHost->sendTurnStateTo(peerId, (uint32_t)m_turnNumber, payload);
+}
+
+void Game::mpApplyTurnState(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
+    if (mpIsHost() || m_fogOfWar) return;
+    // Held, not applied: it describes the world AT this turn, and the delta
+    // that brings this client there may still be queued behind a load.
+    m_mpHeldTurnStateTurn = turnNumber;
+    m_mpHeldTurnState = payload;
+    mpApplyHeldTurnState();
+}
+
+void Game::mpApplyHeldTurnState() {
+    if (m_mpHeldTurnState.empty()) return;
+    if (m_mpLoad != MpLoad::None || m_provinceCountryLookup.empty()) return;
+    if ((int)m_mpHeldTurnStateTurn > m_turnNumber) return;   // its delta is not here yet
+    const std::vector<uint8_t> bytes = std::move(m_mpHeldTurnState);
+    m_mpHeldTurnState.clear();
+    if ((int)m_mpHeldTurnStateTurn < m_turnNumber) return;   // overtaken by a later turn
+
+    nlohmann::json j = nlohmann::json::parse(bytes.begin(), bytes.end(), nullptr, false);
+    if (j.is_discarded() || !j.is_object()) return;
+
+    // ── FLAGS: THE PATTERN ARRIVES, THE PICTURE HAS TO BE DRAWN ──
+    // A change of government restyles a flag (politid::applyFlag), and the
+    // state carries the new pattern -- but the textures are drawn from
+    // patterns only on a save load (replaySaveTurns), never here, so a
+    // country renamed "Cooperative of Ukraine" kept flying its old flag.
+    // Dirty already means the join snapshot restyled flags: draw them all
+    // once. After that, only the ones this state changes.
+    const bool redrawAll = m_identityFlagsDirty;
+    std::unordered_map<int, std::string> flagsBefore;
+    if (!redrawAll)
+        for (const auto& [cid, c] : m_countries.getAll())
+            flagsBefore[cid] = flagPatternToJsonString(c.flagActual);
+
+    // Rebels first: relations and identities name them by ISO, and until the
+    // real record replaces the placeholder its ISO is an invented "R04".
+    if (j.contains("rebels") && j["rebels"].is_object())
+        restoreRebelsJson(j["rebels"].dump(), std::string());
+    if (j.contains("state") && j["state"].is_object()) {
+        // The loader overwrites what it is given and leaves the rest -- and
+        // these are written sparsely, so an entry that ENDED (a peace, a
+        // cooldown run out) is simply absent and would otherwise outlive it.
+        m_relations.clear();
+        m_provinceRebellionCooldown.clear();
+        m_provinceConquestTurn.clear();
+        m_conqueredProvincePrevOwner.clear();
+        m_countryWarWeariness.clear();
+        loadStateJson(j["state"].dump());
+    }
+    if (redrawAll) {
+        rebuildFlags();
+    } else if (!m_headless) {
+        const bool actual = m_config.showActualFlags && !m_config.streamSafe;
+        for (const auto& [cid, c] : m_countries.getAll()) {
+            auto was = flagsBefore.find(cid);
+            if (was != flagsBefore.end() && was->second == flagPatternToJsonString(c.flagActual))
+                continue;   // unchanged, or a rebel restoreRebelsJson already drew
+            if (was == flagsBefore.end() && cid >= REBEL_CID_MIN) continue;
+            auto tex = m_countryFlags.find(cid);
+            if (tex != m_countryFlags.end() && tex->second.id > 0) UnloadTexture(tex->second);
+            m_countryFlags[cid] = FlagRenderer::render(actual ? c.flagActual : c.flagCensored,
+                                                       256, 128, m_dataDir, &m_odmJsonData);
+        }
+    }
+    if (m_renderer) m_renderer->setCountryFlags(&m_countryFlags);
+    m_identityFlagsDirty = false;
+    rebuildOwnershipPixels();
+    reloadBorders();
+    m_labelsDirty = true;
 }
 
 void Game::mpApplySnapshot(const std::vector<uint8_t>& payload) {
@@ -4601,10 +4729,17 @@ void Game::mpResolveTurn() {
         }
     }
 
+    // Every seat the AI is NOT standing in for, so processTurn leaves those
+    // countries to their players (or, under "absent: idle", to nobody).
+    m_mpHumanCids.clear();
+    for (const TurnResolution& r : resolutions)
+        if (r.countryId != 0 && !r.aiPlays) m_mpHumanCids.insert(r.countryId);
+
     // The host's own orders are already in this world; it never submitted them
     // to itself.
     m_mpTurns->stop();
     processTurn();
+    m_mpHumanCids.clear();
 
     // processTurn() appended the delta to the save; send exactly that, so what
     // players apply is what the host recorded rather than a second computation
@@ -4626,6 +4761,13 @@ void Game::mpResolveTurn() {
             {
                 std::vector<uint8_t> orders = mpSerializeTurnOrders();
                 if (!orders.empty()) m_netHost->broadcastTurnOrders(turn, orders);
+            }
+            // And what the delta does not carry: wars, peace, identities,
+            // rebel states. After the delta, which it describes the result of.
+            {
+                const std::vector<uint8_t> state = mpTurnStatePayload();
+                if (!state.empty() && !m_netHost->broadcastTurnState(turn, state))
+                    mpNote("This turn's diplomacy was too large to send to players.", true);
             }
             // The post, after the turn it arrived on: each letter to the one
             // player whose country it is addressed to.
@@ -4770,6 +4912,8 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
     m_pendingScrapShips.clear();
 
     recordIncomeSnapshot();
+    // The rest of this turn, if it arrived before the turn itself did.
+    mpApplyHeldTurnState();
 }
 
 // ------------------------------------------------- inviting, and being found --
@@ -6043,21 +6187,30 @@ void Game::drawMpChat(int x, int y, int w, int h, Vector2 mouse, bool click) {
     BeginScissorMode((int)view.x, (int)view.y, (int)view.width, (int)view.height);
     // Drawn from the bottom up, so the newest line is always the one you can
     // see and a long backlog scrolls off the top where it belongs.
-    int ly = (int)(view.y + view.height) - 18 + m_chatScroll;
-    for (auto it = m_chatLog.rbegin(); it != m_chatLog.rend() && ly > view.y - 20; ++it) {
+    // Wrapped, not fitted: fitToWidth shrank a long line to 9 px and then cut
+    // it with an ellipsis, so anything longer than a greeting lost its end and
+    // there was no way to read the rest.
+    const int textW = (int)view.width - 16;
+    int bottom = (int)(view.y + view.height) - 4 + m_chatScroll;
+    int total = 0;
+    for (auto it = m_chatLog.rbegin(); it != m_chatLog.rend(); ++it) {
         const std::string line = it->system ? it->text : (it->who + ": " + it->text);
-        int fs = 12;
-        const std::string fit = odText::fitToWidth(line, (int)view.width - 16, fs, 9);
-        DrawText(fit.c_str(), (int)view.x + 8, ly, 12,
-                 it->system ? Color{210, 170, 120, 255} : Color{206, 212, 232, 255});
-        ly -= 16;
+        const int lh = odText::measureWrapped(line.c_str(), textW, 12);
+        total += lh + 4;
+        if (bottom < view.y) continue;   // above the view: counted, not drawn
+        const int top = bottom - lh;
+        if (top < view.y + view.height)
+            odText::drawWrapped(line.c_str(), (int)view.x + 8, top, textW, 12,
+                                it->system ? Color{210, 170, 120, 255}
+                                           : Color{206, 212, 232, 255});
+        bottom = top - 4;
     }
     EndScissorMode();
     if (CheckCollisionPointRec(mouse, view)) {
         const float wheel = odScrollWheel(view);
         if (wheel != 0.0f)
             m_chatScroll = std::clamp(m_chatScroll + (int)(wheel * 32), 0,
-                                      std::max(0, (int)m_chatLog.size() * 16));
+                                      std::max(0, total - (int)view.height + 8));
     }
 
     const Rectangle field = {(float)x, (float)(y + h - inputH), (float)w, (float)inputH};
