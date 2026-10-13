@@ -50,7 +50,7 @@ GA_MEASUREMENT_ID = "G-6DXCXHCNRL"
 # through the relay receives none. e.g.
 #   "https://od-tournament.onrender.com/healthz"
 # See src/hosting/keepalive.ts and deploy/server/render.yaml.
-KEEPALIVE_URLS = ""
+KEEPALIVE_URLS = "https://od-tournament.onrender.com/healthz"
 
 # ---------------------------------------------------------------- storage ----
 #
