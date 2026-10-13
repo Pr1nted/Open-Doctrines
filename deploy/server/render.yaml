@@ -26,11 +26,9 @@ services:
     healthCheckPath: /healthz
     # Deploy by hand, when a release is tagged -- never on every commit.
     autoDeployTrigger: "off"
-    # On a redeploy the old instance gets SIGTERM about a minute after the new
-    # one is healthy, then this long to exit. It saves the world, pushes it to
-    # the campaign repository and releases the lock in that time; the default
-    # 30 s is too tight for a push over the network.
-    maxShutdownDelaySeconds: 180
+    # No maxShutdownDelaySeconds: Render refuses it on the free plan ("max
+    # shutdown delay is not supported for free tier services"), so a stopping
+    # instance has the default 30 s to save, push and let go of the campaign.
     envVars:
       # https://x-access-token:<fine-grained token>@github.com/Pr1nted/od-campaign.git
       - key: OD_CAMPAIGN_REPO
