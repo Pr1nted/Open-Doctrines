@@ -178,9 +178,12 @@ if [ -n "${OD_CAMPAIGN_REPO:-}" ]; then
     # lock looks abandoned: a redeploy then started a second server on the same
     # campaign while the first was still running it.
     fingerprint() { cat "$data/account.json" "$cfg" "$data"/saves/* 2>/dev/null | cksum || true; }
-    ( set +e; n=0; last="$(fingerprint)"; while sleep "${OD_BEAT_SECONDS:-300}"; do
-          n=$((n + 1))
-          if [ $((n % 12)) = 0 ] && [ "$(fingerprint)" != "$last" ]; then
+    # The hour is measured in seconds, not counted in beats: it was `every
+    # 12th beat`, which a shorter beat would have quietly turned into a full
+    # push every few minutes against a metered plan.
+    ( set +e; due=$((SECONDS + 3600)); last="$(fingerprint)"; while sleep "${OD_BEAT_SECONDS:-300}"; do
+          if [ "$SECONDS" -ge "$due" ] && [ "$(fingerprint)" != "$last" ]; then
+              due=$((SECONDS + 3600))
               /opt/od/campaign_sync.sh push >/dev/null 2>&1 && last="$(fingerprint)"
           else
               /opt/od/campaign_sync.sh heartbeat >/dev/null 2>&1 || true

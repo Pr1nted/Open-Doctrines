@@ -53,5 +53,15 @@ services:
       # one is spent the next answers. Three triples the letters a day.
       - key: OD_LLM_FALLBACK_MODELS
         value: openai/gpt-oss-120b,qwen/qwen3.8-27b
+      # A redeploy waits for the old instance's lock. Render's free plan stops
+      # an instance after 30 s, which is not always long enough for it to push
+      # and let go, so the new one waits until the lock goes stale: 15 minutes
+      # at the defaults, 6 here. A beat is a small clone and push (plus a look
+      # at the commands branch), so the beat stays at minutes, not seconds --
+      # the plan meters bandwidth, and every 2 minutes is roughly 1 GB a month.
+      - key: OD_BEAT_SECONDS
+        value: "120"
+      - key: OD_SYNC_STALE_SECONDS
+        value: "360"
       - key: OD_LLM_KEY            # the Groq API key
         sync: false
