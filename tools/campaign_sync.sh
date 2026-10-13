@@ -7,6 +7,8 @@
 #   tools/campaign_sync.sh push                save it (the server runs this itself)
 #   tools/campaign_sync.sh heartbeat           say "this machine is hosting", cheaply
 #   tools/campaign_sync.sh release             say "this machine has stopped"
+#   tools/campaign_sync.sh commands            run what the host left on the
+#                                              repository's `commands` branch
 #
 # WHY GIT
 #
@@ -195,6 +197,29 @@ PY
     say "restored $(ls "$dir/saves" 2>/dev/null | wc -l | tr -d ' ') world file(s)"
     ;;
 heartbeat) beat "$me" ;;
+commands)
+    # ── HOST COMMANDS, FOR A SERVER WITH NO CONSOLE ──
+    #
+    # A free platform gives no shell, so the host cannot reach the server's
+    # console -- not even to type `start`. The repository is the one thing
+    # both can write: the host puts console commands in commands.txt on the
+    # `commands` branch (GitHub's web editor will do), and this hands them to
+    # the server's own inbox, commands.txt beside server.json, which it reads
+    # every second. The file is then emptied, so each command runs once; the
+    # answers are in the server's log.
+    git ls-remote --exit-code --heads "$repo" commands >/dev/null 2>&1 || exit 0
+    checkout commands
+    f="$work/commands/commands.txt"
+    [ -s "$f" ] || exit 0
+    inbox="$(dirname "$cfg")/commands.txt"
+    n=$(grep -cv '^[[:space:]]*$' "$f" || true)
+    grep -v '^[[:space:]]*$' "$f" >> "$inbox" || true
+    : > "$f"
+    ( cd "$work/commands" && git_q add commands.txt &&
+      git_q commit -q -m "ran $n command(s) on $me" &&
+      git push -q origin HEAD:commands 2>&1 | redact )
+    say "queued $n command(s) from the repository"
+    ;;
 release)   beat "" ; say "released" ;;
 *) echo "campaign_sync: unknown command $cmd" >&2; exit 2 ;;
 esac

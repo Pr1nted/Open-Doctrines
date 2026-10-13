@@ -72,16 +72,26 @@ means.
 
 ## Running it
 
-It is a lobby until you start it. Render's **Shell** tab (or any console
-command through `commands.txt`):
+It is a lobby until you start it. The free plan has no Shell (it is a paid
+feature), so console commands go through the campaign repository instead: put
+them, one per line, in `commands.txt` on its **`commands`** branch -- GitHub's
+web editor is enough -- and the server runs them within about five minutes,
+once, then empties the file. The answers are in the service's **Logs**.
 
-```bash
-echo status >> /state/commands.txt     # who is here, who holds what
-echo start  >> /state/commands.txt     # turn 1 opens; due in 24 hours
+```text
+status          who is here, who holds what
+say hello all   a line in the lobby chat
+start           turn 1 opens; due in 24 hours
 ```
 
-The answer is in the service's log. Every console command works this way --
-`say`, `seat`, `deadline`, `kick`.
+Every console command works this way -- `seat`, `deadline`, `kick`, `save`.
+From a terminal with `gh` instead of the web editor:
+
+```bash
+gh api -X PUT repos/<you>/od-campaign/contents/commands.txt -f branch=commands \
+  -f message=start -f content="$(printf 'start\n' | base64)" \
+  -f sha="$(gh api 'repos/<you>/od-campaign/contents/commands.txt?ref=commands' --jq .sha)"
+```
 
 ## Before relying on the model
 

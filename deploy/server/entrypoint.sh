@@ -185,6 +185,9 @@ if [ -n "${OD_CAMPAIGN_REPO:-}" ]; then
           else
               /opt/od/campaign_sync.sh heartbeat >/dev/null 2>&1 || true
           fi
+          # Console commands the host left in the repository (no shell on a
+          # free plan): see `campaign_sync.sh commands`.
+          /opt/od/campaign_sync.sh commands 2>&1 | grep -v '^$' || true
       done ) &
     beat_pid=$!
 fi
