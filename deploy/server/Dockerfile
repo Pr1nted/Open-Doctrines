@@ -31,14 +31,20 @@ WORKDIR /src
 COPY . .
 # The server target only. Mods, shaping and the rest are fetched because the
 # configure step is shared with the game; nothing here links a graphics stack.
+# Compile jobs, FIXED rather than $(nproc). Render's builder reports far more
+# CPUs than the 2 it gives a build and caps it at 8 GB; $(nproc) started ~30
+# compilers at once and the heavy game files (1-1.5 GB each) ran it out of
+# memory: "Ran out of memory (used over 8GB) while building your code".
+# Three is as fast as two real CPUs allow and stays near 4-5 GB.
+ARG OD_BUILD_JOBS=3
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
- && cmake --build build --target OpenDoctrinesServer -j"$(nproc)" \
+ && cmake --build build --target OpenDoctrinesServer -j"$OD_BUILD_JOBS" \
  && strip build/OpenDoctrinesServer
 # OD_TEST_CLIENT=1 also builds the scripted player tests/render_sim_test.sh
 # joins with. After the server's layer, so the two builds share it; and only in
 # this stage, so it never reaches the image below.
 ARG OD_TEST_CLIENT=0
-RUN if [ "$OD_TEST_CLIENT" = 1 ]; then cmake --build build --target CampaignClient -j"$(nproc)"; fi
+RUN if [ "$OD_TEST_CLIENT" = 1 ]; then cmake --build build --target CampaignClient -j"$OD_BUILD_JOBS"; fi
 # data/audio had to be here for configure, which checks that everything the
 # game ships exists (OD_SHIPPED_DATA). A server plays no sound: 42 MB the image
 # below does not need.
