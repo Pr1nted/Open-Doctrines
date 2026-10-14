@@ -617,7 +617,7 @@ bool WindowShouldClose(void) { return g_stopRequested; }
 // server both are no-ops: there is no matrix stack and no scissor box because
 // there is no renderer to hold either.
 //
-//   UiScale.h            scales the whole UI by pushing a matrix
+//   UiScale.h            scales the whole UI through the projection matrix
 //   comms/Transmission   clips the eyelid to a straight cut with the scissor,
 //                        and draws an elliptical ring by scaling a circular
 //                        one, which needs the matrix stack too
@@ -641,6 +641,9 @@ void rlEnableScissorTest(void);
 void rlDisableScissorTest(void);
 void rlScissor(int x, int y, int width, int height);
 void rlDrawRenderBatchActive(void);
+void rlMatrixMode(int mode);
+Matrix rlGetMatrixProjection(void);
+void rlSetMatrixProjection(Matrix proj);
 void rlSetBlendFactorsSeparate(int, int, int, int, int, int);
 void rlSetBlendFactors(int, int, int);
 unsigned int rlLoadTexture(const void*, int, int, int, int);
@@ -662,6 +665,9 @@ void rlEnableScissorTest(void) {}
 void rlDisableScissorTest(void) {}
 void rlScissor(int, int, int, int) {}
 void rlDrawRenderBatchActive(void) {}
+void rlMatrixMode(int) {}
+Matrix rlGetMatrixProjection(void) { return Matrix{}; }
+void rlSetMatrixProjection(Matrix) {}
 void rlSetBlendFactorsSeparate(int, int, int, int, int, int) {}
 void rlSetBlendFactors(int, int, int) {}
 unsigned int rlLoadTexture(const void*, int, int, int, int) { return 0; }

@@ -1094,7 +1094,8 @@ void Game::updateDialogue(float dt) {
     // The first fog world anyone plays explains itself, once. Not in a
     // tutorial (that has its own lessons), not to a spectator, not headless.
     if (m_fogOfWar && !m_config.fogTutorialSeen && m_currentScreen == SCREEN_PLAYING &&
-        !m_tutorialMode && !m_dialogOpen && !m_headless && fogCountry(m_playerCountryId)) {
+        !m_tutorialMode && !m_dialogOpen && !m_headless && !m_shotTour &&
+        fogCountry(m_playerCountryId)) {
         m_config.fogTutorialSeen = true;
         m_config.save(m_configPath);
         beginDialogue("tut_fog");

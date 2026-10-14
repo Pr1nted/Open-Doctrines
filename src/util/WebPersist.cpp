@@ -1,6 +1,7 @@
 #include "WebPersist.h"
 #include "util/LoadLog.h"
 
+#include <cstdio>
 #include <iostream>
 
 // raylib and OdState are needed by the web BODY of these functions and by
@@ -23,6 +24,20 @@ namespace {
 // ships with.
 const char* kMountDir = "/persist";
 const char* kArchive  = "/persist/state.odstate";
+// ── EVERY SAVE THE PLAYER OWNS IS IN ONE FILE, SO IT IS NEVER WRITTEN IN PLACE ──
+//
+// The archive used to be written straight over itself. A write that failed
+// partway -- the tab running out of memory archiving a two-hundred-turn game,
+// say -- left a truncated file in the mount, the next pagehide pushed it into
+// IndexedDB, and the next visit could not read it: every save gone at once,
+// with the next autosave then writing an empty archive over the evidence.
+// Players reported losing 135 and 200 turns.
+//
+// Now: write to kPartial, swap the good archive aside to kPrevious, rename the
+// new one into place. A failed write leaves the last good archive untouched,
+// and an archive that will not open on load falls back to kPrevious.
+const char* kPartial  = "/persist/state.odstate.part";
+const char* kPrevious = "/persist/state.prev.odstate";
 
 bool  g_ready   = false;    // the mount exists and has been read back
 bool  g_dirty   = false;    // something changed since the last write
@@ -132,7 +147,9 @@ void odPersistInit(const std::string& dataDir) {
     g_ready = true;
     g_lastWrite = GetTime();
 
-    if (!FileExists(kArchive)) {
+    // A write that died between its rename steps leaves no main archive but a
+    // previous one; that is the one to read.
+    if (!FileExists(kArchive) && !FileExists(kPrevious)) {
         LoadLog() << "[persist] no previous session stored" << std::endl;
         return;
     }
@@ -143,10 +160,31 @@ void odPersistInit(const std::string& dataDir) {
     // principle have written here.
     std::string err;
     int count = 0;
-    if (OdState::load(dataDir, kArchive, err, &count))
+    if (FileExists(kArchive) && OdState::load(dataDir, kArchive, err, &count)) {
         LoadLog() << "[persist] restored " << count << " file(s)" << std::endl;
-    else
+        return;
+    }
+    if (FileExists(kArchive))
         LoadLog() << "[persist] could not restore: " << err << std::endl;
+
+    // THE MAIN ARCHIVE IS UNREADABLE (or missing). Keep it, under a name no
+    // write will reuse, so nothing that happens this session can overwrite
+    // what might still be recovered from it -- then try the previous one.
+    if (FileExists(kArchive)) {
+        const std::string kept = std::string(kMountDir) + "/state.broken-" +
+                                 std::to_string((long long)emscripten_get_now()) + ".odstate";
+        std::rename(kArchive, kept.c_str());
+        LoadLog() << "[persist] kept the unreadable archive as " << kept << std::endl;
+    }
+    if (FileExists(kPrevious) && OdState::load(dataDir, kPrevious, err, &count)) {
+        LoadLog() << "[persist] restored " << count
+                  << " file(s) from the previous archive -- the last few minutes may be missing"
+                  << std::endl;
+        // Written again on the next flush, from what is now in the data dir.
+        g_dirty = true;
+        return;
+    }
+    LoadLog() << "[persist] no readable archive; starting without saved progress" << std::endl;
 #endif
 }
 
@@ -187,8 +225,22 @@ void odPersistFlush(const std::string& dataDir) {
     const double began = GetTime();
     std::string err;
     int count = 0;
-    if (!OdState::save(dataDir, kArchive, err, &count)) {
-        LoadLog() << "[persist] could not write: " << err << std::endl;
+    // Written beside the archive and swapped in only when complete. See kPartial.
+    if (!OdState::save(dataDir, kPartial, err, &count)) {
+        std::remove(kPartial);
+        LoadLog() << "[persist] could not write: " << err
+                  << " (the previous archive is untouched)" << std::endl;
+        g_dirty = true;   // try again next time rather than forget the change
+        return;
+    }
+    if (FileExists(kArchive)) {
+        std::remove(kPrevious);
+        std::rename(kArchive, kPrevious);
+    }
+    if (std::rename(kPartial, kArchive) != 0) {
+        LoadLog() << "[persist] could not move the new archive into place" << std::endl;
+        if (FileExists(kPrevious) && !FileExists(kArchive)) std::rename(kPrevious, kArchive);
+        g_dirty = true;
         return;
     }
     g_lastPrint = print;

@@ -84,7 +84,11 @@ int Game::monumentSlotsUsed(int countryId) const {
 }
 
 float Game::monumentUpkeep(int countryId) const {
-    return odmon::slotUpkeep(monumentSlotsUsed(countryId));
+    return odmon::upkeep(monumentsOf(countryId));
+}
+
+float Game::monumentSwitchOnCost(int countryId, odmon::Kind kind, int level) const {
+    return odmon::runCost(kind, level) + odmon::slotSurcharge(monumentSlotsUsed(countryId) + 1);
 }
 
 float Game::monumentNextSlotCost(int countryId) const {

@@ -152,7 +152,7 @@ void Game::assimilateMinorities() {
             if (g.name == titular) continue;
             if (g.pct <= 0.0f) continue;
 
-            const float align = getMinorityAlignment(cid, g.name);
+            const float align = getMinorityAlignmentIn(pid, cid, g.name);
             // The brake. At zero alignment nothing moves at all.
             const float willing = std::clamp(align / 100.0f, 0.0f, 1.0f);
             float moved = g.pct * rate * kPerPointPerTurn * willing;

@@ -237,7 +237,7 @@ std::string Game::fogStateJsonFor(int cid) {
     cidKeyed("treasuryLastTurn", [&](int c) { return allowed(c) || discloses(c, DISCLOSE_TREASURY); });
     // Province-keyed facts: only where the seat can see.
     for (const char* k : {"provinceSpecializations", "rebellionCooldown", "provinceConquestTurn",
-                          "conqueredProvincePrevOwner"})
+                          "conqueredProvincePrevOwner", "provinceOccupationAnger"})
         cidKeyed(k, [&](int pid) { return provinceVisibleTo(cid, pid); });
 
     // Arrays of per-country entries.

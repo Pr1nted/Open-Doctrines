@@ -1831,6 +1831,9 @@ std::string Game::saveStateJson() {
     for (auto& [pid, prevOwner] : m_conqueredProvincePrevOwner) {
         j["conqueredProvincePrevOwner"][std::to_string(pid)] = prevOwner;
     }
+    for (auto& [pid, anger] : m_provinceOccupationAnger) {
+        j["provinceOccupationAnger"][std::to_string(pid)] = anger;
+    }
 
     // Pacification
     for (auto& [cid, val] : m_countryPacification) {
@@ -2456,6 +2459,11 @@ void Game::loadStateJsonBody(const std::string& json) {
     if (j.contains("conqueredProvincePrevOwner")) {
         for (auto& [key, val] : j["conqueredProvincePrevOwner"].items()) {
             m_conqueredProvincePrevOwner[std::stoi(key)] = val.get<int>();
+        }
+    }
+    if (j.contains("provinceOccupationAnger")) {
+        for (auto& [key, val] : j["provinceOccupationAnger"].items()) {
+            m_provinceOccupationAnger[std::stoi(key)] = val.get<float>();
         }
     }
 

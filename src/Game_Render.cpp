@@ -1852,7 +1852,8 @@ void Game::drawCountryPanel() {
                             : poor   ? T("You cannot afford it.") : nullptr;
             const std::string upLabel = topped
                 ? std::string(T("Highest level"))
-                : std::string(TextFormat(T("Upgrade to %d ($%.0f)"), lv + 1, upCost));
+                : std::string(TextFormat(T("Upgrade to %d ($%.0f, +%.0f a turn)"), lv + 1, upCost,
+                                         odmon::runCost(k, lv + 1) - odmon::runCost(k, lv)));
             if (drawActBtn(panelX + pad, by, btnW * 2 + btnGap, btnH, upLabel.c_str(),
                            topped || poor, Color{20, 60, 30, 220}, Color{60, 180, 80, 200}, why)
                 && !topped && !poor) {
@@ -1864,7 +1865,7 @@ void Game::drawCountryPanel() {
             // this is where a player is looking when they wonder what it does.
             const std::string tog = on ? std::string(T("Switch off (frees a slot)"))
                                        : std::string(TextFormat(T("Switch on (slot costs %.0f)"),
-                                                                monumentNextSlotCost(m_playerCountryId)));
+                                                                monumentSwitchOnCost(m_playerCountryId, k, lv)));
             if (drawActBtn(panelX + pad, by, btnW, btnH, tog.c_str(), false,
                            on ? Color{56, 44, 20, 220} : Color{20, 56, 40, 220},
                            Color{150, 150, 110, 200})) {
@@ -1883,9 +1884,8 @@ void Game::drawCountryPanel() {
         } else {
             // ── NOTHING HERE YET: everything researched, and why not ──
             DrawText(T("No monument here."), panelX + pad, panelY + 155, 18, RAYWHITE);
-            DrawText(TextFormat(T("Slots in use: %d, next costs %.0f a turn"),
-                                monumentSlotsUsed(m_playerCountryId),
-                                monumentNextSlotCost(m_playerCountryId)),
+            DrawText(TextFormat(T("Monuments switched on: %d. Each is priced to build, then to run a turn."),
+                                monumentSlotsUsed(m_playerCountryId)),
                      panelX + pad, panelY + 178, 13, Color{150, 158, 175, 255});
 
             int listY = panelY + 200;
@@ -1896,7 +1896,9 @@ void Game::drawCountryPanel() {
                 std::string whyNot;
                 const bool can = canBuildMonument(m_playerCountryId, selPid, i, whyNot);
                 const std::string label =
-                    TextFormat("%s  ($%.0f)", T(odmon::kindName(k)), odmon::levelCost(k, 0));
+                    TextFormat(T("%s  ($%.0f, then %.0f a turn)"), T(odmon::kindName(k)),
+                               odmon::levelCost(k, 0),
+                               monumentSwitchOnCost(m_playerCountryId, k, 1));
                 if (drawActBtn(panelX + pad, listY, panelW - pad * 2, 26, label.c_str(),
                                !can, Color{28, 44, 60, 220}, Color{90, 140, 190, 200},
                                can ? nullptr : whyNot.c_str()) && can) {
@@ -4375,6 +4377,7 @@ void Game::drawInner() {
         // Update hover targets for ship action modes
         m_shipActionHoverShipIdx = -1;
         m_shipActionHoverProvince = -1;
+        m_shipActionLandSnap = false;
         if (m_shipActionMode > 0 && m_shipActionShipIdx >= 0) {
             // Find hovered ship (for engage mode)
             float hitR = std::max(22.0f * m_dpiScale, 14.0f);
@@ -4391,7 +4394,25 @@ void Game::drawInner() {
                 int px, py;
                 m_renderer->screenToPixel(mouse.x, mouse.y, px, py);
                 const Province* hp = m_provinces.getProvince(px, py);
-                if (hp) {
+                // ── A ONE-PIXEL ISLAND HAS TO BE CLICKABLE ──
+                //
+                // Landing used to need the pointer EXACTLY on a land pixel, and
+                // an island chain at any normal zoom is specks with water
+                // between them: the click landed on the water beside the
+                // island and the boat sailed instead. A player could not land
+                // in Papua New Guinea's islands at all. For a boat, water
+                // within a few screen pixels of land aims at that land, and
+                // the click below reads the same answer the preview drew.
+                int nearLand = 0;
+                if (m_shipActionMode == 1 && m_shipActionShipIdx < (int)m_ships.size() &&
+                    m_ships[m_shipActionShipIdx].type == "boat" &&
+                    px >= 0 && px < m_landSea.getWidth() && py >= 0 && py < m_landSea.getHeight() &&
+                    !m_landSea.isLand(px, py))
+                    nearLand = landProvinceNear(px, py, 8.0f * m_dpiScale);
+                if (nearLand > 0) {
+                    m_shipActionHoverProvince = nearLand;
+                    m_shipActionLandSnap = true;
+                } else if (hp) {
                     m_shipActionHoverProvince = hp->id;
                 } else {
                     // Snap to nearest province center within 30 screen pixels
@@ -4419,8 +4440,8 @@ void Game::drawInner() {
                     m_renderer->screenToPixel(mouse.x, mouse.y, px, py);
                     if (px >= 0 && px < m_landSea.getWidth() && py >= 0 && py < m_landSea.getHeight()) {
                         auto& srcShip = m_ships[m_shipActionShipIdx];
-                        if (m_landSea.isLand(px, py)) {
-                            // Disembark (boats only, on land province)
+                        if (m_landSea.isLand(px, py) || m_shipActionLandSnap) {
+                            // Disembark (boats only, on land province; see m_shipActionLandSnap)
                             if (srcShip.type == "boat" && m_shipActionHoverProvince > 0 && m_shipActionValidDest) {
                                 auto& vec = m_pendingShipDisembarks;
                                 for (auto it = vec.begin(); it != vec.end(); )
@@ -4862,7 +4883,8 @@ void Game::drawInner() {
                 int px, py;
                 m_renderer->screenToPixel(mouse.x, mouse.y, px, py);
                 if (px >= 0 && px < m_landSea.getWidth() && py >= 0 && py < m_landSea.getHeight()) {
-                    if (m_landSea.isLand(px, py) && srcShip.type == "boat" && m_shipActionHoverProvince > 0) {
+                    if ((m_landSea.isLand(px, py) || m_shipActionLandSnap) && srcShip.type == "boat" &&
+                        m_shipActionHoverProvince > 0) {
                         // Boat disembark: line to province center
                         auto cit = m_provinceCenters.find(m_shipActionHoverProvince);
                         if (cit != m_provinceCenters.end()) {
@@ -7887,4 +7909,31 @@ void Game::drawModRenderLayer(const std::function<Vector2(Vector2)>& worldToScre
         const int w = MeasureText(l.text.c_str(), 12);
         DrawText(l.text.c_str(), (int)p.x - w / 2, (int)p.y + 8, 12, col);
     }
+}
+
+// The province of the nearest land pixel within `screenRadius` screen pixels of
+// map pixel (px, py), or 0. For aiming at islands smaller than the pointer.
+int Game::landProvinceNear(int px, int py, float screenRadius) const {
+    if (!m_renderer) return 0;
+    const float zoom = std::max(0.0001f, m_renderer->getZoom());
+    const int r = std::clamp((int)std::ceil(screenRadius / zoom), 1, 64);
+    const int w = m_landSea.getWidth(), h = m_landSea.getHeight();
+    int best = 0;
+    long long bestD2 = (long long)r * r + 1;
+    for (int dy = -r; dy <= r; ++dy) {
+        const int y = py + dy;
+        if (y < 0 || y >= h) continue;
+        for (int dx = -r; dx <= r; ++dx) {
+            const long long d2 = (long long)dx * dx + (long long)dy * dy;
+            if (d2 >= bestD2) continue;
+            int x = (px + dx) % w;
+            if (x < 0) x += w;
+            if (!m_landSea.isLand(x, y)) continue;
+            const Province* p = m_provinces.getProvince(x, y);
+            if (!p || p->id <= 0) continue;
+            best = p->id;
+            bestD2 = d2;
+        }
+    }
+    return best;
 }

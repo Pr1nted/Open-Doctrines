@@ -6,16 +6,35 @@ A monument is not a second industry track. Industry is a number every province
 has; a monument is a thing a country decides to have **one** of, somewhere
 specific, at a price that rises the more of them it runs.
 
-## The slots are the whole mechanic
+## What running one costs
 
-Building one is cheap. Running one takes a **slot**, and slots get dear fast:
+Building one is cheap. Running one costs two things a turn:
+
+- **its own running cost**, which depends on what it is and rises by half for
+  each level above the first;
+- **its slot's surcharge**, which rises with how many you already run.
+
+| kind | per turn at level 1 | level 2 | level 3 |
+|---|---|---|---|
+| Missile Silo | 90 | 135 | 180 |
+| Defence Corporation | 60 | 90 | 120 |
+| Megacity, Air Defence System, Admiralty Yard | 55 | 82.5 | 110 |
+| Factory Conglomerate, Signals Directorate | 50 | 75 | 100 |
+| University | 45 | 67.5 | 90 |
+| Strategic Reserve | 40 | 60 | 80 |
+| Grand Exchange, Ministry of Enlightenment | 35 | 52.5 | 70 |
 
 | slot | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |---|---|---|---|---|---|---|---|
-| per turn | 50 | 75 | 125 | 200 | 300 | 425 | 575 |
+| surcharge | 0 | 25 | 75 | 150 | 250 | 375 | 525 |
 
-That is `50 + 25·n(n−1)/2`, so there is a price for the eighth slot and the
-eightieth. Four running monuments cost 450 a turn, which is real money.
+The surcharge is `25·n(n−1)/2`, so there is a price for the eighth slot and the
+eightieth. The kinds average about 50, so four average monuments cost about 450
+a turn, which is real money. Slots are charged highest level first, so the
+cheapest slot goes to the monument you have put the most into.
+
+Up to 1.3.1b the slot was the whole bill (`50 + 25·n(n−1)/2`) and a missile
+silo cost exactly as much to keep as a stock exchange.
 
 Any monument can be switched **off**: it frees its slot and does nothing at
 all. That is the dial. Eleven monuments and money for four means choosing which
@@ -29,8 +48,8 @@ province panel's Monuments tab. It lists what you have researched, greys out
 what cannot go in *this* province, and says why.
 
 **Which ones are running** is not about any place, so that is the Monuments
-screen on the sidebar. Every row is a switch with the price of the slot it
-takes beside it, in the order the slots are charged — read down the list until
+screen on the sidebar. Every row is a switch with what that monument costs to
+run beside it, in the order the slots are charged — read down the list until
 the money runs out.
 
 ## What each one does

@@ -1759,7 +1759,19 @@ bool Game::applyLanguage(const std::string& code) {
 }
 
 void Game::applyUiScale() {
-    odUi::setScale(m_uiScaleBase * m_config.uiScale);
+    // ── A SCALE IS BOUGHT WITH ROOM, SO IT STOPS WHERE THE ROOM RUNS OUT ──
+    //
+    // Every panel lays out in the physical height divided by the scale. At
+    // UI Scale 2 in a 720-row browser window that is 360 rows, and the sidebar
+    // alone needs more: it ran off the top and the bottom (GitHub issue #17).
+    // So the scale is held to what leaves at least kMinLogicalRows to lay out
+    // in -- 720, the smallest window the desktop layout is built for -- and
+    // never below 1, so a small window is never shrunk. Recomputed on every
+    // resize, so a bigger window gets the asked-for scale back.
+    constexpr float kMinLogicalRows = 720.0f;
+    const float physicalRows = (float)GetScreenHeight() * odUi::scale();
+    const float roomFor = std::max(1.0f, physicalRows / kMinLogicalRows);
+    odUi::setScale(std::min(m_uiScaleBase * m_config.uiScale, std::max(m_uiScaleBase, roomFor)));
     m_screenW = GetScreenWidth();
     m_screenH = GetScreenHeight();
 }
@@ -3038,8 +3050,7 @@ void Game::run() {
 #endif
 
         if (IsWindowResized()) {
-            m_screenW = GetScreenWidth();
-            m_screenH = GetScreenHeight();
+            applyUiScale();   // sets m_screenW/H; the scale may fit a new size differently
             if (m_renderer) m_renderer->resize(m_screenW, m_screenH);
             m_dpiScale = pointerScale();
             if (m_renderer) m_renderer->setDpiScale(m_dpiScale);

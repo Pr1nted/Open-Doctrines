@@ -6881,11 +6881,10 @@ void Game::captureProvince(int newOwner, int pid, bool contested) {
             [pid](const PendingMoveOrder& mo) { return mo.fromProvince == pid; }),
         m_pendingMoveOrders.end());
     transferCountryPixels(pid, newOwner, prevOwner);
-    // Conquered ground: its minorities like the new government rather less.
-    auto minIt = m_provinceMinorities.find(pid);
-    if (minIt != m_provinceMinorities.end())
-        for (auto& mg : minIt->second)
-            addMinorityDrift(newOwner, mg.name, -25.0f);
+    // Conquered ground: its minorities like the new government rather less --
+    // HERE, not everywhere that government rules. This was -25 to each group's
+    // national alignment for every province taken; see updateOccupationAnger().
+    m_provinceOccupationAnger[pid] = OCCUPATION_SHOCK;
     // Auto-claim: the previous owner wants it back. After the transfer, not
     // before -- grantClaim refuses a claim on ground the claimant still holds.
     if (prevOwner > 0 && prevOwner != UNC_CID && prevOwner != BLC_CID &&
@@ -8536,7 +8535,7 @@ void Game::processPopulation() {
                 long long minorityPop = (long long)(srcPop * mg.pct / 100.0f);
                 if (minorityPop < 1000) continue; // need at least 1k minority individuals
                 float unrest = provinceUnrest.count(srcPid) ? provinceUnrest[srcPid] : 0;
-                float align = getMinorityAlignment(cid, mg.name);
+                float align = getMinorityAlignmentIn(srcPid, cid, mg.name);
                 float alignPush = (100.0f - align) / 50.0f; // 0 at 100% align, 2.0 at 0% align
                 // Higher unrest + lower alignment = more emigration
                 float surge = refugeeSurge.count(srcPid) ? refugeeSurge[srcPid] : 1.0f;
@@ -8736,7 +8735,7 @@ void Game::processPopulation() {
                 if (minorityPop < 1000) continue;
 
                 // Low alignment lowers the unrest threshold for cross-border migration (refugee effect)
-                float cbAlign = getMinorityAlignment(cid, mg.name);
+                float cbAlign = getMinorityAlignmentIn(srcPid, cid, mg.name);
                 float cbMinUnrest = (cbAlign < 30.0f) ? 1.0f : 5.0f;
                 if (srcUnrest < cbMinUnrest) continue;
 
@@ -8914,7 +8913,7 @@ void Game::processPopulation() {
         auto mit = m_provinceMinorities.find(pid);
         if (mit != m_provinceMinorities.end()) {
             for (auto& mg : mit->second) {
-                float align = getMinorityAlignment(p.countryId, mg.name);
+                float align = getMinorityAlignmentIn(pid, p.countryId, mg.name);
                 if (align < 40.0f)
                     minorityUnrest += mg.pct * 0.3f * (1.0f - align / 40.0f);
             }

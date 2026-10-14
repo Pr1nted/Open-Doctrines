@@ -1875,6 +1875,86 @@ struct PolicyRules {
     }
 };
 
+// ── occupation anger stays in the occupied province ──
+//
+// A player's report: one occupied province made that ethnicity unhappy
+// everywhere the conqueror ruled, because conquest was charged to the group's
+// NATIONAL alignment. It is held in the province now. Pinned as properties:
+// the occupied province is angrier, a province of the same group elsewhere is
+// not, the national number does not move, and the anger grows in war and
+// fades in peace.
+void occupationIsLocal(PolicyRules& t) {
+    Game& game = t.game;
+    const int cid = t.cid;
+    printf("\n-- occupation anger is local --\n");
+
+    int occupied = -1, home = -1;
+    for (const auto& [q, pr] : game.m_provinces.getAllProvinces()) {
+        (void)pr;
+        if (occupied < 0) occupied = q;
+        else if (home < 0 && q != occupied) { home = q; break; }
+    }
+    if (occupied < 0 || home < 0) { check(false, "the fixture has two provinces"); return; }
+    // The fixture skips the owner index, so ownership is set on the province.
+    game.m_provinces.getProvinceById(occupied)->countryId = cid;
+    game.m_provinces.getProvinceById(home)->countryId = cid;
+    for (int pid : {occupied, home}) {
+        auto& groups = game.m_provinceMinorities[pid];
+        groups.clear();
+        groups.push_back({"Occupied", 60.0f});
+        groups.push_back({"Other", 40.0f});
+    }
+    game.m_minorityAlignmentDrift[cid].erase("Occupied");
+    game.m_provinceOccupationAnger.clear();
+    game.m_conqueredProvincePrevOwner.clear();
+
+    const float national0 = game.getMinorityAlignment(cid, "Occupied");
+    const float before = game.ethnicUnrestOf(occupied, cid);
+    check(std::fabs(before - game.ethnicUnrestOf(home, cid)) < 1e-6f,
+          "two provinces with the same people start the same");
+
+    game.m_provinceOccupationAnger[occupied] = Game::OCCUPATION_SHOCK;
+    check(game.ethnicUnrestOf(occupied, cid) > before, "the occupied province is angrier");
+    check(std::fabs(game.ethnicUnrestOf(home, cid) - before) < 1e-6f,
+          "and the same people elsewhere are not");
+    check(game.getMinorityAlignment(cid, "Occupied") == national0,
+          "the group's national alignment does not move");
+    check(game.occupationAngerAt(occupied, cid + 1) == 0.0f,
+          "anger is held against the owner, not whoever asks");
+
+    // In war with the country it was taken from, it grows.
+    int other = 0;
+    for (const auto& [id, c] : game.m_countries.getAll())
+        if (id > 0 && id < 65530 && id != cid) { other = id; break; }
+    const Country* me = game.m_countries.getCountry(cid);
+    const Country* them = game.m_countries.getCountry(other);
+    if (!me || !them) { check(false, "the fixture has two countries"); return; }
+    game.m_conqueredProvincePrevOwner[occupied] = other;
+    auto savedRel = game.m_relations;
+    game.m_relations[me->isoA3][them->isoA3].war = true;
+    game.m_relations[them->isoA3][me->isoA3].war = true;
+    game.updateOccupationAnger();
+    check(game.m_provinceOccupationAnger[occupied] > Game::OCCUPATION_SHOCK,
+          "while the war goes on, it grows");
+    for (int i = 0; i < 100; ++i) game.updateOccupationAnger();
+    check(game.m_provinceOccupationAnger[occupied] <= Game::MINORITY_DRIFT_LIMIT,
+          "but never past the alignment bound");
+
+    // At peace it fades, and then it is gone.
+    game.m_relations[me->isoA3][them->isoA3].war = false;
+    game.m_relations[them->isoA3][me->isoA3].war = false;
+    const float atPeace = game.m_provinceOccupationAnger[occupied];
+    game.updateOccupationAnger();
+    check(game.m_provinceOccupationAnger[occupied] < atPeace, "at peace it fades");
+    for (int i = 0; i < 100; ++i) game.updateOccupationAnger();
+    check(game.m_provinceOccupationAnger.count(occupied) == 0, "and is forgotten");
+    check(std::fabs(game.ethnicUnrestOf(occupied, cid) - before) < 1e-6f,
+          "leaving the province as it was");
+
+    game.m_relations = savedRel;
+    game.m_conqueredProvincePrevOwner.clear();
+}
+
 int main(int argc, char** argv) {
     const std::string dataDir = argc > 1 ? argv[1] : "data/";
     printf("Doctrine rules (can two doctrines be held at once)\n");
@@ -1891,6 +1971,7 @@ int main(int argc, char** argv) {
     t.upkeep();
     t.capital();
     t.grievance();
+    occupationIsLocal(t);
     t.wellFed();
     t.assimilation();
     t.survivesASave();

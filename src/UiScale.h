@@ -16,7 +16,7 @@
  * site about a scale factor, raylib's own functions are shadowed here and the
  * scale is applied in one place:
  *
- *   BeginDrawing      pushes a scale matrix, so every draw call after it is
+ *   BeginDrawing      scales the projection, so every draw call after it is
  *                     magnified without knowing it
  *   GetScreenWidth    reports the LOGICAL size -- the physical size divided by
  *   GetScreenHeight   the scale -- so layout still fills the screen instead of
@@ -62,14 +62,76 @@ inline Vector2 odPointerIn(Vector2 raw, float dpi, float ui) {
     return { raw.x * dpi / u, raw.y * dpi / u };
 }
 
+// ── THE SCALE LIVES IN THE PROJECTION ──
+//
+// It used to be one modelview matrix pushed at BeginDrawing, and that broke in
+// two ways (GitHub issue #17):
+//
+//   - BeginMode2D/EndMode2D load identity into the modelview, so the first map
+//     drawn in a frame wiped the scale: the map and every panel after it came
+//     out unscaled in the top-left 1/scale of the window while the layout used
+//     the logical (smaller) size.
+//   - Pushing in modelview mode moves rlgl onto its CPU-side transform, which
+//     DrawMesh multiplies into every model. The globe was scaled up around its
+//     own centre until the camera sat inside it: stars and nothing else, at any
+//     scale but 1 -- on Android, always.
+//
+// The projection has neither problem. 2D cameras only touch the modelview,
+// BeginMode3D pushes the projection and EndMode3D pops it back, and a render
+// texture sets its own unscaled one. Only EndTextureMode, which rebuilds the
+// screen projection from scratch, has to have the scale put back. Scissor
+// rectangles, which raylib takes in framebuffer pixels, are scaled the same
+// way, except inside a render texture.
+namespace odUi {
+bool inTexture();
+void setInTexture(bool on);
+bool inFrame();
+void setInFrame(bool on);
+Matrix& screenProjection();  // the one BeginDrawing found, restored at EndDrawing
+}
+
+inline void odApplyScaleToProjection() {
+    const float s = odUi::scale();
+    if (s == 1.0f) return;
+    rlMatrixMode(RL_PROJECTION);
+    rlScalef(s, s, 1.0f);
+    rlMatrixMode(RL_MODELVIEW);
+}
+inline void odBeginTextureModeScaled(RenderTexture2D t) {
+    odUi::setInTexture(true);
+    BeginTextureMode(t);
+}
+inline void odEndTextureModeScaled() {
+    EndTextureMode();
+    odUi::setInTexture(false);
+    // A texture drawn before BeginDrawing must not leave the projection scaled
+    // for BeginDrawing to save and scale a second time.
+    if (odUi::inFrame()) odApplyScaleToProjection();
+}
+inline void odBeginScissorModeScaled(int x, int y, int w, int h) {
+    const float s = odUi::inTexture() ? 1.0f : odUi::scale();
+    if (s == 1.0f) { BeginScissorMode(x, y, w, h); return; }
+    BeginScissorMode((int)(x * s), (int)(y * s), (int)(w * s + 0.5f), (int)(h * s + 0.5f));
+}
+
 inline void odBeginDrawingScaled() {
     BeginDrawing();
-    const float s = odUi::scale();
-    if (s != 1.0f) { rlPushMatrix(); rlScalef(s, s, 1.0f); }
+    odUi::setInFrame(true);
+    if (odUi::scale() != 1.0f) {
+        rlDrawRenderBatchActive();
+        odUi::screenProjection() = rlGetMatrixProjection();
+        odApplyScaleToProjection();
+    }
 }
 
 inline void odEndDrawingScaled() {
-    if (odUi::scale() != 1.0f) rlPopMatrix();
+    if (odUi::scale() != 1.0f) {
+        // Flush under the scaled projection, then restore the saved one exactly
+        // rather than dividing back out, which would drift a little each frame.
+        rlDrawRenderBatchActive();
+        rlSetMatrixProjection(odUi::screenProjection());
+    }
+    odUi::setInFrame(false);
     EndDrawing();
 }
 
@@ -78,6 +140,9 @@ inline int odScreenW() { return (int)((float)GetScreenWidth()  / odUi::scale());
 inline int odScreenH() { return (int)((float)GetScreenHeight() / odUi::scale()); }
 
 #define BeginDrawing    odBeginDrawingScaled
+#define BeginTextureMode odBeginTextureModeScaled
+#define EndTextureMode  odEndTextureModeScaled
+#define BeginScissorMode odBeginScissorModeScaled
 #define EndDrawing      odEndDrawingScaled
 #define GetScreenWidth  odScreenW
 #define GetScreenHeight odScreenH

@@ -15868,9 +15868,9 @@ void AISystem::monumentReflex(int cid) {
     //
     // The AI called upgradeMonument nowhere, so every monument it ever built sat
     // at level 1 for ever while a player levelled theirs. And the economics are
-    // not symmetric with building: monumentSlotsUsed counts ACTIVE MONUMENTS,
-    // not levels, so an upgrade adds NO standing cost, while a build signs up
-    // for the next slot (50, 75, 125, 200, 300, 425). scaledEffect is
+    // not symmetric with building: an upgrade adds only half the kind's running
+    // cost (odmon::runCost), while a build signs up for a whole running cost
+    // AND the next slot's surcharge (0, 25, 75, 150, 250, 375). scaledEffect is
     // base * (1 + 0.25*(level-1)) with radius baseRadius + (level-1), so 1 -> 3
     // is +50% effect and +2 radius for one lump sum. For a money-bound AI that
     // is the better purchase, and it is the one it could not make.

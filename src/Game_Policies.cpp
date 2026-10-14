@@ -958,8 +958,8 @@ void Game::applyEthnicPolicyEffects(int countryId) {
             processed.insert(mg.name);
 
             // The alignment half of the turn comes from minorityDriftPerTurn,
-            // which is also what the Ethnic tab reports -- policy dial plus the
-            // conquered-ground penalty. Only the population and compass effects
+            // which is also what the Ethnic tab reports -- the policy dial and
+            // the Ministry of Enlightenment. Only the population and compass effects
             // are still walked per category here, because those are per
             // province rather than per country.
             const float driftThisTurn = minorityDriftPerTurn(countryId, mg.name);
@@ -1016,8 +1016,8 @@ void Game::applyEthnicPolicyEffects(int countryId) {
             // lives. See ethnicGrowthPctFor().
             (void)growthPctThisTurn;
 
-            // The conquered-ground war penalty is part of minorityDriftPerTurn
-            // above, so it is not applied a second time here.
+            // Conquered ground is not charged here at all: it is held in the
+            // province (updateOccupationAnger), not by the whole group.
             if (m_config.aiDebug && processed.size() < 10 && driftThisTurn != 0.0f)
                 printf("[DIAG] %s under country %d: %+.1f/turn\n",
                        mg.name.c_str(), countryId, driftThisTurn);
@@ -1066,6 +1066,7 @@ void Game::updatePolicies() {
         // already calls processArtilleryOrders() for every country earlier in the
         // turn; doing it again here made every bombardment apply its damage twice.
     }
+    updateOccupationAnger();
 
     // After the loop above, not inside it: applyPolicyEffects() is what moves
     // the government compass, so every country's position is final for this
@@ -1222,7 +1223,7 @@ float Game::ethnicUnrestOf(int provinceId, int countryId) const {
     float sum = 0.0f, worst = 0.0f;
     int contributing = 0;
     for (const auto& mg : mit->second) {
-        const float align = getMinorityAlignment(countryId, mg.name);
+        const float align = getMinorityAlignmentIn(provinceId, countryId, mg.name);
         const float coeff = (100.0f - align) / 100.0f;
         const float pct01 = mg.pct * 0.01f;
         const float term = (coeff * pct01) * (coeff * pct01) * 5.0f;
@@ -1487,7 +1488,7 @@ std::vector<ReleaseCandidate> Game::releasableRegions(int countryId,
         rp.id = pid;
         rp.topMinority = top->name;
         rp.topMinorityPct = top->pct;
-        rp.alignment = getMinorityAlignment(countryId, top->name);
+        rp.alignment = getMinorityAlignmentIn(pid, countryId, top->name);
         auto pop = m_provincePopulations.find(pid);
         rp.population = (pop != m_provincePopulations.end()) ? pop->second : 0;
         owned.push_back(std::move(rp));
@@ -1587,6 +1588,68 @@ float Game::getMinorityAlignment(int countryId, const std::string& minorityName)
     return std::max(0.0f, std::min(100.0f, align));
 }
 
+float Game::occupationAngerAt(int provinceId, int countryId) const {
+    auto it = m_provinceOccupationAnger.find(provinceId);
+    if (it == m_provinceOccupationAnger.end()) return 0.0f;
+    const Province* p = m_provinces.getProvinceById(provinceId);
+    return (p && p->countryId == countryId) ? it->second : 0.0f;
+}
+
+float Game::getMinorityAlignmentIn(int provinceId, int countryId,
+                                   const std::string& minorityName) const {
+    return std::max(0.0f, getMinorityAlignment(countryId, minorityName) -
+                              occupationAngerAt(provinceId, countryId));
+}
+
+// ── OCCUPATION ANGER IS HELD WHERE THE OCCUPATION IS ──
+//
+// Taking a province, and holding it while still at war with the country it was
+// taken from, used to be charged to the minority's NATIONAL alignment: -25 for
+// every province taken and -5 a turn while the war went on. So one occupied
+// province made that group unhappy everywhere the conqueror ruled -- the Poles
+// of a province held for a century turned on the government because a border
+// village had just been taken. A player reported exactly that, and it was
+// wrong.
+//
+// Now it is a number on the PROVINCE: set to the shock on the turn it is taken,
+// growing while the war with its former owner continues (faster against a
+// Ministry of Enlightenment, which preaches a common nation to people whose
+// kin are under its guns), and fading once that war is over. Everything that
+// reads a group's mood IN A PROVINCE -- unrest, migration, assimilation, a
+// release -- reads it through getMinorityAlignmentIn. The national number is
+// left to policy and to the war declaration, which really is national.
+//
+// Each province is updated on its own, so iteration order cannot matter.
+void Game::updateOccupationAnger() {
+    std::vector<int> calmed;
+    for (auto& [pid, anger] : m_provinceOccupationAnger) {
+        const Province* p = m_provinces.getProvinceById(pid);
+        const int owner = p ? p->countryId : 0;
+        bool atWar = false;
+        auto prevIt = m_conqueredProvincePrevOwner.find(pid);
+        const Country* cur = m_countries.getCountry(owner);
+        const Country* prev = prevIt != m_conqueredProvincePrevOwner.end()
+                                  ? m_countries.getCountry(prevIt->second) : nullptr;
+        if (cur && prev) {
+            auto ar = m_relations.find(cur->isoA3);
+            if (ar != m_relations.end()) {
+                auto dr = ar->second.find(prev->isoA3);
+                atWar = dr != ar->second.end() && dr->second.war;
+            }
+        }
+        if (atWar) {
+            const float ministry =
+                monumentEffect(owner, (int)odmon::Kind::MinistryOfEnlightenment);
+            anger = std::min(MINORITY_DRIFT_LIMIT,
+                             anger + OCCUPATION_WAR_PER_TURN + ministry * 8.0f);
+        } else {
+            anger -= OCCUPATION_FADE_PER_TURN;
+            if (anger <= 0.0f) calmed.push_back(pid);
+        }
+    }
+    for (int pid : calmed) m_provinceOccupationAnger.erase(pid);
+}
+
 // WHY THE BOUND IS ON THE STORED VALUE AND NOT ON THE READER.
 //
 // Alignment is 50 + drift clamped to 0..100, so any drift past +/-50 is
@@ -1637,40 +1700,13 @@ float Game::minorityDriftPerTurn(int countryId, const std::string& minorityName)
     // kin are being fought, because a ministry preaching a common nation to
     // people whose relatives are under your guns preaches to nobody. The
     // national share is used rather than a per-province one because drift is
-    // per minority per country: a minority does not hold two opinions in two
-    // provinces. The war half is applied below, where the war is already
-    // known.
+    // per minority per country. Its war half -- the reverse, where kin are
+    // being fought -- is local, in updateOccupationAnger().
     const float ministry = monumentEffect(countryId, (int)odmon::Kind::MinistryOfEnlightenment);
     rate += ministry * 4.0f;
 
-    // Holding conquered ground against an enemy you are still at war with.
-    // Once per minority, not once per province: the resolver's `processed` set
-    // already had that effect, but it landed on whichever province the map
-    // happened to iterate first, so the same position could score differently
-    // between two runs. "Any such province" is the same magnitude, decided.
-    const Country* cur = m_countries.getCountry(countryId);
-    if (!cur) return rate;
-    auto ar = m_relations.find(cur->isoA3);
-    if (ar == m_relations.end()) return rate;
-
-    for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
-        if (prov.countryId != countryId) continue;
-        if (!m_provinceConquestTurn.count(pid)) continue;
-        auto prevIt = m_conqueredProvincePrevOwner.find(pid);
-        if (prevIt == m_conqueredProvincePrevOwner.end() || prevIt->second <= 0) continue;
-        auto mit = m_provinceMinorities.find(pid);
-        if (mit == m_provinceMinorities.end()) continue;
-        bool here = false;
-        for (auto& mg : mit->second) if (mg.name == minorityName) { here = true; break; }
-        if (!here) continue;
-        const Country* prev = m_countries.getCountry(prevIt->second);
-        if (!prev) continue;
-        auto dr = ar->second.find(prev->isoA3);
-        // At war with the kin-state: the penalty, and the ministry's own
-        // contribution reversed on top of it. It is the same building doing
-        // the opposite thing, which is what was asked for.
-        if (dr != ar->second.end() && dr->second.war) return rate - 5.0f - ministry * 8.0f;
-    }
+    // Holding conquered ground used to be charged here, to the whole group.
+    // It is held in the province now -- see updateOccupationAnger().
     return rate;
 }
 
@@ -2388,7 +2424,7 @@ void Game::drawAnalysisTab() {
         auto mit = m_provinceMinorities.find(pid);
         if (mit != m_provinceMinorities.end()) {
             for (auto& mg : mit->second) {
-                float align = getMinorityAlignment(m_playerCountryId, mg.name);
+                float align = getMinorityAlignmentIn(pid, m_playerCountryId, mg.name);
                 float coeff = (100.0f - align) / 100.0f;
                 float pct01 = mg.pct * 0.01f;
                 ethUnrest += (coeff * pct01) * (coeff * pct01) * 5.0f;

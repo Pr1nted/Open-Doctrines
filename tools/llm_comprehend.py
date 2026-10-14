@@ -69,10 +69,10 @@ RULES = [
    "By the attacker's fortification level"], 1,
   "Game_TurnLogic.cpp: 'the frontage is consumed by men WEIGHTED BY THEIR KIND'"),
 
- ("A country runs its 1st, 2nd and 3rd monument. What does the THIRD active "
-  "slot cost per turn?",
-  ["50", "75", "125", "200"], 2,
-  "odmon::slotCost = 50 + 25*T(n-1): 50, 75, 125, 200, 300, 425"),
+ ("A country runs three monuments. On top of the third one's own running "
+  "cost, what does its slot add per turn?",
+  ["Nothing", "25", "75", "150"], 2,
+  "odmon::slotSurcharge = 25*T(n-1): 0, 25, 75, 150, 250, 375"),
 
  ("Taking a monument down costs:",
   ["Nothing — you recover its build cost",

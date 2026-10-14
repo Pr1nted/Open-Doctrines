@@ -9,8 +9,8 @@
 // different buildings. What this screen is for is the decision that is not
 // about a place: eleven monuments, money for four, which four.
 //
-// So every row is a switch, and the column beside it is the price of the slot
-// that switch takes. The rows are in the order the slots are charged (see
+// So every row is a switch, and the column beside it is what that monument
+// costs to run in the slot it takes. The rows are in the order the slots are charged (see
 // odmon::chargeOrder), so the cheap slot is at the top and the expensive one
 // at the bottom, and a player can read down the list until the money runs out.
 
@@ -55,8 +55,9 @@ void Game::drawMonumentsPanel() {
     DrawText(TextFormat(T("%d built, %d switched on"), (int)held.size(), active),
              x0, y, 18, RAYWHITE);
     y += 24;
-    DrawText(TextFormat(T("Slots cost %.0f a turn. Switching another on would add %.0f."),
-                        monumentUpkeep(cid), monumentNextSlotCost(cid)),
+    DrawText(TextFormat(T("They cost %.0f a turn to run. Each kind has its own running cost, "
+                          "and each one switched on makes the next dearer."),
+                        monumentUpkeep(cid)),
              x0, y, 16, Color{200, 190, 150, 255});
     y += 22;
     DrawText(T("A monument that is switched off costs nothing and does nothing. "
@@ -89,9 +90,8 @@ void Game::drawMonumentsPanel() {
         return;
     }
 
-    // In charge order, so the row at the top is the one paying 50 and the row
-    // at the bottom is the one paying the most. That is the order a player
-    // decides in.
+    // In charge order, so the row at the top has the cheapest slot and the row
+    // at the bottom the dearest. That is the order a player decides in.
     const std::vector<odmon::Holding> rows = odmon::chargeOrder(held);
     int slot = 0;
     for (size_t i = 0; i < rows.size(); ++i) {
@@ -111,11 +111,12 @@ void Game::drawMonumentsPanel() {
                  x0 + 12, ry + 6, 18, h.active ? RAYWHITE : Color{150, 150, 165, 255});
         DrawText(where.c_str(), x0 + 12, ry + 26, 14, Color{150, 158, 175, 255});
 
-        // What this one is costing, which is the slot its POSITION takes and
-        // not anything about the monument itself.
+        // What this one is costing: its own running cost, which is about the
+        // monument, and the surcharge of the slot its POSITION takes.
         if (h.active) {
             ++slot;
-            DrawText(TextFormat(T("slot %d  -  %.0f a turn"), slot, odmon::slotCost(slot)),
+            DrawText(TextFormat(T("slot %d  -  %.0f a turn"), slot,
+                                odmon::runCost(h.kind, h.level) + odmon::slotSurcharge(slot)),
                      x0 + panelW - 340, ry + 14, 16, Color{220, 190, 130, 255});
         } else {
             DrawText(T("off"), x0 + panelW - 340, ry + 14, 16, Color{130, 130, 145, 255});

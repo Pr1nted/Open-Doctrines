@@ -15,7 +15,9 @@
  * Building one is cheap. RUNNING one takes a slot, and slots are priced so the
  * fifth hurts: 50, 75, 125, 200, 300, 425 a turn. That is a triangular series
  * and it is written as a formula rather than a table, because the next person
- * to want a sixth number will otherwise guess at it -- see slotCost().
+ * to want a sixth number will otherwise guess at it -- see slotCost(). The 50
+ * is now the monument's own running cost, which differs by kind; the rest is
+ * the slot's -- see runCost().
  *
  * A monument can be switched INACTIVE, which frees its slot and turns its
  * effect off. That is the dial: a country with eleven monuments and money for
@@ -140,6 +142,14 @@ struct Spec {
     /** The low and high end of what it gives, as a fraction. See scaledEffect. */
     float effectMin = 0.20f;
     float effectMax = 0.50f;
+    /**
+     * What running it costs a turn at level 1, before its slot. See runCost.
+     *
+     * Per KIND because a missile silo and a stock exchange are not the same
+     * bill. The kinds average about 50, which is what every slot's base was
+     * when the slot was the only price, so a typical country pays what it did.
+     */
+    float upkeep = 50.0f;
 };
 
 /** The catalogue. Indexed by Kind. */
@@ -159,6 +169,33 @@ float slotCost(int n);
 
 /** What running `active` monuments costs per turn, all slots summed. */
 float slotUpkeep(int active);
+
+// ── WHAT ONE MONUMENT COSTS TO RUN ──
+//
+// The slot used to be the whole bill, so a missile silo and a stock exchange
+// cost exactly the same to keep -- the slot knew how many were running and
+// nothing about which. Now each active monument pays two things:
+//
+//   its own running cost   runCost(kind, level): the kind's upkeep, +50% for
+//                          each level above the first
+//   its slot's surcharge   slotSurcharge(n): 0, 25, 75, 150, 250, 375 -- the
+//                          part of slotCost that rises, so the fifth still
+//                          hurts whatever it is
+//
+// slotCost(n) is the same thing for a monument whose running cost is 50, and
+// stays as the quote for "another one, of no kind in particular".
+
+/** What `kind` at `level` costs a turn to run, before its slot's surcharge. */
+float runCost(Kind kind, int level);
+
+/** What the n-th ACTIVE slot adds on top of its monument, n from 1. */
+float slotSurcharge(int n);
+
+struct Holding;
+
+/** What a whole country's monuments cost a turn: every active one's running
+ *  cost, plus the surcharge of the slot chargeOrder puts it in. */
+float upkeep(const std::vector<Holding>& all);
 
 /** Money to raise `kind` from `level` to `level + 1`. Level 0 means building it. */
 float levelCost(Kind kind, int level);

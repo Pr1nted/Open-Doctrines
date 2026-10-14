@@ -95,6 +95,58 @@ int main() {
         ok(odmon::slotUpkeep(0) == 0.0f, "and running none costs nothing");
     }
 
+    section("what a monument costs to RUN, which depends on what it is");
+    {
+        // A player's report: the slot was the whole bill, so a missile silo and
+        // a stock exchange cost exactly the same to keep. They must not.
+        using K = odmon::Kind;
+        ok(odmon::runCost(K::MissileSilo, 1) > odmon::runCost(K::GrandExchange, 1),
+           "a missile silo costs more to run than a grand exchange");
+        bool silo = true;
+        for (int k = 0; k < odmon::kKindCount; ++k)
+            if (k != (int)K::MissileSilo &&
+                odmon::runCost((K)k, 1) >= odmon::runCost(K::MissileSilo, 1)) silo = false;
+        ok(silo, "and the silo is the dearest of all to run");
+
+        // Level costs something to keep, not only to buy.
+        ok(odmon::runCost(K::University, 2) > odmon::runCost(K::University, 1) &&
+           odmon::runCost(K::University, 3) > odmon::runCost(K::University, 2),
+           "a higher level costs more to run");
+        ok(odmon::runCost(K::University, 0) == 0.0f && odmon::runCost((K)99, 1) == 0.0f,
+           "nothing, or an unknown kind, costs nothing to run");
+
+        // The rising part of the slot survives, so the fifth still hurts.
+        ok(odmon::slotSurcharge(1) == 0.0f && near(odmon::slotSurcharge(2), 25.0f) &&
+           near(odmon::slotSurcharge(5), 250.0f), "the surcharge is 0, 25 ... 250");
+        ok(near(odmon::slotSurcharge(4) + 50.0f, odmon::slotCost(4)),
+           "and a slot is a 50-a-turn monument plus its surcharge");
+
+        // The catalogue averages the old flat 50, so the change is about WHICH
+        // monuments a country runs, not a price rise for everyone.
+        float sum = 0.0f;
+        for (int k = 0; k < odmon::kKindCount; ++k) sum += odmon::runCost((K)k, 1);
+        const float mean = sum / (float)odmon::kKindCount;
+        ok(mean > 45.0f && mean < 55.0f, "the kinds average about the old 50");
+
+        // A whole country: each active one's own cost plus its slot's
+        // surcharge, and switched-off ones are free.
+        std::vector<odmon::Holding> held = {
+            {10, K::MissileSilo, 1, true},
+            {20, K::GrandExchange, 1, true},
+            {30, K::University, 2, true},
+            {40, K::Megacity, 3, false},
+        };
+        // chargeOrder: the level-2 university takes slot 1, then the two level 1s
+        // by kind order (silo before exchange).
+        const float want = odmon::runCost(K::University, 2) + odmon::slotSurcharge(1) +
+                           odmon::runCost(K::MissileSilo, 1) + odmon::slotSurcharge(2) +
+                           odmon::runCost(K::GrandExchange, 1) + odmon::slotSurcharge(3);
+        ok(near(odmon::upkeep(held), want), "a country pays each one's cost plus its slot");
+        held[0].kind = K::GrandExchange;
+        ok(odmon::upkeep(held) < want, "and swapping the silo for an exchange is cheaper");
+        ok(odmon::upkeep({}) == 0.0f, "and running none costs nothing");
+    }
+
     section("what a monument costs to put up and to take down");
     {
         const odmon::Kind uni = odmon::Kind::University;

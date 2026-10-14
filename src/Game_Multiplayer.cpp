@@ -3779,6 +3779,7 @@ void Game::mpApplyHeldTurnState() {
         m_provinceRebellionCooldown.clear();
         m_provinceConquestTurn.clear();
         m_conqueredProvincePrevOwner.clear();
+        m_provinceOccupationAnger.clear();
         m_countryWarWeariness.clear();
         loadStateJson(j["state"].dump());
     }

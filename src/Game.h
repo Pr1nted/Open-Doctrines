@@ -3710,6 +3710,10 @@ public:
     const std::vector<int>& provincesOf(int cid) const;
     std::unordered_map<int, int> m_provinceConquestTurn; // turn# when province was conquered (0 = not conquered)
     std::unordered_map<int, int> m_conqueredProvincePrevOwner; // previous owner of conquered province (for ongoing war debuff)
+    // Alignment points the minorities of a conquered province hold against the
+    // owner that took it, on top of their national alignment. See
+    // updateOccupationAnger().
+    std::unordered_map<int, float> m_provinceOccupationAnger;
     std::vector<long long> m_provincePopArray;
     // There is no per-pixel owner array and no per-country pixel list any
     // more (64 MB and ~95 MB): ownership is per province, so a pixel's owner
@@ -4171,6 +4175,16 @@ public:
     float getProvinceRebellionChance(int provinceId, int countryId) const;
     /** How well `minorityName` is disposed toward `countryId`'s government, 0-100. */
     float getMinorityAlignment(int countryId, const std::string& minorityName) const;
+    /** The same, for the part of that group living in `provinceId`: national
+     *  alignment less any occupation anger held there. */
+    float getMinorityAlignmentIn(int provinceId, int countryId, const std::string& minorityName) const;
+    /** Occupation anger in `provinceId` against `countryId`, 0 if none. */
+    float occupationAngerAt(int provinceId, int countryId) const;
+    /** Grow it while the war over a province goes on, let it fade in peace. */
+    void  updateOccupationAnger();
+    static constexpr float OCCUPATION_SHOCK = 25.0f;      // on the turn it is taken
+    static constexpr float OCCUPATION_WAR_PER_TURN = 5.0f; // while still at war over it
+    static constexpr float OCCUPATION_FADE_PER_TURN = 2.5f; // once it is not
     /**
      * Alignment change per turn implied by `countryId`'s current option set.
      *
@@ -6193,10 +6207,14 @@ private:
     std::vector<odmon::Holding> monumentsOf(int countryId) const;
     /** How many of them are switched on, which is how many slots are charged. */
     int   monumentSlotsUsed(int countryId) const;
-    /** What those slots cost per turn, all summed. */
+    /** What they cost per turn, all summed: each one's own running cost plus
+     *  its slot's surcharge (odmon::upkeep). */
     float monumentUpkeep(int countryId) const;
-    /** What switching on one more would add, so the panel can say so first. */
+    /** The next slot for a monument of average running cost. Kept for mods and
+     *  scripts; the panels quote monumentSwitchOnCost, which knows the kind. */
     float monumentNextSlotCost(int countryId) const;
+    /** What switching on (or building) `kind` at `level` would add per turn. */
+    float monumentSwitchOnCost(int countryId, odmon::Kind kind, int level) const;
 
     /** Why a monument cannot go here, in a sentence a player can act on. */
     bool  canBuildMonument(int countryId, int pid, int kindIndex, std::string& whyNot) const;
@@ -6443,6 +6461,9 @@ private:
 
     // ─── Navy ship action mode ───
     int m_shipActionMode = 0;  // 0=none, 1=move, 2=engage, 3=bombard
+    // This frame's move aim is water a few pixels from land, read as land.
+    bool m_shipActionLandSnap = false;
+    int landProvinceNear(int px, int py, float screenRadius) const;
     int m_shipActionShipIdx = -1; // which ship is being ordered
     int m_shipActionHoverShipIdx = -1; // ship under cursor during engage targeting
     int m_shipActionHoverProvince = -1; // province under cursor during bombard/disembark targeting

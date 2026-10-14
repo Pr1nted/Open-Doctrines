@@ -1041,6 +1041,7 @@ void Game::buildPopulationLookups() {
     m_provinceAreaArray.assign(maxPid + 1, 0.0f);
     m_provinceConquestTurn.clear();
     m_conqueredProvincePrevOwner.clear();
+    m_provinceOccupationAnger.clear();
     for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
         m_provinceCountryLookup[pid] = prov.countryId;
         auto it = m_provincePopulations.find(pid);

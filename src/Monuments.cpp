@@ -22,23 +22,24 @@ namespace {
  * defence's is the share of incoming ordnance it stops.
  */
 const Spec kSpecs[kKindCount] = {
-    // kind                     max  build  upgr  rad  move   port   fragile  min    max
-    {Kind::University,            3,  150.f, 120.f,  0, false, false, false,  0.20f, 0.50f},
-    {Kind::Megacity,              3,  200.f, 160.f,  1, false, false, false,  0.20f, 0.50f},
+    // kind                     max  build  upgr  rad  move   port   fragile  min    max    upkeep
+    {Kind::University,            3,  150.f, 120.f,  0, false, false, false,  0.20f, 0.50f, 45.f},
+    {Kind::Megacity,              3,  200.f, 160.f,  1, false, false, false,  0.20f, 0.50f, 55.f},
     // The dear one, on purpose: "around 200 to upgrade from level 1 to level 2".
-    // Level 3 is 400 on top of that, and what it buys is the whole planet.
-    {Kind::MissileSilo,           3,  180.f, 200.f,  0, false, false, false,  0.00f, 0.00f},
+    // Level 3 is 400 on top of that, and what it buys is the whole planet --
+    // and it is the dearest to RUN, for the same reason.
+    {Kind::MissileSilo,           3,  180.f, 200.f,  0, false, false, false,  0.00f, 0.00f, 90.f},
     // Movable, and gone if anything heavier than heavy artillery finds it.
-    {Kind::DefenceCorporation,    3,  220.f, 180.f,  1, true,  false, true,   0.15f, 0.40f},
-    {Kind::FactoryConglomerate,   3,  180.f, 150.f,  1, false, false, false,  0.20f, 0.50f},
+    {Kind::DefenceCorporation,    3,  220.f, 180.f,  1, true,  false, true,   0.15f, 0.40f, 60.f},
+    {Kind::FactoryConglomerate,   3,  180.f, 150.f,  1, false, false, false,  0.20f, 0.50f, 50.f},
     // Its band is the share of incoming ordnance stopped, not a bonus.
-    {Kind::AirDefence,            3,  200.f, 170.f,  1, false, false, false,  0.35f, 0.85f},
-    {Kind::StrategicReserve,      3,  160.f, 140.f,  2, false, false, false,  0.25f, 0.60f},
-    {Kind::GrandExchange,         3,  200.f, 170.f,  0, false, true,  false,  0.15f, 0.40f},
-    {Kind::AdmiraltyYard,         3,  220.f, 180.f,  2, false, true,  false,  0.20f, 0.50f},
-    {Kind::MinistryOfEnlightenment, 3, 170.f, 140.f, 1, false, false, false,  0.20f, 0.50f},
+    {Kind::AirDefence,            3,  200.f, 170.f,  1, false, false, false,  0.35f, 0.85f, 55.f},
+    {Kind::StrategicReserve,      3,  160.f, 140.f,  2, false, false, false,  0.25f, 0.60f, 40.f},
+    {Kind::GrandExchange,         3,  200.f, 170.f,  0, false, true,  false,  0.15f, 0.40f, 35.f},
+    {Kind::AdmiraltyYard,         3,  220.f, 180.f,  2, false, true,  false,  0.20f, 0.50f, 55.f},
+    {Kind::MinistryOfEnlightenment, 3, 170.f, 140.f, 1, false, false, false,  0.20f, 0.50f, 35.f},
     // The second movable one, and as fragile as the first for the same reason.
-    {Kind::SignalsDirectorate,    3,  190.f, 160.f,  2, true,  false, true,   0.20f, 0.50f},
+    {Kind::SignalsDirectorate,    3,  190.f, 160.f,  2, true,  false, true,   0.20f, 0.50f, 50.f},
 };
 
 static_assert(sizeof(kSpecs) / sizeof(kSpecs[0]) == (size_t)kKindCount,
@@ -301,6 +302,25 @@ float slotCost(int n) {
 float slotUpkeep(int active) {
     float sum = 0.0f;
     for (int i = 1; i <= active; ++i) sum += slotCost(i);
+    return sum;
+}
+
+float runCost(Kind kind, int level) {
+    if (!valid(kind) || level <= 0) return 0.0f;
+    return spec(kind).upkeep * (1.0f + 0.5f * (float)(level - 1));
+}
+
+float slotSurcharge(int n) {
+    return n < 1 ? 0.0f : slotCost(n) - slotCost(1);
+}
+
+float upkeep(const std::vector<Holding>& all) {
+    float sum = 0.0f;
+    int slot = 0;
+    for (const Holding& h : chargeOrder(all)) {
+        if (!h.active) continue;
+        sum += runCost(h.kind, h.level) + slotSurcharge(++slot);
+    }
     return sum;
 }
 
