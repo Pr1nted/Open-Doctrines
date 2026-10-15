@@ -868,6 +868,12 @@ bool Game::modNonAggression(int a, int b) const  { return modRelationFlag(a, b, 
 bool Game::modGuaranteed(int a, int b) const     { return modRelationFlag(a, b, 3); }
 
 bool Game::modProposeWar(int attacker, int defender) {
+    // Not the sentinels. UNC (unclaimed), BLC (blocked) and SPC (spectator)
+    // carry ISO codes, so modIsoFor resolves them -- but the diplomacy UI
+    // filters them out everywhere, and a mod declaring "Unclaimed" at war with a
+    // real country produces a state the game itself can never reach. Same guard
+    // on every mutating diplomacy/claim route below.
+    if (attacker >= SPC_CID || defender >= SPC_CID) return false;
     const std::string* ia = modIsoFor(attacker);
     const std::string* ib = modIsoFor(defender);
     if (!ia || !ib || ia->empty() || ib->empty()) return false;
@@ -888,6 +894,7 @@ bool Game::modProposeWar(int attacker, int defender) {
 // makes a treaty exist; it asks for one, through queueDiplomaticAction and its
 // one-offer-per-pair rule. The breaks are queued too, as the panel queues them.
 bool Game::modProposeTreaty(int a, int b, const std::string& action) {
+    if (a >= SPC_CID || b >= SPC_CID) return false;   // not the sentinels
     const std::string* ia = modIsoFor(a);
     const std::string* ib = modIsoFor(b);
     if (!ia || !ib || ia->empty() || ib->empty() || *ia == *ib) return false;
@@ -911,6 +918,7 @@ bool Game::modProposeTreaty(int a, int b, const std::string& action) {
 // modder gets right. Unknown keys are REFUSED: a misspelt "our_good" silently
 // offering nothing is exactly the bug a strict reader exists to catch.
 bool Game::modProposeDeal(int a, int b, bool trade, const std::string& termsJson) {
+    if (a >= SPC_CID || b >= SPC_CID) return false;   // not the sentinels
     const Country* ca = m_countries.getCountry(a);
     const Country* cb = m_countries.getCountry(b);
     if (!ca || !cb || a == b) return false;
@@ -978,6 +986,7 @@ bool Game::modCountryClaimsProvince(int cid, int pid) const {
 }
 
 bool Game::modSetCountryClaim(int cid, int pid, bool on) {
+    if (cid >= SPC_CID) return false;                 // not the sentinels
     const std::string* iso = modIsoFor(cid);
     if (!iso || iso->empty() || !m_provinces.getProvinceById(pid)) return false;
     if (on) grantClaim(*iso, pid);
@@ -2724,6 +2733,13 @@ bool Game::modOrderArmyMove(int fromPid, int toPid, int pct) {
 }
 bool Game::modOrderShipMove(int sid, double lon, double lat) {
     if (!modShipExists(sid)) return false;
+    // The same bound the multiplayer order path enforces (see mpApplyOrders'
+    // pendingShipMoveOrders): a non-finite or off-the-globe destination put a
+    // NaN into the queue that processNavyMovement then steered a hull towards.
+    // The mod ABI reaches the same queue and must refuse the same input.
+    if (!std::isfinite(lon) || !std::isfinite(lat) ||
+        lon < -180.0 || lon > 180.0 || lat < -90.0 || lat > 90.0)
+        return false;
     m_pendingShipMoveOrders.push_back({sid, lon, lat});
     return true;
 }
@@ -2767,6 +2783,10 @@ double Game::modCountryResearchFunding(int cid) const {
 }
 bool Game::modSetCountryResearchFunding(int cid, double value) {
     if (!m_countries.getCountry(cid)) return false;
+    // NaN survives std::clamp -- `NaN < lo` and `hi < NaN` are both false, so it
+    // is returned unchanged -- and a NaN allocation then poisons every research
+    // and economy sum that reads it. Reject it before the clamp.
+    if (!std::isfinite(value)) return false;
     m_countryResearchAllocation[cid] = (float)std::clamp(value, 0.0, 1.0);
     return true;
 }

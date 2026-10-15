@@ -3074,6 +3074,42 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
                               "-framework IOKit" "-framework CoreFoundation")
     endif()
 
+    # Mod-API fuzzer. Same server-build world as the order test -- a real map,
+    # no window -- because the surface under test is the Game::mod* ABI the mod
+    # host forwards to, and the fuzzer drives it with hostile input.
+    set(MOD_FUZZ_SOURCES ${GAME_SOURCES})
+    list(REMOVE_ITEM MOD_FUZZ_SOURCES main.cpp)
+    list(APPEND MOD_FUZZ_SOURCES
+        tests/mod_api_fuzz_test.cpp
+        src/server/ServerRaylib.cpp
+        src/server/ServerRaylibStubs.cpp)
+    add_executable(ModApiFuzzTest EXCLUDE_FROM_ALL ${MOD_FUZZ_SOURCES})
+    target_link_libraries(ModApiFuzzTest odseal)
+    target_compile_definitions(ModApiFuzzTest PRIVATE OD_SERVER=1
+                               OD_ACCOUNT_ISSUER="${OD_ACCOUNT_ISSUER}")
+    target_include_directories(ModApiFuzzTest PRIVATE src tools/map_generator
+        $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+    if(OD_NET_BACKEND STREQUAL "mbedtls")
+        target_link_libraries(ModApiFuzzTest
+                              MbedTLS::mbedtls MbedTLS::mbedx509 MbedTLS::mbedcrypto)
+        target_compile_definitions(ModApiFuzzTest PRIVATE OD_ENABLE_NET=1)
+    endif()
+    if(OD_P2P_DEFS)
+        target_link_libraries(ModApiFuzzTest ${OD_P2P_LIBS})
+        target_compile_definitions(ModApiFuzzTest PRIVATE ${OD_P2P_DEFS})
+    endif()
+    if(WIN32)
+        target_link_libraries(ModApiFuzzTest ws2_32 comdlg32)
+    endif()
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(ModApiFuzzTest Threads::Threads)
+    endif()
+    if(APPLE)
+        target_link_libraries(ModApiFuzzTest
+                              "-framework IOKit" "-framework CoreFoundation")
+    endif()
+
     # Doctrine conflict rules. Same server-build world as the order test -- a
     # real map, no window -- because the rule under test lives in Game and the
     # thing worth checking is what enactPolicy does, not what a screen draws.

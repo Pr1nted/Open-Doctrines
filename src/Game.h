@@ -187,6 +187,9 @@ public:
     friend struct PolicyRules;
     /** The fog-of-war multiplayer test, for the same reason (tests/fog_net_test.cpp). */
     friend struct FogNetWorld;
+    /** The mod-API fuzzer (tests/mod_api_fuzz_test.cpp): drives the public mod*
+     *  surface with hostile input and reads private state to check invariants. */
+    friend struct ModApiFuzz;
 
     Game();
     ~Game();
