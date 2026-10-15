@@ -4380,7 +4380,7 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
 
     each("pendingScrapShips", [&](const nlohmann::json& e) {
         PendingScrapShip o;
-        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size() - 1, -1);
         if (rejected || !ownsShip(o.shipIndex)) return;
         m_pendingScrapShips.push_back(o);
     });
@@ -4424,7 +4424,7 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
     // one -- which is how an infinity here became a hang rather than a refusal.
     each("pendingShipMoveOrders", [&](const nlohmann::json& e) {
         PendingShipMoveOrder o;
-        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size() - 1, -1);
         if (rejected || !ownsShip(o.shipIndex)) return;
         o.destLon = (float)realIn(e, "destLon", -180.0, 180.0, 0.0);
         o.destLat = (float)realIn(e, "destLat", -90.0, 90.0, 0.0);
@@ -4434,7 +4434,7 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
 
     each("pendingShipEngageOrders", [&](const nlohmann::json& e) {
         PendingShipEngageOrder o;
-        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size() - 1, -1);
         if (rejected || !ownsShip(o.shipIndex)) return;
         // A target is any ship on the map, including somebody else's -- that is
         // the point of engaging -- but it has to BE a ship.
@@ -4445,7 +4445,7 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
 
     each("pendingShipBombardOrders", [&](const nlohmann::json& e) {
         PendingShipBombardOrder o;
-        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size(), -1);
+        o.shipIndex = (int)intIn(e, "shipIndex", 0, (long long)m_ships.size() - 1, -1);
         if (rejected || !ownsShip(o.shipIndex)) return;
         o.targetProvince = (int)intIn(e, "targetProvince", 1, kMaxProvinceId, 0);
         o.ammoType = (int)intIn(e, "ammoType", 0, 64, 0);

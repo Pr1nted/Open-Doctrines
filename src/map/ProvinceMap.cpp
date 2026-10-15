@@ -38,8 +38,11 @@ bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath
             p.isoA3 = val["iso_a3"];
 
             std::string colorStr = val["color"];
-            unsigned int hex;
-            sscanf(colorStr.c_str(), "#%06x", &hex);
+            // Initialised, and the parse is checked: a malformed or missing
+            // "#rrggbb" in a hand-edited or hostile .odmap left hex holding
+            // whatever was on the stack and gave the province a garbage colour.
+            unsigned int hex = 0;
+            if (sscanf(colorStr.c_str(), "#%06x", &hex) != 1) hex = 0;
             p.r = (hex >> 16) & 0xFF;
             p.g = (hex >> 8) & 0xFF;
             p.b = hex & 0xFF;
@@ -129,8 +132,11 @@ bool ProvinceMap::parseJson(const std::string& jsonStr) {
             p.isoA3 = val["iso_a3"];
 
             std::string colorStr = val["color"];
-            unsigned int hex;
-            sscanf(colorStr.c_str(), "#%06x", &hex);
+            // Initialised, and the parse is checked: a malformed or missing
+            // "#rrggbb" in a hand-edited or hostile .odmap left hex holding
+            // whatever was on the stack and gave the province a garbage colour.
+            unsigned int hex = 0;
+            if (sscanf(colorStr.c_str(), "#%06x", &hex) != 1) hex = 0;
             p.r = (hex >> 16) & 0xFF;
             p.g = (hex >> 8) & 0xFF;
             p.b = hex & 0xFF;
