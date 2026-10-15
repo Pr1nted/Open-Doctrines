@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -84,6 +85,73 @@ struct OrderValidationTest {
 
     void apply(int cid, const std::string& json) {
         game.mpApplyOrders(cid, bytes(json));
+    }
+
+    /// Two distinct provinces owned by one country. Geography is not the point
+    /// here -- the placement bug is in resolveAssault, not the map -- so the
+    /// caller links them as neighbours itself. Returns {countryId, from, to}.
+    std::tuple<int,int,int> sameOwnerPair() const {
+        for (const auto& [cid, c] : game.m_countries.getAll()) {
+            if (cid <= 0 || cid >= 65530) continue;
+            int first = 0;
+            for (const auto& [pid, p] : game.m_provinces.getAllProvinces()) {
+                if (p.countryId != cid) continue;
+                if (!first) { first = pid; continue; }
+                return {cid, first, pid};
+            }
+        }
+        return {0, 0, 0};
+    }
+
+    long long troopsOfTypeAt(int pid, int cid, TroopType type) const {
+        long long n = 0;
+        auto it = game.m_provinceArmies.find(pid);
+        if (it != game.m_provinceArmies.end())
+            for (const ArmyUnit& u : it->second)
+                if (u.countryId == cid && u.type == type) n += u.count;
+        return n;
+    }
+
+    // ── A MARCHING ARMY KEEPS ITS KIND ──
+    //
+    // Reported from play (Pugz, itch.io): "troops to get transmuted into line
+    // infantry whenever they move provinces". resolveAssault worked out WHO
+    // survived by kind into survivorsOut, then placed only the headcount through
+    // addTroopsTo, whose type defaults to TROOP_LINE -- so a mechanised column
+    // that walked into the next province arrived as line infantry.
+    void troopsKeepTheirKindOnMove() {
+        // This fixture loads the map without the LOAD_COMPUTE_LABELS phase, so
+        // m_provinceNeighbors is empty -- and processArmyMovement's adjacency
+        // gate reads it. Build it the way the real load does.
+        auto [cid, from, to] = sameOwnerPair();
+        check(from != 0 && to != 0, "found two provinces one country owns");
+        if (!from || !to) return;
+        // Make the move legal: the adjacency gate in processArmyMovement reads
+        // m_provinceNeighbors, which this map-only fixture never filled.
+        game.m_provinceNeighbors[from] = {to};
+        game.m_provinceNeighbors[to]   = {from};
+
+        // A clean field: only our mechanised in `from`, nothing in `to`.
+        game.m_provinceArmies.erase(from);
+        game.m_provinceArmies.erase(to);
+        game.m_pendingMoveOrders.clear();
+        game.addTroopsTo(from, cid, 50000, TROOP_MECHANISED);
+        check(troopsOfTypeAt(from, cid, TROOP_MECHANISED) == 50000,
+              "50k mechanised are standing in the source");
+
+        PendingMoveOrder mo;
+        mo.fromProvince = from; mo.toProvince = to; mo.pct = 100;
+        mo.countryId = cid; mo.troopType = -1;   // the whole garrison
+        game.m_pendingMoveOrders.push_back(mo);
+        game.processArmyMovement(cid);
+
+        check(troopsOfTypeAt(to, cid, TROOP_MECHANISED) == 50000,
+              "they arrive next door still mechanised");
+        check(troopsOfTypeAt(to, cid, TROOP_LINE) == 0,
+              "and NOT transmuted into line infantry");
+        check(game.m_provinceArmies.find(from) == game.m_provinceArmies.end() ||
+              troopsOfTypeAt(from, cid, TROOP_MECHANISED) == 0,
+              "and the source is empty");
     }
 
     int industryLevel(int pid) const {
@@ -201,6 +269,7 @@ struct OrderValidationTest {
         turnsArrivingFromTheHost();
         worldForAJoiner();
         ordersNobodyAcknowledged();
+        troopsKeepTheirKindOnMove();
         const int cid = anyCountry();
         check(cid != 0, "found a country to act as");
         const int mine = ownedProvince(cid);

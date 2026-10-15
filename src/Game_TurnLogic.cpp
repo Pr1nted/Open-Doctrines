@@ -7488,7 +7488,23 @@ bool Game::resolveAssault(int attackerCid, int pid, const ForceComposition& atta
         m_lastTurnBattles.push_back(r);
     }
 
-    if (survivors > 0) addTroopsTo(pid, attackerCid, survivors);
+    // PLACE THE SURVIVORS BY KIND. `survivorsOut` is who actually lived
+    // through the fight; `survivors` is only its headcount, and placing that
+    // headcount through addTroopsTo -- whose type defaults to TROOP_LINE --
+    // turned every arriving militia, assault or mechanised column into line
+    // infantry the instant it entered a province (reported from play: "troops
+    // get transmuted into line infantry whenever they move provinces"). The
+    // walk-in and carried branches above already worked the composition out
+    // correctly -- "comes out mixed rather than turning into whichever type the
+    // arithmetic happened to name" -- and then it was thrown away one line
+    // before it was used. A repulse leaves survivorsOut empty, so this places
+    // nobody, exactly as the headcount guard did.
+    for (int t = 0; t < (int)TROOP_TYPE_COUNT; ++t) {
+        const long long n = survivorsOut.men[t];
+        if (n > 0)
+            addTroopsTo(pid, attackerCid, (int)std::min(n, (long long)INT32_MAX),
+                        (TroopType)t);
+    }
     auto it = m_provinceArmies.find(pid);
     if (it != m_provinceArmies.end()) {
         auto& units = it->second;
