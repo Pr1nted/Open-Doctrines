@@ -46,6 +46,7 @@ last_turn=0
 stall=0
 drive_by=0
 max_snapshot=0
+max_projected=0   # the world's size per turn, scaled to $turns turns
 max_peers=0
 started=$(date +%s)
 while :; do
@@ -70,7 +71,18 @@ while :; do
         drive_by=$((t / 10))
         client "visitor-$t" --seconds 30 --until SNAPSHOT > "$work/visitor.log" 2>&1
         b="$(sed -n 's/^SNAPSHOT turn=[0-9]* bytes=\([0-9]*\).*/\1/p' "$work/visitor.log" | tail -1)"
+        bt="$(sed -n 's/^SNAPSHOT turn=\([0-9]*\) .*/\1/p' "$work/visitor.log" | tail -1)"
         [ -n "$b" ] && [ "$b" -gt "$max_snapshot" ] && max_snapshot="$b"
+        # PER TURN PLAYED, NOT PER SAMPLE. The visitor waits up to 30 s for its
+        # world while the two players keep resolving turns in well under a
+        # second each, so on a slow runner a sample "at turn 20" can land at
+        # turn 211 -- windows-arm64 did, and its 211-turn world was held to a
+        # 60-turn line. The world grows by about the same 20 KB a turn on every
+        # platform; that rate, over this test's own horizon, is the question.
+        if [ -n "$b" ] && [ -n "$bt" ] && [ "$bt" -gt 0 ]; then
+            proj=$(( b * turns / bt ))
+            [ "$proj" -gt "$max_projected" ] && max_projected="$proj"
+        fi
         rss="$(rss_mb "$server_pid")"
         samples+=("$t:$rss")
         [ "$warm" = 0 ] && [ "$t" -ge 20 ] && warm="$rss"
@@ -109,8 +121,8 @@ else
 fi
 # The relay carries frames up to 8 MB; a world that outgrows it is a campaign
 # nobody can join late. Half of that is the line a long game must stay under.
-check "a late joiner's world stays well under the relay's 8 MB (max $max_snapshot B)" \
-      "[ '$max_snapshot' -gt 0 ] && [ '$max_snapshot' -lt 4194304 ]"
+check "a late joiner's world stays well under the relay's 8 MB (${max_projected} B at $turns turns, largest seen $max_snapshot B)" \
+      "[ '$max_projected' -gt 0 ] && [ '$max_projected' -lt 4194304 ]"
 check "the roster did not keep every passer-by (max $max_peers)" \
       "[ '$max_peers' -le 40 ]"
 check "no turn was reported unsaved" "! grep -q 'appendTurn failed' '$work/server.log'"
