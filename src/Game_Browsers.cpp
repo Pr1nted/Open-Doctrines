@@ -640,7 +640,7 @@ void Game::updateWorldBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             if (CheckCollisionPointRec(mouse, delBtn)) {
                 Audio::get().playSfx("confirm");
                 // Delete the world file
@@ -678,7 +678,7 @@ void Game::updateWorldBrowser() {
         Rectangle renameBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle closeBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             if (CheckCollisionPointRec(mouse, histBtn)) {
                 Audio::get().playSfx("click_light");
                 std::string path = m_dataDir + "saves/" + m_worldInfos[m_worldSettingsIndex].filename;
@@ -783,7 +783,7 @@ void Game::updateWorldBrowser() {
         }
 
         // Mouse button clicks for Rename / Cancel
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             int btnW = 120, btnH = 40;
             int btnY = (m_screenH - 220) / 2 + 220 - 58;
             Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
@@ -836,7 +836,7 @@ void Game::updateWorldBrowser() {
     }
 
     if (m_worldInfos.empty()) {
-        if (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (IsKeyPressed(KEY_ESCAPE) || clickReleasedHere()) {
             m_currentScreen = SCREEN_SINGLEPLAYER;
         }
         return;
@@ -873,7 +873,7 @@ void Game::updateWorldBrowser() {
 
     // Back button click
     Rectangle backRect = {20, (float)(m_screenH - 48), (float)(MeasureText(T("< Back"), 24) + 24), (float)(24 + 12)};
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, backRect)) {
+    if (clickReleasedHere() && CheckCollisionPointRec(mouse, backRect)) {
         Audio::get().playSfx("back");
         m_currentScreen = SCREEN_SINGLEPLAYER;
         return;
@@ -893,7 +893,7 @@ void Game::updateWorldBrowser() {
         int delX = gearX - 10 - btnSize;
         Rectangle delRect = {(float)delX, (float)gearY, (float)btnSize, (float)btnSize};
 
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             if (CheckCollisionPointRec(mouse, gearRect)) {
                 Audio::get().playSfx("click_light");
                 m_worldSettingsIndex = i;
@@ -1324,7 +1324,7 @@ void Game::drawGdtlDialogs() {
         const std::string bfit = odText::fitToWidth(label, (int)r.width - 10, bfs, 14);
         DrawText(bfit.c_str(), (int)(r.x + (r.width - MeasureText(bfit.c_str(), bfs)) / 2),
                  (int)(r.y + 9), bfs, WHITE);
-        return hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+        return hov && clickReleasedHere();
     };
     const auto close = [&]() {
         m_gdtlStage = GdtlStage::None;
@@ -1507,7 +1507,7 @@ void Game::drawGdtlDialogs() {
                     if (hov) DrawRectangleRec(row, Color{40, 60, 90, 200});
                     DrawText(m_gdtlFound[i].c_str(), x + 34, ty + 5, 14,
                              hov ? WHITE : Color{190, 195, 205, 255});
-                    if (hov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                    if (hov && clickReleasedHere()) {
                         Audio::get().playSfx("click_light");
                         m_config.gd5Path = m_gdtlFound[i];
                         m_config.save(m_configPath);
@@ -1871,7 +1871,7 @@ void Game::drawMapBrowser() {
             const char* fl = entry.fogOfWar ? T("On") : T("Off");
             DrawText(fl, (int)(fogBtn.x + (fogBtn.width - MeasureText(fl, 16)) / 2),
                      (int)fogBtn.y + 3, 16, WHITE);
-            if (fogHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (fogHov && clickReleasedHere()) {
                 entry.fogOfWar = !entry.fogOfWar;
                 Audio::get().playSfx(entry.fogOfWar ? "toggle_on" : "toggle_off");
             }
@@ -1890,7 +1890,7 @@ void Game::drawMapBrowser() {
             bool licenseHov = CheckCollisionPointRec(mouse, licenseBtn);
             DrawRectangleRounded(licenseBtn, 0.2f, 8, licenseHov ? Color{40, 80, 120, 255} : Color{30, 60, 100, 255});
             DrawText(T("View License"), licenseBtnX + (licenseBtnW - MeasureText(T("View License"), 20)) / 2, licenseBtnY + 8, 20, WHITE);
-            if (licenseHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (licenseHov && clickReleasedHere()) {
                 m_showLicensePopup = true;
                 m_licenseEntryIndex = m_mapInfoIndex;
                 m_licenseScroll = 0;
@@ -1914,7 +1914,7 @@ void Game::drawMapBrowser() {
                                  transHov ? Color{120, 90, 40, 255} : Color{85, 65, 30, 255});
             DrawText(T("Translate"), transX + (transW - MeasureText(T("Translate"), 20)) / 2,
                      licenseBtnY + 8, 20, Color{245, 220, 160, 255});
-            if (transHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (transHov && clickReleasedHere()) {
                 Audio::get().playSfx("click_light");
                 m_gdtlMapIndex = m_mapInfoIndex;
                 m_gdtlStage = GdtlStage::Warning;
@@ -1936,7 +1936,7 @@ void Game::drawMapBrowser() {
                                  uncivHov ? Color{120, 90, 40, 255} : Color{85, 65, 30, 255});
             DrawText(T("To Unciv"), uncivX + (uncivW - MeasureText(T("To Unciv"), 20)) / 2,
                      licenseBtnY + 8, 20, Color{245, 220, 160, 255});
-            if (uncivHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (uncivHov && clickReleasedHere()) {
                 Audio::get().playSfx("click_light");
                 m_gdtlMapIndex = m_mapInfoIndex;
                 m_gdtlNotes.clear();
@@ -1955,7 +1955,7 @@ void Game::drawMapBrowser() {
         DrawRectangleRounded(closeBtn, 0.2f, 8, closeHov ? Color{80, 80, 100, 255} : Color{60, 60, 80, 255});
         DrawText(T("Close"), (int)(closeBtn.x + (btnW - MeasureText(T("Close"), 20)) / 2), (int)(closeBtn.y + 8), 20, WHITE);
 
-        if (closeHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (closeHov && clickReleasedHere()) {
             m_showMapInfoPopup = false;
             m_mapInfoIndex = -1;
         }
@@ -2105,7 +2105,7 @@ void Game::drawMapBrowser() {
         DrawRectangleRounded(closeBtn, 0.2f, 8, closeHov ? Color{80, 80, 100, 255} : Color{60, 60, 80, 255});
         DrawText(T("Close"), (int)(closeBtn.x + (btnW - MeasureText(T("Close"), 20)) / 2), (int)(closeBtn.y + 8), 20, WHITE);
 
-        if (closeHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (closeHov && clickReleasedHere()) {
             m_showLicensePopup = false;
             m_licenseEntryIndex = -1;
             m_cachedLicenseText.clear();
@@ -2118,7 +2118,7 @@ void Game::drawMapBrowser() {
         Color xCol = xHov ? Color{200, 60, 60, 255} : Color{140, 140, 160, 200};
         DrawLineEx({xBtn.x + 6, xBtn.y + 6}, {xBtn.x + xBtnSz - 6, xBtn.y + xBtnSz - 6}, 2.5f, xCol);
         DrawLineEx({xBtn.x + xBtnSz - 6, xBtn.y + 6}, {xBtn.x + 6, xBtn.y + xBtnSz - 6}, 2.5f, xCol);
-        if (xHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (xHov && clickReleasedHere()) {
             m_showLicensePopup = false;
             m_licenseEntryIndex = -1;
             m_cachedLicenseText.clear();
@@ -2447,7 +2447,7 @@ void Game::updateMapBrowser() {
         }
 
         // Mouse button clicks for Start / Cancel
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             int btnW = 120, btnH = 40;
             int btnY = (m_screenH - 220) / 2 + 220 - 58;
             Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
@@ -2512,7 +2512,7 @@ void Game::updateMapBrowser() {
         }
 
         // Mouse button clicks for Create / Cancel
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             int btnW = 120, btnH = 40;
             int btnY = (m_screenH - 220) / 2 + 220 - 58;
             Rectangle confBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
@@ -2540,7 +2540,7 @@ void Game::updateMapBrowser() {
     int tabStartX = centerX - totalTabW / 2;
     int tabY = 80;
 
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (clickReleasedHere()) {
         for (int t = 0; t < tabCount; ++t) {
             Rectangle tabRect = {(float)(tabStartX + t * tabW), (float)tabY, (float)tabW, 36};
             if (CheckCollisionPointRec(mouse, tabRect)) {
@@ -2563,7 +2563,7 @@ void Game::updateMapBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             if (CheckCollisionPointRec(mouse, delBtn)) {
                 Audio::get().playSfx("confirm");
                 // Delete custom map directory
@@ -2654,7 +2654,7 @@ void Game::updateMapBrowser() {
 
     // Back button
     Rectangle backRect = {20, (float)(m_screenH - 44), (float)(MeasureText(T("< Back"), 24) + 24), (float)(24 + 10)};
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, backRect)) {
+    if (clickReleasedHere() && CheckCollisionPointRec(mouse, backRect)) {
         Audio::get().playSfx("back");
         m_currentScreen = SCREEN_SINGLEPLAYER;
         return;
@@ -2668,7 +2668,7 @@ void Game::updateMapBrowser() {
 
         Rectangle cardRect = {(float)cardX, (float)y, (float)cardW, (float)cardH};
 
-        if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) continue;
+        if (!clickReleasedHere()) continue;
         if (!CheckCollisionPointRec(mouse, cardRect)) continue;
         Audio::get().playSfx("click_light");
 
@@ -2842,7 +2842,7 @@ void Game::updateFileBrowser() {
     // Back button click
     int backW = MeasureText(T("< Back"), 24);
     Rectangle backRect = {20, (float)(m_screenH - 50), (float)(backW + 24), (float)(24 + 12)};
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(getMouse(), backRect)) {
+    if (clickReleasedHere() && CheckCollisionPointRec(getMouse(), backRect)) {
         Audio::get().playSfx("back");
         m_currentScreen = m_browsingSaves ? SCREEN_SINGLEPLAYER : SCREEN_MAP_SELECT;
         return;
@@ -2867,7 +2867,7 @@ void Game::updateFileBrowser() {
     }
 
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered >= 0) {
+    if (clickReleasedHere() && hovered >= 0) {
         Audio::get().playSfx("click_light");
         m_fileIndex = hovered;
         activate = true;

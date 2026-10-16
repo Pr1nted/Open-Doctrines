@@ -869,7 +869,7 @@ bool Game::updateMpInvite() {
     // Reported whether or not it was pressed, so the menu underneath does not
     // also take a click meant for this.
     if (!CheckCollisionPointRec(mouse, mpInviteRect())) return false;
-    if (!IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) return true;
+    if (!clickReleasedHere()) return true;
 
     if (CheckCollisionPointRec(mouse, mpInviteGoRect())) {
         m_mpInviteOpen = false;

@@ -591,7 +591,7 @@ void Game::updateCredits() {
     int xBtnSz = 36;
     Rectangle xBtn = {(float)(m_screenW - 16 - xBtnSz), 16, (float)xBtnSz, (float)xBtnSz};
     bool xHov = CheckCollisionPointRec(mouse, xBtn);
-    if (xHov && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+    if (xHov && clickReleasedHere())
         m_currentScreen = SCREEN_MENU;
 }
 
@@ -775,7 +775,7 @@ void Game::updateCommunityMenu() {
     if (isMouseOverConsole()) return;
     Vector2 mouse = getMouse();
 
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (clickReleasedHere()) {
         // OpenURL, not system("open ..."). `open` is a macOS command: on Windows
         // the shell wants `start`, on Linux `xdg-open`, and under Emscripten
         // system() is a stub that returns without doing anything at all. So this
@@ -1153,7 +1153,7 @@ void Game::drawMainMenu() {
         const int boardH = std::min(460, m_screenH - startY - 60);
         if (boardX + boardW <= m_screenW - 24 && boardH > 120)
             drawAnnouncementBoard(boardX, startY - 10, boardW, boardH, mouse,
-                                  IsMouseButtonReleased(MOUSE_BUTTON_LEFT));
+                                  clickReleasedHere());
     }
 
     for (int i = 0; i < count; ++i) {
@@ -1774,11 +1774,11 @@ void Game::updateMainMenu() {
     // quitting the game.
     if (m_updatePanel) {
         if (IsKeyPressed(KEY_ESCAPE)) { m_updatePanel = false; return; }
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) updatePanelClick(getMouse());
+        if (clickReleasedHere()) updatePanelClick(getMouse());
         return;
     }
 
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) &&
+    if (clickReleasedHere() &&
         GameUpdates::get().updateAvailable() &&
         CheckCollisionPointRec(getMouse(), updateBadgeRect())) {
         m_updatePanel = true;
@@ -1850,7 +1850,13 @@ void Game::updateMainMenu() {
     }
 
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || odPad::navActivate();
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && hovered >= 0) {
+    // The release only activates a menu item if the PRESS was on the menu too.
+    // Same guard as the top-right icons below (see m_pressScreen in Game::run()):
+    // a press that changed the screen -- a back button on another screen that
+    // transitions here on press -- hands its release to whatever the menu draws
+    // under the cursor, and an item that happened to sit there would fire. The
+    // tutorial pair was fixed this way; this closes the same hole for the list.
+    if (clickReleasedHere() && hovered >= 0) {
         m_menuIndex = hovered;
         activate = true;
     }
@@ -1940,7 +1946,7 @@ void Game::updateMainMenu() {
     // draws under the cursor -- which is how leaving the mod menu started
     // the tutorial, the two buttons being all but on top of each other.
     // See m_pressScreen in Game::run().
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressScreen == SCREEN_MENU) {
+    if (clickReleasedHere()) {
         if (gearHover) {
             m_inSettings = true;
             Audio::get().playSfx("click_light");
@@ -2320,7 +2326,7 @@ void Game::updateSingleplayerMenu() {
     }
 
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (clickReleasedHere()) {
         if (backHovered) {
             Audio::get().playSfx("back");
             m_currentScreen = SCREEN_MENU;
@@ -2549,7 +2555,7 @@ void Game::updateCountrySelect() {
     // --- Click detection (only when no popup is active) ---
     if (m_pendingCountryId == 0) {
         // Left click on map → detect country
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !m_renderer->getWasDragged()) {
+        if (clickReleasedHere() && !m_renderer->getWasDragged()) {
             // Check if we clicked on the spectator button
             if (CheckCollisionPointRec(mouse, specBtnRect)) {
                 // Spectator mode
@@ -2603,7 +2609,7 @@ void Game::updateCountrySelect() {
         }
     } else {
         // --- Confirmation popup active ---
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (clickReleasedHere()) {
             if (CheckCollisionPointRec(mouse, yesRect)) {
                 // Confirm: play as this country. The work itself lives in
                 // commitPlayerCountry, because Quick Start reaches gameplay
@@ -3168,7 +3174,7 @@ void Game::updateSettingsFromMenu() {
     int tabStartX = centerX - (TAB_COUNT * tabSpacing) / 2 + tabSpacing / 2;
 
     // Tab click detection
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (clickReleasedHere()) {
         int visibleTabs = 0;
         for (int t = 0; t < TAB_COUNT; ++t) {
             if (t == 4 && !m_config.debugMode) continue;
@@ -3210,7 +3216,7 @@ void Game::updateSettingsFromMenu() {
     }
 
     // Search box focus on click
-    if (m_settingsTab == 3 && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (m_settingsTab == 3 && clickReleasedHere()) {
         int sbY = tabY + 30 + 8;
         int sbW = 300;
         int sbH = 24;
@@ -3401,7 +3407,7 @@ void Game::updateSettingsFromMenu() {
 
     // Activation
     bool activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE);
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+    if (clickReleasedHere()) {
         if (resetHovered >= 0) {
             m_settingsIndex = resetHovered;
             // Reset value

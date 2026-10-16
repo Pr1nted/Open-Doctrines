@@ -356,13 +356,12 @@ void Game::updateAchievements() {
     const Vector2 mouse = getMouse();
     const Rectangle xBtn = {(float)(m_screenW - 52), 16, 36, 36};
     if (IsKeyPressed(KEY_ESCAPE) ||
-        (CheckCollisionPointRec(mouse, xBtn) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) &&
-         m_pressScreen == SCREEN_ACHIEVEMENTS)) {
+        (CheckCollisionPointRec(mouse, xBtn) && clickReleasedHere())) {
         m_currentScreen = m_achBack;
         return;
     }
     // Category filter chips.
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressScreen == SCREEN_ACHIEVEMENTS) {
+    if (clickReleasedHere()) {
         for (size_t i = 0; i < m_achChipRects.size(); ++i)
             if (CheckCollisionPointRec(mouse, m_achChipRects[i])) {
                 m_achFilter = (int)i;

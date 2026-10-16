@@ -188,7 +188,7 @@ void Game::updateAccountMenu() {
     if (isMouseOverConsole()) return;
 
     const Vector2 mouse = getMouse();
-    const bool click = IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
+    const bool click = clickReleasedHere();
     const auto status = client.status();
 
     if (IsKeyPressed(KEY_ESCAPE)) {

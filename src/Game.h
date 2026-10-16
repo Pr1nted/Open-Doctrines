@@ -596,6 +596,21 @@ private:
     /// otherwise deliver its release to the new one. See Game::run().
     ScreenState m_pressScreen = SCREEN_MENU;
 
+    /// A left-button RELEASE whose press happened on the screen now showing.
+    ///
+    /// The one guard every menu-family button activation goes through, so a
+    /// press that changed the screen -- a back button on one screen that
+    /// transitions on press, the release then landing on whatever the next
+    /// screen draws under the cursor -- cannot activate anything on the screen
+    /// it arrived at. This is a NO-OP for an ordinary in-screen click (press
+    /// and release are the same screen), so it only ever suppresses the
+    /// cross-screen click-through, never a real click. Leaving the mod menu
+    /// started the tutorial, and opening the multiplayer country picker shut it
+    /// again, both for want of this. See m_pressScreen and Game::run().
+    bool clickReleasedHere() const {
+        return IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && m_pressScreen == m_currentScreen;
+    }
+
     // ── Achievements (Game_Achievements.cpp; the rules are src/achievements/) ──
     //
     // achNote() counts something the player DID, at the place it happens.
