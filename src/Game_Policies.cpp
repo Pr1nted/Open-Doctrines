@@ -467,14 +467,36 @@ void Game::enactPolicy(int countryId, const std::string& policyId, int targetPro
     m_activePolicies.push_back(ap);
     m_countryActivePolicyIndices[countryId].push_back(idx);
     if (countryId == m_playerCountryId) achNote("policies_enacted");
+    // ON A CLIENT THIS IS ONLY A PICTURE OF THE DECISION. The host is what
+    // resolves the turn, so the decision itself is written down to be sent
+    // with the orders -- see Game::MpPolicyOp for why it is recorded here.
+    if (countryId == m_playerCountryId && countryId > 0 && mpIsClient())
+        m_mpPolicyOps.push_back({true, policyId, targetProvince, targetMinority});
 }
  
 void Game::cancelPolicy(int activePolicyIndex) {
     if (activePolicyIndex < 0 || activePolicyIndex >= (int)m_activePolicies.size()) return;
     auto& ap = m_activePolicies[activePolicyIndex];
+    // Named BEFORE it is cancelled: afterwards the row reads as repealed, and
+    // the turn's clean-up may already have moved it.
+    if (ap.countryId == m_playerCountryId && ap.countryId > 0 && mpIsClient() &&
+        ap.turnsRemaining != -1) {
+        // Enacted this turn and not sent yet: taking it back is the host never
+        // hearing of it, not a repeal of something it does not have.
+        auto pending = std::find_if(m_mpPolicyOps.begin(), m_mpPolicyOps.end(),
+            [&](const MpPolicyOp& o) {
+                return o.enact && o.id == ap.policyId && o.province == ap.targetProvince &&
+                       o.minority == ap.targetMinority;
+            });
+        if (pending != m_mpPolicyOps.end()) m_mpPolicyOps.erase(pending);
+        else m_mpPolicyOps.push_back({false, ap.policyId, ap.targetProvince, ap.targetMinority});
+    }
     if (ap.turnsRemaining > 0) {
         ap.turnsRemaining = -1;  // Mark as cancelled
-        m_policiesEnactedThisTurn = std::max(0, m_policiesEnactedThisTurn - 1);
+        // The counter is the LOCAL player's; a remote seat's cancel arriving in
+        // its orders on a client-hosted game must not hand the host an enact.
+        if (ap.countryId == m_playerCountryId)
+            m_policiesEnactedThisTurn = std::max(0, m_policiesEnactedThisTurn - 1);
     } else if (ap.inForce()) {
         ap.turnsRemaining = -1;  // Mark as repealed -- a running campaign too
     }
@@ -2621,10 +2643,7 @@ void Game::drawAnalysisTab() {
         int slY = 340;
         int slW = 200;
         int slH = 18;
-        float researchAmt = cs.total * m_researchAllocation;
-        float maxAffordPac = std::max(0.0f, cs.total - cs.armyExpenses - cs.navyExpenses - cs.policyCosts - cs.minorityCosts - researchAmt);
-        float maxAllocFrac = (cs.total > 0) ? maxAffordPac / cs.total : 0;
-        if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
+        float maxAllocFrac = pacificationAllocationCap(cs, m_researchAllocation);
         if (m_pacificationAllocation > maxAllocFrac) m_pacificationAllocation = maxAllocFrac;
         DrawText(T("Pacification Budget:"), slX, slY - 20, 13, WHITE);
         DrawRectangle(slX, slY, slW, slH, {40, 40, 50, 200});

@@ -33,9 +33,28 @@
 //                   [--tor-port N | --tor-data DIR] [--tor-all]
 //                   [--mail-to CID | --mail-to-index N] [--mail-body TEXT] [--secret TEXT]
 //                   [--chat TEXT]...
+//                   [--orders JSON | --orders-file FILE]
+//                   [--answer accept|reject] [--answer-actions a,b,...]
 //
 // --until stops as soon as a line starting with that text is printed, so a
 // script can wait for a specific moment without sleeping for a guessed time.
+//
+// --orders merges a JSON object into every submission -- research, budgets,
+// doctrines, diplomacy, whatever Game_MpChoices.cpp reads. --orders-file does
+// the same from a file READ AGAIN AT EVERY SUBMISSION, so a script can change
+// what a player asks for once it has seen what came of the last turn; a file
+// that is missing or does not parse adds nothing.
+//
+// --answer answers every request the host forwards (the TurnState's "inbox")
+// in the next submission; --answer-actions limits that to the actions listed,
+// leaving the rest unanswered -- which is how a test leaves a call to arms to
+// lapse while still accepting an alliance.
+//
+// The TURNSTATE line also carries this seat's own rows, so a script can see
+// that what it asked for arrived:
+//
+//   ... pac=0.05 groups=fort1|-|- policies=a,b disclosure=3 inbox=1
+//       asked=request_alliance:FRA allies=FRA-GBR,...
 
 #include "json.hpp"
 #include "net/LobbyMap.h"
@@ -87,6 +106,11 @@ int main(int argc, char** argv) {
     int chatAfterPeers = 0;        // hold the first line until this many are here
     bool awayIdle = false;         // --away-idle: "leave me idle if I miss a turn"
     double submitAfter = 0.0;      // seconds after a turn opens; a late player
+    std::string ordersText, ordersFile;   // merged into every submission
+    std::string answerWith;               // "accept" or "reject": answer what we are asked
+    std::vector<std::string> answerActions;   // ...only these, when given
+    std::vector<std::pair<uint32_t, std::string>> asked;   // seq, action, from the last state
+    std::vector<uint32_t> answered;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
@@ -112,6 +136,16 @@ int main(int argc, char** argv) {
         else if (a == "--mail-body") mailBody = next();
         else if (a == "--secret") secret = next();
         else if (a == "--chat") chatLines.push_back(next());   // said once in, in order
+        else if (a == "--orders") ordersText = next();
+        else if (a == "--orders-file") ordersFile = next();
+        else if (a == "--answer") answerWith = next();
+        else if (a == "--answer-actions") {
+            std::string list = next(), cur;
+            for (char ch : list + ",") {
+                if (ch == ',') { if (!cur.empty()) answerActions.push_back(cur); cur.clear(); }
+                else cur += ch;
+            }
+        }
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
     }
     if (issuer.empty() || code.empty() || token.empty()) {
@@ -283,6 +317,52 @@ int main(int argc, char** argv) {
                         if (st.contains("countryResearchActive") && st["countryResearchActive"].contains(k))
                             active = st["countryResearchActive"][k].get<std::string>();
                     }
+                    // This seat's own choices, as the host now has them.
+                    std::string pac = "0", groups = "-|-|-", pols, disc = "0", allies, askedStr;
+                    int inboxN = 0;
+                    if (mine && j.is_object() && j.contains("state")) {
+                        const auto& st = j["state"];
+                        const std::string k = std::to_string(mine);
+                        if (st.contains("pacification") && st["pacification"].contains(k))
+                            pac = st["pacification"][k].dump();
+                        std::string g0 = active, g1 = "-", g2 = "-";
+                        if (st.contains("countryResearchExtra") && st["countryResearchExtra"].contains(k)) {
+                            const auto& x = st["countryResearchExtra"][k];
+                            auto id = [&](size_t i) {
+                                const std::string n = x.size() > i && x[i].is_object()
+                                    ? x[i].value("node", std::string()) : std::string();
+                                return n.empty() ? std::string("-") : n;
+                            };
+                            g1 = id(0); g2 = id(1);
+                        }
+                        groups = g0 + "|" + g1 + "|" + g2;
+                        std::vector<std::string> ps;
+                        if (st.contains("activePolicies") && st["activePolicies"].is_array())
+                            for (const auto& ap : st["activePolicies"])
+                                if (ap.value("countryId", 0) == (int)mine && ap.value("turnsRemaining", 0) != -1)
+                                    ps.push_back(ap.value("policyId", std::string()));
+                        std::sort(ps.begin(), ps.end());
+                        for (const auto& x : ps) pols += (pols.empty() ? "" : ",") + x;
+                        if (st.contains("disclosure") && st["disclosure"].contains(k))
+                            disc = st["disclosure"][k].dump();
+                        std::vector<std::string> al;
+                        if (st.contains("relations"))
+                            for (auto& [a, ts] : st["relations"].items())
+                                for (auto& [b, r] : ts.items())
+                                    if (a < b && r.value("ally", false)) al.push_back(a + "-" + b);
+                        std::sort(al.begin(), al.end());
+                        for (const auto& x : al) allies += (allies.empty() ? "" : ",") + x;
+                    }
+                    asked.clear();
+                    if (j.is_object() && j.contains("inbox") && j["inbox"].is_array())
+                        for (const auto& it : j["inbox"]) {
+                            if (!it.is_object() || !it.contains("seq")) continue;
+                            ++inboxN;
+                            const std::string act = it.value("action", std::string());
+                            asked.emplace_back(it["seq"].get<uint32_t>(), act);
+                            askedStr += (askedStr.empty() ? "" : ",") + act + ":" +
+                                        it.value("source", std::string());
+                        }
                     std::sort(wars.begin(), wars.end());
                     std::string w, ri;
                     for (const auto& x : wars) w += (w.empty() ? "" : ",") + x;
@@ -292,7 +372,10 @@ int main(int argc, char** argv) {
                         " rebels=" + std::to_string(rebels) + " named=" + std::to_string(named) +
                         " wars=" + w + " riso=" + ri + " mail=" + (mail ? "1" : "0") +
                         " my=" + std::to_string(mine) + " alloc=" + alloc + " active=" + active +
-                        " money=" + money);
+                        " money=" + money + " pac=" + pac + " groups=" + groups +
+                        " policies=" + pols + " disclosure=" + disc +
+                        " inbox=" + std::to_string(inboxN) + " asked=" + askedStr +
+                        " allies=" + allies);
                     break;
                 }
                 case NetSessionEvent::Kind::Rejected:
@@ -330,7 +413,33 @@ int main(int argc, char** argv) {
 
         // A submission that was waiting for its moment.
         if (pendingTurn != 0 && elapsed >= pendingAt) {
-            const std::string body = "{\"marker\":\"" + marker + "\"}";
+            nlohmann::json orders = {{"marker", marker}};
+            auto merge = [&](const std::string& text) {
+                const auto extra = nlohmann::json::parse(text, nullptr, false);
+                if (extra.is_object()) orders.update(extra);
+            };
+            if (!ordersText.empty()) merge(ordersText);
+            if (!ordersFile.empty())
+                if (FILE* f = std::fopen(ordersFile.c_str(), "rb")) {
+                    std::string text;
+                    char buf[4096];
+                    size_t got;
+                    while ((got = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, got);
+                    std::fclose(f);
+                    merge(text);
+                }
+            // What we were asked, answered -- each request once.
+            if (!answerWith.empty())
+                for (const auto& [seq, act] : asked) {
+                    if (std::find(answered.begin(), answered.end(), seq) != answered.end()) continue;
+                    if (!answerActions.empty() &&
+                        std::find(answerActions.begin(), answerActions.end(), act) == answerActions.end())
+                        continue;
+                    orders["answers"].push_back({{"seq", seq}, {"accept", answerWith == "accept"}});
+                    answered.push_back(seq);
+                    say("ANSWERED seq=" + std::to_string(seq) + " " + act + " " + answerWith);
+                }
+            const std::string body = orders.dump();
             session.submitOrders(pendingTurn, std::vector<uint8_t>(body.begin(), body.end()));
             submittedFor = pendingTurn;
             say("SUBMITTED " + std::to_string(pendingTurn));

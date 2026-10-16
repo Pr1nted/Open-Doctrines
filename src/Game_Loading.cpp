@@ -2736,6 +2736,14 @@ void Game::unloadGameData() {
     m_countryResearchPoints.clear();
     m_countryResearchActive.clear();
     m_countryResearchInvested.clear();
+    // Remote players' plans and requests are about countries of THIS world.
+    m_countryResearchPlan.clear();
+    m_mpInbox.clear();
+    m_mpInboxSeq = 0;
+    m_mpPolicyOps.clear();
+    m_mpDiploAnswers.clear();
+    m_mpInboxShown.clear();
+    m_mpMirroredTurn = -1;
     // All countries were just cleared, so every rebel cid is free again.
     // Without this reset the counter climbed monotonically across worlds —
     // AI self-play (thousands of rebels per session) walked it into the
@@ -3384,7 +3392,7 @@ bool Game::loadSaveFile(const std::string& savePath) {
  * deltas came off disk or off a socket. Having two copies of it would be having
  * two answers to what a delta means.
  */
-void Game::applyTurnDelta(const TurnDelta& delta) {
+void Game::applyTurnDelta(const TurnDelta& delta, bool playerScalars) {
     // Province changes
     for (auto& pd : delta.provinces) {
         int pid = pd.provinceId;
@@ -3429,6 +3437,18 @@ void Game::applyTurnDelta(const TurnDelta& delta) {
         }
     }
     // Research/pacification state (recorded per-turn in .dat)
+    //
+    // ── WHOSE SLIDERS THESE ARE ──
+    //
+    // The trailer is written from the RESOLVING machine's player globals
+    // (processTurn, where the delta is built), which on a save is the person
+    // loading it and on a hosted game is the host. A multiplayer client used
+    // to copy it every turn into its own sliders: on a dedicated server every
+    // client's research budget snapped back to 25% and every research group
+    // went idle the moment a turn landed, and under a client-host each player
+    // was handed the host's own research. The client's figures come from its
+    // own country's rows in the TurnState instead (mpMirrorOwnCountryRows).
+    if (!playerScalars) return;
     m_researchAllocation = delta.researchAllocation;
     m_pacificationAllocation = delta.pacificationAllocation;
     m_researchGroups[0].activeNode = delta.researchActiveNode;

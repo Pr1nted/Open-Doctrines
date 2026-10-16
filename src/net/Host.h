@@ -58,6 +58,7 @@ struct NetHostEvent {
         RelayLost,       // the relay socket dropped; reconnecting by itself
         RelayRestored,   // and it is back
         CodeChanged,     // the service issued a new invite code; text is it
+        AwayPolicyChanged, // a seat changed "leave me idle when away"; peerId
         Failed,          // error() says why
         Closed,
     } kind = Kind::LobbyChanged;

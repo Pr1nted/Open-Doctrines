@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -254,6 +255,14 @@ struct PopupEntry {
     std::string targetIso;
     std::string subjectIso;   // used only for a call to arms: the aggressor
     CeasefireTerms terms;     // used only for CEASEFIRE_REQUEST
+    /**
+     * The host's number for a request forwarded to a multiplayer client, or 0.
+     *
+     * A client's answer is not applied here -- the host settles it -- so the
+     * popup has to remember which of the host's requests it is, and the answer
+     * goes back in the next orders under this number (Game::m_mpDiploAnswers).
+     */
+    uint32_t mpSeq = 0;
 
     /**
      * Identifies this popup for as long as it is queued.

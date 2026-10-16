@@ -319,6 +319,7 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
            run "relayed campaign survives" "$root/tests/campaign_relay_test.sh" "$build" &&
            run "letters cross the network" "$root/tests/campaign_mail_test.sh" "$build" &&
            run "lobby chat reaches everyone" "$root/tests/campaign_chat_test.sh" "$build" &&
+           run "players decide their own country" "$root/tests/campaign_choices_test.sh" "$build" &&
            run "campaign soak (60 turns)" "$root/tests/campaign_soak_test.sh" "$build" 60; }; } \
     && run "agent protocol" "$root/tests/agent_protocol_test.sh" "$build" \
     && run "templeos bridge" "$root/tests/templeos_bridge_test.sh" "$build" \

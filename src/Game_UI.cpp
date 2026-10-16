@@ -322,6 +322,23 @@ void Game::updatePopup() {
     auto& popup = m_popupQueue.front();
     Vector2 mouse = getMouse();
 
+    // ── A FORWARDED REQUEST IS ANSWERED ON THE HOST ──
+    //
+    // A popup carrying an mpSeq is a request the host sent this client to
+    // answer. What the buttons do below still happens here, so the screen
+    // shows the answer at once; the answer that COUNTS goes back with the next
+    // orders and the host's TurnState puts this world right if they differ.
+    auto noteMpAnswer = [&](bool accept) {
+        if (popup.mpSeq != 0 && mpIsClient()) {
+            m_mpDiploAnswers.push_back({popup.mpSeq, accept, m_popupRefusalReason});
+            // Already pressed Ready: send again, or the answer waits for a
+            // submission that is not coming and the request lapses. The host
+            // keeps the latest submission for a turn.
+            if (m_mpWaitingForTurn && m_mpSentOrdersTurn == (uint32_t)m_turnNumber + 1)
+                mpSubmitTurn();
+        }
+    };
+
     int popW, popH;
     popupGeometry(popup, m_popupShowTerms, popW, popH);
     int popX = (m_screenW - popW) / 2;
@@ -387,6 +404,7 @@ void Game::updatePopup() {
                                 " declared war before you answered — the offer is void",
                                 Color{235, 130, 90, 255}, 8.0f);
                 Audio::get().playSfx("deal_rejected");
+                noteMpAnswer(false);
                 m_popupQueue.erase(m_popupQueue.begin());
                 m_popupShowTerms = false;
                 m_popupRefusalReason = REFUSE_NONE;
@@ -407,6 +425,7 @@ void Game::updatePopup() {
             // The treaty exists as of this click -- the lines above just set it.
             Audio::get().playSfx("treaty_signed");
             printf("[DIPLO] Player approved %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
+            noteMpAnswer(true);
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
             m_popupRefusalReason = REFUSE_NONE;
@@ -424,6 +443,7 @@ void Game::updatePopup() {
             tellRefusal(popup.sourceIso, m_popupRefusalReason);
             Audio::get().playSfx("deal_rejected");
             printf("[DIPLO] Player rejected %s from %s\n", popup.action.c_str(), popup.sourceIso.c_str());
+            noteMpAnswer(false);
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
             m_popupRefusalReason = REFUSE_NONE;
@@ -457,6 +477,7 @@ void Game::updatePopup() {
             // sender can issue new offers if needed later.
             auto tit = m_pendingCeasefireTerms.find(key);
             if (tit != m_pendingCeasefireTerms.end()) m_pendingCeasefireTerms.erase(tit);
+            noteMpAnswer(true);
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
             m_popupRefusalReason = REFUSE_NONE;
@@ -468,6 +489,7 @@ void Game::updatePopup() {
             std::string key = popup.sourceIso + "|" + popup.targetIso;
             auto tit = m_pendingCeasefireTerms.find(key);
             if (tit != m_pendingCeasefireTerms.end()) m_pendingCeasefireTerms.erase(tit);
+            noteMpAnswer(false);
             m_popupQueue.erase(m_popupQueue.begin());
             m_popupShowTerms = false;
             m_popupRefusalReason = REFUSE_NONE;
@@ -1795,6 +1817,10 @@ std::string Game::saveStateJson() {
             j["countryResearchActive"][std::to_string(cid)] = m_researchNodes[active].id;
     for (auto& [cid, inv] : m_countryResearchInvested)
         if (inv > 0) j["countryResearchInvested"][std::to_string(cid)] = inv;
+    // What remote players chose for their own research, and what they were
+    // asked and have not answered. Nothing is written for a country no remote
+    // player has driven, so a single-player save carries none of it.
+    mpWriteChoiceState(j);
 
     // Balances
     for (auto& [cid, bal] : m_countryBalances) {
@@ -2382,6 +2408,7 @@ void Game::loadStateJsonBody(const std::string& json) {
     if (j.contains("countryResearchInvested"))
         for (auto& [key, val] : j["countryResearchInvested"].items())
             m_countryResearchInvested[std::stoi(key)] = val.get<int>();
+    mpReadChoiceState(j);
 
     // Balances
     if (j.contains("balances")) {

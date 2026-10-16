@@ -728,10 +728,7 @@ void Game::drawClaimsTab() {
             int slW = 200;
             int slH = 18;
 
-            float researchAmt = cs.total * m_researchAllocation;
-            float maxAffordPac = std::max(0.0f, cs.total - cs.armyExpenses - cs.navyExpenses - cs.policyCosts - cs.minorityCosts - researchAmt);
-            float maxAllocFrac = (cs.total > 0) ? maxAffordPac / cs.total : 0;
-            if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
+            float maxAllocFrac = pacificationAllocationCap(cs, m_researchAllocation);
             if (m_pacificationAllocation > maxAllocFrac) m_pacificationAllocation = maxAllocFrac;
 
             DrawText(T("Pacification Budget:"), slX, slY - 20, 13, WHITE);

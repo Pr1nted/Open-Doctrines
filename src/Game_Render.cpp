@@ -1512,30 +1512,6 @@ void Game::drawCountryPanel() {
         const Country* playerC = m_countries.getCountry(m_playerCountryId);
         const Country* targetC = m_countries.getCountry(cid);
         if (playerC && targetC) {
-            bool hasWar = false, hasAlly = false, hasGuar = false, hasNonAgg = false;
-            auto rt1 = m_relations.find(playerC->isoA3);
-            if (rt1 != m_relations.end()) {
-                auto st = rt1->second.find(targetC->isoA3);
-                if (st != rt1->second.end()) {
-                    hasWar = st->second.war;
-                    hasAlly = st->second.alliance;
-                    hasGuar = st->second.guarantee;
-                    hasNonAgg = st->second.nonAggression;
-                }
-            }
-            if (!hasWar && !hasAlly && !hasGuar && !hasNonAgg) {
-                auto rt2 = m_relations.find(targetC->isoA3);
-                if (rt2 != m_relations.end()) {
-                    auto st = rt2->second.find(playerC->isoA3);
-                    if (st != rt2->second.end()) {
-                        hasWar = st->second.war;
-                        hasAlly = st->second.alliance;
-                        hasGuar = st->second.guarantee;
-                        hasNonAgg = st->second.nonAggression;
-                    }
-                }
-            }
-
             auto hasPending = [&](const std::string& action) -> bool {
                 for (auto& p : m_pendingDiplomaticActions)
                     if (p.sourceIso == playerC->isoA3 && p.targetIso == targetC->isoA3 && p.action == action)
@@ -1561,48 +1537,35 @@ void Game::drawCountryPanel() {
             struct ActBtn { const char* label; std::string action; bool disabled; };
             std::vector<ActBtn> acts;
 
-            if (hasAlly) {
-                // Only an ally can be called, and only into a war that already
-                // exists -- requestAllyJoinWar() re-checks both and says why if
-                // it refuses, so this is enabled whenever the player is at war
-                // with anyone rather than duplicating the eligibility rules.
-                acts.push_back({T("Call to Arms"), "call_to_arms", anyDiploPending && !hasPending("call_to_arms")});
-                acts.push_back({T("Break Alliance"), "break_alliance", anyDiploPending && !hasPending("break_alliance")});
-                acts.push_back({T("Mutual Guarantee"), "add_guarantee", anyDiploPending && !hasPending("add_guarantee")});
-            } else if (hasGuar) {
-                // A GUARANTOR CAN BE CALLED TOO, and this is the only way a
-                // guarantee signed after the war began is worth anything: they
-                // chain inside declareWar and nowhere else, so one won on turn
-                // three of a war you are losing does nothing for that war for
-                // ever. requestAllyJoinWar() re-checks eligibility and says why
-                // if it refuses, so this is offered whenever the pact exists
-                // rather than restating the rules here -- a limit written in
-                // this panel would bind the player and nobody else, which is
-                // the mistake that made the one-war-a-turn cap invisible to the
-                // AI for so long.
-                acts.push_back({T("Call to Arms"), "call_to_arms", anyDiploPending && !hasPending("call_to_arms")});
-                acts.push_back({T("Break Guarantee"), "break_guarantee", anyDiploPending && !hasPending("break_guarantee")});
-                acts.push_back({T("Request Alliance"), "request_alliance", anyDiploPending && !hasPending("request_alliance")});
-            } else if (hasWar) {
-                acts.push_back({T("Request Ceasefire"), "request_ceasefire", anyDiploPending && !hasPending("request_ceasefire")});
-            } else if (!hasWar) {
-                if (hasNonAgg) {
-                    acts.push_back({T("Break NAP"), "break_nap", anyDiploPending && !hasPending("break_nap")});
-                } else {
-                    acts.push_back({T("Request NAP"), "request_nap", anyDiploPending && !hasPending("request_nap")});
-                }
-                acts.push_back({T("Request Alliance"), "request_alliance", anyDiploPending && !hasPending("request_alliance")});
-                acts.push_back({T("Request Guarantee"), "request_guarantee", anyDiploPending && !hasPending("request_guarantee")});
-                // Peacetime only, and in this list rather than as a button of
-                // its own: the list already lays itself out above Current
-                // Claims, greys an entry while something is pending with this
-                // country, and is where every other approach to them lives. At
-                // war the equivalent is Request Ceasefire, which already
-                // carries terms.
-                acts.push_back({T("Propose Trade"), "propose_trade", anyDiploPending && !hasPending("propose_trade")});
-                if (!hasNonAgg)
-                    acts.push_back({T("Declare War"), "declare_war", anyDiploPending && !hasPending("declare_war")});
-            }
+            // WHICH buttons is Game::diploActionsOffered -- it reads where the
+            // pair stands, our row first and theirs if ours is silent -- shared
+            // with the multiplayer host so that what this panel will not draw
+            // cannot be sent over the wire instead. The labels stay here.
+            //
+            // A guarantor can be called too, and that is the only way a
+            // guarantee signed after the war began is worth anything: they
+            // chain inside declareWar and nowhere else. requestAllyJoinWar()
+            // re-checks eligibility and says why if it refuses, so the button
+            // is offered whenever the pact exists rather than restating the
+            // rules here -- a limit written in this panel would bind the
+            // player and nobody else. Propose Trade is peacetime only; at war
+            // the equivalent is Request Ceasefire, which already carries terms.
+            auto labelOf = [](const std::string& a) -> const char* {
+                if (a == "call_to_arms")      return T("Call to Arms");
+                if (a == "break_alliance")    return T("Break Alliance");
+                if (a == "add_guarantee")     return T("Mutual Guarantee");
+                if (a == "break_guarantee")   return T("Break Guarantee");
+                if (a == "request_alliance")  return T("Request Alliance");
+                if (a == "request_ceasefire") return T("Request Ceasefire");
+                if (a == "break_nap")         return T("Break NAP");
+                if (a == "request_nap")       return T("Request NAP");
+                if (a == "request_guarantee") return T("Request Guarantee");
+                if (a == "propose_trade")     return T("Propose Trade");
+                if (a == "declare_war")       return T("Declare War");
+                return "";
+            };
+            for (const std::string& a : diploActionsOffered(m_playerCountryId, cid))
+                acts.push_back({labelOf(a), a, anyDiploPending && !hasPending(a)});
 
             // Layout: 2 columns, single button spans full width
             int btnGap = 4;

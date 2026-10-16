@@ -1613,7 +1613,14 @@ void NetHost::Impl::handlePeerMessage(uint16_t peerId, const uint8_t* body, size
         }
         case NetMsg::AwayPolicy: {
             if (payloadSize < 1) return;
-            lobby.setAwayIdle(peerId, payload[0] != 0);
+            const LobbyMember* was = lobby.find(peerId);
+            const bool idle = payload[0] != 0;
+            if (!was || was->awayIdle == idle) return;   // nothing changed, nothing to write
+            lobby.setAwayIdle(peerId, idle);
+            // Written to disk now, not at the end of the turn: the player this
+            // is for is the one about to go away, and a restart before then
+            // would bring them back AI-played.
+            push({NetHostEvent::Kind::AwayPolicyChanged, peerId});
             return;
         }
         case NetMsg::Mail: {

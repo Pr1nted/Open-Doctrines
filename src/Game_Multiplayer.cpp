@@ -971,6 +971,9 @@ void Game::mpDrainEvents() {
                 case NetHostEvent::Kind::RelayRestored:
                     mpNote(T("Relay connection restored."));
                     break;
+                case NetHostEvent::Kind::AwayPolicyChanged:
+                    if (m_mpLoad == MpLoad::None) mpSaveSeats();
+                    break;
                 case NetHostEvent::Kind::CodeChanged:
                     m_mpReopenCode = e.text;
                     mpNote("The invite code is now " + e.text + ". Share the new one.", true);
@@ -1068,7 +1071,10 @@ void Game::mpDrainEvents() {
                     m_mpWelcomedOnce = true;
                     // Every welcome, rejoins included: the host keeps it only
                     // as long as the connection, so it is simply told again.
-                    m_netSession->sendAwayPolicy(m_config.mpAwayIdle);
+                    // Only when ON: this is a per-install setting, so a second
+                    // device that never ticked it must not switch it off for
+                    // everyone. Unticking is sent at the moment it happens.
+                    if (m_config.mpAwayIdle) m_netSession->sendAwayPolicy(true);
                     if (m_mpRejoin.active) {
                         // Back. The host sends the world again, and the game
                         // reloads it and drops us into our own country.
@@ -3557,6 +3563,7 @@ void Game::mpOnWorldLoaded() {
     if (purpose == MpLoad::JoinApply) {
         // The map is loaded; now move it to where the host's world actually is.
         NetWorldSnapshot snap;
+        std::string joinState;
         if (NetWorldSnapshot::decode(m_mpPendingSnapshot.data(),
                                      m_mpPendingSnapshot.size(), snap)) {
             // The map is loaded at its starting state. Replaying the host's
@@ -3585,7 +3592,7 @@ void Game::mpOnWorldLoaded() {
                     mpNote(T("That server sent a turn this build could not read."), true);
                     break;
                 }
-                applyTurnDelta(delta);
+                applyTurnDelta(delta, false);   // the host's sliders are not ours
                 if (fogWorld) {
                     m_turnNumber = (int)t.turn;
                     recomputeFog();
@@ -3600,6 +3607,7 @@ void Game::mpOnWorldLoaded() {
             }
             if (!snap.stateJson.empty()) loadStateJson(snap.stateJson);
             m_turnNumber = (int)snap.turnNumber;
+            joinState = snap.stateJson;
             // A fog seat's snapshot carries what it has seen; it had no turns
             // to rebuild that from.
             if (fogWorld) fogTakeSeatMemory(snap.stateJson);
@@ -3607,6 +3615,15 @@ void Game::mpOnWorldLoaded() {
         }
         m_mpPendingSnapshot.clear();
         mpEnterGame(m_mpMyCountry);
+        // Our own country's budgets and research as the host has them. Until
+        // this, the sliders read whatever this install last played -- and the
+        // first orders sent would have handed those to the host.
+        if (!joinState.empty()) {
+            const nlohmann::json st = nlohmann::json::parse(joinState, nullptr, false);
+            if (st.is_object()) {
+                try { mpMirrorOwnCountryRows(st); } catch (const std::exception&) {}
+            }
+        }
         // Turns that arrived while all that was loading. They were held rather
         // than applied to the world being replaced; now there is one to apply
         // them to, and mpApplyDelta drops the ones this world already has.
@@ -3659,7 +3676,10 @@ std::vector<uint8_t> Game::mpBuildSnapshot() {
     if (!snap.stateJson.empty()) {
         try {
             nlohmann::json j = nlohmann::json::parse(snap.stateJson);
-            if (j.erase("mail")) snap.stateJson = j.dump();
+            // Nor anybody's unanswered diplomacy, for the same reason: what a
+            // seat has been asked is between it and whoever asked.
+            const bool cut = j.erase("mail") + j.erase("mpInbox") > 0;
+            if (cut) snap.stateJson = j.dump();
         } catch (...) {}
     }
 
@@ -3696,10 +3716,12 @@ std::vector<uint8_t> Game::mpTurnStatePayload() {
     // simRng, turnNumber, fogOfWar: the host's, or already known.
     for (auto it = state.begin(); it != state.end();) {
         const std::string& k = it.key();
+        // mpInbox: every seat's unanswered requests; each seat is sent its
+        // own, beside the state, by mpResolveTurn.
         const bool drop = k == "mail" || k.rfind("pending", 0) == 0 ||
                           k.rfind("claimsPending", 0) == 0 || k == "withdraws" ||
                           k == "loadedWith" || k == "simRng" || k == "turnNumber" ||
-                          k == "fogOfWar";
+                          k == "fogOfWar" || k == "mpInbox" || k == "mpInboxSeq";
         it = drop ? state.erase(it) : std::next(it);
     }
     nlohmann::json out = nlohmann::json::object();
@@ -3723,12 +3745,35 @@ std::vector<uint8_t> Game::mpTurnStatePayload() {
 
 void Game::mpSendTurnStateTo(uint16_t peerId) {
     if (!m_netHost || m_fogOfWar) return;
-    const std::vector<uint8_t> payload = mpTurnStatePayload();
+    std::vector<uint8_t> payload = mpTurnStatePayload();
+    // A seat coming back is owed what it was asked while it was gone.
+    if (const LobbyMember* m = m_netHost->lobby().find(peerId))
+        if (m->countryId) mpWithInbox(payload, m->countryId);
     if (!payload.empty()) m_netHost->sendTurnStateTo(peerId, (uint32_t)m_turnNumber, payload);
 }
 
+void Game::mpWithInbox(std::vector<uint8_t>& payload, int countryId) const {
+    // Spliced into the text rather than re-parsed: the payload is one JSON
+    // object that mpTurnStatePayload has just written, its last byte is the
+    // closing brace, and parsing a whole world's state again per player to add
+    // one key would cost more than the turn did.
+    const nlohmann::json inbox = mpInboxJsonFor(countryId);
+    if (inbox.empty() || payload.size() < 2 || payload.back() != '}') return;
+    const std::string add = std::string(",\"inbox\":") + inbox.dump() + "}";
+    payload.pop_back();
+    payload.insert(payload.end(), add.begin(), add.end());
+}
+
 void Game::mpApplyTurnState(uint32_t turnNumber, const std::vector<uint8_t>& payload) {
-    if (mpIsHost() || m_fogOfWar) return;
+    if (mpIsHost()) return;
+    // A fog seat is sent no world state -- its own delta is all it may see --
+    // but it is still asked things, and those come as a TurnState holding
+    // nothing else. Read at once: a request does not depend on the turn.
+    if (m_fogOfWar) {
+        nlohmann::json j = nlohmann::json::parse(payload.begin(), payload.end(), nullptr, false);
+        if (j.is_object() && j.contains("inbox")) mpTakeInbox(j["inbox"]);
+        return;
+    }
     // Held, not applied: it describes the world AT this turn, and the delta
     // that brings this client there may still be queued behind a load.
     m_mpHeldTurnStateTurn = turnNumber;
@@ -3762,8 +3807,35 @@ void Game::mpApplyHeldTurnState() {
 
     // Rebels first: relations and identities name them by ISO, and until the
     // real record replaces the placeholder its ISO is an invented "R04".
-    if (j.contains("rebels") && j["rebels"].is_object())
-        restoreRebelsJson(j["rebels"].dump(), std::string());
+    // Only the ones that are new or changed: restoring every rebel state every
+    // turn re-drew each flag to a texture, and replaced records whose ORIGINAL
+    // name (rootName) the identity pass restyles from -- which could stack.
+    bool rebelsChanged = false;
+    if (j.contains("rebels") && j["rebels"].is_object()) {
+        nlohmann::json changed = nlohmann::json::object();
+        std::unordered_map<int, Country> roots;   // what to keep from records we replace
+        for (auto& [key, r] : j["rebels"].items()) {
+            const int cid = std::atoi(key.c_str());
+            const Country* have = m_countries.getCountry(cid);
+            if (have && have->name == r.value("name", std::string()) &&
+                r.contains("flag_actual") &&
+                flagPatternToJsonString(have->flagActual) == r["flag_actual"].dump())
+                continue;
+            if (have && have->rootSaved) roots[cid] = *have;
+            changed[key] = r;
+        }
+        if (!changed.empty()) {
+            restoreRebelsJson(changed.dump(), std::string());
+            for (const auto& [cid, was] : roots)
+                if (Country* c = m_countries.getCountry(cid)) {
+                    c->rootName = was.rootName;
+                    c->rootFlag = was.rootFlag;
+                    c->rootFlagCensored = was.rootFlagCensored;
+                    c->rootSaved = true;
+                }
+            rebelsChanged = true;
+        }
+    }
     if (j.contains("treasuries") && j["treasuries"].is_object()) {
         for (auto& [key, v] : j["treasuries"].items()) {
             if (!v.is_number()) continue;
@@ -3781,8 +3853,79 @@ void Game::mpApplyHeldTurnState() {
         m_conqueredProvincePrevOwner.clear();
         m_provinceOccupationAnger.clear();
         m_countryWarWeariness.clear();
-        loadStateJson(j["state"].dump());
+        // Claims and governments are written sparsely too: the last claim
+        // dropped, or a government back at the centre, is an ABSENT key, and
+        // the client kept the old claims and the restyled name and flag.
+        const auto& st = j["state"];
+        if (!st.contains("claims")) { m_claims.clear(); m_claimsByProvince.clear(); }
+        for (auto& [cid, c] : m_countries.getAll()) {
+            if (!c.rootSaved || c.identityQuadrant == 0) continue;
+            c.name = c.rootName;
+            c.flagActual = c.rootFlag;
+            c.flagCensored = c.rootFlag;
+            c.identityQuadrant = 0;
+            c.identityIntensity = 0;
+        }
+        // ── THE FIRST STATE FOR A TURN IS THE HOST'S WORD; A SECOND IS NOT ──
+        //
+        // The one that follows a turn's delta carries what the host decided
+        // with this player's choices -- a budget cut for bankruptcy, a node
+        // finished, a doctrine refused -- and is copied into the player's own
+        // sliders (mpMirrorOwnCountryRows). A second one for the same turn
+        // comes from a resync, part-way through a turn the player is still
+        // playing, and replacing their screen with the host's would undo
+        // everything they have chosen since and not yet sent. So the three
+        // tables the loader replaces wholesale are kept for our own country,
+        // and the doctrines we have enacted or repealed are put back on.
+        const int me = m_playerCountryId;
+        const bool firstForTurn = m_mpMirroredTurn != m_turnNumber;
+        bool keepDisc = false, keepDist = false, keepEth = false;
+        unsigned disc = 0;
+        std::vector<District> dist;
+        std::unordered_map<std::string, std::vector<int>> eth;
+        if (!firstForTurn && me > 0) {
+            if (auto d = m_countryDisclosure.find(me); d != m_countryDisclosure.end()) { disc = d->second; }
+            keepDisc = true;
+            if (auto d = m_districts.find(me); d != m_districts.end()) { dist = d->second; keepDist = true; }
+            if (auto e = m_ethnicPolicies.find(me); e != m_ethnicPolicies.end()) { eth = e->second; keepEth = true; }
+        }
+        loadStateJson(st.dump());
+        if (me > 0 && firstForTurn) {
+            try { mpMirrorOwnCountryRows(st); } catch (const std::exception&) {}
+        } else if (me > 0) {
+            if (keepDisc) { if (disc) m_countryDisclosure[me] = disc; else m_countryDisclosure.erase(me); }
+            if (keepDist) m_districts[me] = std::move(dist);
+            if (keepEth) m_ethnicPolicies[me] = std::move(eth);
+            for (const MpPolicyOp& op : m_mpPolicyOps) {
+                // Straight onto the list, not through enactPolicy: that would
+                // record the op a second time and send it twice.
+                if (op.enact) {
+                    const Policy* def = nullptr;
+                    for (const Policy& p : m_allPolicies) if (p.id == op.id) { def = &p; break; }
+                    if (!def || modCountryHasPolicy(me, op.id)) continue;
+                    ActivePolicy ap;
+                    ap.policyId = op.id;
+                    ap.countryId = me;
+                    ap.turnsRemaining = def->implementationTurns;
+                    ap.targetProvince = op.province;
+                    ap.targetMinority = op.minority;
+                    m_countryActivePolicyIndices[me].push_back((int)m_activePolicies.size());
+                    m_activePolicies.push_back(ap);
+                } else {
+                    for (ActivePolicy& ap : m_activePolicies)
+                        if (ap.countryId == me && ap.policyId == op.id && ap.turnsRemaining != -1) {
+                            ap.turnsRemaining = -1;
+                            break;
+                        }
+                }
+            }
+        }
     }
+    // What this seat is being asked, if anything -- and, by its absence, what
+    // it is no longer being asked. After the state, which the popups' words
+    // (who is at war with whom) are drawn from.
+    if (m_playerCountryId > 0)
+        mpTakeInbox(j.contains("inbox") ? j["inbox"] : nlohmann::json::array());
     if (redrawAll) {
         rebuildFlags();
     } else if (!m_headless) {
@@ -3800,8 +3943,12 @@ void Game::mpApplyHeldTurnState() {
     }
     if (m_renderer) m_renderer->setCountryFlags(&m_countryFlags);
     m_identityFlagsDirty = false;
-    rebuildOwnershipPixels();
-    reloadBorders();
+    // The delta already redrew ownership and borders for this turn; only a
+    // new rebel record (a new colour) needs it again.
+    if (rebelsChanged || redrawAll) {
+        rebuildOwnershipPixels();
+        reloadBorders();
+    }
     m_labelsDirty = true;
 }
 
@@ -3993,6 +4140,11 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
     // needs no protocol version.
     if (const unsigned long long seal = const_cast<Game*>(this)->tableSeal())
         j["seal"] = seal;
+
+    // And what this player decided about their country rather than the map:
+    // budgets, research, doctrines, diplomacy and the rest. See
+    // Game_MpChoices.cpp for the keys and the rules they are read by.
+    mpSerializeChoices(countryId, j);
 
     // Still guarded: with no orders and no seal to add, `j` is null, and
     // dumping that gives "null" -- which mpApplyOrders discards as not an
@@ -4453,6 +4605,17 @@ void Game::mpApplyOrders(int countryId, const std::vector<uint8_t>& payload) {
         m_pendingShipBombardOrders.push_back(o);
     });
 
+    // The choices that are not orders (Game_MpChoices.cpp). Last, so a
+    // doctrine's cost is weighed against the treasury the builds above have
+    // already drawn on, as it would be on the player's own screen. Caught,
+    // because that reader is written not to throw and a host must not be one
+    // missed type check away from dying on somebody else's bytes.
+    try {
+        mpApplyChoices(countryId, j, kMaxEntries);
+    } catch (const std::exception& ex) {
+        printf("  Rejected the rest of country %d's choices: %s\n", countryId, ex.what());
+    }
+
     // Said out loud, because a client that keeps sending impossible numbers is
     // either broken or being driven by somebody testing this function, and a
     // host running unattended has no other way to notice either.
@@ -4750,6 +4913,16 @@ void Game::mpResolveTurn() {
         }
     }
 
+    // What nobody answered. After every seat's orders, so an answer that came
+    // is applied rather than overtaken; before processTurn, so a call to arms
+    // that lapses does so before the war it was about is fought again.
+    {
+        std::unordered_map<int, bool> aiPlays;
+        for (const TurnResolution& r : resolutions)
+            if (r.countryId != 0) aiPlays[r.countryId] = r.aiPlays;
+        mpExpireInbox(aiPlays);
+    }
+
     // Every seat the AI is NOT standing in for, so processTurn leaves those
     // countries to their players (or, under "absent: idle", to nobody).
     m_mpHumanCids.clear();
@@ -4772,6 +4945,18 @@ void Game::mpResolveTurn() {
             // Fog of war: no broadcast. Each seat is sent what it can see, and
             // nothing goes to the long-form store, which anyone can read.
             fogSendTurn(turn, delta);
+            // What a fog seat was asked, alone in a TurnState of its own: the
+            // world state is everybody's, the requests are its.
+            for (const NetPeer& p : m_netHost->lobby().roster()) {
+                if (!p.connected || p.countryId == 0 ||
+                    p.peerId == m_netHost->lobby().hostPeerId())
+                    continue;
+                const nlohmann::json inbox = mpInboxJsonFor(p.countryId);
+                if (inbox.empty()) continue;
+                const std::string text = nlohmann::json{{"inbox", inbox}}.dump();
+                m_netHost->sendTurnStateTo(p.peerId, turn,
+                                           std::vector<uint8_t>(text.begin(), text.end()));
+            }
             mpPostMailToPlayers(m_turnNumber);
         } else if (!packed.empty()) {
             m_netHost->broadcastDelta(turn, packed);
@@ -4785,9 +4970,36 @@ void Game::mpResolveTurn() {
             }
             // And what the delta does not carry: wars, peace, identities,
             // rebel states. After the delta, which it describes the result of.
+            //
+            // ONE STATE PER PLAYER PER TURN, NEVER TWO. A client holds a single
+            // TurnState and the second would replace the first, so a seat that
+            // has been asked something gets the state WITH its requests in
+            // place of the broadcast -- and when nobody has been asked
+            // anything, the broadcast goes out exactly as it always did.
             {
                 const std::vector<uint8_t> state = mpTurnStatePayload();
-                if (!state.empty() && !m_netHost->broadcastTurnState(turn, state))
+                bool anyAsked = false;
+                for (const NetPeer& p : m_netHost->lobby().roster())
+                    if (p.connected && p.countryId && m_mpInbox.count(p.countryId) &&
+                        !m_mpInbox[p.countryId].empty())
+                        anyAsked = true;
+                bool sent = !state.empty();
+                if (sent && !anyAsked) {
+                    sent = m_netHost->broadcastTurnState(turn, state);
+                } else if (sent) {
+                    for (const NetPeer& p : m_netHost->lobby().roster()) {
+                        if (!p.connected || p.peerId == m_netHost->lobby().hostPeerId()) continue;
+                        std::vector<uint8_t> mine = state;
+                        if (p.countryId) mpWithInbox(mine, p.countryId);
+                        // Too big with the requests in: the state without them,
+                        // rather than nothing. The requests lapse; the world is
+                        // still right.
+                        if (!m_netHost->sendTurnStateTo(p.peerId, turn, mine) &&
+                            !m_netHost->sendTurnStateTo(p.peerId, turn, state))
+                            sent = false;
+                    }
+                }
+                if (!state.empty() && !sent)
                     mpNote("This turn's diplomacy was too large to send to players.", true);
             }
             // The post, after the turn it arrived on: each letter to the one
@@ -4886,7 +5098,7 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
         mpNote(T("The server sent a turn this build could not read."), true);
         return;
     }
-    applyTurnDelta(delta);
+    applyTurnDelta(delta, false);   // see applyTurnDelta: the trailer is the host's
     synthesizeMissingRebels();
     rebuildOwnershipPixels();
     reloadBorders();
@@ -4931,6 +5143,9 @@ void Game::mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload
     m_pendingShipEngageOrders.clear();
     m_pendingShipBombardOrders.clear();
     m_pendingScrapShips.clear();
+    // And the choices that went with them: doctrines, diplomacy, claims and
+    // answers. Whatever the host made of them is in the TurnState behind this.
+    mpClearSentChoices();
 
     recordIncomeSnapshot();
     // The rest of this turn, if it arrived before the turn itself did.

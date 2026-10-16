@@ -118,7 +118,9 @@ TurnDelta Game::fogSeatDelta(int cid, FogMirror& m, bool full, const TurnDelta& 
     TurnDelta d;
     d.turnNumber = real.turnNumber;
     // The scalar trailer is the host player's research state, broadcast to
-    // everyone before fog existed; carried as it was.
+    // everyone before fog existed; carried as it was. No client applies it any
+    // more (mpApplyDelta passes playerScalars = false), so it says nothing
+    // about anybody's research to a seat that could not otherwise see it.
     d.researchAllocation = real.researchAllocation;
     d.pacificationAllocation = real.pacificationAllocation;
     d.researchActiveNode = real.researchActiveNode;
@@ -215,6 +217,7 @@ std::string Game::fogStateJsonFor(int cid) {
     j.erase("withdraws");
     j.erase("claimsPendingAdd");    // the host player's own pending claims
     j.erase("claimsPendingDrop");
+    j.erase("mpInbox");             // every seat's unanswered requests; its own go separately
 
     auto allowed = [&](int other) {
         return other == cid || sharesIntel(cid, other) || fogDossier(cid, other);
@@ -232,7 +235,8 @@ std::string Game::fogStateJsonFor(int cid) {
     for (const char* k : {"balances", "countryResearchActive", "countryResearchAlloc",
                           "countryResearchInvested", "countryResearchPoints", "warWeariness",
                           "stockpiles", "pacification", "politicalCapital", "alignmentDriftByCountry",
-                          "ethnicPolicies", "districts"})
+                          "ethnicPolicies", "districts", "countryResearchPlan",
+                          "countryResearchExtra"})
         cidKeyed(k, allowed);
     cidKeyed("treasuryLastTurn", [&](int c) { return allowed(c) || discloses(c, DISCLOSE_TREASURY); });
     // Province-keyed facts: only where the seat can see.

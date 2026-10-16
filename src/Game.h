@@ -309,6 +309,9 @@ public:
      * them; today it is recorded, and it is where credibility will attach.
      */
     void tellRefusal(const std::string& toIso, int statedReason);
+    /// The same, said by any country -- a remote player's refusal is heard
+    /// on the host, where nobody is m_playerCountryId.
+    void tellRefusal(int fromCid, const std::string& toIso, int statedReason);
     /**
      * Would `observerCid` be able to see that this stated war goal is false?
      *
@@ -741,7 +744,14 @@ private:
     bool loadSaveFile(const std::string& savePath); // Load .odsv, extract .odmap, replay
     bool replaySaveTurns(const std::string& savePath); // Replay turn deltas from a save
     // One turn's changes, from a save or from a host. See the definition.
-    void applyTurnDelta(const struct TurnDelta& delta);
+    //
+    // `playerScalars` is whether the delta's research trailer -- the budget
+    // sliders and research groups of whoever RESOLVED the turn -- is copied
+    // into this machine's own player globals. True for a save, where that was
+    // this player. False for a multiplayer client, where it was the host: a
+    // dedicated server's are its defaults, a client-host's are its own
+    // country's, and neither is the client's.
+    void applyTurnDelta(const struct TurnDelta& delta, bool playerScalars = true);
     void rebuildOwnershipPixels();
     void startNewGame(const std::string& mapName);
     void startNewGameWithName(const std::string& mapName, const std::string& worldName);
@@ -1026,6 +1036,8 @@ private:
     // applies it once its world is at that turn, holding it until then.
     std::vector<uint8_t> mpTurnStatePayload();
     void mpSendTurnStateTo(uint16_t peerId);
+    /// Add one seat's unanswered requests to a TurnState payload.
+    void mpWithInbox(std::vector<uint8_t>& payload, int countryId) const;
     void mpApplyTurnState(uint32_t turnNumber, const std::vector<uint8_t>& payload);
     void mpApplyHeldTurnState();
     uint32_t m_mpHeldTurnStateTurn = 0;
@@ -1125,6 +1137,124 @@ private:
     void mpApplyDelta(uint32_t turnNumber, const std::vector<uint8_t>& payload);
     /** Called instead of processTurn() when this machine is a client. */
     void mpSubmitTurn();
+
+    // ── THE CHOICES THAT ARE NOT ORDERS (Game_MpChoices.cpp) ──
+    //
+    // Orders used to carry what a player does to the MAP: builds, recruits,
+    // moves, ships. Everything a player decides about their COUNTRY -- the
+    // research budget and what it buys, doctrines, the diplomacy they start,
+    // what they publish, minority law, districts, claims -- was set on the
+    // client's screen and never left it. While the AI played every seat on a
+    // dedicated server nobody noticed, because the AI made those choices
+    // instead; once it stopped acting for human seats (m_mpHumanCids), they
+    // were made by nobody at all.
+    //
+    // These are new keys in the same JSON, so an older host ignores them and
+    // an older client sends none. THE RULE: a key that is absent leaves the
+    // host's state unchanged. It never means "clear".
+    void mpSerializeChoices(int countryId, nlohmann::json& j) const;
+    void mpApplyChoices(int countryId, const nlohmann::json& j, size_t maxEntries);
+
+    /// The two budget caps the sliders enforce, shared with the host so a
+    /// client cannot be given more room over the wire than its screen showed.
+    static float researchAllocationCap(const CountryIncomeSnapshot& cs, float pacAlloc);
+    static float pacificationAllocationCap(const CountryIncomeSnapshot& cs, float researchAlloc);
+
+    /**
+     * A remote human's research plan, beyond what m_countryResearchActive and
+     * m_countryResearchExtra already hold: each group's share of the points,
+     * whether it walks its branch, and where it last finished.
+     *
+     * The AI has no shares -- progressCountryResearch splits evenly and fills
+     * idle groups with the cheapest node -- and a player who set 80/20 must
+     * not be split 50/50 by somebody else's rule. Present only for countries a
+     * remote player has driven, so a single-player save is unchanged.
+     */
+    struct MpResearchPlan {
+        std::array<int, 3>  share{{100, 0, 0}};
+        std::array<bool, 3> autoAdvance{{false, false, false}};
+        std::array<int, 3>  lastNode{{-1, -1, -1}};
+    };
+    std::unordered_map<int, MpResearchPlan> m_countryResearchPlan;
+    /// researchAutoNext for any country, from a given finished node.
+    int researchAutoNextFor(int lastNode, int countryId) const;
+
+    /**
+     * A doctrine enacted or repealed on a client, waiting to be sent.
+     *
+     * Recorded at the moment of the click (enactPolicy / cancelPolicy) because
+     * the click is the only thing that knows it happened: the local list it
+     * changes is replaced wholesale by the next TurnState, so a diff against it
+     * would find nothing to send.
+     */
+    struct MpPolicyOp { bool enact = true; std::string id; int province = -1; std::string minority; };
+    std::vector<MpPolicyOp> m_mpPolicyOps;
+
+    /**
+     * A diplomatic request aimed at a REMOTE human, waiting for their answer.
+     *
+     * The AI used to answer these for them, because every "is this the player"
+     * test in processDiplomaticRequests named m_playerCountryId and a remote
+     * seat is never that. Now they are held here, sent with that seat's
+     * TurnState, and settled by the answer in its next orders -- or, if none
+     * comes within one turn, declined without prejudice.
+     */
+    struct MpInboxItem {
+        uint32_t    seq = 0;
+        std::string action, sourceIso, targetIso, subjectIso;
+        int         goal = WAR_GOAL_NONE;
+        bool        hasTerms = false;
+        CeasefireTerms terms;
+        int         turn = 0;     ///< m_turnNumber when it was raised
+    };
+    static nlohmann::json mpInboxItemJson(const MpInboxItem& it);
+    static bool mpInboxItemFromJson(const nlohmann::json& e, MpInboxItem& it);
+    std::unordered_map<int, std::vector<MpInboxItem>> m_mpInbox;   ///< host, by target cid
+    uint32_t m_mpInboxSeq = 0;
+    /// Host: settle one request on behalf of `answerer`. `timedOut` is the
+    /// neutral decline -- nothing said, and a call to arms keeps the alliance.
+    void applyDiplomaticAnswer(int answerer, const MpInboxItem& item, bool accept,
+                               int statedReason, bool timedOut = false);
+    /// Host: what a seat has been asked and not yet answered, for its TurnState.
+    nlohmann::json mpInboxJsonFor(int countryId) const;
+    /// Host: requests nobody answered in time. After orders, before processTurn.
+    void mpExpireInbox(const std::unordered_map<int, bool>& aiPlays);
+    /// Client: a request the host forwarded, as the popup a local player gets.
+    void mpTakeInbox(const nlohmann::json& inbox);
+    /// The popup half of processDiplomaticRequests' request-to-player branch,
+    /// shared with the client. `seq` is 0 for a local request.
+    void pushDiplomaticRequestPopup(const PendingDiplomaticAction& da,
+                                    const CeasefireTerms& terms, uint32_t seq);
+    struct MpDiploAnswer { uint32_t seq = 0; bool accept = false; int reason = 0; };
+    std::vector<MpDiploAnswer> m_mpDiploAnswers;     ///< client, sent with the next orders
+    std::unordered_set<uint32_t> m_mpInboxShown;     ///< client, already a popup
+
+    /**
+     * Whether `src` may start `action` with `tgt` -- the rules the diplomacy
+     * panel draws its buttons from, as one function, so the host refuses over
+     * the wire exactly what the panel would not have offered.
+     */
+    std::vector<std::string> diploActionsOffered(int src, int tgt) const;
+    bool diploActionAllowed(int src, int tgt, const std::string& action, std::string* why) const;
+
+    /**
+     * Client: copy the host's rows for MY country into my player globals --
+     * budgets, research groups, points. The host is the one that resolves, so
+     * whatever it decided (a bankruptcy cutting the budget, a node finishing)
+     * has to reach the sliders the player is looking at.
+     */
+    void mpMirrorOwnCountryRows(const nlohmann::json& state);
+    /// The turn the mirror last ran for: a second TurnState for the same turn
+    /// (a resync) must not wipe choices the player has made since.
+    int m_mpMirroredTurn = -1;
+    /// Client: forget what was sent once the turn it was for has resolved.
+    void mpClearSentChoices();
+    /// The parts of the above a save has to keep: the research plans and the
+    /// extra groups of the countries remote players drive, and the unanswered
+    /// requests. Written into state.json; see mpTurnStatePayload for which of
+    /// them a TurnState leaves out.
+    void mpWriteChoiceState(nlohmann::json& j) const;
+    void mpReadChoiceState(const nlohmann::json& j);
 
     class TurnRunner* m_mpTurns = nullptr;
     /** Set once this client's orders are in; cleared when a delta lands. */

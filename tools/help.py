@@ -115,6 +115,9 @@ GROUPS = [
         # A fresh Linux VM (Oracle's free Arm box) into an always-on server
         # with its own language model (docs/hosting-on-oracle.md).
         "server_box.sh",
+        # Puts a version on the Render tournament server -- a release tag, a
+        # server hotfix with no release, or a rollback (docs/hosting-on-render.md).
+        "deploy_tournament.sh",
     ]),
     ("Qualifying a platform", [
         "qualify.sh", "qualify_docker.sh",

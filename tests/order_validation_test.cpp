@@ -32,6 +32,8 @@
 #include "../src/net/NetProtocol.h"
 #include "../src/net/TurnRunner.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -264,6 +266,306 @@ struct OrderValidationTest {
               "and with no world at all there is nothing to apply it to");
     }
 
+    /// A country with no treaty, war or claim against `cid` -- the safe target
+    /// for an overture that has to be legal before anything else is tested.
+    int strangerTo(int cid) const {
+        const Country* me = game.m_countries.getCountry(cid);
+        for (const auto& [other, c] : game.m_countries.getAll()) {
+            if (other <= 0 || other >= 65530 || other == cid) continue;
+            if (!ownedProvince(other)) continue;
+            if (game.diploActionAllowed(cid, other, "request_nap", nullptr) &&
+                !game.hasRelation(me->isoA3, c.isoA3, &CountryRelation::war))
+                return other;
+        }
+        return 0;
+    }
+    std::string isoOf(int cid) const {
+        const Country* c = game.m_countries.getCountry(cid);
+        return c ? c->isoA3 : std::string();
+    }
+    int nodeIndex(const std::string& id) const {
+        for (int i = 0; i < (int)game.m_researchNodes.size(); ++i)
+            if (game.m_researchNodes[i].id == id) return i;
+        return -1;
+    }
+    int pendingFrom(const std::string& iso, const std::string& action) const {
+        int n = 0;
+        for (const auto& da : game.m_pendingDiplomaticActions)
+            if (da.sourceIso == iso && da.action == action) ++n;
+        return n;
+    }
+
+    /**
+     * What a remote player decides about their country -- research, budgets,
+     * doctrines, diplomacy, disclosure, districts, claims, answers -- arrives
+     * in the same payload as their orders now (Game_MpChoices.cpp), and every
+     * one of those keys is somebody else's bytes. Each section gets the lie a
+     * modified client would tell first, and an honest case after it, so that
+     * a refusal that refused everything cannot pass for a fix.
+     */
+    void choicesOverTheWire(int cid) {
+        printf("\n== the choices that are not orders ==\n");
+        // The ISO lookup is built by a load phase this map-only fixture skips,
+        // and every overture names its target by ISO.
+        game.rebuildIsoIndex();
+        const std::string me = isoOf(cid);
+        const int other = strangerTo(cid);
+        check(other != 0, "found a country with no treaty with ours");
+        if (!other) return;
+        const std::string them = isoOf(other);
+
+        // ── AN OLD CLIENT CHANGES NOTHING ──
+        //
+        // The rule the format rests on: a key that is absent leaves the host's
+        // state alone. A client from before these keys existed sends none of
+        // them, and its country must not be reset to anything.
+        {
+            game.m_countryResearchAllocation[cid] = 0.17f;
+            game.m_countryPacification[cid] = 0.03f;
+            game.m_countryDisclosure[cid] = 1u;
+            const int act = game.m_countryResearchActive.count(cid) ? game.m_countryResearchActive[cid] : -1;
+            const size_t policies = game.m_activePolicies.size();
+            const size_t pending = game.m_pendingDiplomaticActions.size();
+            const auto districts = game.m_districts[cid].size();
+            const auto claims = game.m_claims[me].size();
+            apply(cid, "{\"pendingUpgrades\":[],\"marker\":\"old client\"}");
+            apply(cid, "{}");
+            check(game.m_countryResearchAllocation[cid] == 0.17f &&
+                  game.m_countryPacification[cid] == 0.03f,
+                  "an old payload leaves the budgets where they were");
+            check((game.m_countryResearchActive.count(cid) ? game.m_countryResearchActive[cid] : -1) == act,
+                  "and the research project");
+            check(game.m_countryDisclosure[cid] == 1u, "and what the country publishes");
+            check(game.m_activePolicies.size() == policies &&
+                  game.m_pendingDiplomaticActions.size() == pending &&
+                  game.m_districts[cid].size() == districts && game.m_claims[me].size() == claims,
+                  "and its doctrines, diplomacy, districts and claims");
+        }
+
+        // ── BUDGETS ──
+        {
+            game.m_countryResearchAllocation[cid] = 0.10f;
+            apply(cid, "{\"budgets\":{\"research\":1e400}}");
+            check(std::isfinite(game.m_countryResearchAllocation[cid]) &&
+                  game.m_countryResearchAllocation[cid] == 0.10f,
+                  "an infinite research budget is refused, not stored");
+            apply(cid, "{\"budgets\":{\"research\":-0.5,\"pacification\":7}}");
+            check(game.m_countryResearchAllocation[cid] == 0.10f,
+                  "a negative one is refused");
+            check(game.m_countryPacification[cid] <= 1.0f, "and so is 700% pacification");
+            apply(cid, "{\"budgets\":{\"research\":1.0,\"pacification\":0}}");
+            const CountryIncomeSnapshot cs = game.computeCountryIncome(cid);
+            check(game.m_countryResearchAllocation[cid] <= Game::researchAllocationCap(cs, 0.0f) + 1e-6f,
+                  "100% research is held to the cap the slider draws");
+            apply(cid, "{\"budgets\":{\"research\":0.0,\"pacification\":0.0}}");
+            check(game.m_countryResearchAllocation[cid] == 0.0f && game.m_countryPacification[cid] == 0.0f,
+                  "and an honest budget is taken as sent");
+        }
+
+        // ── RESEARCH ──
+        {
+            game.m_scriptResearchGroups[cid] = 1;           // one group, whatever the economy says
+            auto& done = game.m_countryResearched[cid];
+            // Something it has already finished, and something whose
+            // prerequisites it has not.
+            std::string finished, locked, open;
+            for (const ResearchNode& n : game.m_researchNodes) {
+                if (finished.empty() && done.count(n.id)) finished = n.id;
+                if (locked.empty() && !done.count(n.id) && !game.isNodeAvailableFor(n, cid) &&
+                    !n.deps.empty())
+                    locked = n.id;
+                if (open.empty() && !done.count(n.id) && game.isNodeAvailableFor(n, cid)) open = n.id;
+            }
+            if (finished.empty()) { done.insert("ind1"); finished = "ind1"; }
+            check(!locked.empty() && !open.empty(), "found a locked node and an open one");
+            game.m_countryResearchActive[cid] = -1;
+            apply(cid, "{\"research\":[{\"node\":\"" + finished + "\",\"share\":100}]}");
+            check(game.m_countryResearchActive[cid] == -1, "a node already researched is refused");
+            apply(cid, "{\"research\":[{\"node\":\"" + locked + "\"}]}");
+            check(game.m_countryResearchActive[cid] == -1,
+                  "a node whose prerequisites are not met is refused");
+            apply(cid, "{\"research\":[{\"node\":\"no_such_node\"}]}");
+            check(game.m_countryResearchActive[cid] == -1, "a node that does not exist is refused");
+            // A second group the country cannot run, and a fourth that no
+            // country can.
+            apply(cid, "{\"research\":[{\"node\":\"\"},{\"node\":\"" + open +
+                       "\"},{\"node\":\"\"},{\"node\":\"" + open + "\"}]}");
+            const auto& ex = game.m_countryResearchExtra[cid];
+            check(ex[0].activeNode == -1 && ex[1].activeNode == -1,
+                  "a group the country has not unlocked is refused (and a 4th is not read)");
+            apply(cid, "{\"research\":[{\"node\":\"" + open + "\",\"share\":100,\"auto\":true}]}");
+            check(game.m_countryResearchActive[cid] == nodeIndex(open),
+                  "an open node in an unlocked group IS accepted");
+            // Two groups, one node.
+            game.m_scriptResearchGroups[cid] = 2;
+            apply(cid, "{\"research\":[{\"node\":\"" + open + "\"},{\"node\":\"" + open + "\"}]}");
+            check(game.m_countryResearchActive[cid] == nodeIndex(open) &&
+                  game.m_countryResearchExtra[cid][0].activeNode != nodeIndex(open),
+                  "the same node in two groups is refused for the second");
+            apply(cid, "{\"research\":[{\"node\":\"" + open + "\",\"share\":300}]}");
+            const auto& plan = game.m_countryResearchPlan[cid];
+            check(plan.share[0] + plan.share[1] == 100, "shares are refused past 100 and add up to 100");
+            game.m_scriptResearchGroups.erase(cid);
+        }
+
+        // ── DOCTRINES ──
+        {
+            auto has = [&](const std::string& id) { return game.modCountryHasPolicy(cid, id); };
+            std::string blocked;
+            std::vector<std::string> open;
+            for (const Policy& p : game.m_allPolicies) {
+                if (has(p.id)) continue;
+                if (!game.canCountryEnactPolicy(cid, p)) { if (blocked.empty()) blocked = p.id; continue; }
+                bool clash = false;
+                for (const std::string& o : open) if (game.policiesConflict(o, p.id)) clash = true;
+                if (!clash && open.size() < 4) open.push_back(p.id);
+            }
+            if (!blocked.empty()) {
+                apply(cid, "{\"policies\":[{\"op\":\"enact\",\"id\":\"" + blocked + "\"}]}");
+                check(!has(blocked), "a doctrine the country does not qualify for is refused");
+            }
+            apply(cid, "{\"policies\":[{\"op\":\"enact\",\"id\":\"martian_law\"}]}");
+            check(!has("martian_law"), "a doctrine that does not exist is refused");
+            // Plenty of money, so price is not what stops the fourth.
+            game.m_countries.getAll()[cid].treasury = 1e7;
+            if (open.size() == 4) {
+                std::string ops;
+                for (const std::string& id : open)
+                    ops += std::string(ops.empty() ? "" : ",") + "{\"op\":\"enact\",\"id\":\"" + id + "\"}";
+                apply(cid, "{\"policies\":[" + ops + "]}");
+                int n = 0;
+                for (const std::string& id : open) n += has(id) ? 1 : 0;
+                check(n >= 1 && n <= 3, "four enactments in one turn: at most three are taken");
+                check(has(open[0]), "and an honest one is enacted");
+                apply(cid, "{\"policies\":[{\"op\":\"cancel\",\"id\":\"" + open[0] + "\"}]}");
+                // Repealed means marked: the row leaves the list at the turn's
+                // clean-up, which this fixture never runs.
+                bool live = false;
+                for (const ActivePolicy& ap : game.m_activePolicies)
+                    if (ap.countryId == cid && ap.policyId == open[0] && ap.turnsRemaining != -1) live = true;
+                check(!live, "and can be repealed");
+            } else {
+                printf("  -- fewer than four doctrines open to this country; the cap is not tested\n");
+            }
+        }
+
+        // ── DIPLOMACY ──
+        {
+            game.m_pendingDiplomaticActions.clear();
+            apply(cid, "{\"diplomacy\":[{\"action\":\"apply_ceasefire\",\"target\":\"" + them + "\"},"
+                       "{\"action\":\"apply_trade\",\"target\":\"" + them + "\"},"
+                       "{\"action\":\"cancel\",\"target\":\"" + them + "\"}]}");
+            check(game.m_pendingDiplomaticActions.empty(),
+                  "the bookkeeping halves of a deal are never taken from a client");
+            apply(cid, "{\"diplomacy\":[{\"action\":\"request_ceasefire\",\"target\":\"" + them + "\"}]}");
+            check(game.m_pendingDiplomaticActions.empty(), "nor a ceasefire with a country it is not at war with");
+            const int notMine = foreignProvince(cid);
+            apply(cid, "{\"diplomacy\":[{\"action\":\"propose_trade\",\"target\":\"" + them +
+                       "\",\"terms\":{\"ourProvs\":[" + std::to_string(notMine) + "]}}]}");
+            check(game.m_pendingDiplomaticActions.empty(), "nor a trade ceding a province that is not ours");
+            apply(cid, "{\"diplomacy\":[{\"action\":\"declare_war\",\"target\":\"" + them +
+                       "\",\"goal\":999}]}");
+            check(game.m_pendingDiplomaticActions.empty(), "nor a war goal that does not exist");
+            apply(cid, "{\"diplomacy\":[{\"action\":\"request_nap\",\"target\":\"" + them +
+                       "\",\"source\":\"" + them + "\"}]}");
+            check(pendingFrom(me, "request_nap") == 1 && pendingFrom(them, "request_nap") == 0,
+                  "an honest request is queued, from OUR country whatever the client says");
+            game.m_pendingDiplomaticActions.clear();
+        }
+
+        // ── DISCLOSURE, CLAIMS ──
+        {
+            apply(cid, "{\"disclosure\":4294967295}");
+            check((game.m_countryDisclosure[cid] & ~0xFu) == 0u && game.m_countryDisclosure[cid] == 0xFu,
+                  "disclosure keeps only the bits this world offers");
+            apply(cid, "{\"claims\":{\"add\":[" + std::to_string(mine(cid)) + "]}}");
+            auto c = game.m_claims.find(me);
+            check(c == game.m_claims.end() ||
+                  std::find(c->second.begin(), c->second.end(), mine(cid)) == c->second.end(),
+                  "a claim on our own ground is refused");
+            const int theirs = ownedProvince(other);
+            apply(cid, "{\"claims\":{\"add\":[" + std::to_string(theirs) + "]}}");
+            c = game.m_claims.find(me);
+            check(c != game.m_claims.end() &&
+                  std::find(c->second.begin(), c->second.end(), theirs) != c->second.end(),
+                  "and a claim on somebody else's is staked");
+            apply(cid, "{\"claims\":{\"drop\":[" + std::to_string(theirs) + "]}}");
+            c = game.m_claims.find(me);
+            check(c == game.m_claims.end() ||
+                  std::find(c->second.begin(), c->second.end(), theirs) == c->second.end(),
+                  "and dropped again");
+        }
+
+        // ── DISTRICTS: A PARTITION OR NOTHING ──
+        {
+            std::vector<int> owned;
+            for (const auto& [pid, p] : game.m_provinces.getAllProvinces())
+                if (p.countryId == cid) owned.push_back(pid);
+            std::sort(owned.begin(), owned.end());
+            game.m_districts.erase(cid);
+            game.ensureDefaultDistrict(cid);
+            const auto before = game.m_districts[cid].size();
+            auto list = [](const std::vector<int>& v) {
+                std::string s;
+                for (int p : v) s += (s.empty() ? "" : ",") + std::to_string(p);
+                return s;
+            };
+            if (owned.size() >= 2) {
+                apply(cid, "{\"districts\":[{\"id\":1,\"name\":\"Half\",\"provinces\":[" +
+                           std::to_string(owned[0]) + "]}]}");
+                check(game.m_districts[cid].size() == before &&
+                      game.m_districts[cid][0].provinces.size() == owned.size(),
+                      "districts that leave provinces out are refused whole");
+                apply(cid, "{\"districts\":[{\"id\":1,\"name\":\"All\",\"provinces\":[" + list(owned) +
+                           "," + std::to_string(foreignProvince(cid)) + "]}]}");
+                check(game.m_districts[cid][0].name != "All", "and so are districts holding foreign ground");
+                apply(cid, "{\"districts\":[{\"id\":1,\"name\":\"A\",\"provinces\":[" + list(owned) +
+                           "]},{\"id\":1,\"name\":\"B\",\"provinces\":[]}]}");
+                check(game.m_districts[cid][0].name != "A", "and two districts with one id");
+                std::vector<int> rest(owned.begin() + 1, owned.end());
+                apply(cid, "{\"districts\":[{\"id\":1,\"name\":\"East\",\"share\":60,\"provinces\":[" +
+                           std::to_string(owned[0]) + "]},{\"id\":2,\"name\":\"West\",\"share\":40,"
+                           "\"provinces\":[" + list(rest) + "]}]}");
+                check(game.m_districts[cid].size() == 2 && game.m_districts[cid][0].name == "East",
+                      "and an honest partition is installed");
+            }
+        }
+
+        // ── ANSWERS, AND SILENCE ──
+        {
+            Game::MpInboxItem item;
+            item.seq = 4242;
+            item.action = "request_nap";
+            item.sourceIso = them;
+            item.targetIso = me;
+            game.m_mpInbox[cid] = {item};
+            apply(cid, "{\"answers\":[{\"seq\":999999,\"accept\":true}]}");
+            check(game.m_mpInbox[cid].size() == 1 &&
+                  !game.hasRelation(me, them, &CountryRelation::nonAggression),
+                  "an answer to something never asked is ignored");
+            apply(cid, "{\"answers\":[{\"seq\":4242,\"accept\":true}]}");
+            check(game.m_mpInbox[cid].empty() && game.hasRelation(me, them, &CountryRelation::nonAggression),
+                  "an answer to what was asked settles it");
+            game.m_relations[me][them].nonAggression = false;
+            game.m_relations[them][me].nonAggression = false;
+
+            // A call to arms nobody answers lapses, and the alliance stands.
+            game.m_relations[me][them].alliance = true;
+            game.m_relations[them][me].alliance = true;
+            item.seq = 4243;
+            item.action = "call_to_arms";
+            item.subjectIso = isoOf(anyCountry());
+            game.m_mpInbox[cid] = {item};
+            game.mpExpireInbox({{cid, false}});
+            check(game.m_mpInbox.empty(), "an unanswered request lapses after a turn");
+            check(game.hasRelation(me, them, &CountryRelation::alliance),
+                  "and an unanswered call to arms keeps the alliance");
+            game.m_relations[me][them].alliance = false;
+            game.m_relations[them][me].alliance = false;
+        }
+    }
+    int mine(int cid) const { return ownedProvince(cid); }
+
     void run() {
         hostedGameSettings();
         turnsArrivingFromTheHost();
@@ -275,6 +577,7 @@ struct OrderValidationTest {
         const int mine = ownedProvince(cid);
         check(mine != 0, "found a province it owns");
         if (!cid || !mine) return;
+        choicesOverTheWire(cid);
 
         // ── MONUMENTS OVER THE WIRE ──
         //

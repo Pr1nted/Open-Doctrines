@@ -1263,6 +1263,9 @@ set(GAME_SOURCES
     src/Game_Fog.cpp
     src/Game_Spy.cpp
     src/Game_FogNet.cpp
+    # What a remote player decides about their country, and the diplomacy
+    # they are asked to answer. See its header comment.
+    src/Game_MpChoices.cpp
     src/Game_AITrain.cpp
     src/Game_Screenshots.cpp
     src/Game_OjhFps.cpp

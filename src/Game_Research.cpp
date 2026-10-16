@@ -171,6 +171,68 @@ void Game::progressCountryResearch(int countryId) {
     int& pts = m_countryResearchPoints[countryId];
     pts = std::min(10000, pts + rp);
 
+    // ── A REMOTE PLAYER'S RESEARCH IS THEIR PLAN, NOT THE AI'S RULE ──
+    //
+    // Below, an idle extra group is handed the cheapest node going and the
+    // points are split evenly, because the AI has no say over either. A person
+    // at a client does: they picked what each group works on and how the
+    // budget divides, and the host's job is to carry that out -- not to fill a
+    // group they left idle on purpose, and not to turn 80/20 into 50/50. Their
+    // choices arrive in the orders (mpApplyChoices); this spends the points
+    // the way the local player's addResearchPoints does, by share over the
+    // groups that are working, and walks a branch only where they asked.
+    if (m_mpHumanCids.count(countryId)) {
+        const int unlocked = std::clamp(researchGroupsUnlocked(countryId), 1, RESEARCH_GROUPS_MAX);
+        auto planIt = m_countryResearchPlan.find(countryId);
+        MpResearchPlan* plan = planIt != m_countryResearchPlan.end() ? &planIt->second : nullptr;
+        auto& extra = m_countryResearchExtra[countryId];
+        if (!m_countryResearchActive.count(countryId)) m_countryResearchActive[countryId] = -1;
+        int& active0 = m_countryResearchActive[countryId];
+        int& invested0 = m_countryResearchInvested[countryId];
+        auto nodeOf = [&](int g) -> int& { return g == 0 ? active0 : extra[(size_t)g - 1].activeNode; };
+        auto investedOf = [&](int g) -> int& { return g == 0 ? invested0 : extra[(size_t)g - 1].invested; };
+        auto& done = m_countryResearched[countryId];
+        auto valid = [&](int idx) { return idx >= 0 && idx < (int)m_researchNodes.size(); };
+        int denom = 0;
+        for (int g = 0; g < unlocked; ++g) {
+            int& n = nodeOf(g);
+            if (valid(n) && done.count(m_researchNodes[n].id)) { n = -1; investedOf(g) = 0; }
+            if (!valid(n)) continue;
+            denom += std::max(1, plan ? plan->share[(size_t)g] : 1);
+        }
+        if (denom <= 0) return;
+        int budget[RESEARCH_GROUPS_MAX] = {};
+        for (int g = 0; g < unlocked; ++g)
+            if (valid(nodeOf(g)))
+                budget[g] = (int)((long long)pts * std::max(1, plan ? plan->share[(size_t)g] : 1) / denom);
+        for (int g = 0; g < unlocked; ++g) {
+            int& n = nodeOf(g);
+            if (!valid(n)) continue;
+            const ResearchNode& node = m_researchNodes[n];
+            int& inv = investedOf(g);
+            const int spend = std::min({budget[g], pts, node.cost - inv});
+            if (spend > 0) { inv += spend; pts -= spend; }
+            if (inv < node.cost) continue;
+            done.insert(node.id);
+            const int finished = n;
+            n = -1;
+            inv = 0;
+            if (m_config.aiDebug) {
+                const Country* c = m_countries.getCountry(countryId);
+                printf("[RESEARCH] %s completed %s (remote player)\n",
+                       c ? c->name.c_str() : "?", node.id.c_str());
+            }
+            if (!plan) continue;
+            plan->lastNode[(size_t)g] = finished;
+            if (!plan->autoAdvance[(size_t)g]) continue;
+            const int next = researchAutoNextFor(finished, countryId);
+            bool taken = false;
+            for (int k = 0; k < unlocked; ++k) if (k != g && nodeOf(k) == next) taken = true;
+            if (next >= 0 && !taken) n = next;
+        }
+        return;
+    }
+
     int& active = m_countryResearchActive.count(countryId)
                       ? m_countryResearchActive[countryId]
                       : (m_countryResearchActive[countryId] = -1);
@@ -976,6 +1038,47 @@ int Game::researchGroupPoints(int groupIndex, int totalPoints) const {
     if (m_researchGroups[groupIndex].activeNode < 0) return 0;
     const int mine = std::max(1, m_researchGroups[groupIndex].sharePct);
     return (int)((long long)totalPoints * mine / denom);
+}
+
+// ── WHAT THE BUDGET SLIDERS WILL LET YOU SPEND ──
+//
+// Written out at each slider, and now also needed on a multiplayer host,
+// which receives a remote player's budget as two numbers and has to give it
+// no more room than that player's own screen would have. One copy, so the two
+// cannot disagree; the arithmetic is the sliders' exactly, in their order.
+float Game::researchAllocationCap(const CountryIncomeSnapshot& cs, float pacAlloc) {
+    float baseExp2 = cs.armyExpenses + cs.navyExpenses + cs.policyCosts + cs.minorityCosts;
+    float pacAmount2 = cs.total * pacAlloc;
+    float maxAllocFrac = (cs.total > baseExp2 + pacAmount2) ? (cs.total - baseExp2 - pacAmount2) / cs.total : 0;
+    if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
+    return maxAllocFrac;
+}
+
+float Game::pacificationAllocationCap(const CountryIncomeSnapshot& cs, float researchAlloc) {
+    float researchAmt = cs.total * researchAlloc;
+    float maxAffordPac = std::max(0.0f, cs.total - cs.armyExpenses - cs.navyExpenses - cs.policyCosts - cs.minorityCosts - researchAmt);
+    float maxAllocFrac = (cs.total > 0) ? maxAffordPac / cs.total : 0;
+    if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
+    return maxAllocFrac;
+}
+
+// The same continuation for any country, reading ITS research rather than the
+// player-global node flags researchAutoNext reads. A remote player's group
+// finishes on the host, where those flags belong to somebody else.
+int Game::researchAutoNextFor(int last, int countryId) const {
+    if (last < 0 || last >= (int)m_researchNodes.size()) return -1;
+    const ResearchNode& from = m_researchNodes[last];
+    auto done = m_countryResearched.find(countryId);
+    int found = -1;
+    for (size_t i = 0; i < m_researchNodes.size(); ++i) {
+        const ResearchNode& n = m_researchNodes[i];
+        if (n.category != from.category || n.subcategory != from.subcategory) continue;
+        if (done != m_countryResearched.end() && done->second.count(n.id)) continue;
+        if (!isNodeAvailableFor(n, countryId)) continue;
+        if (found >= 0) return -1;          // a decision, not a continuation
+        found = (int)i;
+    }
+    return found;
 }
 
 int Game::researchAutoNext(int groupIndex, int countryId) const {
@@ -1853,11 +1956,9 @@ void Game::drawResearchTab() {
     }
 
     auto cs2 = computeCountryIncome(m_playerCountryId);
-    // Compute max affordable allocation (accounting for pacification budget)
-    float baseExp2 = cs2.armyExpenses + cs2.navyExpenses + cs2.policyCosts + cs2.minorityCosts;
-    float pacAmount2 = cs2.total * m_pacificationAllocation;
-    float maxAllocFrac = (cs2.total > baseExp2 + pacAmount2) ? (cs2.total - baseExp2 - pacAmount2) / cs2.total : 0;
-    if (maxAllocFrac > 1.0f) maxAllocFrac = 1.0f;
+    // Compute max affordable allocation (accounting for pacification budget).
+    // The same cap the multiplayer host applies to a remote player's budget.
+    float maxAllocFrac = researchAllocationCap(cs2, m_pacificationAllocation);
     if (m_researchAllocation > maxAllocFrac) m_researchAllocation = maxAllocFrac;
     int sliderX = 300;
     int sliderY = barY2 + 30;

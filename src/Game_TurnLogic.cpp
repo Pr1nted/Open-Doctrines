@@ -1442,13 +1442,19 @@ bool Game::warGoalIsContradicted(int observerCid, int attackerCid,
 }
 
 void Game::tellRefusal(const std::string& toIso, int statedReason) {
+    tellRefusal(m_playerCountryId, toIso, statedReason);
+}
+
+void Game::tellRefusal(int fromCid, const std::string& toIso, int statedReason) {
     const int toCid = cidForIso(toIso);
-    if (toCid < 0 || m_playerCountryId <= 0) return;
-    const Country* pc = m_countries.getCountry(m_playerCountryId);
+    if (toCid < 0 || fromCid <= 0) return;
+    const Country* pc = m_countries.getCountry(fromCid);
     if (pc) noteRefusalStatement(pc->isoA3, toIso, statedReason);
-    if (m_ai) m_ai->noteRefusalHeard(toCid, m_playerCountryId, statedReason);
+    if (m_ai) m_ai->noteRefusalHeard(toCid, fromCid, statedReason);
     if (m_config.aiDebug)
-        printf("[DIPLO] Player -> %s: %s\n", toIso.c_str(),
+        printf("[DIPLO] %s -> %s: %s\n",
+               fromCid == m_playerCountryId ? "Player" : (pc ? pc->isoA3.c_str() : "?"),
+               toIso.c_str(),
                refusalText(statedReason) ? refusalText(statedReason) : "(no reason given)");
 }
 
@@ -5231,7 +5237,9 @@ void Game::decayWarWeariness() {
 // What a diplomatic request was ASKING FOR, in words a player recognises.
 // Returns nullptr for anything that is not one of the three proposals, which
 // is what keeps break_* and the ceasefire flow out of these notifications.
-static const char* diploRequestPhrase(const std::string& action) {
+// Not static: the multiplayer host words a remote player's answer with it
+// too (Game_MpChoices.cpp).
+const char* diploRequestPhrase(const std::string& action) {
     // TRANSLATED HERE, because these leave as ARGUMENTS. The sentence around
     // them was translated and they were not, so a Ukrainian player was told
     // "Verrick прийняли вашу пропозицію: a non-aggression pact".
@@ -5464,6 +5472,66 @@ void Game::issueCallsToArms(const std::string& attackerIso, const std::string& d
         printf("[WAR] %s calls its ally %s to arms against %s\n",
                defenderIso.c_str(), iso.c_str(), attackerIso.c_str());
     }
+}
+
+// === diploActionsOffered ===
+// What one country may start with another, given where the pair stands.
+//
+// These were the province panel's button list and nothing else, so the panel
+// was the only thing that knew a ceasefire needs a war or that an ally cannot
+// be asked to become an ally. A multiplayer client sends its diplomacy as
+// words now, and the host has to refuse exactly what the panel would not
+// have drawn -- with the rule written once, so the two cannot drift. The
+// order is the panel's order, because the panel lays its buttons out from it.
+std::vector<std::string> Game::diploActionsOffered(int src, int tgt) const {
+    std::vector<std::string> out;
+    if (src <= 0 || tgt <= 0 || src == tgt || tgt == UNC_CID || tgt == BLC_CID ||
+        tgt == SPC_CID || src == SPC_CID)
+        return out;
+    const Country* sc = m_countries.getCountry(src);
+    const Country* tc = m_countries.getCountry(tgt);
+    if (!sc || !tc) return out;
+    bool hasWar = false, hasAlly = false, hasGuar = false, hasNonAgg = false;
+    // Our side of the pair first, and theirs only if ours says nothing --
+    // the panel's reading, kept as it was.
+    auto readPair = [&](const std::string& a, const std::string& b) {
+        auto r = m_relations.find(a);
+        if (r == m_relations.end()) return;
+        auto st = r->second.find(b);
+        if (st == r->second.end()) return;
+        hasWar = st->second.war;
+        hasAlly = st->second.alliance;
+        hasGuar = st->second.guarantee;
+        hasNonAgg = st->second.nonAggression;
+    };
+    readPair(sc->isoA3, tc->isoA3);
+    if (!hasWar && !hasAlly && !hasGuar && !hasNonAgg) readPair(tc->isoA3, sc->isoA3);
+
+    if (hasAlly) {
+        out = {"call_to_arms", "break_alliance", "add_guarantee"};
+    } else if (hasGuar) {
+        out = {"call_to_arms", "break_guarantee", "request_alliance"};
+    } else if (hasWar) {
+        out = {"request_ceasefire"};
+    } else {
+        out.push_back(hasNonAgg ? "break_nap" : "request_nap");
+        out.push_back("request_alliance");
+        out.push_back("request_guarantee");
+        out.push_back("propose_trade");
+        if (!hasNonAgg) out.push_back("declare_war");
+    }
+    return out;
+}
+
+bool Game::diploActionAllowed(int src, int tgt, const std::string& action,
+                              std::string* why) const {
+    const std::vector<std::string> offered = diploActionsOffered(src, tgt);
+    if (std::find(offered.begin(), offered.end(), action) == offered.end()) {
+        if (why) *why = "not offered between these two countries";
+        return false;
+    }
+    if (why) why->clear();
+    return true;
 }
 
 // === queueDiplomaticAction ===
@@ -5743,6 +5811,130 @@ void Game::repatriateStrandedArmies() {
     }
 }
 
+// === pushDiplomaticRequestPopup ===
+// What the local player is shown when somebody asks them for something: the
+// popup half of processDiplomaticRequests' request-to-player branch, lifted
+// out so a multiplayer client shows a request the host forwarded through the
+// same words and the same buttons. Nothing here changes the world -- the war
+// a declaration starts is the caller's to start, because on a client it has
+// already been started by the host.
+void Game::pushDiplomaticRequestPopup(const PendingDiplomaticAction& da,
+                                      const CeasefireTerms& terms, uint32_t seq) {
+    std::string playerIso;
+    if (const Country* pc = m_countries.getCountry(m_playerCountryId)) playerIso = pc->isoA3;
+    // Find requesting country ID
+    int reqCid = -1;
+    for (auto& [cid, c] : m_countries.getAll()) {
+        if (c.isoA3 == da.sourceIso) { reqCid = cid; break; }
+    }
+    std::string title;
+    const Country* srcC = m_countries.getCountry(reqCid);
+    std::string srcName = srcC ? srcC->name : da.sourceIso;
+
+    if (da.action == "request_ceasefire" || da.action == "propose_trade") {
+        const bool isTrade = (da.action == "propose_trade");
+        // Special flow: show terms in the popup.
+        // Three-turn flow:
+        //   Turn 1 (this): pop the popup up to the player and let them Accept/Reject.
+        //                 The action is ERASED by the caller (removed from `m_pendingDiplomaticActions`).
+        //                 The terms stay in `m_pendingCeasefireTerms` so cancel
+        //                 of the popup isn't required.
+        //   Turn 2 (after Accept): we re-add a `apply_ceasefire` action with turnsRemaining=1
+        //                 and store the accepted terms in `m_acceptedCeasefireTerms`.
+        //   Turn 3 (apply_ceasefire fires): we apply war=false, transfer provinces, etc.
+
+        // Build a brief summary
+        std::string summary;
+        summary += TextFormat(isTrade ? T("%s proposes a trade.\n")
+                                     : T("%s proposes a ceasefire.\n"),
+                              od::i18n::properName(srcName).c_str());
+        if (terms.ourMoney > 0)  summary += TextFormat(T("  Offers %d gold\n"), terms.ourMoney);
+        if (terms.theirMoney > 0) summary += TextFormat(T("  Demands %d gold\n"), terms.theirMoney);
+        // The goods, named by their own labels. Only in the goods
+        // economy do the arrays carry anything; a money game skips them.
+        if (m_goodsEconomy) {
+            for (int g = 0; g < GOOD_COUNT; ++g)
+                if (terms.ourGoods[g] > 0.5f)
+                    summary += TextFormat(T("  Offers %d %s\n"),
+                                          (int)terms.ourGoods[g], goodName(g));
+            for (int g = 0; g < GOOD_COUNT; ++g)
+                if (terms.theirGoods[g] > 0.5f)
+                    summary += TextFormat(T("  Demands %d %s\n"),
+                                          (int)terms.theirGoods[g], goodName(g));
+        }
+        if (!terms.ourProvs.empty()) summary += TextFormat(T("  Cedes %zu province(s)\n"), terms.ourProvs.size());
+        if (!terms.theirProvs.empty()) summary += TextFormat(T("  Demands %zu province(s)\n"), terms.theirProvs.size());
+        if (!terms.ourDropClaims.empty()) summary += TextFormat(T("  Drops %zu own claim(s)\n"), terms.ourDropClaims.size());
+        if (!terms.theirDropClaims.empty()) summary += TextFormat(T("  Demands you drop %zu claim(s)\n"), terms.theirDropClaims.size());
+        // Named in the summary line too, not only in the detail panel:
+        // this is the text a player skims before deciding to open it.
+        if (!terms.ourReleaseTag.empty())
+            summary += TextFormat(T("  Frees %s on %zu province(s)\n"),
+                                  od::i18n::properName(terms.ourReleaseTag).c_str(),
+                                  terms.ourReleaseProvs.size());
+        if (!terms.theirReleaseTag.empty())
+            summary += TextFormat(T("  Demands you free %s on %zu province(s)\n"),
+                                  od::i18n::properName(terms.theirReleaseTag).c_str(),
+                                  terms.theirReleaseProvs.size());
+        if (summary.back() == '\n') summary.pop_back();
+        pushPopup(PopupType::CEASEFIRE_REQUEST,
+                  isTrade ? T("Trade Offer") : T("Ceasefire Offer"), summary,
+                  reqCid, da.action, da.sourceIso, da.targetIso);
+        // Attach the terms to the popup entry so draw/update can show + apply them.
+        if (!m_popupQueue.empty()) {
+            m_popupQueue.back().terms = terms;
+            m_popupQueue.back().mpSeq = seq;
+        }
+        return;
+    }
+
+    // Turn it into a popup immediately (removed from queue)
+    PopupType pt = (da.action == "declare_war") ? PopupType::WAR_DECLARED : PopupType::DIPLOMATIC_REQUEST;
+    std::string msg2;
+    if (da.action == "declare_war") {
+        title = T("War Declared!");
+        // See the note on the player's own declaration above.
+        const std::string srcN = od::i18n::properName(srcName);
+        msg2 = playerIso.empty()
+             ? std::string(TextFormat(T("%s has declared war on %s!"),
+                                      srcN.c_str(), da.targetIso.c_str()))
+             : std::string(TextFormat(T("%s has declared war on you!"),
+                                      srcN.c_str()));
+        if (const char* why = warGoalText(da.statedGoal))
+            msg2 += std::string("\n\n") + TextFormat(T("They declare it %s."), why);
+        else
+            msg2 += std::string("\n\n") + T("They give no reason.");
+    } else if (da.action == "request_alliance") {
+        title = T("Alliance Request");
+        msg2 = TextFormat(T("%s proposes an alliance."),
+                          od::i18n::properName(srcName).c_str());
+    } else if (da.action == "request_guarantee") {
+        title = T("Guarantee Request");
+        msg2 = TextFormat(T("%s requests a mutual guarantee."),
+                          od::i18n::properName(srcName).c_str());
+    } else if (da.action == "request_nap") {
+        title = T("Non-Aggression Proposal");
+        msg2 = TextFormat(T("%s proposes a non-aggression pact."),
+                          od::i18n::properName(srcName).c_str());
+    } else if (da.action == "call_to_arms") {
+        int aggCid = cidForIso(da.subjectIso);
+        const Country* aggC = m_countries.getCountry(aggCid);
+        std::string aggName = aggC ? aggC->name : da.subjectIso;
+        title = T("Call to Arms");   // the one title that was not wrapped
+        msg2 = std::string(TextFormat(T("%s invokes your alliance against %s."),
+                                      od::i18n::properName(srcName).c_str(),
+                                      od::i18n::properName(aggName).c_str()))
+             + "\n" + T("Join the war, or refuse and the alliance ends.")
+             + "\n" + T("Joining will stir unrest at home.");
+    }
+    pushPopup(pt, title, msg2, reqCid, da.action, da.sourceIso, da.targetIso);
+    if (!m_popupQueue.empty()) {
+        if (da.action == "call_to_arms") m_popupQueue.back().subjectIso = da.subjectIso;
+        // A declaration needs no answer, so it carries no number to answer to.
+        if (da.action != "declare_war") m_popupQueue.back().mpSeq = seq;
+    }
+}
+
 void Game::processDiplomaticRequests() {
     // Get player ISO
     std::string playerIso;
@@ -5803,117 +5995,18 @@ void Game::processDiplomaticRequests() {
         // waits for that war could never pass.
         if (m_tutorialMode && isRequestToPlayer) { ++i; continue; }
         if (isRequestToPlayer) {
-            // Find requesting country ID
-            int reqCid = -1;
-            for (auto& [cid, c] : m_countries.getAll()) {
-                if (c.isoA3 == da.sourceIso) { reqCid = cid; break; }
-            }
-            std::string title, msg;
-            const Country* srcC = m_countries.getCountry(reqCid);
-            std::string srcName = srcC ? srcC->name : da.sourceIso;
-
-            if (da.action == "request_ceasefire" || da.action == "propose_trade") {
-                const bool isTrade = (da.action == "propose_trade");
-                // Special flow: show terms in the popup.
-                // Three-turn flow:
-                //   Turn 1 (this): pop the popup up to the player and let them Accept/Reject.
-                //                 The action is ERASED here (removed from `m_pendingDiplomaticActions`).
-                //                 The terms stay in `m_pendingCeasefireTerms` so cancel
-                //                 of the popup isn't required.
-                //   Turn 2 (after Accept): we re-add a `apply_ceasefire` action with turnsRemaining=1
-                //                 and store the accepted terms in `m_acceptedCeasefireTerms`.
-                //   Turn 3 (apply_ceasefire fires): we apply war=false, transfer provinces, etc.
-                std::string key = da.sourceIso + "|" + da.targetIso;
-                auto tit = m_pendingCeasefireTerms.find(key);
-                CeasefireTerms terms;
+            CeasefireTerms terms;
+            const bool isDeal = (da.action == "request_ceasefire" || da.action == "propose_trade");
+            if (isDeal) {
+                auto tit = m_pendingCeasefireTerms.find(da.sourceIso + "|" + da.targetIso);
                 if (tit != m_pendingCeasefireTerms.end()) terms = tit->second;
-
-                // Build a brief summary
-                std::string summary;
-                summary += TextFormat(isTrade ? T("%s proposes a trade.\n")
-                                             : T("%s proposes a ceasefire.\n"),
-                                      od::i18n::properName(srcName).c_str());
-                if (terms.ourMoney > 0)  summary += TextFormat(T("  Offers %d gold\n"), terms.ourMoney);
-                if (terms.theirMoney > 0) summary += TextFormat(T("  Demands %d gold\n"), terms.theirMoney);
-                // The goods, named by their own labels. Only in the goods
-                // economy do the arrays carry anything; a money game skips them.
-                if (m_goodsEconomy) {
-                    for (int g = 0; g < GOOD_COUNT; ++g)
-                        if (terms.ourGoods[g] > 0.5f)
-                            summary += TextFormat(T("  Offers %d %s\n"),
-                                                  (int)terms.ourGoods[g], goodName(g));
-                    for (int g = 0; g < GOOD_COUNT; ++g)
-                        if (terms.theirGoods[g] > 0.5f)
-                            summary += TextFormat(T("  Demands %d %s\n"),
-                                                  (int)terms.theirGoods[g], goodName(g));
-                }
-                if (!terms.ourProvs.empty()) summary += TextFormat(T("  Cedes %zu province(s)\n"), terms.ourProvs.size());
-                if (!terms.theirProvs.empty()) summary += TextFormat(T("  Demands %zu province(s)\n"), terms.theirProvs.size());
-                if (!terms.ourDropClaims.empty()) summary += TextFormat(T("  Drops %zu own claim(s)\n"), terms.ourDropClaims.size());
-                if (!terms.theirDropClaims.empty()) summary += TextFormat(T("  Demands you drop %zu claim(s)\n"), terms.theirDropClaims.size());
-                // Named in the summary line too, not only in the detail panel:
-                // this is the text a player skims before deciding to open it.
-                if (!terms.ourReleaseTag.empty())
-                    summary += TextFormat(T("  Frees %s on %zu province(s)\n"),
-                                          od::i18n::properName(terms.ourReleaseTag).c_str(),
-                                          terms.ourReleaseProvs.size());
-                if (!terms.theirReleaseTag.empty())
-                    summary += TextFormat(T("  Demands you free %s on %zu province(s)\n"),
-                                          od::i18n::properName(terms.theirReleaseTag).c_str(),
-                                          terms.theirReleaseProvs.size());
-                if (summary.back() == '\n') summary.pop_back();
-                pushPopup(PopupType::CEASEFIRE_REQUEST,
-                          isTrade ? T("Trade Offer") : T("Ceasefire Offer"), summary,
-                          reqCid, da.action, da.sourceIso, da.targetIso);
-                // Attach the terms to the popup entry so draw/update can show + apply them.
-                if (!m_popupQueue.empty()) m_popupQueue.back().terms = terms;
+            }
+            pushDiplomaticRequestPopup(da, terms, 0);
+            if (isDeal) {
                 m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
                 printf("[CEASEFIRE] Incoming offer from %s → player (pending review)\n", da.sourceIso.c_str());
                 continue;
             }
-
-            // Turn it into a popup immediately (removed from queue)
-            PopupType pt = (da.action == "declare_war") ? PopupType::WAR_DECLARED : PopupType::DIPLOMATIC_REQUEST;
-            std::string msg2;
-            if (da.action == "declare_war") {
-                title = T("War Declared!");
-                // See the note on the player's own declaration above.
-                const std::string srcN = od::i18n::properName(srcName);
-                msg2 = playerIso.empty()
-                     ? std::string(TextFormat(T("%s has declared war on %s!"),
-                                              srcN.c_str(), da.targetIso.c_str()))
-                     : std::string(TextFormat(T("%s has declared war on you!"),
-                                              srcN.c_str()));
-                if (const char* why = warGoalText(da.statedGoal))
-                    msg2 += std::string("\n\n") + TextFormat(T("They declare it %s."), why);
-                else
-                    msg2 += std::string("\n\n") + T("They give no reason.");
-            } else if (da.action == "request_alliance") {
-                title = T("Alliance Request");
-                msg2 = TextFormat(T("%s proposes an alliance."),
-                                  od::i18n::properName(srcName).c_str());
-            } else if (da.action == "request_guarantee") {
-                title = T("Guarantee Request");
-                msg2 = TextFormat(T("%s requests a mutual guarantee."),
-                                  od::i18n::properName(srcName).c_str());
-            } else if (da.action == "request_nap") {
-                title = T("Non-Aggression Proposal");
-                msg2 = TextFormat(T("%s proposes a non-aggression pact."),
-                                  od::i18n::properName(srcName).c_str());
-            } else if (da.action == "call_to_arms") {
-                int aggCid = cidForIso(da.subjectIso);
-                const Country* aggC = m_countries.getCountry(aggCid);
-                std::string aggName = aggC ? aggC->name : da.subjectIso;
-                title = T("Call to Arms");   // the one title that was not wrapped
-                msg2 = std::string(TextFormat(T("%s invokes your alliance against %s."),
-                                              od::i18n::properName(srcName).c_str(),
-                                              od::i18n::properName(aggName).c_str()))
-                     + "\n" + T("Join the war, or refuse and the alliance ends.")
-                     + "\n" + T("Joining will stir unrest at home.");
-            }
-            pushPopup(pt, title, msg2, reqCid, da.action, da.sourceIso, da.targetIso);
-            if (da.action == "call_to_arms" && !m_popupQueue.empty())
-                m_popupQueue.back().subjectIso = da.subjectIso;
             // War is not a request — it happens whether or not the player has
             // dismissed the popup yet. This used to be dropped entirely here.
             if (da.action == "declare_war")
@@ -5921,6 +6014,48 @@ void Game::processDiplomaticRequests() {
             m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
             printf("[DIPLO] Incoming request from %s → player: %s (pushed to popup queue)\n",
                    da.sourceIso.c_str(), da.action.c_str());
+            continue;
+        }
+
+        // ── A REQUEST TO A REMOTE HUMAN IS THEIRS TO ANSWER ──
+        //
+        // The same list as the branch above, for a seat a connected player
+        // holds on this host. Before this, every request aimed at one fell
+        // through to the AI's decideDiplomacy below -- because that seat is
+        // not m_playerCountryId -- so the AI accepted alliances and refused
+        // calls to arms on behalf of a person who was sitting right there.
+        // Held in m_mpInbox, sent with their TurnState, settled by the answer
+        // in their next orders (Game_MpChoices.cpp). Keyed on m_mpHumanCids,
+        // which is empty outside a hosted turn, so a single-player game never
+        // reaches it.
+        const int remoteTgt = isRequestToPlayer ? -1 : cidForIso(da.targetIso);
+        const bool isRequestToRemote = remoteTgt > 0 && remoteTgt != m_playerCountryId &&
+            m_mpHumanCids.count(remoteTgt) && da.sourceIso != da.targetIso
+            && (da.action == "request_alliance" || da.action == "request_guarantee"
+             || da.action == "request_nap" || da.action == "declare_war"
+             || da.action == "request_ceasefire" || da.action == "propose_trade"
+             || da.action == "call_to_arms");
+        if (isRequestToRemote) {
+            MpInboxItem item;
+            item.seq = ++m_mpInboxSeq;
+            item.action = da.action;
+            item.sourceIso = da.sourceIso;
+            item.targetIso = da.targetIso;
+            item.subjectIso = da.subjectIso;
+            item.goal = da.statedGoal;
+            item.turn = m_turnNumber;
+            if (da.action == "request_ceasefire" || da.action == "propose_trade") {
+                auto tit = m_pendingCeasefireTerms.find(da.sourceIso + "|" + da.targetIso);
+                if (tit != m_pendingCeasefireTerms.end()) { item.terms = tit->second; item.hasTerms = true; }
+            }
+            m_mpInbox[remoteTgt].push_back(item);
+            // A declaration is told, not asked: it happens now, exactly as it
+            // does to the local player.
+            if (da.action == "declare_war")
+                declareWar(da.sourceIso, da.targetIso, true, da.statedGoal);
+            m_pendingDiplomaticActions.erase(m_pendingDiplomaticActions.begin() + i);
+            printf("[MPINBOX] %s -> %s (cid %d): %s seq=%u\n", da.sourceIso.c_str(),
+                   da.targetIso.c_str(), remoteTgt, da.action.c_str(), item.seq);
             continue;
         }
 
