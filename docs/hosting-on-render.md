@@ -19,7 +19,7 @@ means.
 | "Render might restart a Free web service at any time" | A restart costs about a minute. A crash, or a stop that overran Render's 30 seconds, costs up to 6 minutes, until the dead instance's lock goes stale (`OD_SYNC_STALE_SECONDS`, with a heartbeat every 2 minutes). |
 | A redeploy starts the new instance before stopping the old one | The new one answers its health check at once and **waits**; Render then stops the old one, which saves, pushes and lets go; the new one carries on with the same code and every seat. Two servers never host the campaign at once. |
 | 5 GB of bandwidth a month, counting what the service sends itself | The campaign is pushed after each turn, on shutdown, and hourly **only if something changed** (the session token renews about twice a day). Players' traffic goes through the relay. |
-| 500 build minutes a month, 2-CPU builder | A build compiles the server: budget roughly 45-60 minutes per deploy. Deploy on release tags, not on every commit (`autoDeployTrigger: off`). |
+| 500 build minutes a month, 2-CPU builder | A build compiles the server, about 6 minutes. The service deploys the `tournament` branch only, so pushes to main cost nothing; see *Updating the server*. |
 
 ## What you need first
 
@@ -92,6 +92,24 @@ gh api -X PUT repos/<you>/od-campaign/contents/commands.txt -f branch=commands \
   -f message=start -f content="$(printf 'start\n' | base64)" \
   -f sha="$(gh api 'repos/<you>/od-campaign/contents/commands.txt?ref=commands' --jq .sha)"
 ```
+
+## Updating the server
+
+The service runs whatever the `tournament` branch points at, and redeploys
+whenever that branch moves. Pushes to `main` never reach it.
+
+```bash
+tools/deploy_tournament.sh --status          # what it runs, and how far main is ahead
+tools/deploy_tournament.sh v1.3.2b           # a release
+tools/deploy_tournament.sh <commit>          # a server fix, with no release
+tools/deploy_tournament.sh --rollback <ref>  # back to an earlier one
+```
+
+A server fix needs no tag and no client update: players share the protocol
+with the server, not its code. A change that alters what clients must run is a
+release. The script only moves forward unless told `--rollback`, and asks
+before it pushes. A deploy restarts the server; the turn clock carries on, and
+players reconnect by themselves within a minute or so.
 
 ## Before relying on the model
 

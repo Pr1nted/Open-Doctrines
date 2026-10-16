@@ -24,8 +24,11 @@ services:
     dockerfilePath: ./deploy/server/Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
-    # Deploy by hand, when a release is tagged -- never on every commit.
-    autoDeployTrigger: "off"
+    # The server runs what the `tournament` branch points at, and redeploys
+    # whenever it moves -- never on a push to main. tools/deploy_tournament.sh
+    # moves it: to a release tag, or to a server hotfix without one.
+    branch: tournament
+    autoDeployTrigger: commit
     # No maxShutdownDelaySeconds: Render refuses it on the free plan ("max
     # shutdown delay is not supported for free tier services"), so a stopping
     # instance has the default 30 s to save, push and let go of the campaign.
