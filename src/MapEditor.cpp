@@ -893,6 +893,16 @@ bool MapEditor::loadExistingMap(const std::string& path) {
         }
     } catch (...) { LoadLog() << "  Bad policies.json in imported map\n"; }
 
+    // ── THE MAP'S SCRIPTS COME WITH IT ──
+    // Only a project (.uodmap) read scripts/; an .odmap opened here showed
+    // "Project scripts (0)" for a map that had them, and exporting it again
+    // wrote it back without them -- a scripted map's events silently gone.
+    m_scripts.clear();
+    for (auto& [ename, bytes] : entries) {
+        if (ename.rfind("scripts/", 0) != 0 || ename.back() == '/') continue;
+        m_scripts[ename.substr(8)] = std::string(bytes.begin(), bytes.end());
+    }
+
     drawMiniLoadingScreen(0.8f, "Building political map...");
     rebuildProvinceCounts();
     sanitizeProvincePixels();
