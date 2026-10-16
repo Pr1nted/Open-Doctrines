@@ -163,7 +163,7 @@ uit die mense wat daar woon.
 Kies een van ons s'n en kyk na die paneel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Daar is 'n skuiwer en 'n §**Werf**§-knoppie. Die skuiwer is hoeveel van wat daardie
 provinsie kan afstaan jy hierdie beurt vat - hoogstens omtrent 'n vyfde van sy
 bevolking, minder waar mense ongelukkig is.

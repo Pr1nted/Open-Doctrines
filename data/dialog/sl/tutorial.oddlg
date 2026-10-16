@@ -162,7 +162,7 @@ iz ljudi, ki tam živijo.
 Izberite eno od naših in poglejte ploščo.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Tam sta drsnik in gumb §**Naberi**§. Drsnik je to, koliko od tega, kar provinca
 lahko pogreša, jemljete to potezo - največ približno petino njenega
 prebivalstva, manj tam, kjer so ljudje nezadovoljni.

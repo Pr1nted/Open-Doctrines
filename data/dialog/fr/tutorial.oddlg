@@ -174,7 +174,7 @@ province par province, parmi les gens qui y vivent.
 Sélectionnez une des nôtres et regardez le panneau.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Il y a un curseur et un bouton §**Recruter**§. Le curseur, c'est la part de ce
 que la province peut céder que vous prenez ce tour-ci : au plus un cinquième
 environ de sa population, moins là où les gens sont mécontents.

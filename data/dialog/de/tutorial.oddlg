@@ -171,7 +171,7 @@ Provinz, aus den Menschen, die dort leben.
 Wählen Sie eine von unseren und sehen Sie sich das Feld an.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Da sind ein Schieber und ein §**Ausheben**§-Knopf. Der Schieber ist, wie viel
 von dem, was die Provinz entbehren kann, Sie diese Runde nehmen - höchstens
 etwa ein Fünftel ihrer Bevölkerung, weniger, wo die Leute unzufrieden sind.

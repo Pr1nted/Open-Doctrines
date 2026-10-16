@@ -830,6 +830,21 @@ void Game::tutorialAct(const std::string& act) {
         m_tutorialTurnUnlocked = true;
         return;
     }
+    if (act == "open_army") {
+        // The recruit lesson tells the player there is a slider and a Recruit
+        // button "on the panel" -- but those controls only exist in the ARMY
+        // view (drawCountryPanel gates them on m_activeViewTab == 5), and the
+        // lesson never told the player to open it. So they selected their
+        // province, found no button, and could not satisfy `until=recruiting`:
+        // the tutorial could not be completed (GitHub issue #18). The walk
+        // harness never caught it because it fakes the recruitment by pushing a
+        // PendingRecruitment straight onto the queue rather than pressing the
+        // button. Open the view the lesson assumes, the same switch a tab click
+        // makes, so the controls the text describes are actually there.
+        m_activeViewTab = 5;
+        if (m_showClaims) clearClaimsView();
+        return;
+    }
     if (act == "tune_out") {
         // The caller hangs up -- and only the caller. Anyone else still on
         // the link stays there, which is what makes Pr1nted signing off and

@@ -164,7 +164,7 @@ lidí, kteří tam žijí.
 Vyberte některou naši a podívejte se na panel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Je tam posuvník a tlačítko §**Naverbovat**§. Posuvník je to, kolik z toho, co
 provincie může postrádat, si tento tah berete - nejvýš asi pětinu jejího
 obyvatelstva, méně tam, kde jsou lidé nespokojení.

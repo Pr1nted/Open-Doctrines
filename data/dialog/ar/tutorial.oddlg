@@ -151,7 +151,7 @@
 اختر واحدة من مقاطعاتنا وانظر إلى اللوحة.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 هناك شريط تمرير وزر §**تجنيد**§. الشريط هو مقدار ما تأخذه هذا الدور مما تستطيع المقاطعة
 الاستغناء عنه - خُمس سكانها تقريبا على الأكثر، وأقل حيث يكون الناس ساخطين.
 

@@ -166,7 +166,7 @@ provins for provins, blandt de folk, der bor der.
 Vælg en af vores, og se på panelet.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Der er en skyder og en knap §**Rekrutter**§. Skyderen er, hvor meget af det,
 provinsen kan undvære, du tager i denne tur -- højst cirka en femtedel af
 befolkningen, mindre hvor folk er utilfredse.

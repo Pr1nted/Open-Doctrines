@@ -165,7 +165,7 @@ chính những người sống ở đó.
 Chọn một tỉnh của ta và nhìn vào bảng.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Có một thanh trượt và một nút §**Tuyển**§. Thanh trượt cho biết bạn đang lấy bao
 nhiêu phần trong số người tỉnh đó có thể cho đi trong lượt này — tối đa khoảng
 một phần năm dân số, ít hơn ở nơi người dân bất mãn.

@@ -169,7 +169,7 @@ el la homoj, kiuj loĝas tie.
 Elektu unu el niaj kaj rigardu la panelon.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Estas ŝovilo kaj butono §**Varbi**§. La ŝovilo estas kiom el tio, kion la
 provinco povas ŝpari, vi prenas en ĉi tiu vico -- maksimume proksimume
 kvinonon de ĝia loĝantaro, malpli kie homoj estas malkontentaj.

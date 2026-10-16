@@ -932,7 +932,7 @@ void Game::walkCheckPage(const dlg::Page& page) {
     // nothing at all, so the page it was written on quietly does not happen.
     if (!page.act.empty()) {
         static const char* kActs[] = {"rebellion", "to_menu", "end_tutorial",
-                                      "unlock_turn", "tune_out"};
+                                      "unlock_turn", "tune_out", "open_army"};
         bool known = page.act.rfind("then:", 0) == 0;
         for (const char* a : kActs) if (page.act == a) known = true;
         if (!known) walkProblem("act \"" + page.act + "\" is not one the game runs");

@@ -165,7 +165,7 @@ provincijos, iš ten gyvenančių žmonių.
 Pasirinkite vieną iš mūsų ir pažiūrėkite į skydelį.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Ten yra slankiklis ir mygtukas §**Verbuoti**§. Slankiklis nustato, kiek iš to, ką
 provincija gali skirti, imate šį ėjimą -- daugiausia maždaug penktadalį
 gyventojų, mažiau ten, kur žmonės nepatenkinti.

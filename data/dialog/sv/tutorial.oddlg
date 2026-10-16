@@ -166,7 +166,7 @@ för provins, ur folket som bor där.
 Välj en av våra och titta på panelen.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Där finns ett reglage och en knapp §**Rekrytera**§. Reglaget är hur mycket av
 det provinsen kan avvara som du tar det här draget -- högst ungefär en
 femtedel av befolkningen, mindre där folk är missnöjda.

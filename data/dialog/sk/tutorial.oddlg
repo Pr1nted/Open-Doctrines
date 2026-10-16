@@ -165,7 +165,7 @@ Ani armády sa neberú odnikiaľ. §**Naverbujete ich**§, provinciu po provinci
 Vyberte niektorú našu a pozrite sa na panel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Je tam posuvník a tlačidlo §**Naverbovať**§. Posuvník je to, koľko z toho, čo
 provincia môže postrádať, si tento ťah beriete - najviac asi pätinu jej
 obyvateľstva, menej tam, kde sú ľudia nespokojní.

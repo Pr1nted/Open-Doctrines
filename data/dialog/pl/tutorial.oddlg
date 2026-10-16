@@ -166,7 +166,7 @@ ludzi, którzy tam mieszkają.
 Wybierz którąś naszą i spójrz na panel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Jest suwak i przycisk §**Rekrutuj**§. Suwak to ile z tego, co prowincja może
 oddać, bierzesz w tej turze - najwyżej mniej więcej piątą część jej ludności,
 mniej tam, gdzie ludzie są niezadowoleni.

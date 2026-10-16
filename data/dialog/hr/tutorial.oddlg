@@ -165,7 +165,7 @@ od ljudi koji ondje žive.
 Odaberite jednu od naših i pogledajte ploču.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Tu su klizač i gumb §**Novači**§. Klizač određuje koliko od onoga što ta
 pokrajina može dati uzimate u ovom potezu -- najviše otprilike petinu njezina
 stanovništva, manje ondje gdje su ljudi nezadovoljni.

@@ -169,7 +169,7 @@ província, a partir das pessoas que lá vivem.
 Selecione uma das nossas e olhe para o painel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Há um cursor e um botão §**Recrutar**§. O cursor é a parte do que essa
 província pode dispensar que vai tirar neste turno: no máximo cerca de um
 quinto da população, menos onde as pessoas andam descontentes.

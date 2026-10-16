@@ -160,7 +160,7 @@ insanlardan.
 Bizimkilerden birini seçin ve panele bakın.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Bir kaydırıcı ve bir §**Topla**§ düğmesi var. Kaydırıcı, o ilin ayırabileceğinin ne
 kadarını bu tur aldığınızdır - en fazla nüfusunun beşte biri kadar, insanların
 mutsuz olduğu yerde daha az.

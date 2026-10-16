@@ -171,7 +171,7 @@ din oamenii care locuiesc acolo.
 Selectați una de-a noastră și uitați-vă la panou.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Există un cursor și un buton §**Recrutează**§. Cursorul arată cât din ce poate
 da provincia aceea luați în tura asta -- cel mult cam o cincime din populația
 ei, mai puțin acolo unde oamenii sunt nemulțumiți.

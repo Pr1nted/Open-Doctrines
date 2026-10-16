@@ -170,7 +170,7 @@ az ott élő emberekből.
 Jelöld ki az egyik tartományunkat, és nézd meg a panelt.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Van rajta egy csúszka és egy §**toborzás**§ gomb. A csúszka azt adja meg, mennyit
 veszel el ebben a körben abból, amit a tartomány nélkülözni tud -- legfeljebb
 nagyjából a népesség ötödét, kevesebbet ott, ahol elégedetlenek az emberek.

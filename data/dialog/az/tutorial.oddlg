@@ -165,7 +165,7 @@ orada yaşayan insanlardan.
 Bizim vilayətlərdən birini seçin və panelə baxın.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Orada sürgü və §**Səfərbər et**§ düyməsi var. Sürgü həmin vilayətin ayıra
 biləcəyindən bu gediş nə qədərini götürdüyünüzü göstərir — ən çoxu əhalisinin
 təxminən beşdə biri, insanların narazı olduğu yerdə daha az.

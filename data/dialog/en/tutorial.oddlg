@@ -175,7 +175,7 @@ province, out of the people living there.
 Select one of ours and look at the panel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 There is a slider and a §**Recruit**§ button. The slider is how much of what
 that province can spare you are taking this turn -- roughly a fifth of its
 population at most, less where people are unhappy.

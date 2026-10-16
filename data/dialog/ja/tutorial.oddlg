@@ -157,7 +157,7 @@
 うちの州をどれか選んで、パネルを見てください。
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 スライダーと§**徴募**§ボタンがあります。スライダーは、その州が割ける分のうちどれだけを
 このターン取るかです。多くて人口の五分の一ほど、人々が不満なところではもっと少なく。
 

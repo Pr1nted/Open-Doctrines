@@ -165,7 +165,7 @@ provinces, no cilvēkiem, kas tur dzīvo.
 Izvēlieties vienu no mūsējām un paskatieties uz paneli.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Tur ir slīdnis un poga §**Iesaukt**§. Slīdnis nosaka, cik no tā, ko province var
 atvēlēt, jūs ņemat šajā gājienā -- ne vairāk kā aptuveni piektdaļu iedzīvotāju,
 mazāk tur, kur cilvēki ir neapmierināti.

@@ -158,7 +158,7 @@
 우리 주 중 하나를 골라 패널을 보세요.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 슬라이더와 §**모집**§ 버튼이 있습니다. 슬라이더는 그 주가 내줄 수 있는 것 중 이번 턴에
 얼마를 가져갈지입니다 — 많아야 인구의 5분의 1쯤이고, 사람들이 불만인 곳에서는 더 적습니다.
 

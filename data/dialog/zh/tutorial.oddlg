@@ -149,7 +149,7 @@
 选我们的一个，看看面板。
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 那儿有一个滑块和一个§**征募**§按钮。滑块是这个回合你从该省能匀出的部分里拿走多少——
 至多约五分之一的人口，人们不满的地方还要更少。
 

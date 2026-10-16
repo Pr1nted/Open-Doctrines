@@ -170,7 +170,7 @@ provincia, fra la gente che ci vive.
 Seleziona una delle nostre e guarda il pannello.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 C'è un cursore e un pulsante §**Recluta**§. Il cursore è quanto di ciò che
 quella provincia può cedere stai prendendo questo turno: al massimo circa un
 quinto della sua popolazione, meno dove la gente è scontenta.

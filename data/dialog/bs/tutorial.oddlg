@@ -165,7 +165,7 @@ od ljudi koji tamo žive.
 Odaberite jednu od naših i pogledajte ploču.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Tu su klizač i dugme §**Regrutuj**§. Klizač određuje koliko od onoga što ta
 pokrajina može dati uzimate u ovom potezu -- najviše otprilike petinu njenog
 stanovništva, manje tamo gdje su ljudi nezadovoljni.

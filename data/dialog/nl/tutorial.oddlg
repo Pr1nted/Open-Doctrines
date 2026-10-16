@@ -173,7 +173,7 @@ provincie, uit de mensen die er wonen.
 Selecteer een van onze provincies en kijk naar het paneel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Er is een schuifregelaar en een knop §**Werf**§. De schuifregelaar bepaalt
 hoeveel van wat die provincie kan missen je deze beurt neemt: hooguit
 ongeveer een vijfde van de bevolking, minder waar mensen ontevreden zijn.

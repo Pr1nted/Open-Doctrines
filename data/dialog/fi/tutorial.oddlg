@@ -169,7 +169,7 @@ kerrallaan, siellä asuvista ihmisistä.
 Valitse yksi meidän maakunnistamme ja katso paneelia.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Siinä on liukusäädin ja §**Värvää**§-nappi. Liukusäädin kertoo, kuinka suuren
 osan maakunnan liikenevästä väestä otat tällä vuorolla: enintään noin
 viidesosan sen väestöstä, vähemmän siellä, missä ihmiset ovat tyytymättömiä.

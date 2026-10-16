@@ -165,7 +165,7 @@ provins for provins, av folket som bor der.
 Velg en av våre og se på panelet.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Der er en glidebryter og en knapp §**Rekrutter**§. Glidebryteren er hvor mye
 av det provinsen kan avse du tar dette trekket -- høyst omtrent en femtedel av
 befolkningen, mindre der folk er misfornøyde.

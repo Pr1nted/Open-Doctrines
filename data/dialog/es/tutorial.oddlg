@@ -171,7 +171,7 @@ provincia, de la gente que vive allí.
 Selecciona una de las nuestras y mira el panel.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Hay un deslizador y un botón §**Reclutar**§. El deslizador es cuánto de lo que
 esa provincia puede ceder te llevas este turno: como mucho una quinta parte de
 su población, menos donde la gente está descontenta.

@@ -164,7 +164,7 @@ haaval, seal elavatest inimestest.
 Valige üks meie omadest ja vaadake paneeli.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Seal on liugur ja nupp §**Värba**§. Liugur näitab, kui suure osa sellest, mida
 provints suudab loovutada, te sel käigul võtate -- kõige rohkem umbes viiendiku
 rahvastikust, vähem seal, kus inimesed on rahulolematud.

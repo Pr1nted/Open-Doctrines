@@ -168,7 +168,7 @@ njerëzit që jetojnë aty.
 Zgjidhni një nga tonat dhe shikoni panelin.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Ka një rrëshqitës dhe një buton §**Rekruto**§. Rrëshqitësi tregon sa merrni
 këtë radhë nga ajo që mund të kursejë ajo provincë -- e shumta rreth një të
 pestën e popullsisë së saj, më pak aty ku njerëzit janë të pakënaqur.

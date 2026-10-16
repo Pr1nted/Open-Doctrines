@@ -163,7 +163,7 @@ provinciam, ex hominibus qui ibi habitant.
 Unam ex nostris elige et tabellam inspice.
 ---
 @Signals Officer
-:: point=panel.province gate=1 until=recruiting
+:: point=panel.province gate=1 until=recruiting act=open_army
 Est regula et bulla §**Conscribere**§. Regula indicat quantum ex eo quod
 provincia praebere potest hac vice sumas -- summum fere quintam partem populi,
 minus ubi homines non contenti sunt.
