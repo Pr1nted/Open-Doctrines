@@ -551,6 +551,47 @@ void testSubmissionEdges() {
 
 }  // namespace
 
+// A seat RESERVED for a returning player (every seat restored from a resumed
+// campaign) starts with no issuer and officialIssuer=false -- the reservation
+// does not know who will present what. When the player reconnects with their
+// real, verified ticket, admit() has to refresh those, or they keep the default
+// and a badge-holder shows "(unverified)" with no colour after a restart.
+void testReconnectRefreshesIssuer() {
+    Lobby l = makeLobby();
+    const char* psid = "dev-psid";
+
+    check("a seat can be reserved for a returning player",
+          l.reserveSeat(psid, "Pr1nted", 50, false));
+    const LobbyMember* held = l.findByPsid(psid);
+    check("the reservation starts unofficial, with no issuer",
+          held && !held->officialIssuer && held->issuer.empty());
+
+    const uint16_t id = l.admit(g_nextRelayId++, psid, "Pr1nted", "developer",
+                                kOfficial, true) == LobbyDenial::None
+                            ? (uint16_t)(g_nextRelayId - 1) : 0;
+    check("the player reclaims the held seat", id != 0);
+    const LobbyMember* now = l.findByPsid(psid);
+    check("and the reconnect refreshes the issuer to the official one",
+          now && now->officialIssuer && now->issuer == kOfficial);
+    check("without spending a new seat", l.members().size() == 1);
+    check("keeping the country the reservation held", now && now->countryId == 50);
+
+    // The other direction: a seat held by an official player who comes back on
+    // an UNofficial ticket must stop being official, not keep the stale flag.
+    Lobby p;
+    { LobbySettings ps; ps.maxPlayers = 8;
+      ps.acceptedIssuers = {kOfficial, "https://other.example"};
+      p.configure(ps); }
+    p.reserveSeat("q", "Q", 51, false);
+    // Seed the held seat as official (as if it had been so before a restart).
+    // Then a reconnect on an unofficial issuer must clear it.
+    p.admit(g_nextRelayId++, "q", "Q", "", kOfficial, true);
+    p.admit(g_nextRelayId++, "q", "Q", "", "https://other.example", false);
+    const LobbyMember* q = p.findByPsid("q");
+    check("a reconnect on an unofficial issuer clears the official flag",
+          q && !q->officialIssuer && q->issuer == std::string("https://other.example"));
+}
+
 int main() {
     printf("lobby\n");
     testAdmission();
@@ -567,6 +608,7 @@ int main() {
     testResolution();
     testAbsentPolicy();
     testSubmissionEdges();
+    testReconnectRefreshesIssuer();
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

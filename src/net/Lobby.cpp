@@ -85,6 +85,17 @@ LobbyDenial Lobby::admit(uint16_t peerId, const std::string& psid,
             m.connected = true;
             m.name = name;
             m.badges = badges;
+            // AND THE ISSUER, which a reconnect used to leave alone. A seat
+            // RESERVED for a returning player (reserveSeat, e.g. every seat
+            // restored from a resumed campaign) starts with an empty issuer and
+            // officialIssuer=false -- the reservation knows a pseudonym and a
+            // country, not who will present what. The player then arrives with
+            // their real, already-verified ticket; not refreshing these left
+            // them with the default, so a developer reclaiming their seat after
+            // a server restart showed "[DEVELOPER] (unverified)" and lost the
+            // badge colour, though nothing about their identity was in doubt.
+            m.issuer = issuer;
+            m.officialIssuer = officialIssuer;
             return LobbyDenial::None;
         }
     }
