@@ -62,9 +62,16 @@ JSON
 client dev-alice --claim "$A" --submit --submit-after 1 --orders-file "$aorders" \
        --seconds 400 --until "TURNSTATE turn=$turns" > "$alog" 2>&1 &
 a=$!; pids+=("$a")
+# ONE AT A TIME. Each client first asks the stand-in account service for a
+# join ticket, and three at once on a loaded windows-x64 runner timed one of
+# them out ("could not reach 127.0.0.1 in time") -- the whole test then failed
+# for want of a player, not for anything a player decided. Each joins before
+# the next starts, as campaign_det_test does.
+wait_for_line "$alog" '^ROSTER me=[1-9]' 600 "$a"
 client dev-bob --claim "$B" --submit --submit-after 1 --answer accept \
        --seconds 400 --until "TURNSTATE turn=$turns" > "$blog" 2>&1 &
 b=$!; pids+=("$b")
+wait_for_line "$blog" '^ROSTER me=[1-9]' 600 "$b"
 # Carol accepts an alliance and nothing else: a call to arms is left unanswered.
 client dev-carol --claim "$C" --submit --submit-after 1 --answer accept \
        --answer-actions request_alliance \
