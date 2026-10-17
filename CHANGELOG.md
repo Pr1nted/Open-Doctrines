@@ -1,5 +1,67 @@
 # Changelog
 
+## game 1.3.2b
+
+A release for hosted games, and for the tournament that runs on one. The first
+evening on a 24-hour-turn server found that a game you join was not quite the
+game the host was playing, and that the host's AI was playing more of it than it
+should. Most of what follows is that, and the rest is what players reported in
+the meantime.
+
+- **In a hosted game, you decide your own country.** Your research, your
+  research and pacification budgets, the doctrines you enact and repeal, the
+  wars you declare and the alliances, guarantees, pacts, ceasefires and trades
+  you propose, what you disclose, your minority policy, your districts and your
+  claims now reach the server. They never did: the server's AI had been making
+  those choices for every player, on top of their orders. The server checks each
+  one against the same rules the screens use.
+
+- **Requests come to you, not to the server's AI.** A call to arms, an alliance
+  offer, a ceasefire or a trade aimed at your country arrives as the usual popup.
+  Leave it unanswered and it lapses as a polite decline -- a call to arms you
+  sleep through does not end your alliance. The turn panel has **If I miss the
+  deadline, do nothing** for anyone who would rather their country idled than
+  had the AI stand in for them, and the server keeps that choice across a
+  restart.
+
+- **You see the game the host is playing.** Each turn now brings the wars and
+  treaties, claims, governments and their flags, rebel states by their names,
+  and every treasury -- a war declared on turn two used to reach the map and
+  never the Relations screen, rebel states arrived as "Rebel State 4", and your
+  money stayed at whatever it was when you joined. **Show orders** works in a
+  hosted game too.
+
+- **A server that has restarted can be joined again.** It forgot which map its
+  world was on, so after any restart -- every update, on a hosted server --
+  everyone joining was told the world could not be read.
+
+- **Connecting from further away works.** The desktop game gave the relay
+  twenty milliseconds to answer a secure connection, so anyone farther than that
+  saw "SSL - The operation timed out" and could not join at all. **Signing in on
+  the web stays signed in** now: the browser build never kept the session.
+
+- **The lobby:** a saved server's card joins it when clicked, the country picker
+  no longer closes as it opens, and chat wraps long lines instead of cutting
+  them off. A click on one screen no longer sets off whatever sits under the
+  cursor on the next -- leaving the mod menu used to start the tutorial.
+
+- **A marching army keeps its kind.** Militia, assault and mechanised troops
+  arrived as line infantry the moment they entered a province.
+
+- **The tutorial can be finished.** The recruiting lesson now opens the army
+  view, where its slider and button actually are.
+
+- **Monuments cost what they are.** Each kind has its own running cost by
+  level, and anger at a conquest stays in the occupied province instead of
+  spreading through the whole people.
+
+- **Smaller things.** Interface scale survives switching between the map and
+  the globe. Transports land on an island when you click the water beside it.
+  Web saves are written whole or not at all. A map opened in the map editor
+  keeps its scripts, which exporting used to drop. A turn reaches the map a
+  second sooner in a browser. Mods and hand-edited maps are checked more
+  strictly, after a fuzzer found three values that got through.
+
 ## game 1.3.1b
 
 A point release on the first beta. Most of it is one thing — the browser build
