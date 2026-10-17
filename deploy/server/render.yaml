@@ -45,7 +45,7 @@ services:
       - key: OD_START_AT_PLAYERS
         value: "0"                 # a lobby until the host types `start`
       - key: OD_MAX_PLAYERS
-        value: "16"
+        value: "32"
       - key: OD_RELAY
         value: "1"                 # players join with the code alone
       - key: OD_LLM_ENDPOINT
