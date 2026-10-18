@@ -659,7 +659,17 @@ void Game::mpBeginJoin(const std::string& address, const std::string& code) {
 
     AccountClient& account = AccountClient::get();
     if (account.status() != AccountClient::Status::SignedIn) {
-        mpNote(T("Please log in to proceed"), true);
+        // ── A JOIN CANNOT START WITHOUT AN ACCOUNT, SO SEND THEM TO MAKE ONE ──
+        //
+        // Joining goes through the account service, which vouches for the
+        // player to the host -- so with no account there is nothing to try. It
+        // used to stop here with a one-line note, which on a blank-address
+        // relay join read as a dead button: the player clicks Join and, as far
+        // as they can tell, nothing happens. Carry the code and open the
+        // Account screen instead, so the next step is in front of them.
+        m_pendingJoinCode = code;
+        mpNote(T("Sign in first -- your account vouches for you on the server."), true);
+        m_currentScreen = SCREEN_ACCOUNT;
         return;
     }
     if (!ServerBook::validCode(code)) {
@@ -1755,9 +1765,15 @@ void Game::drawMpJoin(Vector2 mouse, bool click) {
     // An address is optional now; the tickbox is only asked for when there is
     // one, because it acknowledges a disclosure that only a direct join makes.
     const bool ready = !m_mpCodeField.empty() && (!direct || m_mpIpWarningAccepted);
+    // Signed out, the button says so rather than pretending it will join: the
+    // click still goes through mpBeginJoin, which sends them to the Account
+    // screen. The label is the only honest thing to show before that happens.
+    const bool signedIn =
+        AccountClient::get().status() == AccountClient::Status::SignedIn;
     const MpButton go = buttonAt((float)(centerX + gap / 2), (float)y,
                                  (float)btnW, (float)btnH, mouse);
-    drawButton(go, T("Join"), 19, Color{40, 60, 48, 230}, Color{130, 190, 140, 210}, ready);
+    drawButton(go, signedIn ? T("Join") : T("Sign in to join"), 19,
+               Color{40, 60, 48, 230}, Color{130, 190, 140, 210}, ready);
     if (click && go.hovered && ready) mpBeginJoin(m_mpAddressField, m_mpCodeField);
 }
 
