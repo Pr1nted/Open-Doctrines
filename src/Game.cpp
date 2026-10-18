@@ -1385,6 +1385,8 @@ bool Game::init(int screenW, int screenH, const char* title) {
         TraceLog(LOG_WARNING, "could not chdir to internal storage");
     TraceLog(LOG_INFO, "working directory: %s", GetWorkingDirectory());
 
+#endif  // PLATFORM_ANDROID: asset extraction and working directory
+
     // ── How much bigger the interface can be made without losing any of it ──
     //
     // Magnifying the UI shrinks the LOGICAL canvas it lays out in, so scale is
@@ -1402,27 +1404,34 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // type, and going further needs the layouts themselves to adapt (scrolling
     // lists, reflowed panels) rather than a single magnifying glass over all of
     // them. See the Android task.
+    //
+    // ── ANDROID AND WEB SHARE THIS; A NATIVE DESKTOP DOES NOT ──
+    //
+    // On both, GetScreenHeight() is in DEVICE pixels: the web build sizes the
+    // canvas backing store to innerHeight x devicePixelRatio (odFitCanvasJS,
+    // top of this file). So a 2x laptop in a browser lays the UI out against
+    // ~1600 rows and every panel and glyph comes out half-size -- reported on a
+    // Retina MacBook, where the previous "1.0 for web" left the interface tiny.
+    // A native desktop keeps LOGICAL coordinates (raylib's HIGHDPI leaves the
+    // ortho in logical units), so its layout is already the right physical size
+    // and the base scale stays 1.0, the player's to raise.
     {
         constexpr float UI_MIN_ROWS = 900.0f;
         const float rows = (float)::GetScreenHeight();
         float want = (rows > 0.0f) ? rows / UI_MIN_ROWS : 1.0f;
         if (want < 1.0f) want = 1.0f;      // never shrink; small screens keep 1:1
         if (want > 2.5f) want = 2.5f;
+#if defined(PLATFORM_ANDROID) || defined(__EMSCRIPTEN__)
         m_uiScaleBase = want;
-        applyUiScale();
-        TraceLog(LOG_INFO, "ui scale: %.2f (%.0f physical rows, %.0f logical)",
-                 odUi::scale(), rows, rows / odUi::scale());
-    }
-
 #else
-
-    // Desktop and web: the platform asks for nothing, so the scale is entirely
-    // the player's. 1.0 by default, which is the layout every screen was
-    // written against.
-    m_uiScaleBase = 1.0f;
-    applyUiScale();
-
+        (void)want;                        // desktop asks for nothing; see above
+        m_uiScaleBase = 1.0f;
 #endif
+    }
+    applyUiScale();
+    TraceLog(LOG_INFO, "ui scale: %.2f (%.0f device rows, %.0f logical)",
+             odUi::scale(), (float)::GetScreenHeight(),
+             (float)::GetScreenHeight() / odUi::scale());
 
     odPalette::setMode(m_config.colourBlindMode);
 
