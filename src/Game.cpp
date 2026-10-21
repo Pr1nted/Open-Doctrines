@@ -2186,6 +2186,27 @@ void Game::reloadFonts() {
                od::i18n::language().c_str(), kAtlasSize, built.glyphCount,
                built.texture.width, built.texture.height,
                built.texture.width * built.texture.height * 4.0 / (1024.0 * 1024.0));
+
+    // The atlas just changed. Re-point DrawText's default at whichever font the
+    // player chose. MUST be after the UnloadFont(old) above: if readableFont is
+    // on, the default was pointing at the font just freed, and this re-aims it
+    // at the fresh m_gameFont before anything draws.
+    applyFontStyle();
+}
+
+// Added to raylib by tools/patch_raylib_default_font.py; not in raylib.h. C
+// linkage, because raylib is compiled as C.
+extern "C" void SetFontDefault(Font font);
+
+void Game::applyFontStyle() {
+    // m_defaultFont is raylib's built-in bitmap, captured at init before any
+    // swap; m_gameFont is the readable DejaVuSans-based atlas. Point raylib's
+    // DrawText default at one or the other -- that reaches all 276 ASCII call
+    // sites and drawHybridText's ASCII path, with no change to any of them.
+    if (m_config.readableFont && m_gameFont.texture.id > 0)
+        SetFontDefault(m_gameFont);
+    else if (m_defaultFont.texture.id > 0)
+        SetFontDefault(m_defaultFont);
 }
 
 void Game::shutdown() {

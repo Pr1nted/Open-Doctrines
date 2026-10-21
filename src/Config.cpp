@@ -172,6 +172,7 @@ bool Config::load(const std::string& path) {
     skipViewingOrders = findBool(json, "skipViewingOrders", false);
     mpAwayIdle = findBool(json, "mpAwayIdle", false);
     highDpi = findBool(json, "highDpi", true);
+    readableFont = findBool(json, "readableFont", true);
     debugMode = findBool(json, "debugMode", false);
     showFps = findBool(json, "showFps", true);
     showZoom = findBool(json, "showZoom", false);
@@ -331,6 +332,7 @@ bool Config::save(const std::string& path) {
     file << "  \"skipViewingOrders\": " << (skipViewingOrders ? "true" : "false") << ",\n";
     file << "  \"mpAwayIdle\": " << (mpAwayIdle ? "true" : "false") << ",\n";
     file << "  \"highDpi\": " << (highDpi ? "true" : "false") << ",\n";
+    file << "  \"readableFont\": " << (readableFont ? "true" : "false") << ",\n";
     file << "  \"debugMode\": " << (debugMode ? "true" : "false") << ",\n";
     file << "  \"showFps\": " << (showFps ? "true" : "false") << ",\n";
     file << "  \"showZoom\": " << (showZoom ? "true" : "false") << ",\n";

@@ -381,6 +381,25 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     string(STRIP "${od_vorbis_out}" od_vorbis_out)
     message(STATUS "raylib: ${od_vorbis_out}")
 
+    # Every platform. See tools/patch_raylib_default_font.py. Adds a
+    # SetFontDefault() the game links against to offer a readable vector font in
+    # place of raylib's bitmap for DrawText. FATAL: the game declares and calls
+    # the symbol, so an unpatched rtext.c is a link error, and naming the cause
+    # here beats a wall of undefined-symbol output.
+    set(od_deffont_src "${raylib_SOURCE_DIR}/src/rtext.c")
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_default_font.py"
+                "${od_deffont_src}"
+        RESULT_VARIABLE od_deffont_rc
+        OUTPUT_VARIABLE od_deffont_out
+        ERROR_VARIABLE  od_deffont_err)
+    if(NOT od_deffont_rc EQUAL 0)
+        message(FATAL_ERROR "Could not patch raylib's default font:\n${od_deffont_err}")
+    endif()
+    string(STRIP "${od_deffont_out}" od_deffont_out)
+    message(STATUS "raylib: ${od_deffont_out}")
+
     # Web only. See tools/patch_raylib_web_dpi.py. FATAL for the same reason as
     # the vorbis patch: an unpatched web resize callback silently ships the
     # zoomed-in, blurry mobile UI this fixes, and nothing else in the build

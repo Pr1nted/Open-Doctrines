@@ -2797,6 +2797,10 @@ public:
     // Draw text with per-character font selection:
     // default raylib font for ASCII (32-126), m_gameFont for non-ASCII
     void drawHybridText(int x, int y, int fontSize, const char* text, Color color);
+    /// Point raylib's DrawText default at the pixel bitmap (m_defaultFont) or
+    /// the readable vector atlas (m_gameFont), per m_config.readableFont.
+    /// Called after every reloadFonts() and whenever the setting changes.
+    void applyFontStyle();
     /// Switch language, rebuild the atlas and remember the choice.
     bool applyLanguage(const std::string& code);
 

@@ -119,6 +119,11 @@ struct Config {
      * reports a scale of 1.00 and cannot exercise the path.
      */
     bool highDpi = true;
+    // Draw the interface with the readable vector font (DejaVuSans) instead of
+    // raylib's built-in bitmap. On by default: players reported the bitmap as
+    // hard to read, and the vector face stays legible at every size and scale.
+    // See Game::applyFontStyle().
+    bool readableFont = true;
     bool debugMode = false;
     bool showFps = false;
     bool showZoom = false;
