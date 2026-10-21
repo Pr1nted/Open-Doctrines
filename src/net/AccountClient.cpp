@@ -57,7 +57,10 @@ static void netWait(int ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 #endif
 }
-constexpr int  kLoginTimeoutMs = 10 * 60 * 1000;
+// Matches the service's auth-request TTL (AUTHREQ_TTL, 30 min). If the game
+// stopped polling first, a player who finished a slow browser sign-in would be
+// told it timed out even though the service had their result.
+constexpr int  kLoginTimeoutMs = 30 * 60 * 1000;
 
 constexpr size_t kMaxTokenBytes = 8 * 1024;
 

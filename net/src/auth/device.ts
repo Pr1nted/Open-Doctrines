@@ -49,8 +49,19 @@ export const AUD_AUTHREQ = "od-authreq";
 /** Audience of the token that lets a brand-new user pick a nickname and commit. */
 export const AUD_SIGNUP = "od-signup";
 
-export const AUTHREQ_TTL = 10 * 60;
-export const SIGNUP_TTL = 10 * 60;
+// 30 minutes, not 10. This token must live from the moment the game contacts
+// the service until the WHOLE browser sign-in finishes -- it is re-checked at
+// /auth/callback -- and the "open in browser" button reopens THIS token rather
+// than minting a fresh one. A first-time player creating an account is the slow
+// case: they click a provider, maybe wait before opening the browser, then sign
+// up at the provider with a password, 2FA and a consent screen, all inside this
+// window. At 10 minutes that routinely elapsed and the browser showed "Link
+// expired". The token still authorises only one browser round trip bound to
+// rid = hash(device_secret), and the result cannot be collected without the
+// secret, so widening the window costs nothing. SIGNUP_TTL matches so a new
+// user has the same breathing room to choose a nickname.
+export const AUTHREQ_TTL = 30 * 60;
+export const SIGNUP_TTL = 30 * 60;
 
 /** How long a completed result waits in KV for the client to collect it. */
 export const RESULT_TTL = 300;
