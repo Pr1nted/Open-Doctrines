@@ -219,6 +219,33 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux|BSD|DragonFly" AND NOT EMSCRIPTEN)
     add_compile_options($<$<COMPILE_LANGUAGE:ASM>:-Wa,--noexecstack>)
 endif()
 
+# STACK CANARIES ON EVERY FRAME THAT COULD OVERFLOW, AND FORTIFIED LIBC.
+#
+# `ha` (the binary verifier) reported ~22k functions with a large stack frame
+# and no canary. The toolchain default is plain -fstack-protector, which guards
+# only a function holding a char array larger than eight bytes -- so almost
+# nothing here was covered. -strong guards any function with a local array of
+# any size or a local whose address is taken, which is the shape a stack
+# overflow actually reaches, for a few instructions per guarded call that a
+# turn-based game never feels. Set before FetchContent so the vendored code
+# linked into the same binary is covered too, not just our own translation
+# units.
+#
+# _FORTIFY_SOURCE swaps memcpy/strcpy/sprintf and the rest for variants that
+# know the destination size and trap an overflow -- but it needs the optimiser
+# to see those sizes, so at -O0 it is a no-op that only warns. Scoped to
+# non-Debug for that reason; -U first so an SDK that already defines it does not
+# warn about the redefinition.
+#
+# Not MSVC: /GS is its own stack cookie and is on by default. Not Emscripten:
+# wasm bounds every access inside its linear memory already, so a canary buys
+# nothing there and costs code size and speed the web build is tight on.
+if(NOT MSVC AND NOT EMSCRIPTEN)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-strong>)
+    add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-U_FORTIFY_SOURCE>)
+    add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-D_FORTIFY_SOURCE=2>)
+endif()
+
 # SOME TARGETS NEED libatomic FOR std::atomic. x86 and AArch64 do every size
 # inline; riscv64 with GCC 12 or older does not for 1- and 2-byte operations
 # (std::atomic<bool>), and the link fails with undefined __atomic_* symbols
