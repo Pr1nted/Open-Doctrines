@@ -952,7 +952,17 @@ void Game::drawMainMenu() {
     while (titleSize > 26 && 10 + blockHeight() > headerAvail) titleSize -= 2;
     // And the same for the width, with a lower floor -- a title that does not
     // fit is not tight, it is cut in half.
-    while (titleSize > 18 && MeasureText("OpenDoctrines", titleSize) > m_screenW - 24)
+    //
+    // The logo is always drawn in the PIXEL font, whatever the UI font is set
+    // to: it is the game's wordmark, and the readable vector face made it look
+    // like body text. So measure it in that same font, or the shrink-to-fit
+    // would be computed against the wrong glyph widths.
+    const Font& logoFont = m_defaultFont.texture.id > 0 ? m_defaultFont : GetFontDefault();
+    const float logoBase = logoFont.baseSize > 0 ? (float)logoFont.baseSize : 10.0f;
+    auto logoWidth = [&](int sz) {
+        return MeasureTextEx(logoFont, "OpenDoctrines", (float)sz, sz / logoBase).x;
+    };
+    while (titleSize > 18 && logoWidth(titleSize) > m_screenW - 24)
         titleSize -= 2;
 
     // min(80, ...) keeps the original position wherever there is room for it,
@@ -972,10 +982,13 @@ void Game::drawMainMenu() {
     // Solid dark strip for readability
     DrawRectangle(centerX - 250, btnStartY, 500, btnEndY - btnStartY, fade({0, 0, 0, 100}));
 
-    // Title
+    // Title -- the pixel wordmark, independent of the UI font choice.
     const char* title = "OpenDoctrines";
-    int titleW = MeasureText(title, titleSize);
-    DrawText(title, centerX - titleW / 2 + titleDX, titleY, titleSize, fade(hexToColor(m_config.accent())));
+    const float titleSp = titleSize / logoBase;
+    int titleW = (int)MeasureTextEx(logoFont, title, (float)titleSize, titleSp).x;
+    DrawTextEx(logoFont, title,
+               {(float)(centerX - titleW / 2 + titleDX), (float)titleY},
+               (float)titleSize, titleSp, fade(hexToColor(m_config.accent())));
 
     // ── The splash, in the Minecraft tradition ──
     //

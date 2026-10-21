@@ -4769,9 +4769,17 @@ void Game::drawHybridText(int x, int y, int fontSize, const char* text, Color co
         if (f.texture.id <= 0) f = defFont;
         int gi = GetGlyphIndex(f, codepoint);
         float advance = 0;
+        float scale = f.baseSize > 0 ? (float)fontSize / (float)f.baseSize : 1.0f;
         if (gi >= 0 && gi < f.glyphCount) {
-            advance = (float)f.glyphs[gi].advanceX;
-            if (advance <= 0) advance = (float)f.recs[gi].width * fontSize / (float)f.baseSize;
+            // Both advanceX and the fallback glyph width are in the font's BASE
+            // units and must be scaled to fontSize -- exactly as raylib's own
+            // DrawTextEx does. The old code scaled the width path but used the
+            // raw advanceX. That was harmless while the default font was the
+            // bitmap one (its advanceX is 0, so the width path ran), but the
+            // readable vector font has a real advanceX, so every glyph advanced
+            // by base-size units instead of pixels and the text bunched up.
+            advance = (float)f.glyphs[gi].advanceX * scale;
+            if (advance <= 0) advance = (float)f.recs[gi].width * scale;
         }
         if (advance <= 0) advance = (float)fontSize * 0.6f;
         DrawTextCodepoint(f, codepoint, {(float)penX, (float)y}, (float)fontSize, color);
