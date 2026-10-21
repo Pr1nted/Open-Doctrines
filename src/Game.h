@@ -2798,9 +2798,15 @@ public:
     // default raylib font for ASCII (32-126), m_gameFont for non-ASCII
     void drawHybridText(int x, int y, int fontSize, const char* text, Color color);
     /// Point raylib's DrawText default at the pixel bitmap (m_defaultFont) or
-    /// the readable vector atlas (m_gameFont), per m_config.readableFont.
-    /// Called after every reloadFonts() and whenever the setting changes.
+    /// the vector atlas (m_gameFont), per m_config.fontChoice. Called after
+    /// every reloadFonts() and whenever the setting changes.
     void applyFontStyle();
+    /// The outline face reloadFonts merges with Unifont: the validated imported
+    /// font for m_config.fontChoice, or DejaVuSans for "pixel"/"readable"/invalid.
+    std::string fontOutlinePath() const;
+    /// Font setting choices: "pixel", "readable", then every validated file in
+    /// data/fonts/custom/. Scanned fresh each call.
+    std::vector<std::string> availableFonts() const;
     /// Switch language, rebuild the atlas and remember the choice.
     bool applyLanguage(const std::string& code);
 

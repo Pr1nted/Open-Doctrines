@@ -127,6 +127,7 @@ EM_JS(int, odFitCanvasJS, (), {
 #include <sys/resource.h>
 #endif
 #include "GameInternals.h"
+#include "FontValidate.h"
 // odEnsureAsset(): the full font is fetched, not preloaded. See reloadFonts().
 #include "util/WebAssets.h"
 #include "Usage.h"
@@ -217,8 +218,8 @@ const int RES_COUNT = 5;
 // resolution row draws wider, the FPS row cycles, the accent row opens a
 // picker -- and every one of those is a bare `i == 5`. Inserting in the
 // middle moves all of them. "Back" is found by label, so the end is free.
-const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Back", false, -1}};
-const int DISPLAY_COUNT = 11;
+const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Font", true, -1}, {"Back", false, -1}};
+const int DISPLAY_COUNT = 12;
 
 const char* AI_DIFFICULTY_NAMES[] = {"Easy", "Normal", "Hard", "Insane"};
 
@@ -691,6 +692,12 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += std::string(": ") + od::i18n::tr(COLOURBLIND_NAMES[
             (cfg.colourBlindMode < 0 || cfg.colourBlindMode >= COLOURBLIND_COUNT)
                 ? 0 : cfg.colourBlindMode]);
+    } else if (tab == 0 && index == 10) {
+        // The current font: the two built-ins get friendly names, an imported
+        // file shows its own filename.
+        const std::string& fc = cfg.fontChoice;
+        label += ": " + (fc == "pixel" ? std::string("Pixel")
+                       : fc == "readable" ? std::string("Readable") : fc);
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
     } else if (isVolumeSetting(tab, index)) {
@@ -2047,7 +2054,7 @@ void Game::reloadFonts() {
 
     // The outline face. Primary for every codepoint it has; unifont covers the
     // rest. See odLoadMergedFont.
-    const std::string outlinePath = m_dataDir + "fonts/DejaVuSans.ttf";
+    const std::string outlinePath = fontOutlinePath();
 
     Font built{};
     // Already here means already answered: a desktop install, or a web session
@@ -2200,13 +2207,59 @@ extern "C" void SetFontDefault(Font font);
 
 void Game::applyFontStyle() {
     // m_defaultFont is raylib's built-in bitmap, captured at init before any
-    // swap; m_gameFont is the readable DejaVuSans-based atlas. Point raylib's
-    // DrawText default at one or the other -- that reaches all 276 ASCII call
-    // sites and drawHybridText's ASCII path, with no change to any of them.
-    if (m_config.readableFont && m_gameFont.texture.id > 0)
+    // swap; m_gameFont is the vector atlas reloadFonts built from the chosen
+    // outline (DejaVuSans, or an imported font). "pixel" keeps the bitmap for
+    // ASCII; every other choice points the default at m_gameFont -- which
+    // reaches all 276 ASCII call sites and drawHybridText's ASCII path, with no
+    // change to any of them.
+    if (m_config.fontChoice != "pixel" && m_gameFont.texture.id > 0)
         SetFontDefault(m_gameFont);
     else if (m_defaultFont.texture.id > 0)
         SetFontDefault(m_defaultFont);
+}
+
+std::string Game::fontOutlinePath() const {
+    // The outline face that m_gameFont merges with Unifont. "pixel" and
+    // "readable" both use the bundled DejaVuSans (pixel differs only in that
+    // applyFontStyle keeps the bitmap for ASCII). Any other value is an
+    // imported file under data/fonts/custom/, used only if it is still there
+    // and still passes validation -- otherwise fall back to DejaVuSans rather
+    // than leave the interface with no font.
+    const std::string& c = m_config.fontChoice;
+    if (c != "pixel" && c != "readable") {
+        const std::string custom = m_dataDir + "fonts/custom/" + c;
+        std::string why;
+        if (FileExists(custom.c_str()) && odfont::validate(custom, why))
+            return custom;
+        TraceLog(LOG_WARNING, "font '%s' unavailable (%s); using the default",
+                 c.c_str(), why.empty() ? "missing" : why.c_str());
+    }
+    return m_dataDir + "fonts/DejaVuSans.ttf";
+}
+
+std::vector<std::string> Game::availableFonts() const {
+    // The ones the Font setting cycles through: the two built-ins, then every
+    // validated file in data/fonts/custom/. Scanned fresh so a font dropped in
+    // while the game runs appears without a restart.
+    std::vector<std::string> list = {"pixel", "readable"};
+    const std::string dir = m_dataDir + "fonts/custom";
+    if (DirectoryExists(dir.c_str())) {
+        FilePathList files = LoadDirectoryFiles(dir.c_str());
+        for (unsigned i = 0; i < files.count; ++i) {
+            // IsFileExtension is raylib's own, case-insensitive and portable
+            // (strcasecmp is _stricmp on Windows).
+            if (!IsFileExtension(files.paths[i], ".ttf") &&
+                !IsFileExtension(files.paths[i], ".otf")) continue;
+            std::string why;
+            if (odfont::validate(files.paths[i], why))
+                list.push_back(GetFileName(files.paths[i]));
+            else
+                TraceLog(LOG_INFO, "font '%s' rejected: %s",
+                         GetFileName(files.paths[i]), why.c_str());
+        }
+        UnloadDirectoryFiles(files);
+    }
+    return list;
 }
 
 void Game::shutdown() {

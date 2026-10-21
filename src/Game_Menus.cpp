@@ -3020,6 +3020,17 @@ bool Game::stepDisplayValueRow(int index, int dir) {
         // closed and reopened. -1 is the "stale" value every other invalidation
         // of it uses, so the next frame in that view repaints it.
         m_lastRelationsCountryId = -1;
+    } else if (index == 10) {
+        // Cycle the Font through the built-ins and every validated import.
+        // reloadFonts rebuilds the atlas from the new outline and re-applies the
+        // style, so a drop-in font takes effect the moment it is selected.
+        std::vector<std::string> fonts = availableFonts();
+        int cur = 0;
+        for (size_t i = 0; i < fonts.size(); ++i)
+            if (fonts[i] == m_config.fontChoice) { cur = (int)i; break; }
+        cur = (cur + step + (int)fonts.size()) % (int)fonts.size();
+        m_config.fontChoice = fonts[cur];
+        reloadFonts();
     } else {
         return false;
     }
@@ -3038,6 +3049,9 @@ bool Game::resetDisplayValueRow(int index) {
         odPalette::setMode(0);
         if (m_renderer) generatePoliticalTexture();
         m_lastRelationsCountryId = -1;   // see stepDisplayValueRow
+    } else if (index == 10) {
+        m_config.fontChoice = "readable";
+        reloadFonts();
     } else {
         return false;
     }

@@ -119,11 +119,13 @@ struct Config {
      * reports a scale of 1.00 and cannot exercise the path.
      */
     bool highDpi = true;
-    // Draw the interface with the readable vector font (DejaVuSans) instead of
-    // raylib's built-in bitmap. On by default: players reported the bitmap as
-    // hard to read, and the vector face stays legible at every size and scale.
-    // See Game::applyFontStyle().
-    bool readableFont = true;
+    // Which font draws the interface. "readable" (default) is the bundled
+    // DejaVuSans vector face; "pixel" is raylib's built-in bitmap (the old
+    // retro look); anything else is a filename under data/fonts/custom/ that the
+    // player imported, after it passed odfont::validate(). Players reported the
+    // bitmap as hard to read, so the vector face is the default. See
+    // Game::applyFontStyle() and Game::availableFonts().
+    std::string fontChoice = "readable";
     bool debugMode = false;
     bool showFps = false;
     bool showZoom = false;
