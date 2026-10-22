@@ -275,8 +275,12 @@ struct ModGameAccess {
     // the edit in the turn delta, so it persists in saves and reaches every
     // multiplayer client, and return how many pixels actually moved (0 = the
     // shape was empty, off-map, or the province did not exist).
-    virtual int morphProvince(uint32_t pid, const std::string& svgPath, uint32_t mode) = 0;  // mode 0 = move border, 1 = keep in country
-    virtual int terrainEdit(const std::string& svgPath, uint32_t toLand) = 0;                // toLand: 1 = raise land, 0 = sink sea
+    // Non-pure, with a no-op default: ModGameAccess has several mock
+    // implementors (tools, tests) and a pure virtual would make every one of
+    // them abstract. Only the real GameModAccess overrides these; a mock that
+    // does not support reshaping simply reports nothing moved.
+    virtual int morphProvince(uint32_t /*pid*/, const std::string& /*svgPath*/, uint32_t /*mode*/) { return 0; }  // mode 0 = move border, 1 = keep in country
+    virtual int terrainEdit(const std::string& /*svgPath*/, uint32_t /*toLand*/) { return 0; }                    // toLand: 1 = raise land, 0 = sink sea
 
     // Diplomacy capability. Reads are cheap flag lookups; proposeWar is the one
     // mutating call and the game may refuse it.
