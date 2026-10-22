@@ -2482,6 +2482,13 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     startY = drawBreakdownRow(lx, startY, valX, "Industry Income (base)", TextFormat("%.1f", cs.gross), WHITE, false);
     startY = drawBreakdownRow(lx, startY, valX, "Resource Bonus", TextFormat("%.1f", cs.resource), WHITE, false);
     startY = drawBreakdownRow(lx, startY, valX, "Population Bonus", TextFormat("%.1f", cs.pop), WHITE, false);
+    // Passive income and sector taxes are part of cs.total too, so "Gross
+    // Income" below counts them. Listed here, or the rows above would not sum to
+    // the total and the difference would read as unexplained income.
+    if (const float passive = getTotalEffect("passiveIncome", cid); fabsf(passive) >= 0.05f)
+        startY = drawBreakdownRow(lx, startY, valX, "Passive Income", TextFormat("%+.1f", passive), WHITE, false);
+    if (cs.specTax > 0.05f)
+        startY = drawBreakdownRow(lx, startY, valX, "Sector Taxes", TextFormat("+%.1f", cs.specTax), Color{150, 200, 120, 255}, false);
     DrawRectangle(lx, startY, 320, 1, {100, 100, 120, 150});
     startY += 6;
     startY = drawBreakdownRow(lx, startY, valX, "Gross Income", TextFormat("%.1f", cs.total), WHITE, false);
@@ -2528,6 +2535,16 @@ void Game::drawEconomyLocal(int centerX, int startY) {
     }
     if (cs.pacificationCost > 0) {
         startY = drawBreakdownRow(lx, startY, valX, "Pacification Budget", TextFormat("-%.1f", cs.pacificationCost), Color{180, 180, 255, 255}, false);
+    }
+    // Monument upkeep and sector subsidies are in cs.expenses -- and in the pie
+    // -- but were never listed here, so Net Income came out below what the rows
+    // above explained. For a country with a full set of monuments that gap is
+    // ~700/turn: a bill the player could see draining the treasury but not name.
+    if (cs.monumentUpkeep > 0) {
+        startY = drawBreakdownRow(lx, startY, valX, "Monuments", TextFormat("-%.1f", cs.monumentUpkeep), Color{200, 170, 100, 255}, false);
+    }
+    if (cs.specSubsidy > 0) {
+        startY = drawBreakdownRow(lx, startY, valX, "Sector Subsidies", TextFormat("-%.1f", cs.specSubsidy), Color{150, 200, 120, 255}, false);
     }
     DrawRectangle(lx, startY, 320, 1, {100, 100, 120, 150});
     startY += 6;
