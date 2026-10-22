@@ -39,6 +39,18 @@ public:
     // Copy just a rect of a full-map pixel buffer into the CPU image.
     void updatePixelsRect(const Color* fullPixels, int x, int y, int w, int h);
 
+    /**
+     * Reassign a batch of pixels (given as row-major linear indices) to province
+     * `id`, in whichever form the raster currently holds -- this is the live
+     * morph path, and the running game keeps the raster COMPACT (the editor's
+     * updatePixelsRect above only touches the RGBA image, which the game has
+     * released). Compact-aware: a single palette slot is resolved for the whole
+     * batch, allocating one if this id has not been used on the map yet. Returns
+     * false only when a new slot is needed and the 65,535-colour palette is full
+     * (the raster is then left unchanged). idAt() answers the new value after.
+     */
+    bool paintPixels(const uint32_t* idx, size_t n, int id);
+
     // Release the image and forget all provinces (before re-loading).
     void clear();
 
@@ -87,9 +99,13 @@ public:
 
 private:
     bool parseJson(const std::string& jsonStr);
+    /** Palette slot for `id` in the compact form, allocating one if new. -1 when
+     *  the palette is full. Builds the reverse index lazily on first write. */
+    int slotForId(int id);
     Image m_image{};
     std::vector<uint16_t> m_index;   ///< after compact(): palette slot per pixel
     std::vector<int>      m_palette; ///< after compact(): slot -> province id
+    std::unordered_map<int, uint16_t> m_slotOf; ///< id -> palette slot, lazy; see slotForId
     int m_width = 0;
     int m_height = 0;
     bool m_loaded = false;

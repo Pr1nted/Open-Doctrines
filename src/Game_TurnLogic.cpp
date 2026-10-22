@@ -674,6 +674,10 @@ void Game::processTurn() {
     drawFrame(0.68f, "Building turn delta...");
     TurnDelta delta;
     delta.turnNumber = turnNum;
+    // Live geometry changes made this turn ride with the delta, so they persist
+    // in the save and reach multiplayer clients through the one wire format.
+    delta.mapEdits = std::move(m_pendingMapEdits);
+    m_pendingMapEdits.clear();
     delta.researchAllocation = m_researchAllocation;
     delta.pacificationAllocation = m_pacificationAllocation;
     delta.researchActiveNode = m_researchGroups[0].activeNode;

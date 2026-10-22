@@ -270,6 +270,14 @@ struct ModGameAccess {
     virtual uint32_t provinceNeighborCount(uint32_t pid) = 0;
     virtual uint32_t provinceNeighborAt(uint32_t pid, uint32_t index) = 0;
 
+    // Map.Write capability. Reshape the map while the game runs. The shape is an
+    // SVG-ish path in lon/lat degrees (see Game::rasterizeMapPath). Both record
+    // the edit in the turn delta, so it persists in saves and reaches every
+    // multiplayer client, and return how many pixels actually moved (0 = the
+    // shape was empty, off-map, or the province did not exist).
+    virtual int morphProvince(uint32_t pid, const std::string& svgPath, uint32_t mode) = 0;  // mode 0 = move border, 1 = keep in country
+    virtual int terrainEdit(const std::string& svgPath, uint32_t toLand) = 0;                // toLand: 1 = raise land, 0 = sink sea
+
     // Diplomacy capability. Reads are cheap flag lookups; proposeWar is the one
     // mutating call and the game may refuse it.
     virtual bool atWar(uint32_t a, uint32_t b) = 0;

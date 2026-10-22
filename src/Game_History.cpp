@@ -118,9 +118,31 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
         // A per-turn state snapshot means this turn can be fully restored.
         // Present is enough; this used to inflate the whole snapshot to ask.
         cur.hasState = reader.hasEntry("turns/s_" + turnTag(t) + ".json");
+        cur.mapEdits = std::move(d.mapEdits);   // replayed onto the raster at render time
         out.push_back(cur);
     }
     return true;
+}
+
+void Game::applyHistoryMapEdits(const TurnSnapshot& snap) {
+    if (snap.mapEdits.empty() || !m_provinces.hasPixels()) return;
+    const size_t total = (size_t)m_provinces.getWidth() * (size_t)m_provinces.getHeight();
+    std::vector<uint32_t> px;
+    for (const auto& e : snap.mapEdits) {
+        // Province morph repaints to the target id; terrain SINK drowns the
+        // ground, which the frame renderer draws as sea (province id 0). A
+        // terrain RAISE adds bare land with no province, so there is nothing to
+        // repaint until a morph puts a province on it.
+        if (e.kind == 1 && e.target != 0) continue;
+        const int paintId = (e.kind == 0) ? e.target : 0;
+        px.clear();
+        for (const auto& r : e.runs)
+            for (uint32_t k = 0; k < r.second; ++k) {
+                const uint32_t idx = r.first + k;
+                if ((size_t)idx < total) px.push_back(idx);
+            }
+        if (!px.empty()) m_provinces.paintPixels(px.data(), px.size(), paintId);
+    }
 }
 
 // ─── Standalone map data ─────────────────────────────────
@@ -572,7 +594,10 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
     int total = (int)(snaps.size() - 1) * subFrames + 1;
     int done = 0;
     bool wrote = true;
-    for (size_t i = 0; wrote && i + 1 < snaps.size(); ++i)
+    // The palette pass above sampled the base raster; this pass accumulates the
+    // geometry edits turn by turn so each frame draws the borders as they were.
+    for (size_t i = 0; wrote && i + 1 < snaps.size(); ++i) {
+        applyHistoryMapEdits(snaps[i]);          // geometry as of turn i
         for (int s = 0; s < subFrames; ++s) {
             float t = (float)s / (float)subFrames;
             renderHistoryFrame(snaps[i], snaps[i + 1], t, outW, outH, frame, m_historyView);
@@ -582,7 +607,9 @@ bool Game::exportHistoryGif(const std::string& savePath, int outW, int outH,
                 drawLoadingScreen();
             }
         }
+    }
     if (wrote) {
+        applyHistoryMapEdits(snaps.back());      // the final turn's edits
         renderHistoryFrame(snaps.back(), snaps.back(), 0.0f, outW, outH, frame, m_historyView);
         wrote = gif.writeFrame(frame.data());
     }

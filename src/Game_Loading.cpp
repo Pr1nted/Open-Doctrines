@@ -1165,6 +1165,283 @@ void Game::buildPopulationLookups() {
     }
 }
 
+// ── Live province morph (mode A: reshape only) ──────────────────────────────
+size_t Game::morphProvince(int targetId, const std::vector<uint32_t>& pixels,
+                           MorphBorders borders) {
+    const Province* target = m_provinces.getProvinceById(targetId);
+    if (!target || pixels.empty() || !m_provinces.hasPixels()) return 0;
+    const int targetCid = target->countryId;
+    const size_t total = (size_t)m_provinces.getWidth() * (size_t)m_provinces.getHeight();
+
+    // Filter the request: never repaint a pixel that is already the target or is
+    // sea (id 0 -- claiming ocean is a land/sea change, out of scope here), and
+    // honour the border rule. Done up front so the rebuild only runs when the
+    // raster actually changed.
+    std::vector<uint32_t> claim;
+    claim.reserve(pixels.size());
+    for (uint32_t i : pixels) {
+        if ((size_t)i >= total) continue;
+        const int cur = m_provinces.idAt((size_t)i);
+        if (cur == targetId || cur <= 0) continue;
+        if (borders == MorphBorders::Keep) {
+            const int curCid = ((size_t)cur < m_provinceCountryLookup.size())
+                                   ? m_provinceCountryLookup[(size_t)cur] : 0;
+            if (curCid != targetCid) continue;      // another country's ground: left alone
+        }
+        claim.push_back(i);
+    }
+    if (claim.empty()) return 0;
+    if (!m_provinces.paintPixels(claim.data(), claim.size(), targetId)) return 0;
+    recordMapEdit(/*kind=*/0, targetId, claim);   // persist + sync; see applyTurnDelta
+    rebuildMorphedGeometry();
+    return claim.size();
+}
+
+void Game::recordMapEdit(uint8_t kind, int target, std::vector<uint32_t> px) {
+    if (px.empty()) return;
+    std::sort(px.begin(), px.end());
+    px.erase(std::unique(px.begin(), px.end()), px.end());
+    MapEditDelta e;
+    e.kind = kind;
+    e.target = target;
+    for (size_t i = 0; i < px.size();) {
+        const uint32_t start = px[i];
+        uint32_t len = 1;
+        while (i + 1 < px.size() && px[i + 1] == px[i] + 1) { ++i; ++len; }
+        e.runs.emplace_back(start, len);
+        ++i;
+    }
+    m_pendingMapEdits.push_back(std::move(e));
+}
+
+// PERFORMANCE: this is a full-map re-derivation (several O(W*H) passes), run
+// once per morph. That is correct and fine for the infrequent event a map edit
+// is -- and replayed edits already coalesce to ONE call per turn in
+// applyTurnDelta. A region-local version would need every per-province
+// aggregate below (areas, bounds, edge pixels, centres, adjacency) updated for
+// just the affected provinces: areas and pixel counts fall out of the claimed
+// pixels' old/new ids, but bounds can SHRINK and adjacency/centres can change
+// outside the edited rect, so each needs an affected-province rescan, not a
+// rect rescan. Left as a measured optimisation, not a guessed one.
+void Game::rebuildMorphedGeometry() {
+    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    const size_t total = (size_t)std::max(0, w) * (size_t)std::max(0, h);
+    if (total == 0) return;
+
+    // Area / bounds / per-country pixel counts: reset and re-accumulate from the
+    // raster. A reshape never changes a province's OWNER (pid -> cid), so the
+    // ownership lookup is reused rather than rebuilt. Mirrors the geometry half
+    // of buildPopulationLookups, but touches no population/conquest state.
+    if (!m_provinceAreaArray.empty())
+        std::fill(m_provinceAreaArray.begin(), m_provinceAreaArray.end(), 0.0f);
+    for (auto& b : m_provinceBounds) b = PixelBox{};
+    if (!m_countryPixelCount.empty())
+        std::fill(m_countryPixelCount.begin(), m_countryPixelCount.end(), 0);
+
+    std::vector<float> rowWeight((size_t)std::max(0, h), 0.0f);
+    for (int y = 0; y < h; ++y) {
+        const double lat = 90.0 - ((double)y + 0.5) * (180.0 / (double)h);
+        rowWeight[(size_t)y] = (float)std::cos(lat * 3.14159265358979323846 / 180.0);
+    }
+    for (size_t i = 0; i < total; ++i) {
+        if ((i & 8191) == 0) Audio::get().pump();
+        const int pid = m_provinces.idAt(i);
+        if (pid <= 0 || (size_t)pid >= m_provinceAreaArray.size()) continue;
+        const int y = (int)(i / (size_t)w), x = (int)(i % (size_t)w);
+        m_provinceAreaArray[(size_t)pid] += rowWeight[(size_t)y];
+        PixelBox& b = m_provinceBounds[(size_t)pid];
+        b.x0 = std::min(b.x0, x); b.x1 = std::max(b.x1, x);
+        b.y0 = std::min(b.y0, y); b.y1 = std::max(b.y1, y);
+        const int cid = ((size_t)pid < m_provinceCountryLookup.size())
+                            ? m_provinceCountryLookup[(size_t)pid] : 0;
+        if (cid > 0 && (size_t)cid < m_countryPixelCount.size()) ++m_countryPixelCount[(size_t)cid];
+    }
+
+    // Geometry-dependent on-demand caches: drop so they rebuild when next asked.
+    m_provincePixels.clear();
+    m_coastalCache.clear();
+    m_portAnchorCache.clear();
+    // The fog world is rebuilt from the live neighbour/centre/owner caches on
+    // every recompute, so it tracks a reshape for free -- except m_fogCoastal,
+    // which is built once and size-gated. A changed coastline makes it stale, so
+    // drop it here and the next fog build repopulates it.
+    m_fogCoastal.clear();
+
+    // Edge pixels feed the border-glow distance field; flag it dirty so
+    // rebuildGradientField redraws it from the moved borders.
+    m_provinceEdgePixels = odProvinceEdgePixels(m_provinces, w, h);
+    m_gradientDirty = true;
+
+    // Centres/radii, adjacency, and the GPU layers the reshape invalidated.
+    if (m_renderer) {
+        m_renderer->buildProvinceData(m_provinces, m_provinceCenters, m_provinceRadius);
+        m_renderer->setProvinceIndex(m_provinces);
+        if (!m_headless) m_renderer->computeBorderTexture(m_provinces);
+    }
+    computeCountryLabels();        // rebuilds m_provinceNeighbors + label placement
+    rebuildGradientField();        // consumes m_gradientDirty
+    generatePoliticalTexture();    // recolour the board over the new shapes
+
+    // NOTE: fog-of-war worlds keep per-province geometry arrays (owner/
+    // neighbours/centres/coastal, indexed by pid) that a morph also invalidates;
+    // refreshing those is handled when morph is wired into the fog/MP path.
+}
+
+std::vector<uint32_t> Game::rasterizeMapPath(const std::string& d) const {
+    const int W = m_provinces.getWidth(), H = m_provinces.getHeight();
+    std::vector<uint32_t> out;
+    if (W <= 0 || H <= 0 || d.empty()) return out;
+
+    // ── Parse the path (lon/lat degrees) into closed subpaths ──
+    struct Pt { float lon, lat; };
+    std::vector<std::vector<Pt>> subpaths;
+    std::vector<Pt> cur;
+    float px = 0, py = 0, startx = 0, starty = 0;    // in degrees
+    size_t i = 0;
+    auto skipsep = [&] {
+        while (i < d.size() && (std::isspace((unsigned char)d[i]) || d[i] == ',')) ++i;
+    };
+    auto readNum = [&](float& v) -> bool {
+        skipsep();
+        size_t j = i;
+        if (j < d.size() && (d[j] == '+' || d[j] == '-')) ++j;
+        bool any = false;
+        while (j < d.size() && (std::isdigit((unsigned char)d[j]) || d[j] == '.')) { ++j; any = true; }
+        if (j < d.size() && (d[j] == 'e' || d[j] == 'E')) {
+            ++j;
+            if (j < d.size() && (d[j] == '+' || d[j] == '-')) ++j;
+            while (j < d.size() && std::isdigit((unsigned char)d[j])) ++j;
+        }
+        if (!any) return false;
+        v = std::strtof(d.substr(i, j - i).c_str(), nullptr);
+        i = j;
+        return true;
+    };
+    char cmd = 0;
+    while (i < d.size()) {
+        skipsep();
+        if (i >= d.size()) break;
+        if (std::isalpha((unsigned char)d[i])) { cmd = d[i]; ++i; }     // else: implicit repeat
+        const bool rel = std::islower((unsigned char)cmd) != 0;
+        const char C = (char)std::toupper((unsigned char)cmd);
+        if (C == 'M' || C == 'L') {
+            float x, y;
+            if (!readNum(x) || !readNum(y)) break;
+            if (rel) { x += px; y += py; }
+            if (C == 'M') {
+                if (!cur.empty()) { subpaths.push_back(cur); cur.clear(); }
+                startx = x; starty = y;
+                cmd = rel ? 'l' : 'L';                 // extra pairs after M are L
+            }
+            px = x; py = y; cur.push_back({x, y});
+        } else if (C == 'H') {
+            float x; if (!readNum(x)) break; if (rel) x += px; px = x; cur.push_back({x, py});
+        } else if (C == 'V') {
+            float y; if (!readNum(y)) break; if (rel) y += py; py = y; cur.push_back({px, y});
+        } else if (C == 'C') {
+            // Cubic bezier, flattened to a FIXED number of segments so the same
+            // path rasterises to the same pixels on every client and replay.
+            float x1, y1, x2, y2, x, y;
+            if (!readNum(x1) || !readNum(y1) || !readNum(x2) || !readNum(y2) ||
+                !readNum(x) || !readNum(y)) break;
+            if (rel) { x1 += px; y1 += py; x2 += px; y2 += py; x += px; y += py; }
+            constexpr int N = 16;
+            const float p0x = px, p0y = py;
+            for (int s = 1; s <= N; ++s) {
+                const float t = (float)s / N, u = 1.0f - t;
+                cur.push_back({ u*u*u*p0x + 3*u*u*t*x1 + 3*u*t*t*x2 + t*t*t*x,
+                                u*u*u*p0y + 3*u*u*t*y1 + 3*u*t*t*y2 + t*t*t*y });
+            }
+            px = x; py = y;
+        } else if (C == 'Q') {
+            float x1, y1, x, y;
+            if (!readNum(x1) || !readNum(y1) || !readNum(x) || !readNum(y)) break;
+            if (rel) { x1 += px; y1 += py; x += px; y += py; }
+            constexpr int N = 16;
+            const float p0x = px, p0y = py;
+            for (int s = 1; s <= N; ++s) {
+                const float t = (float)s / N, u = 1.0f - t;
+                cur.push_back({ u*u*p0x + 2*u*t*x1 + t*t*x,
+                                u*u*p0y + 2*u*t*y1 + t*t*y });
+            }
+            px = x; py = y;
+        } else if (C == 'Z') {
+            if (!cur.empty()) { cur.push_back({startx, starty}); subpaths.push_back(cur); cur.clear(); }
+            px = startx; py = starty;
+        } else {
+            break;     // unsupported command (curves etc.): stop rather than loop
+        }
+    }
+    if (!cur.empty()) subpaths.push_back(cur);
+    if (subpaths.empty()) return out;
+
+    // ── Scanline even-odd fill in map-pixel space ──
+    auto toPx = [&](const Pt& p) {
+        // Wrap longitude into [-180,180) so a path may use continuous coordinates
+        // across the dateline for its vertices (e.g. 185 reads as -175). A single
+        // FILLED shape should still not straddle +-180 -- author it as two paths,
+        // one per side -- because the scanline fill does not wrap a span around
+        // the map edge.
+        float lon = std::fmod(p.lon + 180.0f, 360.0f);
+        if (lon < 0.0f) lon += 360.0f;
+        lon -= 180.0f;
+        return Vector2{ (lon + 180.0f) / 360.0f * (float)W,
+                        (90.0f - p.lat) / 180.0f * (float)H };
+    };
+    std::vector<std::vector<Vector2>> polys;
+    float minY = 1e30f, maxY = -1e30f;
+    for (auto& sp : subpaths) {
+        if (sp.size() < 2) continue;
+        std::vector<Vector2> poly; poly.reserve(sp.size());
+        for (auto& p : sp) {
+            Vector2 q = toPx(p);
+            poly.push_back(q);
+            minY = std::min(minY, q.y); maxY = std::max(maxY, q.y);
+        }
+        polys.push_back(std::move(poly));
+    }
+    if (polys.empty()) return out;
+    const int y0 = std::max(0, (int)std::floor(minY));
+    const int y1 = std::min(H - 1, (int)std::ceil(maxY));
+    std::vector<float> xs;
+    for (int y = y0; y <= y1; ++y) {
+        const float yc = (float)y + 0.5f;
+        xs.clear();
+        for (auto& poly : polys) {
+            const size_t n = poly.size();
+            for (size_t k = 0; k < n; ++k) {
+                const Vector2& a = poly[k];
+                const Vector2& b = poly[(k + 1) % n];
+                if ((a.y <= yc && b.y > yc) || (b.y <= yc && a.y > yc))
+                    xs.push_back(a.x + (yc - a.y) / (b.y - a.y) * (b.x - a.x));
+            }
+        }
+        if (xs.size() < 2) continue;
+        std::sort(xs.begin(), xs.end());
+        for (size_t k = 0; k + 1 < xs.size(); k += 2) {
+            const int xa = std::max(0, (int)std::ceil(xs[k] - 0.5f));
+            const int xb = std::min(W - 1, (int)std::floor(xs[k + 1] - 0.5f));
+            for (int x = xa; x <= xb; ++x) out.push_back((uint32_t)((size_t)y * (size_t)W + (size_t)x));
+        }
+    }
+    return out;
+}
+
+void Game::terrainEdit(const std::vector<uint32_t>& pixels, bool toLand) {
+    if (pixels.empty()) return;
+    m_landSea.setLand(pixels.data(), pixels.size(), toLand);
+    if (!toLand) {
+        // Drowned ground belongs to no province, or the political layer paints
+        // it in its old owner's colour and the province still counts its area.
+        m_provinces.paintPixels(pixels.data(), pixels.size(), 0);
+    }
+    recordMapEdit(/*kind=*/1, toLand ? 1 : 0, pixels);   // persist + sync
+    // rebuildMorphedGeometry re-derives the province-side caches (areas lost to
+    // the sea, edge pixels, political recolour) and drops the coastal/port
+    // caches, which a changed coastline invalidates.
+    rebuildMorphedGeometry();
+}
+
 // The inward shading every country carries is a distance field: 0 on a border
 // pixel, growing to 60 as you move into the interior. It has to be rebuilt
 // whenever a border moves, which before this was only on load, sync and
@@ -3435,6 +3712,31 @@ void Game::applyTurnDelta(const TurnDelta& delta, bool playerScalars) {
             }
             m_provinceArmies[ad.provinceId] = std::move(units);
         }
+    }
+    // Live geometry edits (morph / terrain). Applied here so this one applier
+    // serves BOTH save-replay and multiplayer clients -- neither runs the script
+    // that issued the edit, so the recorded pixel runs are how the reshape
+    // reaches them. One rebuild covers the whole turn's edits.
+    if (!delta.mapEdits.empty() && m_provinces.hasPixels()) {
+        const size_t total = (size_t)m_provinces.getWidth() * (size_t)m_provinces.getHeight();
+        std::vector<uint32_t> px;
+        for (const auto& e : delta.mapEdits) {
+            px.clear();
+            for (const auto& r : e.runs)
+                for (uint32_t k = 0; k < r.second; ++k) {
+                    const uint32_t idx = r.first + k;
+                    if ((size_t)idx < total) px.push_back(idx);
+                }
+            if (px.empty()) continue;
+            if (e.kind == 0) {
+                m_provinces.paintPixels(px.data(), px.size(), e.target);   // morph
+            } else {
+                const bool toLand = (e.target != 0);                       // terrain
+                m_landSea.setLand(px.data(), px.size(), toLand);
+                if (!toLand) m_provinces.paintPixels(px.data(), px.size(), 0);
+            }
+        }
+        rebuildMorphedGeometry();
     }
     // Research/pacification state (recorded per-turn in .dat)
     //

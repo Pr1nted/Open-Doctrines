@@ -18,6 +18,14 @@ public:
     void updatePixels(Color* pixels);
     void updatePixelsRect(Color* pixels, int x, int y, int w, int h);
 
+    /**
+     * Flip a batch of pixels (row-major linear indices) to land or sea, writing
+     * the 1-bit mask directly. This is the live terrain path: the running game
+     * has called dropPixels(), so the RGBA image updatePixelsRect needs is gone.
+     * Keeps the image in sync too when it is still present (the editor).
+     */
+    void setLand(const uint32_t* idx, size_t n, bool land);
+
     bool isLand(int pixelX, int pixelY) const;
     bool isLand(float lon, float lat) const;
 

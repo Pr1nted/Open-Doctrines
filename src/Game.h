@@ -1,6 +1,7 @@
 #pragma once
 #include "Monuments.h"
 #include "Fog.h"
+#include "SaveManager.h"   // TurnDelta / MapEditDelta, used by members below
 #include "util/OdEnv.h"
 #include "Nationalisation.h"
 #include "WorldProvenance.h"
@@ -2033,6 +2034,10 @@ public:
     bool        modAddCountryTreasury(int cid, double delta);
     bool        modSetProvinceOwner(int pid, int toCid);
     bool        modSetProvincePopulation(int pid, long long value);
+    // Map.Write: a mod reshapes the map through the SAME engine ops the script
+    // verbs use, so there is one implementation behind both. Return pixels moved.
+    int         modMorphProvince(int pid, const std::string& svgPath, int mode);
+    int         modTerrainEdit(const std::string& svgPath, bool toLand);
 
     // Backing for the Neural capability. OBSERVE ONLY: there is deliberately
     // no path here that can write to the model or to training state.
@@ -3951,6 +3956,52 @@ public:
     void generatePopulationTexture(int countryId, int prevCountryId);
     void generatePoliticalTexture();
     void buildPopulationLookups();
+
+    // ── Live province geometry (morph) ──────────────────────────────────────
+    //
+    // Reshape a province while the game runs: pixels are reassigned on the
+    // raster and every geometry cache + texture is re-derived. This is mode A
+    // (reshape only) -- the SET of province ids never changes; split/merge is a
+    // later mode layered on the same pixel core.
+    //
+    // Whether a morph may claim pixels of ANOTHER country's province:
+    //   Allow -- it can, which moves the national border (the claimed ground
+    //            becomes the target province's country's territory);
+    //   Keep  -- it may not, so the reshape is confined to provinces of the
+    //            target's own country and cross-country pixels are left alone.
+    enum class MorphBorders { Allow, Keep };
+    /**
+     * Reassign `pixels` (row-major linear indices) to province `targetId`.
+     * Sea pixels and pixels already owned by the target are skipped; the border
+     * rule filters the rest. Returns how many pixels actually moved. On a
+     * non-zero result the geometry caches and textures are rebuilt.
+     */
+    size_t morphProvince(int targetId, const std::vector<uint32_t>& pixels,
+                         MorphBorders borders = MorphBorders::Allow);
+    /** Re-derive the geometry caches and GPU layers after a raster edit, WITHOUT
+     *  touching population, conquest or occupation state. See buildPopulationLookups. */
+    void rebuildMorphedGeometry();
+    /**
+     * The map-raster pixel indices covered by an SVG-ish path (M/L/H/V/Z,
+     * absolute and relative; curves are not yet flattened). The path's
+     * coordinates are DEGREES -- x = longitude (-180..180), y = latitude
+     * (90..-90) -- so a shape reads the same whatever the map's resolution.
+     * Even-odd fill across subpaths, so holes work. The input for a script or
+     * mod `morph`; pair with morphProvince.
+     */
+    std::vector<uint32_t> rasterizeMapPath(const std::string& svgPathD) const;
+    /**
+     * Raise (toLand) or sink a set of map pixels on the terrain raster. Sinking
+     * also clears their province to 0, so the political layer does not keep
+     * painting drowned ground in its old owner's colour; raised sea is bare land
+     * until a morph puts a province on it. Re-derives the geometry caches.
+     */
+    void terrainEdit(const std::vector<uint32_t>& pixels, bool toLand);
+    /** Map edits made this turn (morph / terrain), moved into the TurnDelta when
+     *  it is built so they persist in saves and reach multiplayer clients. */
+    std::vector<MapEditDelta> m_pendingMapEdits;
+    /** Append a map edit to m_pendingMapEdits as row-major RLE runs. */
+    void recordMapEdit(uint8_t kind, int target, std::vector<uint32_t> px);
     int m_lastPopCountryId = -1;
 
     std::unordered_map<std::string, std::unordered_map<std::string, CountryRelation>> m_relations;
@@ -4974,7 +5025,14 @@ public:
         std::unordered_map<int, long long> troops;     // pid -> total troops
         std::vector<HistShip> ships;
         bool hasState = false;   // has turns/s_NNNNN.json, so revert is faithful
+        // Live geometry edits this turn carried: a reshape has to be replayed
+        // onto the timelapse raster, or the whole animation shows the original
+        // borders. See applyHistoryMapEdits.
+        std::vector<MapEditDelta> mapEdits;
     };
+    /** Apply a snapshot's province-raster edits (morph / terrain sink) to the
+     *  history raster, so each frame samples the geometry as of that turn. */
+    void applyHistoryMapEdits(const TurnSnapshot& snap);
     enum HistoryView { HV_POLITICAL = 0, HV_POPULATION = 1, HV_TROOPS = 2 };
     bool buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnapshot>& out);
     // Loads just the province image + countries from the save's embedded

@@ -35,7 +35,8 @@ memory after a call returns, and you must not keep one of the host's.
 | `GameState.Write` | `gearbox:gamestate.write` | Mutate the world. Implies GameState.Read. | yes | implemented |
 | `Neural` | `gearbox:neural` | Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model) | yes | implemented |
 | `Neural.Decide` | `gearbox:neural.decide` | Choose the AI's action for a country, in place of the built-in AI | yes | implemented |
-| `Map` | `gearbox:map` | Province geometry and adjacency | yes | implemented |
+| `Map` | `gearbox:map` | Province geometry and adjacency (read-only) | yes | implemented |
+| `Map.Write` | `gearbox:map` | Reshape the map while the game runs: `morph` a province, raise or sink `terrain` | yes | implemented |
 | `Diplomacy` | `gearbox:diplomacy` | Read and propose diplomatic actions | yes | implemented |
 | `Storage` | `gearbox:storage` | Persistent key-value store namespaced to your mod id | yes | implemented |
 | `Audio` | `gearbox:audio` | Play and stop sounds from your own mod's assets | yes | implemented |
@@ -1994,6 +1995,43 @@ Whether a fleet could get from one point to another by sea, using the game's own
 **Returns** `i32` — 0 or 1.
 
 Whether a world coordinate is land. Ordering a ship onto land is not an error -- the resolver clamps it -- but knowing first is cheaper.
+
+#### `morph_province`
+
+Requires the **Map.Write** capability (not the read-only `Map`).
+
+```wat
+(import "gearbox:map" "morph_province" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+| `path_ptr` | `i32` | pointer to an SVG path string in your module's memory |
+| `path_len` | `i32` | its length in bytes |
+| `mode` | `i32` | 0 = move the national border, 1 = keep the reshape inside the province's own country |
+
+**Returns** `i32` — pixels moved (0 if the shape was empty, off the map, or the province does not exist).
+
+Reshape a province while the game runs. The path is the same format the `morph` script verb takes: SVG commands `M L H V C Q Z` in **degrees** (x longitude, y latitude). The pixels it covers join the province; with `mode` 0 the border moves with them, with `mode` 1 another country's ground is left alone. The edit is recorded in the turn delta, so it persists in saves and reaches every multiplayer client, and it is logged for conflict detection as `province:<id>:shape`. This calls the same engine path as the script verb -- see `docs/scripting.md`.
+
+#### `terrain`
+
+Requires the **Map.Write** capability.
+
+```wat
+(import "gearbox:map" "terrain" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `to_land` | `i32` | 1 = raise the pixels to land, 0 = sink them to sea |
+| `path_ptr` | `i32` | pointer to an SVG path string in your module's memory |
+| `path_len` | `i32` | its length in bytes |
+
+**Returns** `i32` — pixels changed (0 if the shape was empty or off the map).
+
+Raise sea to land or sink land to sea over the shape (same path format as `morph_province`). Sinking also clears any province on those pixels, so drowned ground reads as open water; raised sea is bare land until a `morph_province` puts a province on it. Recorded in the turn delta like a morph, and logged as `terrain:land` or `terrain:sea`.
 
 ### `gearbox:diplomacy`
 

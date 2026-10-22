@@ -17,6 +17,23 @@ LandSeaMap::~LandSeaMap() {
 //
 // The recolouring both load paths do (land -> 200, sea -> 40) preserves that
 // test, which is why this can run either before or after it.
+void LandSeaMap::setLand(const uint32_t* idx, size_t n, bool land) {
+    if (!m_loaded || idx == nullptr || m_landMask.empty()) return;
+    const size_t total = (size_t)m_width * (size_t)m_height;
+    for (size_t k = 0; k < n; ++k) {
+        const size_t i = idx[k];
+        if (i >= total) continue;
+        if (land) m_landMask[i >> 3] |= (unsigned char)(1u << (i & 7));
+        else      m_landMask[i >> 3] &= (unsigned char)~(1u << (i & 7));
+        // Keep the RGBA image in step when it is still around (editor path);
+        // rebuildMask reads red > 128 as land.
+        if (m_image.data) {
+            auto* p = static_cast<unsigned char*>(m_image.data) + i * 4;
+            p[0] = p[1] = p[2] = land ? 255 : 0; p[3] = 255;
+        }
+    }
+}
+
 void LandSeaMap::rebuildMask() {
     m_landMask.assign(((size_t)m_width * m_height + 7) / 8, 0);
     if (!m_image.data) return;

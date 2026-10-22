@@ -270,6 +270,7 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
                      delta.researchGroups[g].sharePct != 50 ||
                      delta.researchGroups[g].lastNode >= 0;
     if (anyGroups) extraFlags |= 0x08;                  // bit 3 = research groups
+    if (!delta.mapEdits.empty()) extraFlags |= 0x10;    // bit 4 = map edits (morph/terrain)
     buf.push_back(extraFlags);
     writeFloat(buf, delta.researchAllocation);
     writeFloat(buf, delta.pacificationAllocation);
@@ -306,6 +307,23 @@ std::vector<uint8_t> SaveManager::packTurn(const TurnDelta& delta) {
             writeU16(buf, (uint16_t)(delta.researchGroups[g].lastNode + 1));
             buf.push_back((uint8_t)std::clamp(delta.researchGroups[g].sharePct, 0, 100));
             buf.push_back(delta.researchGroups[g].autoAdvance ? 1 : 0);
+        }
+    }
+
+    // ── MAP EDITS (live morph / terrain) ──
+    //
+    // Last of the trailer blocks, behind bit 4, so every fixed offset before it
+    // is untouched and an older build stops at the end marker without ever
+    // seeing it. Runs are row-major pixel spans; see MapEditDelta.
+    if (!delta.mapEdits.empty()) {
+        writeU16(buf, (uint16_t)std::min<size_t>(delta.mapEdits.size(), 0xFFFF));
+        size_t emitted = 0;
+        for (const auto& e : delta.mapEdits) {
+            if (emitted++ >= 0xFFFF) break;
+            buf.push_back(e.kind);
+            writeU16(buf, (uint16_t)e.target);
+            writeU32(buf, (uint32_t)e.runs.size());
+            for (const auto& r : e.runs) { writeU32(buf, r.first); writeU32(buf, r.second); }
         }
     }
 
@@ -459,6 +477,25 @@ bool SaveManager::unpackTurn(const uint8_t* data, size_t size, TurnDelta& out) {
                 out.researchGroups[g].lastNode    = (int)readU16(ptr) - 1;
                 out.researchGroups[g].sharePct    = (int)*ptr++;
                 out.researchGroups[g].autoAdvance = (*ptr++ != 0);
+            }
+        }
+        // Live geometry edits (morph / terrain), as row-major pixel runs.
+        if (trailerIntact && (extraFlags & 0x10) && ptr + 2 <= end) {
+            const uint16_t editCount = readU16(ptr);
+            for (uint16_t i = 0; i < editCount; ++i) {
+                if (ptr + 7 > end) return false;        // kind(1)+target(2)+runs(4)
+                MapEditDelta e;
+                e.kind = *ptr++;
+                e.target = (int)readU16(ptr);
+                const uint32_t runCount = readU32(ptr);
+                e.runs.reserve(runCount);
+                for (uint32_t r = 0; r < runCount; ++r) {
+                    if (ptr + 8 > end) return false;
+                    const uint32_t start = readU32(ptr);
+                    const uint32_t len = readU32(ptr);
+                    e.runs.emplace_back(start, len);
+                }
+                out.mapEdits.push_back(std::move(e));
             }
         }
     }

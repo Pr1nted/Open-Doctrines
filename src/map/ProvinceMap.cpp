@@ -198,6 +198,51 @@ void ProvinceMap::updatePixelsRect(const Color* fullPixels, int x, int y, int w,
                (size_t)w * sizeof(Color));
 }
 
+int ProvinceMap::slotForId(int id) {
+    // The reverse index is derived from the palette, so build it on first use
+    // rather than carrying it through compact(); the palette is a few thousand
+    // entries, so this is cheap and happens at most once per morphed map.
+    if (m_slotOf.empty() && !m_palette.empty())
+        for (size_t s = 0; s < m_palette.size(); ++s)
+            m_slotOf.emplace(m_palette[s], (uint16_t)s);
+    auto it = m_slotOf.find(id);
+    if (it != m_slotOf.end()) return it->second;
+    if (m_palette.size() >= 0xFFFF) return -1;   // palette full; caller keeps the raster
+    const uint16_t slot = (uint16_t)m_palette.size();
+    m_palette.push_back(id);
+    m_slotOf.emplace(id, slot);
+    return slot;
+}
+
+bool ProvinceMap::paintPixels(const uint32_t* idx, size_t n, int id) {
+    if (!m_loaded || idx == nullptr) return false;
+    const size_t total = (size_t)m_width * (size_t)m_height;
+    // Image form (editor, or an uncompacted map): write the RGB id directly.
+    if (m_image.data != nullptr) {
+        auto* dst = static_cast<uint8_t*>(m_image.data);
+        for (size_t k = 0; k < n; ++k) {
+            const size_t i = idx[k];
+            if (i >= total) continue;
+            uint8_t* p = dst + i * 4;
+            p[0] = (uint8_t)((id >> 16) & 0xFF);
+            p[1] = (uint8_t)((id >> 8) & 0xFF);
+            p[2] = (uint8_t)(id & 0xFF);
+            p[3] = 255;
+        }
+        return true;
+    }
+    // Compact form (the running game): one slot for the whole batch, since the
+    // target id is constant.
+    if (m_index.empty()) return false;
+    const int slot = slotForId(id);
+    if (slot < 0) return false;
+    for (size_t k = 0; k < n; ++k) {
+        const size_t i = idx[k];
+        if (i < total) m_index[i] = (uint16_t)slot;
+    }
+    return true;
+}
+
 bool ProvinceMap::compact() {
     if (!m_loaded || m_image.data == nullptr) return false;
     const size_t total = (size_t)m_width * (size_t)m_height;

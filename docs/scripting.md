@@ -240,6 +240,51 @@ set province.42.troops 50000           # top it up; the difference is line infan
 A cut with no type named comes off the largest formations first, so a partial
 reduction lands on the mass rather than wiping out a small specialist one.
 
+### Reshaping the map (morph / terrain)
+
+A province's shape is not fixed for the life of the game. `morph` hands a
+province a shape and the pixels it covers become part of that province;
+`terrain` raises sea to land or sinks land to sea. Both run while the game is
+playing, are recorded in the save and sent to every multiplayer client, and the
+change shows up in the timelapse.
+
+```
+morph PROVINCE svg "PATH" [within]     # the path's pixels join the province
+terrain land svg "PATH"                # raise those pixels to land
+terrain sea  svg "PATH"                # sink those pixels to sea
+```
+
+`PATH` is an SVG path (`M L H V C Q Z`, absolute or relative) whose coordinates
+are **degrees** — x is longitude (−180..180), y is latitude (90..−90) — so a
+shape reads the same whatever resolution the map was generated at. Curves are
+flattened to line segments; a single filled shape must not straddle ±180 (author
+it as two paths, one per side).
+
+```
+# Give France everything inside this box, moving the border east.
+morph 348 svg "M 2 52 L 14 52 L 14 45 L 2 45 Z"
+
+# The same box, but kept INSIDE France — pixels another country owns are left
+# alone, so only France's own provinces trade ground.
+morph 348 svg "M 2 52 L 14 52 L 14 45 L 2 45 Z" within
+
+# Drown the Adriatic, then raise an island and hand it to an Italian province.
+terrain sea  svg "M 12 45 L 20 45 L 20 38 L 12 38 Z"
+terrain land svg "M 15 43 C 16 43 16 42 15 42 C 14 42 14 43 15 43 Z"
+morph 611 svg "M 15 43 C 16 43 16 42 15 42 C 14 42 14 43 15 43 Z"
+```
+
+Rules worth knowing:
+- **The border moves.** Claiming another country's ground makes it yours
+  (`morph` without `within`). `within` confines the reshape to the province's
+  own country.
+- **No holes.** A province only shrinks when another province claims its pixels,
+  so there is never ownerless land. To cede ground, `morph` it to the neighbour.
+- **Sea is not claimed.** `morph` skips ocean pixels; raise land with
+  `terrain land` first, then `morph` a province onto it.
+- **Sinking clears the province.** `terrain sea` sets those pixels to open water
+  and removes them from whatever province held them.
+
 ### Map References
 ```
 map.date  → (string) current date, e.g. "January 2000" — WRITABLE via set

@@ -125,6 +125,13 @@ TurnDelta canonicalTurn(int n) {
     a.units.push_back(ArmyDelta::Unit{ 3, 250000, 0 });
     a.units.push_back(ArmyDelta::Unit{ 4, 90000, 2 });   // type rides in the trailer
     d.armies.push_back(a);
+
+    // A live geometry edit, so the archive round-trip proves a morph survives
+    // the zip -- write, read back out of the .odsv, unpack -- not just packTurn.
+    MapEditDelta m;
+    m.kind = 0; m.target = 420 + n;
+    m.runs = { {10000u, 64u}, {50000u + (uint32_t)n, 3u} };
+    d.mapEdits.push_back(m);
     return d;
 }
 
@@ -221,6 +228,18 @@ void verifyCanonical(const std::string& path, const char* origin) {
                     2, (int)got.armies[0].units[1].type);
         } else {
             check((t + "one army of two units").c_str(), false);
+        }
+
+        // The map edit survived the archive, not just packTurn.
+        check((t + "a map edit read back from the .odsv").c_str(),
+              got.mapEdits.size() == 1);
+        if (got.mapEdits.size() == 1) {
+            checkEq((t + "map edit target").c_str(), 420 + n, got.mapEdits[0].target);
+            check((t + "map edit runs").c_str(),
+                  got.mapEdits[0].runs.size() == 2 &&
+                  got.mapEdits[0].runs[0].first == 10000u &&
+                  got.mapEdits[0].runs[0].second == 64u &&
+                  got.mapEdits[0].runs[1].first == 50000u + (uint32_t)n);
         }
     }
 }

@@ -51,7 +51,20 @@
 //               uint16 active_node + 1, uint16 points   (12 bytes)
 //       bit 1 — wide populations follow: uint16 count, then count entries of
 //               uint16 province_id + uint64 population
+//       (bit 2 — troop types; bit 3 — research groups; see packTurn)
+//       bit 4 — map edits follow (live province.morph / terrain, see
+//               MapEditDelta): uint16 edit_count, then per edit
+//                 uint8  kind         (0 = province morph, 1 = terrain)
+//                 uint16 target       (morph: province id; terrain: 1=land 0=sea)
+//                 uint32 run_count, then run_count runs of
+//                   uint32 start_pixel, uint32 length   (row-major RLE)
 //     uint8 0xFF end marker
+//
+// Geometry lives in the embedded map, not the province stream, so a reshape is
+// carried as a pixel-delta here in the trailer -- older builds skip the flag and
+// the fixed-width province entries stay aligned, exactly as the wide-population
+// and army-type tables do. Because this is also the multiplayer wire format,
+// one applier (Game::applyTurnDelta) replays edits for saves AND clients.
 //
 // Populations wider than the 32-bit field
 // ---------------------------------------
@@ -121,11 +134,20 @@ struct ArmyDelta {
     std::vector<Unit> units;
 };
 
+// A live geometry change recorded for replay: a run-length pixel-delta on the
+// province raster (a province.morph) or the terrain raster. See the trailer.
+struct MapEditDelta {
+    uint8_t kind = 0;        // 0 = province morph, 1 = terrain
+    int     target = 0;      // morph: province id; terrain: 1 = land, 0 = sea
+    std::vector<std::pair<uint32_t, uint32_t>> runs;   // {start pixel, length}, row-major
+};
+
 struct TurnDelta {
     int turnNumber = 0;
     std::vector<ProvinceDelta> provinces;
     std::vector<ShipDelta> ships;
     std::vector<ArmyDelta> armies;
+    std::vector<MapEditDelta> mapEdits;   // trailer bit 2; see applyTurnDelta
     // Research/pacification state (recorded each turn for replay)
     float researchAllocation = 0.25f;
     float pacificationAllocation = 0.0f;

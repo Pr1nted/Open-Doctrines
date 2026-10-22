@@ -779,6 +779,42 @@ uint32_t map_province_neighbor_at(ExecEnv e, uint32_t pid, uint32_t index) {
     return g_modGame->provinceNeighborAt(pid, index);
 }
 
+// ----------------------------------------------------------- Map.Write -----
+//
+// Reshaping the map while the game runs. Each reads an SVG-ish path string
+// (lon/lat degrees) out of the module's memory and hands it to the SAME engine
+// op the script `morph`/`terrain` verbs use -- one implementation behind both
+// surfaces. A moved border reaches every save and client, so it is always
+// logged, and recorded for conflict detection against other mods' writes.
+int32_t map_morph_province(ExecEnv e, uint32_t pid, uint32_t pathPtr,
+                           uint32_t pathLen, uint32_t mode) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_MAP_WRITE) || !g_modGame) return 0;
+    std::string path;
+    if (!mi->readString(pathPtr, pathLen, path)) return 0;
+    const int moved = g_modGame->morphProvince(pid, path, mode);
+    pushLog(mi->id(), moved > 0 ? 1 : 2,
+            moved > 0 ? "reshaped a province via Map.Write" : "morph changed nothing");
+    if (moved > 0)
+        ModConflicts::get().recordWrite(mi->id(),
+            "province:" + std::to_string(pid) + ":shape", std::to_string(moved));
+    return moved;
+}
+
+int32_t map_terrain(ExecEnv e, uint32_t toLand, uint32_t pathPtr, uint32_t pathLen) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_MAP_WRITE) || !g_modGame) return 0;
+    std::string path;
+    if (!mi->readString(pathPtr, pathLen, path)) return 0;
+    const int changed = g_modGame->terrainEdit(path, toLand);
+    pushLog(mi->id(), changed > 0 ? 1 : 2,
+            changed > 0 ? "edited terrain via Map.Write" : "terrain edit changed nothing");
+    if (changed > 0)
+        ModConflicts::get().recordWrite(mi->id(),
+            std::string("terrain:") + (toLand ? "land" : "sea"), std::to_string(changed));
+    return changed;
+}
+
 // ------------------------------------------------------------- Neural -----
 //
 // OBSERVE ONLY. A mod can read the feature vector the AI sees and the running
@@ -2167,6 +2203,8 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:map", "province_is_land",       "(i)i",    (void*)map_province_is_land,       MODULE_MAP},
     {"gearbox:map", "province_neighbor_count","(i)i",    (void*)map_province_neighbor_count,MODULE_MAP},
     {"gearbox:map", "province_neighbor_at",   "(ii)i",   (void*)map_province_neighbor_at,   MODULE_MAP},
+    {"gearbox:map", "morph_province",         "(iiii)i", (void*)map_morph_province,         MODULE_MAP_WRITE},
+    {"gearbox:map", "terrain",                "(iii)i",  (void*)map_terrain,                MODULE_MAP_WRITE},
 
     {"gearbox:storage", "get",    "(iiii)i", (void*)storage_get,    MODULE_STORAGE},
     {"gearbox:storage", "set",    "(iiii)i", (void*)storage_set,    MODULE_STORAGE},

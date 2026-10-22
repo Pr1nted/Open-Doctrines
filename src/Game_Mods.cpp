@@ -167,6 +167,12 @@ private:
     bool setProvincePopulation(uint32_t pid, long long v) override {
         return m_game->modSetProvincePopulation((int)pid, v);
     }
+    int morphProvince(uint32_t pid, const std::string& svg, uint32_t mode) override {
+        return m_game->modMorphProvince((int)pid, svg, (int)mode);
+    }
+    int terrainEdit(const std::string& svg, uint32_t toLand) override {
+        return m_game->modTerrainEdit(svg, toLand != 0);
+    }
     // ── Gearbox 1.1 ──────────────────────────────────────────────────────────
     // Forwards, nothing more. Every bound, clamp and validity test lives either
     // in the Game accessor or, for the four order calls, in the turn resolver.
@@ -1075,6 +1081,23 @@ bool Game::modSetProvinceOwner(int pid, int toCid) {
             it->second.end());
     }
     return true;
+}
+
+int Game::modMorphProvince(int pid, const std::string& svgPath, int mode) {
+    if (!m_provinces.getProvinceById(pid)) return 0;
+    std::vector<uint32_t> px = rasterizeMapPath(svgPath);
+    if (px.empty()) return 0;
+    const MorphBorders mb = (mode == 1) ? MorphBorders::Keep : MorphBorders::Allow;
+    // The same engine op the `morph` script verb calls -- it records the edit
+    // for saves/MP and rebuilds the geometry.
+    return (int)morphProvince(pid, px, mb);
+}
+
+int Game::modTerrainEdit(const std::string& svgPath, bool toLand) {
+    std::vector<uint32_t> px = rasterizeMapPath(svgPath);
+    if (px.empty()) return 0;
+    terrainEdit(px, toLand);
+    return (int)px.size();
 }
 
 // -------------------------------------------------------------- Neural ----

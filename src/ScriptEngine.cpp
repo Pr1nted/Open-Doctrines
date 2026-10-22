@@ -476,6 +476,54 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             continue;
         }
 
+        // morph <province> svg "<path d>" [within]
+        //
+        // Reshape a province while the game runs. The shape is an SVG-ish path
+        // (M/L/H/V/Z) whose coordinates are DEGREES -- x = longitude, y =
+        // latitude -- so it reads the same whatever the map's resolution. Its
+        // pixels are claimed for the province; the national border moves with
+        // them unless "within" confines the reshape to the province's own
+        // country. See Game::morphProvince / rasterizeMapPath.
+        if (kw == "morph") {
+            if (tokens.size() < 4 || tokens[2] != "svg") {
+                addError(scriptName, lineIdx + 1,
+                         "morph: expected 'morph <province> svg \"<path>\" [within]'");
+                lineIdx++; continue;
+            }
+            const int pid = (int)evalExpr(tokens[1], localVars).asInt();
+            const std::string& pathD = tokens[3];     // literal; tokenize stripped the quotes
+            Game::MorphBorders mode = Game::MorphBorders::Allow;
+            if (tokens.size() >= 5 && tokens[4] == "within") mode = Game::MorphBorders::Keep;
+            std::vector<uint32_t> pix = m_game->rasterizeMapPath(pathD);
+            const size_t moved = m_game->morphProvince(pid, pix, mode);
+            if (moved == 0)
+                addError(scriptName, lineIdx + 1,
+                         "morph: nothing changed (empty shape, or unknown province " +
+                         std::to_string(pid) + "?)");
+            lineIdx++;
+            continue;
+        }
+
+        // terrain land|sea svg "<path d>"
+        //
+        // Raise ("land") or sink ("sea") the pixels of an SVG-ish path, in the
+        // same lon/lat degrees and through the same rasteriser as morph. Sinking
+        // also clears the province there, so drowned ground reads as sea; raised
+        // sea is bare land until a morph puts a province on it. See terrainEdit.
+        if (kw == "terrain") {
+            if (tokens.size() < 4 || tokens[2] != "svg" ||
+                (tokens[1] != "land" && tokens[1] != "sea")) {
+                addError(scriptName, lineIdx + 1,
+                         "terrain: expected 'terrain land|sea svg \"<path>\"'");
+                lineIdx++; continue;
+            }
+            const bool toLand = (tokens[1] == "land");
+            std::vector<uint32_t> pix = m_game->rasterizeMapPath(tokens[3]);
+            m_game->terrainEdit(pix, toLand);
+            lineIdx++;
+            continue;
+        }
+
         if (kw == "stop") { m_stopped = true; lineIdx++; return true; }
 
         // try / catch / endtry
@@ -1215,7 +1263,7 @@ int ScriptEngine::statementMinVersion(const std::string& kw) {
                                       "unless", "label", "jump", "spawn", "stop",
                                       "try", "catch", "endtry", "dialog"};
     // i18n-ignore
-    static const char* const kV3[] = {"wait"};
+    static const char* const kV3[] = {"wait", "morph", "terrain"};
     for (const char* k : kV3) if (kw == k) return 3;
     for (const char* k : kV2) if (kw == k) return 2;
     return 1;

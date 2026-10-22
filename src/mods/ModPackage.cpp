@@ -36,6 +36,7 @@ const ModuleEntry kModules[] = {
     {"Neural.Decide",   MODULE_NEURAL_DECIDE},
     {"UI",              MODULE_UI},
     {"Map",             MODULE_MAP},
+    {"Map.Write",       MODULE_MAP_WRITE},
     {"Diplomacy",       MODULE_DIPLOMACY},
     {"Assets",          MODULE_ASSETS},
     {"Storage",         MODULE_STORAGE},

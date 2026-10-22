@@ -211,6 +211,11 @@ long GetFileModTime(const char *fileName) { return 0; }
 const char * GetFileName(const char *filePath) { return nullptr; }
 const char * GetFileNameWithoutExt(const char *filePath) { return nullptr; }
 Font GetFontDefault(void) { return Font{}; }
+// Added by the readable-font patch (patch_raylib_default_font.py) to rtext.c,
+// which raylib.h does not declare -- so this stub needs the C linkage Game.cpp's
+// `extern "C"` reference uses, which the header's own extern "C" block would
+// otherwise have supplied. The headless build links no raylib, so it needs it.
+extern "C" void SetFontDefault(Font font) { (void)font; }
 int GetGamepadAxisCount(int gamepad) { return 0; }
 float GetGamepadAxisMovement(int gamepad, int axis) { return 0; }
 int GetGamepadButtonPressed(void) { return 0; }

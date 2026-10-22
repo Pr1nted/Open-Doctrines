@@ -212,6 +212,64 @@ int main() {
               std::to_string(legacy.size()));
     }
 
+    printf("\nlive map edits (morph / terrain) ride the trailer\n");
+    {
+        TurnDelta d = oneProvince(288, 5'000'000LL);
+        MapEditDelta morph;
+        morph.kind = 0; morph.target = 412;
+        morph.runs = { {1000, 50}, {9000, 7}, {40000, 1} };
+        MapEditDelta terr;
+        terr.kind = 1; terr.target = 0;          // sink to sea
+        terr.runs = { {2000, 128} };
+        d.mapEdits = { morph, terr };
+
+        auto packed = SaveManager::packTurn(d);
+        TurnDelta out;
+        check("a turn with map edits decodes",
+              SaveManager::unpackTurn(packed.data(), packed.size(), out));
+        check("both edits survive", out.mapEdits.size() == 2,
+              "got " + std::to_string(out.mapEdits.size()));
+        if (out.mapEdits.size() == 2) {
+            check("the morph edit round-trips",
+                  out.mapEdits[0].kind == 0 && out.mapEdits[0].target == 412 &&
+                  out.mapEdits[0].runs.size() == 3 &&
+                  out.mapEdits[0].runs[0].first == 1000 &&
+                  out.mapEdits[0].runs[0].second == 50 &&
+                  out.mapEdits[0].runs[2].first == 40000 &&
+                  out.mapEdits[0].runs[2].second == 1);
+            check("the terrain edit round-trips",
+                  out.mapEdits[1].kind == 1 && out.mapEdits[1].target == 0 &&
+                  out.mapEdits[1].runs.size() == 1 &&
+                  out.mapEdits[1].runs[0].first == 2000 &&
+                  out.mapEdits[1].runs[0].second == 128);
+        }
+        check("the province beside them is untouched",
+              out.provinces.size() == 1 && out.provinces[0].provinceId == 288);
+
+        // And it must survive every truncation without reading past the buffer.
+        bool overran = false;
+        for (size_t n = 0; n < packed.size(); ++n) {
+            TurnDelta cutOut;
+            std::vector<uint8_t> cut(packed.begin(), packed.begin() + n);
+            if (SaveManager::unpackTurn(cut.data(), cut.size(), cutOut)) {
+                for (auto& e : cutOut.mapEdits)
+                    for (auto& r : e.runs)
+                        if (r.second > 1'000'000u) overran = true;   // absurd run length
+            }
+        }
+        check("every truncation of a map-edit turn stops inside the buffer", !overran);
+    }
+
+    printf("\na turn with no map edits decodes to none, and older builds skip the flag\n");
+    {
+        TurnDelta d = oneProvince(583, 900000LL);
+        auto packed = SaveManager::packTurn(d);
+        TurnDelta out;
+        check("no-edit turn decodes with an empty edit list",
+              SaveManager::unpackTurn(packed.data(), packed.size(), out) &&
+              out.mapEdits.empty());
+    }
+
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

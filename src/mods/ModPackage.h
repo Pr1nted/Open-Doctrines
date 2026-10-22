@@ -118,8 +118,14 @@ enum ModModuleBit : uint32_t {
     // player can see, so it is the capability a reviewer should look hardest
     // at after Core.Protected.
     MODULE_FOG_WRITE       = 1u << 29,
-    // Bits 30 and 31 are the last two in the mask. The next capability after
-    // those needs a wider type and a save-format decision, not another bit.
+    // Reshaping the map while the game runs: province.morph and terrain edits.
+    // Separate from the read-only MODULE_MAP (geometry + adjacency lookups)
+    // because this one MOVES borders and coastlines -- its edits are recorded in
+    // the turn delta and reach every save and multiplayer client, so a reviewer
+    // weighs it like the other *.Write capabilities, not like a lookup.
+    MODULE_MAP_WRITE       = 1u << 30,
+    // Bit 31 is the last in the mask. The next capability after it needs a wider
+    // type and a save-format decision, not another bit.
 };
 
 uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown
