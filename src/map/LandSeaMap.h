@@ -1,4 +1,6 @@
 #pragma once
+#include <cstddef>   // size_t
+#include <cstdint>   // uint32_t, used by setLand below
 #include <string>
 #include <vector>
 #include "raylib.h"
