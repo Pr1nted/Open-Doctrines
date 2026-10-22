@@ -309,7 +309,7 @@ export interface Draft {
 const KNOWN_MODULES = [
     "Assets", "Audio", "Content", "Core", "Core.Protected", "Country",
     "Diplomacy", "Economy.Read", "Economy.Write", "Fog", "Fog.Write",
-    "GameProcess", "GameState.Read", "GameState.Write", "Map", "MapEditor",
+    "GameProcess", "GameState.Read", "GameState.Write", "Map", "Map.Write", "MapEditor",
     "Military.Read", "Military.Write", "Net", "Neural", "Neural.Decide",
     "Politics.Read", "Politics.Write", "Render", "Research.Read",
     "Research.Write", "Scripts", "Storage", "UI",

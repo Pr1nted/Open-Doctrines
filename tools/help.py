@@ -327,6 +327,10 @@ GROUPS = [
         # The web build's canvas at device pixels, so a phone is neither zoomed
         # in nor blurry. Applied to the raylib the web build compiles.
         "patch_raylib_web_dpi.py",
+        # Adds SetFontDefault to rtext.c so the UI can draw through a readable
+        # vector font instead of raylib's bitmap one. Applied to the raylib the
+        # build compiles; the server stub generator knows it too.
+        "patch_raylib_default_font.py",
         # The relations view says who is at war and who is allied with hue
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.

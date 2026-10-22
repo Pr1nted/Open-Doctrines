@@ -1886,6 +1886,45 @@ static PyObject *gbxpy_point_is_land(PyObject *self, PyObject *args) {
 }
 #endif /* GBX_WITH_MAP */
 
+/* ---- Map.Write (2) ---- */
+#if GBX_WITH_MAP_WRITE
+
+/* gearbox:map "morph_province" */
+/* Reshape a province while the game runs. The path is an SVG string (M L H */
+/* V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers */
+/* join the province; mode 0 moves the national border with them, mode 1 */
+/* keeps the reshape inside the province's own country. Recorded in the */
+/* turn delta, so it persists in saves and reaches every client, and logged */
+/* as province:<id>:shape. */
+/* gearbox:map "morph_province" */
+/* `(iiii)i` */
+static PyObject *gbxpy_morph_province(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    unsigned int a3 = 0;
+    if (!PyArg_ParseTuple(args, "IIII", &a0, &a1, &a2, &a3)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_morph_province((uint32_t)a0, (uint32_t)a1, (uint32_t)a2, (uint32_t)a3));
+}
+
+/* gearbox:map "terrain" */
+/* Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, */
+/* same format as morph_province. Sinking also clears any province on those */
+/* pixels; raised sea is bare land until a morph puts a province on it. */
+/* Recorded in the turn delta and logged as terrain:land or terrain:sea. */
+/* gearbox:map "terrain" */
+/* `(iii)i` */
+static PyObject *gbxpy_terrain(PyObject *self, PyObject *args) {
+    (void)self;
+    unsigned int a0 = 0;
+    unsigned int a1 = 0;
+    unsigned int a2 = 0;
+    if (!PyArg_ParseTuple(args, "III", &a0, &a1, &a2)) return NULL;
+    return PyLong_FromUnsignedLong((unsigned long)gearbox_terrain((uint32_t)a0, (uint32_t)a1, (uint32_t)a2));
+}
+#endif /* GBX_WITH_MAP_WRITE */
+
 /* ---- MapEditor (20) ---- */
 #if GBX_WITH_MAPEDITOR
 

@@ -180,6 +180,12 @@
     {"pointIsLand", gbxlua_point_is_land},
 #endif /* GBX_WITH_MAP */
 
+/* ---- Map.Write (2) ---- */
+#if GBX_WITH_MAP_WRITE
+    {"morphProvince", gbxlua_morph_province},
+    {"terrain", gbxlua_terrain},
+#endif /* GBX_WITH_MAP_WRITE */
+
 /* ---- MapEditor (20) ---- */
 #if GBX_WITH_MAPEDITOR
     {"editorActive", gbxlua_editor_active},

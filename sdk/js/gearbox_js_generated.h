@@ -2404,6 +2404,56 @@ static JSValue gbxjs_point_is_land(JSContext *ctx, JSValueConst this_val,
 }
 #endif /* GBX_WITH_MAP */
 
+/* ---- Map.Write (2) ---- */
+#if GBX_WITH_MAP_WRITE
+
+/* gearbox:map "morph_province" */
+/* Reshape a province while the game runs. The path is an SVG string (M L H */
+/* V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers */
+/* join the province; mode 0 moves the national border with them, mode 1 */
+/* keeps the reshape inside the province's own country. Recorded in the */
+/* turn delta, so it persists in saves and reaches every client, and logged */
+/* as province:<id>:shape. */
+/* gearbox:map "morph_province" */
+/* `(iiii)i` */
+static JSValue gbxjs_morph_province(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 4) return JS_ThrowTypeError(ctx, "morphProvince expects 4 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    int32_t a3 = 0;
+    if (!arg_i32(ctx, argv[3], &a3)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_morph_province((uint32_t)a0, (uint32_t)a1, (uint32_t)a2, (uint32_t)a3);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+
+/* gearbox:map "terrain" */
+/* Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, */
+/* same format as morph_province. Sinking also clears any province on those */
+/* pixels; raised sea is bare land until a morph puts a province on it. */
+/* Recorded in the turn delta and logged as terrain:land or terrain:sea. */
+/* gearbox:map "terrain" */
+/* `(iii)i` */
+static JSValue gbxjs_terrain(JSContext *ctx, JSValueConst this_val,
+                        int argc, JSValueConst *argv) {
+    (void)this_val;
+    if (argc < 3) return JS_ThrowTypeError(ctx, "terrain expects 3 argument(s)");
+    int32_t a0 = 0;
+    if (!arg_i32(ctx, argv[0], &a0)) return JS_EXCEPTION;
+    int32_t a1 = 0;
+    if (!arg_i32(ctx, argv[1], &a1)) return JS_EXCEPTION;
+    int32_t a2 = 0;
+    if (!arg_i32(ctx, argv[2], &a2)) return JS_EXCEPTION;
+    uint64_t r = (uint64_t)gearbox_terrain((uint32_t)a0, (uint32_t)a1, (uint32_t)a2);
+    return JS_NewUint32(ctx, (uint32_t)r);
+}
+#endif /* GBX_WITH_MAP_WRITE */
+
 /* ---- MapEditor (20) ---- */
 #if GBX_WITH_MAPEDITOR
 

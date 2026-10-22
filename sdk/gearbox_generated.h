@@ -1198,6 +1198,28 @@ uint32_t gearbox_sea_route_exists(double from_lon, double from_lat, double to_lo
 GEARBOX_IMPORT("map", "point_is_land")
 uint32_t gearbox_point_is_land(double lon, double lat);
 
+/* Reshape a province while the game runs. The path is an SVG string (M L H
+ * V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers
+ * join the province; mode 0 moves the national border with them, mode 1
+ * keeps the reshape inside the province's own country. Recorded in the
+ * turn delta, so it persists in saves and reaches every client, and logged
+ * as province:<id>:shape.
+ * gearbox:map "morph_province"
+ * `(iiii)i`
+ */
+GEARBOX_IMPORT("map", "morph_province")
+uint32_t gearbox_morph_province(gearbox_province province, uint32_t path_ptr, uint32_t path_len, uint32_t mode);
+
+/* Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path,
+ * same format as morph_province. Sinking also clears any province on those
+ * pixels; raised sea is bare land until a morph puts a province on it.
+ * Recorded in the turn delta and logged as terrain:land or terrain:sea.
+ * gearbox:map "terrain"
+ * `(iii)i`
+ */
+GEARBOX_IMPORT("map", "terrain")
+uint32_t gearbox_terrain(uint32_t to_land, uint32_t path_ptr, uint32_t path_len);
+
 /* Whether the map editor is open with a project loaded. EVERY OTHER CALL
  * IN THIS MODULE returns 0 or an empty string when this is 0, including
  * from inside a running game: the data behind them is an editor project,

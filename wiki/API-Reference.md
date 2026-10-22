@@ -22,7 +22,7 @@ into your memory after a call returns.
 - **Fog.Write** (`gearbox:fog.write`): [fog_add_sight](#fog-add-sight), [fog_reveal_province](#fog-reveal-province), [fog_clear_grants](#fog-clear-grants)
 - **WasiStub** (`wasi_snapshot_preview1`): [fd_write](#fd-write), [proc_exit](#proc-exit), [random_get](#random-get), [clock_time_get](#clock-time-get), [environ_sizes_get](#environ-sizes-get), [environ_get](#environ-get), [args_sizes_get](#args-sizes-get), [args_get](#args-get), [fd_close](#fd-close), [fd_fdstat_get](#fd-fdstat-get), [fd_prestat_get](#fd-prestat-get), [fd_prestat_dir_name](#fd-prestat-dir-name), [fd_read](#fd-read), [fd_seek](#fd-seek), [path_open](#path-open), [clock_res_get](#clock-res-get), [sched_yield](#sched-yield), [fd_advise](#fd-advise), [fd_allocate](#fd-allocate), [fd_datasync](#fd-datasync), [fd_sync](#fd-sync), [fd_fdstat_set_flags](#fd-fdstat-set-flags), [fd_filestat_get](#fd-filestat-get), [fd_tell](#fd-tell), [fd_renumber](#fd-renumber), [fd_filestat_set_size](#fd-filestat-set-size), [fd_filestat_set_times](#fd-filestat-set-times), [fd_pread](#fd-pread), [fd_pwrite](#fd-pwrite), [fd_readdir](#fd-readdir), [path_create_directory](#path-create-directory), [path_remove_directory](#path-remove-directory), [path_unlink_file](#path-unlink-file), [path_filestat_get](#path-filestat-get), [path_symlink](#path-symlink), [path_readlink](#path-readlink), [path_rename](#path-rename), [path_link](#path-link), [path_filestat_set_times](#path-filestat-set-times), [poll_oneoff](#poll-oneoff), [sock_accept](#sock-accept), [sock_recv](#sock-recv), [sock_send](#sock-send), [sock_shutdown](#sock-shutdown)
 - **Storage** (`gearbox:storage`): [get](#get), [set](#set), [remove](#remove)
-- **Map** (`gearbox:map`): [width](#width), [height](#height), [province_count](#province-count), [province_at](#province-at), [province_name](#province-name), [province_center_x](#province-center-x), [province_center_y](#province-center-y), [province_is_land](#province-is-land), [province_neighbor_count](#province-neighbor-count), [province_neighbor_at](#province-neighbor-at), [province_is_coastal](#province-is-coastal), [sea_route_exists](#sea-route-exists), [point_is_land](#point-is-land)
+- **Map** (`gearbox:map`): [width](#width), [height](#height), [province_count](#province-count), [province_at](#province-at), [province_name](#province-name), [province_center_x](#province-center-x), [province_center_y](#province-center-y), [province_is_land](#province-is-land), [province_neighbor_count](#province-neighbor-count), [province_neighbor_at](#province-neighbor-at), [province_is_coastal](#province-is-coastal), [sea_route_exists](#sea-route-exists), [point_is_land](#point-is-land), [morph_province](#morph-province), [terrain](#terrain)
 - **Diplomacy** (`gearbox:diplomacy`): [at_war](#at-war), [allied](#allied), [non_aggression](#non-aggression), [guaranteed](#guaranteed), [propose_war](#propose-war), [propose_alliance](#propose-alliance), [break_alliance](#break-alliance), [propose_non_aggression](#propose-non-aggression), [break_non_aggression](#break-non-aggression), [propose_guarantee](#propose-guarantee), [break_guarantee](#break-guarantee), [propose_ceasefire](#propose-ceasefire), [propose_trade](#propose-trade), [country_claims_province](#country-claims-province), [grant_claim](#grant-claim), [revoke_claim](#revoke-claim)
 - **GameState.Write** (`gearbox:gamestate.write`): [set_country_treasury](#set-country-treasury), [add_country_treasury](#add-country-treasury), [set_province_owner](#set-province-owner), [set_province_population](#set-province-population)
 - **Neural** (`gearbox:neural`): [feature_count](#feature-count), [features](#features), [reward_count](#reward-count), [reward_mean](#reward-mean), [module_count](#module-count), [module_name](#module-name), [action_count](#action-count), [action_name](#action-name), [country_is_ai](#country-is-ai), [update_count](#update-count), [model_loaded](#model-loaded), [ai_version](#ai-version), [ai_arch](#ai-arch), [country_stance](#country-stance), [stance_name](#stance-name), [stance_count](#stance-count)
@@ -1966,6 +1966,39 @@ Whether a fleet could get from one point to another by sea, using the game's own
 **Returns:** `i32`
 
 Whether a world coordinate is land. Ordering a ship onto land is not an error -- the resolver clamps it -- but knowing first is cheaper.
+
+### morph_province
+
+```wat
+(import "gearbox:map" "morph_province" (func (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+| `path_ptr` | `i32` |  |
+| `path_len` | `i32` |  |
+| `mode` | `i32` |  |
+
+**Returns:** `i32`
+
+Reshape a province while the game runs. The path is an SVG string (M L H V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers join the province; mode 0 moves the national border with them, mode 1 keeps the reshape inside the province's own country. Recorded in the turn delta, so it persists in saves and reaches every client, and logged as province:<id>:shape.
+
+### terrain
+
+```wat
+(import "gearbox:map" "terrain" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `to_land` | `i32` | 0 or 1 |
+| `path_ptr` | `i32` |  |
+| `path_len` | `i32` |  |
+
+**Returns:** `i32`
+
+Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, same format as morph_province. Sinking also clears any province on those pixels; raised sea is bare land until a morph puts a province on it. Recorded in the turn delta and logged as terrain:land or terrain:sea.
 
 ## Diplomacy
 

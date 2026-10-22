@@ -180,6 +180,12 @@
     JS_CFUNC_DEF("pointIsLand", 2, gbxjs_point_is_land),
 #endif /* GBX_WITH_MAP */
 
+/* ---- Map.Write (2) ---- */
+#if GBX_WITH_MAP_WRITE
+    JS_CFUNC_DEF("morphProvince", 4, gbxjs_morph_province),
+    JS_CFUNC_DEF("terrain", 3, gbxjs_terrain),
+#endif /* GBX_WITH_MAP_WRITE */
+
 /* ---- MapEditor (20) ---- */
 #if GBX_WITH_MAPEDITOR
     JS_CFUNC_DEF("editorActive", 0, gbxjs_editor_active),

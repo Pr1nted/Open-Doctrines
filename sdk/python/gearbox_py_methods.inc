@@ -180,6 +180,12 @@
     {"pointIsLand", gbxpy_point_is_land, METH_VARARGS, "Whether a world coordinate is land. Ordering a ship onto land is not an error -- the resolver clamps it -- but knowing first is cheaper."},
 #endif /* GBX_WITH_MAP */
 
+/* ---- Map.Write (2) ---- */
+#if GBX_WITH_MAP_WRITE
+    {"morphProvince", gbxpy_morph_province, METH_VARARGS, "Reshape a province while the game runs. The path is an SVG string (M L H V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers join the province; mode 0 moves the na"},
+    {"terrain", gbxpy_terrain, METH_VARARGS, "Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, same format as morph_province. Sinking also clears any province on those pixels; raised sea is bare land unt"},
+#endif /* GBX_WITH_MAP_WRITE */
+
 /* ---- MapEditor (20) ---- */
 #if GBX_WITH_MAPEDITOR
     {"editorActive", gbxpy_editor_active, METH_NOARGS, "Whether the map editor is open with a project loaded. EVERY OTHER CALL IN THIS MODULE returns 0 or an empty string when this is 0, including from inside a running game: the data be"},
