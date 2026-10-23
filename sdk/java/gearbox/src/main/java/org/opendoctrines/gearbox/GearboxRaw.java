@@ -1042,18 +1042,18 @@ public final class GearboxRaw {
     // keeps the reshape inside the province's own country. Recorded in the
     // turn delta, so it persists in saves and reaches every client, and logged
     // as province:<id>:shape.
-    // gearbox:map "morph_province"
+    // gearbox:map.write "morph_province"
     // `(iiii)i`
-    @Import(module = "gearbox:map", name = "morph_province")
+    @Import(module = "gearbox:map.write", name = "morph_province")
     public static native int morphProvince(int province, int pathPtr, int pathLen, int mode);
 
     // Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path,
     // same format as morph_province. Sinking also clears any province on those
     // pixels; raised sea is bare land until a morph puts a province on it.
     // Recorded in the turn delta and logged as terrain:land or terrain:sea.
-    // gearbox:map "terrain"
+    // gearbox:map.write "terrain"
     // `(iii)i`
-    @Import(module = "gearbox:map", name = "terrain")
+    @Import(module = "gearbox:map.write", name = "terrain")
     public static native int terrain(int toLand, int pathPtr, int pathLen);
 
     // Whether the map editor is open with a project loaded. EVERY OTHER CALL

@@ -1033,18 +1033,18 @@ export declare function _pointIsLand(lon: f64, lat: f64): u32;
 // keeps the reshape inside the province's own country. Recorded in the
 // turn delta, so it persists in saves and reaches every client, and logged
 // as province:<id>:shape.
-// gearbox:map "morph_province"
+// gearbox:map.write "morph_province"
 // `(iiii)i`
-@external("gearbox:map", "morph_province")
+@external("gearbox:map.write", "morph_province")
 export declare function _morphProvince(province: u32, path_ptr: u32, path_len: u32, mode: u32): u32;
 
 // Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path,
 // same format as morph_province. Sinking also clears any province on those
 // pixels; raised sea is bare land until a morph puts a province on it.
 // Recorded in the turn delta and logged as terrain:land or terrain:sea.
-// gearbox:map "terrain"
+// gearbox:map.write "terrain"
 // `(iii)i`
-@external("gearbox:map", "terrain")
+@external("gearbox:map.write", "terrain")
 export declare function _terrain(to_land: u32, path_ptr: u32, path_len: u32): u32;
 
 // Whether the map editor is open with a project loaded. EVERY OTHER CALL

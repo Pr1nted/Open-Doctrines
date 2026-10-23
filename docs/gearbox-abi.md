@@ -36,7 +36,7 @@ memory after a call returns, and you must not keep one of the host's.
 | `Neural` | `gearbox:neural` | Observe AI features, rewards, modules, stances and version (observe-only: no import writes to the model) | yes | implemented |
 | `Neural.Decide` | `gearbox:neural.decide` | Choose the AI's action for a country, in place of the built-in AI | yes | implemented |
 | `Map` | `gearbox:map` | Province geometry and adjacency | yes | implemented |
-| `Map.Write` | `gearbox:map` | Reshape the map while the game runs: morph a province, raise or sink terrain | yes | implemented |
+| `Map.Write` | `gearbox:map.write` | Reshape the map while the game runs: morph a province, raise or sink terrain | yes | implemented |
 | `Diplomacy` | `gearbox:diplomacy` | Read and propose diplomatic actions | yes | implemented |
 | `Storage` | `gearbox:storage` | Persistent key-value store namespaced to your mod id | yes | implemented |
 | `Audio` | `gearbox:audio` | Play and stop sounds from your own mod's assets | yes | implemented |
@@ -1995,39 +1995,6 @@ Whether a fleet could get from one point to another by sea, using the game's own
 **Returns** `i32` — 0 or 1.
 
 Whether a world coordinate is land. Ordering a ship onto land is not an error -- the resolver clamps it -- but knowing first is cheaper.
-
-#### `morph_province`
-
-```wat
-(import "gearbox:map" "morph_province" (func $x (param i32 i32 i32 i32) (result i32)))
-```
-
-| Parameter | Wire type | Meaning |
-|---|---|---|
-| `province` | `i32` | opaque province handle |
-| `path_ptr` | `i32` | — |
-| `path_len` | `i32` | — |
-| `mode` | `i32` | — |
-
-**Returns** `i32`.
-
-Reshape a province while the game runs. The path is an SVG string (M L H V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers join the province; mode 0 moves the national border with them, mode 1 keeps the reshape inside the province's own country. Recorded in the turn delta, so it persists in saves and reaches every client, and logged as province:<id>:shape.
-
-#### `terrain`
-
-```wat
-(import "gearbox:map" "terrain" (func $x (param i32 i32 i32) (result i32)))
-```
-
-| Parameter | Wire type | Meaning |
-|---|---|---|
-| `to_land` | `i32` | 0 or 1 |
-| `path_ptr` | `i32` | — |
-| `path_len` | `i32` | — |
-
-**Returns** `i32`.
-
-Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, same format as morph_province. Sinking also clears any province on those pixels; raised sea is bare land until a morph puts a province on it. Recorded in the turn delta and logged as terrain:land or terrain:sea.
 
 ### `gearbox:diplomacy`
 
@@ -4223,6 +4190,43 @@ Direct a province's factories to make a good, or pass -1 to hand them back to th
 **Returns** `i32` — 0 or 1.
 
 Take a speciality sector into state hands, or release it, through the game's own nationalise / releaseNationalised. Taking one is refused when the country is at its cap; a released one winds down over turns rather than stopping. `resource` is one of the five speciality sectors -- "oil", "gold", "metal", "rubber", "gemstones", the spelling province_resource uses; case does not matter. 1 if it is now in the requested state (including already being so); 0 for an unknown country or sector, a full cap, or when the rules are switched off.
+
+### `gearbox:map.write`
+
+Requires the **Map.Write** capability.
+
+#### `morph_province`
+
+```wat
+(import "gearbox:map.write" "morph_province" (func $x (param i32 i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `province` | `i32` | opaque province handle |
+| `path_ptr` | `i32` | — |
+| `path_len` | `i32` | — |
+| `mode` | `i32` | — |
+
+**Returns** `i32`.
+
+Reshape a province while the game runs. The path is an SVG string (M L H V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers join the province; mode 0 moves the national border with them, mode 1 keeps the reshape inside the province's own country. Recorded in the turn delta, so it persists in saves and reaches every client, and logged as province:<id>:shape.
+
+#### `terrain`
+
+```wat
+(import "gearbox:map.write" "terrain" (func $x (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Wire type | Meaning |
+|---|---|---|
+| `to_land` | `i32` | 0 or 1 |
+| `path_ptr` | `i32` | — |
+| `path_len` | `i32` | — |
+
+**Returns** `i32`.
+
+Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, same format as morph_province. Sinking also clears any province on those pixels; raised sea is bare land until a morph puts a province on it. Recorded in the turn delta and logged as terrain:land or terrain:sea.
 
 ### `gearbox:mapeditor`
 

@@ -2203,8 +2203,8 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:map", "province_is_land",       "(i)i",    (void*)map_province_is_land,       MODULE_MAP},
     {"gearbox:map", "province_neighbor_count","(i)i",    (void*)map_province_neighbor_count,MODULE_MAP},
     {"gearbox:map", "province_neighbor_at",   "(ii)i",   (void*)map_province_neighbor_at,   MODULE_MAP},
-    {"gearbox:map", "morph_province",         "(iiii)i", (void*)map_morph_province,         MODULE_MAP_WRITE},
-    {"gearbox:map", "terrain",                "(iii)i",  (void*)map_terrain,                MODULE_MAP_WRITE},
+    {"gearbox:map.write", "morph_province",   "(iiii)i", (void*)map_morph_province,         MODULE_MAP_WRITE},
+    {"gearbox:map.write", "terrain",          "(iii)i",  (void*)map_terrain,                MODULE_MAP_WRITE},
 
     {"gearbox:storage", "get",    "(iiii)i", (void*)storage_get,    MODULE_STORAGE},
     {"gearbox:storage", "set",    "(iiii)i", (void*)storage_set,    MODULE_STORAGE},

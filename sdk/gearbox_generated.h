@@ -1204,20 +1204,20 @@ uint32_t gearbox_point_is_land(double lon, double lat);
  * keeps the reshape inside the province's own country. Recorded in the
  * turn delta, so it persists in saves and reaches every client, and logged
  * as province:<id>:shape.
- * gearbox:map "morph_province"
+ * gearbox:map.write "morph_province"
  * `(iiii)i`
  */
-GEARBOX_IMPORT("map", "morph_province")
+GEARBOX_IMPORT("map.write", "morph_province")
 uint32_t gearbox_morph_province(gearbox_province province, uint32_t path_ptr, uint32_t path_len, uint32_t mode);
 
 /* Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path,
  * same format as morph_province. Sinking also clears any province on those
  * pixels; raised sea is bare land until a morph puts a province on it.
  * Recorded in the turn delta and logged as terrain:land or terrain:sea.
- * gearbox:map "terrain"
+ * gearbox:map.write "terrain"
  * `(iii)i`
  */
-GEARBOX_IMPORT("map", "terrain")
+GEARBOX_IMPORT("map.write", "terrain")
 uint32_t gearbox_terrain(uint32_t to_land, uint32_t path_ptr, uint32_t path_len);
 
 /* Whether the map editor is open with a project loaded. EVERY OTHER CALL

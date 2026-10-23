@@ -1789,14 +1789,14 @@ static int gbxlua_point_is_land(lua_State *L) {
 /* ---- Map.Write (2) ---- */
 #if GBX_WITH_MAP_WRITE
 
-/* gearbox:map "morph_province" */
+/* gearbox:map.write "morph_province" */
 /* Reshape a province while the game runs. The path is an SVG string (M L H */
 /* V C Q Z) in degrees -- x longitude, y latitude. The pixels it covers */
 /* join the province; mode 0 moves the national border with them, mode 1 */
 /* keeps the reshape inside the province's own country. Recorded in the */
 /* turn delta, so it persists in saves and reaches every client, and logged */
 /* as province:<id>:shape. */
-/* gearbox:map "morph_province" */
+/* gearbox:map.write "morph_province" */
 /* `(iiii)i` */
 static int gbxlua_morph_province(lua_State *L) {
     lua_Integer a1 = luaL_checkinteger(L, 1);
@@ -1807,12 +1807,12 @@ static int gbxlua_morph_province(lua_State *L) {
     return 1;
 }
 
-/* gearbox:map "terrain" */
+/* gearbox:map.write "terrain" */
 /* Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path, */
 /* same format as morph_province. Sinking also clears any province on those */
 /* pixels; raised sea is bare land until a morph puts a province on it. */
 /* Recorded in the turn delta and logged as terrain:land or terrain:sea. */
-/* gearbox:map "terrain" */
+/* gearbox:map.write "terrain" */
 /* `(iii)i` */
 static int gbxlua_terrain(lua_State *L) {
     lua_Integer a1 = luaL_checkinteger(L, 1);

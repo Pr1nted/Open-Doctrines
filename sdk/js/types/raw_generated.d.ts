@@ -901,7 +901,7 @@ declare namespace GearboxRaw {
   // keeps the reshape inside the province's own country. Recorded in the
   // turn delta, so it persists in saves and reaches every client, and logged
   // as province:<id>:shape.
-  // gearbox:map "morph_province"
+  // gearbox:map.write "morph_province"
   // `(iiii)i`
   function morphProvince(province: number, pathPtr: number, pathLen: number, mode: number): number;
 
@@ -909,7 +909,7 @@ declare namespace GearboxRaw {
   // same format as morph_province. Sinking also clears any province on those
   // pixels; raised sea is bare land until a morph puts a province on it.
   // Recorded in the turn delta and logged as terrain:land or terrain:sea.
-  // gearbox:map "terrain"
+  // gearbox:map.write "terrain"
   // `(iii)i`
   function terrain(toLand: number, pathPtr: number, pathLen: number): number;
 

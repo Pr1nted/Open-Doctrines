@@ -1039,18 +1039,18 @@ func rawPointIsLand(lon float64, lat float64) uint32
 // keeps the reshape inside the province's own country. Recorded in the
 // turn delta, so it persists in saves and reaches every client, and logged
 // as province:<id>:shape.
-// gearbox:map "morph_province"
+// gearbox:map.write "morph_province"
 // `(iiii)i`
-//go:wasmimport gearbox:map morph_province
+//go:wasmimport gearbox:map.write morph_province
 func rawMorphProvince(province uint32, path_ptr uint32, path_len uint32, mode uint32) uint32
 
 // Raise sea to land (to_land 1) or sink land to sea (0) over an SVG path,
 // same format as morph_province. Sinking also clears any province on those
 // pixels; raised sea is bare land until a morph puts a province on it.
 // Recorded in the turn delta and logged as terrain:land or terrain:sea.
-// gearbox:map "terrain"
+// gearbox:map.write "terrain"
 // `(iii)i`
-//go:wasmimport gearbox:map terrain
+//go:wasmimport gearbox:map.write terrain
 func rawTerrain(to_land uint32, path_ptr uint32, path_len uint32) uint32
 
 // Whether the map editor is open with a project loaded. EVERY OTHER CALL
