@@ -19,6 +19,10 @@
 #include <deque>
 #include <string>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 namespace osk {
 namespace {
 
@@ -156,6 +160,19 @@ bool enabled() {
     if (g_forShot) return true;
 #if defined(__ANDROID__)
     return true;
+#elif defined(__EMSCRIPTEN__)
+    // The web build runs on phones through the itch.io embed, where there is no
+    // physical keyboard and the browser will not raise its own over a WebGL
+    // canvas -- so every text field was unusable there. A COARSE primary pointer
+    // is a touch device (a phone or tablet); a desktop browser, even one with a
+    // touchscreen, has a fine primary pointer and falls through to raylib.
+    // Decided once: the input class does not change within a session.
+    static int touch = -1;
+    if (touch < 0) {
+        touch = emscripten_run_script_int(
+            "(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ? 1 : 0");
+    }
+    return touch == 1 || forced();
 #else
     // Everywhere else it is off unless asked for: a desktop has a keyboard,
     // and one drawn over the game would be in the way. The switch exists so

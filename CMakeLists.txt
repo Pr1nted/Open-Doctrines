@@ -1490,7 +1490,11 @@ endif()
 # on a machine with a big screen; it still draws nothing unless
 # OD_TOUCH_KEYBOARD is set in the environment.
 option(OD_TOUCH_KEYBOARD "Draw an on-screen keyboard for text fields" OFF)
-if(PLATFORM STREQUAL "Android" OR OD_TOUCH_KEYBOARD)
+# Web too: the itch.io embed runs on phones, where there is no physical keyboard
+# and the browser will not raise its own over a WebGL canvas. The shim is still
+# cheap there -- osk::enabled() decides at runtime (a coarse pointer is a touch
+# device), so a desktop browser falls straight through to raylib.
+if(PLATFORM STREQUAL "Android" OR PLATFORM STREQUAL "Web" OR OD_TOUCH_KEYBOARD)
     target_compile_options(OpenDoctrines PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/TouchInput.h>)
     target_compile_definitions(OpenDoctrines PRIVATE OD_TOUCH_KEYBOARD=1)
