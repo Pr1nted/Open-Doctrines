@@ -40,7 +40,7 @@ import type { Env } from "../env.js";
 import { b64urlEncode } from "../util/encoding.js";
 import { hmacId, sha256 } from "../util/crypto.js";
 import { utf8 } from "../util/encoding.js";
-import { sign, verify } from "./token.js";
+import { sign, verify, verifyExplain, type VerifyResult } from "./token.js";
 import type { ProviderId } from "./providers.js";
 
 /** Audience of the short-lived token that authorises one browser round trip. */
@@ -109,6 +109,14 @@ export function issueAuthRequest(
 
 export function verifyAuthRequest(env: Env, token: string): Promise<AuthRequestClaims | null> {
     return verify<AuthRequestClaims>(env, token, AUD_AUTHREQ);
+}
+
+/** The same check, but it reports WHY it failed -- for server-side auditing of
+ *  the "Link expired" page only; never shown to the client. See verifyExplain. */
+export function verifyAuthRequestExplain(
+    env: Env, token: string, now = Math.floor(Date.now() / 1000),
+): Promise<VerifyResult<AuthRequestClaims>> {
+    return verifyExplain<AuthRequestClaims>(env, token, AUD_AUTHREQ, now);
 }
 
 export function issueSignupTicket(

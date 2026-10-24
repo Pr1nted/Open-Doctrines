@@ -145,32 +145,57 @@ export async function sign(env: Env, claims: object): Promise<string> {
 // Returns null for every failure -- malformed, wrong signature, wrong
 // audience, expired. Callers must not distinguish these to the client: telling
 // an attacker WHICH check failed turns one oracle into four.
-export async function verify<T extends { aud: string; exp: number; iss: string }>(
-    env: Env, token: string, expectedAud: string, now = Math.floor(Date.now() / 1000),
-): Promise<T | null> {
-    const parts = token.split(".");
-    if (parts.length !== 3 || parts[0] !== TOKEN_PREFIX) return null;
+// Why a token did not verify. NEVER returned to the client -- the caller turns
+// every one of these into the same opaque failure, exactly as before, so an
+// attacker still cannot tell which check failed. It exists only so the SERVER
+// can audit "Link expired" without logging the token itself: a genuine expiry
+// and a bad signature look identical to a player and must not to us.
+export type VerifyReason =
+    | "malformed" | "bad_signature" | "wrong_issuer" | "wrong_audience"
+    | "no_expiry" | "expired";
 
-    let ok: boolean;
+export type VerifyResult<T> =
+    | { ok: true; claims: T }
+    | { ok: false; reason: VerifyReason; expiredBy?: number; ttl?: number };
+
+export async function verifyExplain<T extends { aud: string; exp: number; iss: string; iat?: number }>(
+    env: Env, token: string, expectedAud: string, now = Math.floor(Date.now() / 1000),
+): Promise<VerifyResult<T>> {
+    const parts = token.split(".");
+    if (parts.length !== 3 || parts[0] !== TOKEN_PREFIX) return { ok: false, reason: "malformed" };
+
+    let sig: boolean;
     let claims: T;
     try {
         const { key, algorithm } = await publicKey(env);
-        ok = await crypto.subtle.verify(
+        sig = await crypto.subtle.verify(
             algorithm as unknown as string, key,
             b64urlDecode(parts[2]!), utf8(`${parts[0]}.${parts[1]}`),
         );
         claims = JSON.parse(fromUtf8(b64urlDecode(parts[1]!))) as T;
     } catch {
-        return null;
+        return { ok: false, reason: "malformed" };
     }
-    if (!ok) return null;
-
-    if (claims.iss !== env.ISSUER) return null;
+    if (!sig) return { ok: false, reason: "bad_signature" };
+    if (claims.iss !== env.ISSUER) return { ok: false, reason: "wrong_issuer" };
     // Exact match, never a prefix or `startsWith`. A ticket for
     // "od-relay:ABC" must not satisfy a check for "od-relay:AB".
-    if (claims.aud !== expectedAud) return null;
-    if (typeof claims.exp !== "number" || claims.exp <= now) return null;
-    return claims;
+    if (claims.aud !== expectedAud) return { ok: false, reason: "wrong_audience" };
+    if (typeof claims.exp !== "number") return { ok: false, reason: "no_expiry" };
+    if (claims.exp <= now) {
+        return {
+            ok: false, reason: "expired", expiredBy: now - claims.exp,
+            ...(typeof claims.iat === "number" ? { ttl: claims.exp - claims.iat } : {}),
+        };
+    }
+    return { ok: true, claims };
+}
+
+export async function verify<T extends { aud: string; exp: number; iss: string }>(
+    env: Env, token: string, expectedAud: string, now = Math.floor(Date.now() / 1000),
+): Promise<T | null> {
+    const r = await verifyExplain<T & { iat?: number }>(env, token, expectedAud, now);
+    return r.ok ? r.claims : null;
 }
 
 export async function issueSessionToken(

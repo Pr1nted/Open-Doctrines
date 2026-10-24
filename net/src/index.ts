@@ -23,7 +23,8 @@ import {
 } from "./auth/providers.js";
 import {
     issueAuthRequest, issueSignupTicket, readResult, requestIdFor, storeResult,
-    verifyAuthRequest, verifySignupTicket, type AuthPurpose, type AuthResult,
+    verifyAuthRequest, verifyAuthRequestExplain, verifySignupTicket,
+    type AuthPurpose, type AuthResult,
 } from "./auth/device.js";
 import {
     authorizeUrl, exchangeCode, fetchIdentity, identityFromImplicitToken,
@@ -526,13 +527,42 @@ async function authDevice(request: Request, env: Env): Promise<Response> {
     });
 }
 
+// Why a sign-in link failed, and the CLASS of client it came from -- no token,
+// no rid, no account, so it keeps the "nothing logs an identifier" rule at the
+// top of this file. A UA string is a client descriptor, not a person. Written
+// so "Link expired" can be audited: is it genuine expiry, a mangled URL, or a
+// signature problem, and is it mobile or desktop? Visible in `wrangler tail`.
+function auditVerifyFail(request: Request, reason: string, expiredBy?: number, ttl?: number): void {
+    const ua = request.headers.get("user-agent") ?? "";
+    const os = /Android/i.test(ua) ? "android"
+             : /iPhone|iPad|iPod/i.test(ua) ? "ios"
+             : /Windows/i.test(ua) ? "windows"
+             : /Macintosh|Mac OS/i.test(ua) ? "macos"
+             : /Linux/i.test(ua) ? "linux" : "unknown";
+    console.log(JSON.stringify({
+        audit: "auth_verify_fail",
+        reason,
+        mobile: /Mobi|Android|iPhone|iPad|iPod/i.test(ua),
+        os,
+        ...(reason === "expired" ? { expiredBySec: expiredBy, ttlSec: ttl } : {}),
+        ...(ua === "" ? { noUa: true } : {}),
+    }));
+}
+
 /** The URL the player's browser opens. Redirects straight to the provider. */
-async function authVerify(_request: Request, env: Env, url: URL): Promise<Response> {
+async function authVerify(request: Request, env: Env, url: URL): Promise<Response> {
     const token = url.searchParams.get("r");
-    const claims = token ? await verifyAuthRequest(env, token) : null;
-    if (!claims) {
+    const result = token
+        ? await verifyAuthRequestExplain(env, token)
+        : { ok: false as const, reason: "malformed" as const };
+    if (!result.ok) {
+        // The page stays opaque; the REASON goes to the server log only.
+        auditVerifyFail(request, result.reason,
+            "expiredBy" in result ? result.expiredBy : undefined,
+            "ttl" in result ? result.ttl : undefined);
         return htmlPage("Link expired", "This sign-in link has expired. Start again from the game.");
     }
+    const claims = result.claims;
     const target = await authorizeUrl(env, claims, token!);
     if (!target) {
         return htmlPage("Not configured", `${PROVIDERS[claims.provider].label} sign-in is not set up on this server.`);
