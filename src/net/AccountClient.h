@@ -188,6 +188,16 @@ public:
 
     void cancelSignIn();
 
+    /**
+     * A link just failed because that provider is on a DIFFERENT account.
+     * linkedElsewhere() is true until the next sign-in attempt; the recovery is
+     * to sign out and sign in with linkedElsewhereProvider(), which lands on the
+     * account the identity really belongs to. recoverLinkedElsewhere() does both.
+     */
+    bool linkedElsewhere() const;
+    AuthProvider linkedElsewhereProvider() const;
+    void recoverLinkedElsewhere();
+
     /** First sign-in only: claims a nickname and creates the account. */
     bool createAccount(const std::string& nickname);
 

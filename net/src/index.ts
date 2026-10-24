@@ -765,8 +765,13 @@ async function completeLink(
         return linked.reason === "already_linked_here"
             ? { kind: "linked", provider, account: publicAccount(account) }
             : {
+                // Actionable, not a dead end: the account this identity DOES
+                // belong to is reachable by signing in with it directly. Without
+                // this, a player whose itch is on another account signs up a
+                // second one and gets stuck -- a real support case.
                 kind: "error", code: "linked_elsewhere",
-                message: `That ${PROVIDERS[provider].label} account is already linked to a different OpenDoctrines account.`,
+                message: `That ${PROVIDERS[provider].label} account belongs to a different OpenDoctrines account. ` +
+                         `To use that account, sign out and sign in with ${PROVIDERS[provider].label}.`,
             };
     }
     return { kind: "linked", provider, account: publicAccount(linked.account) };

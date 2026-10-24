@@ -333,6 +333,17 @@ void Game::updateAccountMenu() {
                 chipX += w + 8;
             }
 
+            // Recovery from a link that hit another account: sign out and sign in
+            // with that provider. Rect must match the one drawn in the account
+            // screen's message area.
+            if (client.linkedElsewhere()) {
+                const Rectangle rb = {(float)(m_screenW / 2 - 160), (float)(m_screenH - 128), 320.0f, 24.0f};
+                if (click && CheckCollisionPointRec(mouse, rb)) {
+                    client.recoverLinkedElsewhere();
+                    return;
+                }
+            }
+
             // The account id can be hidden again. Revealing something with no
             // way to put it back means quitting the game to clear the screen.
             if (click) {
@@ -725,6 +736,20 @@ void Game::drawAccountMenu() {
                                                    : Color{150, 205, 155, 255};
         DrawText(text.c_str(), centerX - MeasureText(text.c_str(), 17) / 2,
                  m_screenH - 150, 17, tint);
+    }
+
+    // When a link was refused because that provider is on ANOTHER account, the
+    // way out is to sign in with it directly -- offered as one click rather than
+    // left for the player to work out. See AccountClient::recoverLinkedElsewhere.
+    if (client.linkedElsewhere()) {
+        const std::string label = std::string(T("Sign in with ")) +
+            authProviderLabel(client.linkedElsewhereProvider()) + T(" instead");
+        const Rectangle rb = {(float)(m_screenW / 2 - 160), (float)(m_screenH - 128), 320.0f, 24.0f};
+        const bool hover = CheckCollisionPointRec(getMouse(), rb);
+        DrawRectangleRounded(rb, 0.4f, 6, hover ? Color{70, 100, 80, 240} : Color{50, 80, 60, 230});
+        DrawRectangleRoundedLines(rb, 0.4f, 6, Color{110, 170, 125, 220});
+        DrawText(label.c_str(), m_screenW / 2 - MeasureText(label.c_str(), 14) / 2,
+                 m_screenH - 123, 14, WHITE);
     }
 
     if (status != AccountClient::Status::DeleteConfirm) {

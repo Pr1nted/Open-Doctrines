@@ -159,6 +159,13 @@ struct AccountClient::Impl {
     std::string pollProviderLabel;
     Status      pollRestingStatus = Status::SignedOut;
     bool        pollLinkMode = false;
+    AuthProvider pollProvider = AuthProvider::Google;   // the provider this flow is for
+
+    // A link that failed because the identity belongs to a DIFFERENT account.
+    // Not a dead end: the UI offers to sign out and sign in with that provider,
+    // which lands on the account it really belongs to. Guarded by `mutex`.
+    bool         linkedElsewhere = false;
+    AuthProvider recoverProvider = AuthProvider::Google;
     double      pollDeadlineMs = 0.0;   // emscripten_get_now() scale
     double      pollNextAtMs = 0.0;
 
@@ -422,7 +429,13 @@ bool AccountClient::Impl::pollSignInStep() {
 
     if (state == "error") {
         const std::string why = httpJsonString(res.body, "message", 512);
+        const std::string code = httpJsonString(res.body, "code", 64);
         setMessage(why.empty() ? "sign-in failed" : why, true);
+        if (code == "linked_elsewhere") {
+            std::lock_guard<std::mutex> lock(mutex);
+            linkedElsewhere = true;
+            recoverProvider = pollProvider;   // offer sign-in with the provider that owns it
+        }
         finish(resting);
         return true;
     }
@@ -736,6 +749,8 @@ bool AccountClient::beginFlow(AuthProvider provider, bool link) {
         m_impl->status = Status::Working;
         m_impl->message.clear();
         m_impl->verifyUrl.clear();
+        m_impl->pollProvider = provider;       // for linked-elsewhere recovery
+        m_impl->linkedElsewhere = false;       // a fresh attempt clears the offer
     }
 
     const std::string providerId = authProviderId(provider);
@@ -824,10 +839,15 @@ bool AccountClient::beginFlow(AuthProvider provider, bool link) {
 
             if (state == "error") {
                 const std::string why = httpJsonString(res.body, "message", 512);
+                const std::string code = httpJsonString(res.body, "code", 64);
                 impl->setMessage(why.empty() ? "sign-in failed" : why, true);
-                impl->post([impl, resting] {
+                impl->post([impl, resting, code] {
                     std::lock_guard<std::mutex> lock(impl->mutex);
                     impl->status = resting;
+                    if (code == "linked_elsewhere") {
+                        impl->linkedElsewhere = true;
+                        impl->recoverProvider = impl->pollProvider;
+                    }
                 });
                 return;
             }
@@ -1125,6 +1145,30 @@ void AccountClient::signOut() {
     m_impl->deletionSummary.clear();
     m_impl->status = Status::SignedOut;
     m_impl->message.clear();
+}
+
+bool AccountClient::linkedElsewhere() const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    return m_impl->linkedElsewhere;
+}
+
+AuthProvider AccountClient::linkedElsewhereProvider() const {
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    return m_impl->recoverProvider;
+}
+
+void AccountClient::recoverLinkedElsewhere() {
+    AuthProvider p;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (!m_impl->linkedElsewhere) return;
+        p = m_impl->recoverProvider;
+        m_impl->linkedElsewhere = false;
+    }
+    // Sign out of the account we are on, then sign IN with that provider: the
+    // login path resolves to the account the identity actually belongs to.
+    signOut();
+    beginSignIn(p);
 }
 
 // ------------------------------------------------------------- validation ----
