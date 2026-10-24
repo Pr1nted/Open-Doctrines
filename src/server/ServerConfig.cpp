@@ -271,6 +271,9 @@ const std::vector<Field>& fields() {
                    ServerSettingScope::Anytime, "open a new lobby when a game ends"),
         UINT_FIELD("auto.autosave-every-turns", automation.autosaveEveryTurns,
                    ServerSettingScope::Anytime, "save the world every N turns; 0 only at the end"),
+        UINT_FIELD("auto.idle-release-seconds", automation.idleReleaseSeconds,
+                   ServerSettingScope::Anytime,
+                   "release a disconnected player's seat after this many seconds; 0 never"),
 
         TEXT_FIELD("data-dir", dataDir, ServerSettingScope::Restart,
                    "where maps, mods and saves live; empty finds it beside the binary"),

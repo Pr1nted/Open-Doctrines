@@ -1060,7 +1060,7 @@ if(OD_ENABLE_NET)
         set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
         FetchContent_Declare(mbedtls
             GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-            GIT_TAG v3.6.2
+            GIT_TAG v3.6.7
             GIT_SHALLOW TRUE
             EXCLUDE_FROM_ALL
         )
