@@ -9,6 +9,7 @@
 // baseline and applying every delta up to it.
 
 #include "Game.h"
+#include "util/SoftwareGlRelaunch.h"
 #include "util/LoadLog.h"
 #include "TextInput.h"
 #include "TimelapseMark.h"
@@ -498,7 +499,7 @@ bool Game::exportTimelapseHeadless(const std::string& savePath,
     // was silently ignored by --export-timelapse: the one export people script,
     // and therefore the one they would most want to control.
     if (m_configPath.empty()) {
-        std::string appDir = GetApplicationDirectory();
+        std::string appDir = odApplicationDirectory();
         if (!appDir.empty() && appDir.back() != '/' && appDir.back() != '\\')
             appDir += '/';
         std::vector<std::string> cand{appDir + "data/", appDir + "../data/", "data/"};
