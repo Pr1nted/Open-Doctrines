@@ -307,7 +307,9 @@ Porting the runtime is a separate piece of work and not scheduled.
 ### OpenIndiana and illumos
 
 Built and published for **amd64** (`illumos-amd64`) inside a real OpenIndiana
-Hipster VM, by its own gcc, the same way as the BSDs. It should run on any
+Hipster VM, by its own gcc, the same way as the BSDs. It ships with every
+release: `.github/workflows/other-os-game.yml` builds it — with Haiku and
+SerenityOS — on every pull request and push, and the release waits for it. It should run on any
 current illumos distribution with X11 and Mesa — OpenIndiana, or OmniOS with
 the X11 packages added — and needs `x11/library/mesa` and the usual X client
 libraries (`pkg install x11/library/mesa x11/library/libxrandr
@@ -319,7 +321,7 @@ illumos platform layer. A source build there leaves mods out by default.
 **No Arm build.** illumos on Arm is an early bring-up with no package
 repository — no X11, Mesa or compiler to build the game with or run it
 against — and no CI image boots it. If an Arm OpenIndiana or OmniOS release
-appears, it is one more entry in `bsd-game.yml` and one more odseal archive.
+appears, it is one more entry in `other-os-game.yml` and one more odseal archive.
 
 ### Windows
 

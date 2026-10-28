@@ -694,10 +694,16 @@ jobs:
     name: BSD
     uses: ./.github/workflows/bsd-game.yml
 
+  # OpenIndiana, Haiku and SerenityOS: built on their own systems, released
+  # and gated exactly as the BSDs are. See other-os-game.yml.
+  other-os:
+    name: Other OS
+    uses: ./.github/workflows/other-os-game.yml
+
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web, linux-packages, flatpak, bsd]
+    needs: [build, test, web, linux-packages, flatpak, bsd, other-os]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.

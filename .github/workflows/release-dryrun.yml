@@ -68,11 +68,17 @@ jobs:
     name: BSD game
     uses: ./.github/workflows/bsd-game.yml
 
+  # OpenIndiana, Haiku and SerenityOS: built on their own systems, released
+  # and gated exactly as the BSDs are. See other-os-game.yml.
+  other-os:
+    name: Other OS
+    uses: ./.github/workflows/other-os-game.yml
+
   verdict:
     name: Rehearsed
-    needs: [test, sdk, server, bsd]
+    needs: [test, sdk, server, bsd, other-os]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "Test, SDK, server and every BSD build all ran without a tag."
+          echo "Test, SDK, server, every BSD build and the other OS builds all ran without a tag."
           echo "The release path is exercised; tagging should not discover new breakage."

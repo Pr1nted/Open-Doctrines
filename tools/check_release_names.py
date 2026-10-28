@@ -5,7 +5,8 @@
 
 1. GameUpdates::platformKey() (src/GameUpdates.cpp) -- the release asset the
    in-game updater downloads for the build it is running in.
-2. The artifacts the release workflows build (release-game.yml, bsd-game.yml)
+2. The artifacts the release workflows build (release-game.yml, bsd-game.yml,
+   other-os-game.yml)
    -- what actually gets attached to a release as OpenDoctrines-<x>.zip.
 3. The download page's buttons (packaging/web/site/download.html).
 4. The dedicated server's platforms (release-server.yml), which must match the
@@ -52,7 +53,10 @@ def built_artifacts():
     # entries' "name" fields, released as OpenDoctrines-<name> (the plan step
     # sets "artifact" that way).
     names |= {"OpenDoctrines-" + n for n in
-              re.findall(r'"name":\s*"((?:[a-z]+bsd|illumos)-[A-Za-z0-9_-]+)"', read(".github/workflows/bsd-game.yml"))}
+              re.findall(r'"name":\s*"([a-z]+bsd-[A-Za-z0-9_-]+)"', read(".github/workflows/bsd-game.yml"))}
+    # other-os-game.yml names its entries in a YAML matrix, not a JSON plan.
+    names |= {"OpenDoctrines-" + n for n in
+              re.findall(r"-\s*\{\s*name:\s*([a-z]+-[A-Za-z0-9_]+)\s*,", read(".github/workflows/other-os-game.yml"))}
     # The browser build is a page, not an install, and has no updater key.
     return {n for n in names if not n.endswith("-web")}
 
