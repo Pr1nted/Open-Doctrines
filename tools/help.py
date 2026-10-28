@@ -128,6 +128,14 @@ GROUPS = [
         # The cross-compile setup CI uses for 32-bit x86, armv7 and riscv64
         # Linux: multiarch -dev packages, the cross gcc and QEMU for the tests.
         "ci_cross_deps.sh",
+        # The BSD builds, run inside the FreeBSD/OpenBSD/NetBSD VMs CI boots:
+        # install the packages, build the game and play it for a few turns
+        # (bsd_game_build.sh), and build the sealed odseal archive a BSD build
+        # links (odseal_bsd.sh, for odseal-prebuilts.yml).
+        "bsd_game_build.sh", "odseal_bsd.sh",
+        # ChromeOS's Linux container is Debian: install the .deb into a clean
+        # Debian image, check every library resolves, and play a few turns.
+        "chromeos_check.sh",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,
