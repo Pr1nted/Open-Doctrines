@@ -114,9 +114,11 @@ void ModRuntime::shutdown() {
     m_inited = false;
 }
 
-std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
+std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage> pkgPtr,
                                                      uint32_t granted,
                                                      std::string& err) {
+    if (!pkgPtr) { err = "no package"; return nullptr; }
+    const ModPackage& pkg = *pkgPtr;
     if (!m_inited && !init(err)) return nullptr;
 
     auto w = new WamrInstance();
@@ -208,7 +210,7 @@ std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
     std::unique_ptr<ModInstance> mi(new ModInstance());
     mi->m_manifest = pkg.manifest();
     mi->m_granted = granted;
-    mi->m_package = &pkg;
+    mi->m_package = pkgPtr;         // co-owned: cannot dangle while mi is alive
     mi->m_impl = w;
     mi->m_fuelBudget = pkg.manifest().limits.fuelPerTurn;
     mi->m_loadFuelBudget = pkg.manifest().limits.loadFuel;
@@ -558,15 +560,17 @@ bool ModRuntime::init(std::string& err) {
 
 void ModRuntime::shutdown() { m_inited = false; }
 
-std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
+std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage> pkgPtr,
                                                      uint32_t granted,
                                                      std::string& err) {
+    if (!pkgPtr) { err = "no package"; return nullptr; }
+    const ModPackage& pkg = *pkgPtr;
     if (!m_inited && !init(err)) return nullptr;
 
     std::unique_ptr<ModInstance> mi(new ModInstance());
     mi->m_manifest = pkg.manifest();
     mi->m_granted = granted;
-    mi->m_package = &pkg;
+    mi->m_package = pkgPtr;         // co-owned: cannot dangle while mi is alive
     mi->m_fuelBudget = pkg.manifest().limits.fuelPerTurn;
     mi->m_loadFuelBudget = pkg.manifest().limits.loadFuel;
     mi->m_decisionFuelBudget = pkg.manifest().limits.fuelPerDecision;
@@ -661,8 +665,8 @@ bool ModRuntime::init(std::string& err) {
 
 void ModRuntime::shutdown() {}
 
-std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage&, uint32_t,
-                                                     std::string& err) {
+std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage>,
+                                                     uint32_t, std::string& err) {
     err = "this build has no WebAssembly runtime, so mods cannot run";
     return nullptr;
 }
@@ -684,6 +688,18 @@ ModInstance* modCurrentInstance(void*) { return nullptr; }
 #endif
 
 // ------------------------------------------------------ backend-independent --
+
+// Borrowing overload. A non-owning alias so the instance's package() still
+// points at `pkg`, but nothing is freed when the instance goes away: the caller
+// owns `pkg` and must outlive the instance. Tests and tools that hold a package
+// on the stack use this; the game co-owns through the shared_ptr overload.
+std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
+                                                     uint32_t granted,
+                                                     std::string& err) {
+    return instantiate(std::shared_ptr<const ModPackage>(
+                           std::shared_ptr<const ModPackage>{}, &pkg),
+                       granted, err);
+}
 
 bool ModInstance::readString(uint32_t ptr, uint32_t len, std::string& out) const {
     if (len == 0) { out.clear(); return true; }

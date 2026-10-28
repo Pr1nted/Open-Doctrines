@@ -143,6 +143,18 @@ and where there are none.
 - **No sandbox is perfect.** The mod system is designed so that a bug is a bug
   rather than a missing check, but it is software. LICENSE clause 7 is the
   legal version of this sentence.
+- **A mod's boundary is the wasm sandbox *and* the host decoders.** The sandbox
+  is airtight for code, but a mod ships bytes too — a thumbnail, images it draws
+  through `ui.draw_image`, sounds it plays through `audio.play` — and those are
+  decoded by the game's own PNG and audio decoders (stb_image, dr_wav and the
+  rest), which run in the host process, outside the sandbox. A crafted asset
+  that triggers memory corruption in one of those decoders is a code-execution
+  path the wasm boundary does not cover, which is why the same decoders are
+  listed under **File parsing** in scope above. The mod layer bounds what it can
+  — input sizes are capped and an image whose declared dimensions would exceed
+  `4096×4096` is refused before it reaches the decoder, so a decompression bomb
+  cannot OOM the host — but the decoders' own robustness is the real control,
+  and hardening them (including fuzzing) is where that work lives.
 - **The updater verifies integrity, not provenance.** It refuses any download
   not served from the release hosts, and checks the SHA-256 that the release
   metadata carries — but that digest arrives over the same connection as the
