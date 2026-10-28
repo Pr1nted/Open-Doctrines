@@ -11,7 +11,7 @@
 #if defined(__APPLE__)
 #  include <mach-o/dyld.h>
 #endif
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #  include <sys/sysctl.h>
 #endif
 
@@ -32,6 +32,11 @@ std::string resolveExe(const char* argv0) {
     if (_NSGetExecutablePath(buf, &sz) == 0) return buf;
 #elif defined(__FreeBSD__)
     int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+    char buf[4096]; size_t sz = sizeof buf;
+    if (sysctl(mib, 4, buf, &sz, nullptr, 0) == 0) return buf;
+#elif defined(__NetBSD__)
+    // The same question in NetBSD's words; its /proc is not mounted by default.
+    int mib[4] = {CTL_KERN, KERN_PROC_ARGS, -1, KERN_PROC_PATHNAME};
     char buf[4096]; size_t sz = sizeof buf;
     if (sysctl(mib, 4, buf, &sz, nullptr, 0) == 0) return buf;
 #elif defined(__sun)

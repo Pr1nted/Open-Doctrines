@@ -74,5 +74,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "Test, SDK, server and both BSDs all built without a tag."
+          echo "Test, SDK, server and every BSD build all ran without a tag."
           echo "The release path is exercised; tagging should not discover new breakage."

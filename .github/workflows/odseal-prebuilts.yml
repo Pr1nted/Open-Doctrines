@@ -55,7 +55,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # 25 for everything native. The Arm BSDs boot under emulation, which is
+    # most of their time; see the note on them below.
+    timeout-minutes: ${{ matrix.timeout || 25 }}
     strategy:
       fail-fast: false          # one platform's toolchain breaking should not hide the rest
       matrix:
@@ -91,12 +93,20 @@ jobs:
           # there -- so these are genuinely built by the target system's own
           # cc and ar, not cross-compiled by a Linux toolchain pretending.
           #
-          # amd64, not x86_64: that is what `uname -m` says on both BSDs, and
-          # CMAKE_SYSTEM_PROCESSOR follows it. The directory name has to match
-          # what CMakeLists.txt asks for or the archive is invisible -- which
-          # is the whole class of bug that kept linux-aarch64 from shipping.
-          - { name: freebsd-amd64,   os: ubuntu-22.04 }
-          - { name: openbsd-amd64,   os: ubuntu-22.04 }
+          # amd64 and aarch64 on every BSD: what CMakeLists.txt asks for once
+          # it has evened out the BSDs' own spellings (NetBSD says x86_64; see
+          # "THE BSDs, NAMED ONE WAY" there). The directory name has to match
+          # or the archive is invisible -- which is the whole class of bug
+          # that kept linux-aarch64 from shipping.
+          #
+          # The aarch64 guests are EMULATED on the x86 runner, so they get an
+          # hour: booting is most of it, the archive is one file.
+          - { name: freebsd-amd64,   os: ubuntu-22.04, bsd: freebsd, vm_arch: x86_64 }
+          - { name: openbsd-amd64,   os: ubuntu-22.04, bsd: openbsd, vm_arch: x86_64 }
+          - { name: netbsd-amd64,    os: ubuntu-22.04, bsd: netbsd,  vm_arch: x86_64 }
+          - { name: freebsd-aarch64, os: ubuntu-22.04, bsd: freebsd, vm_arch: aarch64, timeout: 60 }
+          - { name: openbsd-aarch64, os: ubuntu-22.04, bsd: openbsd, vm_arch: aarch64, timeout: 60 }
+          - { name: netbsd-aarch64,  os: ubuntu-22.04, bsd: netbsd,  vm_arch: aarch64, timeout: 60 }
 
     steps:
       - uses: actions/checkout@v5
@@ -263,76 +273,40 @@ jobs:
       # do them separately buys nothing: the archive never leaves the VM in
       # between, and a test that ran anywhere else would not be testing the
       # thing this job produces.
-      - name: Build and test (FreeBSD amd64)
-        if: matrix.name == 'freebsd-amd64'
+      # The build, the exports check and the test are tools/odseal_bsd.sh,
+      # one script for all six; these steps only boot the VM.
+      - name: Build and test (FreeBSD ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'freebsd'
         uses: vmactions/freebsd-vm@v1
         with:
           release: '14.2'
+          arch: ${{ matrix.vm_arch }}
           usesh: true
           copyback: true
-          run: |
-            set -e
-            mkdir -p out
-            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
-                -c guard/odseal.cpp -o odseal.o
-            strip --strip-unneeded odseal.o
-            ar rcs out/libodseal.a odseal.o
-            # Native, so the real test runs rather than a symbol check.
-            c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
-            ./odseal_test
-            rm -rf guard odseal_test
+          run: sh tools/odseal_bsd.sh
 
-      - name: Build and test (OpenBSD amd64)
-        if: matrix.name == 'openbsd-amd64'
+      - name: Build and test (OpenBSD ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'openbsd'
         uses: vmactions/openbsd-vm@v1
         with:
+          # 7.6 still boots although its packages are gone: this needs only
+          # base clang and installs nothing.
           release: '7.6'
+          arch: ${{ matrix.vm_arch }}
           usesh: true
           copyback: true
-          run: |
-            set -e
-            mkdir -p out
-            # OpenBSD's base clang. NOT `strip -x`: that discards every local
-            # symbol, and OpenBSD's strip refuses rather than corrupt the
-            # object --
-            #
-            #   strip: error: 'odseal.o': not stripping symbol '.L.str.1'
-            #   because it is named in a relocation
-            #
-            # which is correct of it and was the first thing this job did.
-            # --strip-unneeded is the flag that means what was intended:
-            # remove what relocation processing does not need, keep what it
-            # does. It is also exactly what the FreeBSD and Linux steps use.
-            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
-                -c guard/odseal.cpp -o odseal.o
-            strip --strip-unneeded odseal.o
-            ar rcs out/libodseal.a odseal.o
+          run: sh tools/odseal_bsd.sh
 
-            # The exports, asserted rather than assumed. Whatever strip did or
-            # declined to do, what leaves this VM must be the entry points and
-            # nothing else -- a stray symbol is what points a reader at what
-            # this library does. Same two rules as the android check.
-            # Plain `nm -g`, and its errors are NOT hidden. --defined-only is
-            # a GNU long option OpenBSD's nm does not take; with stderr sent
-            # to /dev/null the check simply saw an empty list and reported
-            # "missing entry point: od_fz" about an archive that was fine.
-            # Filtering on T already excludes undefined symbols, which is all
-            # --defined-only was doing.
-            GOT="$(nm -g out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
-            echo "exports: $GOT"
-            for sym in od_fz od_k9 od_s7 od_v3; do
-              printf '%s\n' $GOT | grep -qx "$sym" || { echo "missing entry point: $sym"; exit 1; }
-            done
-            for sym in $GOT; do
-              case " od_fz od_k9 od_s7 od_t4 od_v3 " in
-                *" $sym "*) ;;
-                *) echo "unexpected export: $sym"; exit 1 ;;
-              esac
-            done
-
-            c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
-            ./odseal_test
-            rm -rf guard odseal_test
+      - name: Build and test (NetBSD ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'netbsd'
+        uses: vmactions/netbsd-vm@v1
+        with:
+          # The game's NetBSD release (bsd-game.yml). Base gcc, nothing to
+          # install.
+          release: '10.1'
+          arch: ${{ matrix.vm_arch }}
+          copyback: true
+          run: sh tools/odseal_bsd.sh
 
       - name: Drop the sealed source
         if: always()
@@ -401,7 +375,7 @@ jobs:
           # present, and nothing may be exported that is not a known one,
           # because a stray symbol is what points a reader at what this does.
           REQUIRED="od_fz od_k9 od_s7 od_v3"
-          ALLOWED="od_fz od_k9 od_s7 od_t4 od_v3"
+          ALLOWED="od_fz od_k9 od_p2 od_p3 od_t4 od_v3"
           for s in $REQUIRED; do
             printf '%s\n' $GOT | grep -qx "$s" || { echo "missing entry point: $s"; exit 1; }
           done
