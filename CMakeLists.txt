@@ -318,6 +318,18 @@ if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU) AND NOT ANDROID AND NO
 else()
     set(od_desktop_sdl_default OFF)
 endif()
+# ── SOFTWARE RENDERING, FOR SYSTEMS WITH NO USABLE OPENGL ──
+#
+# raylib 6 carries rlsw, an OpenGL-1.1-style rasteriser in plain C that draws
+# into memory and hands SDL a surface to show. With it the game needs no GL
+# driver at all -- what SerenityOS needs, whose LibGL is fixed-function 1.5
+# with an unimplemented GLSL compiler. rlsw has render textures but no
+# shaders: the custom shaders fail to load and fall back to raylib's default,
+# so the globe and the map's lighting lose their effects and stay readable.
+option(OD_SOFTWARE_RENDER "Render in software (raylib rlsw), with no OpenGL driver; needs OD_DESKTOP_SDL" OFF)
+if(OD_SOFTWARE_RENDER)
+    set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
+endif()
 option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL backend (real touch input), SDL3 built from source" ${od_desktop_sdl_default})
 
 set(od_system_raylib_ok TRUE)
@@ -1743,9 +1755,13 @@ if(OD_DESKTOP_SDL)
     # for its own use and that call rode along; raylib's SDL backend loads GL
     # through SDL at run time and links none, so the game names it here --
     # libOpenGL (GLVND) on Linux, which the .deb already depends on, and
-    # opengl32 on Windows.
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(OpenDoctrines OpenGL::GL)
+    # opengl32 on Windows. A software-rendered build has no GL to link.
+    if(OD_SOFTWARE_RENDER)
+        target_compile_definitions(OpenDoctrines PRIVATE OD_SOFTWARE_RENDER=1)
+    else()
+        find_package(OpenGL REQUIRED)
+        target_link_libraries(OpenDoctrines OpenGL::GL)
+    endif()
 endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
