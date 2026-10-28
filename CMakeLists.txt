@@ -1819,6 +1819,12 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     if(WIN32)
         target_link_libraries(OpenDoctrinesServerUI ws2_32 comdlg32)
     endif()
+    # The same MapRenderer, so the same direct glGetIntegerv: on the SDL
+    # backend nothing links GL for it but this (see the game's own link above).
+    if(OD_DESKTOP_SDL)
+        find_package(OpenGL REQUIRED)
+        target_link_libraries(OpenDoctrinesServerUI OpenGL::GL)
+    endif()
     if(APPLE)
         target_link_libraries(OpenDoctrinesServerUI
                               "-framework IOKit" "-framework CoreFoundation")
