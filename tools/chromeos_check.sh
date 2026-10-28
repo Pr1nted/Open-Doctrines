@@ -27,7 +27,10 @@ name=$(basename "$deb")
 # shared runners to fail a release for nothing. Same image, same digests.
 image="${CHROMEOS_IMAGE:-mirror.gcr.io/library/debian:bookworm}"
 
-docker run --rm -v "$dir:/pkg:ro" "$image" sh -euc '
+# CHROMEOS_DOCKER_ARGS: extra `docker run` arguments, for a machine whose
+# network needs them (a proxy, --network host). CI sets none.
+# shellcheck disable=SC2086
+docker run --rm ${CHROMEOS_DOCKER_ARGS:-} -v "$dir:/pkg:ro" "$image" sh -euc '
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   # The Files-app install: apt on the file, dependencies from the archive.
