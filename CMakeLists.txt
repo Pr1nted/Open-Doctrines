@@ -2111,6 +2111,12 @@ if(EMSCRIPTEN)
     target_compile_options(OpenDoctrines PRIVATE -fexceptions)
     target_link_options(OpenDoctrines PRIVATE
         "-sUSE_GLFW=3"
+        # The browser mod backend has no instruction limit of its own, so a mod
+        # hook that loops forever would hang the tab. This installs the gas meter
+        # (globalThis.__odWasmMeter) that the backend uses to rewrite a mod's wasm
+        # with a fuel counter before instantiation; see src/mods/ModRuntime.cpp
+        # (OD_MODS_WEB) and src/mods/wasm_meter.js.
+        "SHELL:--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/src/mods/wasm_meter.js"
         # emscripten_websocket_*; the browser does the TLS.
         "-lwebsocket.js"
         # IDBFS, the only filesystem here that outlives the tab. Without

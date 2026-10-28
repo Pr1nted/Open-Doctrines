@@ -190,6 +190,13 @@ if [ "${OD_TSAN:-0}" != "0" ]; then
 fi
 run "abi conformance"  "$bin/ModAbiTest" "$root/sdk/abi.json"
 run "runtime"          "$bin/ModRuntimeTest" "$build/testmods"
+# The browser backend's gas meter (src/mods/wasm_meter.js): rewrite each real
+# test mod with a fuel counter, prove it validates and that a runaway hook traps
+# while a cheap one runs. node only -- skipped where it is missing, like the
+# connectivity test. The desktop fuel limit is covered by "runtime" above.
+if command -v node >/dev/null 2>&1; then
+    run "wasm meter (browser)" node "$root/tests/wasm_meter_test.mjs" "$build/testmods"
+fi
 # Every capability, called. ModAbiTest proves the host's table matches
 # abi.json and the binding checks prove each SDK describes it; this is the
 # only thing that invokes them. It found gearbox:country set_number declared
