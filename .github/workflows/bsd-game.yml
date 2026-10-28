@@ -244,6 +244,22 @@ jobs:
             for t in cmake ninja git python3; do
               command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
             done
+            # The X11 sets (Mesa, its headers) are part of a normal install,
+            # and the arm64 image has them -- the amd64 one does not. So add
+            # them from the release's own sets when they are missing, rather
+            # than depend on which image vmactions happened to build.
+            if [ ! -f /usr/X11R7/include/GL/gl.h ]; then
+              case "$(uname -m)" in
+                amd64)   port=amd64 ;;
+                evbarm)  port=evbarm-aarch64 ;;
+                *)       echo "prepare failed: no X11 sets, and no port for $(uname -m)"; exit 1 ;;
+              esac
+              for set in xbase xcomp; do
+                ftp -o /tmp/$set.tar.xz "https://cdn.netbsd.org/pub/NetBSD/NetBSD-$(uname -r)/$port/binary/sets/$set.tar.xz"
+                tar -xpJf /tmp/$set.tar.xz -C /
+                rm -f /tmp/$set.tar.xz
+              done
+            fi
             test -f /usr/X11R7/include/GL/gl.h || { echo "prepare failed: no X11/Mesa sets in this image"; exit 1; }
           # OD_ENABLE_MODS=OFF: see the note at the top of this file.
           run: |
