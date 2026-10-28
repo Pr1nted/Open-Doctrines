@@ -109,6 +109,7 @@
           <a class="get" data-asset="Unifico-openbsd-arm64.zip" data-os="openbsd" href="#">OpenBSD Arm64</a>
           <a class="get" data-asset="Unifico-netbsd-x64.zip" data-os="netbsd" href="#">NetBSD</a>
           <a class="get" data-asset="Unifico-netbsd-arm64.zip" data-os="netbsd" href="#">NetBSD Arm64</a>
+          <a class="get" data-asset="Unifico-illumos-x64.zip" data-os="illumos" href="#">OpenIndiana</a>
         </div>
         <p class="note">Already have the game? Unifico finds your copy and plays it where it is, worlds included.</p>
       </div>
@@ -198,6 +199,15 @@
           <p>NetBSD 10 or later, without mods. Built and tested inside a real NetBSD for every release.</p>
           <a class="get" data-asset="OpenDoctrines-netbsd-amd64.zip" href="#">amd64</a>
           <a class="get" data-asset="OpenDoctrines-netbsd-arm64.zip" href="#">arm64</a>
+        </div>
+      </div>
+
+      <div class="dl" data-os="illumos" hidden>
+        <svg viewBox="0 0 24 24" class="stroked" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <div>
+          <h3>OpenIndiana and illumos</h3>
+          <p>OpenIndiana Hipster (or OmniOS with X11), x86-64, without mods. Built and tested inside a real OpenIndiana for every release.</p>
+          <a class="get" data-asset="OpenDoctrines-illumos-amd64.zip" href="#">amd64</a>
         </div>
       </div>
 
@@ -321,6 +331,7 @@ if (HAVE.length) {
          : /FreeBSD/i.test(p + ua) ? "freebsd"
          : /OpenBSD/i.test(p + ua) ? "openbsd"
          : /NetBSD/i.test(p + ua) ? "netbsd"
+         : /SunOS|illumos/i.test(p + ua) ? "illumos"
          : /Linux|X11/i.test(p + ua) ? "linux" : null;
   if (!os) return;
   document.querySelectorAll('#launcher a.get[data-os="' + os + '"]').forEach(function (a) { a.classList.add("mine"); });

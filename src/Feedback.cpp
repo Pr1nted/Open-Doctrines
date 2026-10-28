@@ -111,6 +111,8 @@ const char* platformName() {
     return "openbsd";
 #elif defined(__NetBSD__)
     return "netbsd";
+#elif defined(__sun)
+    return "illumos";
 #else
     return "unknown";
 #endif

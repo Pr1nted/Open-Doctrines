@@ -20,6 +20,7 @@ one prebuilt per platform, and CMake picks the matching one:
 | OpenBSD arm64 | `openbsd-aarch64/` | base clang, `-fPIC`, in an emulated VM on a Linux runner |
 | NetBSD amd64 | `netbsd-amd64/` | base gcc, `-fPIC`, in a VM on a Linux runner |
 | NetBSD arm64 | `netbsd-aarch64/` | base gcc, `-fPIC`, in an emulated VM on a Linux runner |
+| illumos amd64 | `illumos-amd64/` | gcc from IPS, `-fPIC`, in an OpenIndiana VM on a Linux runner |
 | Web (wasm32) | `web-wasm32/` | emscripten `em++` |
 | Windows x86_64 | `windows-x86_64/` | MSVC, `/O2 /GR-` |
 | Windows x86 (32-bit) | `windows-x86/` | MSVC `amd64_x86`, `/O2 /GR-`, on the x64 runner |
@@ -46,7 +47,9 @@ where Linux says `x86_64`, and `aarch64` for 64-bit Arm.** CMake asks FreeBSD
 and NetBSD `uname -p` and OpenBSD `arch -s`, and NetBSD alone answers
 `x86_64`; CMakeLists.txt evens that out, so every BSD archive is
 `<bsd>-amd64` or `<bsd>-aarch64`. A directory named `freebsd-x86_64` or
-`netbsd-x86_64` would simply never be found.
+`netbsd-x86_64` would simply never be found. **illumos is renamed outright:**
+CMake calls it `SunOS` and its `uname -p` says `i386` even for a 64-bit
+build, so CMakeLists.txt maps a 64-bit SunOS x86 build to `illumos-amd64`.
 
 Two corrections on top of that rule, both because `uname -m` names the
 **kernel**, not the compiler:
