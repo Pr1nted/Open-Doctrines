@@ -339,6 +339,9 @@ GROUPS = [
         # vector font instead of raylib's bitmap one. Applied to the raylib the
         # build compiles; the server stub generator knows it too.
         "patch_raylib_default_font.py",
+        # A software-rendered build's screen readback (screenshots, feedback
+        # pictures) right way up and in RGBA on rlsw. Applied to that build only.
+        "patch_raylib_sw_readback.py",
         # The relations view says who is at war and who is allied with hue
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.

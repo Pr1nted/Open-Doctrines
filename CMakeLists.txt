@@ -523,6 +523,25 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         string(STRIP "${od_webdpi_out}" od_webdpi_out)
         message(STATUS "raylib: ${od_webdpi_out}")
     endif()
+
+    # Software rendering only. See tools/patch_raylib_sw_readback.py. FATAL as
+    # the others: unpatched, every screen readback in that build is upside down
+    # with red and blue swapped, and nothing else would notice.
+    if(OD_SOFTWARE_RENDER)
+        set(od_swread_src "${raylib_SOURCE_DIR}/src/rlgl.h")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_sw_readback.py"
+                    "${od_swread_src}"
+            RESULT_VARIABLE od_swread_rc
+            OUTPUT_VARIABLE od_swread_out
+            ERROR_VARIABLE  od_swread_err)
+        if(NOT od_swread_rc EQUAL 0)
+            message(FATAL_ERROR "Could not patch raylib's software readback:\n${od_swread_err}")
+        endif()
+        string(STRIP "${od_swread_out}" od_swread_out)
+        message(STATUS "raylib: ${od_swread_out}")
+    endif()
 endif()
 
 # --- Complex text shaping (HarfBuzz) ---
