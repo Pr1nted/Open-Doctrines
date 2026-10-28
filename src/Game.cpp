@@ -126,6 +126,11 @@ EM_JS(int, odFitCanvasJS, (), {
 #elif !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
+#if defined(OD_DESKTOP_SDL)
+// SDL_InitSubSystem and SDL_GetError, ahead of InitWindow (see Game::init).
+#include <SDL3/SDL_init.h>
+#include <SDL3/SDL_error.h>
+#endif
 #include "GameInternals.h"
 #include "FontValidate.h"
 // odEnsureAsset(): the full font is fetched, not preloaded. See reloadFonts().
@@ -1346,20 +1351,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
 #if defined(OD_DESKTOP_SDL)
     // ── ON SDL, PHYSICAL PIXELS INSTEAD ──
     //
-    // raylib's SDL2 backend does not size the framebuffer from the
-    // drawable (render size = window size, always), so FLAG_WINDOW_HIGHDPI
-    // there would ask SDL for a high-DPI drawable that raylib then draws a
-    // window-sized viewport into. Instead the window, the framebuffer and the
-    // pointer are all in physical pixels: sharp, and one coordinate space. X11
-    // already works that way. Windows is told to with SDL's per-monitor DPI
-    // awareness (read by SDL_Init, inside InitWindow below); left alone,
-    // Windows would stretch the window on a 125% or 150% display, blurry. The
-    // interface scales from the window's pixel height (UiScale), so a dense
-    // panel gets a larger interface rather than a smaller one.
+    // raylib 6.2's SDL backend does not size the framebuffer from the drawable
+    // (render size = window size at InitWindow, and FLAG_WINDOW_HIGHDPI only
+    // half-applies on a later resize), so the flag there would ask SDL for a
+    // high-density drawable that raylib then draws a window-sized viewport
+    // into. Instead the window, the framebuffer and the pointer are all in
+    // physical pixels: sharp, and one coordinate space. X11 already works that
+    // way, and so does Windows under SDL3, which declares per-monitor-v2 DPI
+    // awareness itself unless told otherwise. The interface scales from the
+    // window's pixel height (UiScale), so a dense panel gets a larger
+    // interface rather than a smaller one.
     (void)m_config.highDpi;
-#  ifdef _WIN32
-    if (!getenv("SDL_WINDOWS_DPI_AWARENESS")) _putenv_s("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
-#  endif
 #else
     if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
 #endif
@@ -1378,6 +1380,18 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // build in a window -- but unset means headless, which is what this
     // configuration exists for. Read by SDL_Init, inside InitWindow below.
     if (!getenv("SDL_VIDEODRIVER")) setenv("SDL_VIDEODRIVER", "offscreen", 1);
+#endif
+#if defined(OD_DESKTOP_SDL)
+    // NO DISPLAY, SAID AS SUCH. raylib 6.2's SDL backend checks SDL_Init the
+    // SDL2 way, `result < 0`; SDL3 returns false on failure, which is never
+    // below zero, so a session with no display at all sails past it and fails
+    // later creating the GL context -- the line that means "a display, but no
+    // GL", which would send a headless session into a pointless software-GL
+    // relaunch. So video is brought up here first and a failure is reported in
+    // the words the trace-log callback reads as no display. SDL counts
+    // initialisations, so raylib's own SDL_Init inside InitWindow is unaffected.
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+        TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif
     InitWindow(m_screenW, m_screenH, title);
     if (getenv("OD_DPI_PROBE")) {

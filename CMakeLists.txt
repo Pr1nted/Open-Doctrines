@@ -294,9 +294,9 @@ option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offs
 # OS's emulated mouse: a click where it landed, no long-press right-click, no
 # pinch to zoom, and the hover-driven half of the interface unreachable.
 #
-# raylib's SDL2 backend reports real touch points (and drives controllers
-# through SDL's GameController database, which knows the Deck's and the
-# Ally's built-in pads). So Linux and Windows build on it. SDL2 is built from
+# raylib's SDL backend reports real touch points (and drives controllers
+# through SDL's gamepad database, which knows the Deck's and the Ally's
+# built-in pads). So Linux and Windows build on it, on SDL3. SDL is built from
 # source and linked statically -- one version everywhere, nothing new for a
 # player to install, and it cross-compiles with the same toolchain files.
 #
@@ -308,7 +308,7 @@ if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT ANDROID AND NOT EMSCRIP
 else()
     set(od_desktop_sdl_default OFF)
 endif()
-option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL2 backend (real touch input), SDL2 built from source" ${od_desktop_sdl_default})
+option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL backend (real touch input), SDL3 built from source" ${od_desktop_sdl_default})
 
 set(od_system_raylib_ok TRUE)
 if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
@@ -378,12 +378,13 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         message(STATUS "OD_HEADLESS_SDL: raylib on its SDL backend (headless offscreen GL)")
     endif()
 
-    # ── SDL2 FROM SOURCE, STATIC (see OD_DESKTOP_SDL above) ──
+    # ── SDL3 FROM SOURCE, STATIC (see OD_DESKTOP_SDL above) ──
     #
-    # raylib 5.5's CMake supports SDL2 only, and finds it with
-    # find_package(SDL2 REQUIRED). It is built here first; cmake/sdl2/
-    # FindSDL2.cmake then answers that find_package with the target just made,
-    # so raylib links exactly this SDL and never a system one.
+    # Built here first, so that SDL3::SDL3 exists when raylib configures:
+    # raylib 6's CMake takes that target as it is (USING_SDL3_PROJECT) and
+    # never goes looking for a system SDL. SDL3 rather than SDL2: raylib 6's
+    # GetWindowScaleDPI is a stub on SDL2, and SDL3 makes a Windows build
+    # per-monitor DPI aware by default.
     #
     # Audio is left out: raylib plays sound through miniaudio and initialises
     # only SDL's video, events and game-controller subsystems.
@@ -393,26 +394,32 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # game is /MT (CMAKE_MSVC_RUNTIME_LIBRARY above) -- the LNK2038 mismatch
     # Unifico's CMakeLists describes, one object at a time.
     if(OD_DESKTOP_SDL)
-        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL2 desktop backend" FORCE)
+        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
         set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
-        set(SDL_TEST OFF CACHE BOOL "" FORCE)
-        set(SDL2_DISABLE_SDL2MAIN ON CACHE BOOL "" FORCE)
-        set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
-        set(SDL2_DISABLE_UNINSTALL ON CACHE BOOL "" FORCE)
+        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+        set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+        set(SDL_UNINSTALL OFF CACHE BOOL "" FORCE)
         set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
-        FetchContent_Declare(SDL2
+        # SDL3 stops the configure on any X11 extension it cannot find rather
+        # than quietly building without it. XScreenSaver is the one a stock
+        # runner lacks headers for, and SDL inhibits the screensaver over D-Bus
+        # anyway; the rest (XInput2 for touch, XFixes, Xrandr) are in the
+        # Linux build deps.
+        set(SDL_X11_XSCRNSAVER OFF CACHE BOOL "" FORCE)
+        set(SDL_X11_XTEST OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SDL3
             GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-            GIT_TAG release-2.30.9
+            GIT_TAG release-3.4.18
             GIT_SHALLOW TRUE)
-        FetchContent_MakeAvailable(SDL2)
-        if(NOT TARGET SDL2::SDL2)
-            add_library(SDL2::SDL2 ALIAS SDL2-static)
+        FetchContent_MakeAvailable(SDL3)
+        if(NOT TARGET SDL3::SDL3)
+            add_library(SDL3::SDL3 ALIAS SDL3-static)
         endif()
-        list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl2")
-        message(STATUS "OD_DESKTOP_SDL: raylib on SDL2 (release-2.30.9, static)")
+        message(STATUS "OD_DESKTOP_SDL: raylib on SDL3 (release-3.4.18, static)")
     endif()
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
@@ -1694,7 +1701,7 @@ if(OD_HEADLESS_SDL)
     target_compile_definitions(OpenDoctrines PRIVATE OD_HEADLESS_SDL=1)
 endif()
 if(OD_DESKTOP_SDL)
-    target_link_libraries(OpenDoctrines SDL2::SDL2)
+    target_link_libraries(OpenDoctrines SDL3::SDL3)
     target_compile_definitions(OpenDoctrines PRIVATE OD_DESKTOP_SDL=1)
     # THE SYSTEM GL, BY NAME. MapRenderer asks the driver for its texture
     # ceiling with glGetIntegerv directly. On GLFW raylib links the system GL
@@ -2891,7 +2898,7 @@ target_include_directories(TouchGestureTest PRIVATE
 if(OD_DESKTOP_SDL)
     add_executable(TouchSdlTest EXCLUDE_FROM_ALL tests/touch_sdl_test.cpp src/Touch.cpp)
     target_include_directories(TouchSdlTest PRIVATE src tests)
-    target_link_libraries(TouchSdlTest PRIVATE raylib SDL2::SDL2)
+    target_link_libraries(TouchSdlTest PRIVATE raylib SDL3::SDL3)
 endif()
 
 # Ethnic migration has to conserve people. Pure arithmetic on shares: the

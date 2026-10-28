@@ -7,12 +7,12 @@
 // Windows handheld and touchscreen laptop, and odTouch never ran there.
 //
 // So this opens a real window on the real backend the game ships with
-// (raylib on SDL2, OD_DESKTOP_SDL) and puts touches into SDL exactly where a
+// (raylib on SDL3, OD_DESKTOP_SDL) and puts touches into SDL exactly where a
 // platform's video driver would: SDL_AddTouch / SDL_SendTouch, the internal
 // calls SDL's X11, Wayland and Windows drivers make when the OS reports a
 // finger. They are not public API, but SDL is linked statically here, so they
 // are there to call. SDL_PushEvent is not a substitute: raylib reads the
-// finger COUNT from SDL_GetNumTouchFingers(), which only the internal path
+// finger COUNT from SDL_GetTouchFingers(), which only the internal path
 // updates, so a pushed event would leave it at zero.
 //
 // What it checks, in the order a player's hand would do it:
@@ -29,19 +29,20 @@
 #include "raylib.h"
 #include "Touch.h"
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
-// SDL's own internal touch entry points (src/events/SDL_touch_c.h, 2.30).
+// SDL's own internal touch entry points (src/events/SDL_touch_c.h, 3.4). A
+// timestamp of 0 means "now", as it does for every SDL event.
 extern "C" {
 int SDL_AddTouch(SDL_TouchID id, SDL_TouchDeviceType type, const char* name);
-int SDL_SendTouch(SDL_TouchID id, SDL_FingerID fingerid, SDL_Window* window,
-                  SDL_bool down, float x, float y, float pressure);
-int SDL_SendTouchMotion(SDL_TouchID id, SDL_FingerID fingerid, SDL_Window* window,
-                        float x, float y, float pressure);
+void SDL_SendTouch(Uint64 timestamp, SDL_TouchID id, SDL_FingerID fingerid, SDL_Window* window,
+                   SDL_EventType type, float x, float y, float pressure);
+void SDL_SendTouchMotion(Uint64 timestamp, SDL_TouchID id, SDL_FingerID fingerid, SDL_Window* window,
+                         float x, float y, float pressure);
 }
 
 static int checks = 0, fails = 0;
@@ -64,9 +65,9 @@ static void frame() {
     odTouch::update(1.0f / 60.0f, W, H);
 }
 
-static void down(SDL_FingerID f, float x, float y) { SDL_SendTouch(kTouch, f, g_win, SDL_TRUE, x, y, 1.0f); }
-static void move(SDL_FingerID f, float x, float y) { SDL_SendTouchMotion(kTouch, f, g_win, x, y, 1.0f); }
-static void up(SDL_FingerID f, float x, float y) { SDL_SendTouch(kTouch, f, g_win, SDL_FALSE, x, y, 1.0f); }
+static void down(SDL_FingerID f, float x, float y) { SDL_SendTouch(0, kTouch, f, g_win, SDL_EVENT_FINGER_DOWN, x, y, 1.0f); }
+static void move(SDL_FingerID f, float x, float y) { SDL_SendTouchMotion(0, kTouch, f, g_win, x, y, 1.0f); }
+static void up(SDL_FingerID f, float x, float y) { SDL_SendTouch(0, kTouch, f, g_win, SDL_EVENT_FINGER_UP, x, y, 1.0f); }
 
 int main() {
     std::printf("touch through SDL (raylib %s)\n", RAYLIB_VERSION);
