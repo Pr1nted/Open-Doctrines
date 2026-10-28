@@ -171,8 +171,17 @@ and where there are none.
   **right** public key is compiled in, which rests on the source, not on GitHub.
 - **The builds are not code-signed.** The Windows build is unsigned, which is
   why SmartScreen objects to it, and the Android APK is signed with a debug
-  key. Neither is a certificate you can check anything against. Until that
-  changes, the provenance of a binary rests on where you downloaded it from.
+  key. Neither is a certificate you can check anything against, so the OS-level
+  provenance of the *first* download rests on where you got it from. (What the
+  update path verifies is separate and now cryptographic: see the signed-release
+  bullet above — once you have a trusted copy, its updates are provenance-checked
+  against a key no release host holds.) Closing the first-download gap needs
+  paid certificates this project does not hold: an Authenticode certificate to
+  sign the Windows build (and, for the sharpest result, an EV certificate, which
+  earns SmartScreen reputation immediately), an Apple Developer ID plus
+  notarization for macOS, and a real upload-signing key for the Play Store APK.
+  Each is a credential to provision rather than code to write; until then the
+  signed update manifest is the strongest provenance control in the chain.
 - **A blob store can destroy a long-form turn**, which is an outage rather
   than a rigged game. The distinction is deliberate and is documented where
   the code lives.
