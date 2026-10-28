@@ -254,8 +254,19 @@ jobs:
                 evbarm)  port=evbarm-aarch64 ;;
                 *)       echo "prepare failed: no X11 sets, and no port for $(uname -m)"; exit 1 ;;
               esac
+              # The CDN keeps current releases only; once a newer point
+              # release ships, the old one moves to archive.netbsd.org, and
+              # the CDN answers 404 (10.1, once 10.2 was out). Try both.
+              rel=$(uname -r)
               for set in xbase xcomp; do
-                ftp -o /tmp/$set.tar.xz "https://cdn.netbsd.org/pub/NetBSD/NetBSD-$(uname -r)/$port/binary/sets/$set.tar.xz"
+                got=
+                for base in https://cdn.netbsd.org/pub/NetBSD \
+                            https://archive.netbsd.org/pub/NetBSD-archive; do
+                  url="$base/NetBSD-$rel/$port/binary/sets/$set.tar.xz"
+                  echo "fetching $url"
+                  if ftp -o /tmp/$set.tar.xz "$url"; then got=1; break; fi
+                done
+                [ -n "$got" ] || { echo "prepare failed: no $set set for NetBSD $rel/$port"; exit 1; }
                 tar -xpJf /tmp/$set.tar.xz -C /
                 rm -f /tmp/$set.tar.xz
               done
