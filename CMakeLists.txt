@@ -631,11 +631,14 @@ else()
     set_target_properties(odseal PROPERTIES
         IMPORTED_LOCATION ${ODSEAL_LIB}
         INTERFACE_INCLUDE_DIRECTORIES ${ODSEAL_DIST})
-    # The committed prebuilts export od_t4 as of the rebuild that added it, so
-    # a clone gets the rule-table check too rather than only a maintainer tree.
+    # The committed prebuilts export od_t4 AND the od_p2/od_p3 save-seal cipher
+    # as of the rebuild that synced the sealed source, so a clone gets the
+    # rule-table check and sealed fog saves too, not only a maintainer tree.
     # The archives, this header and this line move together in one commit --
-    # that is what makes the define safe to set unconditionally here.
-    target_compile_definitions(odseal INTERFACE OD_HAS_T4)
+    # that is what makes the defines safe to set unconditionally here. (Until
+    # the prebuilts carried od_p2/od_p3, OD_HAS_P2 was deliberately absent, which
+    # is why a clone used to write fog saves unsealed; see docs/odseal.md.)
+    target_compile_definitions(odseal INTERFACE OD_HAS_T4 OD_HAS_P2)
     message(STATUS "odseal: prebuilt ${ODSEAL_PLATFORM}")
 endif()
 
