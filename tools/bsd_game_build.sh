@@ -6,8 +6,8 @@
 #   tools/bsd_game_build.sh OpenDoctrines-netbsd-arm64 aarch64 -DOD_ENABLE_MODS=OFF
 #
 # One script for FreeBSD, OpenBSD and NetBSD on every architecture, and for
-# OpenIndiana (illumos), so the VM steps in that workflow differ only in how
-# each system installs packages. It
+# OpenIndiana (illumos) and Haiku, so the VM steps in that workflow differ
+# only in how each system installs packages. It
 # was three copies of this inline, and the notes below had to be repeated in
 # each to stay true. Plain sh: it is what all three systems run.
 #
@@ -21,8 +21,9 @@ want="${2:?expected machine, e.g. x86_64}"
 shift 2
 
 uname -a
-# getconf on Linux-likes, sysctl on the BSDs, psrinfo on illumos.
-jobs=$(getconf NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || psrinfo | wc -l)
+# getconf on Linux-likes, sysctl on the BSDs, psrinfo on illumos, nproc on
+# Haiku (coreutils; it has no getconf for this and no sysctl).
+jobs=$(getconf NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || psrinfo | wc -l)
 jobs=$(echo $jobs)
 
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \

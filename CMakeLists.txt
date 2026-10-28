@@ -44,6 +44,13 @@ endif()
 set(OD_VERSION_NUMERIC "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
 
 project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
+
+# Haiku keeps the BSD socket API in libnetwork, not libc, and every target
+# here that touches the network -- the game, the server and a good share of
+# the tests -- would otherwise fail to link one undefined socket() at a time.
+if(HAIKU)
+    link_libraries(network)
+endif()
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 
@@ -303,7 +310,10 @@ option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offs
 # macOS keeps GLFW (no Mac has a touchscreen, and the bundle is tuned to it),
 # and so do the BSDs, whose builds were just brought up on GLFW. Android and
 # the web have their own backends. -DOD_DESKTOP_SDL=OFF goes back to GLFW.
-if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT ANDROID AND NOT EMSCRIPTEN)
+#
+# HAIKU IS SDL OR NOTHING: GLFW has no Haiku backend, so there the option is
+# not a choice. It links the system SDL3 rather than building one (below).
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU) AND NOT ANDROID AND NOT EMSCRIPTEN)
     set(od_desktop_sdl_default ON)
 else()
     set(od_desktop_sdl_default OFF)
@@ -393,7 +403,19 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # minimum, which would put it back on the default /MD runtime while the
     # game is /MT (CMAKE_MSVC_RUNTIME_LIBRARY above) -- the LNK2038 mismatch
     # Unifico's CMakeLists describes, one object at a time.
-    if(OD_DESKTOP_SDL)
+    # ── EXCEPT ON HAIKU, WHICH USES ITS OWN ──
+    #
+    # HaikuPorts' libsdl3 carries a Haiku fix upstream does not have yet: its
+    # display-mode query frees an uninitialised pointer when the screen has no
+    # mode list -- a VESA or VM framebuffer, which is where a lot of Haiku
+    # runs. So on Haiku SDL3 is the system package (pkgman install libsdl3),
+    # found by its own CMake config; raylib takes the SDL3::SDL3 target it
+    # defines exactly as it takes the one built below.
+    if(OD_DESKTOP_SDL AND HAIKU)
+        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
+        find_package(SDL3 REQUIRED CONFIG)
+        message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL3 ${SDL3_VERSION} (Haiku)")
+    elseif(OD_DESKTOP_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
@@ -741,13 +763,13 @@ endif()
 # links -- the mod menu then reports every mod as Failed with a diagnostic
 # saying the runtime is unavailable, rather than the build breaking.
 #
-# OFF BY DEFAULT ON OpenBSD, NetBSD AND illumos. WAMR has no platform layer for
-# any of them (its core/shared/platform has freebsd and no other BSD, and no
-# solaris), so ON there fails at configure with a missing directory that does
-# not say why. The release builds pass OFF explicitly anyway; this is so a
-# source build on those systems works without knowing that. README.md says the
-# same under "FreeBSD, OpenBSD and NetBSD" and "OpenIndiana and illumos".
-if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS")
+# OFF BY DEFAULT ON OpenBSD, NetBSD, illumos AND Haiku. WAMR has no platform
+# layer for any of them (its core/shared/platform has freebsd and no other BSD,
+# no solaris and no haiku), so ON there fails at configure with a missing
+# directory that does not say why. The release builds pass OFF explicitly
+# anyway; this is so a source build on those systems works without knowing
+# that. README.md says the same under each system's section.
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku")
     set(od_mods_default OFF)
 else()
     set(od_mods_default ON)

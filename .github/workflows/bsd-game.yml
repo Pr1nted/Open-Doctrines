@@ -1,5 +1,5 @@
 # The game, built on FreeBSD, OpenBSD and NetBSD for amd64 and arm64, and on
-# OpenIndiana (illumos) for amd64.
+# OpenIndiana (illumos) and Haiku for x86-64.
 #
 # WHY A SEPARATE WORKFLOW
 #
@@ -97,6 +97,7 @@ jobs:
             {"name": "openbsd-amd64", "bsd": "openbsd", "arch": "x86_64",  "machine": "x86_64",  "odseal": "openbsd-amd64",   "timeout": 120},
             {"name": "netbsd-amd64",  "bsd": "netbsd",  "arch": "x86_64",  "machine": "x86_64",  "odseal": "netbsd-amd64",    "timeout": 120},
             {"name": "illumos-amd64", "bsd": "illumos", "arch": "x86_64",  "machine": "x86_64",  "odseal": "illumos-amd64",   "timeout": 150},
+            {"name": "haiku-x64",     "bsd": "haiku",   "arch": "x86_64",  "machine": "x86_64",  "odseal": "haiku-x86_64",    "timeout": 150},
             {"name": "freebsd-arm64", "bsd": "freebsd", "arch": "aarch64", "machine": "aarch64", "odseal": "freebsd-aarch64", "timeout": 350},
             {"name": "openbsd-arm64", "bsd": "openbsd", "arch": "aarch64", "machine": "aarch64", "odseal": "openbsd-aarch64", "timeout": 350},
             {"name": "netbsd-arm64",  "bsd": "netbsd",  "arch": "aarch64", "machine": "aarch64", "odseal": "netbsd-aarch64",  "timeout": 350},
@@ -318,6 +319,31 @@ jobs:
             gcc --version | head -1
           run: |
             OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" CC=gcc CXX=g++ \
+              sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
+      # HAIKU. GLFW has no Haiku backend, so this is the SDL build (raylib on
+      # SDL3, as Linux and Windows are) against the system's own libsdl3 --
+      # see "EXCEPT ON HAIKU" in CMakeLists.txt for why not the pinned one.
+      # Mods off: WAMR has no Haiku platform layer. x86-64 only: the 32-bit
+      # build is the gcc2 hybrid, which cannot build C++20.
+      #
+      # Packages by what they provide (cmd:, devel:) rather than by package
+      # name, so a renamed or re-versioned HaikuPorts package still resolves.
+      - name: Build and package (Haiku ${{ matrix.arch }})
+        if: matrix.bsd == 'haiku'
+        uses: vmactions/haiku-vm@v1
+        with:
+          release: 'r1beta6'
+          copyback: true
+          prepare: |
+            set -e
+            pkgman install -y cmd:cmake cmd:ninja cmd:python3 cmd:git cmd:gcc cmd:zip \
+                              devel:libSDL3 devel:libGL
+            for t in cmake ninja python3 gcc g++; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
+            gcc --version | head -1
+          run: |
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
       - name: The packaged copy carries the account service
         shell: bash

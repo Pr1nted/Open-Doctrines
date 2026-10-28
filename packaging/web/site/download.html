@@ -211,6 +211,16 @@
         </div>
       </div>
 
+      <div class="dl" data-os="haiku" hidden>
+        <svg viewBox="0 0 24 24" class="stroked" aria-hidden="true"><path d="M4 20c4-1 6-4 7-8M20 20c-4-1-6-4-7-8M12 12c-2-3-2-6 0-9 2 3 2 6 0 9z"/></svg>
+        <div>
+          <h3>Haiku</h3>
+          <p>Haiku R1/beta6 or later, x86-64, without mods. Needs SDL3 and Mesa:
+             <code>pkgman install libsdl3 mesa</code>. Built inside a real Haiku for every release.</p>
+          <a class="get" data-asset="OpenDoctrines-haiku-x64.zip" href="#">x86-64</a>
+        </div>
+      </div>
+
       <div class="dl" data-os="templeos">
         <svg viewBox="0 0 24 24" class="stroked" aria-hidden="true"><path d="M10 9h4" /> <path d="M12 7v5" /> <path d="M14 21v-3a2 2 0 0 0-4 0v3" /> <path d="m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9" /> <path d="M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14" /></svg>
         <div>
@@ -332,6 +342,7 @@ if (HAVE.length) {
          : /OpenBSD/i.test(p + ua) ? "openbsd"
          : /NetBSD/i.test(p + ua) ? "netbsd"
          : /SunOS|illumos/i.test(p + ua) ? "illumos"
+         : /Haiku/i.test(p + ua) ? "haiku"
          : /Linux|X11/i.test(p + ua) ? "linux" : null;
   if (!os) return;
   document.querySelectorAll('#launcher a.get[data-os="' + os + '"]').forEach(function (a) { a.classList.add("mine"); });
