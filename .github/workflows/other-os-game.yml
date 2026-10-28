@@ -76,7 +76,10 @@ jobs:
       # and the compiler all come from IPS here. Each package is installed on
       # its own and a miss is printed rather than fatal: `pkg install` refuses
       # the whole list over one unknown name, and the checks after it say what
-      # actually matters. Exit 4 is "nothing to do", which is success.
+      # actually matters. Exit 4 is "nothing to do", which is success -- and
+      # is caught with `|| rc=$?`, not read from $? afterwards: vmactions runs
+      # prepare with errexit, so a bare `pkg install` answering 4 (a package an
+      # earlier one already pulled in) ended the whole step there, silently.
       - name: Build and package (OpenIndiana)
         if: matrix.os == 'illumos'
         uses: vmactions/openindiana-vm@v1
@@ -89,7 +92,7 @@ jobs:
                      x11/library/mesa x11/library/libx11 x11/library/libxext \
                      x11/library/libxrandr x11/library/libxinerama x11/library/libxcursor \
                      x11/library/libxi x11/header/x11-protocols library/libxkbcommon; do
-              pkg install -q "$p"; rc=$?
+              rc=0; pkg install -q "$p" || rc=$?
               [ $rc = 0 ] || [ $rc = 4 ] || echo "pkg: $p not installed (exit $rc)"
             done
             for t in cmake ninja gcc g++ python3; do
