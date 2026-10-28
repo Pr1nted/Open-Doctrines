@@ -994,7 +994,14 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 
     if (std::strstr(line, "does not appear to support OpenGL") ||
         std::strstr(line, "Failed to find a suitable pixel format") ||
-        std::strstr(line, "Failed to initialize GLFW")) {
+        std::strstr(line, "Failed to initialize GLFW")
+#if defined(OD_DESKTOP_SDL)
+        // The SDL backend words the same two failures its own way: no video
+        // subsystem at all, or a window/GL context it could not create.
+        || std::strstr(line, "SDL: Failed to initialize SDL")
+        || std::strstr(line, "PLATFORM: Failed to initialize graphics device")
+#endif
+        ) {
         // odFatalDialog, not MessageBoxA: this file includes <windows.h> with
         // NOUSER, which removes it. See src/WinFatalDialog.h.
         odFatalDialog("OpenDoctrines",
@@ -1075,12 +1082,26 @@ void odGlTraceLog(int level, const char* text, va_list args) {
     // pixel format" / "does not support OpenGL" mean a display IS there and it
     // is the GL CAPABILITY that is missing -- a VM without 3D, an old driver --
     // which llvmpipe can supply. Only the second kind is worth a software retry.
+    //
+    // On the SDL backend the same split, in SDL's words: SDL_Init failing means
+    // no video at all (no display), and a window or GL context it could not
+    // create after that means the display is there and GL is what is missing.
+    // GLFW logs "graphics device" too, but only after its own lines, so it is
+    // matched on SDL builds alone and GLFW builds decide exactly as before.
     const bool noDisplay =
         std::strstr(line, "Failed to determine Monitor") ||
-        std::strstr(line, "Failed to initialize GLFW");
+        std::strstr(line, "Failed to initialize GLFW")
+#if defined(OD_DESKTOP_SDL)
+        || std::strstr(line, "SDL: Failed to initialize SDL")
+#endif
+        ;
     const bool noGl =
         std::strstr(line, "Failed to find a suitable pixel format") ||
-        std::strstr(line, "does not appear to support OpenGL");
+        std::strstr(line, "does not appear to support OpenGL")
+#if defined(OD_DESKTOP_SDL)
+        || std::strstr(line, "PLATFORM: Failed to initialize graphics device")
+#endif
+        ;
 
     if (noGl && !noDisplay) {
         // Never returns on success: the process is replaced by one that draws
@@ -1103,7 +1124,7 @@ void odGlTraceLog(int level, const char* text, va_list args) {
         } else {
             std::fprintf(stderr,
                 "\nOpenDoctrines could not open a window.\n"
-                "GLFW found no display to open it on, so there is no OpenGL "
+                "The windowing system found no display to open it on, so there is no OpenGL "
                 "context and the next call inside raylib would fault.\n"
                 "This is what a headless or detached session looks like: ssh "
                 "without a forwarded display, a CI runner, a launchd job, or a "
@@ -1320,7 +1341,26 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // own mouse and screen scaling there -- "system should manage window/input
     // scaling". So every draw call and every hit test keeps the numbers it
     // already uses, and only the resolution they are rasterised at changes.
+#if defined(OD_DESKTOP_SDL)
+    // ── ON SDL, PHYSICAL PIXELS INSTEAD ──
+    //
+    // raylib 5.5's SDL2 backend does not size the framebuffer from the
+    // drawable (render size = window size, always), so FLAG_WINDOW_HIGHDPI
+    // there would ask SDL for a high-DPI drawable that raylib then draws a
+    // window-sized viewport into. Instead the window, the framebuffer and the
+    // pointer are all in physical pixels: sharp, and one coordinate space. X11
+    // already works that way. Windows is told to with SDL's per-monitor DPI
+    // awareness (read by SDL_Init, inside InitWindow below); left alone,
+    // Windows would stretch the window on a 125% or 150% display, blurry. The
+    // interface scales from the window's pixel height (UiScale), so a dense
+    // panel gets a larger interface rather than a smaller one.
+    (void)m_config.highDpi;
+#  ifdef _WIN32
+    if (!getenv("SDL_WINDOWS_DPI_AWARENESS")) _putenv_s("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
+#  endif
+#else
     if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
+#endif
     SetConfigFlags(winFlags);
     // Before InitWindow, because the failure it catches happens inside it and
     // never comes back out. See odWindowsGlTraceLog / odGlTraceLog above.
@@ -2934,6 +2974,7 @@ void Game::run() {
         odPad::update(dt, m_screenW, m_screenH);
         // After the pad, so a device with both lets the last thing touched win.
         odTouch::update(dt, m_screenW, m_screenH);
+        osk::setTouchDriving(odTouch::active());
 
         // Above the popup early-out below: the music stream has to be fed on
         // every frame, and a popup is exactly when it must not stutter.

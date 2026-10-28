@@ -317,6 +317,30 @@ Requires **Windows 10 or later**. Three builds are published:
 The build is unsigned, so SmartScreen will show *"Windows protected your PC"*
 on first run — **More info → Run anyway**.
 
+### Steam Deck and other handhelds
+
+Use the ordinary download for the device's system: **Linux x64** on a Steam
+Deck (Desktop Mode, or add it to Steam as a non-Steam game for Game Mode),
+**Windows x64** on an ROG Ally, Legion Go or MSI Claw, **Linux arm64** on Arm
+Linux handhelds, and the [Android](#android--experimental) APK on Android ones.
+
+What a handheld needs is in those builds:
+
+- **The built-in controls.** The Linux and Windows builds use SDL, whose
+  controller database knows the Deck's and the Windows handhelds' pads, and
+  Steam Input's virtual one. The pad drives the pointer, as on every platform.
+- **The touchscreen, properly.** Tap to click, drag to move the pointer,
+  pinch to zoom, long-press for right-click — the same gestures as on Android,
+  where the pointer stays put between touches so the hover-driven parts of the
+  interface keep working. Until the desktop builds moved to SDL, a finger
+  reached the game only as the system's emulated mouse.
+- **An on-screen keyboard** that comes up for text fields while you are using
+  touch, and stays away while a mouse is in use.
+
+Every pull request puts real touches through the SDL backend the game ships
+on and checks they arrive (`tests/touch_sdl_test.cpp`, on Linux and Windows).
+It has **not** yet been played on a physical Deck or Ally; reports welcome.
+
 ### ChromeOS
 
 Two ways in, and both are built for every release:

@@ -127,7 +127,7 @@ jobs:
           # at link with errors that do not mention X11 at all.
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev
 
       # The same libraries, for another architecture: multiarch -dev packages
       # beside the host's, the cross gcc, and QEMU for anything built that the

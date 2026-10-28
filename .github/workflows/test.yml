@@ -151,7 +151,7 @@ jobs:
           # A hosted runner has no display.
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev xvfb
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev xvfb
 
       # Windows runs this under Git Bash, which GitHub's Windows images already
       # have. The suite is bash (tests/run_all.sh, tests/connectivity_test.sh),
@@ -229,6 +229,31 @@ jobs:
       - name: Qualify
         shell: bash
         run: tools/qualify.sh build
+
+      # ── A FINGER REACHES THE GAME ──
+      #
+      # The Linux and Windows builds are on raylib's SDL backend so that a
+      # touchscreen -- a Steam Deck, an ROG Ally, a touch laptop -- delivers
+      # real touches; on GLFW it delivered none. tests/touch_sdl_test.cpp puts
+      # touches into SDL where its own drivers would and checks they arrive in
+      # raylib and in odTouch: a tap clicks, a drag moves the cursor, two
+      # fingers zoom, and the OS mouse is left alone. A window is needed, so
+      # Linux runs it under Xvfb; the Windows runner has a desktop.
+      - name: A finger reaches the game (SDL touch)
+        if: matrix.name == 'linux-x64' || matrix.name == 'windows-x64'
+        shell: bash
+        env:
+          OD_TOUCH_SDL_REQUIRE: "1"
+        run: |
+          set -e
+          cmake --build build --config Release --target TouchSdlTest -j 4
+          t=build/TouchSdlTest; [ -f build/TouchSdlTest.exe ] && t=build/TouchSdlTest.exe
+          [ -f build/Release/TouchSdlTest.exe ] && t=build/Release/TouchSdlTest.exe
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s "-screen 0 1280x800x24" "$t"
+          else
+            "$t"
+          fi
 
       # ── A REAL HTTPS REQUEST, ON THIS PLATFORM ──
       #
@@ -521,7 +546,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev
       - name: Data race check
         run: tests/net_race_test.sh "${{ github.workspace }}/build-tsan"
 
@@ -911,7 +936,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev \
             zenity xvfb
 
       # Same generator as everywhere else on Windows -- see the qualify job.
@@ -1026,7 +1051,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
                                   libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
                                   libxcursor-dev libxinerama-dev libwayland-dev \
-                                  libxkbcommon-dev
+                                  libxkbcommon-dev libudev-dev
 
       # Same generator as the qualify job, for the same reason -- see the note
       # on it there. Kept in step deliberately: two Windows jobs building the
