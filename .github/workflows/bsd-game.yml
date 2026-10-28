@@ -1,5 +1,5 @@
-# The game, built on FreeBSD, OpenBSD and NetBSD for amd64 and arm64, and on
-# OpenIndiana (illumos) and Haiku for x86-64.
+# The game, built on FreeBSD, OpenBSD and NetBSD for amd64 and arm64.
+# (OpenIndiana, Haiku and SerenityOS are other-os-game.yml.)
 #
 # WHY A SEPARATE WORKFLOW
 #
@@ -96,8 +96,6 @@ jobs:
             {"name": "freebsd-amd64", "bsd": "freebsd", "arch": "x86_64",  "machine": "x86_64",  "odseal": "freebsd-amd64",   "timeout": 120},
             {"name": "openbsd-amd64", "bsd": "openbsd", "arch": "x86_64",  "machine": "x86_64",  "odseal": "openbsd-amd64",   "timeout": 120},
             {"name": "netbsd-amd64",  "bsd": "netbsd",  "arch": "x86_64",  "machine": "x86_64",  "odseal": "netbsd-amd64",    "timeout": 120},
-            {"name": "illumos-amd64", "bsd": "illumos", "arch": "x86_64",  "machine": "x86_64",  "odseal": "illumos-amd64",   "timeout": 150},
-            {"name": "haiku-x64",     "bsd": "haiku",   "arch": "x86_64",  "machine": "x86_64",  "odseal": "haiku-x86_64",    "timeout": 150},
             {"name": "freebsd-arm64", "bsd": "freebsd", "arch": "aarch64", "machine": "aarch64", "odseal": "freebsd-aarch64", "timeout": 350},
             {"name": "openbsd-arm64", "bsd": "openbsd", "arch": "aarch64", "machine": "aarch64", "odseal": "openbsd-aarch64", "timeout": 350},
             {"name": "netbsd-arm64",  "bsd": "netbsd",  "arch": "aarch64", "machine": "aarch64", "odseal": "netbsd-aarch64",  "timeout": 350},
@@ -287,64 +285,6 @@ jobs:
       # because the thing that was broken existed only in the build nobody
       # tested. LC_ALL=C because GNU grep in a UTF-8 locale can decline to
       # match inside a binary whose bytes are not valid UTF-8.
-      # OPENINDIANA, for illumos. Not a BSD, but the same shape of job: a real
-      # system booted by vmactions, the same build script, mods off (WAMR has
-      # no illumos platform layer). x86-64 only -- no illumos distribution
-      # ships for Arm, so there is no image to boot and nobody to run a build.
-      #
-      # The image is the TEXT install, so X11, Mesa and the compiler all come
-      # from IPS here. Each package is installed on its own and a miss is
-      # printed rather than fatal: `pkg install` refuses the whole list over
-      # one unknown name, and the checks after it say what actually matters.
-      # Exit 4 is "nothing to do", which is success.
-      - name: Build and package (OpenIndiana ${{ matrix.arch }})
-        if: matrix.bsd == 'illumos'
-        uses: vmactions/openindiana-vm@v1
-        with:
-          release: '202604'
-          copyback: true
-          prepare: |
-            for p in build-essential developer/build/cmake developer/build/ninja \
-                     developer/versioning/git runtime/python-313 \
-                     x11/library/mesa x11/library/libx11 x11/library/libxext \
-                     x11/library/libxrandr x11/library/libxinerama x11/library/libxcursor \
-                     x11/library/libxi x11/header/x11-protocols library/libxkbcommon; do
-              pkg install -q "$p"; rc=$?
-              [ $rc = 0 ] || [ $rc = 4 ] || echo "pkg: $p not installed (exit $rc)"
-            done
-            for t in cmake ninja gcc g++ python3; do
-              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
-            done
-            ls /usr/include/GL/gl.h /usr/include/X11/Xlib.h || { echo "prepare failed: no GL/X11 headers"; exit 1; }
-            gcc --version | head -1
-          run: |
-            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" CC=gcc CXX=g++ \
-              sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
-      # HAIKU. GLFW has no Haiku backend, so this is the SDL build (raylib on
-      # SDL3, as Linux and Windows are) against the system's own libsdl3 --
-      # see "EXCEPT ON HAIKU" in CMakeLists.txt for why not the pinned one.
-      # Mods off: WAMR has no Haiku platform layer. x86-64 only: the 32-bit
-      # build is the gcc2 hybrid, which cannot build C++20.
-      #
-      # Packages by what they provide (cmd:, devel:) rather than by package
-      # name, so a renamed or re-versioned HaikuPorts package still resolves.
-      - name: Build and package (Haiku ${{ matrix.arch }})
-        if: matrix.bsd == 'haiku'
-        uses: vmactions/haiku-vm@v1
-        with:
-          release: 'r1beta6'
-          copyback: true
-          prepare: |
-            set -e
-            pkgman install -y cmd:cmake cmd:ninja cmd:python3 cmd:git cmd:gcc cmd:zip \
-                              devel:libSDL3 devel:libGL
-            for t in cmake ninja python3 gcc g++; do
-              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
-            done
-            gcc --version | head -1
-          run: |
-            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
-              sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
       - name: The packaged copy carries the account service
         shell: bash
         run: |

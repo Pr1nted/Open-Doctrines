@@ -5,13 +5,14 @@
 
 1. GameUpdates::platformKey() (src/GameUpdates.cpp) -- the release asset the
    in-game updater downloads for the build it is running in.
-2. The artifacts the release workflows build (release-game.yml, bsd-game.yml)
+2. The artifacts the release workflows build (release-game.yml, bsd-game.yml,
+   other-os-game.yml)
    -- what actually gets attached to a release as OpenDoctrines-<x>.zip.
 3. The download page's buttons (packaging/web/site/download.html).
 4. The dedicated server's platforms (release-server.yml), which must match the
    game's desktop platforms -- the server is what people run on a Pi or an Arm
-   VPS -- apart from the BSDs (FreeBSD, OpenBSD, NetBSD), illumos and Haiku,
-   which have no server build.
+   VPS -- apart from the BSDs (FreeBSD, OpenBSD, NetBSD) and the other-os
+   systems (illumos, Haiku, SerenityOS), which have no server build.
 
 WHY. They are maintained by hand in three files, and every way they can drift
 is silent. An updater key with no artifact means "no download for this
@@ -52,7 +53,10 @@ def built_artifacts():
     # entries' "name" fields, released as OpenDoctrines-<name> (the plan step
     # sets "artifact" that way).
     names |= {"OpenDoctrines-" + n for n in
-              re.findall(r'"name":\s*"((?:[a-z]+bsd|illumos|haiku)-[A-Za-z0-9_-]+)"', read(".github/workflows/bsd-game.yml"))}
+              re.findall(r'"name":\s*"([a-z]+bsd-[A-Za-z0-9_-]+)"', read(".github/workflows/bsd-game.yml"))}
+    # other-os-game.yml names its entries in a YAML matrix, not a JSON plan.
+    names |= {"OpenDoctrines-" + n for n in
+              re.findall(r"-\s*\{\s*name:\s*([a-z]+-[A-Za-z0-9_]+)\s*,", read(".github/workflows/other-os-game.yml"))}
     # The browser build is a page, not an install, and has no updater key.
     return {n for n in names if not n.endswith("-web")}
 
@@ -80,7 +84,7 @@ def main():
     # The dedicated server ships wherever the game does -- it is what people
     # run on a Pi or an Arm VPS -- except the BSDs, which have no server build.
     game_desktop = {n.replace("OpenDoctrines-", "") for n in built
-                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku)-", n)}
+                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity)-", n)}
     server = server_platforms()
     for p in sorted(game_desktop - server):
         problems.append(f"the game ships for {p}, but release-server.yml has no server for it")

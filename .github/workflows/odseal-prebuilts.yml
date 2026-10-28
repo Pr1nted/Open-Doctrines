@@ -119,7 +119,7 @@ jobs:
           - { name: openbsd-aarch64, os: ubuntu-24.04, bsd: openbsd, vm_arch: aarch64, timeout: 60 }
           - { name: netbsd-aarch64,  os: ubuntu-24.04, bsd: netbsd,  vm_arch: aarch64, timeout: 60 }
           # illumos, in an OpenIndiana VM: what CMakeLists.txt calls a SunOS
-          # x86-64 build ("ILLUMOS" there). The game's bsd-game.yml job.
+          # x86-64 build ("ILLUMOS" there). The game's other-os-game.yml job.
           - { name: illumos-amd64,   os: ubuntu-24.04, bsd: illumos, vm_arch: x86_64, timeout: 60 }
           # Haiku, x86-64: CMake names it Haiku and its processor x86_64.
           - { name: haiku-x86_64,    os: ubuntu-24.04, bsd: haiku,   vm_arch: x86_64, timeout: 60 }
