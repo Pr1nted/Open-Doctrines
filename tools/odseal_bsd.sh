@@ -46,7 +46,7 @@ for sym in od_fz od_k9 od_s7 od_v3; do
   printf '%s\n' $GOT | grep -qx "$sym" || { echo "missing entry point: $sym"; exit 1; }
 done
 for sym in $GOT; do
-  case " od_fz od_k9 od_p2 od_p3 od_t4 od_v3 " in
+  case " od_fz od_k9 od_s7 od_t4 od_v3 " in
     *" $sym "*) ;;
     *) echo "unexpected export: $sym"; exit 1 ;;
   esac
