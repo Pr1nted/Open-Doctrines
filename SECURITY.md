@@ -155,12 +155,20 @@ and where there are none.
   `4096×4096` is refused before it reaches the decoder, so a decompression bomb
   cannot OOM the host — but the decoders' own robustness is the real control,
   and hardening them (including fuzzing) is where that work lives.
-- **The updater verifies integrity, not provenance.** It refuses any download
-  not served from the release hosts, and checks the SHA-256 that the release
-  metadata carries — but that digest arrives over the same connection as the
-  file, so it catches a truncated or corrupted download, not a compromised
-  GitHub account. There is no separate signing key. Saying so is more useful
-  than implying the checksum proves something it does not.
+- **The updater verifies provenance when a signing key is pinned.** Releases
+  carry a manifest of each asset's SHA-256, signed with an Ed25519 key that
+  lives offline (a CI secret, never on the release host). The client verifies it
+  against the public key compiled into `src/ReleaseSigningKey.h` and installs
+  only what that offline key signed — so swapping an asset on a compromised
+  GitHub account no longer suffices, because the digest it would also have to
+  forge is signed by a key GitHub never holds. A release that is unsigned or
+  whose signature does not verify is refused for self-install and the player is
+  sent to the release page; refusing the unsigned case is what stops an attacker
+  from stripping the signature to fall back to the weaker check. The bare
+  SHA-256 the API reports is still checked as a cheap integrity guard, and a
+  build with no key pinned (a fork that has not run `tools/gen_release_key.py`)
+  keeps the old integrity-only behaviour. The remaining trust is that the
+  **right** public key is compiled in, which rests on the source, not on GitHub.
 - **The builds are not code-signed.** The Windows build is unsigned, which is
   why SmartScreen objects to it, and the Android APK is signed with a debug
   key. Neither is a certificate you can check anything against. Until that

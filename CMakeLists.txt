@@ -3624,6 +3624,7 @@ add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp
     src/util/RunCurl.cpp
+    src/util/Ed25519.cpp          # GameUpdates verifies the signed release manifest
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
