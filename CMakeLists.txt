@@ -335,7 +335,7 @@ endif()
 set(od_system_raylib_ok FALSE)
 
 if(od_system_raylib_ok)
-    find_package(raylib 5.5 QUIET)
+    find_package(raylib 6.2 QUIET)
 endif()
 if(NOT raylib_FOUND)
     message(STATUS "raylib not found system-wide, fetching via FetchContent...")
@@ -416,7 +416,7 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     endif()
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
-        GIT_TAG 5.5
+        GIT_TAG 6.2
     )
     FetchContent_MakeAvailable(raylib)
     set(raylib_LIBRARY raylib)
