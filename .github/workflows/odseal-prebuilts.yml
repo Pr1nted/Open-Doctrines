@@ -333,7 +333,7 @@ jobs:
           # gar and gnm: illumos's own strip has no --strip-unneeded and its nm
           # prints a different table, so the script is pointed at the GNU ones.
           prepare: |
-            pkg install -q build-essential; rc=$?
+            rc=0; pkg install -q build-essential || rc=$?
             [ $rc = 0 ] || [ $rc = 4 ] || exit $rc
           run: CXX=g++ STRIP=gstrip AR=gar NM=gnm sh tools/odseal_bsd.sh
 
