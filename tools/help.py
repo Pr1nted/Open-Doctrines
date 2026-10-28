@@ -133,6 +133,9 @@ GROUPS = [
         # (bsd_game_build.sh), and build the sealed odseal archive a BSD build
         # links (odseal_bsd.sh, for odseal-prebuilts.yml).
         "bsd_game_build.sh", "odseal_bsd.sh",
+        # ChromeOS's Linux container is Debian: install the .deb into a clean
+        # Debian image, check every library resolves, and play a few turns.
+        "chromeos_check.sh",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,
