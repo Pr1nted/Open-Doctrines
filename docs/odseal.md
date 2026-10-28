@@ -28,6 +28,9 @@ one prebuilt per platform, and CMake picks the matching one:
 | Linux armv7l (armhf) | `linux-armv7l/` | `arm-linux-gnueabihf-g++` 11, `-fPIC`, tested under QEMU |
 | Linux riscv64 | `linux-riscv64/` | `riscv64-linux-gnu-g++` 11, `-fPIC`, tested under QEMU |
 | Android arm64-v8a | `android-arm64-v8a/` | NDK clang, API 24 |
+| Android armeabi-v7a | `android-armeabi-v7a/` | NDK clang, API 24 |
+| Android x86_64 | `android-x86_64/` | NDK clang, API 24 |
+| Android x86 | `android-x86/` | NDK clang, API 24 |
 
 If a maintainer working tree has `guard/odseal.cpp`, that is used instead and
 the prebuilts are ignored — that is the only tree where the source exists.

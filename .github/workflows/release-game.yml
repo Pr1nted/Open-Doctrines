@@ -483,8 +483,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64 }
-          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64 }
+          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64,   chromeos: x64 }
+          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64, chromeos: arm64 }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
@@ -535,6 +535,24 @@ jobs:
           rpm -qlp dist/linux/*.rpm 2>/dev/null | grep -q '/usr/lib/opendoctrines/MANAGED' \
             && echo "  rpm: MANAGED present" \
             || { echo "  rpm: MANAGED MISSING"; exit 1; }
+
+      # ── CHROMEOS ──
+      #
+      # A Chromebook runs Linux apps in a Debian 12 container, x86-64 or arm64
+      # to match its CPU, and installs a .deb from the Files app with apt. So
+      # the ChromeOS build IS this .deb -- what makes it ChromeOS's is that it
+      # is installed and checked the way ChromeOS will, in that Debian, on this
+      # job's own architecture: every dependency from bookworm's archive, every
+      # library resolving, a launcher entry for the app grid. Published under
+      # its own name so the download page and the release list can say
+      # "ChromeOS" rather than send people to guess which Linux file is theirs.
+      - name: ChromeOS -- installs and links in Debian 12
+        run: |
+          set -eu
+          deb=$(ls dist/linux/*.deb)
+          tools/chromeos_check.sh "$deb"
+          cp "$deb" "dist/linux/OpenDoctrines-chromeos-${{ matrix.chromeos }}.deb"
+          ls -l dist/linux/*.deb
 
       - name: The desktop entry and metainfo are valid
         # Flathub and the freedesktop validators run these anyway; failing here

@@ -86,7 +86,16 @@ jobs:
           - { name: linux-armv7l,    os: ubuntu-22.04, triplet: arm-linux-gnueabihf, qemu: arm }
           - { name: linux-riscv64,   os: ubuntu-22.04, triplet: riscv64-linux-gnu,   qemu: riscv64 }
           - { name: web-wasm32,      os: ubuntu-22.04 }
-          - { name: android-arm64-v8a, os: ubuntu-22.04 }
+          # Every Android ABI the APK carries, each by the NDK's own clang for
+          # that target. arm64-v8a is phones; x86_64 and x86 are what Intel and
+          # AMD Chromebooks run Android apps on natively, and armeabi-v7a is
+          # 32-bit Arm (older phones, Arm Chromebooks with a 32-bit userland).
+          # The directory is android-<ABI>, which CMakeLists.txt asks for from
+          # CMAKE_ANDROID_ARCH_ABI.
+          - { name: android-arm64-v8a,   os: ubuntu-22.04, ndk_clang: aarch64-linux-android24-clang++ }
+          - { name: android-armeabi-v7a, os: ubuntu-22.04, ndk_clang: armv7a-linux-androideabi24-clang++ }
+          - { name: android-x86_64,      os: ubuntu-22.04, ndk_clang: x86_64-linux-android24-clang++ }
+          - { name: android-x86,         os: ubuntu-22.04, ndk_clang: i686-linux-android24-clang++ }
           # THE BSDs RUN INSIDE A VM ON A LINUX RUNNER, because GitHub hosts
           # no BSD runner and is not going to. vmactions boots a real FreeBSD
           # or OpenBSD, shares the workspace into it, and runs the build
@@ -245,7 +254,7 @@ jobs:
       # Same NDK discovery as the android job in test.yml: name it explicitly so
       # a runner image bump cannot change the compiler under us.
       - name: Locate the NDK
-        if: matrix.name == 'android-arm64-v8a'
+        if: startsWith(matrix.name, 'android-')
         shell: bash
         run: |
           set -e
@@ -254,14 +263,14 @@ jobs:
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
           echo "using $NDK"
 
-      - name: Build (android arm64-v8a)
-        if: matrix.name == 'android-arm64-v8a'
+      - name: Build (${{ matrix.name }})
+        if: startsWith(matrix.name, 'android-')
         shell: bash
         run: |
           set -e
           mkdir -p out
           TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          "$TC/aarch64-linux-android24-clang++" \
+          "$TC/${{ matrix.ndk_clang }}" \
               -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
               -c guard/odseal.cpp -o odseal.o
           "$TC/llvm-strip" --strip-unneeded odseal.o
@@ -362,7 +371,7 @@ jobs:
       # the four entry points, and nothing else exported to point a reader at
       # what it does.
       - name: Check the archive (android, symbols only)
-        if: matrix.name == 'android-arm64-v8a'
+        if: startsWith(matrix.name, 'android-')
         shell: bash
         run: |
           set -e

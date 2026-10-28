@@ -329,6 +329,22 @@ jobs:
             echo "The packaged copy did not play three turns."; tail -30 pkg.log; exit 1; }
           echo "OK: the packaged copy found its own data and played 1939."
 
+      # ── CHROMEOS, ON EVERY PULL REQUEST ──
+      #
+      # The release turns the Linux tree into a .deb and publishes it as the
+      # ChromeOS build (release-game.yml, "ChromeOS"). This is the same check
+      # on the tree just packaged above, so a dependency bookworm cannot
+      # satisfy, a library that will not resolve, or a game that cannot play
+      # in ChromeOS's Debian container is found here rather than on a tag.
+      # x64 only: there is no Arm Linux qualify job; the release checks arm64.
+      - name: ChromeOS -- the .deb installs and plays in Debian 12
+        if: matrix.name == 'linux-x64'
+        run: |
+          set -eu
+          sudo gem install --no-document fpm >/dev/null
+          tools/make_linux_packages.sh dist/pkg "$(tr -d '[:space:]' < VERSION)" amd64 dist/linux deb
+          tools/chromeos_check.sh "$(ls dist/linux/*.deb)"
+
       # ── THE SAVE FORMAT, WRITTEN HERE AND READ EVERYWHERE ELSE ──
       #
       # A player reported a world that would not load, on Windows, written by
@@ -523,10 +539,22 @@ jobs:
       - name: Fuzz the parsers
         run: tools/fuzz_parsers.sh 6 1500000
 
-  android:
-    name: android (arm64-v8a)
+  # ── ANDROID: ONE LIBRARY PER ABI, ONE APK ──
+  #
+  # arm64-v8a is phones. x86_64 and x86 are what Intel and AMD Chromebooks run
+  # Android apps on: without them ChromeOS runs the Arm library through its
+  # translation layer, which works and is slow. armeabi-v7a is 32-bit Arm.
+  # Each is its own CMake build (the NDK builds one ABI at a time), so they
+  # run side by side here and the package job below puts all four into the
+  # one APK that is published.
+  android-lib:
+    name: android lib (${{ matrix.abi }})
     runs-on: ubuntu-22.04
     timeout-minutes: 40      # same reason as qualify: a link that hangs is not free
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
     steps:
       - uses: actions/checkout@v5
 
@@ -555,7 +583,7 @@ jobs:
           # release-game.yml -- and it is checked below rather than assumed.
           cmake -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+            -DANDROID_ABI=${{ matrix.abi }} -DANDROID_PLATFORM=android-24 \
             -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
             -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON \
             -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
@@ -610,8 +638,55 @@ jobs:
             "$READELF" -d "$SO" | grep -q "$lib" || { echo "not linked against $lib"; exit 1; }
           done
 
+      # The library, and (from one ABI -- they are identical) the assets the
+      # configure step staged, which the package job needs and cannot make
+      # without an NDK build of its own.
+      - name: Collect the library
+        run: |
+          set -e
+          mkdir -p out/lib/${{ matrix.abi }}
+          cp build-android/libopendoctrines.so out/lib/${{ matrix.abi }}/
+          if [ "${{ matrix.abi }}" = arm64-v8a ]; then cp -R build-android/assets out/assets; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-lib-${{ matrix.abi }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 3
+
+  android:
+    name: android (APK, all ABIs)
+    needs: android-lib
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      # The runner ships an SDK and an NDK already; name the NDK explicitly so a
+      # runner image bump cannot silently change the compiler under us.
+      - name: Locate the NDK
+        run: |
+          set -e
+          NDK="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
+          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "using $NDK"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: android-lib-*
+          path: incoming
+          merge-multiple: true
+
       - name: Package the APK
-        run: ./tools/package_android.sh
+        run: |
+          set -e
+          mkdir -p build-android
+          cp -R incoming/lib build-android/lib
+          cp -R incoming/assets build-android/assets
+          ls build-android/lib
+          OD_ANDROID_ABIS="arm64-v8a armeabi-v7a x86_64 x86" ./tools/package_android.sh
 
       - name: The APK is installable
         run: |
@@ -624,8 +699,12 @@ jobs:
           names = set(z.namelist())
           fail = []
 
-          # The three things without which it is not an app at all.
-          for need in ("AndroidManifest.xml", "lib/arm64-v8a/libopendoctrines.so"):
+          # The things without which it is not an app at all -- and one library
+          # per ABI. A missing x86_64 library is not an error Android reports:
+          # an Intel Chromebook would quietly fall back to running the Arm one
+          # through translation, slower, and nobody would know why.
+          abis = ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+          for need in ("AndroidManifest.xml",) + tuple(f"lib/{a}/libopendoctrines.so" for a in abis):
               if need not in names: fail.append("missing " + need)
           if not any(n.startswith("res/mipmap-") for n in names):
               fail.append("no launcher icon -- the app shows the generic robot")
@@ -641,9 +720,10 @@ jobs:
 
           # extractNativeLibs defaults false at targetSdk 34, so the loader maps
           # the .so straight out of the APK and it must be uncompressed.
-          so = "lib/arm64-v8a/libopendoctrines.so"
-          if so in names and z.getinfo(so).compress_type != zipfile.ZIP_STORED:
-              fail.append("the .so is DEFLATED; it must be STORED to be mapped")
+          for a in abis:
+              so = f"lib/{a}/libopendoctrines.so"
+              if so in names and z.getinfo(so).compress_type != zipfile.ZIP_STORED:
+                  fail.append(f"the {a} .so is DEFLATED; it must be STORED to be mapped")
 
           # The game copies its content out on first run and needs a list to do
           # it with, because an APK's assets cannot be enumerated.
