@@ -100,13 +100,15 @@ jobs:
           # that kept linux-aarch64 from shipping.
           #
           # The aarch64 guests are EMULATED on the x86 runner, so they get an
-          # hour: booting is most of it, the archive is one file.
-          - { name: freebsd-amd64,   os: ubuntu-22.04, bsd: freebsd, vm_arch: x86_64 }
-          - { name: openbsd-amd64,   os: ubuntu-22.04, bsd: openbsd, vm_arch: x86_64 }
-          - { name: netbsd-amd64,    os: ubuntu-22.04, bsd: netbsd,  vm_arch: x86_64 }
-          - { name: freebsd-aarch64, os: ubuntu-22.04, bsd: freebsd, vm_arch: aarch64, timeout: 60 }
-          - { name: openbsd-aarch64, os: ubuntu-22.04, bsd: openbsd, vm_arch: aarch64, timeout: 60 }
-          - { name: netbsd-aarch64,  os: ubuntu-22.04, bsd: netbsd,  vm_arch: aarch64, timeout: 60 }
+          # hour: booting is most of it, the archive is one file. 24.04 for
+          # all six: 22.04's QEMU cannot boot vmactions' OpenBSD arm64 image
+          # ("unable to find CPU model 'neoverse-n1'").
+          - { name: freebsd-amd64,   os: ubuntu-24.04, bsd: freebsd, vm_arch: x86_64 }
+          - { name: openbsd-amd64,   os: ubuntu-24.04, bsd: openbsd, vm_arch: x86_64 }
+          - { name: netbsd-amd64,    os: ubuntu-24.04, bsd: netbsd,  vm_arch: x86_64 }
+          - { name: freebsd-aarch64, os: ubuntu-24.04, bsd: freebsd, vm_arch: aarch64, timeout: 60 }
+          - { name: openbsd-aarch64, os: ubuntu-24.04, bsd: openbsd, vm_arch: aarch64, timeout: 60 }
+          - { name: netbsd-aarch64,  os: ubuntu-24.04, bsd: netbsd,  vm_arch: aarch64, timeout: 60 }
 
     steps:
       - uses: actions/checkout@v5

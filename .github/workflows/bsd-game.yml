@@ -111,7 +111,10 @@ jobs:
   build:
     name: ${{ matrix.name }}
     needs: plan
-    runs-on: ubuntu-22.04
+    # 24.04, not 22.04: 22.04's QEMU predates the CPU model vmactions' Arm
+    # images ask for, and OpenBSD arm64 died at boot with "unable to find CPU
+    # model 'neoverse-n1'".
+    runs-on: ubuntu-24.04
     # A whole game in a VM on a shared runner. The desktop jobs take about
     # fifteen minutes on real hardware; amd64 has room to be several times
     # that before it is a hang rather than a build, and arm64 is emulated.
@@ -229,10 +232,13 @@ jobs:
           prepare: |
             set -e
             export PATH="/usr/pkg/sbin:/usr/pkg/bin:$PATH"
+            # -uu, upgrading dependencies too: the image is older than the
+            # package set, and plain pkg_add refused git-base because it
+            # needs a newer pcre2 than the one already installed.
             if command -v pkgin >/dev/null; then
-              pkgin -y install cmake ninja-build git-base python312
+              pkgin -y update && pkgin -y install cmake ninja-build git-base python312
             else
-              /usr/sbin/pkg_add -I cmake ninja-build git-base python312
+              /usr/sbin/pkg_add -I -uu cmake ninja-build git-base python312
             fi
             ln -sf /usr/pkg/bin/python3.12 /usr/pkg/bin/python3
             for t in cmake ninja git python3; do
