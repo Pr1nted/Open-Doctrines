@@ -1696,6 +1696,14 @@ endif()
 if(OD_DESKTOP_SDL)
     target_link_libraries(OpenDoctrines SDL2::SDL2)
     target_compile_definitions(OpenDoctrines PRIVATE OD_DESKTOP_SDL=1)
+    # THE SYSTEM GL, BY NAME. MapRenderer asks the driver for its texture
+    # ceiling with glGetIntegerv directly. On GLFW raylib links the system GL
+    # for its own use and that call rode along; raylib's SDL backend loads GL
+    # through SDL at run time and links none, so the game names it here --
+    # libOpenGL (GLVND) on Linux, which the .deb already depends on, and
+    # opengl32 on Windows.
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(OpenDoctrines OpenGL::GL)
 endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
