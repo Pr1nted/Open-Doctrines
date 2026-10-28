@@ -369,7 +369,7 @@ unsigned char* LoadFileData(const char* fileName, int* dataSize) {
 
 void UnloadFileData(unsigned char* data) { free(data); }
 
-bool SaveFileData(const char* fileName, void* data, int dataSize) {
+bool SaveFileData(const char* fileName, const void* data, int dataSize) {
     if (!fileName || dataSize < 0) return false;
     FILE* f = fopen(fileName, "wb");
     if (!f) return false;
@@ -415,10 +415,9 @@ FilePathList LoadDirectoryFiles(const char* dirPath) {
     std::vector<std::string> found;
     for (const auto& e : fs::directory_iterator(dirPath, ec)) found.push_back(e.path().string());
     if (found.empty()) return list;
-    list.capacity = (unsigned int)found.size();
     list.count = (unsigned int)found.size();
     list.paths = (char**)malloc(found.size() * sizeof(char*));
-    if (!list.paths) { list.capacity = list.count = 0; return list; }
+    if (!list.paths) { list.count = 0; return list; }
     for (size_t i = 0; i < found.size(); ++i) {
         list.paths[i] = (char*)malloc(found[i].size() + 1);
         if (list.paths[i]) memcpy(list.paths[i], found[i].c_str(), found[i].size() + 1);

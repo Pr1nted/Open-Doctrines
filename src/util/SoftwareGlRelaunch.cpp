@@ -89,7 +89,7 @@ const std::string& odExecutablePath() { return g_exePath; }
 
 std::string odApplicationDirectory() {
     // raylib's own answer wherever it has one -- Windows, Linux, macOS and
-    // FreeBSD. Everywhere else (OpenBSD, NetBSD) raylib 5.5 returns "", and
+    // FreeBSD. Everywhere else (OpenBSD, NetBSD) raylib returns "" (5.5 and 6.2 alike), and
     // the game then looked for data/ relative to wherever it was STARTED
     // from: fine from its own folder, nothing at all from a desktop launcher
     // or a full path typed elsewhere. The path resolved at startup answers
