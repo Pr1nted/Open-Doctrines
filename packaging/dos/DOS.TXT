@@ -12,8 +12,8 @@ WHAT IT NEEDS
 
   * A 32-bit protected-mode capable PC: a Pentium or better. It runs on a 386
     in principle; a turn there would take a very long time.
-  * About 1 GB of memory. The world is large; this is the same figure a
-    browser tab needs for it. CWSDPMI uses extended memory (XMS) or plain
+  * About 320 MB of memory. Worlds load at half resolution on DOS, which
+    peaks near 230 MB. CWSDPMI uses extended memory (XMS) or plain
     memory with no memory manager loaded.
   * A VESA BIOS Extensions 2.0 graphics card with a linear framebuffer and a
     15, 16, 24 or 32-bit colour mode of at least 640x400. Most cards from the
