@@ -3,7 +3,7 @@ Open Doctrines for DOS
 
 Start it with:
 
-    OpenDoctrines
+    DOCTRINE
 
 from this folder. CWSDPMI.EXE, the DPMI host it runs under, is beside it and
 is found on its own.
