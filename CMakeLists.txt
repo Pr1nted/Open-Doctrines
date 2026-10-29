@@ -265,7 +265,9 @@ endif()
 # Not MSVC: /GS is its own stack cookie and is on by default. Not Emscripten:
 # wasm bounds every access inside its linear memory already, so a canary buys
 # nothing there and costs code size and speed the web build is tight on.
-if(NOT MSVC AND NOT EMSCRIPTEN)
+# Not on DJGPP: its libc has no stack-protector runtime (__stack_chk_fail,
+# __stack_chk_guard), so every object compiles and the final link fails.
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP)
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-strong>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-U_FORTIFY_SOURCE>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-D_FORTIFY_SOURCE=2>)
