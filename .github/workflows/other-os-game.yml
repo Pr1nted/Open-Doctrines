@@ -122,8 +122,13 @@ jobs:
           copyback: true
           prepare: |
             set -e
-            pkgman install -y cmd:cmake cmd:ninja cmd:python3 cmd:git cmd:gcc cmd:zip \
-                              devel:libSDL3 devel:libGL
+            pkgman install -y cmd:cmake cmd:ninja cmd:python3 cmd:git cmd:gcc cmd:zip
+            pkgman install -y devel:libGL || pkgman install -y mesa_devel
+            # SDL3 by its HaikuPorts package name: "devel:libSDL3" did not
+            # resolve on r1beta6. Without it CMake builds SDL3 from source
+            # (see "EXCEPT ON HAIKU"), so a miss is reported, not fatal.
+            pkgman install -y libsdl3_devel || pkgman install -y libsdl3 || {
+              echo "no libsdl3 package; SDL3 will be built from source"; pkgman search sdl || true; }
             for t in cmake ninja python3 gcc g++; do
               command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
             done
