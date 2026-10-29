@@ -618,7 +618,18 @@ jobs:
           elf=$(ls build/OpenDoctrines.elf build/OpenDoctrines 2>/dev/null | head -1)
           readelf -h "$elf" | grep -q "Machine:.*ARM" || { echo "$elf: not ARM"; exit 1; }
           readelf -h "$elf" | grep -q "little endian" || { echo "$elf: not little-endian"; exit 1; }
-          readelf -A "$elf" | grep -q "Tag_CPU_name: \"6K\"\|Tag_CPU_arch: v6K" || { readelf -A "$elf" | head -20; echo "$elf: not built for the ARM11 (armv6k)"; exit 1; }
+          # The game's own code, compiled for the ARM11 (armv6k). Not the
+          # linked ELF's tag: that is the highest architecture of ANY input,
+          # and a toolchain object marked v7 lifts it without any v7 code of
+          # ours running -- the first 3DS link said "7-A" on that account.
+          bad=0; n=0
+          for o in $(find build/CMakeFiles/OpenDoctrines.dir -name '*.o' -o -name '*.obj'); do
+            n=$((n+1))
+            readelf -A "$o" | grep -q "Tag_CPU_arch: v6K" || { echo "not armv6k: $o"; readelf -A "$o" | grep Tag_CPU; bad=1; }
+          done
+          [ "$n" -gt 0 ] || { echo "no game objects found under build/CMakeFiles/OpenDoctrines.dir"; exit 1; }
+          [ "$bad" = 0 ] || { echo "$elf: game code not built for the ARM11 (armv6k)"; exit 1; }
+          echo "$n game objects, all armv6k; the linked ELF says: $(readelf -A "$elf" | grep -m1 Tag_CPU_name)"
           echo "ELF=$elf" >> "$GITHUB_ENV"
           ls -l "$elf"
 
