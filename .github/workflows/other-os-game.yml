@@ -427,6 +427,15 @@ jobs:
             echo "--- TRACE.TXT"; cat "$game/TRACE.TXT" 2>/dev/null || echo "(none: main() was never reached)"
             echo "--- OUT.TXT"; cat "$game/OUT.TXT" 2>/dev/null || true
             echo "--- DOSBOX.LOG (tail)"; tail -25 "$game/DOSBOX.LOG" 2>/dev/null || true
+            # A CPU exception names its EIP; the instruction there is the
+            # answer to "what does this machine not have".
+            eip=$(grep -o 'at eip=[0-9a-f]*' "$game/OUT.TXT" 2>/dev/null | head -1 | cut -d= -f2)
+            if [ -n "$eip" ]; then
+              a=$((0x$eip - 16)); b=$((0x$eip + 16))
+              echo "--- the code at eip=$eip"
+              "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-objdump" -d --start-address=$a --stop-address=$b \
+                build/OpenDoctrines.exe | tail -12 || true
+            fi
           }
           # DJGPP's REDIR (djdev205), for the run only -- never packaged:
           # COMMAND.COM cannot redirect stderr, and an extender or stub that
