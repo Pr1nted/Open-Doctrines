@@ -2089,7 +2089,7 @@ if(OD_WII)
     # dlfcn.h, sys/mman.h, ifaddrs.h or sys/un.h: the Vita's stand-ins (see
     # "THE PS VITA") serve here unchanged -- every call they answer fails.
     target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
-    target_sources(OpenDoctrines PRIVATE src/platform/newlib_posix_stubs.cpp)
+    target_sources(OpenDoctrines PRIVATE src/platform/newlib_posix_stubs.cpp src/platform/wii/atomic64.c)
     target_link_libraries(OpenDoctrines wiikeyboard fat)
     ogc_create_dol(OpenDoctrines)
 endif()
