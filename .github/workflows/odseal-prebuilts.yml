@@ -439,7 +439,10 @@ jobs:
       # No -fvisibility (COFF has none) and no -fPIC (nothing is relocated at
       # load on DOS); otherwise the flags every other archive is built with.
       # <dirent.h> forced in: the sealed source includes it on systems that
-      # say they are Unix, and DJGPP has it but says it is MSDOS.
+      # say they are Unix, and DJGPP has it but says it is MSDOS. And gnu++17,
+      # not c++17: DJGPP declares DIR, opendir and the rest of POSIX only when
+      # __STRICT_ANSI__ is off, which -std=c++17 turns on (the game itself is
+      # built as gnu++20, CMake's default).
       - name: Build (DOS, DJGPP)
         if: matrix.djgpp
         shell: bash
@@ -448,7 +451,7 @@ jobs:
           bash tools/dos_toolchain.sh "$HOME/dos"
           TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
           mkdir -p out
-          "$TC-g++" -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -include dirent.h \
+          "$TC-g++" -std=gnu++17 -O3 -fno-rtti -fomit-frame-pointer -include dirent.h \
               -c guard/odseal.cpp -o odseal.o
           "$TC-strip" --strip-unneeded odseal.o
           "$TC-ar" rcs out/libodseal.a odseal.o
@@ -557,7 +560,7 @@ jobs:
           sudo apt-get install -y -qq dosbox-x xvfb
           TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
           mkdir -p dosrun
-          "$TC-g++" -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o dosrun/ODTEST.EXE
+          "$TC-g++" -std=gnu++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o dosrun/ODTEST.EXE
           cp "$HOME/dos/cwsdpmi/CWSDPMI.EXE" dosrun/
           tools/dos_run.sh --timeout 600 dosrun ODTEST
 
