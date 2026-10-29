@@ -37,7 +37,7 @@ cmdline="$*"
 [ -n "$cmdline" ] || { echo "no command given" >&2; exit 2; }
 
 rm -f "$dir/OUT.TXT" "$dir/RC.TXT"
-printf '@ECHO OFF\r\n%s > OUT.TXT\r\nIF ERRORLEVEL 1 GOTO BAD\r\nECHO 0 > RC.TXT\r\nGOTO DONE\r\n:BAD\r\nECHO 1 > RC.TXT\r\n:DONE\r\n' "$cmdline" > "$dir/RUN.BAT"
+printf '@ECHO OFF\r\nSET OD_DOS_TRACE=1\r\n%s > OUT.TXT\r\nIF ERRORLEVEL 1 GOTO BAD\r\nECHO 0 > RC.TXT\r\nGOTO DONE\r\n:BAD\r\nECHO 1 > RC.TXT\r\n:DONE\r\n' "$cmdline" > "$dir/RUN.BAT"
 
 conf="$(mktemp --suffix=.conf)"
 cat > "$conf" <<CONF
