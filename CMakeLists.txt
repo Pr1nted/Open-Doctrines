@@ -44,6 +44,16 @@ endif()
 set(OD_VERSION_NUMERIC "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
 
 project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
+
+# ILLUMOS: the whole POSIX and extension API, for every target and every
+# dependency fetched below. Code that asks for a narrow standard -- GLFW's
+# posix_time.c sets _POSIX_C_SOURCE 199309L itself -- otherwise loses
+# declarations illumos keeps behind __EXTENSIONS__ (clock_gettime there), and
+# C treats the call as implicit, which raylib builds as an error. The usual
+# illumos answer; pkgsrc and OmniOS build ports the same way.
+if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+    add_compile_definitions(__EXTENSIONS__)
+endif()
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 
