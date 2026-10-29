@@ -652,6 +652,10 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # Haiku's pthreads have no pthread_attr_setinheritsched, which miniaudio
     # calls (it guards the call for BeOS, not Haiku): src/platform/haiku/
     # pthread_compat.h stands in for it.
+    if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" AND TARGET raylib)
+        target_compile_options(raylib PRIVATE
+            "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/serenity/raylib_compat.h")
+    endif()
     if(HAIKU AND TARGET raylib)
         # A header, not -D: CMake drops function-style definitions.
         target_compile_options(raylib PRIVATE
