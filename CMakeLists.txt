@@ -227,7 +227,12 @@ endif()
 # NOT EMSCRIPTEN: wasm32 also has 4-byte pointers, and Emscripten's toolchain
 # reports CMAKE_SYSTEM_PROCESSOR as "x86" for historical reasons -- so without
 # this the web build was handed -msse2, which em++ refuses without -msimd128.
-if(NOT MSVC AND NOT EMSCRIPTEN AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
+#
+# NOT DJGPP: DOS promises a Pentium (packaging/dos/DOS.TXT), which has no SSE
+# at all; the first DOSBox-X run died on a movss in a static initialiser. The
+# DOS build is offline and single-player -- it never runs a simulation in step
+# with another machine -- so x87's last-bit differences cost it nothing.
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|x86_64|amd64|AMD64)$")
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-msse2> $<$<COMPILE_LANGUAGE:C,CXX>:-mfpmath=sse>)
 endif()
