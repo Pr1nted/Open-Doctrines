@@ -78,6 +78,9 @@ uint64_t processBytes() {
     if (::GetProcessMemoryInfo(::GetCurrentProcess(), &pmc, sizeof(pmc)))
         return (uint64_t)pmc.WorkingSetSize;
     return 0;
+#elif defined(_NEWLIB_VERSION)
+    // newlib (PS Vita, Wii, 3DS): its rusage has no peak to report.
+    return 0;
 #else
     struct rusage ru{};
     if (getrusage(RUSAGE_SELF, &ru) != 0) return 0;

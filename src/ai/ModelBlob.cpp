@@ -94,6 +94,9 @@ bool unpack(std::vector<uint8_t>& bytes) {
                       (mz_ulong)(bytes.size() - HEADER)) != MZ_OK)
         return false;
     if (got != raw) return false;
+    // The packed bytes are done with: free them before the second raw-sized
+    // buffer, so loading a model never holds all three at once.
+    std::vector<uint8_t>().swap(bytes);
 
     std::vector<uint8_t> plain((size_t)raw);
     interleave(planes.data(), (size_t)raw, plain.data());
