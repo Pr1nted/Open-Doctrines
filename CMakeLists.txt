@@ -272,7 +272,10 @@ endif()
 # nothing there and costs code size and speed the web build is tight on.
 # Not on DJGPP: its libc has no stack-protector runtime (__stack_chk_fail,
 # __stack_chk_guard), so every object compiles and the final link fails.
-if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP)
+# Nor on RISC OS: UnixLib has no runtime for it either (the first GCCSDK link
+# failed on the same two symbols).
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP AND
+   NOT (CMAKE_SYSTEM_NAME STREQUAL "RISCOS" OR CMAKE_C_COMPILER MATCHES "riscos"))
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-strong>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-U_FORTIFY_SOURCE>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-D_FORTIFY_SOURCE=2>)
@@ -2164,7 +2167,7 @@ endif()
 if(OD_RISCOS)
     # See OD_RISCOS above. The ELF is made an AIF executable (!RunImage) and put
     # in an application directory by tools/riscos_package.py.
-    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp src/platform/riscos/dl_stubs.c)
     target_compile_definitions(OpenDoctrines PRIVATE OD_RISCOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
     # UnixLib lacks only ifaddrs.h of the headers the game includes.
     target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/riscos-include)
