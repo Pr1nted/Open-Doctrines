@@ -1,5 +1,5 @@
 # The game, built for the systems that are neither a desktop runner's own nor
-# a BSD: OpenIndiana (illumos), Haiku and SerenityOS -- and the PS Vita, a
+# a BSD: OpenIndiana (illumos), Haiku, SerenityOS and DOS -- and the PS Vita, a
 # console rather than a computer, built and shipped the same way (its job is
 # at the end).
 #
@@ -311,6 +311,130 @@ jobs:
           fi
           echo "account service found in:"
           echo "$found"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── DOS ──
+  #
+  # Cross-compiled with DJGPP (tools/dos_toolchain.sh: a pinned gcc 12.2 and
+  # CWSDPMI, both checked by hash) into a 32-bit protected-mode .exe, on the
+  # game's own raylib platform layer for DOS -- a VESA linear framebuffer, the
+  # INT 33h mouse, an IRQ 1 keyboard handler -- with the software renderer
+  # (OD_DOS in CMakeLists.txt). Single-threaded and offline: DJGPP has neither
+  # threads nor a network stack.
+  #
+  # AND RUN: unlike SerenityOS and the Vita, DOS can be run right here.
+  # DOSBox-X (an emulated Pentium with an S3 card and long file names) plays
+  # three turns of 1939 in the PACKAGED copy, and the screen is captured while
+  # the game starts up normally, so what VESA showed is in the artifacts.
+  dos:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: dos-x86, odseal: dos-i586 }
+    env:
+      ARTIFACT: OpenDoctrines-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab) and merge the branch it pushes. \
+          See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Host packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build dosbox-x xvfb imagemagick unzip
+
+      - name: DJGPP and CWSDPMI
+        run: |
+          bash tools/dos_toolchain.sh "$HOME/dos"
+          echo "DJGPP_PREFIX=$HOME/dos/djgpp" >> "$GITHUB_ENV"
+
+      - name: Build the game for DOS
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/dos/djgpp.toolchain.cmake" \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            -DOD_DISCORD_APP_ID=1547303703370014830
+          cmake --build build --target OpenDoctrines -j 4
+
+      # A DOS program, not something the runner's compiler made: an MZ
+      # executable carrying DJGPP's go32 stub in front of the COFF image.
+      - name: The binary is a DJGPP DOS program
+        run: |
+          exe=build/OpenDoctrines.exe
+          [ "$(head -c 2 "$exe")" = "MZ" ] || { echo "$exe: not an MZ executable"; exit 1; }
+          LC_ALL=C grep -qa "go32stub" "$exe" || { echo "$exe: no DJGPP stub"; exit 1; }
+          "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-strip" "$exe"
+          ls -l "$exe"
+
+      - name: Package
+        run: |
+          python3 tools/package.py --binary build/OpenDoctrines.exe --out "dist/$ARTIFACT" --no-strip \
+            --add "$HOME/dos/cwsdpmi/CWSDPMI.EXE" --add "$HOME/dos/cwsdpmi/CWSDPMI.DOC" \
+            --add packaging/dos/DOS.TXT --zip
+
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/$ARTIFACT" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service::$ARTIFACT does not carry $issuer."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
+      # The packaged copy, unzipped as a player would, played in DOSBox-X.
+      - name: Play three turns in DOSBox-X
+        run: |
+          rm -rf dosrun && mkdir dosrun && unzip -q "dist/$ARTIFACT.zip" -d dosrun
+          game="dosrun/$ARTIFACT"
+          tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" \
+            'OpenDoctrines --simulate data\STDmaps\1939.odmap 3 PkgCheck' | tee dos-sim.log
+          grep -q '^\[SIM\] turn 3/3' dos-sim.log || { echo "::error title=DOS::the game did not finish three turns"; exit 1; }
+
+      # The game started as a player starts it, the screen captured as it
+      # comes up. Not a pass/fail on its own (the timeout ends it); what VESA
+      # showed is uploaded for a person to look at.
+      - name: The screen in DOSBox-X
+        run: |
+          game="dosrun/$ARTIFACT"
+          tools/dos_run.sh --memsize 2048 --timeout 900 --grab dos-screen.png --grab-every 120 \
+            "$game" OpenDoctrines | tail -20 || true
+          ls -l dos-screen*.png || echo "no screen captured"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.ARTIFACT }}-dosbox
+          path: |
+            dos-sim.log
+            dos-screen*.png
+            dosrun/*/DOSBOX.LOG
+            dosrun/*/OUT.TXT
+          if-no-files-found: ignore
+          retention-days: 14
 
       - uses: actions/upload-artifact@v4
         with:

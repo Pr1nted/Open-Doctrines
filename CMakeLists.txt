@@ -357,6 +357,42 @@ option(OD_GLES "Build the desktop game for OpenGL ES 2.0 (Raspberry Pi and other
 if(OD_GLES)
     set(OPENGL_VERSION "ES 2.0" CACHE STRING "raylib renderer: OpenGL ES 2.0" FORCE)
 endif()
+
+# ── DOS ──
+#
+# DJGPP, 32-bit protected mode under a DPMI host. No OS windowing, no GL, no
+# threads, no network stack, no sound API: so raylib runs on rlsw (above) and
+# on a platform layer of the game's own, src/platform/dos/rcore_dos.c -- a VESA
+# linear framebuffer, the INT 33h mouse and an IRQ 1 keyboard handler. raylib
+# has no DOS platform, so it is built as PLATFORM=Memory (rlsw into a buffer)
+# and that file is copied over the memory platform's own (see FetchContent
+# below). raylib's audio module is left out (miniaudio needs threads) and
+# src/platform/dos/NoAudio.cpp answers its API.
+#
+# The game is single-threaded here as it is on the web (OD_NO_THREADS, see
+# src/util/Async.h), offline (no multiplayer transport, no mods' WASM runtime),
+# and without HarfBuzz.
+#
+# ON A NON-DOS HOST the same option builds the same code against a stand-in
+# screen in memory, which is how CI runs the DOS build's frame path and its
+# single-threaded game on Linux, where a DJGPP binary cannot run.
+if(DJGPP)
+    set(od_dos_default ON)
+else()
+    set(od_dos_default OFF)
+endif()
+option(OD_DOS "Build for DOS (DJGPP): VESA framebuffer, rlsw, single-threaded, offline; on another host, the same against a stand-in screen" ${od_dos_default})
+if(OD_DOS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    if(DJGPP)
+        list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    endif()
+    message(STATUS "OD_DOS: raylib on rlsw and the game's DOS platform layer; single-threaded, offline")
+endif()
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -425,6 +461,9 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
     # with DISPLAY unset, and the game is pure raylib API, so its backend is a
     # build switch rather than a code change.
+    if(OD_DOS)
+        set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the DOS layer" FORCE)
+    endif()
     if(OD_HEADLESS_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL backend for headless" FORCE)
         message(STATUS "OD_HEADLESS_SDL: raylib on its SDL backend (headless offscreen GL)")
@@ -515,6 +554,21 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # takes to be POSIX. None of the backends it would load exist there.
     if(VITA)
         target_compile_definitions(raylib PRIVATE MA_NO_RUNTIME_LINKING)
+    endif()
+
+    # DOS: the game's platform layer in place of raylib's memory platform, and
+    # no audio module (see OD_DOS above). Copied, not patched: the file is the
+    # game's, whole, and a build tree configured for DOS is only ever DOS.
+    if(OD_DOS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/rcore_dos.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_DOS: no audio device; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        if(DJGPP)
+            target_compile_options(raylib PRIVATE
+                -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h)
+        endif()
+        message(STATUS "raylib: DOS platform layer in place of platforms/rcore_memory.c; raudio left out")
     endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
@@ -749,6 +803,11 @@ else()
         # VitaSDK's toolchain calls the system Generic, so it would otherwise
         # fall through to "unknown". One CPU (Cortex-A9), one archive.
         set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(DJGPP)
+        # DOS: one CPU target, the 32-bit protected-mode code DJGPP emits
+        # (i586-pc-msdosdjgpp, which runs on a 386 with the default flags).
+        set(ODSEAL_PLATFORM "dos-i586")
         set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(APPLE)
         set(ODSEAL_PLATFORM "macos-universal")
@@ -1859,6 +1918,24 @@ if(OD_DESKTOP_SDL)
         target_link_libraries(OpenDoctrines OpenGL::GL)
     endif()
 endif()
+if(OD_DOS)
+    # See OD_DOS above. On DJGPP the thread-less std::mutex shim goes into every
+    # C++ file; a host build has real ones and only takes the single-threaded
+    # paths, which is what lets CI check those on Linux.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_DOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    if(DJGPP)
+        # What DJGPP's libraries leave out (DosCompat.h, NoThreads.h) and the
+        # network headers it has none of (include/: every call fails).
+        target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/dos/include)
+        # libm: DJGPP keeps the C99 maths (round, lround, ...) apart from libc,
+        # and raylib's memory platform, unlike its desktop ones, names no -lm.
+        target_link_libraries(OpenDoctrines m)
+        target_compile_options(OpenDoctrines PRIVATE
+            -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h
+            $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/NoThreads.h>)
+    endif()
+endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
     # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
@@ -1885,7 +1962,7 @@ endif()
 # library is not linked, and neither is GLFW, GL or an audio backend. A raylib
 # call with no server implementation is a LINK error naming the symbol, which
 # is the property that keeps the graphics layer out.
-if(NOT EMSCRIPTEN AND NOT ANDROID)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS)
     set(SERVER_SOURCES ${GAME_SOURCES})
     list(REMOVE_ITEM SERVER_SOURCES main.cpp)
     list(APPEND SERVER_SOURCES

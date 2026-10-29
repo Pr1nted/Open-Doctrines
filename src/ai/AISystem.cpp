@@ -12213,8 +12213,9 @@ int AISystem::learningThreads() const {
     // hardware_concurrency() still reports the machine's core count there --
     // so without this the pool below would ask for four threads it cannot
     // have and abort the process rather than fall back. The serial path a few
-    // lines down is the same computation; on web it is the only one.
-#ifdef __EMSCRIPTEN__
+    // lines down is the same computation; on web it is the only one. On DOS
+    // too, which has no threads at all (OD_NO_THREADS).
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     return 1;
 #endif
     // Explicit override, mainly so the parallel path can be A/B'd against the
@@ -13117,6 +13118,11 @@ void AISystem::runLearningWork() {
         }
     }
     } else {
+#if defined(OD_NO_THREADS)
+        // Never reached (learningThreads() is 1), and must not compile: a
+        // library with no threads has no std::thread to start.
+        runRange(0, m_work.size(), m_scratch[0]);
+#else
         std::vector<std::thread> pool;
         pool.reserve(threads - 1);
         const size_t chunk = (m_work.size() + threads - 1) / threads;
@@ -13128,6 +13134,7 @@ void AISystem::runLearningWork() {
         }
         runRange(0, std::min(m_work.size(), chunk), m_scratch[0]);
         for (auto& th : pool) th.join();
+#endif
     }
     // Reduction is serial and cheap: one add per parameter per worker.
     for (int t = 0; t < threads; ++t) {

@@ -383,7 +383,7 @@ void Game::mpStartHosting() {
 
         const std::string issuer = account.issuer();
         const std::string token = account.sessionToken();
-        m_mpRegisterThread = std::thread([this, issuer, token] {
+        auto registerServer = [this, issuer, token] {
             HttpRequest req;
             req.method = "POST";
             req.url = issuer + "/server/register";
@@ -407,7 +407,12 @@ void Game::mpStartHosting() {
             }
             m_mpRegisterState.store(m_mpRegisterResult.empty() ? MpRegister::Failed
                                                                : MpRegister::Done);
-        });
+        };
+#if defined(OD_NO_THREADS)
+        registerServer();   // no threads (DOS): inline, and it fails at once offline
+#else
+        m_mpRegisterThread = std::thread(std::move(registerServer));
+#endif
         return;     // picked up in updateMultiplayerMenu()
     }
 

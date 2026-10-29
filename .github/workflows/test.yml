@@ -611,6 +611,45 @@ jobs:
       - name: Raspberry Pi OS -- installs, links OpenGL ES, plays
         run: tools/raspios_check.sh "$(ls dist/raspios/*.deb)" arm64
 
+  # ── DOS, ON LINUX ──
+  #
+  # The DOS build's own code -- single-threaded (OD_NO_THREADS), offline, and
+  # presenting through its platform layer (src/platform/dos/rcore_dos.c) -- built
+  # for Linux with -DOD_DOS=ON, where that layer draws into a stand-in screen.
+  # Minutes, where the real DJGPP build and its DOSBox-X run in
+  # other-os-game.yml take most of an hour. Checks: three turns play with no
+  # threads, and what the "screen" shows is what the game drew, in a 32-bit and
+  # a 16-bit mode (tools/dos_framebuffer_check.py).
+  dos-host:
+    name: DOS build's code, on Linux (OD_DOS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build python3-pil libasound2-dev libx11-dev \
+            libxrandr-dev libxi-dev libgl1-mesa-dev libxcursor-dev libxinerama-dev
+      - name: Build with OD_DOS
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOD_DOS=ON
+          cmake --build build --target OpenDoctrines -j 4
+      - name: Three turns, single-threaded
+        run: |
+          mkdir -p "$RUNNER_TEMP/dos-cwd" && cd "$RUNNER_TEMP/dos-cwd"
+          "$GITHUB_WORKSPACE/build/OpenDoctrines" --simulate "$GITHUB_WORKSPACE/data/STDmaps/1939.odmap" 3 DosCheck | tee sim.log
+          grep -q '^\[SIM\] turn 3/3' sim.log
+      - name: The screen shows what the game drew (32-bit and 16-bit modes)
+        run: |
+          cp -r data "$RUNNER_TEMP/dos-data"
+          for bpp in 32 16; do
+            mkdir -p "shots$bpp"
+            OD_DATA_DIR="$RUNNER_TEMP/dos-data" OD_DOS_FB_BPP=$bpp OD_DOS_FB_DUMP="fb$bpp.ppm" \
+              build/OpenDoctrines --screenshots "shots$bpp" > "tour$bpp.log" 2>&1 || { tail -20 "tour$bpp.log"; exit 1; }
+            python3 tools/dos_framebuffer_check.py "fb$bpp.ppm" "shots$bpp" --bpp $bpp
+          done
+
   race:
     name: thread safety (tsan)
     runs-on: ubuntu-22.04

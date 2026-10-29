@@ -97,7 +97,12 @@ struct TurnStoreRunner::Impl {
 };
 
 TurnStoreRunner::TurnStoreRunner() : m_impl(new Impl()) {
+#if !defined(OD_NO_THREADS)
     m_impl->worker = std::thread([this] { m_impl->run(); });
+#endif
+    // With no threads there is no worker, and with no network (DOS, the only
+    // such build) there is no store to reach: jobs stay queued and the game
+    // reports the turn store as unreachable, which it is.
 }
 
 TurnStoreRunner::~TurnStoreRunner() {

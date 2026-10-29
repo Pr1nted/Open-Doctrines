@@ -1842,7 +1842,7 @@ void Game::drawModPanels() {
     ui.clearCommands();
     for (auto& p : ui.panels()) {
         if (!p.visible) continue;
-        float h = (float)std::max(60u, p.minH);
+        float h = (float)std::max<uint32_t>(60u, p.minH);
         if (y + h > (float)m_screenH - 16.0f) { p.visible = false; continue; }
         p.x = x; p.y = y; p.w = panelW; p.h = h;
 

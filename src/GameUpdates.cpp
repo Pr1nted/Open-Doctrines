@@ -1,4 +1,5 @@
 #include "GameUpdates.h"
+#include "util/Async.h"
 #include "util/Sha256.h"
 #include "util/RunCurl.h"
 
@@ -290,6 +291,10 @@ std::string GameUpdates::platformKey() {
 #elif defined(__ANDROID__)
     // An APK is replaced by reinstalling it, never by unpacking a zip over it.
     return "OpenDoctrines-android-none";
+#elif defined(__DJGPP__)
+    // DOS. Named so the release and this key agree (check_release_names.py);
+    // the DOS build has no network, so check() never gets as far as asking.
+    return "OpenDoctrines-dos-x86";
 #elif defined(__vita__)
     // As the APK: a .vpk is installed by VitaShell, never unpacked over the
     // game's own folder (app0: is read-only), so no zip is the update.
@@ -390,6 +395,8 @@ bool GameUpdates::canSelfInstall() {
     return false;   // unnotarized replacement would not launch; see the header
 #elif defined(__vita__)
     return false;   // app0: is read-only; a new .vpk is installed by VitaShell
+#elif defined(__DJGPP__)
+    return false;   // no network to fetch with; a new zip is the update
 #else
     // Checked before returning true, not after: an installer-managed copy must
     // not be told it can replace its own files, whatever the platform allows.
@@ -625,7 +632,9 @@ void GameUpdates::check(bool enabled) {
     // "thread constructor failed", which in -fno-exceptions mode is an
     // immediate abort(). The game reached the main menu and died on the first
     // frame that drew it, because that frame is what calls this.
-#ifdef __EMSCRIPTEN__
+    //
+    // DOS likewise: no threads, and no network to ask over.
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     return;
 #else
     if (m_asked.exchange(true)) return;    // once per session
@@ -698,10 +707,17 @@ void GameUpdates::beginUpdate() {
     s.stage = Stage::Downloading;
     s.percent = 0;
     setStatus(s);
-    std::thread([this]() { runUpdate(); }).detach();
+    odasync::run([this]() { runUpdate(); });
 }
 
 void GameUpdates::runUpdate() {
+#if defined(OD_NO_THREADS)
+    // Never reached: check() finds nothing to update to without a network.
+    Status s = status();
+    s.stage = Stage::Failed;
+    s.error = "this build cannot download updates";
+    setStatus(s);
+#else
     Status s = status();
     std::error_code ec;
 
@@ -834,4 +850,5 @@ void GameUpdates::runUpdate() {
     s.stage = Stage::Restart;
     s.percent = 100;
     setStatus(s);
+#endif
 }
