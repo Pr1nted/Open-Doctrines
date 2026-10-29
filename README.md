@@ -505,7 +505,7 @@ Reports welcome.
 A **32-bit DOS** program (`dos-x86`), built with DJGPP (gcc 12, a pinned
 toolchain checked by hash: `tools/dos_toolchain.sh`) with every release by the
 `dos` job in `other-os-game.yml`, and shipped with CWSDPMI, the DPMI host it
-runs under. Unzip it and run `OpenDoctrines`; `DOS.TXT` in the zip says the
+runs under. Unzip it and run `DOCTRINE`; `DOS.TXT` in the zip says the
 same as this.
 
 **What it needs.** A Pentium-class PC (or DOSBox-X), a VESA 2.0 graphics card
