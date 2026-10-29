@@ -51,8 +51,13 @@ project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
 # declarations illumos keeps behind __EXTENSIONS__ (clock_gettime there), and
 # C treats the call as implicit, which raylib builds as an error. The usual
 # illumos answer; pkgsrc and OmniOS build ports the same way.
+#
+# And the BSD socket calls live in libsocket and libnsl there, not libc:
+# every target links them (the game, the server, the tests). Unifico's
+# OpenIndiana build failed to link its tests without them.
 if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     add_compile_definitions(__EXTENSIONS__)
+    link_libraries(socket nsl)
 endif()
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
