@@ -134,6 +134,9 @@ jobs:
           # other-os-game.yml uses). CMakeLists.txt asks for dos-i586. Its test
           # RUNS: DOSBox-X executes the DOS build of tests/odseal_test.cpp.
           - { name: dos-i586,          os: ubuntu-24.04, djgpp: true, timeout: 30 }
+          # The Wii, by devkitPPC's powerpc-eabi gcc inside devkitPro's image
+          # (the digest other-os-game.yml pins). CMakeLists.txt asks for wii-ppc.
+          - { name: wii-ppc,           os: ubuntu-24.04, wii: true, timeout: 30 }
 
     steps:
       - uses: actions/checkout@v5
@@ -444,6 +447,25 @@ jobs:
           "$TC-strip" --strip-unneeded odseal.o
           "$TC-ar" rcs out/libodseal.a odseal.o
 
+      # ── THE WII ──
+      #
+      # In devkitPro's image, as the game is built. The machine flags are the
+      # ones its Wii.cmake gives every Wii program (-mrvl -mcpu=750 -meabi
+      # -mhard-float); a library built without them will not link into one.
+      - name: Build (Wii, devkitPPC)
+        if: matrix.wii
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            devkitpro/devkitppc@sha256:5dfd7bfb8174368261b4e82e1f8feba03fbeab3ed2370d67149c87c1f95af265 \
+            sh -c 'TC=$DEVKITPPC/bin/powerpc-eabi && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -mrvl -mcpu=750 -meabi -mhard-float \
+                -ffunction-sections -fdata-sections -D__wii__ -DGEKKO -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
       - name: Drop the sealed source
         if: always()
         shell: bash
@@ -514,12 +536,14 @@ jobs:
       # archive is held to the same exports rules and its test is not run --
       # running it means booting SerenityOS, which other-os-game.yml does not
       # do yet either. Plain nm reads an x86-64 ELF object whatever OS it is for.
-      - name: Check the archive (android, SerenityOS, the Vita and DOS, symbols)
-        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita || matrix.djgpp
+      - name: Check the archive (android, SerenityOS, the consoles and DOS, symbols)
+        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita || matrix.djgpp || matrix.wii
         shell: bash
         run: |
           set -e
-          if [ -n "${{ matrix.djgpp }}" ]; then
+          if [ -n "${{ matrix.wii }}" ]; then
+            NM=nm   # the runner's GNU nm reads a big-endian PowerPC ELF object
+          elif [ -n "${{ matrix.djgpp }}" ]; then
             NM="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp-nm"
           elif [ -n "${{ matrix.vita }}" ]; then
             NM="$HOME/vitasdk/bin/arm-vita-eabi-nm"

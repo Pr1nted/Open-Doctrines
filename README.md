@@ -399,6 +399,37 @@ checks the package's layout, title id, version and LiveArea images
 (`tools/vita_vpk.py --check`); it cannot run it, because that needs a Vita or
 Vita3K with Sony's firmware installed. Reports welcome.
 
+### Wii
+
+Homebrew for a **Wii** with the Homebrew Channel (`wii-ppc`): unzip
+`OpenDoctrines-wii-ppc.zip` onto the root of the SD card and start it from the
+channel. Built with every release by the `wii` job in `other-os-game.yml`, with
+devkitPPC and libogc inside devkitPro's own image, pinned by digest.
+
+**Controls.** Point with the Wii Remote: **A** clicks, **B** is the right
+button, **+** and **−** zoom, the d-pad moves, **1** is back (Escape) and **2**
+is Enter; **HOME** returns to the channel. A USB keyboard works for typing.
+
+**How it draws.** The Wii's GPU is not OpenGL, so the game carries a platform
+layer for it, as for DOS: `src/platform/wii/rcore_wii.c` shows raylib's
+software-rendered frame on the video interface's framebuffer (converted to its
+YUY2 format, double-buffered at the TV's 640x480, or 640x528 on PAL) and paints
+the pointer into it.
+
+**Worlds at 1/8 resolution.** A Wii has 88 MB of memory in all, and a world at
+full resolution needs about 700 MB to load. Worlds are loaded at 1024x512
+(`OD_MAP_DIVISOR`, see `src/map/RasterScale.h`): every province kept, the same
+rules, a coarser-looking map.
+
+**Single player, silent.** The network is off for now (libogc's sockets have
+to be started by the game), so are sound (raylib's audio library has no Wii
+backend), mods and self-updates.
+
+**Not yet run.** CI builds it, checks it is a big-endian PowerPC program, and
+holds the zip to the channel's layout (`tools/wii_package.py --check`). Running
+it in Dolphin, headless, is the next step; it has not been tried on a Wii.
+Reports welcome.
+
 ### DOS
 
 A **32-bit DOS** program (`dos-x86`), built with DJGPP (gcc 12, a pinned
