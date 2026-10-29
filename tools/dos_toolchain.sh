@@ -26,9 +26,8 @@ CWSDPMI_URLS=(
   "https://www.delorie.com/pub/djgpp/current/v2misc/csdpmi7b.zip"
   "https://ftp.fau.de/djgpp/current/v2misc/csdpmi7b.zip"
 )
-# Empty until the first fetch has been looked at; set it from the hash that
-# run prints, and every later run is held to it.
-CWSDPMI_SHA256="${CWSDPMI_SHA256:-}"
+# csdpmi7b.zip (CWSDPMI r7), as first fetched in CI on 2026-10-29.
+CWSDPMI_SHA256="deacda0488e1cdd7c4a9f32fab45662b34c0ed6b2d7d4d13bc07041b62004a8c"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -49,7 +48,7 @@ if [ ! -f "$DEST/cwsdpmi/CWSDPMI.EXE" ]; then
   [ -n "$got" ] || { echo "could not fetch CWSDPMI from any mirror" >&2; exit 1; }
   sum="$(sha256sum "$work/csdpmi.zip" | cut -d' ' -f1)"
   echo "CWSDPMI from $got: sha256 $sum"
-  if [ -n "$CWSDPMI_SHA256" ] && [ "$sum" != "$CWSDPMI_SHA256" ]; then
+  if [ "$sum" != "$CWSDPMI_SHA256" ]; then
     echo "CWSDPMI hash mismatch: expected $CWSDPMI_SHA256" >&2
     exit 1
   fi

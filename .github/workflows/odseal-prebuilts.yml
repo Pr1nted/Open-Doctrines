@@ -429,6 +429,8 @@ jobs:
       #
       # No -fvisibility (COFF has none) and no -fPIC (nothing is relocated at
       # load on DOS); otherwise the flags every other archive is built with.
+      # <dirent.h> forced in: the sealed source includes it on systems that
+      # say they are Unix, and DJGPP has it but says it is MSDOS.
       - name: Build (DOS, DJGPP)
         if: matrix.djgpp
         shell: bash
@@ -437,7 +439,8 @@ jobs:
           bash tools/dos_toolchain.sh "$HOME/dos"
           TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
           mkdir -p out
-          "$TC-g++" -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -c guard/odseal.cpp -o odseal.o
+          "$TC-g++" -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -include dirent.h \
+              -c guard/odseal.cpp -o odseal.o
           "$TC-strip" --strip-unneeded odseal.o
           "$TC-ar" rcs out/libodseal.a odseal.o
 
@@ -559,6 +562,11 @@ jobs:
   commit:
     name: commit the archives
     needs: build
+    # Whatever built, even if a platform did not: a new toolchain failing
+    # (fail-fast is off above for the same reason) must not throw away every
+    # other archive. "Place the archives" commits what arrived and fails if
+    # nothing did.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
