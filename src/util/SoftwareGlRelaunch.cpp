@@ -8,6 +8,10 @@
 #if !defined(_WIN32)
 #  include <climits>
 #  include <unistd.h>
+// newlib (Vita, 3DS, Wii) has no PATH_MAX.
+#  ifndef PATH_MAX
+#    define PATH_MAX 1024
+#  endif
 #endif
 #include "raylib.h"
 #if defined(__APPLE__)
