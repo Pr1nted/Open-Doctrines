@@ -115,6 +115,8 @@ const char* platformName() {
     return "illumos";
 #elif defined(__HAIKU__)
     return "haiku";
+#elif defined(__serenity__)
+    return "serenityos";
 #else
     return "unknown";
 #endif

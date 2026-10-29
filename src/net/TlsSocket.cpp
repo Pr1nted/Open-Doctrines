@@ -103,6 +103,7 @@ const char* const kTrustBundles[] = {
     "/usr/pkg/share/mozilla-rootcerts/cacert.pem", // NetBSD pkgsrc
     "/etc/certs/ca-certificates.crt",           // illumos (OpenIndiana, OmniOS), Solaris
     "/boot/system/data/ssl/CARootCertificates.pem", // Haiku
+    "/etc/cacert.pem",                          // SerenityOS (LibTLS reads it from here too)
 };
 
 #if defined(_WIN32)

@@ -313,7 +313,10 @@ option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offs
 #
 # HAIKU IS SDL OR NOTHING: GLFW has no Haiku backend, so there the option is
 # not a choice. It links the system SDL3 rather than building one (below).
-if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU) AND NOT ANDROID AND NOT EMSCRIPTEN)
+# SERENITYOS LIKEWISE, and on its own SDL2: SDL3 has no SerenityOS backend,
+# and SerenityOS's ports tree carries SDL2 with one.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+   AND NOT ANDROID AND NOT EMSCRIPTEN)
     set(od_desktop_sdl_default ON)
 else()
     set(od_desktop_sdl_default OFF)
@@ -326,7 +329,13 @@ endif()
 # with an unimplemented GLSL compiler. rlsw has render textures but no
 # shaders: the custom shaders fail to load and fall back to raylib's default,
 # so the globe and the map's lighting lose their effects and stay readable.
-option(OD_SOFTWARE_RENDER "Render in software (raylib rlsw), with no OpenGL driver; needs OD_DESKTOP_SDL" OFF)
+# On by default on SerenityOS, the system it exists for.
+if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+    set(od_software_render_default ON)
+else()
+    set(od_software_render_default OFF)
+endif()
+option(OD_SOFTWARE_RENDER "Render in software (raylib rlsw), with no OpenGL driver; needs OD_DESKTOP_SDL" ${od_software_render_default})
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -423,10 +432,28 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # runs. So on Haiku SDL3 is the system package (pkgman install libsdl3),
     # found by its own CMake config; raylib takes the SDL3::SDL3 target it
     # defines exactly as it takes the one built below.
+    # The SDL target the game and its tests link: SDL3 everywhere but
+    # SerenityOS (below).
+    set(OD_SDL_TARGET SDL3::SDL3)
     if(OD_DESKTOP_SDL AND HAIKU)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
         find_package(SDL3 REQUIRED CONFIG)
         message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL3 ${SDL3_VERSION} (Haiku)")
+    elseif(OD_DESKTOP_SDL AND CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+        # ── SERENITYOS: ITS OWN SDL2 ──
+        #
+        # The SDL2 port (Ports/SDL2, installed into the sysroot) is the one
+        # with a SerenityOS video driver; SDL3 has none. raylib 6 takes an
+        # SDL2::SDL2 target the same way it takes SDL3's, and on SDL2 its own
+        # SDL_Init check is right, so the game's SDL3 pre-check is left out
+        # (OD_SDL2, see Game::init).
+        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL2 desktop backend" FORCE)
+        find_package(SDL2 REQUIRED CONFIG)
+        if(NOT TARGET SDL2::SDL2 AND TARGET SDL2::SDL2-shared)
+            add_library(SDL2::SDL2 ALIAS SDL2::SDL2-shared)
+        endif()
+        set(OD_SDL_TARGET SDL2::SDL2)
+        message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL2 ${SDL2_VERSION} (SerenityOS)")
     elseif(OD_DESKTOP_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
@@ -794,13 +821,13 @@ endif()
 # links -- the mod menu then reports every mod as Failed with a diagnostic
 # saying the runtime is unavailable, rather than the build breaking.
 #
-# OFF BY DEFAULT ON OpenBSD, NetBSD, illumos AND Haiku. WAMR has no platform
-# layer for any of them (its core/shared/platform has freebsd and no other BSD,
-# no solaris and no haiku), so ON there fails at configure with a missing
+# OFF BY DEFAULT ON OpenBSD, NetBSD, illumos, Haiku AND SerenityOS. WAMR has no
+# platform layer for any of them (its core/shared/platform has freebsd and no
+# other BSD, no solaris, haiku or serenity), so ON there fails at configure with a missing
 # directory that does not say why. The release builds pass OFF explicitly
 # anyway; this is so a source build on those systems works without knowing
 # that. README.md says the same under each system's section.
-if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku")
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku|SerenityOS")
     set(od_mods_default OFF)
 else()
     set(od_mods_default ON)
@@ -1767,8 +1794,11 @@ if(OD_HEADLESS_SDL)
     target_compile_definitions(OpenDoctrines PRIVATE OD_HEADLESS_SDL=1)
 endif()
 if(OD_DESKTOP_SDL)
-    target_link_libraries(OpenDoctrines SDL3::SDL3)
+    target_link_libraries(OpenDoctrines ${OD_SDL_TARGET})
     target_compile_definitions(OpenDoctrines PRIVATE OD_DESKTOP_SDL=1)
+    if(OD_SDL_TARGET STREQUAL "SDL2::SDL2")
+        target_compile_definitions(OpenDoctrines PRIVATE OD_SDL2=1)
+    endif()
     # THE SYSTEM GL, BY NAME. MapRenderer asks the driver for its texture
     # ceiling with glGetIntegerv directly. On GLFW raylib links the system GL
     # for its own use and that call rode along; raylib's SDL backend loads GL
@@ -1891,7 +1921,10 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     endif()
     # The same MapRenderer, so the same direct glGetIntegerv: on the SDL
     # backend nothing links GL for it but this (see the game's own link above).
-    if(OD_DESKTOP_SDL)
+    # A software-rendered build has none, and its MapRenderer does not ask.
+    if(OD_DESKTOP_SDL AND OD_SOFTWARE_RENDER)
+        target_compile_definitions(OpenDoctrinesServerUI PRIVATE OD_SOFTWARE_RENDER=1)
+    elseif(OD_DESKTOP_SDL)
         find_package(OpenGL REQUIRED)
         target_link_libraries(OpenDoctrinesServerUI OpenGL::GL)
     endif()
@@ -2971,7 +3004,8 @@ target_include_directories(TouchGestureTest PRIVATE
 # The same touch layer, fed by real touches through the backend the desktop
 # game ships on (OD_DESKTOP_SDL): SDL's own driver-side entry points, raylib's
 # SDL event loop, then odTouch. Needs a window, so CI runs it under Xvfb.
-if(OD_DESKTOP_SDL)
+# SDL3 only: the internal touch calls it makes are SDL3's.
+if(OD_DESKTOP_SDL AND OD_SDL_TARGET STREQUAL "SDL3::SDL3")
     add_executable(TouchSdlTest EXCLUDE_FROM_ALL tests/touch_sdl_test.cpp src/Touch.cpp)
     target_include_directories(TouchSdlTest PRIVATE src tests)
     target_link_libraries(TouchSdlTest PRIVATE raylib SDL3::SDL3)
