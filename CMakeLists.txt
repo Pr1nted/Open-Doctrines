@@ -275,13 +275,22 @@ endif()
 # inline; riscv64 with GCC 12 or older does not for 1- and 2-byte operations
 # (std::atomic<bool>), and the link fails with undefined __atomic_* symbols
 # that do not mention atomics. Probe instead of guessing by architecture.
+#
+# Not on devkitPro's consoles (Wii, 3DS): a probe program cannot link there
+# without libogc/libctru's system libraries, which the toolchain files add only
+# to real targets, so the probe fails whatever the atomics do. The game itself
+# links against them, and is what would report a missing __atomic_* instead.
 include(CheckCXXSourceCompiles)
 set(od_atomic_probe "
 #include <atomic>
 #include <cstdint>
 std::atomic<bool> b; std::atomic<std::uint8_t> c; std::atomic<std::int64_t> i;
 int main() { b.exchange(true); c.fetch_add(1); return (int)i.fetch_add(1); }")
-check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+if(CMAKE_SYSTEM_NAME MATCHES "^Nintendo")
+    set(OD_ATOMIC_INLINE TRUE)
+else()
+    check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+endif()
 if(NOT OD_ATOMIC_INLINE)
     set(CMAKE_REQUIRED_LIBRARIES atomic)
     check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_WITH_LIB)
