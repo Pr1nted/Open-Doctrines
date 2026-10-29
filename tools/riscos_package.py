@@ -50,7 +50,7 @@ APP = "!Doctrines/"
 SPRITE = "!doctrines"
 BG = (16, 20, 28)      # the website's dark background
 
-TYPE_OBEY, TYPE_SPRITE, TYPE_ABSOLUTE = 0xFEB, 0xFF9, 0xFF8
+TYPE_OBEY, TYPE_SPRITE, TYPE_ABSOLUTE, TYPE_ELF = 0xFEB, 0xFF9, 0xFF8, 0xE1F
 ARC0 = 0x4341
 
 # Memory for the application slot. A world at 1/2 resolution peaks near 230 MB
@@ -117,9 +117,15 @@ def sprite_file(sprites):
     return struct.pack("<iii", len(sprites), 16, 16 + len(body)) + body
 
 
-def build(elf, aif, stage, out):
+def build(elf, aif, stage, out, elf_image=None):
     version = str(odver.read())
-    if aif is None:
+    if elf_image is not None:
+        # GCCSDK 10's EABI (arm-riscos-gnueabihf) programs are ELF, which
+        # elf2aif does not take ("is not for ARM"); RISC OS runs them as
+        # filetype &E1F through GCCSDK's ELF loader.
+        with open(elf_image, "rb") as f:
+            aif_bytes = f.read()
+    elif aif is None:
         with tempfile.TemporaryDirectory() as tmp:
             aif = os.path.join(tmp, "RunImage")
             subprocess.run(["elf2aif", elf, aif], check=True)
@@ -128,7 +134,7 @@ def build(elf, aif, stage, out):
     else:
         with open(aif, "rb") as f:
             aif_bytes = f.read()
-    problems = check_aif(aif_bytes)
+    problems = check_elf(aif_bytes) if elf_image is not None else check_aif(aif_bytes)
     if problems:
         print("FAILED: " + problems, file=sys.stderr)
         return 1
@@ -147,7 +153,7 @@ def build(elf, aif, stage, out):
         typed(z, APP + "!Run", RUN.encode("latin-1"), TYPE_OBEY)
         typed(z, APP + "!Boot", BOOT.encode("latin-1"), TYPE_OBEY)
         typed(z, APP + "!Sprites", sprites, TYPE_SPRITE)
-        typed(z, APP + "!RunImage", aif_bytes, TYPE_ABSOLUTE)
+        typed(z, APP + "!RunImage", aif_bytes, TYPE_ELF if elf_image is not None else TYPE_ABSOLUTE)
         for dirpath, _, files in os.walk(stage):
             for name in sorted(files):
                 full = os.path.join(dirpath, name)
@@ -159,6 +165,14 @@ def build(elf, aif, stage, out):
                 z.write(full, APP + rel)
     print(f"wrote {out} ({os.path.getsize(out) // 1024} KB), Open Doctrines {version}")
     return check(out)
+
+
+def check_elf(b):
+    if len(b) < 20 or b[:4] != b"\x7fELF" or b[4] != 1 or b[5] != 1:
+        return "!RunImage is not a 32-bit little-endian ELF"
+    if struct.unpack("<H", b[18:20])[0] != 40:
+        return "!RunImage is an ELF for something other than ARM"
+    return ""
 
 
 def check_aif(b):
@@ -181,15 +195,18 @@ def check(path):
     problems = []
     with zipfile.ZipFile(path) as z:
         infos = {i.filename: i for i in z.infolist()}
+        image_type = filetype_of(infos[APP + "!RunImage"]) if APP + "!RunImage" in infos else None
         for name, want in (("!Run", TYPE_OBEY), ("!Boot", TYPE_OBEY),
-                           ("!Sprites", TYPE_SPRITE), ("!RunImage", TYPE_ABSOLUTE)):
+                           ("!Sprites", TYPE_SPRITE),
+                           ("!RunImage", TYPE_ELF if image_type == TYPE_ELF else TYPE_ABSOLUTE)):
             info = infos.get(APP + name)
             if info is None:
                 problems.append(f"no {APP}{name}")
             elif filetype_of(info) != want:
                 problems.append(f"{APP}{name} has filetype {filetype_of(info)!r}, not &{want:03X}")
         if APP + "!RunImage" in infos:
-            p = check_aif(z.read(APP + "!RunImage"))
+            img = z.read(APP + "!RunImage")
+            p = check_elf(img) if image_type == TYPE_ELF else check_aif(img)
             if p:
                 problems.append(p)
         if APP + "!Sprites" in infos:
@@ -209,7 +226,7 @@ def check(path):
     if problems:
         print("FAILED: " + "; ".join(problems), file=sys.stderr)
         return 1
-    print(f"ok    {path}: !Doctrines with !Run, !Boot, !Sprites and an AIF !RunImage, typed; data")
+    print(f"ok    {path}: !Doctrines with !Run, !Boot, !Sprites and an {'ELF' if image_type == TYPE_ELF else 'AIF'} !RunImage, typed; data")
     return 0
 
 
@@ -217,15 +234,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--elf")
     ap.add_argument("--aif")
+    ap.add_argument("--elf-image", help="ship the ELF itself as !RunImage (&E1F)")
     ap.add_argument("--stage")
     ap.add_argument("--out")
     ap.add_argument("--check", metavar="ZIP")
     a = ap.parse_args()
     if a.check:
         return check(a.check)
-    if not ((a.elf or a.aif) and a.stage and a.out):
-        ap.error("--elf or --aif, --stage and --out, or --check")
-    return build(a.elf, a.aif, a.stage, a.out)
+    if not ((a.elf or a.aif or a.elf_image) and a.stage and a.out):
+        ap.error("--elf, --aif or --elf-image, --stage and --out, or --check")
+    return build(a.elf, a.aif, a.stage, a.out, a.elf_image)
 
 
 if __name__ == "__main__":

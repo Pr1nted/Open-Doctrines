@@ -708,7 +708,7 @@ jobs:
                 -DOD_DISCORD_APP_ID=1547303703370014830
               cmake --build build --target OpenDoctrines -j 4
               elf=$(ls build/OpenDoctrines build/OpenDoctrines,e1f 2>/dev/null | head -1)
-              elf2aif "$elf" build/RunImage'
+              elf2aif "$elf" build/RunImage || echo "elf2aif declined; the ELF ships as itself (&E1F)"'
           sudo chown -R "$(id -u):$(id -g)" build
 
       # A 32-bit little-endian ARM program, and an AIF image made from it.
@@ -718,18 +718,19 @@ jobs:
           readelf -h "$elf" | grep -q "Machine:.*ARM" || { echo "$elf: not ARM"; exit 1; }
           readelf -h "$elf" | grep -q "little endian" || { echo "$elf: not little-endian"; exit 1; }
           echo "ELF=$elf" >> "$GITHUB_ENV"
-          ls -l "$elf" build/RunImage
+          ls -l "$elf" build/RunImage 2>/dev/null || ls -l "$elf"
 
       - name: The build carries the account service
         run: |
           issuer="https://opendoctrines-net.opendoctrines.workers.dev"
-          LC_ALL=C grep -qa "$issuer" build/RunImage || {
+          LC_ALL=C grep -qa "$issuer" "$ELF" || {
             echo "::error title=No account service::the RISC OS build does not carry $issuer."; exit 1; }
 
       - name: Package (an application directory)
         run: |
           python3 tools/package.py --binary "$ELF" --out dist/stage --no-strip
-          python3 tools/riscos_package.py --aif build/RunImage --stage dist/stage --out "dist/$ARTIFACT.zip"
+          if [ -f build/RunImage ]; then image="--aif build/RunImage"; else image="--elf-image $ELF"; fi
+          python3 tools/riscos_package.py $image --stage dist/stage --out "dist/$ARTIFACT.zip"
 
       - uses: actions/upload-artifact@v4
         with:
