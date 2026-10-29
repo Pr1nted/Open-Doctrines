@@ -2157,6 +2157,8 @@ if(OD_RISCOS)
     # in an application directory by tools/riscos_package.py.
     target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
     target_compile_definitions(OpenDoctrines PRIVATE OD_RISCOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    # UnixLib lacks only ifaddrs.h of the headers the game includes.
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/riscos-include)
     target_link_libraries(OpenDoctrines m)
 endif()
 if(WIN32)
