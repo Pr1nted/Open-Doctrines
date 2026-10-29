@@ -109,6 +109,21 @@ jobs:
             triplet: arm-linux-gnueabihf
             deb_arch: armhf
             cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake
+          # RASPBERRY PI OS. The Pi 4 and 5 GPUs offer GL 3.1 / GLES 3.1, not
+          # the GL 3.3 the desktop build asks for, so these are built for
+          # OpenGL ES (OD_GLES) -- the shader path Android and the web ship --
+          # and packaged as .debs in the raspios job below. Same CPUs as
+          # linux-arm64 and linux-armv7, same runner and toolchain.
+          - name: raspios-arm64
+            os: ubuntu-22.04-arm
+            artifact: OpenDoctrines-raspios-arm64
+            cmake_args: -DOD_GLES=ON
+          - name: raspios-armhf
+            os: ubuntu-22.04
+            artifact: OpenDoctrines-raspios-armhf
+            triplet: arm-linux-gnueabihf
+            deb_arch: armhf
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake -DOD_GLES=ON
           - name: linux-riscv64
             os: ubuntu-24.04
             artifact: OpenDoctrines-linux-riscv64
@@ -127,7 +142,7 @@ jobs:
           # at link with errors that do not mention X11 at all.
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev libgles-dev
 
       # The same libraries, for another architecture: multiarch -dev packages
       # beside the host's, the cross gcc, and QEMU for anything built that the
@@ -582,6 +597,60 @@ jobs:
   # that already spends most of its time pulling a 1 GB runtime, and the Arm
   # audience this would serve is the same one the arm64 tarball and AppImage
   # already reach.
+  # ── Raspberry Pi OS ──
+  #
+  # The OpenGL ES builds (raspios-arm64, raspios-armhf above) as .debs for
+  # Raspberry Pi OS, each installed and played by tools/raspios_check.sh in
+  # Debian bookworm with Raspberry Pi's own repository added -- which is what
+  # Raspberry Pi OS is. armhf runs that container under QEMU; arm64 on an Arm
+  # runner, natively.
+  raspios:
+    name: Package Raspberry Pi OS ${{ matrix.arch }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-raspios-arm64 }
+          - { arch: armhf, os: ubuntu-22.04,     artifact: OpenDoctrines-raspios-armhf }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: incoming
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          sudo gem install --no-document fpm
+      - name: QEMU, for the armhf container
+        if: matrix.arch == 'armhf'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+      - name: Build the .deb
+        run: |
+          set -eu
+          cd incoming && unzip -q -o ./*.zip && cd ..
+          tree=$(find incoming -maxdepth 2 -name OpenDoctrines -type f -exec dirname {} \; | head -1)
+          [ -n "$tree" ] || { echo "no game tree in the artifact"; ls -R incoming | head -40; exit 1; }
+          tools/make_linux_packages.sh "$tree" "${GITHUB_REF_NAME#v}" "${{ matrix.arch }}" dist/raspios deb
+      - name: Raspberry Pi OS -- installs, links OpenGL ES, plays
+        run: |
+          set -eu
+          deb=$(ls dist/raspios/*.deb)
+          tools/raspios_check.sh "$deb" "${{ matrix.arch }}"
+          mv "$deb" "dist/raspios/OpenDoctrines-raspios-${{ matrix.arch }}.deb"
+          ls -l dist/raspios
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDoctrines-raspios-packages-${{ matrix.arch }}
+          path: dist/raspios/*.deb
+          retention-days: 14
+          if-no-files-found: error
+
   flatpak:
     name: Flatpak (x86_64)
     needs: build
@@ -703,7 +772,7 @@ jobs:
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web, linux-packages, flatpak, bsd, other-os]
+    needs: [build, test, web, linux-packages, raspios, flatpak, bsd, other-os]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.
