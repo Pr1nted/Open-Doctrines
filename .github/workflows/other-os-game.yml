@@ -391,9 +391,13 @@ jobs:
           "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-strip" "$exe"
           ls -l "$exe"
 
+      # DOCTRINE.EXE, an 8.3 name: DJGPP's stub reopens its own image by the
+      # short name DOS hands it, so OpenDoctrines.exe started as
+      # "OpenDoctrines" went looking for C:\OPENDOCT.EXE and found nothing.
       - name: Package
         run: |
-          python3 tools/package.py --binary build/OpenDoctrines.exe --out "dist/$ARTIFACT" --no-strip \
+          cp build/OpenDoctrines.exe build/DOCTRINE.EXE
+          python3 tools/package.py --binary build/DOCTRINE.EXE --out "dist/$ARTIFACT" --no-strip \
             --add "$HOME/dos/cwsdpmi/CWSDPMI.EXE" --add "$HOME/dos/cwsdpmi/CWSDPMI.DOC" \
             --add packaging/dos/DOS.TXT --zip
 
@@ -416,7 +420,7 @@ jobs:
           rm -rf dosrun && mkdir dosrun && unzip -q "dist/$ARTIFACT.zip" -d dosrun
           game="dosrun/$ARTIFACT"
           tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" \
-            'OpenDoctrines --simulate data\STDmaps\1939.odmap 3 PkgCheck' | tee dos-sim.log
+            'DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck' | tee dos-sim.log
           grep -q '^\[SIM\] turn 3/3' dos-sim.log || { echo "::error title=DOS::the game did not finish three turns"; exit 1; }
 
       # The game started as a player starts it, the screen captured as it
@@ -426,7 +430,7 @@ jobs:
         run: |
           game="dosrun/$ARTIFACT"
           tools/dos_run.sh --memsize 2048 --timeout 900 --grab dos-screen.png --grab-every 120 \
-            "$game" OpenDoctrines | tail -20 || true
+            "$game" DOCTRINE | tail -20 || true
           ls -l dos-screen*.png || echo "no screen captured"
 
       - uses: actions/upload-artifact@v4
