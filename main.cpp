@@ -5,6 +5,7 @@
 #include "util/SoftwareGlRelaunch.h"
 #include "GifEncoder.h"
 #include "platform/Vita.h"
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
@@ -26,6 +27,16 @@ int main(int argc, char** argv) {
     // "DOCTRINE > OUT.TXT" run, which is how CI and a player's bug report
     // both capture it.
     dup2(1, 2);
+    // OD_DOS_TRACE=1 (CI sets it): leave a mark that main() was reached, and
+    // with what, so a run that exits with nothing on screen can still be told
+    // apart from one that never started.
+    if (std::getenv("OD_DOS_TRACE")) {
+        if (FILE* t = std::fopen("TRACE.TXT", "w")) {
+            std::fprintf(t, "main reached, argc=%d\n", argc);
+            for (int i = 0; i < argc; ++i) std::fprintf(t, "argv[%d]=%s\n", i, argv[i]);
+            std::fclose(t);
+        }
+    }
 #endif
 
 #if defined(__vita__)
