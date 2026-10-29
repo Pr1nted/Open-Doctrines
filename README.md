@@ -392,6 +392,26 @@ map views, 86 technologies, 59 policies, fleets and a sea to sail them on.
 
 [tos-rel]: https://github.com/Pr1nted/Open-Doctrines/releases/tag/templeos-v1.2.2a
 
+### FreeRTOS — experimental
+
+There is also a FreeRTOS version, made for the kind of microcontroller that
+flies on a CubeSat. It is the TempleOS game's rules ported to C, with the
+same world: 1,632 provinces, 183 countries, the desktop game's combat width,
+and an opponent for every country. It runs on the chip under the FreeRTOS
+kernel, and you play it over a serial line.
+
+It has three boards: an STM32F405 (Cortex-M4F), ARM's MPS2 Cortex-M3 and a
+32-bit RISC-V core. All three run in QEMU, and the STM32F405 image can also be
+flashed to a real board. There is no map: you give orders as commands and
+read the results as text.
+
+```
+qemu-system-arm -M netduinoplus2 -nographic -semihosting-config enable=on,target=native -kernel stm32f405.elf
+```
+
+[freertos/README.md](freertos/README.md) has the commands, the boards, what
+this version leaves out, and how all five builds are held to one transcript.
+
 ## Building
 
 Needs CMake 3.20+ and a C++20 compiler. Everything else is fetched or vendored.
@@ -669,6 +689,9 @@ playing:
   go through `qualify.sh`, which needs a window and a filesystem.
   [TempleOS](#templeos) is a separate build and a separate promise: it has been
   played in QEMU, it will not run on real hardware, and it has no multiplayer.
+  [FreeRTOS](#freertos--experimental) is another: its rules and world run on a
+  microcontroller, it has been played on three emulated boards, and it has no
+  map, no research and no saves.
 - **The AI plays a whole game now, and is still not a match for a good
   player.** Both halves of that are worth saying plainly.
 
