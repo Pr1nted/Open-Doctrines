@@ -65,6 +65,9 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     add_compile_definitions(__EXTENSIONS__)
     link_libraries(socket nsl)
+    # GCC on illumos predefines `sun` as 1 (and `unix`), the way it did on
+    # every Sun before C was standardised; GlobeView's `sun()` became `1()`.
+    add_compile_options(-Usun)
 endif()
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
@@ -507,12 +510,18 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # runs. So on Haiku SDL3 is the system package (pkgman install libsdl3),
     # found by its own CMake config; raylib takes the SDL3::SDL3 target it
     # defines exactly as it takes the one built below.
+    #
+    # Where the system has none (HaikuPorts did not offer it for every
+    # release), SDL3 is built from source as everywhere else, and says so:
+    # that copy lacks the fix above.
     # The SDL target the game and its tests link: SDL3 everywhere but
     # SerenityOS (below).
     set(OD_SDL_TARGET SDL3::SDL3)
     if(OD_DESKTOP_SDL AND HAIKU)
+        find_package(SDL3 CONFIG QUIET)
+    endif()
+    if(OD_DESKTOP_SDL AND HAIKU AND SDL3_FOUND)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
-        find_package(SDL3 REQUIRED CONFIG)
         message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL3 ${SDL3_VERSION} (Haiku)")
     elseif(OD_DESKTOP_SDL AND CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
         # ── SERENITYOS: ITS OWN SDL2 ──
@@ -530,6 +539,10 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         set(OD_SDL_TARGET SDL2::SDL2)
         message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL2 ${SDL2_VERSION} (SerenityOS)")
     elseif(OD_DESKTOP_SDL)
+        if(HAIKU)
+            message(WARNING "Haiku: no system SDL3 (pkgman install libsdl3_devel); building it "
+                            "from source, without HaikuPorts' fix for screens with no mode list")
+        endif()
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
