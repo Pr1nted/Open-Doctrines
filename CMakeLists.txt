@@ -2000,6 +2000,10 @@ if(OD_WII)
     # raylib's audio API as no-ops. The .dol is what the Homebrew Channel runs.
     target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
     target_compile_definitions(OpenDoctrines PRIVATE OD_WII=1 OD_SOFTWARE_RENDER=1)
+    # libogc has the BSD socket headers but, as newlib on the Vita, not
+    # dlfcn.h, sys/mman.h, ifaddrs.h or sys/un.h: the Vita's stand-ins (see
+    # "THE PS VITA") serve here unchanged -- every call they answer fails.
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
     target_link_libraries(OpenDoctrines wiikeyboard fat)
     ogc_create_dol(OpenDoctrines)
 endif()
