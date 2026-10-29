@@ -58,6 +58,9 @@ project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
 if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
     add_compile_definitions(__EXTENSIONS__)
     link_libraries(socket nsl)
+    # GCC on illumos predefines `sun` as 1 (and `unix`), the way it did on
+    # every Sun before C was standardised; GlobeView's `sun()` became `1()`.
+    add_compile_options(-Usun)
 endif()
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
