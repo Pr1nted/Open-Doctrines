@@ -419,9 +419,13 @@ jobs:
         run: |
           rm -rf dosrun && mkdir dosrun && unzip -q "dist/$ARTIFACT.zip" -d dosrun
           game="dosrun/$ARTIFACT"
+          # Whatever DOS and the extender said goes into this log, not only
+          # into an artifact: a run that dies before main() prints nothing to
+          # OUT.TXT, and DOSBox-X's own log is then the only account of it.
+          show_log() { echo "--- DOSBOX.LOG (tail)"; tail -60 "$game/DOSBOX.LOG" 2>/dev/null || true; }
           tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" \
-            'DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck' | tee dos-sim.log
-          grep -q '^\[SIM\] turn 3/3' dos-sim.log || { echo "::error title=DOS::the game did not finish three turns"; exit 1; }
+            'DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck' | tee dos-sim.log || true
+          grep -q '^\[SIM\] turn 3/3' dos-sim.log || { show_log; echo "::error title=DOS::the game did not finish three turns"; exit 1; }
 
       # The game started as a player starts it, the screen captured as it
       # comes up. Not a pass/fail on its own (the timeout ends it); what VESA
