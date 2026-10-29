@@ -442,8 +442,8 @@ same as this.
 with a linear framebuffer — the game picks the largest 15/16/24/32-bit mode up
 to the size it asks for, or `SET OD_VESA=1024x768` — a mouse driver, **long
 file names** (they work in a Windows 9x DOS prompt and in DOSBox-X; in plain
-MS-DOS or FreeDOS load DOSLFN), and **about 1 GB of memory**: the world needs
-it, as it does in a browser.
+MS-DOS or FreeDOS load DOSLFN), and **about 320 MB of memory**: worlds load
+at half resolution on DOS, which peaks near 230 MB.
 
 **How it draws.** raylib has no DOS backend, so the game carries one:
 `src/platform/dos/rcore_dos.c`, which sets a VESA mode, maps its linear
