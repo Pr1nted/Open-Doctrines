@@ -422,6 +422,10 @@ if(OD_DOS)
     set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
     set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
     set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    # Worlds at 1/2 (peaks near 230 MB, measured). The full world reached the
+    # 8192x4096 province raster in DOSBox-X and CWSDPMI stopped with "No swap
+    # space!": DOS machines with the ~700 MB a full world needs are rare.
+    set(OD_MAP_DIVISOR 2 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
     if(DJGPP)
         list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
     endif()
