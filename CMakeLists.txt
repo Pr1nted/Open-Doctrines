@@ -2961,6 +2961,11 @@ if(VITA)
     target_sources(OpenDoctrines PRIVATE src/platform/Vita.cpp src/platform/newlib_posix_stubs.cpp)
     target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
     target_link_libraries(OpenDoctrines ScePower_stub)
+    # VitaSDK's toolchain already links libpthread whole (its static
+    # initialiser has to run), and SDL3's Threads::Threads adds -lpthread
+    # again, so every pthread object is defined twice. They are the same
+    # objects from the same archive: the first copy is kept.
+    target_link_options(OpenDoctrines PRIVATE -Wl,--allow-multiple-definition)
     # UNSAFE: full access to the memory card and the clock settings, which is
     # what homebrew games ask for; the player sees it when installing.
     vita_create_self(eboot.bin OpenDoctrines UNSAFE)
