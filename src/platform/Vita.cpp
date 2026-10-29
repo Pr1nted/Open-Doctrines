@@ -27,6 +27,7 @@ unsigned int sceUserMainThreadStackSize = 4 * 1024 * 1024;
 
 namespace {
 
+// i18n-ignore: Vita device paths, not words a player reads.
 const char* kShipped = "app0:data";
 const char* kCard    = "ux0:data/OpenDoctrines";
 const char* kData    = "ux0:data/OpenDoctrines/data";
