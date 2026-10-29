@@ -685,6 +685,12 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # Haiku's pthreads have no pthread_attr_setinheritsched, which miniaudio
     # calls (it guards the call for BeOS, not Haiku): src/platform/haiku/
     # pthread_compat.h stands in for it.
+    # devkitPro's newlib makes uint32_t an unsigned long, so rlsw's GLuint
+    # pointers and the unsigned int pointers rlgl hands them differ in type
+    # though not in size (both 32 bits); GCC 14 made that an error.
+    if(CMAKE_SYSTEM_NAME MATCHES "^Nintendo" AND TARGET raylib)
+        target_compile_options(raylib PRIVATE -Wno-error=incompatible-pointer-types)
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" AND TARGET raylib)
         target_compile_options(raylib PRIVATE
             "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/serenity/raylib_compat.h")
