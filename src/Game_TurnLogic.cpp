@@ -1,3 +1,4 @@
+#include "map/RasterScale.h"
 #include <cstdlib>
 #include "util/OdEnv.h"
 #include "Game.h"
@@ -112,7 +113,9 @@ bool Game::isProvinceCoastal(int pid) const {
     //
     // So: gather the water pixels around the province, and ask whether ANY of
     // the bodies they belong to is big enough to be a sea.
-    static const int MIN_WATER_BODY = 75;
+    // In full-resolution pixels: a world loaded reduced (map/RasterScale.h)
+    // has div^2 fewer of them in every sea.
+    const int MIN_WATER_BODY = std::max(1, 75 / (odmap::rasterDivisor() * odmap::rasterDivisor()));
     const int dx[4] = {1, -1, 0, 0};
     const int dy[4] = {0, 0, 1, -1};
 
@@ -7902,7 +7905,8 @@ float Game::shipMaxRangePx(const NavyShip& s) const {
     const float base = (s.type == "boat")      ? 200.0f :
                        (s.type == "destroyer") ? 350.0f :
                        (s.type == "carrier")   ? 450.0f : 300.0f;
-    return base * (1.0f + getTotalEffect("navySpeedPct", s.countryId) / 100.0f);
+    // In full-resolution map pixels, as loaded (see map/RasterScale.h).
+    return odmap::loadedPx(base) * (1.0f + getTotalEffect("navySpeedPct", s.countryId) / 100.0f);
 }
 
 double Game::shipMaxRangeDeg(const NavyShip& s) const {
@@ -7919,8 +7923,14 @@ double Game::shipMaxRangeDeg(const NavyShip& s) const {
 // See Game::NavGrid. One pass over the land raster, then a flood fill to label
 // which stretches of water actually join up.
 void Game::buildNavGrid() {
+    // AT FULL RESOLUTION, always. A world loaded reduced (map/RasterScale.h)
+    // keeps its land mask at the resolution the map was drawn at too -- one bit
+    // a pixel, 4 MB -- because sampling loses exactly what this needs: a strait
+    // a few pixels wide is a sea route at 8192 px and dry land at 2048. So the
+    // grid is built on that, and its pixel coordinates are scaled down to the
+    // loaded raster at the end, where everything else reads them.
     m_nav = NavGrid{};
-    const int W = m_landSea.getWidth(), H = m_landSea.getHeight();
+    const int W = m_landSea.fullWidth(), H = m_landSea.fullHeight();
     if (W <= 0 || H <= 0) return;
 
     // 32 raster pixels a side. On the shipped 8192x4096 maps that is a 256x128
@@ -7996,7 +8006,7 @@ void Game::buildNavGrid() {
         auto& rs = rows[(size_t)y];
         bool inRun = false;
         for (int x = 0; x < W; ++x) {
-            const bool water = !m_landSea.isLand(x, y);
+            const bool water = !m_landSea.isLandFull(x, y);
             if (water && !inRun) { rs.push_back({x, x + 1, makeSet()}); inRun = true; }
             else if (water)      { rs.back().x1 = x + 1; }
             else                 { inRun = false; }
@@ -8135,7 +8145,7 @@ void Game::buildNavGrid() {
             int y = ay + (int)std::lround((double)dy * k / steps);
             if (x < 0) x += W; else if (x >= W) x -= W;
             if (y < 0 || y >= H) continue;
-            if (m_landSea.isLand(x, y)) { if (++run > LEGNECK) return false; }
+            if (m_landSea.isLandFull(x, y)) { if (++run > LEGNECK) return false; }
             else run = 0;
         }
         return true;
@@ -8221,6 +8231,13 @@ void Game::buildNavGrid() {
     printf("  Sea routing: %dx%d cells, %d raster body(ies), %lld navigable cells, "
            "%lld sailable edges, %d reachable sea(s)\n",
            m_nav.w, m_nav.h, label, cells, edges, seas);
+
+    // Into the loaded raster's pixels (see the note at the top).
+    if (const int fdiv = m_landSea.fullDivisor(); fdiv > 1) {
+        m_nav.cell /= fdiv;
+        for (auto& v : m_nav.px) if (v >= 0) v /= fdiv;
+        for (auto& v : m_nav.py) if (v >= 0) v /= fdiv;
+    }
 
     if (OD_ENV("OD_NAV_AUDIT")) {
         std::vector<long long> size((size_t)seas, 0);
@@ -8466,7 +8483,7 @@ bool Game::nudgeShipToWater(NavyShip& s) {
     m_landSea.lonLatToPixel((float)s.lon, (float)s.lat, px, py);
     // 64 pixels is about as far as a coastal misplacement ever is; beyond that
     // the ship was not "just inland", and guessing gets worse, not better.
-    const int MAX_R = 64;
+    const int MAX_R = 64 / odmap::rasterDivisor();   // full-resolution pixels; see RasterScale.h
     for (int r = 1; r <= MAX_R; ++r) {
         for (int dy = -r; dy <= r; ++dy) {
             for (int dx = -r; dx <= r; ++dx) {

@@ -1649,6 +1649,7 @@ set(GAME_SOURCES
     src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
+    src/map/RasterScale.cpp
     src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
@@ -1928,6 +1929,10 @@ if(OD_DESKTOP_SDL)
         target_link_libraries(OpenDoctrines OpenGL::GL)
     endif()
 endif()
+# A world loaded at 1/N resolution (src/map/RasterScale.h), for platforms
+# that cannot hold the full 8192x4096 one. 1 is the full world.
+set(OD_MAP_DIVISOR 1 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8")
+target_compile_definitions(OpenDoctrines PRIVATE OD_MAP_DIVISOR=${OD_MAP_DIVISOR})
 if(OD_DOS)
     # See OD_DOS above. On DJGPP the thread-less std::mutex shim goes into every
     # C++ file; a host build has real ones and only takes the single-threaded

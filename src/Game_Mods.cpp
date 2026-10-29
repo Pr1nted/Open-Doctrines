@@ -5,6 +5,7 @@
 // rules"), so everything that can start or stop a mod lives in this file.
 
 #include "Game.h"
+#include "map/RasterScale.h"
 #include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -2711,7 +2712,8 @@ double Game::modShipLat(int sid) const { return modShipExists(sid) ? m_ships[sid
 int Game::modShipHealth(int sid) const { return modShipExists(sid) ? m_ships[sid].health : 0; }
 int Game::modShipCrew(int sid) const { return modShipExists(sid) ? m_ships[sid].crew : 0; }
 double Game::modShipRange(int sid) const {
-    return modShipExists(sid) ? (double)shipMaxRangePx(m_ships[sid]) : 0.0;
+    // Mods are told full-resolution pixels, whatever raster the game loaded.
+    return modShipExists(sid) ? (double)shipMaxRangePx(m_ships[sid]) * odmap::rasterDivisor() : 0.0;
 }
 
 int Game::modArmyStackCount(int pid) const {

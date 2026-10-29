@@ -640,6 +640,26 @@ jobs:
           mkdir -p "$RUNNER_TEMP/dos-cwd" && cd "$RUNNER_TEMP/dos-cwd"
           "$GITHUB_WORKSPACE/build/OpenDoctrines" --simulate "$GITHUB_WORKSPACE/data/STDmaps/1939.odmap" 3 DosCheck | tee sim.log
           grep -q '^\[SIM\] turn 3/3' sim.log
+      # The small-memory platforms load worlds at 1/4 resolution
+      # (src/map/RasterScale.h). It has to play, keep every province, and fit:
+      # the full world peaks near 700 MB, this under 200.
+      - name: A world at 1/4 resolution plays, in under 200 MB
+        run: |
+          cd "$RUNNER_TEMP/dos-cwd"
+          OD_MAP_DIVISOR=4 python3 - "$GITHUB_WORKSPACE/build/OpenDoctrines" "$GITHUB_WORKSPACE/data/STDmaps/1939.odmap" <<'PY'
+          import resource, subprocess, sys
+          r = subprocess.run([sys.argv[1], "--simulate", sys.argv[2], "3", "SmallWorld"],
+                             capture_output=True, text=True)
+          out = r.stdout + r.stderr
+          peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
+          print("\n".join(l for l in out.splitlines() if l.startswith("[SIM]") or "sampled to" in l))
+          print(f"peak resident: {peak:.0f} MB")
+          assert r.returncode == 0, "the reduced world did not play"
+          assert "[SIM] turn 3/3" in out, "three turns did not resolve"
+          assert "sampled to 2048x1024" in out, "the world was not loaded reduced"
+          assert peak < 200, f"peak {peak:.0f} MB is not under 200 MB"
+          PY
+
       - name: The screen shows what the game drew (32-bit and 16-bit modes)
         run: |
           cp -r data "$RUNNER_TEMP/dos-data"

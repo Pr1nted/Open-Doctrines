@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "map/RasterScale.h"
 #include "map/SkyFile.h"
 #include "util/LoadLog.h"
 // getrusage() below. Guarded the way Game.cpp guards the same header: MSVC has
@@ -1105,9 +1106,12 @@ void Game::buildPopulationLookups() {
     // covers the same ground whoever holds it, so area is a property of the map
     // and is computed once with the map. See m_provinceAreaArray.
     std::vector<float> rowWeight((size_t)std::max(0, h), 0.0f);
+    // In full-resolution pixels whatever the raster was loaded at: a reduced
+    // world (RasterScale.h) has div^2 fewer pixels, and area feeds the economy.
+    const double areaScale = (double)odmap::rasterDivisor() * (double)odmap::rasterDivisor();
     for (int y = 0; y < h; ++y) {
         const double lat = 90.0 - ((double)y + 0.5) * (180.0 / (double)h);
-        rowWeight[(size_t)y] = (float)std::cos(lat * 3.14159265358979323846 / 180.0);
+        rowWeight[(size_t)y] = (float)(areaScale * std::cos(lat * 3.14159265358979323846 / 180.0));
     }
     int areaRow = 0, areaRowEnd = w;
     float areaRowW = (h > 0) ? rowWeight[0] : 0.0f;
@@ -1239,9 +1243,12 @@ void Game::rebuildMorphedGeometry() {
         std::fill(m_countryPixelCount.begin(), m_countryPixelCount.end(), 0);
 
     std::vector<float> rowWeight((size_t)std::max(0, h), 0.0f);
+    // In full-resolution pixels whatever the raster was loaded at: a reduced
+    // world (RasterScale.h) has div^2 fewer pixels, and area feeds the economy.
+    const double areaScale = (double)odmap::rasterDivisor() * (double)odmap::rasterDivisor();
     for (int y = 0; y < h; ++y) {
         const double lat = 90.0 - ((double)y + 0.5) * (180.0 / (double)h);
-        rowWeight[(size_t)y] = (float)std::cos(lat * 3.14159265358979323846 / 180.0);
+        rowWeight[(size_t)y] = (float)(areaScale * std::cos(lat * 3.14159265358979323846 / 180.0));
     }
     for (size_t i = 0; i < total; ++i) {
         if ((i & 8191) == 0) Audio::get().pump();
@@ -2106,6 +2113,18 @@ void Game::computeCountryLabels() {
         }
     }
 
+    // A world loaded reduced (map/RasterScale.h) has lost its thinnest
+    // borders to sampling; the loader kept the full-resolution contacts, and
+    // they are added here. The scan above still runs: a province painted
+    // during play (a rebellion's) is only in the raster.
+    for (const auto& [a, b] : m_provinces.fullResolutionAdjacency()) {
+        if (a <= 0 || b <= 0 || a > maxPid || b > maxPid) continue;
+        const int ca = pidToCountry[a], cb = pidToCountry[b];
+        if (ca <= 0 && cb <= 0) continue;
+        allAdjPairs.insert(pack(a, b));
+        if (ca > 0 && ca == cb) adjPairs.insert(pack(a, b));
+    }
+
     // Build m_provinceNeighbors from all adjacency pairs
     for (int64_t pair : allAdjPairs) {
         int a = static_cast<int>(pair >> 32);
@@ -2575,7 +2594,10 @@ bool Game::loadFromODM(const std::string& odmPath) {
     if (pngData && !jsonStr.empty()) {
         // Straight into the compact index on a dedicated server, which never
         // draws the map and has 512 MB on a free host. See ProvinceMap.h.
-        if (m_compactRaster) m_provinces.loadCompactFromMemory(pngData, (int)pngSize, jsonStr);
+        // A reduced world (RasterScale.h) is sampled as the rows stream in,
+        // so it always takes the compact path.
+        if (m_compactRaster || odmap::rasterDivisor() > 1)
+            m_provinces.loadCompactFromMemory(pngData, (int)pngSize, jsonStr);
         else                 m_provinces.loadFromMemory(pngData, (int)pngSize, jsonStr);
     }
 
