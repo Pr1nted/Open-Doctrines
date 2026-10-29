@@ -113,9 +113,11 @@ bool Game::isProvinceCoastal(int pid) const {
     //
     // So: gather the water pixels around the province, and ask whether ANY of
     // the bodies they belong to is big enough to be a sea.
-    // In full-resolution pixels: a world loaded reduced (map/RasterScale.h)
-    // has div^2 fewer of them in every sea.
-    const int MIN_WATER_BODY = std::max(1, 75 / (odmap::rasterDivisor() * odmap::rasterDivisor()));
+    // In full-resolution pixels (tools/fill_water_speckle.py reads this number
+    // out of this line); on a reduced world the body is counted in loaded
+    // pixels, each worth divisor^2 of these. See map/RasterScale.h.
+    const int MIN_WATER_BODY = 75;
+    const int minWaterBody = std::max(1, MIN_WATER_BODY / (odmap::rasterDivisor() * odmap::rasterDivisor()));
     const int dx[4] = {1, -1, 0, 0};
     const int dy[4] = {0, 0, 1, -1};
 
@@ -144,7 +146,7 @@ bool Game::isProvinceCoastal(int pid) const {
         std::vector<int> stack{seed};
         std::unordered_set<int> visited{seed};
         int count = 0;
-        while (!stack.empty() && count < MIN_WATER_BODY) {
+        while (!stack.empty() && count < minWaterBody) {
             int idx = stack.back();
             stack.pop_back();
             count++;
@@ -162,7 +164,7 @@ bool Game::isProvinceCoastal(int pid) const {
                 }
             }
         }
-        if (count >= MIN_WATER_BODY) return answer(true);   // open water: coastal
+        if (count >= minWaterBody) return answer(true);   // open water: coastal
         knownSmall.insert(visited.begin(), visited.end());
     }
     return answer(false);
