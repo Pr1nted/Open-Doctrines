@@ -22,6 +22,11 @@
 #  endif
 #  include <climits>
 #  include <unistd.h>
+// newlib (Vita, 3DS, Wii) has no PATH_MAX; there is no Steam there either,
+// and openLib simply finds nothing, but the code still has to compile.
+#  ifndef PATH_MAX
+#    define PATH_MAX 1024
+#  endif
 #endif
 
 namespace odsteam {
