@@ -428,8 +428,20 @@ jobs:
             echo "--- OUT.TXT"; cat "$game/OUT.TXT" 2>/dev/null || true
             echo "--- DOSBOX.LOG (tail)"; tail -25 "$game/DOSBOX.LOG" 2>/dev/null || true
           }
-          tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" \
-            'DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck' | tee dos-sim.log || true
+          # DJGPP's REDIR (djdev205), for the run only -- never packaged:
+          # COMMAND.COM cannot redirect stderr, and an extender or stub that
+          # fails before main() reports there and nowhere else.
+          run='DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck'
+          for u in https://www.delorie.com/pub/djgpp/current/v2/djdev205.zip \
+                   https://ftp.fau.de/djgpp/current/v2/djdev205.zip; do
+            if curl -fsSL --retry 3 -o djdev.zip "$u"; then
+              echo "djdev205.zip from $u: $(sha256sum djdev.zip | cut -d' ' -f1)"
+              unzip -qjo djdev.zip bin/redir.exe -d "$game" && mv "$game/redir.exe" "$game/REDIR.EXE" \
+                && run="REDIR -eo $run"
+              break
+            fi
+          done
+          tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" "$run" | tee dos-sim.log || true
           grep -q '^\[SIM\] turn 3/3' dos-sim.log || { show_log; echo "::error title=DOS::the game did not finish three turns"; exit 1; }
 
       # The game started as a player starts it, the screen captured as it
