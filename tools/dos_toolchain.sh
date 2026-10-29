@@ -40,6 +40,24 @@ if [ ! -x "$DEST/djgpp/bin/i586-pc-msdosdjgpp-gcc" ]; then
 fi
 "$DEST/djgpp/bin/i586-pc-msdosdjgpp-gcc" --version | head -1
 
+# The prebuilt's ar and ranlib are linked against flex's runtime (libfl.so.2),
+# which a stock Ubuntu runner does not have: the compiler works and the
+# archive step dies with "error while loading shared libraries". Install it
+# where it is missing, or say exactly what is.
+if ldd "$DEST/djgpp/bin/i586-pc-msdosdjgpp-ar" | grep -q "libfl.so.2 => not found"; then
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "installing libfl2 (flex's runtime, which DJGPP's ar and ranlib need)"
+    SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+    $SUDO apt-get install -y -qq libfl2 >/dev/null || { $SUDO apt-get update -qq && $SUDO apt-get install -y -qq libfl2; }
+  fi
+  if ldd "$DEST/djgpp/bin/i586-pc-msdosdjgpp-ar" | grep -q "not found"; then
+    echo "DJGPP's ar cannot run here; missing:" >&2
+    ldd "$DEST/djgpp/bin/i586-pc-msdosdjgpp-ar" | grep "not found" >&2
+    exit 1
+  fi
+fi
+"$DEST/djgpp/bin/i586-pc-msdosdjgpp-ar" --version | head -1
+
 if [ ! -f "$DEST/cwsdpmi/CWSDPMI.EXE" ]; then
   got=""
   for u in "${CWSDPMI_URLS[@]}"; do
