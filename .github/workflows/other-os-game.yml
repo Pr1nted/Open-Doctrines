@@ -521,6 +521,86 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # ── THE NINTENDO 3DS ──
+  #
+  # Homebrew, cross-compiled with devkitARM and libctru inside devkitPro's own
+  # image (pinned by digest), on the game's platform layer for the 3DS
+  # (src/platform/3ds/rcore_3ds.c): rlsw's 640x480 frame shown whole on the
+  # top screen and as a touchable full-size window on the bottom one. Worlds
+  # load at 1/8 resolution, single-threaded, for the New 3DS. The product is
+  # a zip of the Homebrew Launcher's SD-card layout around a .3dsx
+  # (tools/n3ds_package.py), checked for that shape.
+  #
+  # NOT RUN YET: Azahar (Citra's successor) can run a .3dsx, and is the next step.
+  n3ds:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container: devkitpro/devkitarm@sha256:15b79ce75822c289538d8153da5fa7aafe5e6adc32ad8a575a197beca0f0761b
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: 3ds-arm, odseal: 3ds-arm }
+    env:
+      ARTIFACT: OpenDoctrines-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab) and merge the branch it pushes. \
+          See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Host packages
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq python3-pil zip unzip binutils
+
+      - name: Build the game for the 3DS
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/3DS.cmake" \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            -DOD_DISCORD_APP_ID=1547303703370014830
+          cmake --build build --target OpenDoctrines -j 4
+
+      # A 32-bit little-endian ARM program, not something the runner's own
+      # compiler made.
+      - name: The binary is a 3DS program
+        run: |
+          elf=$(ls build/OpenDoctrines.elf build/OpenDoctrines 2>/dev/null | head -1)
+          readelf -h "$elf" | grep -q "Machine:.*ARM" || { echo "$elf: not ARM"; exit 1; }
+          readelf -h "$elf" | grep -q "little endian" || { echo "$elf: not little-endian"; exit 1; }
+          readelf -A "$elf" | grep -q "Tag_CPU_name: \"6K\"\|Tag_CPU_arch: v6K" || { readelf -A "$elf" | head -20; echo "$elf: not built for the ARM11 (armv6k)"; exit 1; }
+          echo "ELF=$elf" >> "$GITHUB_ENV"
+          ls -l "$elf"
+
+      - name: The build carries the account service
+        run: |
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          LC_ALL=C grep -qa "$issuer" "$ELF" || {
+            echo "::error title=No account service::the 3DS build does not carry $issuer."; exit 1; }
+
+      - name: Package (SD card layout)
+        run: |
+          python3 tools/package.py --binary "$ELF" --out dist/stage --no-strip
+          python3 tools/n3ds_package.py --elf "$ELF" --stage dist/stage --out "dist/$ARTIFACT.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
   # ── PS VITA ──
   #
   # Cross-compiled with VitaSDK (tools/vitasdk_install.sh, a pinned snapshot

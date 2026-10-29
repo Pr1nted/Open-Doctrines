@@ -291,6 +291,9 @@ std::string GameUpdates::platformKey() {
 #elif defined(__ANDROID__)
     // An APK is replaced by reinstalling it, never by unpacking a zip over it.
     return "OpenDoctrines-android-none";
+#elif defined(__3DS__)
+    // The 3DS homebrew zip, as the Wii's below: no network, no self-update.
+    return "OpenDoctrines-3ds-arm";
 #elif defined(__wii__)
     // The Wii homebrew zip. Named so the release and this key agree; there is
     // no network on this build, so check() never asks (see canSelfInstall).
@@ -399,7 +402,7 @@ bool GameUpdates::canSelfInstall() {
     return false;   // unnotarized replacement would not launch; see the header
 #elif defined(__vita__)
     return false;   // app0: is read-only; a new .vpk is installed by VitaShell
-#elif defined(__DJGPP__) || defined(__wii__)
+#elif defined(__DJGPP__) || defined(__wii__) || defined(__3DS__)
     return false;   // no network to fetch with; a new zip is the update
 #else
     // Checked before returning true, not after: an installer-managed copy must
