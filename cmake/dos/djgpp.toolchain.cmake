@@ -27,9 +27,9 @@ set(CMAKE_CXX_COMPILER "${_dj}-g++")
 set(CMAKE_AR           "${_dj}-ar"     CACHE FILEPATH "")
 set(CMAKE_RANLIB       "${_dj}-ranlib" CACHE FILEPATH "")
 set(CMAKE_STRIP        "${_dj}-strip"  CACHE FILEPATH "")
-# A Pentium, said outright: left to its configured default the compiler
-# emitted an instruction the emulated Pentium MMX does not have, and the first
-# DOSBox-X run died with SIGILL before main().
+# A Pentium, said outright. (The first DOSBox-X run died with SIGILL on an SSE
+# instruction; that came from CMakeLists.txt's -msse2 for 32-bit x86, which
+# now leaves DJGPP out.)
 set(CMAKE_C_FLAGS_INIT   "-march=i586")
 set(CMAKE_CXX_FLAGS_INIT "-march=i586")
 
