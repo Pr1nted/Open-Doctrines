@@ -41,6 +41,7 @@
 #include <poll.h>
 #include <csignal>
 #include <sys/socket.h>
+#include <sys/time.h>  // timeval: SerenityOS does not pull it in through sys/socket.h
 #include <sys/types.h>
 #include <unistd.h>
 #endif
