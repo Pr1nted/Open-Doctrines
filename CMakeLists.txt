@@ -466,6 +466,37 @@ if(OD_3DS)
     list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
     message(STATUS "OD_3DS: raylib on rlsw and the game's 3DS platform layer; worlds at 1/8, single-threaded")
 endif()
+# ── RISC OS ──
+#
+# RISC OS 5 (a Raspberry Pi, or any ARMv7 machine it runs on), cross-compiled
+# with GCCSDK's GCC 10.2 and UnixLib (arm-riscos-gnueabihf) from the
+# riscos-crossdev image. As DOS: raylib on rlsw with a platform layer of the
+# game's own, src/platform/riscos/rcore_riscos.c -- a full-screen mode set
+# through OS_ScreenMode, OS_Mouse, INKEY scans and the keyboard buffer --
+# because RISC OS has no OpenGL to count on. A single-tasking program, as games
+# on RISC OS are: the desktop pauses while it runs.
+#
+# Worlds at 1/2 resolution (a full one peaks near 700 MB, more than an
+# application slot holds; 1/2 peaks near 230). Single-threaded: UnixLib's
+# threads are switched on a timer, under one RISC OS task. Network, mods,
+# HarfBuzz and audio off for now.
+if(CMAKE_SYSTEM_NAME STREQUAL "RISCOS" OR CMAKE_C_COMPILER MATCHES "riscos")
+    set(od_riscos_default ON)
+else()
+    set(od_riscos_default OFF)
+endif()
+option(OD_RISCOS "Build for RISC OS 5 (GCCSDK): rlsw full-screen, OS_Mouse and INKEY input" ${od_riscos_default})
+if(OD_RISCOS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    set(OD_MAP_DIVISOR 2 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    # UnixLib's pthreads are in UnixLib itself; see OD_WII.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    message(STATUS "OD_RISCOS: raylib on rlsw and the game's RISC OS platform layer; worlds at 1/2, single-threaded")
+endif()
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -534,7 +565,7 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
     # with DISPLAY unset, and the game is pure raylib API, so its backend is a
     # build switch rather than a code change.
-    if(OD_DOS OR OD_WII OR OD_3DS)
+    if(OD_DOS OR OD_WII OR OD_3DS OR OD_RISCOS)
         set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the game's own layer" FORCE)
     endif()
     if(OD_HEADLESS_SDL)
@@ -658,6 +689,14 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
              "// OD_3DS: no audio backend; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
         message(STATUS "raylib: 3DS platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
+    # And RISC OS's (see OD_RISCOS above).
+    if(OD_RISCOS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/riscos/rcore_riscos.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_RISCOS: no audio backend yet; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        message(STATUS "raylib: RISC OS platform layer in place of platforms/rcore_memory.c; raudio left out")
     endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
@@ -892,6 +931,10 @@ else()
         # VitaSDK's toolchain calls the system Generic, so it would otherwise
         # fall through to "unknown". One CPU (Cortex-A9), one archive.
         set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(OD_RISCOS)
+        # RISC OS: GCCSDK's arm-riscos-gnueabihf gcc, its default ARMv7 and VFP.
+        set(ODSEAL_PLATFORM "riscos-arm")
         set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(NINTENDO_3DS)
         # The 3DS: devkitARM's arm-none-eabi gcc for the ARM11 MPCore (armv6k,
@@ -2060,6 +2103,13 @@ if(OD_3DS)
     target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
     target_link_libraries(OpenDoctrines ctru m)
 endif()
+if(OD_RISCOS)
+    # See OD_RISCOS above. The ELF is made an AIF executable (!RunImage) and put
+    # in an application directory by tools/riscos_package.py.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_RISCOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    target_link_libraries(OpenDoctrines m)
+endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
     # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
@@ -2086,7 +2136,7 @@ endif()
 # library is not linked, and neither is GLFW, GL or an audio backend. A raylib
 # call with no server implementation is a LINK error naming the symbol, which
 # is the property that keeps the graphics layer out.
-if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS AND NOT OD_WII AND NOT OD_3DS)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS AND NOT OD_WII AND NOT OD_3DS AND NOT OD_RISCOS)
     set(SERVER_SOURCES ${GAME_SOURCES})
     list(REMOVE_ITEM SERVER_SOURCES main.cpp)
     list(APPEND SERVER_SOURCES

@@ -106,7 +106,7 @@ def main():
     # The dedicated server ships wherever the game does -- it is what people
     # run on a Pi or an Arm VPS -- except the BSDs, which have no server build.
     game_desktop = {n.replace("OpenDoctrines-", "") for n in built
-                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity|raspios|dos|wii|3ds)-", n)}
+                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity|raspios|dos|wii|3ds|riscos)-", n)}
     server = server_platforms()
     for p in sorted(game_desktop - server):
         problems.append(f"the game ships for {p}, but release-server.yml has no server for it")
