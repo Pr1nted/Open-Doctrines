@@ -538,6 +538,13 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         GIT_TAG 6.2
     )
     FetchContent_MakeAvailable(raylib)
+    # Haiku's pthreads have no pthread_attr_setinheritsched, which miniaudio
+    # calls after setting a thread's priority (it guards the call for BeOS
+    # but not for Haiku). A no-op that reports success: the priority it was
+    # about to make explicit is a hint miniaudio already treats as optional.
+    if(HAIKU AND TARGET raylib)
+        target_compile_definitions(raylib PRIVATE "pthread_attr_setinheritsched(a,b)=0")
+    endif()
     set(raylib_LIBRARY raylib)
     # The Vita has no dlopen, and miniaudio reaches for it on anything it
     # takes to be POSIX. None of the backends it would load exist there.
