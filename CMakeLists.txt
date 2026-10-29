@@ -2906,7 +2906,7 @@ endif()
 # copes with the call failing, which is all the stand-ins do.
 if(VITA)
     include("${VITASDK}/share/vita.cmake" REQUIRED)
-    target_sources(OpenDoctrines PRIVATE src/platform/Vita.cpp)
+    target_sources(OpenDoctrines PRIVATE src/platform/Vita.cpp src/platform/newlib_posix_stubs.cpp)
     target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
     target_link_libraries(OpenDoctrines ScePower_stub)
     # UNSAFE: full access to the memory card and the clock settings, which is
