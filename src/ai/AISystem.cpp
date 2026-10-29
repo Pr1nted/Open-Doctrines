@@ -14323,13 +14323,19 @@ bool AISystem::loadModel() {
     // odFile, not fopen: the shipped model is an APK asset on Android and only
     // AAssetManager can reach it. Writes still use fopen -- they go to internal
     // storage, which the training path wants anyway. See OdFile.h.
-    const std::string bytes = odFile::readAll(m_modelPath);
-    if (bytes.empty()) return false;                       // no file: not an error
-    if (bytes.size() < 10) {
-        m_loadError = "file is " + std::to_string(bytes.size()) + " bytes, too small to be a model";
-        return false;
+    std::vector<uint8_t> buf;
+    {
+        // Scoped: the file's bytes are dropped once copied, so they are not
+        // still held while unpacking adds two model-sized buffers (on a Wii,
+        // that peak is what has to fit).
+        const std::string bytes = odFile::readAll(m_modelPath);
+        if (bytes.empty()) return false;                   // no file: not an error
+        if (bytes.size() < 10) {
+            m_loadError = "file is " + std::to_string(bytes.size()) + " bytes, too small to be a model";
+            return false;
+        }
+        buf.assign(bytes.begin(), bytes.end());
     }
-    std::vector<uint8_t> buf(bytes.begin(), bytes.end());
     // ODAZ is the compressed container; a plain ODAI file passes through
     // untouched, so a model written by an older build still loads.
     if (!modelblob::unpack(buf)) { m_loadError = "compressed container is corrupt"; return false; }

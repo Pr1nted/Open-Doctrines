@@ -1,5 +1,4 @@
 #include "GameUpdates.h"
-#include "util/Async.h"
 #include "util/Sha256.h"
 #include "util/RunCurl.h"
 
@@ -714,7 +713,11 @@ void GameUpdates::beginUpdate() {
     s.stage = Stage::Downloading;
     s.percent = 0;
     setStatus(s);
-    odasync::run([this]() { runUpdate(); });
+#if defined(OD_NO_THREADS)
+    runUpdate();   // fails at once: see below
+#else
+    std::thread([this]() { runUpdate(); }).detach();
+#endif
 }
 
 void GameUpdates::runUpdate() {
