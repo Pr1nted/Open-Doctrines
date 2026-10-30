@@ -22,23 +22,43 @@ PLATFORM="$(ls "$ANDROID_HOME"/platforms/android-3*/android.jar 2>/dev/null | so
 [ -n "$PLATFORM" ] || { echo "no platform jar under $ANDROID_HOME"; exit 1; }
 BUILD=build-android
 OUT="$BUILD/OpenDoctrines.apk"
-ABI=arm64-v8a
 
-[ -f "$BUILD/libopendoctrines.so" ] || { echo "no .so -- run the cmake android build first"; exit 1; }
-[ -d "$BUILD/assets" ]              || { echo "no staged assets -- re-run cmake configure"; exit 1; }
+# ── ONE APK, EVERY ABI ──
+#
+# OD_ANDROID_ABIS lists the ABIs to package, and each one's library is read
+# from build-android/lib/<abi>/libopendoctrines.so. CI builds all four, one
+# CMake build per ABI, and places them there. Unset, this packages the single
+# arm64-v8a library a local `cmake -B build-android` leaves at the top of the
+# build directory -- the way this script has always been run by hand.
+#
+# Why four: arm64-v8a is phones; x86_64 and x86 let Intel and AMD Chromebooks
+# run the game natively instead of through ChromeOS's Arm translation; and
+# armeabi-v7a covers 32-bit Arm. Android installs the one that matches.
+ABIS="${OD_ANDROID_ABIS:-arm64-v8a}"
+[ -d "$BUILD/assets" ] || { echo "no staged assets -- re-run cmake configure"; exit 1; }
 
-echo "==> staging"
+echo "==> staging ($ABIS)"
 rm -rf "$BUILD/apk"
-mkdir -p "$BUILD/apk/lib/$ABI"
-cp "$BUILD/libopendoctrines.so" "$BUILD/apk/lib/$ABI/"
-# Strip: the unstripped library is ~66 MB, almost all of it debug info that a
-# phone will never read. This is the difference between a 25 MB download and a
-# 90 MB one.
 # The prebuilt directory is named for the HOST, so it differs between a Mac and
 # a Linux runner. Glob it rather than naming one.
 STRIP="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-strip 2>/dev/null | head -1)"
-[ -n "$STRIP" ] && "$STRIP" --strip-unneeded "$BUILD/apk/lib/$ABI/libopendoctrines.so" || \
-    echo "  (llvm-strip not found; shipping unstripped)"
+for ABI in $ABIS; do
+    SO="$BUILD/lib/$ABI/libopendoctrines.so"
+    if [ ! -f "$SO" ] && [ -z "${OD_ANDROID_ABIS:-}" ]; then
+        SO="$BUILD/libopendoctrines.so"      # a local single-ABI build
+    fi
+    [ -f "$SO" ] || { echo "no .so for $ABI at $SO -- build that ABI first"; exit 1; }
+    mkdir -p "$BUILD/apk/lib/$ABI"
+    cp "$SO" "$BUILD/apk/lib/$ABI/"
+    # Strip: the unstripped library is ~66 MB, almost all of it debug info that
+    # a phone will never read. This is the difference between a 25 MB download
+    # and a 90 MB one -- per ABI.
+    if [ -n "$STRIP" ]; then
+        "$STRIP" --strip-unneeded "$BUILD/apk/lib/$ABI/libopendoctrines.so"
+    else
+        echo "  (llvm-strip not found; shipping $ABI unstripped)"
+    fi
+done
 
 echo "==> compiling resources"
 # The launcher icon is the only resource, but it still has to go through the

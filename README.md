@@ -317,9 +317,32 @@ Requires **Windows 10 or later**. Three builds are published:
 The build is unsigned, so SmartScreen will show *"Windows protected your PC"*
 on first run — **More info → Run anyway**.
 
+### ChromeOS
+
+Two ways in, and both are built for every release:
+
+- **Linux (recommended on a laptop).** Turn on *Linux development environment*
+  in ChromeOS Settings, then open `OpenDoctrines-chromeos-x64.deb` (Intel and
+  AMD Chromebooks) or `OpenDoctrines-chromeos-arm64.deb` (Arm) from the Files
+  app. It installs into ChromeOS's Linux container and appears in the
+  launcher. This is the full desktop game: keyboard and mouse, mods,
+  multiplayer, the map editor.
+- **Android.** The [Android](#android--experimental) APK runs on Chromebooks
+  that have the Play Store, natively on Intel, AMD and Arm alike.
+
+The ChromeOS `.deb` is the Linux build, because ChromeOS's Linux environment
+*is* Debian 12. What makes it ChromeOS's is how it is checked: every release
+installs it with apt in a Debian 12 container on its own architecture, checks
+every library resolves and the launcher entry is there, and plays three turns
+of 1939 from the installed copy on software rendering — which is what a
+Chromebook without Linux GPU acceleration gives it. Pull requests run the same
+check on x86-64 (`tools/chromeos_check.sh`).
+
 ### Android — experimental
 
-Requires **Android 7.0 (API 24) or later**, **arm64** only. Sideload the APK;
+Requires **Android 7.0 (API 24) or later**. One APK carries the game for
+**arm64, 32-bit Arm, x86-64 and x86**, and Android installs the one that
+matches the device. Sideload the APK;
 it is signed with a debug key, so Android will ask you to allow installs from
 whatever app you downloaded it with.
 
@@ -349,7 +372,8 @@ Specifically:
   therefore takes noticeably longer than later ones.
 
 Build it with `tools/package_android.sh` after configuring with the NDK
-toolchain; the CI builds and checks the same APK on every push.
+toolchain; the CI builds and checks the same APK on every push, one NDK build
+per ABI (`OD_ANDROID_ABIS` lists them; see the script).
 
 ### TempleOS
 

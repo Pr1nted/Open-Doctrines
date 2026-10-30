@@ -152,6 +152,13 @@ deb)
     # The runtime libraries raylib's X11 backend dlopens or links. Named
     # explicitly rather than left to fpm, because a .deb that installs and then
     # cannot open a window is worse than one that refuses to install.
+    #
+    # libopengl0 IS THE ONE THE BINARY ACTUALLY LINKS. CMake's FindOpenGL
+    # prefers GLVND, so the game's only GL link is libOpenGL.so.0 -- which
+    # Debian ships in libopengl0, NOT in libgl1. A desktop usually has it
+    # anyway; a fresh Debian does not, and the first install into one (the
+    # ChromeOS check, tools/chromeos_check.sh) reported "libOpenGL.so.0 =>
+    # not found": the package installed and the game could not start.
     fpm -s dir -t deb -C "$STAGE" \
         --name opendoctrines \
         --version "$VERSION" \
@@ -161,7 +168,7 @@ deb)
         --description 'OpenDoctrines -- a grand strategy game of doctrines, economies and war' \
         --license 'See LICENSE: free to play, modify and share non-commercially' \
         --depends libc6 --depends libx11-6 --depends libxrandr2 --depends libxi6 \
-        --depends libxcursor1 --depends libxinerama1 --depends libgl1 \
+        --depends libxcursor1 --depends libxinerama1 --depends libgl1 --depends libopengl0 \
         --depends libasound2 --depends libxkbcommon0 \
         --package "$OUT/opendoctrines_${VERSION}_${ARCH}.deb" \
         usr
