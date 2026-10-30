@@ -463,6 +463,37 @@ if(OD_WII)
     list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
     message(STATUS "OD_WII: raylib on rlsw and the game's Wii platform layer; worlds at 1/8")
 endif()
+# ── THE NINTENDO 3DS ──
+#
+# Homebrew (.3dsx), built with devkitARM and libctru (devkitPro's 3DS.cmake
+# sets NINTENDO_3DS) and started from the Homebrew Launcher. As the Wii: rlsw
+# and a platform layer of the game's own, src/platform/3ds/rcore_3ds.c. The
+# game draws 640x480, which neither screen is, so the top screen shows all of
+# it at half size and the bottom screen a full-size window of it to read and
+# touch, around the cursor.
+#
+# For the New 3DS (124 MB for applications; the original model's 64 MB is not
+# enough for a world even at 1/8). Single-threaded, as on DOS: the AI's
+# learning thread and the audio pump would share an 804 MHz ARM11 with the
+# game, and libctru's threads start with stacks a fraction of a desktop's.
+# Network, mods, HarfBuzz and audio off, as on the Wii.
+if(NINTENDO_3DS)
+    set(od_3ds_default ON)
+else()
+    set(od_3ds_default OFF)
+endif()
+option(OD_3DS "Build for the Nintendo 3DS (devkitARM/libctru): rlsw on both screens, stylus and Circle Pad" ${od_3ds_default})
+if(OD_3DS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    set(OD_MAP_DIVISOR 8 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    # libctru's pthreads are in libctru itself; see OD_WII.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    message(STATUS "OD_3DS: raylib on rlsw and the game's 3DS platform layer; worlds at 1/8, single-threaded")
+endif()
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -531,7 +562,7 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
     # with DISPLAY unset, and the game is pure raylib API, so its backend is a
     # build switch rather than a code change.
-    if(OD_DOS OR OD_WII)
+    if(OD_DOS OR OD_WII OR OD_3DS)
         set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the game's own layer" FORCE)
     endif()
     if(OD_HEADLESS_SDL)
@@ -632,6 +663,12 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # Haiku's pthreads have no pthread_attr_setinheritsched, which miniaudio
     # calls (it guards the call for BeOS, not Haiku): src/platform/haiku/
     # pthread_compat.h stands in for it.
+    # devkitPro's newlib makes uint32_t an unsigned long, so rlsw's GLuint
+    # pointers and the unsigned int pointers rlgl hands them differ in type
+    # though not in size (both 32 bits); GCC 14 made that an error.
+    if(CMAKE_SYSTEM_NAME MATCHES "^Nintendo" AND TARGET raylib)
+        target_compile_options(raylib PRIVATE -Wno-error=incompatible-pointer-types)
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" AND TARGET raylib)
         target_compile_options(raylib PRIVATE
             "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/serenity/raylib_compat.h")
@@ -669,6 +706,14 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
              "// OD_WII: no audio backend; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
         message(STATUS "raylib: Wii platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
+    # And the 3DS's (see OD_3DS above).
+    if(OD_3DS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/3ds/rcore_3ds.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_3DS: no audio backend; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        message(STATUS "raylib: 3DS platform layer in place of platforms/rcore_memory.c; raudio left out")
     endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
@@ -903,6 +948,11 @@ else()
         # VitaSDK's toolchain calls the system Generic, so it would otherwise
         # fall through to "unknown". One CPU (Cortex-A9), one archive.
         set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(NINTENDO_3DS)
+        # The 3DS: devkitARM's arm-none-eabi gcc for the ARM11 MPCore (armv6k,
+        # hard float), the one CPU every model has.
+        set(ODSEAL_PLATFORM "3ds-arm")
         set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(NINTENDO_WII)
         # The Wii: devkitPPC's powerpc-eabi gcc, Broadway (750CL), big-endian.
@@ -2058,6 +2108,16 @@ if(OD_WII)
     target_link_libraries(OpenDoctrines wiikeyboard fat)
     ogc_create_dol(OpenDoctrines)
 endif()
+if(OD_3DS)
+    # See OD_3DS above. The ELF is made a .3dsx (with its icon and name) by
+    # tools/n3ds_package.py, which runs devkitPro's smdhtool and 3dsxtool.
+    # OD_NO_THREADS: the single-threaded paths DOS takes; std::mutex is real.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_3DS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_sources(OpenDoctrines PRIVATE src/platform/newlib_posix_stubs.cpp)
+    target_link_libraries(OpenDoctrines ctru m)
+endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
     # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
@@ -2084,7 +2144,7 @@ endif()
 # library is not linked, and neither is GLFW, GL or an audio backend. A raylib
 # call with no server implementation is a LINK error naming the symbol, which
 # is the property that keeps the graphics layer out.
-if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS AND NOT OD_WII)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS AND NOT OD_WII AND NOT OD_3DS)
     set(SERVER_SOURCES ${GAME_SOURCES})
     list(REMOVE_ITEM SERVER_SOURCES main.cpp)
     list(APPEND SERVER_SOURCES
