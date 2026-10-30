@@ -309,8 +309,8 @@ Porting the runtime is a separate piece of work and not scheduled.
 
 Built and published for **amd64** (`illumos-amd64`) inside a real OpenIndiana
 Hipster VM, by its own gcc, the same way as the BSDs. It ships with every
-release: `.github/workflows/other-os-game.yml` builds it — with Haiku and
-SerenityOS — on every pull request and push, and the release waits for it. It should run on any
+release: `.github/workflows/other-os-game.yml` builds it — with Haiku,
+SerenityOS and the PS Vita — on every pull request and push, and the release waits for it. It should run on any
 current illumos distribution with X11 and Mesa — OpenIndiana, or OmniOS with
 the X11 packages added — and needs `x11/library/mesa` and the usual X client
 libraries (`pkg install x11/library/mesa x11/library/libxrandr
@@ -363,6 +363,41 @@ shaders read, so their colours are exact.
 
 **Without mods** (WAMR has no SerenityOS platform layer). It uses SerenityOS's
 own SDL2 port for the window and input.
+
+### PS Vita
+
+Homebrew for a **PS Vita** running HENkaku or Ensō, as a `.vpk`
+(`OpenDoctrines-vita.vpk`) installed with VitaShell. Built with every release
+by the `vita` job in `other-os-game.yml`, with VitaSDK (a pinned snapshot,
+checked by hash: `tools/vitasdk_install.sh`).
+
+**The first start copies the game's data** to `ux0:data/OpenDoctrines/` on
+the memory card: a Vita app's own folder is read-only, and the game writes its
+config and saves beside its data, as everywhere else. A new version copies its
+data again and leaves your config and saves alone. Allow a few hundred MB.
+
+**Controls.** The sticks and buttons work as the gamepad does on a Steam
+Deck — left stick moves the cursor, ✕ clicks, □ right-clicks, ○ is back, the
+shoulder buttons zoom — and the front touch screen works as a touchscreen. It
+is raylib on SDL3, as on Linux, and SDL3 has a Vita backend.
+
+**Drawn in software**, as on SerenityOS (`OD_SOFTWARE_RENDER`): the Vita's
+GPU has no OpenGL of its own, and the GL layer homebrew uses (vitaGL) needs a
+shader compiler every player would first have to extract from their own
+console. The globe has no lighting effects; the map, panels and text are as
+everywhere else. The game asks for the Vita's full clock speed.
+
+**Single player, for now.** Multiplayer and sign-in are off (the Vita's
+network stack has to be started by the game, which it does not do yet), and so
+is sound (raylib's audio library has no Vita backend), and mods (WAMR has no
+Vita platform layer). The in-game updater does not run: a new `.vpk` is the
+update.
+
+**Not yet played on a Vita.** CI builds it, links it against VitaSDK's
+database of the system's functions (an unknown import fails the build), and
+checks the package's layout, title id, version and LiveArea images
+(`tools/vita_vpk.py --check`); it cannot run it, because that needs a Vita or
+Vita3K with Sony's firmware installed. Reports welcome.
 
 ### Windows
 

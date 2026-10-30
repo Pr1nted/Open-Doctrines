@@ -290,6 +290,10 @@ std::string GameUpdates::platformKey() {
 #elif defined(__ANDROID__)
     // An APK is replaced by reinstalling it, never by unpacking a zip over it.
     return "OpenDoctrines-android-none";
+#elif defined(__vita__)
+    // As the APK: a .vpk is installed by VitaShell, never unpacked over the
+    // game's own folder (app0: is read-only), so no zip is the update.
+    return "OpenDoctrines-vita-none";
 #elif defined(__linux__) && defined(OD_GLES)
   // The Raspberry Pi OS build (OpenGL ES, OD_GLES): it updates to itself, not
   // to the desktop-GL Linux build of the same CPU, which a Pi cannot draw.
@@ -384,6 +388,8 @@ bool GameUpdates::canSelfInstall() {
     return false;
 #elif defined(__APPLE__)
     return false;   // unnotarized replacement would not launch; see the header
+#elif defined(__vita__)
+    return false;   // app0: is read-only; a new .vpk is installed by VitaShell
 #else
     // Checked before returning true, not after: an installer-managed copy must
     // not be told it can replace its own files, whatever the platform allows.

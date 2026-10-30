@@ -15,6 +15,9 @@
    systems (illumos, Haiku, SerenityOS), which have no server build, and the
    Raspberry Pi OS game builds, whose server is the Linux arm64/armv7 one: a
    server draws nothing, so OpenGL ES changes nothing for it.
+5. The PS Vita's .vpk, which no updater key names (a .vpk is installed by
+   VitaShell, never unpacked over the game -- as the APK): the page's .vpk
+   button must name what other-os-game.yml uploads.
 
 WHY. They are maintained by hand in three files, and every way they can drift
 is silent. An updater key with no artifact means "no download for this
@@ -74,9 +77,24 @@ def page_zips():
     return {m[: -len(".zip")] for m in re.findall(r'data-asset="(OpenDoctrines-[^"]+\.zip)"', html)}
 
 
+def page_vpks():
+    html = read("packaging/web/site/download.html")
+    return set(re.findall(r'data-asset="(OpenDoctrines-[^"]+)\.vpk"', html))
+
+
+def built_vpks():
+    # The Vita job's ARTIFACT, uploaded as dist/<ARTIFACT>.vpk.
+    wf = read(".github/workflows/other-os-game.yml")
+    if ".vpk" not in wf:
+        return set()
+    return set(re.findall(r"ARTIFACT:\s*(OpenDoctrines-vita[A-Za-z0-9_-]*)", wf))
+
+
 def main():
     keys, built, page = updater_keys(), built_artifacts(), page_zips()
     problems = []
+    for n in sorted(page_vpks() - built_vpks()):
+        problems.append(f"download page offers {n}.vpk, which no release workflow builds")
     for n in sorted(keys - built):
         problems.append(f"updater asks for {n}.zip, but no release workflow builds it")
     for n in sorted(built - keys):

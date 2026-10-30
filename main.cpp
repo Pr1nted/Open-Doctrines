@@ -4,6 +4,7 @@
 #include "WinFatalDialog.h"
 #include "util/SoftwareGlRelaunch.h"
 #include "GifEncoder.h"
+#include "platform/Vita.h"
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
@@ -15,6 +16,11 @@ int main(int argc, char** argv) {
     // Banked before anything can chdir, so a software-GL retry can re-exec this
     // exact binary with the exact arguments. See util/SoftwareGlRelaunch.
     odRememberRelaunch(argc, argv);
+
+#if defined(__vita__)
+    // The game's own folder (app0:) is read-only on a Vita; see platform/Vita.h.
+    odVitaPrepareData();
+#endif
 
     // No dialogs in a run with nobody at the keyboard.
     //

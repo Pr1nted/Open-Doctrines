@@ -174,6 +174,10 @@ static void logHeapAt(const char* phase) {
     // partway, so the phase name is the part worth keeping; the figure is not
     // worth dragging psapi in for.
     printf("[MEM] %-26s (peak rss not sampled here)\n", phase);
+#elif defined(_NEWLIB_VERSION)
+    // newlib (the consoles: PS Vita, Wii, 3DS) has getrusage, but its rusage
+    // carries the two times and no peak.
+    printf("[MEM] %-26s (peak rss not sampled here)\n", phase);
 #else
     struct rusage ru{};
     if (getrusage(RUSAGE_SELF, &ru) == 0) {
