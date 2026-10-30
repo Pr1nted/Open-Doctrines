@@ -282,13 +282,22 @@ endif()
 # inline; riscv64 with GCC 12 or older does not for 1- and 2-byte operations
 # (std::atomic<bool>), and the link fails with undefined __atomic_* symbols
 # that do not mention atomics. Probe instead of guessing by architecture.
+#
+# Not on devkitPro's consoles (Wii, 3DS): a probe program cannot link there
+# without libogc/libctru's system libraries, which the toolchain files add only
+# to real targets, so the probe fails whatever the atomics do. The game itself
+# links against them, and is what would report a missing __atomic_* instead.
 include(CheckCXXSourceCompiles)
 set(od_atomic_probe "
 #include <atomic>
 #include <cstdint>
 std::atomic<bool> b; std::atomic<std::uint8_t> c; std::atomic<std::int64_t> i;
 int main() { b.exchange(true); c.fetch_add(1); return (int)i.fetch_add(1); }")
-check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+if(CMAKE_SYSTEM_NAME MATCHES "^Nintendo")
+    set(OD_ATOMIC_INLINE TRUE)
+else()
+    check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+endif()
 if(NOT OD_ATOMIC_INLINE)
     set(CMAKE_REQUIRED_LIBRARIES atomic)
     check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_WITH_LIB)
@@ -422,6 +431,38 @@ if(OD_DOS)
     endif()
     message(STATUS "OD_DOS: raylib on rlsw and the game's DOS platform layer; single-threaded, offline")
 endif()
+
+# ── THE NINTENDO WII ──
+#
+# Homebrew, built with devkitPPC and libogc (devkitPro's Wii.cmake sets
+# NINTENDO_WII) and started from the Homebrew Channel. As DOS: raylib on rlsw
+# with a platform layer of the game's own, src/platform/wii/rcore_wii.c --
+# the video interface's framebuffer, the Wii Remote's pointer as the mouse, a
+# USB keyboard if there is one -- because the Wii's GPU is not OpenGL. raylib's
+# audio module is left out (miniaudio has no Wii backend) as on DOS.
+#
+# 88 MB of memory in all, so worlds load at 1/8 resolution (OD_MAP_DIVISOR,
+# src/map/RasterScale.h). Threads work (libogc's pthreads); the network is off
+# for now (libogc's sockets want net_init first); mods are off (no WAMR
+# platform layer); no HarfBuzz.
+if(NINTENDO_WII)
+    set(od_wii_default ON)
+else()
+    set(od_wii_default OFF)
+endif()
+option(OD_WII "Build for the Nintendo Wii (devkitPPC/libogc): rlsw on the video interface's framebuffer, Wii Remote pointer" ${od_wii_default})
+if(OD_WII)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    set(OD_MAP_DIVISOR 8 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    # libogc's pthreads live in libogc itself, which every Wii program links;
+    # the stock FindThreads would go looking for a -pthread flag it has none of.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    message(STATUS "OD_WII: raylib on rlsw and the game's Wii platform layer; worlds at 1/8")
+endif()
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -490,8 +531,8 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
     # with DISPLAY unset, and the game is pure raylib API, so its backend is a
     # build switch rather than a code change.
-    if(OD_DOS)
-        set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the DOS layer" FORCE)
+    if(OD_DOS OR OD_WII)
+        set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the game's own layer" FORCE)
     endif()
     if(OD_HEADLESS_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL backend for headless" FORCE)
@@ -620,6 +661,14 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
                 -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h)
         endif()
         message(STATUS "raylib: DOS platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
+    # The Wii's, the same way (see OD_WII above).
+    if(OD_WII)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/wii/rcore_wii.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_WII: no audio backend; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        message(STATUS "raylib: Wii platform layer in place of platforms/rcore_memory.c; raudio left out")
     endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
@@ -854,6 +903,10 @@ else()
         # VitaSDK's toolchain calls the system Generic, so it would otherwise
         # fall through to "unknown". One CPU (Cortex-A9), one archive.
         set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(NINTENDO_WII)
+        # The Wii: devkitPPC's powerpc-eabi gcc, Broadway (750CL), big-endian.
+        set(ODSEAL_PLATFORM "wii-ppc")
         set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(DJGPP)
         # DOS: one CPU target, the 32-bit protected-mode code DJGPP emits
@@ -1992,6 +2045,19 @@ if(OD_DOS)
             $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/NoThreads.h>)
     endif()
 endif()
+if(OD_WII)
+    # See OD_WII above. NoAudio.cpp is the DOS build's, and is not DOS-specific:
+    # raylib's audio API as no-ops. The .dol is what the Homebrew Channel runs.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_WII=1 OD_SOFTWARE_RENDER=1)
+    # libogc has the BSD socket headers but, as newlib on the Vita, not
+    # dlfcn.h, sys/mman.h, ifaddrs.h or sys/un.h: the Vita's stand-ins (see
+    # "THE PS VITA") serve here unchanged -- every call they answer fails.
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_sources(OpenDoctrines PRIVATE src/platform/newlib_posix_stubs.cpp src/platform/wii/atomic64.c)
+    target_link_libraries(OpenDoctrines wiikeyboard fat)
+    ogc_create_dol(OpenDoctrines)
+endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
     # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
@@ -2018,7 +2084,7 @@ endif()
 # library is not linked, and neither is GLFW, GL or an audio backend. A raylib
 # call with no server implementation is a LINK error naming the symbol, which
 # is the property that keeps the graphics layer out.
-if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS AND NOT OD_WII)
     set(SERVER_SOURCES ${GAME_SOURCES})
     list(REMOVE_ITEM SERVER_SOURCES main.cpp)
     list(APPEND SERVER_SOURCES
