@@ -1,4 +1,4 @@
-# The game, built on FreeBSD and OpenBSD.
+# The game, built on FreeBSD, OpenBSD and NetBSD, for amd64 and arm64.
 #
 # WHY A SEPARATE WORKFLOW
 #
@@ -6,51 +6,146 @@
 # BSD VM (vmactions) on a Linux runner -- by the target system's own cc, not
 # cross-compiled by a Linux toolchain pretending. That is a different shape
 # from every other entry in release-game.yml's matrix, which is one job per
-# runner, so it lives on its own and is CALLED from there.
+# runner, so it lives on its own and is CALLED from there (and from
+# release-dryrun.yml).
 #
-# It is also workflow_dispatch, which the release path is not: a BSD build
-# that can only be exercised by tagging is one that gets discovered broken on
-# a tag, which is the exact failure release-dryrun.yml exists to prevent.
+# AND IT RUNS ON ITS OWN, on every pull request and every push to main, the
+# same triggers as test.yml: a BSD build that can only be exercised by tagging
+# is one that gets discovered broken on a tag, which is the exact failure
+# release-dryrun.yml exists to prevent. Not FROM test.yml, because the release
+# and dry-run workflows call both, and one run cannot upload the same artifact
+# name twice.
+#
+# ARM IS EMULATED
+#
+# The arm64 guests run under QEMU's emulation on an x86-64 runner: an x86
+# runner has no Arm virtualisation, and GitHub's Arm runners have no nested
+# virtualisation at all (vmactions measured them slower still). A build that
+# takes twenty minutes on amd64 takes several times that there, hence the
+# per-entry timeout -- and hence pull requests build the three amd64 ones
+# only. Every push to main, every dispatch and every release builds all six.
 #
 # WHAT IS DIFFERENT FROM A DESKTOP BUILD
 #
-# OpenBSD builds with mods OFF. The Gearbox runtime is WAMR, which has no
-# OpenBSD port, and OpenBSD's W^X policy is a poor fit for a WASM interpreter
-# that wants writable-then-executable pages. Rather than ship a build whose
-# mod menu is there and does nothing, mods are compiled out and README.md says
-# so. FreeBSD keeps them.
+# OpenBSD and NetBSD build with mods OFF. The Gearbox runtime is WAMR, which
+# has a FreeBSD platform layer and none for either of the others, and
+# OpenBSD's W^X policy is a poor fit for a WASM interpreter that wants
+# writable-then-executable pages anyway. Rather than ship a build whose mod
+# menu is there and does nothing, mods are compiled out and README.md says so.
+# FreeBSD keeps them, on both architectures.
+#
+# The build, the headless run and the packaging are tools/bsd_game_build.sh,
+# one script for all six; the VM steps below only install packages.
 name: BSD game
 
 on:
+  push:
+    branches: [main]
+    tags-ignore: ["**"]        # a tag is release-game.yml's, which calls this
+  pull_request:
   workflow_call:
+    inputs:
+      emulated:
+        description: "Also build the arm64 entries (emulated, and slow)"
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      emulated:
+        description: "Also build the arm64 entries (emulated, and slow)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
+# As test.yml: on a pull request the newest commit makes an older run moot;
+# anywhere else every run finishes. github.workflow is the CALLER's name when
+# this is called, so a release and a dry run never share a group.
+concurrency:
+  group: bsd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # The matrix, filtered. A matrix cannot `if:` one of its own entries away, so
+  # the list is built here and the build job runs whatever this hands it.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+      # The names this workflow publishes, the updater's keys, the download
+      # page and the server list, checked as one (see the script). Here
+      # because this is the workflow that adds platforms most often, and it
+      # runs on every pull request; it takes a second.
+      - name: Release names agree
+        run: python3 tools/check_release_names.py
+      - id: m
+        shell: python
+        env:
+          # Empty when not called with inputs (a push or a pull request).
+          EMULATED: ${{ inputs.emulated }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          import json, os
+          # odseal is the directory CMake asks for (CMakeLists.txt, "THE BSDs,
+          # NAMED ONE WAY"): amd64 and aarch64 on every BSD.
+          entries = [
+            {"name": "freebsd-amd64", "bsd": "freebsd", "arch": "x86_64",  "machine": "x86_64",  "odseal": "freebsd-amd64",   "timeout": 120},
+            {"name": "openbsd-amd64", "bsd": "openbsd", "arch": "x86_64",  "machine": "x86_64",  "odseal": "openbsd-amd64",   "timeout": 120},
+            {"name": "netbsd-amd64",  "bsd": "netbsd",  "arch": "x86_64",  "machine": "x86_64",  "odseal": "netbsd-amd64",    "timeout": 120},
+            {"name": "freebsd-arm64", "bsd": "freebsd", "arch": "aarch64", "machine": "aarch64", "odseal": "freebsd-aarch64", "timeout": 350},
+            {"name": "openbsd-arm64", "bsd": "openbsd", "arch": "aarch64", "machine": "aarch64", "odseal": "openbsd-aarch64", "timeout": 350},
+            {"name": "netbsd-arm64",  "bsd": "netbsd",  "arch": "aarch64", "machine": "aarch64", "odseal": "netbsd-aarch64",  "timeout": 350},
+          ]
+          # Pull requests build amd64 only; everything else all six unless
+          # told otherwise.
+          if os.environ["EVENT"] == "pull_request" or os.environ.get("EMULATED") == "false":
+              entries = [e for e in entries if e["arch"] == "x86_64"]
+          for e in entries:
+              e["artifact"] = "OpenDoctrines-" + e["name"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("matrix=" + json.dumps({"include": entries}) + "\n")
+
   build:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-22.04
-    # A whole game in an emulated VM on a shared runner. The desktop jobs take
-    # about fifteen minutes on real hardware; this has room to be several
-    # times that before it is a hang rather than a build.
-    timeout-minutes: 120
+    needs: plan
+    # 24.04, not 22.04: 22.04's QEMU predates the CPU model vmactions' Arm
+    # images ask for, and OpenBSD arm64 died at boot with "unable to find CPU
+    # model 'neoverse-n1'".
+    runs-on: ubuntu-24.04
+    # A whole game in a VM on a shared runner. The desktop jobs take about
+    # fifteen minutes on real hardware; amd64 has room to be several times
+    # that before it is a hang rather than a build, and arm64 is emulated.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { name: freebsd-amd64, artifact: OpenDoctrines-freebsd-amd64 }
-          - { name: openbsd-amd64, artifact: OpenDoctrines-openbsd-amd64 }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build and package (FreeBSD amd64)
-        if: matrix.name == 'freebsd-amd64'
+      # BEFORE booting anything. A platform with no sealed archive stops at
+      # configure, which on an emulated guest is half an hour in; this says
+      # the same thing in a second, and says what to do about it.
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab), which builds it in the \
+          same VM this job uses, and merge the branch it pushes. See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Build and package (FreeBSD ${{ matrix.arch }})
+        if: matrix.bsd == 'freebsd'
         uses: vmactions/freebsd-vm@v1
         with:
           release: '14.2'
+          arch: ${{ matrix.arch }}
           usesh: true
           copyback: true
           prepare: |
@@ -72,48 +167,11 @@ jobs:
               command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
             done
           run: |
-            set -e
-            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-              -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
-              "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
-              -DOD_DISCORD_APP_ID=1547303703370014830
-            cmake --build build --target OpenDoctrines -j 4
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+              sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }}
 
-            # AND THE HEADLESS SERVER, so something can actually be RUN here.
-            # The game itself needs an OpenGL window and there is no display
-            # in a VM on a CI runner, so a build that is only ever compiled is
-            # all a BSD job could otherwise claim. The server is the same
-            # engine with raylib stubbed out: --check loads a shipped map,
-            # builds a world and exits, which exercises the map reader, the
-            # save layer, the AI tables and the text layer odseal feeds.
-            cmake --build build --target OpenDoctrinesServer -j 4
-            # < /dev/null IS LOAD-BEARING, and this cost two runs to see.
-            #
-            # The dedicated server has an interactive console that reads
-            # stdin, and vmactions feeds this whole script to the remote shell
-            # ON stdin. So the server sat there and ATE THE REST OF THE
-            # SCRIPT: packaging never ran, the shell reached end-of-input with
-            # nothing left to do, and the step exited 0. The failure surfaced
-            # two steps later as "does not carry the account service" -- a
-            # complaint about a directory that was never created.
-            #
-            # Nothing in the log said so, because from the shell's point of
-            # view the script simply ended.
-            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check < /dev/null
-
-            # Echoed either side, because this step once did not run at all
-            # and nothing said so: the job went green here and failed in the
-            # NEXT step with "does not carry the account service", which is a
-            # report about a directory that was never created.
-            echo "=== packaging ==="
-            python3 tools/package.py --binary build/OpenDoctrines \
-                                     --out dist/OpenDoctrines-freebsd-amd64 --zip
-            echo "=== packaged ==="
-            ls -lh dist/
-            test -d dist/OpenDoctrines-freebsd-amd64 || { echo "no packaged tree"; exit 1; }
-
-      - name: Build and package (OpenBSD amd64)
-        if: matrix.name == 'openbsd-amd64'
+      - name: Build and package (OpenBSD ${{ matrix.arch }})
+        if: matrix.bsd == 'openbsd'
         uses: vmactions/openbsd-vm@v1
         with:
           # 7.7, not 7.6: OpenBSD keeps package sets for the two most recent
@@ -127,7 +185,9 @@ jobs:
           #
           # This pins a release that will itself age out. When it does, the
           # symptom is that same "no such dir" line in the prepare step.
+          # Unifico's build.yml pins the same release; move them together.
           release: '7.7'
+          arch: ${{ matrix.arch }}
           usesh: true
           copyback: true
           prepare: |
@@ -147,35 +207,77 @@ jobs:
               ln -sf "$py" /usr/local/bin/python3
             fi
             python3 --version
+          # OpenBSD ships X and Mesa in base (xenocara), so there is nothing
+          # to install for them -- unlike FreeBSD, where they are ports.
+          # OD_ENABLE_MODS=OFF: see the note at the top of this file.
           run: |
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+              sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
+
+      - name: Build and package (NetBSD ${{ matrix.arch }})
+        if: matrix.bsd == 'netbsd'
+        uses: vmactions/netbsd-vm@v1
+        with:
+          # NetBSD runs a binary built on an older release on a newer one, so
+          # building on 10 reaches 10 and 11 both. Unifico's build.yml pins
+          # the same release; move them together.
+          release: '10.1'
+          arch: ${{ matrix.arch }}
+          copyback: true
+          # pkgsrc, under /usr/pkg. Python is versioned there (python312
+          # installs python3.12 and nothing called python3), so the
+          # unversioned name is made here, as OpenBSD's is above. X and Mesa
+          # are in base under /usr/X11R7 -- a prefix FindX11 searches and
+          # FindOpenGL does not, hence the CMAKE_PREFIX_PATH below.
+          prepare: |
             set -e
-            # OpenBSD ships X and Mesa in base (xenocara), so there is nothing
-            # to install for them -- unlike FreeBSD, where they are ports.
-            #
-            # OD_ENABLE_MODS=OFF: see the note at the top of this file.
-            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-              -DOD_ENABLE_MODS=OFF \
-              -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
-              "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
-              -DOD_DISCORD_APP_ID=1547303703370014830
-            cmake --build build --target OpenDoctrines -j 4
-
-            # See the notes in the FreeBSD block: this is the only thing in a
-            # BSD job that RUNS rather than compiles, and < /dev/null is what
-            # stops the server's console eating the rest of this script.
-            cmake --build build --target OpenDoctrinesServer -j 4
-            ./build/OpenDoctrinesServer --map 1939 --no-tunnel --check < /dev/null
-
-            # Echoed either side, because this step once did not run at all
-            # and nothing said so: the job went green here and failed in the
-            # NEXT step with "does not carry the account service", which is a
-            # report about a directory that was never created.
-            echo "=== packaging ==="
-            python3 tools/package.py --binary build/OpenDoctrines \
-                                     --out dist/OpenDoctrines-openbsd-amd64 --zip
-            echo "=== packaged ==="
-            ls -lh dist/
-            test -d dist/OpenDoctrines-openbsd-amd64 || { echo "no packaged tree"; exit 1; }
+            export PATH="/usr/pkg/sbin:/usr/pkg/bin:$PATH"
+            # -uu, upgrading dependencies too: the image is older than the
+            # package set, and plain pkg_add refused git-base because it
+            # needs a newer pcre2 than the one already installed.
+            if command -v pkgin >/dev/null; then
+              pkgin -y update && pkgin -y install cmake ninja-build git-base python312
+            else
+              /usr/sbin/pkg_add -I -uu cmake ninja-build git-base python312
+            fi
+            ln -sf /usr/pkg/bin/python3.12 /usr/pkg/bin/python3
+            for t in cmake ninja git python3; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
+            # The X11 sets (Mesa, its headers) are part of a normal install,
+            # and the arm64 image has them -- the amd64 one does not. So add
+            # them from the release's own sets when they are missing, rather
+            # than depend on which image vmactions happened to build.
+            if [ ! -f /usr/X11R7/include/GL/gl.h ]; then
+              case "$(uname -m)" in
+                amd64)   port=amd64 ;;
+                evbarm)  port=evbarm-aarch64 ;;
+                *)       echo "prepare failed: no X11 sets, and no port for $(uname -m)"; exit 1 ;;
+              esac
+              # The CDN keeps current releases only; once a newer point
+              # release ships, the old one moves to archive.netbsd.org, and
+              # the CDN answers 404 (10.1, once 10.2 was out). Try both.
+              rel=$(uname -r)
+              for set in xbase xcomp; do
+                got=
+                for base in https://cdn.netbsd.org/pub/NetBSD \
+                            https://archive.netbsd.org/pub/NetBSD-archive; do
+                  url="$base/NetBSD-$rel/$port/binary/sets/$set.tar.xz"
+                  echo "fetching $url"
+                  if ftp -o /tmp/$set.tar.xz "$url"; then got=1; break; fi
+                done
+                [ -n "$got" ] || { echo "prepare failed: no $set set for NetBSD $rel/$port"; exit 1; }
+                tar -xpJf /tmp/$set.tar.xz -C /
+                rm -f /tmp/$set.tar.xz
+              done
+            fi
+            test -f /usr/X11R7/include/GL/gl.h || { echo "prepare failed: no X11/Mesa sets in this image"; exit 1; }
+          # OD_ENABLE_MODS=OFF: see the note at the top of this file.
+          run: |
+            export PATH="/usr/pkg/sbin:/usr/pkg/bin:$PATH"
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+              sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} \
+                -DOD_ENABLE_MODS=OFF -DCMAKE_PREFIX_PATH=/usr/X11R7
 
       # The same check the desktop jobs run, for the same reason: v1.0.4a
       # shipped with sign-in disabled on every platform and CI was green,

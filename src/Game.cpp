@@ -1165,7 +1165,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // name and none of the right contents. Choosing that one starts the game
     // with no fonts, no audio and no maps, and it DOES start, which is exactly
     // how a wrong data directory goes unnoticed.
-    std::string appDir = GetApplicationDirectory();
+    std::string appDir = odApplicationDirectory();
     if (!appDir.empty() && appDir.back() != '/' && appDir.back() != '\\')
         appDir += '/';
     m_dataDir = appDir + "../data/";
@@ -1260,7 +1260,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // GetApplicationDirectory() is the executable's own directory, which is
     // what an update must replace; the working directory can be anywhere when
     // the game is launched by double-clicking it.
-    GameUpdates::setInstallDir(GetApplicationDirectory());
+    GameUpdates::setInstallDir(odApplicationDirectory());
 
     // Sweep up after any update that installed on the previous run: the
     // staging directory and the binary that was displaced to make room. Both

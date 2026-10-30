@@ -275,23 +275,32 @@ An AppImage bundles the application's libraries but **not** the C library under
 them, so it is not a way around the glibc requirement. On Debian 11, Ubuntu
 20.04 or RHEL 9, use the Flatpak or build from source.
 
-### FreeBSD and OpenBSD
+### FreeBSD, OpenBSD and NetBSD
 
-Both are built and published as **amd64** zips, the same shape as every other
-desktop download, by each system's own compiler inside a real VM — not
-cross-compiled from Linux. Unpack and run.
+All three are built and published for **amd64** and **arm64**, the same shape
+as every other desktop download, by each system's own compiler inside a real
+VM — not cross-compiled from Linux. Unpack and run.
 
-You need the usual X11, Mesa and ALSA runtime libraries. On FreeBSD they are
-ports (`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
-libxkbcommon`); on OpenBSD X and Mesa are already in base.
+| System | Release built on | Downloads | Mods |
+|---|---|---|---|
+| FreeBSD | 14.2 | `freebsd-amd64`, `freebsd-arm64` | yes |
+| OpenBSD | 7.7 | `openbsd-amd64`, `openbsd-arm64` | no |
+| NetBSD | 10.1 (runs on 10 and later) | `netbsd-amd64`, `netbsd-arm64` | no |
 
-**Mods do not work on OpenBSD, and the build says so rather than pretending.**
-The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
-which has no OpenBSD port, and OpenBSD's W^X policy is a poor fit for an
-interpreter that wants pages it can write and then execute. The OpenBSD build
-is compiled with the runtime left out: there is no mod menu, rather than one
-that is there and does nothing. Everything else — the full game, scenarios,
-saves, multiplayer — is unaffected. FreeBSD has mods as normal.
+You need the usual X11 and Mesa runtime libraries. On FreeBSD they are ports
+(`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
+libxkbcommon`); on OpenBSD and NetBSD X and Mesa are already in base (on
+NetBSD, install the X11 sets if you left them out).
+
+**Mods do not work on OpenBSD or NetBSD, and the build says so rather than
+pretending.** The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
+which has a FreeBSD port and none for either of the others, and OpenBSD's W^X
+policy is a poor fit for an interpreter that wants pages it can write and then
+execute. Those builds are compiled with the runtime left out: there is no mod
+menu, rather than one that is there and does nothing. Everything else — the
+full game, scenarios, saves, multiplayer — is unaffected. FreeBSD has mods as
+normal, on both architectures. A source build on OpenBSD or NetBSD leaves mods
+out by default.
 
 Porting the runtime is a separate piece of work and not scheduled.
 
@@ -596,8 +605,13 @@ playing:
   | **Linux (x64)** | qualified — built, tested, and played a game |
   | **Windows (x64)** | qualified — built, tested, and played a game |
   | **macOS (arm64, x64)** | qualified *with one gap*: playing a real game is unproven |
-  | **FreeBSD (amd64)** | builds, packages, and loads a world headlessly |
-  | **OpenBSD (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **FreeBSD (amd64, arm64)** | builds, packages, and loads a world headlessly |
+  | **OpenBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **NetBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+
+  The BSDs' arm64 builds run in emulated VMs and take hours, so pull requests
+  build the three amd64 ones; every push to main and every release builds all
+  six.
 
   The macOS gap is the hosted runner and not the build: GitHub's macOS images
   have no usable display, so the game cannot open a window there and the play
@@ -630,32 +644,33 @@ playing:
   attests to the packaging, the registry and the shortcuts rather than to the
   binary on x64 hardware.
 
-  **FreeBSD and OpenBSD ship, and they are not equal.**
+  **FreeBSD, OpenBSD and NetBSD ship, and they are not equal.**
   The mod runtime is WebAssembly Micro Runtime, and WAMR ships platform support
-  for `freebsd` and none for `openbsd` — checked against its own
-  `core/shared/platform` directory, which lists sixteen platforms and not that
-  one. So:
+  for `freebsd` and none for `openbsd` or `netbsd` — checked against its own
+  `core/shared/platform` directory, which lists sixteen platforms and not those
+  two. So:
 
   | | the game | mods and the Gearbox SDK |
   |---|---|---|
   | **FreeBSD** | built every release | yes |
   | **OpenBSD** | built every release | **not available** |
+  | **NetBSD** | built every release | **not available** |
 
-  The OpenBSD build is compiled with the runtime left out rather than shipping
-  one that loads nothing. Porting WAMR to OpenBSD is a real piece of work and
-  belongs to its own project, not to a release of this one; if it lands, the
-  platform gains mods without anything else changing.
+  The OpenBSD and NetBSD builds are compiled with the runtime left out rather
+  than shipping one that loads nothing. Porting WAMR to them is a real piece of
+  work and belongs to its own project, not to a release of this one; if it
+  lands, those platforms gain mods without anything else changing.
 
-  Neither BSD has a GitHub-hosted runner, so both build inside a real BSD VM on
+  No BSD has a GitHub-hosted runner, so all three build inside a real BSD VM on
   a Linux runner (`.github/workflows/bsd-game.yml`) — by the target system's
-  own compiler, not cross-compiled. That workflow is dispatchable on its own,
-  so a BSD break is found before a tag rather than by one.
+  own compiler, not cross-compiled. That workflow runs on every pull request
+  and push as well as on a tag, so a BSD break is found before a tag rather
+  than by one.
 
-  Both are **amd64 only**, and the reason is the sealed `odseal` archive: the
-  VM images those jobs run are x86_64, so there is no machine in the pipeline
-  that can produce a `freebsd-aarch64` one. The codebase itself is fine there —
-  every source file of the server target compiles on FreeBSD 14.5/arm64, and
-  the build reaches the final link.
+  Each is built for **amd64 and arm64**. The arm64 guests are emulated on the
+  x86 runner, which is slow but is the target's own kernel, libc and compiler;
+  their sealed `odseal` archives are built the same way
+  (`.github/workflows/odseal-prebuilts.yml`).
 
   What each release actually proves on a BSD: the game compiles and packages,
   and the headless server **runs** — it loads the 1939 scenario and reports

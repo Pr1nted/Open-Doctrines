@@ -57,14 +57,15 @@ def platform_marks():
     """The download page's own icons, recoloured to the caption text colour.
 
     Order in download.html is fixed by the page's own card order: Windows,
-    Apple, Linux, Haiku, FreeBSD, OpenBSD, TempleOS (a church).  Taking them
+    Apple, Linux, Haiku, FreeBSD, OpenBSD, NetBSD (its flag), TempleOS (a
+    church).  Taking them
     by index is why this asserts the count -- if the page gains a platform,
     this stops rather than silently relabelling every mark.
     """
     html = open(os.path.join(ROOT, "packaging/web/site/download.html")).read()
     svgs = re.findall(r"<svg[^>]*>.*?</svg>", html, re.S)
-    assert len(svgs) == 7, "download.html has %d icons, expected 7" % len(svgs)
-    names = ["windows", "apple", "linux", "haiku", "freebsd", "openbsd", "templeos"]
+    assert len(svgs) == 8, "download.html has %d icons, expected 8" % len(svgs)
+    names = ["windows", "apple", "linux", "haiku", "freebsd", "openbsd", "netbsd", "templeos"]
     for name, svg in zip(names, svgs):
         stroked = 'class="stroked"' in svg
         svg = svg.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"', 1)

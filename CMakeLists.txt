@@ -606,6 +606,19 @@ else()
                 set(ODSEAL_ARCH "armv7l")
             endif()
         endif()
+        # THE BSDs, NAMED ONE WAY. CMake asks each BSD differently -- `uname -p`
+        # on FreeBSD and NetBSD, `arch -s` on OpenBSD -- and the answers do not
+        # agree: FreeBSD and OpenBSD say amd64 where NetBSD says x86_64, and
+        # all three say aarch64 for 64-bit Arm. So x86-64 is amd64 on every
+        # BSD, which is what the existing freebsd-amd64 and openbsd-amd64
+        # archives are called, and Arm is aarch64 whichever way it was asked.
+        if(ODSEAL_OS MATCHES "bsd$")
+            if(ODSEAL_ARCH STREQUAL "x86_64")
+                set(ODSEAL_ARCH "amd64")
+            elseif(ODSEAL_ARCH STREQUAL "arm64")
+                set(ODSEAL_ARCH "aarch64")
+            endif()
+        endif()
         set(ODSEAL_PLATFORM "${ODSEAL_OS}-${ODSEAL_ARCH}")
         set(ODSEAL_LIBNAME  "libodseal.a")
     else()
@@ -645,7 +658,18 @@ endif()
 # (no network, unsupported target), so a build without it still compiles and
 # links -- the mod menu then reports every mod as Failed with a diagnostic
 # saying the runtime is unavailable, rather than the build breaking.
-option(OD_ENABLE_MODS "Build the Gearbox WASM mod runtime" ON)
+#
+# OFF BY DEFAULT ON OpenBSD AND NetBSD. WAMR has no platform layer for either
+# (its core/shared/platform has freebsd and no other BSD), so ON there fails at
+# configure with a missing directory that does not say why. The release builds
+# pass OFF explicitly anyway; this is so a source build on those systems works
+# without knowing that. README.md, "FreeBSD, OpenBSD and NetBSD", says the same.
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD")
+    set(od_mods_default OFF)
+else()
+    set(od_mods_default ON)
+endif()
+option(OD_ENABLE_MODS "Build the Gearbox WASM mod runtime" ${od_mods_default})
 
 set(OD_MODS_BACKEND "none")
 if(OD_ENABLE_MODS)

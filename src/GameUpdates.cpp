@@ -307,14 +307,26 @@ std::string GameUpdates::platformKey() {
 #elif defined(__FreeBSD__)
   #if defined(__x86_64__)
     return "OpenDoctrines-freebsd-amd64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-freebsd-arm64";
   #else
     return "OpenDoctrines-freebsd-unknown";
   #endif
 #elif defined(__OpenBSD__)
   #if defined(__x86_64__)
     return "OpenDoctrines-openbsd-amd64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-openbsd-arm64";
   #else
     return "OpenDoctrines-openbsd-unknown";
+  #endif
+#elif defined(__NetBSD__)
+  #if defined(__x86_64__)
+    return "OpenDoctrines-netbsd-amd64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-netbsd-arm64";
+  #else
+    return "OpenDoctrines-netbsd-unknown";
   #endif
 #else
     return "OpenDoctrines-unknown";

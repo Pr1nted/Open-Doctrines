@@ -667,10 +667,11 @@ jobs:
     name: Test
     uses: ./.github/workflows/test.yml
 
-  # FreeBSD and OpenBSD, built inside real BSDs on a Linux runner. Its own
-  # workflow because it is a different shape from this matrix -- one job per
-  # runner -- and because it is dispatchable on its own, so a BSD break is
-  # found before a tag rather than by one.
+  # FreeBSD, OpenBSD and NetBSD, amd64 and arm64, built inside real BSDs on a
+  # Linux runner. Its own workflow because it is a different shape from this
+  # matrix -- one job per runner -- and because it also runs on its own, on
+  # every pull request and push, so a BSD break is found before a tag rather
+  # than by one.
   bsd:
     name: BSD
     uses: ./.github/workflows/bsd-game.yml
