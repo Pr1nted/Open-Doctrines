@@ -255,6 +255,54 @@ jobs:
             "$t"
           fi
 
+      # A STEAM DECK'S CONTROLS. In Game Mode a Deck is a gamepad and nothing
+      # else. tests/pad_sdl_test.cpp attaches one through SDL's public
+      # virtual-joystick API as the Deck's own controller (28de:1205) and checks
+      # it reaches the game: the stick drives the cursor, A and X click, B goes
+      # back, the d-pad steps through menus, the bumpers zoom.
+      - name: A Steam Deck's controls reach the game (SDL gamepad)
+        if: matrix.name == 'linux-x64' || matrix.name == 'windows-x64'
+        shell: bash
+        env:
+          OD_PAD_SDL_REQUIRE: "1"
+        run: |
+          set -e
+          cmake --build build --config Release --target PadSdlTest -j 4
+          t=build/PadSdlTest; [ -f build/PadSdlTest.exe ] && t=build/PadSdlTest.exe
+          [ -f build/Release/PadSdlTest.exe ] && t=build/Release/PadSdlTest.exe
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a -s "-screen 0 1280x800x24" "$t"
+          else
+            "$t"
+          fi
+
+      # A STEAM DECK'S SCREEN, 1280x800. The default window is 1600x900, so on
+      # the Deck's desktop it must be fitted to the panel, and under gamescope
+      # (Game Mode) it must be fullscreen at the panel's own size. The game
+      # reports what it settled on (OD_DPI_PROBE) and this holds it to both.
+      - name: A Steam Deck's screen (1280x800, desktop and Game Mode)
+        if: matrix.name == 'linux-x64'
+        shell: bash
+        run: |
+          set -e
+          game=build/OpenDoctrines
+          data=$(mktemp -d); cp -R data/. "$data/"
+          probe() {
+            env "$@" OD_DPI_PROBE=1 OD_DATA_DIR="$data" timeout 40 \
+              xvfb-run -a -s "-screen 0 1280x800x24" stdbuf -oL "$game" 2>&1 \
+              | grep -m1 '^\[WINDOW\]' || true
+          }
+          desk=$(probe XDG_CURRENT_DESKTOP=KDE)
+          gs=$(probe XDG_CURRENT_DESKTOP=gamescope)
+          echo "desktop:   $desk"
+          echo "game mode: $gs"
+          w=$(echo "$desk" | sed -n 's/^\[WINDOW\] \([0-9]*\)x\([0-9]*\).*/\1 \2/p')
+          set -- $w
+          [ -n "$1" ] && [ "$1" -le 1280 ] && [ "$2" -le 800 ] \
+            || { echo "::error::the desktop window does not fit a 1280x800 screen: $desk"; exit 1; }
+          echo "$gs" | grep -q '^\[WINDOW\] 1280x800 .*fullscreen=1 gamescope=1' \
+            || { echo "::error::under gamescope the game is not fullscreen at 1280x800: $gs"; exit 1; }
+
       # ── A REAL HTTPS REQUEST, ON THIS PLATFORM ──
       #
       # The only networking the suite does is plaintext to localhost, so the
