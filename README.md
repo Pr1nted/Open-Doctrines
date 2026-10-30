@@ -465,6 +465,41 @@ to the launcher's layout and the .3dsx to its header and icon
 (`tools/n3ds_package.py --check`). Running it in Azahar (Citra's successor) is
 the next step; it has not been tried on a 3DS. Reports welcome.
 
+### RISC OS
+
+For **RISC OS 5** (`riscos-arm`) on a Raspberry Pi or any other ARMv7 machine
+it runs on: unzip `OpenDoctrines-riscos-arm.zip` and double-click
+`!Doctrines`. Built with every release by the `riscos` job in
+`other-os-game.yml`, with GCCSDK's GCC 10.2 and UnixLib from the
+[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) image, pinned by
+digest.
+
+**Full-screen.** As games on RISC OS usually are, it is a single-tasking
+program: it takes the screen in a mode of its own (the size it asks for, or
+1280x720, 1024x768 and down; `OD_RISCOS_MODE=WxH` picks one), pauses the
+desktop, and gives the desktop its mode back when it quits.
+
+**Controls.** The mouse: **Select** clicks, **Adjust** is the right button,
+**Menu** the middle one. There is no scroll wheel outside the desktop, so
+**Page Up** and **Page Down** zoom. The keyboard works as on any other
+platform, typing included.
+
+**How it draws.** RISC OS has no OpenGL the game can count on, so, as on DOS,
+`src/platform/riscos/rcore_riscos.c` shows raylib's software-rendered frame in
+screen memory, at 32 or 16 bits a pixel.
+
+**Worlds at 1/2 resolution, one thread.** A full world needs about 700 MB to
+load, more than a RISC OS application slot holds; at half resolution
+(`OD_MAP_DIVISOR`, see `src/map/RasterScale.h`) it peaks near 230 MB, and
+`!Run` asks for 320 MB. The AI does not train in the background.
+
+**Single player, silent.** Network, sound, mods and self-updates are off for now.
+
+**Not yet run.** CI builds it, checks it is an ARM program made into an AIF
+image, and holds the zip to the shape of a RISC OS application with its
+filetypes (`tools/riscos_package.py --check`). It has not been tried on RISC OS.
+Reports welcome.
+
 ### DOS
 
 A **32-bit DOS** program (`dos-x86`), built with DJGPP (gcc 12, a pinned

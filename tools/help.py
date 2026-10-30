@@ -150,6 +150,9 @@ GROUPS = [
         # The 3DS: build (or check) the Homebrew Launcher's SD-card zip -- the
         # .3dsx with its SMDH (name, 48x48 icon), data.
         "n3ds_package.py",
+        # RISC OS: build (or check) the application zip -- !Doctrines with !Run,
+        # !Boot, !Sprites (made from the icon), the AIF !RunImage, filetyped.
+        "riscos_package.py",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,
