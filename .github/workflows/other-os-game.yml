@@ -62,7 +62,7 @@ jobs:
           - { name: illumos-amd64, os: illumos, machine: x86_64, odseal: illumos-amd64, timeout: 150 }
           # x86-64 only: 32-bit Haiku is the gcc2 hybrid, which cannot build
           # C++20, and the Arm and RISC-V ports are not releases.
-          - { name: haiku-x64,     os: haiku,   machine: x86_64, odseal: haiku-x86_64,  timeout: 150 }
+          - { name: haiku-x64,     os: haiku,   machine: x86_64, odseal: haiku-x86_64,  timeout: 240 }
     env:
       ARTIFACT: OpenDoctrines-${{ matrix.name }}
     steps:
