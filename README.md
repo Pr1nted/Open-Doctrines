@@ -399,6 +399,44 @@ checks the package's layout, title id, version and LiveArea images
 (`tools/vita_vpk.py --check`); it cannot run it, because that needs a Vita or
 Vita3K with Sony's firmware installed. Reports welcome.
 
+### DOS
+
+A **32-bit DOS** program (`dos-x86`), built with DJGPP (gcc 12, a pinned
+toolchain checked by hash: `tools/dos_toolchain.sh`) with every release by the
+`dos` job in `other-os-game.yml`, and shipped with CWSDPMI, the DPMI host it
+runs under. Unzip it and run `DOCTRINE`; `DOS.TXT` in the zip says the
+same as this.
+
+**What it needs.** A Pentium-class PC (or DOSBox-X), a VESA 2.0 graphics card
+with a linear framebuffer — the game picks the largest 15/16/24/32-bit mode up
+to the size it asks for, or `SET OD_VESA=1024x768` — a mouse driver, **long
+file names** (they work in a Windows 9x DOS prompt and in DOSBox-X; in plain
+MS-DOS or FreeDOS load DOSLFN), and **about 320 MB of memory**: worlds load
+at half resolution on DOS, which peaks near 230 MB.
+
+**How it draws.** raylib has no DOS backend, so the game carries one:
+`src/platform/dos/rcore_dos.c`, which sets a VESA mode, maps its linear
+framebuffer and converts raylib's software-rendered frame into its pixel
+format, reads the mouse through INT 33h (and its wheel, with CuteMouse), and
+the keyboard from its own IRQ 1 handler (a US layout: DOS has no keyboard
+layout a program that reads the keyboard controller can ask for). The cursor
+is painted into each frame, since DOS draws none in a VESA mode. Rendering is
+raylib's software rasteriser, as on SerenityOS and the Vita.
+
+**Single player, silent, offline.** DJGPP has no threads, so the game runs
+single-threaded — the same paths the browser build takes (`OD_NO_THREADS`) —
+and no network stack, so there is no multiplayer, sign-in, mod directory or
+in-game updater; and no sound yet (raylib's audio needs threads: a Sound
+Blaster mixer is the next step).
+
+**Run in CI, in DOSBox-X.** The packaged zip is unpacked and plays three turns
+of 1939 in DOSBox-X (an emulated Pentium with an S3 card), and its screen is
+captured as it starts. On every pull request, the DOS build's own code — the
+single-threaded game and the screen layer — is also built for Linux
+(`-DOD_DOS=ON`, which draws into a stand-in screen) and checked to show
+exactly what the game drew (`tools/dos_framebuffer_check.py`). **Not yet run
+on a real DOS machine**: reports welcome.
+
 ### Windows
 
 Requires **Windows 10 or later**. Three builds are published:

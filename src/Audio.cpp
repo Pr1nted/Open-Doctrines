@@ -954,8 +954,9 @@ void Audio::backgroundPumpLoop() {
 
 void Audio::beginBackgroundPump() {
     if (!m_available) return;
-#ifdef __EMSCRIPTEN__
-    // No pump in a browser, and no way to have one. The web build is
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
+    // No pump in a browser, and no way to have one. (Nor on DOS, which has no
+    // threads and, so far, no audio device either.) The web build is
     // single-threaded and compiled without exceptions, so constructing a
     // std::thread here does not fail -- it aborts the tab. This is the call
     // that killed the game every time a player opened a world: the loader
@@ -977,15 +978,16 @@ void Audio::beginBackgroundPump() {
 
 void Audio::endBackgroundPump() {
     if (!m_available) return;
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     return;   // begin was a no-op there, so m_bgDepth was never raised
-#endif
+#else
     if (m_bgDepth == 0) return;
     if (--m_bgDepth > 0) return;
     m_bgRunning.store(false, std::memory_order_release);
     // Joined, not detached: the caller is about to be free to swap tracks, and
     // that must not happen while the thread still holds a pointer to this one.
     if (m_bgThread.joinable()) m_bgThread.join();
+#endif
 }
 
 // ────────────────────────────────────────────────────────────────────────────

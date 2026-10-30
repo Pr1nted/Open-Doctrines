@@ -140,6 +140,10 @@ GROUPS = [
         # The PS Vita: install the pinned VitaSDK, and build (or check) the
         # .vpk VitaShell installs -- eboot, param.sfo, LiveArea, data.
         "vitasdk_install.sh", "vita_vpk.py",
+        # DOS: install DJGPP and CWSDPMI (pinned), run a DOS command in
+        # DOSBox-X headless and bring back its output and screen, and check
+        # the DOS screen layer shows what the game drew (on a Linux host).
+        "dos_toolchain.sh", "dos_run.sh", "dos_framebuffer_check.py",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,

@@ -1,5 +1,5 @@
 # The game, built for the systems that are neither a desktop runner's own nor
-# a BSD: OpenIndiana (illumos), Haiku and SerenityOS -- and the PS Vita, a
+# a BSD: OpenIndiana (illumos), Haiku, SerenityOS and DOS -- and the PS Vita, a
 # console rather than a computer, built and shipped the same way (its job is
 # at the end).
 #
@@ -316,6 +316,164 @@ jobs:
           fi
           echo "account service found in:"
           echo "$found"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── DOS ──
+  #
+  # Cross-compiled with DJGPP (tools/dos_toolchain.sh: a pinned gcc 12.2 and
+  # CWSDPMI, both checked by hash) into a 32-bit protected-mode .exe, on the
+  # game's own raylib platform layer for DOS -- a VESA linear framebuffer, the
+  # INT 33h mouse, an IRQ 1 keyboard handler -- with the software renderer
+  # (OD_DOS in CMakeLists.txt). Single-threaded and offline: DJGPP has neither
+  # threads nor a network stack.
+  #
+  # AND RUN: unlike SerenityOS and the Vita, DOS can be run right here.
+  # DOSBox-X (an emulated Pentium with an S3 card and long file names) plays
+  # three turns of 1939 in the PACKAGED copy, and the screen is captured while
+  # the game starts up normally, so what VESA showed is in the artifacts.
+  dos:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: dos-x86, odseal: dos-i586 }
+    env:
+      ARTIFACT: OpenDoctrines-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab) and merge the branch it pushes. \
+          See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Host packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build dosbox-x xvfb imagemagick unzip
+
+      - name: DJGPP and CWSDPMI
+        run: |
+          bash tools/dos_toolchain.sh "$HOME/dos"
+          echo "DJGPP_PREFIX=$HOME/dos/djgpp" >> "$GITHUB_ENV"
+
+      - name: Build the game for DOS
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/dos/djgpp.toolchain.cmake" \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            -DOD_DISCORD_APP_ID=1547303703370014830
+          cmake --build build --target OpenDoctrines -j 4
+
+      # A DOS program, not something the runner's compiler made: an MZ
+      # executable carrying DJGPP's go32 stub in front of the COFF image.
+      - name: The binary is a DJGPP DOS program
+        run: |
+          exe=build/OpenDoctrines.exe
+          [ "$(head -c 2 "$exe")" = "MZ" ] || { echo "$exe: not an MZ executable"; exit 1; }
+          LC_ALL=C grep -qa "go32stub" "$exe" || { echo "$exe: no DJGPP stub"; exit 1; }
+          "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-strip" "$exe"
+          ls -l "$exe"
+
+      # DOCTRINE.EXE, an 8.3 name: DJGPP's stub reopens its own image by the
+      # short name DOS hands it, so OpenDoctrines.exe started as
+      # "OpenDoctrines" went looking for C:\OPENDOCT.EXE and found nothing.
+      - name: Package
+        run: |
+          cp build/OpenDoctrines.exe build/DOCTRINE.EXE
+          python3 tools/package.py --binary build/DOCTRINE.EXE --out "dist/$ARTIFACT" --no-strip \
+            --add "$HOME/dos/cwsdpmi/CWSDPMI.EXE" --add "$HOME/dos/cwsdpmi/CWSDPMI.DOC" \
+            --add packaging/dos/DOS.TXT --zip
+
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/$ARTIFACT" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service::$ARTIFACT does not carry $issuer."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
+      # The packaged copy, unzipped as a player would, played in DOSBox-X.
+      - name: Play three turns in DOSBox-X
+        run: |
+          rm -rf dosrun && mkdir dosrun && unzip -q "dist/$ARTIFACT.zip" -d dosrun
+          game="dosrun/$ARTIFACT"
+          # Whatever DOS and the extender said goes into this log, not only
+          # into an artifact: a run that dies before main() prints nothing to
+          # OUT.TXT, and DOSBox-X's own log is then the only account of it.
+          show_log() {
+            echo "--- the game folder"; ls -la "$game"
+            echo "--- TRACE.TXT"; cat "$game/TRACE.TXT" 2>/dev/null || echo "(none: main() was never reached)"
+            echo "--- OUT.TXT"; cat "$game/OUT.TXT" 2>/dev/null || true
+            echo "--- DOSBOX.LOG (tail)"; tail -25 "$game/DOSBOX.LOG" 2>/dev/null || true
+            # A CPU exception names its EIP; the instruction there is the
+            # answer to "what does this machine not have".
+            eip=$(grep -o 'at eip=[0-9a-f]*' "$game/OUT.TXT" 2>/dev/null | head -1 | cut -d= -f2)
+            if [ -n "$eip" ]; then
+              a=$((0x$eip - 16)); b=$((0x$eip + 16))
+              echo "--- the code at eip=$eip"
+              "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-objdump" -d --start-address=$a --stop-address=$b \
+                build/OpenDoctrines.exe | tail -12 || true
+            fi
+          }
+          # DJGPP's REDIR (djdev205), for the run only -- never packaged:
+          # COMMAND.COM cannot redirect stderr, and an extender or stub that
+          # fails before main() reports there and nowhere else.
+          run='DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck'
+          for u in https://www.delorie.com/pub/djgpp/current/v2/djdev205.zip \
+                   https://ftp.fau.de/djgpp/current/v2/djdev205.zip; do
+            if curl -fsSL --retry 3 -o djdev.zip "$u"; then
+              echo "djdev205.zip from $u: $(sha256sum djdev.zip | cut -d' ' -f1)"
+              unzip -qjo djdev.zip bin/redir.exe -d "$game" && mv "$game/redir.exe" "$game/REDIR.EXE" \
+                && run="REDIR -eo $run"
+              break
+            fi
+          done
+          tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" "$run" | tee dos-sim.log || true
+          grep -q '^\[SIM\] turn 3/3' dos-sim.log || { show_log; echo "::error title=DOS::the game did not finish three turns"; exit 1; }
+
+      # The game started as a player starts it, the screen captured as it
+      # comes up. Not a pass/fail on its own (the timeout ends it); what VESA
+      # showed is uploaded for a person to look at.
+      - name: The screen in DOSBox-X
+        run: |
+          game="dosrun/$ARTIFACT"
+          tools/dos_run.sh --memsize 2048 --timeout 900 --grab dos-screen.png --grab-every 120 \
+            "$game" DOCTRINE | tail -20 || true
+          ls -l dos-screen*.png || echo "no screen captured"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.ARTIFACT }}-dosbox
+          path: |
+            dos-sim.log
+            dos-screen*.png
+            dosrun/*/DOSBOX.LOG
+            dosrun/*/OUT.TXT
+          if-no-files-found: ignore
+          retention-days: 14
 
       - uses: actions/upload-artifact@v4
         with:
