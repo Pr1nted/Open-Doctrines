@@ -238,8 +238,9 @@ Every mainstream desktop install already has them; a minimal or headless install
 may not.
 
 **x86_64 and arm64** are published in every format; **32-bit x86, 32-bit Arm
-(armv7, e.g. a Raspberry Pi running a 32-bit OS) and RISC-V (riscv64)** as the
-tarball:
+(armv7) and RISC-V (riscv64)** as the tarball. On a Raspberry Pi, use the
+[Raspberry Pi OS](#raspberry-pi-os) build instead — these ask for desktop
+OpenGL 3.3, which a Pi's GPU does not have:
 
 | | what it is | arches | glibc |
 |---|---|---|---|
@@ -412,6 +413,32 @@ on Linux and Windows: real touches (`tests/touch_sdl_test.cpp`), a Steam Deck
 controller attached as one (`tests/pad_sdl_test.cpp`, Valve's 28de:1205), and
 on Linux the window at 1280x800 on the desktop and under gamescope. It has
 **not** yet been played on a physical Deck or Ally; reports welcome.
+
+### Raspberry Pi OS
+
+Built for **Raspberry Pi 4 and 5** on Raspberry Pi OS (bookworm), 64-bit
+(`raspios-arm64`) and 32-bit (`raspios-armhf`), as a `.deb` and as a zip:
+
+    sudo apt install ./OpenDoctrines-raspios-arm64.deb
+
+**Why a separate build.** The desktop Linux builds ask for OpenGL 3.3. A Pi 4
+or 5 offers OpenGL 3.1 and OpenGL ES 3.1 (Mesa's v3d driver), so on a Pi they
+start only through the software-GL fallback — llvmpipe on the CPU, which is
+slow. These are built for **OpenGL ES** instead (`OD_GLES`), with the GLSL ES
+shaders the Android and web builds already use, and draw on the Pi's GPU. The
+same build on an x86 desktop renders the menus, the map and the lit globe the
+same as the desktop-GL build.
+
+**Checked for every release** in Raspberry Pi OS itself — Debian bookworm with
+Raspberry Pi's own repository (`archive.raspberrypi.com`) added — by
+`tools/raspios_check.sh`: the `.deb` installs with apt, every library resolves,
+it links OpenGL ES and not desktop GL, and the installed game plays three turns.
+64-bit runs on an Arm runner (and on every pull request); 32-bit runs the same
+check under QEMU at release. It has **not** yet been played on a physical Pi;
+reports welcome.
+
+The installed game updates itself to the next Raspberry Pi OS build, not to
+the desktop Linux one of the same CPU.
 
 ### ChromeOS
 

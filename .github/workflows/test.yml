@@ -577,6 +577,40 @@ jobs:
   # first player to press "Find players for this game" during the two seconds a
   # host spends opening took the crash. One sanitized build, one case, and it
   # is a real answer rather than a hope.
+  # ── Raspberry Pi OS ──
+  #
+  # The OpenGL ES build (OD_GLES) the Pi needs -- its GPU stops at GL 3.1 /
+  # GLES 3.1 -- built, packaged as the release packages it, and installed and
+  # played in Raspberry Pi OS (Debian bookworm + archive.raspberrypi.com) by
+  # tools/raspios_check.sh. arm64 only here, natively on an Arm runner; the
+  # release adds armhf under QEMU.
+  raspios:
+    name: raspios-arm64 (GLES build + Raspberry Pi OS install)
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
+            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev libgles-dev \
+            ninja-build ruby ruby-dev build-essential
+          sudo gem install --no-document fpm
+      - name: Build for OpenGL ES
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOD_GLES=ON
+          cmake --build build --target OpenDoctrines -j 4
+          readelf -d build/OpenDoctrines | grep -q 'libGLESv2' \
+            || { echo "::error::the OD_GLES build does not link OpenGL ES"; exit 1; }
+      - name: Package
+        run: |
+          python3 tools/package.py --binary build/OpenDoctrines --out dist/OpenDoctrines-raspios-arm64
+          tools/make_linux_packages.sh dist/OpenDoctrines-raspios-arm64 0.0.0-ci arm64 dist/raspios deb
+      - name: Raspberry Pi OS -- installs, links OpenGL ES, plays
+        run: tools/raspios_check.sh "$(ls dist/raspios/*.deb)" arm64
+
   race:
     name: thread safety (tsan)
     runs-on: ubuntu-22.04

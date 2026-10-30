@@ -354,6 +354,20 @@ else()
     set(od_software_render_default OFF)
 endif()
 option(OD_SOFTWARE_RENDER "Render in software (raylib rlsw), with no OpenGL driver; needs OD_DESKTOP_SDL" ${od_software_render_default})
+
+# ── OPENGL ES, FOR GPUS THAT STOP SHORT OF GL 3.3 ──
+#
+# The desktop game asks for OpenGL 3.3 core. A Raspberry Pi 4 or 5 offers GL
+# 3.1 and GLES 3.1 (Mesa v3d), so there the game came up only through the
+# software-GL relaunch -- llvmpipe on the Pi's CPU. OD_GLES builds raylib for
+# OpenGL ES 2.0 instead, and the game picks the GLSL ES shader variants it
+# already ships for Android and the web. raylib keeps its own GRAPHICS_API_*
+# define private, so the game target is given GRAPHICS_API_OPENGL_ES2 itself
+# (see below): without it the game would hand GLSL 3.30 to an ES context.
+option(OD_GLES "Build the desktop game for OpenGL ES 2.0 (Raspberry Pi and other GLES-only GPUs); needs OD_DESKTOP_SDL" OFF)
+if(OD_GLES)
+    set(OPENGL_VERSION "ES 2.0" CACHE STRING "raylib renderer: OpenGL ES 2.0" FORCE)
+endif()
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -1847,6 +1861,12 @@ if(OD_DESKTOP_SDL)
     # opengl32 on Windows. A software-rendered build has no GL to link.
     if(OD_SOFTWARE_RENDER)
         target_compile_definitions(OpenDoctrines PRIVATE OD_SOFTWARE_RENDER=1)
+    elseif(OD_GLES)
+        # The ES shader variants, chosen on raylib's own define (see OD_GLES
+        # above); and the GLES library for the one GL call the game makes itself.
+        target_compile_definitions(OpenDoctrines PRIVATE GRAPHICS_API_OPENGL_ES2=1 OD_GLES=1)
+        find_package(OpenGL REQUIRED COMPONENTS GLES2)
+        target_link_libraries(OpenDoctrines OpenGL::GLES2)
     else()
         find_package(OpenGL REQUIRED)
         target_link_libraries(OpenDoctrines OpenGL::GL)
