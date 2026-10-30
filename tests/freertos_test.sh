@@ -54,7 +54,14 @@ play() {      # name, command...
     fi
 }
 
-make -s -C "$root/freertos" host PY="$PY" >/dev/null || { echo "FAILED: the host build"; exit 1; }
+# A clean make, whatever make this was started from: an inherited MAKEFLAGS
+# (-n, -q) would have it "succeed" without building anything.
+if ! env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL make -s -C "$root/freertos" host PY="$PY" > "$out/host-build.txt" 2>&1 \
+        || [ ! -x "$root/build/freertos/host/od_host" ]; then
+    echo "FAILED: the host build"
+    tail -20 "$out/host-build.txt"
+    exit 1
+fi
 play host "$root/build/freertos/host/od_host"
 
 if [ "$mode" = --boards ] || [ "$mode" = --all-boards ]; then
