@@ -102,6 +102,7 @@ const char* const kTrustBundles[] = {
     "/usr/local/share/certs/ca-root-nss.crt",   // FreeBSD ports
     "/usr/pkg/share/mozilla-rootcerts/cacert.pem", // NetBSD pkgsrc
     "/etc/certs/ca-certificates.crt",           // illumos (OpenIndiana, OmniOS), Solaris
+    "/boot/system/data/ssl/CARootCertificates.pem", // Haiku
 };
 
 #if defined(_WIN32)

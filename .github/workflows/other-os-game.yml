@@ -53,6 +53,9 @@ jobs:
         include:
           # x86-64 only: no illumos distribution ships for Arm.
           - { name: illumos-amd64, os: illumos, machine: x86_64, odseal: illumos-amd64, timeout: 150 }
+          # x86-64 only: 32-bit Haiku is the gcc2 hybrid, which cannot build
+          # C++20, and the Arm and RISC-V ports are not releases.
+          - { name: haiku-x64,     os: haiku,   machine: x86_64, odseal: haiku-x86_64,  timeout: 240 }
     env:
       ARTIFACT: OpenDoctrines-${{ matrix.name }}
     steps:
@@ -99,6 +102,34 @@ jobs:
             gcc --version | head -1
           run: |
             OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" CC=gcc CXX=g++ \
+              sh tools/bsd_game_build.sh ${{ env.ARTIFACT }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
+
+      # HAIKU. GLFW has no Haiku backend, so this is the SDL build (raylib on
+      # SDL3, as Linux and Windows are) against the system's own libsdl3 --
+      # see "EXCEPT ON HAIKU" in CMakeLists.txt for why not the pinned one.
+      # Packages by what they provide (cmd:, devel:) rather than by package
+      # name, so a renamed or re-versioned HaikuPorts package still resolves.
+      - name: Build and package (Haiku)
+        if: matrix.os == 'haiku'
+        uses: vmactions/haiku-vm@v1
+        with:
+          release: 'r1beta6'
+          copyback: true
+          prepare: |
+            set -e
+            pkgman install -y cmd:cmake cmd:ninja cmd:python3 cmd:git cmd:gcc cmd:zip
+            pkgman install -y devel:libGL || pkgman install -y mesa_devel
+            # SDL3 by its HaikuPorts package name: "devel:libSDL3" did not
+            # resolve on r1beta6. Without it CMake builds SDL3 from source
+            # (see "EXCEPT ON HAIKU"), so a miss is reported, not fatal.
+            pkgman install -y libsdl3_devel || pkgman install -y libsdl3 || {
+              echo "no libsdl3 package; SDL3 will be built from source"; pkgman search sdl || true; }
+            for t in cmake ninja python3 gcc g++; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
+            gcc --version | head -1
+          run: |
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               sh tools/bsd_game_build.sh ${{ env.ARTIFACT }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
 
       # The same check bsd-game.yml makes, for the same reason: a build that

@@ -113,6 +113,8 @@ const char* platformName() {
     return "netbsd";
 #elif defined(__sun)
     return "illumos";
+#elif defined(__HAIKU__)
+    return "haiku";
 #else
     return "unknown";
 #endif

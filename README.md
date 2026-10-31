@@ -323,6 +323,24 @@ repository — no X11, Mesa or compiler to build the game with or run it
 against — and no CI image boots it. If an Arm OpenIndiana or OmniOS release
 appears, it is one more entry in `other-os-game.yml` and one more odseal archive.
 
+### Haiku
+
+Built and published for **x86-64** (`haiku-x64`) inside a real Haiku
+R1/beta6 VM, by its own gcc, with every release (`other-os-game.yml`, as
+OpenIndiana). Install the two libraries it uses first:
+
+    pkgman install libsdl3 mesa
+
+then unpack and run. Haiku has no GLFW, so this is the SDL build — the same
+raylib-on-SDL3 backend as Linux and Windows, touch input included — linked
+against Haiku's own `libsdl3` from HaikuPorts, which carries a Haiku display
+fix upstream SDL does not have yet. OpenGL is Mesa's software renderer on most
+Haiku machines, so the globe and large maps are slower than on other systems.
+
+**Without mods** (WAMR has no Haiku platform layer). **x86-64 only:** the
+32-bit Haiku is the gcc2 hybrid, which cannot build C++20, and Haiku's Arm
+and RISC-V ports are not releases yet.
+
 ### Windows
 
 Requires **Windows 10 or later**. Three builds are published:
@@ -676,6 +694,7 @@ playing:
   | **OpenBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
   | **NetBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
   | **OpenIndiana / illumos (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **Haiku (x86-64)** | builds, packages, and loads a world headlessly, **without mods** |
 
   The BSDs' arm64 builds run in emulated VMs and take hours, so pull requests
   build the three amd64 ones; every push to main and every release builds all
@@ -724,6 +743,7 @@ playing:
   | **OpenBSD** | built every release | **not available** |
   | **NetBSD** | built every release | **not available** |
   | **OpenIndiana / illumos** | built every release | **not available** |
+  | **Haiku** | built every release | **not available** |
 
   The OpenBSD and NetBSD builds are compiled with the runtime left out rather
   than shipping one that loads nothing. Porting WAMR to them is a real piece of

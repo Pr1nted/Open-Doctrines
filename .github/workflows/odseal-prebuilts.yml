@@ -121,6 +121,8 @@ jobs:
           # illumos, in an OpenIndiana VM: what CMakeLists.txt calls a SunOS
           # x86-64 build ("ILLUMOS" there). The game's other-os-game.yml job.
           - { name: illumos-amd64,   os: ubuntu-24.04, bsd: illumos, vm_arch: x86_64, timeout: 60 }
+          # Haiku, x86-64: CMake names it Haiku and its processor x86_64.
+          - { name: haiku-x86_64,    os: ubuntu-24.04, bsd: haiku,   vm_arch: x86_64, timeout: 60 }
 
     steps:
       - uses: actions/checkout@v5
@@ -288,8 +290,8 @@ jobs:
       # between, and a test that ran anywhere else would not be testing the
       # thing this job produces.
       # The build, the exports check and the test are tools/odseal_bsd.sh,
-      # one script for the six BSD entries and OpenIndiana; these steps only
-      # boot the VM.
+      # one script for the six BSD entries, OpenIndiana and Haiku; these steps
+      # only boot the VM.
       - name: Build and test (FreeBSD ${{ matrix.vm_arch }})
         if: matrix.bsd == 'freebsd'
         uses: vmactions/freebsd-vm@v1
@@ -336,6 +338,17 @@ jobs:
             rc=0; pkg install -q build-essential || rc=$?
             [ $rc = 0 ] || [ $rc = 4 ] || exit $rc
           run: CXX=g++ STRIP=gstrip AR=gar NM=gnm sh tools/odseal_bsd.sh
+
+      - name: Build and test (Haiku ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'haiku'
+        uses: vmactions/haiku-vm@v1
+        with:
+          release: 'r1beta6'
+          copyback: true
+          # Haiku's gcc and binutils are GNU, so the script's defaults fit;
+          # only the compiler is named, as its c++ link may not be there.
+          prepare: pkgman install -y cmd:gcc
+          run: CXX=g++ sh tools/odseal_bsd.sh
 
       - name: Drop the sealed source
         if: always()

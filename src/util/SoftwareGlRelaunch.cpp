@@ -16,6 +16,9 @@
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #  include <sys/sysctl.h>
 #endif
+#if defined(__HAIKU__)
+#  include <FindDirectory.h>
+#endif
 
 namespace {
 std::vector<char*> g_argv;      // argv, kept NUL-terminated for execv
@@ -46,6 +49,12 @@ std::string resolveExe(const char* argv0) {
     char buf[4096];
     ssize_t n = ::readlink("/proc/self/path/a.out", buf, sizeof buf - 1);
     if (n > 0) { buf[n] = '\0'; return buf; }
+#elif defined(__HAIKU__)
+    // Haiku has no /proc: the loader is asked for the image this symbol
+    // lives in, which for the application's own symbol is the executable.
+    char buf[B_PATH_NAME_LENGTH];
+    if (find_path(B_APP_IMAGE_SYMBOL, B_FIND_PATH_IMAGE_PATH, nullptr, buf, sizeof buf) == B_OK)
+        return buf;
 #endif
     // OpenBSD and every fallback: argv[0], made absolute. OpenBSD has no
     // /proc and no sysctl that names the executable, so argv[0] is all there

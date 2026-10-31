@@ -336,6 +336,14 @@ std::string GameUpdates::platformKey() {
   #else
     return "OpenDoctrines-illumos-unknown";
   #endif
+#elif defined(__HAIKU__)
+  // x86-64 only: Haiku's 32-bit build is the gcc2 hybrid, which cannot build
+  // C++20, and its Arm and RISC-V ports are not yet releases.
+  #if defined(__x86_64__)
+    return "OpenDoctrines-haiku-x64";
+  #else
+    return "OpenDoctrines-haiku-unknown";
+  #endif
 #else
     return "OpenDoctrines-unknown";
 #endif

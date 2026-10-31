@@ -11,8 +11,8 @@
 3. The download page's buttons (packaging/web/site/download.html).
 4. The dedicated server's platforms (release-server.yml), which must match the
    game's desktop platforms -- the server is what people run on a Pi or an Arm
-   VPS -- apart from the BSDs (FreeBSD, OpenBSD, NetBSD) and illumos, which
-   have no server build.
+   VPS -- apart from the BSDs (FreeBSD, OpenBSD, NetBSD) and the other-os
+   systems (illumos, Haiku, SerenityOS), which have no server build.
 
 WHY. They are maintained by hand in three files, and every way they can drift
 is silent. An updater key with no artifact means "no download for this
@@ -84,7 +84,7 @@ def main():
     # The dedicated server ships wherever the game does -- it is what people
     # run on a Pi or an Arm VPS -- except the BSDs, which have no server build.
     game_desktop = {n.replace("OpenDoctrines-", "") for n in built
-                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos)-", n)}
+                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity)-", n)}
     server = server_platforms()
     for p in sorted(game_desktop - server):
         problems.append(f"the game ships for {p}, but release-server.yml has no server for it")
