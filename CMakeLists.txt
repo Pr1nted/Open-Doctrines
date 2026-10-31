@@ -338,6 +338,25 @@ else()
 endif()
 option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL backend (real touch input), SDL3 built from source" ${od_desktop_sdl_default})
 
+# ── EXPERIMENTAL: THE NATIVE GRAPHICS API THROUGH ANGLE ──
+#
+# raylib draws through OpenGL, which macOS has deprecated and runs on Metal
+# anyway, and which Windows drivers serve unevenly. OD_ANGLE builds raylib for
+# OpenGL ES 2.0 -- the dialect the web and Android builds already use, shaders
+# included -- and runs it on ANGLE, which translates GLES to the platform's own
+# API: Metal on macOS, Direct3D 11 or Vulkan on Windows. No draw call in the
+# game changes. OD_ANGLE_BACKEND picks ANGLE's backend at run time
+# (tools/patch_raylib_angle.py).
+#
+# ANGLE is not fetched: OD_ANGLE_DIR names a folder holding libEGL and
+# libGLESv2, which are copied beside the game. GLFW only, for now: SDL3 can
+# create the same context, but it has no switch for ANGLE's backend.
+option(OD_ANGLE "EXPERIMENTAL: render through ANGLE (GLES 2 on Metal/D3D11/Vulkan) instead of desktop OpenGL" OFF)
+set(OD_ANGLE_DIR "" CACHE PATH "Folder with ANGLE's libEGL and libGLESv2, copied beside the game when OD_ANGLE is on")
+if(OD_ANGLE AND OD_DESKTOP_SDL)
+    message(FATAL_ERROR "OD_ANGLE needs raylib's GLFW backend: configure with -DOD_DESKTOP_SDL=OFF")
+endif()
+
 set(od_system_raylib_ok TRUE)
 if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
    NOT CMAKE_OSX_ARCHITECTURES STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
@@ -471,11 +490,22 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         endif()
         message(STATUS "OD_DESKTOP_SDL: raylib on SDL3 (release-3.4.18, static)")
     endif()
+    if(OD_ANGLE)
+        set(OPENGL_VERSION "ES 2.0" CACHE STRING "raylib GL dialect: GLES 2 for ANGLE" FORCE)
+    endif()
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
         GIT_TAG 6.2
     )
     FetchContent_MakeAvailable(raylib)
+    # rcore.c includes rlgl.h before it turns PLATFORM_DESKTOP into
+    # PLATFORM_DESKTOP_GLFW, and rlgl.h needs the latter to load GLES through
+    # its own glad rather than look for system <GLES2/gl2.h>. Desktop GL never
+    # asks; GLES on desktop does. Empty, as rcore.c defines it, so the later
+    # #define is not a redefinition.
+    if(OD_ANGLE AND TARGET raylib)
+        target_compile_definitions(raylib PRIVATE PLATFORM_DESKTOP_GLFW=)
+    endif()
     # Haiku's pthreads have no pthread_attr_setinheritsched, which miniaudio
     # calls (it guards the call for BeOS, not Haiku): src/platform/haiku/
     # pthread_compat.h stands in for it.
@@ -527,6 +557,22 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     endif()
     string(STRIP "${od_deffont_out}" od_deffont_out)
     message(STATUS "raylib: ${od_deffont_out}")
+
+    # OD_ANGLE only. See tools/patch_raylib_angle.py.
+    if(OD_ANGLE)
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_angle.py"
+                    "${raylib_SOURCE_DIR}"
+            RESULT_VARIABLE od_angle_rc
+            OUTPUT_VARIABLE od_angle_out
+            ERROR_VARIABLE  od_angle_err)
+        if(NOT od_angle_rc EQUAL 0)
+            message(FATAL_ERROR "Could not patch raylib for ANGLE:\n${od_angle_err}")
+        endif()
+        string(STRIP "${od_angle_out}" od_angle_out)
+        message(STATUS "raylib: ${od_angle_out}")
+    endif()
 
     # Web only. See tools/patch_raylib_web_dpi.py. FATAL for the same reason as
     # the vorbis patch: an unpatched web resize callback silently ships the
@@ -1770,6 +1816,20 @@ if(OD_HEADLESS_SDL)
         target_include_directories(OpenDoctrines PRIVATE ${SDL2_INCLUDE_DIRS})
     endif()
     target_compile_definitions(OpenDoctrines PRIVATE OD_HEADLESS_SDL=1)
+endif()
+if(OD_ANGLE)
+    # raylib keeps its GRAPHICS_API_* define private, and the game picks its
+    # #version 100 shaders on it.
+    target_compile_definitions(OpenDoctrines PRIVATE OD_ANGLE=1 GRAPHICS_API_OPENGL_ES2)
+    if(OD_ANGLE_DIR)
+        file(GLOB od_angle_libs "${OD_ANGLE_DIR}/*EGL*" "${OD_ANGLE_DIR}/*GLESv2*")
+        foreach(lib ${od_angle_libs})
+            add_custom_command(TARGET OpenDoctrines POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib}" "$<TARGET_FILE_DIR:OpenDoctrines>")
+        endforeach()
+    else()
+        message(WARNING "OD_ANGLE without OD_ANGLE_DIR: the game will only start if ANGLE is on the library path")
+    endif()
 endif()
 if(OD_DESKTOP_SDL)
     target_link_libraries(OpenDoctrines SDL3::SDL3)

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -66,8 +67,13 @@ void Game::beginOjhFps(double seconds, const std::string& savePath, int turns) {
     m_inSettings = false;
     ClearWindowState(FLAG_VSYNC_HINT);
     SetTargetFPS(0);
-    printf("OJH renderer raylib %s, OpenGL\nOJH resolution %dx%d\nOJH vsync off\n", RAYLIB_VERSION, GetRenderWidth(),
-           GetRenderHeight());
+#if defined(OD_ANGLE)
+    const char* backend = getenv("OD_ANGLE_BACKEND");
+    printf("OJH renderer raylib %s, ANGLE (%s)\n", RAYLIB_VERSION, backend ? backend : "default");
+#else
+    printf("OJH renderer raylib %s, OpenGL\n", RAYLIB_VERSION);
+#endif
+    printf("OJH resolution %dx%d\nOJH vsync off\n", GetRenderWidth(), GetRenderHeight());
     fflush(stdout);
 }
 
