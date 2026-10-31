@@ -310,14 +310,42 @@ std::string GameUpdates::platformKey() {
 #elif defined(__FreeBSD__)
   #if defined(__x86_64__)
     return "OpenDoctrines-freebsd-amd64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-freebsd-arm64";
   #else
     return "OpenDoctrines-freebsd-unknown";
   #endif
 #elif defined(__OpenBSD__)
   #if defined(__x86_64__)
     return "OpenDoctrines-openbsd-amd64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-openbsd-arm64";
   #else
     return "OpenDoctrines-openbsd-unknown";
+  #endif
+#elif defined(__NetBSD__)
+  #if defined(__x86_64__)
+    return "OpenDoctrines-netbsd-amd64";
+  #elif defined(__aarch64__)
+    return "OpenDoctrines-netbsd-arm64";
+  #else
+    return "OpenDoctrines-netbsd-unknown";
+  #endif
+#elif defined(__sun)
+  // illumos (OpenIndiana, OmniOS). x86-64 only: no illumos distribution ships
+  // for anything else that could run the game.
+  #if defined(__x86_64__)
+    return "OpenDoctrines-illumos-amd64";
+  #else
+    return "OpenDoctrines-illumos-unknown";
+  #endif
+#elif defined(__HAIKU__)
+  // x86-64 only: Haiku's 32-bit build is the gcc2 hybrid, which cannot build
+  // C++20, and its Arm and RISC-V ports are not yet releases.
+  #if defined(__x86_64__)
+    return "OpenDoctrines-haiku-x64";
+  #else
+    return "OpenDoctrines-haiku-unknown";
   #endif
 #else
     return "OpenDoctrines-unknown";

@@ -275,25 +275,71 @@ An AppImage bundles the application's libraries but **not** the C library under
 them, so it is not a way around the glibc requirement. On Debian 11, Ubuntu
 20.04 or RHEL 9, use the Flatpak or build from source.
 
-### FreeBSD and OpenBSD
+### FreeBSD, OpenBSD and NetBSD
 
-Both are built and published as **amd64** zips, the same shape as every other
-desktop download, by each system's own compiler inside a real VM — not
-cross-compiled from Linux. Unpack and run.
+All three are built and published for **amd64** and **arm64**, the same shape
+as every other desktop download, by each system's own compiler inside a real
+VM — not cross-compiled from Linux. Unpack and run.
 
-You need the usual X11, Mesa and ALSA runtime libraries. On FreeBSD they are
-ports (`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
-libxkbcommon`); on OpenBSD X and Mesa are already in base.
+| System | Release built on | Downloads | Mods |
+|---|---|---|---|
+| FreeBSD | 14.2 | `freebsd-amd64`, `freebsd-arm64` | yes |
+| OpenBSD | 7.7 | `openbsd-amd64`, `openbsd-arm64` | no |
+| NetBSD | 10.1 (runs on 10 and later) | `netbsd-amd64`, `netbsd-arm64` | no |
 
-**Mods do not work on OpenBSD, and the build says so rather than pretending.**
-The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
-which has no OpenBSD port, and OpenBSD's W^X policy is a poor fit for an
-interpreter that wants pages it can write and then execute. The OpenBSD build
-is compiled with the runtime left out: there is no mod menu, rather than one
-that is there and does nothing. Everything else — the full game, scenarios,
-saves, multiplayer — is unaffected. FreeBSD has mods as normal.
+You need the usual X11 and Mesa runtime libraries. On FreeBSD they are ports
+(`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
+libxkbcommon`); on OpenBSD and NetBSD X and Mesa are already in base (on
+NetBSD, install the X11 sets if you left them out).
+
+**Mods do not work on OpenBSD or NetBSD, and the build says so rather than
+pretending.** The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
+which has a FreeBSD port and none for either of the others, and OpenBSD's W^X
+policy is a poor fit for an interpreter that wants pages it can write and then
+execute. Those builds are compiled with the runtime left out: there is no mod
+menu, rather than one that is there and does nothing. Everything else — the
+full game, scenarios, saves, multiplayer — is unaffected. FreeBSD has mods as
+normal, on both architectures. A source build on OpenBSD or NetBSD leaves mods
+out by default.
 
 Porting the runtime is a separate piece of work and not scheduled.
+
+### OpenIndiana and illumos
+
+Built and published for **amd64** (`illumos-amd64`) inside a real OpenIndiana
+Hipster VM, by its own gcc, the same way as the BSDs. It ships with every
+release: `.github/workflows/other-os-game.yml` builds it — with Haiku and
+SerenityOS — on every pull request and push, and the release waits for it. It should run on any
+current illumos distribution with X11 and Mesa — OpenIndiana, or OmniOS with
+the X11 packages added — and needs `x11/library/mesa` and the usual X client
+libraries (`pkg install x11/library/mesa x11/library/libxrandr
+x11/library/libxinerama x11/library/libxcursor x11/library/libxi`).
+
+**Without mods**, for the same reason as OpenBSD and NetBSD: WAMR has no
+illumos platform layer. A source build there leaves mods out by default.
+
+**No Arm build.** illumos on Arm is an early bring-up with no package
+repository — no X11, Mesa or compiler to build the game with or run it
+against — and no CI image boots it. If an Arm OpenIndiana or OmniOS release
+appears, it is one more entry in `other-os-game.yml` and one more odseal archive.
+
+### Haiku
+
+Built and published for **x86-64** (`haiku-x64`) inside a real Haiku
+R1/beta6 VM, by its own gcc, with every release (`other-os-game.yml`, as
+OpenIndiana). Install the two libraries it uses first:
+
+    pkgman install libsdl3 mesa
+
+then unpack and run. Haiku has no GLFW, so this is the SDL build — the same
+raylib-on-SDL3 backend as Linux and Windows, touch input included — linked
+against Haiku's own `libsdl3` from HaikuPorts, which carries a Haiku display
+fix upstream SDL does not have yet. OpenGL is Mesa's software renderer on most
+Haiku machines, so the globe and large maps are slower than on other systems.
+
+**Without mods** (WAMR has no Haiku platform layer). **x86-64 only:** the
+32-bit Haiku is the gcc2 hybrid, which cannot build C++20, and Haiku's Arm
+and RISC-V ports are not releases yet.
 
 ### Windows
 
@@ -308,9 +354,56 @@ Requires **Windows 10 or later**. Three builds are published:
 The build is unsigned, so SmartScreen will show *"Windows protected your PC"*
 on first run — **More info → Run anyway**.
 
+### Steam Deck and other handhelds
+
+Use the ordinary download for the device's system: **Linux x64** on a Steam
+Deck (Desktop Mode, or add it to Steam as a non-Steam game for Game Mode),
+**Windows x64** on an ROG Ally, Legion Go or MSI Claw, **Linux arm64** on Arm
+Linux handhelds, and the [Android](#android--experimental) APK on Android ones.
+
+What a handheld needs is in those builds:
+
+- **The built-in controls.** The Linux and Windows builds use SDL, whose
+  controller database knows the Deck's and the Windows handhelds' pads, and
+  Steam Input's virtual one. The pad drives the pointer, as on every platform.
+- **The touchscreen, properly.** Tap to click, drag to move the pointer,
+  pinch to zoom, long-press for right-click — the same gestures as on Android,
+  where the pointer stays put between touches so the hover-driven parts of the
+  interface keep working. Until the desktop builds moved to SDL, a finger
+  reached the game only as the system's emulated mouse.
+- **An on-screen keyboard** that comes up for text fields while you are using
+  touch, and stays away while a mouse is in use.
+
+Every pull request puts real touches through the SDL backend the game ships
+on and checks they arrive (`tests/touch_sdl_test.cpp`, on Linux and Windows).
+It has **not** yet been played on a physical Deck or Ally; reports welcome.
+
+### ChromeOS
+
+Two ways in, and both are built for every release:
+
+- **Linux (recommended on a laptop).** Turn on *Linux development environment*
+  in ChromeOS Settings, then open `OpenDoctrines-chromeos-x64.deb` (Intel and
+  AMD Chromebooks) or `OpenDoctrines-chromeos-arm64.deb` (Arm) from the Files
+  app. It installs into ChromeOS's Linux container and appears in the
+  launcher. This is the full desktop game: keyboard and mouse, mods,
+  multiplayer, the map editor.
+- **Android.** The [Android](#android--experimental) APK runs on Chromebooks
+  that have the Play Store, natively on Intel, AMD and Arm alike.
+
+The ChromeOS `.deb` is the Linux build, because ChromeOS's Linux environment
+*is* Debian 12. What makes it ChromeOS's is how it is checked: every release
+installs it with apt in a Debian 12 container on its own architecture, checks
+every library resolves and the launcher entry is there, and plays three turns
+of 1939 from the installed copy on software rendering — which is what a
+Chromebook without Linux GPU acceleration gives it. Pull requests run the same
+check on x86-64 (`tools/chromeos_check.sh`).
+
 ### Android — experimental
 
-Requires **Android 7.0 (API 24) or later**, **arm64** only. Sideload the APK;
+Requires **Android 7.0 (API 24) or later**. One APK carries the game for
+**arm64, 32-bit Arm, x86-64 and x86**, and Android installs the one that
+matches the device. Sideload the APK;
 it is signed with a debug key, so Android will ask you to allow installs from
 whatever app you downloaded it with.
 
@@ -340,7 +433,8 @@ Specifically:
   therefore takes noticeably longer than later ones.
 
 Build it with `tools/package_android.sh` after configuring with the NDK
-toolchain; the CI builds and checks the same APK on every push.
+toolchain; the CI builds and checks the same APK on every push, one NDK build
+per ABI (`OD_ANDROID_ABIS` lists them; see the script).
 
 ### TempleOS
 
@@ -596,8 +690,15 @@ playing:
   | **Linux (x64)** | qualified — built, tested, and played a game |
   | **Windows (x64)** | qualified — built, tested, and played a game |
   | **macOS (arm64, x64)** | qualified *with one gap*: playing a real game is unproven |
-  | **FreeBSD (amd64)** | builds, packages, and loads a world headlessly |
-  | **OpenBSD (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **FreeBSD (amd64, arm64)** | builds, packages, and loads a world headlessly |
+  | **OpenBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **NetBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **OpenIndiana / illumos (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **Haiku (x86-64)** | builds, packages, and loads a world headlessly, **without mods** |
+
+  The BSDs' arm64 builds run in emulated VMs and take hours, so pull requests
+  build the three amd64 ones; every push to main and every release builds all
+  six.
 
   The macOS gap is the hosted runner and not the build: GitHub's macOS images
   have no usable display, so the game cannot open a window there and the play
@@ -630,32 +731,35 @@ playing:
   attests to the packaging, the registry and the shortcuts rather than to the
   binary on x64 hardware.
 
-  **FreeBSD and OpenBSD ship, and they are not equal.**
+  **FreeBSD, OpenBSD and NetBSD ship, and they are not equal.**
   The mod runtime is WebAssembly Micro Runtime, and WAMR ships platform support
-  for `freebsd` and none for `openbsd` — checked against its own
-  `core/shared/platform` directory, which lists sixteen platforms and not that
-  one. So:
+  for `freebsd` and none for `openbsd` or `netbsd` — checked against its own
+  `core/shared/platform` directory, which lists sixteen platforms and not those
+  two. So:
 
   | | the game | mods and the Gearbox SDK |
   |---|---|---|
   | **FreeBSD** | built every release | yes |
   | **OpenBSD** | built every release | **not available** |
+  | **NetBSD** | built every release | **not available** |
+  | **OpenIndiana / illumos** | built every release | **not available** |
+  | **Haiku** | built every release | **not available** |
 
-  The OpenBSD build is compiled with the runtime left out rather than shipping
-  one that loads nothing. Porting WAMR to OpenBSD is a real piece of work and
-  belongs to its own project, not to a release of this one; if it lands, the
-  platform gains mods without anything else changing.
+  The OpenBSD and NetBSD builds are compiled with the runtime left out rather
+  than shipping one that loads nothing. Porting WAMR to them is a real piece of
+  work and belongs to its own project, not to a release of this one; if it
+  lands, those platforms gain mods without anything else changing.
 
-  Neither BSD has a GitHub-hosted runner, so both build inside a real BSD VM on
+  No BSD has a GitHub-hosted runner, so all three build inside a real BSD VM on
   a Linux runner (`.github/workflows/bsd-game.yml`) — by the target system's
-  own compiler, not cross-compiled. That workflow is dispatchable on its own,
-  so a BSD break is found before a tag rather than by one.
+  own compiler, not cross-compiled. That workflow runs on every pull request
+  and push as well as on a tag, so a BSD break is found before a tag rather
+  than by one.
 
-  Both are **amd64 only**, and the reason is the sealed `odseal` archive: the
-  VM images those jobs run are x86_64, so there is no machine in the pipeline
-  that can produce a `freebsd-aarch64` one. The codebase itself is fine there —
-  every source file of the server target compiles on FreeBSD 14.5/arm64, and
-  the build reaches the final link.
+  Each is built for **amd64 and arm64**. The arm64 guests are emulated on the
+  x86 runner, which is slow but is the target's own kernel, libc and compiler;
+  their sealed `odseal` archives are built the same way
+  (`.github/workflows/odseal-prebuilts.yml`).
 
   What each release actually proves on a BSD: the game compiles and packages,
   and the headless server **runs** — it loads the 1939 scenario and reports

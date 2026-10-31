@@ -24,7 +24,7 @@ in.
 
 WHY A SCRIPT, AND WHY IT IS FATAL WHEN IT FAILS
 
-raylib is pinned at 5.5 and built from source (CMakeLists.txt). Applying the
+raylib is pinned (CMakeLists.txt's GIT_TAG) and built from source (CMakeLists.txt). Applying the
 delta here rather than vendoring a fork keeps it to the handful of lines that
 matter and visible in one file -- the same reasoning as patch_raylib_vorbis.py.
 If it cannot be applied the build MUST stop: the game declares SetFontDefault
@@ -40,9 +40,13 @@ import sys
 
 MARKER = "SetFontDefault"
 
-# Anchor: the end of GetFontDefault(). Unique in rtext.c, and the natural place
-# for a sibling setter to sit. We insert the setter immediately after it.
-ANCHOR = """Font GetFontDefault()
+# Anchors: the end of GetFontDefault(), unique in rtext.c and the natural
+# place for a sibling setter. Two shapes, because raylib changed it: 5.5
+# guarded the body with SUPPORT_DEFAULT_FONT, and 6.x removed that switch (the
+# default font is always built) so the body is a bare return. Each anchor gets
+# the setter that matches -- an #if on a macro 6.x no longer defines would
+# compile to a setter that silently does nothing.
+ANCHOR_55 = """Font GetFontDefault()
 {
 #if defined(SUPPORT_DEFAULT_FONT)
     return defaultFont;
@@ -51,9 +55,7 @@ ANCHOR = """Font GetFontDefault()
     return font;
 #endif
 }"""
-
-ADDITION = """
-
+ADDITION_55 = """
 // Added by OpenDoctrines (tools/patch_raylib_default_font.py): point DrawText
 // at a readable vector font instead of the built-in bitmap. The game declares
 // this itself and calls it only when the player picks the readable font.
@@ -65,6 +67,19 @@ void SetFontDefault(Font font)
     (void)font;
 #endif
 }"""
+ANCHOR_6 = """Font GetFontDefault()
+{
+    return defaultFont;
+}"""
+ADDITION_6 = """
+// Added by OpenDoctrines (tools/patch_raylib_default_font.py): point DrawText
+// at a readable vector font instead of the built-in bitmap. The game declares
+// this itself and calls it only when the player picks the readable font.
+void SetFontDefault(Font font)
+{
+    defaultFont = font;
+}"""
+ANCHORS = [(ANCHOR_55, ADDITION_55), (ANCHOR_6, ADDITION_6)]
 
 
 def main(argv):
@@ -85,15 +100,17 @@ def main(argv):
         print("patch_raylib_default_font: already applied")
         return 0
 
-    n = src.count(ANCHOR)
-    if n != 1:
+    found = [(a, add) for a, add in ANCHORS if src.count(a) == 1]
+    if len(found) != 1:
         print(f"patch_raylib_default_font: expected exactly one GetFontDefault "
-              f"body to anchor on in {path}, found {n}. raylib's rtext.c has "
-              f"changed; the patch must be re-derived before the build can link.",
+              f"body (raylib 5.5 or 6.x shape) to anchor on in {path}, found "
+              f"{len(found)}. raylib's rtext.c has changed; the patch must be "
+              f"re-derived before the build can link.",
               file=sys.stderr)
         return 1
 
-    src = src.replace(ANCHOR, ANCHOR + ADDITION, 1)
+    anchor, addition = found[0]
+    src = src.replace(anchor, anchor + addition, 1)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(src)

@@ -15,7 +15,13 @@ one prebuilt per platform, and CMake picks the matching one:
 | Linux x86_64 | `linux-x86_64/` | gcc 12, `-fPIC` |
 | Linux aarch64 | `linux-aarch64/` | gcc 12, `-fPIC`, on an Arm runner |
 | FreeBSD amd64 | `freebsd-amd64/` | base clang, `-fPIC`, in a VM on a Linux runner |
+| FreeBSD arm64 | `freebsd-aarch64/` | base clang, `-fPIC`, in an emulated VM on a Linux runner |
 | OpenBSD amd64 | `openbsd-amd64/` | base clang, `-fPIC`, in a VM on a Linux runner |
+| OpenBSD arm64 | `openbsd-aarch64/` | base clang, `-fPIC`, in an emulated VM on a Linux runner |
+| NetBSD amd64 | `netbsd-amd64/` | base gcc, `-fPIC`, in a VM on a Linux runner |
+| NetBSD arm64 | `netbsd-aarch64/` | base gcc, `-fPIC`, in an emulated VM on a Linux runner |
+| illumos amd64 | `illumos-amd64/` | gcc from IPS, `-fPIC`, in an OpenIndiana VM on a Linux runner |
+| Haiku x86_64 | `haiku-x86_64/` | gcc 13 from HaikuPorts, `-fPIC`, in a Haiku VM on a Linux runner |
 | Web (wasm32) | `web-wasm32/` | emscripten `em++` |
 | Windows x86_64 | `windows-x86_64/` | MSVC, `/O2 /GR-` |
 | Windows x86 (32-bit) | `windows-x86/` | MSVC `amd64_x86`, `/O2 /GR-`, on the x64 runner |
@@ -24,6 +30,9 @@ one prebuilt per platform, and CMake picks the matching one:
 | Linux armv7l (armhf) | `linux-armv7l/` | `arm-linux-gnueabihf-g++` 11, `-fPIC`, tested under QEMU |
 | Linux riscv64 | `linux-riscv64/` | `riscv64-linux-gnu-g++` 11, `-fPIC`, tested under QEMU |
 | Android arm64-v8a | `android-arm64-v8a/` | NDK clang, API 24 |
+| Android armeabi-v7a | `android-armeabi-v7a/` | NDK clang, API 24 |
+| Android x86_64 | `android-x86_64/` | NDK clang, API 24 |
+| Android x86 | `android-x86/` | NDK clang, API 24 |
 
 If a maintainer working tree has `guard/odseal.cpp`, that is used instead and
 the prebuilts are ignored — that is the only tree where the source exists.
@@ -53,8 +62,13 @@ which says nothing about the cause.
 The directory name is `${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}`,
 lowercased, for everything that is not macOS, Windows, Android or web — so it
 follows the OS rather than assuming Linux. **Note that the BSDs say `amd64`
-where Linux says `x86_64`**, because `CMAKE_SYSTEM_PROCESSOR` follows
-`uname -m`; a directory named `freebsd-x86_64` would simply never be found.
+where Linux says `x86_64`, and `aarch64` for 64-bit Arm.** CMake asks FreeBSD
+and NetBSD `uname -p` and OpenBSD `arch -s`, and NetBSD alone answers
+`x86_64`; CMakeLists.txt evens that out, so every BSD archive is
+`<bsd>-amd64` or `<bsd>-aarch64`. A directory named `freebsd-x86_64` or
+`netbsd-x86_64` would simply never be found. **illumos is renamed outright:**
+CMake calls it `SunOS` and its `uname -p` says `i386` even for a 64-bit
+build, so CMakeLists.txt maps a 64-bit SunOS x86 build to `illumos-amd64`.
 
 Two corrections on top of that rule, both because `uname -m` names the
 **kernel**, not the compiler:
@@ -109,11 +123,18 @@ identical, while linux and android come out byte-for-byte the same. The pull
 request lists the exported symbols of each archive for that reason — it is the
 part of a stripped binary a reviewer can actually check.
 
-GitHub hosts no FreeBSD or OpenBSD runner, so those two build inside a real
-BSD VM (`vmactions/*-vm`) on a Linux runner — by the target system's own `cc`
-and `ar`, not cross-compiled. They are tested there too, in the same step: the
-archive never leaves the VM in between, so a test run anywhere else would not
-be testing what the job produces.
+GitHub hosts no BSD runner, so the six BSD archives build inside a real BSD
+VM (`vmactions/*-vm`) on a Linux runner — by the target system's own `cc` and
+`ar`, not cross-compiled; the arm64 ones in an emulated VM. They are tested
+there too, in the same step (`tools/odseal_bsd.sh`): the archive never leaves
+the VM in between, so a test run anywhere else would not be testing what the
+job produces.
+
+**A new platform needs its archive before its game build can pass.**
+`bsd-game.yml` checks for it first and fails in a second, naming this
+workflow, rather than at configure half an hour into an emulated build. So
+after adding a platform, run this workflow with `ref` set to the branch that
+adds it, and merge the branch it pushes into that one.
 
 It needs two repository secrets, because the source is not in this repository:
 

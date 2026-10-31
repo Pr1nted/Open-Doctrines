@@ -127,7 +127,7 @@ jobs:
           # at link with errors that do not mention X11 at all.
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev
 
       # The same libraries, for another architecture: multiarch -dev packages
       # beside the host's, the cross gcc, and QEMU for anything built that the
@@ -483,8 +483,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64 }
-          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64 }
+          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64,   chromeos: x64 }
+          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64, chromeos: arm64 }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
@@ -535,6 +535,24 @@ jobs:
           rpm -qlp dist/linux/*.rpm 2>/dev/null | grep -q '/usr/lib/opendoctrines/MANAGED' \
             && echo "  rpm: MANAGED present" \
             || { echo "  rpm: MANAGED MISSING"; exit 1; }
+
+      # ── CHROMEOS ──
+      #
+      # A Chromebook runs Linux apps in a Debian 12 container, x86-64 or arm64
+      # to match its CPU, and installs a .deb from the Files app with apt. So
+      # the ChromeOS build IS this .deb -- what makes it ChromeOS's is that it
+      # is installed and checked the way ChromeOS will, in that Debian, on this
+      # job's own architecture: every dependency from bookworm's archive, every
+      # library resolving, a launcher entry for the app grid. Published under
+      # its own name so the download page and the release list can say
+      # "ChromeOS" rather than send people to guess which Linux file is theirs.
+      - name: ChromeOS -- installs and links in Debian 12
+        run: |
+          set -eu
+          deb=$(ls dist/linux/*.deb)
+          tools/chromeos_check.sh "$deb"
+          cp "$deb" "dist/linux/OpenDoctrines-chromeos-${{ matrix.chromeos }}.deb"
+          ls -l dist/linux/*.deb
 
       - name: The desktop entry and metainfo are valid
         # Flathub and the freedesktop validators run these anyway; failing here
@@ -667,18 +685,25 @@ jobs:
     name: Test
     uses: ./.github/workflows/test.yml
 
-  # FreeBSD and OpenBSD, built inside real BSDs on a Linux runner. Its own
-  # workflow because it is a different shape from this matrix -- one job per
-  # runner -- and because it is dispatchable on its own, so a BSD break is
-  # found before a tag rather than by one.
+  # FreeBSD, OpenBSD and NetBSD, amd64 and arm64, built inside real BSDs on a
+  # Linux runner. Its own workflow because it is a different shape from this
+  # matrix -- one job per runner -- and because it also runs on its own, on
+  # every pull request and push, so a BSD break is found before a tag rather
+  # than by one.
   bsd:
     name: BSD
     uses: ./.github/workflows/bsd-game.yml
 
+  # OpenIndiana, Haiku and SerenityOS: built on their own systems, released
+  # and gated exactly as the BSDs are. See other-os-game.yml.
+  other-os:
+    name: Other OS
+    uses: ./.github/workflows/other-os-game.yml
+
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web, linux-packages, flatpak, bsd]
+    needs: [build, test, web, linux-packages, flatpak, bsd, other-os]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.

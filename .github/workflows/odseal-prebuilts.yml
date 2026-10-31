@@ -55,7 +55,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # 25 for everything native. The Arm BSDs boot under emulation, which is
+    # most of their time; see the note on them below.
+    timeout-minutes: ${{ matrix.timeout || 25 }}
     strategy:
       fail-fast: false          # one platform's toolchain breaking should not hide the rest
       matrix:
@@ -84,19 +86,43 @@ jobs:
           - { name: linux-armv7l,    os: ubuntu-22.04, triplet: arm-linux-gnueabihf, qemu: arm }
           - { name: linux-riscv64,   os: ubuntu-22.04, triplet: riscv64-linux-gnu,   qemu: riscv64 }
           - { name: web-wasm32,      os: ubuntu-22.04 }
-          - { name: android-arm64-v8a, os: ubuntu-22.04 }
+          # Every Android ABI the APK carries, each by the NDK's own clang for
+          # that target. arm64-v8a is phones; x86_64 and x86 are what Intel and
+          # AMD Chromebooks run Android apps on natively, and armeabi-v7a is
+          # 32-bit Arm (older phones, Arm Chromebooks with a 32-bit userland).
+          # The directory is android-<ABI>, which CMakeLists.txt asks for from
+          # CMAKE_ANDROID_ARCH_ABI.
+          - { name: android-arm64-v8a,   os: ubuntu-22.04, ndk_clang: aarch64-linux-android24-clang++ }
+          - { name: android-armeabi-v7a, os: ubuntu-22.04, ndk_clang: armv7a-linux-androideabi24-clang++ }
+          - { name: android-x86_64,      os: ubuntu-22.04, ndk_clang: x86_64-linux-android24-clang++ }
+          - { name: android-x86,         os: ubuntu-22.04, ndk_clang: i686-linux-android24-clang++ }
           # THE BSDs RUN INSIDE A VM ON A LINUX RUNNER, because GitHub hosts
           # no BSD runner and is not going to. vmactions boots a real FreeBSD
           # or OpenBSD, shares the workspace into it, and runs the build
           # there -- so these are genuinely built by the target system's own
           # cc and ar, not cross-compiled by a Linux toolchain pretending.
           #
-          # amd64, not x86_64: that is what `uname -m` says on both BSDs, and
-          # CMAKE_SYSTEM_PROCESSOR follows it. The directory name has to match
-          # what CMakeLists.txt asks for or the archive is invisible -- which
-          # is the whole class of bug that kept linux-aarch64 from shipping.
-          - { name: freebsd-amd64,   os: ubuntu-22.04 }
-          - { name: openbsd-amd64,   os: ubuntu-22.04 }
+          # amd64 and aarch64 on every BSD: what CMakeLists.txt asks for once
+          # it has evened out the BSDs' own spellings (NetBSD says x86_64; see
+          # "THE BSDs, NAMED ONE WAY" there). The directory name has to match
+          # or the archive is invisible -- which is the whole class of bug
+          # that kept linux-aarch64 from shipping.
+          #
+          # The aarch64 guests are EMULATED on the x86 runner, so they get an
+          # hour: booting is most of it, the archive is one file. 24.04 for
+          # all six: 22.04's QEMU cannot boot vmactions' OpenBSD arm64 image
+          # ("unable to find CPU model 'neoverse-n1'").
+          - { name: freebsd-amd64,   os: ubuntu-24.04, bsd: freebsd, vm_arch: x86_64 }
+          - { name: openbsd-amd64,   os: ubuntu-24.04, bsd: openbsd, vm_arch: x86_64 }
+          - { name: netbsd-amd64,    os: ubuntu-24.04, bsd: netbsd,  vm_arch: x86_64 }
+          - { name: freebsd-aarch64, os: ubuntu-24.04, bsd: freebsd, vm_arch: aarch64, timeout: 60 }
+          - { name: openbsd-aarch64, os: ubuntu-24.04, bsd: openbsd, vm_arch: aarch64, timeout: 60 }
+          - { name: netbsd-aarch64,  os: ubuntu-24.04, bsd: netbsd,  vm_arch: aarch64, timeout: 60 }
+          # illumos, in an OpenIndiana VM: what CMakeLists.txt calls a SunOS
+          # x86-64 build ("ILLUMOS" there). The game's other-os-game.yml job.
+          - { name: illumos-amd64,   os: ubuntu-24.04, bsd: illumos, vm_arch: x86_64, timeout: 60 }
+          # Haiku, x86-64: CMake names it Haiku and its processor x86_64.
+          - { name: haiku-x86_64,    os: ubuntu-24.04, bsd: haiku,   vm_arch: x86_64, timeout: 60 }
 
     steps:
       - uses: actions/checkout@v5
@@ -233,7 +259,7 @@ jobs:
       # Same NDK discovery as the android job in test.yml: name it explicitly so
       # a runner image bump cannot change the compiler under us.
       - name: Locate the NDK
-        if: matrix.name == 'android-arm64-v8a'
+        if: startsWith(matrix.name, 'android-')
         shell: bash
         run: |
           set -e
@@ -242,14 +268,14 @@ jobs:
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
           echo "using $NDK"
 
-      - name: Build (android arm64-v8a)
-        if: matrix.name == 'android-arm64-v8a'
+      - name: Build (${{ matrix.name }})
+        if: startsWith(matrix.name, 'android-')
         shell: bash
         run: |
           set -e
           mkdir -p out
           TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          "$TC/aarch64-linux-android24-clang++" \
+          "$TC/${{ matrix.ndk_clang }}" \
               -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
               -c guard/odseal.cpp -o odseal.o
           "$TC/llvm-strip" --strip-unneeded odseal.o
@@ -263,76 +289,66 @@ jobs:
       # do them separately buys nothing: the archive never leaves the VM in
       # between, and a test that ran anywhere else would not be testing the
       # thing this job produces.
-      - name: Build and test (FreeBSD amd64)
-        if: matrix.name == 'freebsd-amd64'
+      # The build, the exports check and the test are tools/odseal_bsd.sh,
+      # one script for the six BSD entries, OpenIndiana and Haiku; these steps
+      # only boot the VM.
+      - name: Build and test (FreeBSD ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'freebsd'
         uses: vmactions/freebsd-vm@v1
         with:
           release: '14.2'
+          arch: ${{ matrix.vm_arch }}
           usesh: true
           copyback: true
-          run: |
-            set -e
-            mkdir -p out
-            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
-                -c guard/odseal.cpp -o odseal.o
-            strip --strip-unneeded odseal.o
-            ar rcs out/libodseal.a odseal.o
-            # Native, so the real test runs rather than a symbol check.
-            c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
-            ./odseal_test
-            rm -rf guard odseal_test
+          run: sh tools/odseal_bsd.sh
 
-      - name: Build and test (OpenBSD amd64)
-        if: matrix.name == 'openbsd-amd64'
+      - name: Build and test (OpenBSD ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'openbsd'
         uses: vmactions/openbsd-vm@v1
         with:
+          # 7.6 still boots although its packages are gone: this needs only
+          # base clang and installs nothing.
           release: '7.6'
+          arch: ${{ matrix.vm_arch }}
           usesh: true
           copyback: true
-          run: |
-            set -e
-            mkdir -p out
-            # OpenBSD's base clang. NOT `strip -x`: that discards every local
-            # symbol, and OpenBSD's strip refuses rather than corrupt the
-            # object --
-            #
-            #   strip: error: 'odseal.o': not stripping symbol '.L.str.1'
-            #   because it is named in a relocation
-            #
-            # which is correct of it and was the first thing this job did.
-            # --strip-unneeded is the flag that means what was intended:
-            # remove what relocation processing does not need, keep what it
-            # does. It is also exactly what the FreeBSD and Linux steps use.
-            c++ -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
-                -c guard/odseal.cpp -o odseal.o
-            strip --strip-unneeded odseal.o
-            ar rcs out/libodseal.a odseal.o
+          run: sh tools/odseal_bsd.sh
 
-            # The exports, asserted rather than assumed. Whatever strip did or
-            # declined to do, what leaves this VM must be the entry points and
-            # nothing else -- a stray symbol is what points a reader at what
-            # this library does. Same two rules as the android check.
-            # Plain `nm -g`, and its errors are NOT hidden. --defined-only is
-            # a GNU long option OpenBSD's nm does not take; with stderr sent
-            # to /dev/null the check simply saw an empty list and reported
-            # "missing entry point: od_fz" about an archive that was fine.
-            # Filtering on T already excludes undefined symbols, which is all
-            # --defined-only was doing.
-            GOT="$(nm -g out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
-            echo "exports: $GOT"
-            for sym in od_fz od_k9 od_s7 od_v3; do
-              printf '%s\n' $GOT | grep -qx "$sym" || { echo "missing entry point: $sym"; exit 1; }
-            done
-            for sym in $GOT; do
-              case " od_fz od_k9 od_s7 od_t4 od_v3 " in
-                *" $sym "*) ;;
-                *) echo "unexpected export: $sym"; exit 1 ;;
-              esac
-            done
+      - name: Build and test (NetBSD ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'netbsd'
+        uses: vmactions/netbsd-vm@v1
+        with:
+          # The game's NetBSD release (bsd-game.yml). Base gcc, nothing to
+          # install.
+          release: '10.1'
+          arch: ${{ matrix.vm_arch }}
+          copyback: true
+          run: sh tools/odseal_bsd.sh
 
-            c++ -std=c++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o odseal_test
-            ./odseal_test
-            rm -rf guard odseal_test
+      - name: Build and test (OpenIndiana ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'illumos'
+        uses: vmactions/openindiana-vm@v1
+        with:
+          release: '202604'
+          copyback: true
+          # The text image has no compiler. The GNU binutils come as gstrip,
+          # gar and gnm: illumos's own strip has no --strip-unneeded and its nm
+          # prints a different table, so the script is pointed at the GNU ones.
+          prepare: |
+            rc=0; pkg install -q build-essential || rc=$?
+            [ $rc = 0 ] || [ $rc = 4 ] || exit $rc
+          run: CXX=g++ STRIP=gstrip AR=gar NM=gnm sh tools/odseal_bsd.sh
+
+      - name: Build and test (Haiku ${{ matrix.vm_arch }})
+        if: matrix.bsd == 'haiku'
+        uses: vmactions/haiku-vm@v1
+        with:
+          release: 'r1beta6'
+          copyback: true
+          # Haiku's gcc and binutils are GNU, so the script's defaults fit;
+          # only the compiler is named, as its c++ link may not be there.
+          prepare: pkgman install -y cmd:gcc
+          run: CXX=g++ sh tools/odseal_bsd.sh
 
       - name: Drop the sealed source
         if: always()
@@ -386,7 +402,7 @@ jobs:
       # the four entry points, and nothing else exported to point a reader at
       # what it does.
       - name: Check the archive (android, symbols only)
-        if: matrix.name == 'android-arm64-v8a'
+        if: startsWith(matrix.name, 'android-')
         shell: bash
         run: |
           set -e
@@ -401,7 +417,7 @@ jobs:
           # present, and nothing may be exported that is not a known one,
           # because a stray symbol is what points a reader at what this does.
           REQUIRED="od_fz od_k9 od_s7 od_v3"
-          ALLOWED="od_fz od_k9 od_s7 od_t4 od_v3"
+          ALLOWED="od_fz od_k9 od_p2 od_p3 od_s7 od_t4 od_v3"
           for s in $REQUIRED; do
             printf '%s\n' $GOT | grep -qx "$s" || { echo "missing entry point: $s"; exit 1; }
           done

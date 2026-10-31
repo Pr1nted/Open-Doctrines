@@ -109,6 +109,12 @@ const char* platformName() {
     return "freebsd";
 #elif defined(__OpenBSD__)
     return "openbsd";
+#elif defined(__NetBSD__)
+    return "netbsd";
+#elif defined(__sun)
+    return "illumos";
+#elif defined(__HAIKU__)
+    return "haiku";
 #else
     return "unknown";
 #endif
