@@ -221,6 +221,17 @@
         </div>
       </div>
 
+      <div class="dl" data-os="serenity" hidden>
+        <svg viewBox="0 0 24 24" class="stroked" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3c-3 3-3 15 0 18M3 12h18"/></svg>
+        <div>
+          <h3>SerenityOS</h3>
+          <p>x86-64, without mods, drawn in software. Built against SerenityOS
+             commit <code>b5d4da5</code>: SerenityOS has no releases, so build that
+             commit to run it.</p>
+          <a class="get" data-asset="OpenDoctrines-serenity-x64.zip" href="#">x86-64</a>
+        </div>
+      </div>
+
       <div class="dl" data-os="templeos">
         <svg viewBox="0 0 24 24" class="stroked" aria-hidden="true"><path d="M10 9h4" /> <path d="M12 7v5" /> <path d="M14 21v-3a2 2 0 0 0-4 0v3" /> <path d="m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9" /> <path d="M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14" /></svg>
         <div>
@@ -343,6 +354,7 @@ if (HAVE.length) {
          : /NetBSD/i.test(p + ua) ? "netbsd"
          : /SunOS|illumos/i.test(p + ua) ? "illumos"
          : /Haiku/i.test(p + ua) ? "haiku"
+         : /SerenityOS/i.test(p + ua) ? "serenity"
          : /Linux|X11/i.test(p + ua) ? "linux" : null;
   if (!os) return;
   document.querySelectorAll('#launcher a.get[data-os="' + os + '"]').forEach(function (a) { a.classList.add("mine"); });

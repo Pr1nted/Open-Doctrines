@@ -28,7 +28,7 @@ std::string        g_exePath;   // absolute, resolved before any chdir
 // argv[0]. Resolved ONCE at startup: /proc and the like are cheap, but cwd is
 // not guaranteed to stay put, so a relative argv[0] has to be banked early.
 std::string resolveExe(const char* argv0) {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__serenity__)   // SerenityOS's ProcFS has the same link
     char buf[4096];
     ssize_t n = ::readlink("/proc/self/exe", buf, sizeof buf - 1);
     if (n > 0) { buf[n] = '\0'; return buf; }
