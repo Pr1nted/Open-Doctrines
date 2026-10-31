@@ -283,10 +283,36 @@ endif()
 #
 # A universal build fails the same comparison and lands here too, which is also
 # right: one single-architecture .dylib cannot serve one.
+option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offscreen GL (CI/porting; not the shipped desktop build)" OFF)
+
+# ── THE SHIPPED LINUX AND WINDOWS BUILDS ARE ON SDL, FOR TOUCH ──
+#
+# raylib's default desktop backend is GLFW, and GLFW has no touch API at all:
+# GetTouchPointCount() is 0 on every desktop build, so src/Touch.cpp -- the
+# trackpad-style touch the Android build has -- never ran on a Steam Deck, an
+# ROG Ally, a Legion Go or a touchscreen laptop. A finger arrived only as the
+# OS's emulated mouse: a click where it landed, no long-press right-click, no
+# pinch to zoom, and the hover-driven half of the interface unreachable.
+#
+# raylib's SDL backend reports real touch points (and drives controllers
+# through SDL's gamepad database, which knows the Deck's and the Ally's
+# built-in pads). So Linux and Windows build on it, on SDL3. SDL is built from
+# source and linked statically -- one version everywhere, nothing new for a
+# player to install, and it cross-compiles with the same toolchain files.
+#
+# macOS keeps GLFW (no Mac has a touchscreen, and the bundle is tuned to it),
+# and so do the BSDs, whose builds were just brought up on GLFW. Android and
+# the web have their own backends. -DOD_DESKTOP_SDL=OFF goes back to GLFW.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT ANDROID AND NOT EMSCRIPTEN)
+    set(od_desktop_sdl_default ON)
+else()
+    set(od_desktop_sdl_default OFF)
+endif()
+option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL backend (real touch input), SDL3 built from source" ${od_desktop_sdl_default})
+
 set(od_system_raylib_ok TRUE)
 if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
    NOT CMAKE_OSX_ARCHITECTURES STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
-    option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offscreen GL (CI/porting; not the shipped desktop build)" OFF)
 set(od_system_raylib_ok FALSE)
     message(STATUS "raylib: targeting ${CMAKE_OSX_ARCHITECTURES} on a "
                    "${CMAKE_HOST_SYSTEM_PROCESSOR} host, so building from source "
@@ -350,6 +376,50 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     if(OD_HEADLESS_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL backend for headless" FORCE)
         message(STATUS "OD_HEADLESS_SDL: raylib on its SDL backend (headless offscreen GL)")
+    endif()
+
+    # ── SDL3 FROM SOURCE, STATIC (see OD_DESKTOP_SDL above) ──
+    #
+    # Built here first, so that SDL3::SDL3 exists when raylib configures:
+    # raylib 6's CMake takes that target as it is (USING_SDL3_PROJECT) and
+    # never goes looking for a system SDL. SDL3 rather than SDL2: raylib 6's
+    # GetWindowScaleDPI is a stub on SDL2, and SDL3 makes a Windows build
+    # per-monitor DPI aware by default.
+    #
+    # Audio is left out: raylib plays sound through miniaudio and initialises
+    # only SDL's video, events and game-controller subsystems.
+    #
+    # CMP0091 NEW for SDL's own scope too. SDL's CMakeLists asks for an older
+    # minimum, which would put it back on the default /MD runtime while the
+    # game is /MT (CMAKE_MSVC_RUNTIME_LIBRARY above) -- the LNK2038 mismatch
+    # Unifico's CMakeLists describes, one object at a time.
+    if(OD_DESKTOP_SDL)
+        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
+        set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+        set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+        set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+        set(SDL_UNINSTALL OFF CACHE BOOL "" FORCE)
+        set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
+        # SDL3 stops the configure on any X11 extension it cannot find rather
+        # than quietly building without it. XScreenSaver is the one a stock
+        # runner lacks headers for, and SDL inhibits the screensaver over D-Bus
+        # anyway; the rest (XInput2 for touch, XFixes, Xrandr) are in the
+        # Linux build deps.
+        set(SDL_X11_XSCRNSAVER OFF CACHE BOOL "" FORCE)
+        set(SDL_X11_XTEST OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SDL3
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+            GIT_TAG release-3.4.18
+            GIT_SHALLOW TRUE)
+        FetchContent_MakeAvailable(SDL3)
+        if(NOT TARGET SDL3::SDL3)
+            add_library(SDL3::SDL3 ALIAS SDL3-static)
+        endif()
+        message(STATUS "OD_DESKTOP_SDL: raylib on SDL3 (release-3.4.18, static)")
     endif()
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
@@ -1630,6 +1700,18 @@ if(OD_HEADLESS_SDL)
     endif()
     target_compile_definitions(OpenDoctrines PRIVATE OD_HEADLESS_SDL=1)
 endif()
+if(OD_DESKTOP_SDL)
+    target_link_libraries(OpenDoctrines SDL3::SDL3)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_DESKTOP_SDL=1)
+    # THE SYSTEM GL, BY NAME. MapRenderer asks the driver for its texture
+    # ceiling with glGetIntegerv directly. On GLFW raylib links the system GL
+    # for its own use and that call rode along; raylib's SDL backend loads GL
+    # through SDL at run time and links none, so the game names it here --
+    # libOpenGL (GLVND) on Linux, which the .deb already depends on, and
+    # opengl32 on Windows.
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(OpenDoctrines OpenGL::GL)
+endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
     # (src/util/FileDialog.cpp). raylib does not pull comdlg32 in for us.
@@ -1736,6 +1818,12 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     endif()
     if(WIN32)
         target_link_libraries(OpenDoctrinesServerUI ws2_32 comdlg32)
+    endif()
+    # The same MapRenderer, so the same direct glGetIntegerv: on the SDL
+    # backend nothing links GL for it but this (see the game's own link above).
+    if(OD_DESKTOP_SDL)
+        find_package(OpenGL REQUIRED)
+        target_link_libraries(OpenDoctrinesServerUI OpenGL::GL)
     endif()
     if(APPLE)
         target_link_libraries(OpenDoctrinesServerUI
@@ -2809,6 +2897,15 @@ add_executable(TouchGestureTest EXCLUDE_FROM_ALL tests/touch_gesture_test.cpp
 target_include_directories(TouchGestureTest PRIVATE src tests)
 target_include_directories(TouchGestureTest PRIVATE
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+
+# The same touch layer, fed by real touches through the backend the desktop
+# game ships on (OD_DESKTOP_SDL): SDL's own driver-side entry points, raylib's
+# SDL event loop, then odTouch. Needs a window, so CI runs it under Xvfb.
+if(OD_DESKTOP_SDL)
+    add_executable(TouchSdlTest EXCLUDE_FROM_ALL tests/touch_sdl_test.cpp src/Touch.cpp)
+    target_include_directories(TouchSdlTest PRIVATE src tests)
+    target_link_libraries(TouchSdlTest PRIVATE raylib SDL3::SDL3)
+endif()
 
 # Ethnic migration has to conserve people. Pure arithmetic on shares: the
 # header is templated so this instantiates it on its own struct, with no raylib

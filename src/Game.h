@@ -2303,7 +2303,14 @@ public:
         // a scale of 1.00 -- so it is reasoned from raylib's source and written
         // down rather than left to be discovered on somebody's monitor.
         if (IsWindowState(FLAG_WINDOW_HIGHDPI)) return 1.0f;
-#if defined(__APPLE__)
+#if defined(OD_DESKTOP_SDL)
+        // On the SDL backend the pointer, the window and the framebuffer are
+        // all physical pixels (see Game::init), so there is nothing to undo.
+        // GetWindowScaleDPI() would be wrong here, not just redundant: under
+        // SDL3 it reports the display's content scale, 1.5 on a 150% Windows
+        // panel, while the pointer is already in the framebuffer's pixels.
+        return 1.0f;
+#elif defined(__APPLE__)
         // And with the flag off it is still one here: macOS hands back logical
         // coordinates whatever the framebuffer is doing.
         return 1.0f;

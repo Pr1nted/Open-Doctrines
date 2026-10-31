@@ -130,4 +130,13 @@ void endFrame();
  */
 void forceForShot(bool on);
 
+/**
+ * Whether touch is driving the pointer this frame (odTouch::active()), fed in
+ * by the game loop. On a desktop build the keyboard comes up only then: a
+ * Steam Deck or a touchscreen laptop being used by touch has no keyboard in
+ * reach, and one with a mouse in hand never sees it. Kept as a plain flag so
+ * this file needs nothing from the touch layer, and its test nothing either.
+ */
+void setTouchDriving(bool on);
+
 }  // namespace osk
