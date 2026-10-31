@@ -23,6 +23,29 @@ static void expect(const char* code, const std::string& s, bool want, const char
     bool got=blocked(code,s);
     if(got!=want){printf("  FAIL %-22s got %s want %s\n",label,got?"BLOCK":"allow",want?"BLOCK":"allow");++fails;}
 }
+// Decode UTF-8 to codepoints, to drive od_fz (the atlas gate) with a DISTINCT
+// set the way a font atlas would, rather than running text.
+static std::vector<int> cps(const std::string& s){
+    std::vector<int> out;
+    for(size_t i=0;i<s.size();){
+        unsigned char c=s[i]; int cp=c,len=1;
+        if((c&0xE0)==0xC0){cp=c&0x1F;len=2;}
+        else if((c&0xF0)==0xE0){cp=c&0x0F;len=3;}
+        else if((c&0xF8)==0xF0){cp=c&0x07;len=4;}
+        if(i+(size_t)len>s.size())break;
+        for(int k=1;k<len;k++)cp=(cp<<6)|(s[i+(size_t)k]&0x3F);
+        i+=(size_t)len; out.push_back(cp);
+    }
+    return out;
+}
+// od_fz drops a forbidden atlas's own glyphs (so its text renders as tofu).
+// Returns whether `probe` survived into the built atlas.
+static bool atlasKeeps(const std::vector<int>& in, int probe){
+    std::vector<int> out(in.size()+16);
+    size_t w=od_fz(in.data(), in.size(), out.data(), out.size());
+    for(size_t i=0;i<w;i++) if(out[i]==probe) return true;
+    return false;
+}
 int main(){
     // Russian: has ы/э, no national marks -> BLOCK
     std::string ru="привет мир это русский язык объявление войны и мобилизация армии страны";
@@ -66,6 +89,28 @@ int main(){
         expect(c, "", true, c);
     expect("ur","", false, "ur empty");
     expect("bg","", false, "bg empty");
+
+    // ── od_fz: the atlas gate, which the font cannot be built without ──
+    //
+    // The second enforcement behind the od_k9 abort, and the one bound to
+    // something the game needs: a forbidden pack's own glyphs never reach the
+    // atlas, so its text renders as missing glyphs, while a served pack keeps
+    // them. Two independent reads inside od_fz must agree here (atlasForbidden
+    // and atlasForbidden2), so this also pins that they stay in step.
+    printf("== atlas gate (od_fz) ==\n");
+    {
+        // A script-sized distinct Cyrillic set with the marker vowels (ы, э) and
+        // no national marks is refused -- its own letters are dropped.
+        auto ruSet = cps("абвгдежзийклмнопрстуфхцчшщъыьэюя");
+        if (atlasKeeps(ruSet, 0x044B /* ы */)) { printf("  FAIL forbidden cyrillic kept its glyphs\n"); ++fails; }
+        // Ukrainian carries national marks (ґ є і ї), so it is served -- its
+        // letters reach the atlas.
+        auto ukSet = cps("абвгґдеєжзиіїйклмнопрстуфхцчшщьюя");
+        if (!atlasKeeps(ukSet, 0x0456 /* і */)) { printf("  FAIL served ukrainian lost its glyphs\n"); ++fails; }
+        // And a served pack keeps a plain ASCII letter it contains.
+        if (!atlasKeeps(cps("merhaba dunya strateji"), 'm')) { printf("  FAIL latin lost its glyphs\n"); ++fails; }
+        printf("  %s atlas gate drops forbidden, keeps served\n", fails ? "FAIL" : "ok  ");
+    }
 
     // ── od_t4: the rule tables folded to one word ──
     //

@@ -98,7 +98,7 @@ the same one and wonder why it is not here.
 |---|---|---|---|
 | [raylib](https://www.raylib.com/) | 5.5 | zlib/libpng | Windowing, input, audio and 2D rendering |
 | [WebAssembly Micro Runtime (WAMR)](https://github.com/bytecodealliance/wasm-micro-runtime) | 2.4.5 | Apache-2.0 | Sandboxed WASM runtime for Gearbox mods on desktop |
-| [Mbed TLS](https://github.com/Mbed-TLS/mbedtls) | 3.6.2 | Apache-2.0 | TLS for the multiplayer transport, the updater and the account client |
+| [Mbed TLS](https://github.com/Mbed-TLS/mbedtls) | 3.6.7 | Apache-2.0 | TLS for the multiplayer transport, the updater and the account client |
 | [nlohmann/json](https://github.com/nlohmann/json) | vendored | MIT | JSON parsing |
 | [nanosvg](https://github.com/memononen/nanosvg) | vendored | zlib | SVG parsing and rasterising for flags and symbols |
 | [miniz](https://github.com/richgel999/miniz) | vendored | MIT | ZIP and deflate for .odmap, .odsv and .odmod |
