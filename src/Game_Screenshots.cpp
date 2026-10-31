@@ -2029,16 +2029,18 @@ bool Game::tickScreenshotTour() {
     if (++m_shotFrame < shot.settleFrames) return true;
 
 
-    // TakeScreenshot throws the directory away -- it calls GetFileName() on
-    // whatever it is handed and writes the result into the working directory.
-    // Passing a full path therefore silently drops nine PNGs into the repo
-    // root and reports success, so the move has to happen here.
-    const std::string file = std::string(shot.name) + ".png";
-    const std::string path = m_shotDir + "/" + file;
-    TakeScreenshot(file.c_str());
-    if (rename(file.c_str(), path.c_str()) != 0) {
-        fprintf(stderr, "[SHOT] captured %s but could not move it to %s\n",
-                file.c_str(), path.c_str());
+    // An ABSOLUTE path, always. raylib 6 writes a relative name under its own
+    // base path, and that is not the same directory on every backend: the
+    // working directory on GLFW, but the executable's directory on SDL
+    // (SDL_GetBasePath). (5.5 was worse: it kept only the file name and wrote
+    // it into the working directory whatever it was handed.) An absolute path
+    // is written where it says on all of them.
+    std::error_code ec;
+    const std::string path =
+        std::filesystem::absolute(m_shotDir + "/" + shot.name + ".png", ec).string();
+    TakeScreenshot(path.c_str());
+    if (ec || !FileExists(path.c_str())) {
+        fprintf(stderr, "[SHOT] could not write %s\n", path.c_str());
         return false;
     }
     printf("[SHOT] %s\n", path.c_str());

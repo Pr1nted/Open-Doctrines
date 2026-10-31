@@ -1313,13 +1313,15 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // interface and the text is drawn once and shown as four. Reported as a
     // blurry font, and the font was only the part that showed it first.
     //
-    // COORDINATE-TRANSPARENT ON macOS, which is the reason this is a flag and
-    // not a rewrite. raylib 5.5's SetupViewport has an __APPLE__ branch that
-    // sizes the GL viewport by the content scale while leaving the ortho
-    // projection in logical units, and its GLFW backend deliberately skips its
-    // own mouse and screen scaling there -- "system should manage window/input
-    // scaling". So every draw call and every hit test keeps the numbers it
-    // already uses, and only the resolution they are rasterised at changes.
+    // COORDINATE-TRANSPARENT, which is the reason this is a flag and not a
+    // rewrite. Since raylib 6 the framebuffer and the ortho projection are both
+    // the content-scaled size, BeginDrawing multiplies everything drawn by the
+    // content scale (CORE.Window.screenScale), and the pointer arrives in
+    // logical units -- macOS hands them back that way, and elsewhere the GLFW
+    // backend calls SetMouseScale(1/scale). (raylib 5.5 reached the same place
+    // on macOS by a different route, an __APPLE__ branch in SetupViewport.) So
+    // every draw call and every hit test keeps the numbers it already uses, and
+    // only the resolution they are rasterised at changes.
     if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
     SetConfigFlags(winFlags);
     // Before InitWindow, because the failure it catches happens inside it and
@@ -1846,15 +1848,21 @@ static int odFontGlyphsMissing(const Font& f, const std::vector<int>& want,
                                const std::vector<int>& only,
                                int* firstMissing = nullptr) {
     if (f.glyphs == nullptr || f.recs == nullptr) return 0;
-    const int n = std::min(f.glyphCount, (int)want.size());
+    // BY CODEPOINT, NOT BY POSITION. A merged atlas (odLoadMergedFont) keeps
+    // one entry per requested codepoint with a missing one zeroed in place, but
+    // raylib 6's LoadFontEx -- the fallback below -- packs only the glyphs the
+    // face has, so position i is no longer codepoint i. Asking "does the atlas
+    // hold a drawn glyph for this value" is right for both.
+    std::unordered_set<int> drawn;
+    drawn.reserve((size_t)f.glyphCount);
+    for (int i = 0; i < f.glyphCount; ++i)
+        if (f.glyphs[i].advanceX != 0 || f.recs[i].width != 0) drawn.insert(f.glyphs[i].value);
     int missing = 0;
-    for (int i = 0; i < n; ++i) {
-        const int cp = want[i];
+    for (const int cp : want) {
         if (odIsBlankCodepoint(cp)) continue;
-        // `only` is sorted; the atlas order is not, so this is a search rather
-        // than a walk in step.
+        // `only` is sorted; `want` is not, so this is a search.
         if (!std::binary_search(only.begin(), only.end(), cp)) continue;
-        if (f.glyphs[i].advanceX == 0 && f.recs[i].width == 0) {
+        if (!drawn.count(cp)) {
             if (firstMissing && missing == 0) *firstMissing = cp;
             ++missing;
         }
@@ -1891,6 +1899,37 @@ static int odFontGlyphsMissing(const Font& f, const std::vector<int>& want,
 // rtext.c's own sequence -- the padding, the atlas, and re-pointing each glyph
 // image into it -- because the Font handed back is used by raylib's own
 // drawing and measuring code and has to be the shape those expect.
+// ── ONE GLYPH PER REQUESTED CODEPOINT, IN ORDER ──
+//
+// Everything below reads LoadFontData's array as ALIGNED with the codepoints it
+// asked for: entry i is codepoint i, and a codepoint the face does not have is
+// an all-zero entry at its own index (that is how a missing glyph is found and
+// then borrowed from the cover face). raylib 5.5 returned it that way. raylib
+// 6.x does not: it stores only the glyphs the face HAS, packed, and reports how
+// many in a new glyphCount argument -- so taken as it comes, every glyph after
+// the first missing one would land on the wrong character and nothing would be
+// missing any more. The new argument is the only reason that was a build error
+// and not a garbled font.
+//
+// So it is realigned here. raylib fills its packed array walking the request in
+// order and skipping only misses, which makes a lockstep walk exact, duplicates
+// included. Allocated with MemAlloc so UnloadFontData frees it like its own.
+static GlyphInfo* odLoadGlyphsAligned(const unsigned char* data, int dataSize, int size,
+                                      const int* codepoints, int n) {
+    int got = 0;
+    GlyphInfo* packed = LoadFontData(data, dataSize, size, codepoints, n, FONT_DEFAULT, &got);
+    if (packed == nullptr) return nullptr;
+    GlyphInfo* aligned = (GlyphInfo*)MemAlloc((unsigned int)(n * sizeof(GlyphInfo)));   // zeroed
+    int k = 0;
+    for (int i = 0; i < n; ++i) {
+        if (k < got && packed[k].value == codepoints[i]) aligned[i] = packed[k++];
+        else aligned[i].value = codepoints[i];   // missing: zero, as 5.5 left it
+    }
+    for (; k < got; ++k) UnloadImage(packed[k].image);   // never happens; never leaks
+    MemFree(packed);
+    return aligned;
+}
+
 static Font odLoadMergedFont(const std::string& primaryPath,
                              const std::string& coverPath,
                              int size, const std::vector<int>& codepoints,
@@ -1900,11 +1939,11 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     const int n = (int)codepoints.size();
     if (n <= 0) return font;
 
-    std::vector<int> cps = codepoints;   // LoadFontData takes a non-const pointer
+    std::vector<int> cps = codepoints;
     int pSize = 0;
     unsigned char* pData = LoadFileData(primaryPath.c_str(), &pSize);
     if (pData == nullptr) return font;
-    GlyphInfo* glyphs = LoadFontData(pData, pSize, size, cps.data(), n, FONT_DEFAULT);
+    GlyphInfo* glyphs = odLoadGlyphsAligned(pData, pSize, size, cps.data(), n);
     UnloadFileData(pData);
     if (glyphs == nullptr) return font;
 
@@ -1925,8 +1964,8 @@ static Font odLoadMergedFont(const std::string& primaryPath,
         int cSize = 0;
         unsigned char* cData = LoadFileData(coverPath.c_str(), &cSize);
         if (cData != nullptr) {
-            GlyphInfo* cover = LoadFontData(cData, cSize, size, missing.data(),
-                                            (int)missing.size(), FONT_DEFAULT);
+            GlyphInfo* cover = odLoadGlyphsAligned(cData, cSize, size, missing.data(),
+                                                   (int)missing.size());
             UnloadFileData(cData);
             if (cover != nullptr) {
                 for (size_t k = 0; k < missing.size(); ++k) {
