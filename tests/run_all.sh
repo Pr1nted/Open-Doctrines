@@ -120,7 +120,8 @@ pool_add() {            # <name> <command...>
     # bash 3.2 (macOS) has no `wait -n`, so a slot is found by asking.
     while :; do
         local live=0 pid
-        for pid in "${pool_pids[@]}"; do kill -0 "$pid" 2>/dev/null && live=$((live + 1)); done
+        # ${a[@]+"${a[@]}"}: bash 3.2 under set -u calls an EMPTY array unbound.
+        for pid in ${pool_pids[@]+"${pool_pids[@]}"}; do kill -0 "$pid" 2>/dev/null && live=$((live + 1)); done
         [ "$live" -lt "$OD_TEST_JOBS" ] && break
         sleep 0.2
     done
@@ -132,7 +133,7 @@ pool_add() {            # <name> <command...>
 
 pool_drain() {
     [ ${#pool_names[@]} -eq 0 ] && return 0
-    wait "${pool_pids[@]}" 2>/dev/null
+    wait ${pool_pids[@]+"${pool_pids[@]}"} 2>/dev/null
     local i
     for i in "${!pool_names[@]}"; do
         step "${pool_names[$i]}"
