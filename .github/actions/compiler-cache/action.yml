@@ -29,6 +29,17 @@ inputs:
 runs:
   using: composite
   steps:
+    # Every job that builds also installs packages, and Ubuntu's mirror for
+    # hosted runners drops connections for minutes at a time: two jobs on one
+    # run died installing a cross compiler, before a line of the game was
+    # built. apt retries nothing by default. Set here because this action is
+    # the one step every building Linux job already runs first.
+    - name: Let apt retry a mirror that is down
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' |
+          sudo tee /etc/apt/apt.conf.d/80-od-retries >/dev/null
     - uses: hendrikmuhs/ccache-action@v1.2.14
       with:
         key: ${{ inputs.key }}
