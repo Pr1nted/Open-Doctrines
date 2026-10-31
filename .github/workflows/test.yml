@@ -797,6 +797,22 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+      # ── THE TRANSLATION LAYER ON ANDROID, folded in from its own job ──
+      # A second build tree on the runner that already found the NDK.
+      - name: Translation layer -- cross-compile the test
+        if: matrix.abi == 'arm64-v8a'
+        run: |
+          set -e
+          cmake -B build-gdtl-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF -DOD_ENABLE_GDTL=ON
+          cmake --build build-gdtl-android --target GdtlTest -j 4
+          file build-gdtl-android/GdtlTest
+          file build-gdtl-android/GdtlTest | grep -q "ARM aarch64" || {
+            echo "that is not an Android binary"; exit 1; }
+
   android:
     name: android (APK, all ABIs)
     needs: [plan, android-lib]
@@ -1025,49 +1041,9 @@ jobs:
   # Three platforms build the test and RUN it. Android cannot run here, so it
   # is built and its architecture checked. The web runs under node with
   # NODERAWFS, which is the same code a browser executes against MEMFS.
-  gdtl-android:
-    needs: plan
-    name: translation layer (android)
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - name: Locate the NDK
-        run: |
-          set -e
-          NDK="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
-          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
-          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
-      # Built, not run: this is an aarch64 Android binary on an x86 Linux
-      # runner. What it proves is that the layer compiles and LINKS for the
-      # platform -- which is where a #ifdef that forgot Android shows up, since
-      # __linux__ is defined there too.
-      - name: Cross-compile the test
-        run: |
-          set -e
-          cmake -B build-gdtl-android \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
-            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
-            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF -DOD_ENABLE_GDTL=ON
-          cmake --build build-gdtl-android --target GdtlTest -j 4
-          file build-gdtl-android/GdtlTest
-          file build-gdtl-android/GdtlTest | grep -q "ARM aarch64" || {
-            echo "that is not an Android binary"; exit 1; }
-
-  gdtl-web:
-    needs: plan
-    name: translation layer (web)
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - uses: mymindstorm/setup-emsdk@v14
-      # Run, not merely built. NODERAWFS hands it node's filesystem in place of
-      # the MEMFS a browser gives it; the conversion reads and writes ordinary
-      # paths either way, so this exercises the same code the download path
-      # runs before it hands the browser a blob.
-      - name: Build and run under node
+      # ── THE TRANSLATION LAYER IN THE BROWSER BUILD, folded in ──
+      # A second build tree on the runner that already has Emscripten.
+      - name: Translation layer -- build and run under node
         run: |
           set -e
           emcmake cmake -B build-gdtl-web -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \

@@ -98,7 +98,9 @@ little more. Both are now steps in `qualify`:
 - **translation layer**: a second build tree with its own configuration on
   the same runner, compiler cache included.
 
-Six fewer jobs per run, each of which had to wait for a slot. The cross-load
+The Android and web translation-layer jobs went the same way, into the
+Android arm64 and web jobs that already set up the NDK and Emscripten.
+Eight fewer jobs per run, each of which had to wait for a slot. The cross-load
 check stays separate, because it has to read every platform's save on every
 platform, which only works once all of them have written one.
 
