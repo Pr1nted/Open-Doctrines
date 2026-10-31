@@ -86,13 +86,25 @@ result printed in file order and every failure named as before. The scripts,
 including every network and multiplayer test with a clock in it, still run
 with nothing else on the machine. `OD_TEST_JOBS=1` restores the serial run.
 
+## 6. Small jobs folded into the runner that is already set up
+
+The server and translation-layer jobs each took a runner on the same three
+platforms as `qualify`, only to check out, set up a toolchain and build a
+little more. Both are now steps in `qualify`:
+
+- **server**: `qualify.sh` already built and smoke-tested the dedicated
+  server. The one check only the server job made (that the binary links
+  nothing graphical) now runs on the binary `qualify` built.
+- **translation layer**: a second build tree with its own configuration on
+  the same runner, compiler cache included.
+
+Six fewer jobs per run, each of which had to wait for a slot. The cross-load
+check stays separate, because it has to read every platform's save on every
+platform, which only works once all of them have written one.
+
 ## Not done yet
 
 - **Splitting the suite across runners.** It was considered and turned down.
   Slots are the scarce thing, so three runners for one suite makes the queue
   longer even though the job is shorter. Parallelism inside the runner
   (section 5) gets the speed without the slots.
-- **Folding small jobs into big ones.** The server, translation-layer and
-  save-exchange jobs each take a runner on a platform the `qualify` job
-  already has. Folding them in saves the start-up and queueing of about ten
-  jobs per run.

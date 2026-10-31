@@ -263,6 +263,74 @@ jobs:
         shell: bash
         run: tools/qualify.sh build
 
+      # ── THE TRANSLATION LAYER, folded in from its own job ──
+      #
+      # It was a separate job on these same three platforms: a second runner,
+      # a second checkout and a second toolchain setup to build two test
+      # programs. Here it is a second build tree on the runner that is already
+      # set up. zenity only for this step, so the main suite above still runs
+      # its file chooser test the way it always has (see that test).
+      - name: Translation layer -- zenity for the file chooser
+        if: runner.os == 'Linux' && matrix.name == 'linux-x64'
+        run: sudo apt-get install -y zenity xvfb
+      - name: Translation layer -- build and run
+        if: matrix.name != 'macos-x64'
+        shell: bash
+        run: |
+          set -e
+          cmake -B build-gdtl -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
+                -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
+          cmake --build build-gdtl --config Release --target GdtlTest NativeDialogTest -j 4
+
+          # Both layouts, for the same reason as everywhere else here.
+          find_test() {
+            for c in "build-gdtl/$1" "build-gdtl/$1.exe" "build-gdtl/Release/$1.exe"; do
+              [ -f "$c" ] && { echo "$c"; return 0; }
+            done
+            echo "no $1 was built" >&2; return 1
+          }
+
+          # Under a display on Linux: with one the chooser test asks the real
+          # zenity whether it takes these flags, without one it can only check
+          # the command it built. Windows needs no display -- the PowerShell
+          # probe stops short of showing the window.
+          # An if, not `[ ... ] && RUN=...`: this step runs under `set -e`, and
+          # a false test as the last command of a line is a non-zero status,
+          # which would end the step on the two platforms that are not Linux.
+          RUN=""
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
+          $RUN "$(find_test NativeDialogTest)"
+          "$(find_test GdtlTest)"
+
+      # ── THE DEDICATED SERVER LINKS NOTHING GRAPHICAL, folded in ──
+      #
+      # The server job built and smoke-tested OpenDoctrinesServer on these
+      # platforms, which qualify.sh already does ("the dedicated server
+      # starts"). What it alone checked was this, now run on the binary this
+      # job built.
+      - name: The binary needs no graphics stack
+        if: runner.os != 'Windows' && matrix.name != 'macos-x64'
+        shell: bash
+        run: |
+          set -e
+          bin=build/OpenDoctrinesServer
+          test -x "$bin" || { echo "no server binary at $bin"; exit 1; }
+          if [ "$RUNNER_OS" = "Linux" ]; then libs=$(ldd "$bin"); else libs=$(otool -L "$bin"); fi
+          echo "$libs"
+          for bad in raylib libGL libGLX libEGL libX11 libXrandr libXi libXcursor \
+                     libXinerama libwayland libxkbcommon libasound OpenGL.framework; do
+            if printf '%s' "$libs" | grep -qi -- "$bad"; then
+              echo "FAIL: the dedicated server links $bad -- it is meant to run headless"
+              exit 1
+            fi
+          done
+          echo "ok: links nothing graphical"
+
+  # Every platform's save, read on every platform. This is the half that a
+  # per-platform test cannot do: "it round-trips here" is not "the file one
+  # machine writes is the file another can open", and the report that started
+  # this was exactly the second thing failing while the first was fine.
+
       # ── A FINGER REACHES THE GAME ──
       #
       # The Linux and Windows builds are on raylib's SDL backend so that a
@@ -957,80 +1025,6 @@ jobs:
   # Three platforms build the test and RUN it. Android cannot run here, so it
   # is built and its architecture checked. The web runs under node with
   # NODERAWFS, which is the same code a browser executes against MEMFS.
-  gdtl:
-    needs: plan
-    name: translation layer (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: linux-x64,   os: ubuntu-22.04 }
-          - { name: macos-arm64, os: macos-15 }
-          - { name: windows-x64, os: windows-2022 }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/compiler-cache
-        with:
-          key: gdtl-${{ matrix.name }}
-
-      # zenity, so the file chooser test builds its command through the real
-      # zenity branch rather than the "no helper installed" one. The qualify
-      # job installs neither, so this is the only place that path is exercised.
-      #
-      # The test's last step -- asking the installed zenity whether it accepts
-      # those flags -- does NOT run here, and the test says so rather than
-      # pretending. zenity pulls in xdg-desktop-portal, and on a runner with no
-      # desktop it starts GTK and never returns; it hung this job at its thirty
-      # minute cap three runs running before the test learned to bound it.
-      # Reproduced with Xvfb and a real session bus, and it hangs there too.
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
-            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev \
-            zenity xvfb
-
-      # Same generator as everywhere else on Windows -- see the qualify job.
-      - name: MSVC environment (for Ninja)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-      - name: Build with Ninja
-        if: runner.os == 'Windows'
-        shell: bash
-        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
-
-      - name: Build and run
-        shell: bash
-        run: |
-          set -e
-          cmake -B build-gdtl -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
-                -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
-          cmake --build build-gdtl --config Release --target GdtlTest NativeDialogTest -j 4
-
-          # Both layouts, for the same reason as everywhere else here.
-          find_test() {
-            for c in "build-gdtl/$1" "build-gdtl/$1.exe" "build-gdtl/Release/$1.exe"; do
-              [ -f "$c" ] && { echo "$c"; return 0; }
-            done
-            echo "no $1 was built" >&2; return 1
-          }
-
-          # Under a display on Linux: with one the chooser test asks the real
-          # zenity whether it takes these flags, without one it can only check
-          # the command it built. Windows needs no display -- the PowerShell
-          # probe stops short of showing the window.
-          # An if, not `[ ... ] && RUN=...`: this step runs under `set -e`, and
-          # a false test as the last command of a line is a non-zero status,
-          # which would end the step on the two platforms that are not Linux.
-          RUN=""
-          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
-          $RUN "$(find_test NativeDialogTest)"
-          "$(find_test GdtlTest)"
-
   gdtl-android:
     needs: plan
     name: translation layer (android)
@@ -1081,90 +1075,6 @@ jobs:
           emmake cmake --build build-gdtl-web --target GdtlTest -j 4
           node build-gdtl-web/GdtlTest.js
 
-  server:
-    needs: plan
-    name: server (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: linux-x64,   os: ubuntu-22.04 }
-          - { name: macos-arm64, os: macos-15 }
-          - { name: windows-x64, os: windows-2022 }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/compiler-cache
-        with:
-          key: server-${{ matrix.name }}
-
-      # raylib is configured even for this target -- the server compiles
-      # against its HEADERS so the two cannot disagree about a struct -- and
-      # raylib's own CMakeLists wants the X11/GL/ALSA development headers on
-      # Linux before it will configure. So they are installed to BUILD it. The
-      # point of the server is that none of them are needed to RUN it, and that
-      # is what the link check below actually asserts.
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
-                                  libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
-                                  libxcursor-dev libxinerama-dev libwayland-dev \
-                                  libxkbcommon-dev libudev-dev
-
-      # Same generator as the qualify job, for the same reason -- see the note
-      # on it there. Kept in step deliberately: two Windows jobs building the
-      # same code through different generators is a difference that only ever
-      # shows up as one of them failing.
-      - name: MSVC environment (for Ninja)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build the server only
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then export CMAKE_GENERATOR=Ninja; fi
-          cmake -B build-server -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-server --config Release --target OpenDoctrinesServer -j 4
-
-      - name: Smoke test
-        shell: bash
-        run: tests/server_smoke_test.sh build-server
-
-      # THE PROPERTY THE SERVER EXISTS FOR.
-      #
-      # "Runs on a VPS or in a container" is a claim about what the binary
-      # needs at runtime, and it is one line of CMake away from being false --
-      # target_link_libraries(OpenDoctrinesServer raylib) would build, pass
-      # every test, and quietly require a GPU stack on the host. Nothing else
-      # in this repository would notice. This does.
-      #
-      # Windows is left out rather than faked: dumpbin needs a developer shell,
-      # and asserting nothing is worse than asserting it somewhere else.
-      - name: The binary needs no graphics stack
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -e
-          bin=build-server/OpenDoctrinesServer
-          test -x "$bin" || { echo "no server binary at $bin"; exit 1; }
-          if [ "$RUNNER_OS" = "Linux" ]; then libs=$(ldd "$bin"); else libs=$(otool -L "$bin"); fi
-          echo "$libs"
-          for bad in raylib libGL libGLX libEGL libX11 libXrandr libXi libXcursor \
-                     libXinerama libwayland libxkbcommon libasound OpenGL.framework; do
-            if printf '%s' "$libs" | grep -qi -- "$bad"; then
-              echo "FAIL: the dedicated server links $bad -- it is meant to run headless"
-              exit 1
-            fi
-          done
-          echo "ok: links nothing graphical"
-
-  # Every platform's save, read on every platform. This is the half that a
-  # per-platform test cannot do: "it round-trips here" is not "the file one
-  # machine writes is the file another can open", and the report that started
-  # this was exactly the second thing failing while the first was fine.
   save-exchange:
     name: saves cross-load (${{ matrix.name }})
     needs: [plan, qualify]
