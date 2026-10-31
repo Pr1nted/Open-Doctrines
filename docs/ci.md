@@ -76,15 +76,23 @@ merges is what makes later pull requests fast.
 - Superseded pull-request runs are still cancelled (the existing `concurrency`
   groups).
 
+## 5. The test programs run side by side (`tests/run_all.sh`)
+
+About 74 of the suite's ~93 runs are self-contained test binaries, each
+writing only to its own temp directory, and they ran one at a time on a
+four-core runner. Consecutive ones now go into a pool sized to the core count
+(`OD_TEST_JOBS`). Before any other step the pool is drained, with every
+result printed in file order and every failure named as before. The scripts,
+including every network and multiplayer test with a clock in it, still run
+with nothing else on the machine. `OD_TEST_JOBS=1` restores the serial run.
+
 ## Not done yet
 
 - **Splitting the suite across runners.** It was considered and turned down.
   Slots are the scarce thing, so three runners for one suite makes the queue
-  longer even though the job is shorter. The better move is to run
-  `run_all.sh`'s independent unit tests in parallel on the same runner. That
-  needs each test checked for shared state first (fixed paths, ports, build
-  dirs), so it comes after the caches have shown what time is left.
+  longer even though the job is shorter. Parallelism inside the runner
+  (section 5) gets the speed without the slots.
 - **Folding small jobs into big ones.** The server, translation-layer and
   save-exchange jobs each take a runner on a platform the `qualify` job
-  already has, so folding them in saves the start-up and queueing of about ten
+  already has. Folding them in saves the start-up and queueing of about ten
   jobs per run.
