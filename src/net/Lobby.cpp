@@ -83,6 +83,7 @@ LobbyDenial Lobby::admit(uint16_t peerId, const std::string& psid,
             dropOffers(m.peerId);
             m.peerId = peerId;
             m.connected = true;
+            m.disconnectedAt = 0.0;
             m.name = name;
             m.badges = badges;
             // AND THE ISSUER, which a reconnect used to leave alone. A seat
@@ -260,9 +261,27 @@ void Lobby::pruneSpectators(size_t keep) {
     }
 }
 
-void Lobby::disconnect(uint16_t peerId) {
-    if (LobbyMember* m = mutableFind(peerId)) m->connected = false;
+void Lobby::disconnect(uint16_t peerId, double now) {
+    if (LobbyMember* m = mutableFind(peerId)) {
+        m->connected = false;
+        m->disconnectedAt = now;
+    }
     dropOffers(peerId);
+}
+
+std::vector<std::string> Lobby::releaseStaleSeats(double now, double maxIdleSeconds) {
+    // Collect first: releaseSeat erases from m_members.
+    std::vector<std::pair<std::string, std::string>> stale;   // psid, name
+    for (const auto& m : m_members) {
+        if (m.connected || m.spectator || m.countryId == 0) continue;
+        if (m.disconnectedAt > 0.0 && (now - m.disconnectedAt) >= maxIdleSeconds)
+            stale.push_back({m.psid, m.name});
+    }
+    std::vector<std::string> names;
+    for (const auto& [psid, name] : stale) {
+        if (releaseSeat(psid)) names.push_back(name);
+    }
+    return names;
 }
 
 void Lobby::evict(uint16_t peerId) {

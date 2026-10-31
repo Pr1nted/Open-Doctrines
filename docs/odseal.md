@@ -35,6 +35,24 @@ one prebuilt per platform, and CMake picks the matching one:
 If a maintainer working tree has `guard/odseal.cpp`, that is used instead and
 the prebuilts are ignored — that is the only tree where the source exists.
 
+## What the locale gate is worth
+
+The gate that refuses the two localizations is enforced in two independent
+places: `od_k9` ends the process at startup when a language file carries a
+refused coverage, and `od_fz` — which the font atlas cannot be built without —
+drops that coverage's glyphs so the text renders as missing glyphs even if the
+first check is reached around. Inside `od_fz` the decision is taken by two
+independently-shaped predicates that must agree, so neutralising a single call
+site in the stripped binary does not open the gate.
+
+None of that makes it unbypassable, and the header says so: this runs on
+hardware its owner controls, so it is a **cost, not a proof** — the calls can be
+patched out by anyone willing to reverse the archive. The redundancy raises that
+cost from "edit one site" to "find and defeat every site"; it is the only lever
+an open-source client has, and it should never be read as more. A change to the
+gate lands in the private source and reaches players only once the prebuilts are
+regenerated (see *Keeping them in sync* below).
+
 When neither is available the **configure** stops with an explanation, rather
 than letting the build reach a link error about unresolved `od_*` symbols,
 which says nothing about the cause.

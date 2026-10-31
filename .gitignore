@@ -227,3 +227,9 @@ docs/trailer/assets/march-cut-youtube.mp4
 docs/trailer/assets/outro-alpha.mov
 docs/trailer/assets/outro.mp4
 .localtest/
+
+# Release signing: the PRIVATE key is a secret and must never be committed.
+# tools/gen_release_key.py writes it; store it as the CI secret RELEASE_SIGNING_KEY.
+# The .pub (public key) IS committed, so do not ignore it.
+release_signing_key*.pem
+*release_signing*key*.pem

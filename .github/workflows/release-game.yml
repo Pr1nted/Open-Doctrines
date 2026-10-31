@@ -765,6 +765,41 @@ jobs:
             this game release ships without it. Release Unifico first (tag vX.Y.Z there)."
           fi
 
+      # ── SIGN THE RELEASE ──
+      #
+      # A detached Ed25519 signature over a manifest of every self-update zip's
+      # SHA-256, made with the OFFLINE key (the RELEASE_SIGNING_KEY secret, the
+      # whole PEM). The client verifies it against the key compiled into
+      # src/ReleaseSigningKey.h before it will self-install, so a compromised
+      # release host cannot push a swapped binary -- the digest the updater used
+      # to trust came over the same connection as the file. See SECURITY.md,
+      # tools/sign_release.py and tools/gen_release_key.py.
+      #
+      # Missing the secret is a loud warning, not a hard failure, so a fork that
+      # pins no key can still release: its clients keep the integrity-only check.
+      # For THIS repo set the secret -- without it, clients that pin the key
+      # refuse to self-install and send players to the release page instead.
+      - name: Sign the release
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
+            echo "::warning title=Unsigned release::RELEASE_SIGNING_KEY is not set; \
+            this release has no signed manifest. Clients that pin a release key will \
+            refuse to self-install it and send players to the release page. Set the \
+            secret to sign releases -- see tools/gen_release_key.py."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          mapfile -t zips < <(find artifacts -name 'OpenDoctrines-*.zip' | sort)
+          if [ "${#zips[@]}" -eq 0 ]; then
+            echo "::error title=Nothing to sign::no OpenDoctrines-*.zip assets found"
+            exit 1
+          fi
+          python3 tools/sign_release.py --version "$version" --out signed "${zips[@]}"
+          ls -l signed
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -788,6 +823,8 @@ jobs:
             artifacts/**/*.rpm
             artifacts/**/*.flatpak
             launcher/*.zip
+            signed/release.manifest
+            signed/release.manifest.sig
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}
