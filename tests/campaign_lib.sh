@@ -55,7 +55,12 @@ campaign_setup() {
     printf '{"accountIssuer": "%s", "accountAgreed": true}\n' "$issuer" > "$work/data/config.json"
     printf '{"issuer": "%s", "token": "dev-host"}\n' "$issuer" > "$work/data/account.json"
 
-    port=$(( 40000 + RANDOM % 20000 ))
+    # A port the OS says is free, not a random one: on Windows part of
+    # 40000-59999 is reserved (Hyper-V's excluded port ranges) or in use as an
+    # outgoing port, and a server given one of those is refused to its own
+    # players -- "could not reach 127.0.0.1 in time" in the chat round.
+    port="$(node -e "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
+    [ -n "$port" ] || port=$(( 40000 + RANDOM % 9000 ))
     cfg="$work/server.json"
     save="$work/data/saves/Dedicated.odsv"
     "$srv" --write-config --config "$cfg" --data "$work/data" >/dev/null 2>&1
