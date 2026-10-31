@@ -104,7 +104,7 @@ jobs:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
         include:
-          - { name: macos-arm64,  os: macos-14 }
+          - { name: macos-arm64,  os: macos-15 }
           # macos-15-intel, NOT macos-13. GitHub retired the macos-13 image, so
           # a job asking for it is never scheduled -- it sits queued forever
           # rather than failing. That is worse than a failure: the run never
@@ -915,7 +915,7 @@ jobs:
       matrix:
         include:
           - { name: linux-x64,   os: ubuntu-22.04 }
-          - { name: macos-arm64, os: macos-14 }
+          - { name: macos-arm64, os: macos-15 }
           - { name: windows-x64, os: windows-2022 }
     steps:
       - uses: actions/checkout@v5
@@ -1033,7 +1033,7 @@ jobs:
       matrix:
         include:
           - { name: linux-x64,   os: ubuntu-22.04 }
-          - { name: macos-arm64, os: macos-14 }
+          - { name: macos-arm64, os: macos-15 }
           - { name: windows-x64, os: windows-2022 }
     steps:
       - uses: actions/checkout@v5
@@ -1113,7 +1113,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: macos-arm64, os: macos-14 }
+          - { name: macos-arm64, os: macos-15 }
           - { name: macos-x64,   os: macos-15-intel }
           - { name: windows-x64, os: windows-2022 }
           - { name: linux-x64,   os: ubuntu-22.04 }
