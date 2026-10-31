@@ -5126,6 +5126,11 @@ private:
     int m_shotIndex = 0;                 // which shot in the list
     bool m_ojhFps = false;             // --ojh-fps: timing frame-rate scenes
     int m_shotFrame = 0;                 // frames spent settling on it
+    bool m_shotAsked = false;            // capture requested for the current shot
+    // A file the next endFrame() writes the finished frame to, just before
+    // EndDrawing. A capture taken after the swap reads an undefined back buffer:
+    // desktop GL kept the pixels, ANGLE's Metal backend hands back black.
+    std::string m_frameCapturePath;
     int m_shotProvince = 0;              // the province the panel shots describe
     int m_shotForeignProvince = 0;       // one somebody else owns, for the diplomacy shots
 

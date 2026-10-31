@@ -348,11 +348,11 @@ option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL backend (real touc
 # game changes. OD_ANGLE_BACKEND picks ANGLE's backend at run time
 # (tools/patch_raylib_angle.py).
 #
-# ANGLE is not fetched: OD_ANGLE_DIR names a folder holding libEGL and
-# libGLESv2, which are copied beside the game. GLFW only, for now: SDL3 can
+# ANGLE comes from tools/data/angle.json's pinned bundle (tools/fetch_angle.py)
+# unless OD_ANGLE_DIR names a folder of your own. GLFW only, for now: SDL3 can
 # create the same context, but it has no switch for ANGLE's backend.
 option(OD_ANGLE "EXPERIMENTAL: render through ANGLE (GLES 2 on Metal/D3D11/Vulkan) instead of desktop OpenGL" OFF)
-set(OD_ANGLE_DIR "" CACHE PATH "Folder with ANGLE's libEGL and libGLESv2, copied beside the game when OD_ANGLE is on")
+set(OD_ANGLE_DIR "" CACHE PATH "Folder with ANGLE's libEGL and libGLESv2 (default: the pinned bundle, fetched)")
 if(OD_ANGLE AND OD_DESKTOP_SDL)
     message(FATAL_ERROR "OD_ANGLE needs raylib's GLFW backend: configure with -DOD_DESKTOP_SDL=OFF")
 endif()
@@ -1821,14 +1821,31 @@ if(OD_ANGLE)
     # raylib keeps its GRAPHICS_API_* define private, and the game picks its
     # #version 100 shaders on it.
     target_compile_definitions(OpenDoctrines PRIVATE OD_ANGLE=1 GRAPHICS_API_OPENGL_ES2)
-    if(OD_ANGLE_DIR)
-        file(GLOB od_angle_libs "${OD_ANGLE_DIR}/*EGL*" "${OD_ANGLE_DIR}/*GLESv2*")
-        foreach(lib ${od_angle_libs})
-            add_custom_command(TARGET OpenDoctrines POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib}" "$<TARGET_FILE_DIR:OpenDoctrines>")
-        endforeach()
-    else()
-        message(WARNING "OD_ANGLE without OD_ANGLE_DIR: the game will only start if ANGLE is on the library path")
+    # No OD_ANGLE_DIR: the bundle tools/data/angle.json pins, built by the
+    # "ANGLE prebuilts" workflow and checked against its SHA-256.
+    if(NOT OD_ANGLE_DIR)
+        set(od_angle_fetched "${CMAKE_BINARY_DIR}/angle")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/fetch_angle.py" "${od_angle_fetched}"
+            RESULT_VARIABLE od_angle_fetch_rc
+            ERROR_VARIABLE  od_angle_fetch_err)
+        if(NOT od_angle_fetch_rc EQUAL 0)
+            message(FATAL_ERROR "OD_ANGLE: no ANGLE to build with.\n${od_angle_fetch_err}")
+        endif()
+        set(OD_ANGLE_DIR "${od_angle_fetched}")
+    endif()
+    # The libraries, SwiftShader and its ICD file go beside the game, where the
+    # patched GLFW and ANGLE look; the licences into licenses/ANGLE.
+    file(GLOB od_angle_libs "${OD_ANGLE_DIR}/*EGL*" "${OD_ANGLE_DIR}/*GLESv2*"
+                            "${OD_ANGLE_DIR}/*vk_swiftshader*")
+    foreach(lib ${od_angle_libs})
+        add_custom_command(TARGET OpenDoctrines POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib}" "$<TARGET_FILE_DIR:OpenDoctrines>")
+    endforeach()
+    if(EXISTS "${OD_ANGLE_DIR}/licenses")
+        add_custom_command(TARGET OpenDoctrines POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${OD_ANGLE_DIR}/licenses"
+                    "$<TARGET_FILE_DIR:OpenDoctrines>/licenses/ANGLE")
     endif()
 endif()
 if(OD_DESKTOP_SDL)

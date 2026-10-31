@@ -1,0 +1,13 @@
+{
+  "_comment": "ANGLE for OD_ANGLE builds (experimental). 'source' is what .github/workflows/angle-prebuilts.yml builds; 'bundles' are its published results, checked by tools/fetch_angle.py before a byte is unpacked. A bundle is pinned only after the workflow built and tested it -- an empty url means no build has been published for that platform yet.",
+  "source": {
+    "repo": "https://chromium.googlesource.com/angle/angle",
+    "branch": "chromium/8135",
+    "commit": "4a5ccd7b61e6ea3bf8bb1c486ac5f92ee7bf4f67"
+  },
+  "bundles": {
+    "macos-universal": {"url": "", "sha256": ""},
+    "windows-x86_64": {"url": "", "sha256": ""},
+    "linux-x86_64": {"url": "", "sha256": ""}
+  }
+}

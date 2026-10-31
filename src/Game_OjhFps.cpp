@@ -65,15 +65,22 @@ void Game::beginOjhFps(double seconds, const std::string& savePath, int turns) {
     g_ojh.turns = std::max(0, turns);
     m_currentScreen = SCREEN_MENU;
     m_inSettings = false;
-    ClearWindowState(FLAG_VSYNC_HINT);
-    SetTargetFPS(0);
+    // OD_OJH_VSYNC keeps VSync on, the shipped default: the scenes then measure
+    // pacing -- how often a frame misses the display -- rather than throughput.
+    const bool vsync = getenv("OD_OJH_VSYNC") != nullptr;
+    if (vsync) {
+        applyFpsTarget(0);   // exactly what a player gets, including its stand-ins
+    } else {
+        SetTargetFPS(0);
+        ClearWindowState(FLAG_VSYNC_HINT);
+    }
 #if defined(OD_ANGLE)
     const char* backend = getenv("OD_ANGLE_BACKEND");
     printf("OJH renderer raylib %s, ANGLE (%s)\n", RAYLIB_VERSION, backend ? backend : "default");
 #else
     printf("OJH renderer raylib %s, OpenGL\n", RAYLIB_VERSION);
 #endif
-    printf("OJH resolution %dx%d\nOJH vsync off\n", GetRenderWidth(), GetRenderHeight());
+    printf("OJH resolution %dx%d\nOJH vsync %s\n", GetRenderWidth(), GetRenderHeight(), vsync ? "on" : "off");
     fflush(stdout);
 }
 
