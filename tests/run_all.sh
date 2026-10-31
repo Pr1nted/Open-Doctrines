@@ -96,8 +96,8 @@ note_fail() { failed_steps+=("$1"); fail=1; }
 
 # THE TEST PROGRAMS RUN SIDE BY SIDE; EVERYTHING ELSE RUNS ALONE.
 #
-# Most of this file is a run of self-contained test binaries -- `run "name"
-# "$bin/SomeTest"`, at most with the data directory -- each of which writes
+# Most of this file is a run of self-contained test binaries -- a run() of
+# one program from the build directory, at most with the data directory -- each writing
 # only under its own temp directory. They used to run one after another on a
 # four-core runner, so three cores sat idle for most of the suite. Now
 # consecutive ones go into a pool of OD_TEST_JOBS (default: the core count),
