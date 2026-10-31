@@ -1900,11 +1900,12 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     const int n = (int)codepoints.size();
     if (n <= 0) return font;
 
-    std::vector<int> cps = codepoints;   // LoadFontData takes a non-const pointer
     int pSize = 0;
     unsigned char* pData = LoadFileData(primaryPath.c_str(), &pSize);
     if (pData == nullptr) return font;
-    GlyphInfo* glyphs = LoadFontData(pData, pSize, size, cps.data(), n, FONT_DEFAULT);
+    int glyphCount = 0;
+    GlyphInfo* glyphs = LoadFontData(pData, pSize, size, codepoints.data(), n,
+                                     FONT_DEFAULT, &glyphCount);
     UnloadFileData(pData);
     if (glyphs == nullptr) return font;
 
@@ -1915,9 +1916,9 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     std::vector<int> missing;
     std::vector<int> missingAt;
     for (int i = 0; i < n; ++i) {
-        if (odIsBlankCodepoint(cps[i])) continue;
+        if (odIsBlankCodepoint(codepoints[i])) continue;
         if (glyphs[i].advanceX == 0 && glyphs[i].image.width == 0) {
-            missing.push_back(cps[i]);
+            missing.push_back(codepoints[i]);
             missingAt.push_back(i);
         }
     }
@@ -1925,8 +1926,10 @@ static Font odLoadMergedFont(const std::string& primaryPath,
         int cSize = 0;
         unsigned char* cData = LoadFileData(coverPath.c_str(), &cSize);
         if (cData != nullptr) {
+            int coverCount = 0;
             GlyphInfo* cover = LoadFontData(cData, cSize, size, missing.data(),
-                                            (int)missing.size(), FONT_DEFAULT);
+                                            (int)missing.size(), FONT_DEFAULT,
+                                            &coverCount);
             UnloadFileData(cData);
             if (cover != nullptr) {
                 for (size_t k = 0; k < missing.size(); ++k) {
@@ -2939,6 +2942,12 @@ void Game::run() {
         // every frame, and a popup is exactly when it must not stutter.
         Audio::get().update(dt);
         updateMusic(dt);
+        // Beside them and for the same reason: the mod bus is mixed on the
+        // audio thread and reads its gains from here, so this has to run on
+        // every frame and on every screen. Game::update() was the wrong home
+        // -- it is only called on the gameplay branch, so a mod's sound went
+        // unmixed at the menu, which is exactly where a mod load plays one.
+        pumpModAudio();
         // Also above the early-out: the resource panel is a system control, not
         // a game screen, so it has to answer F10 even with a popup up.
         samplePerformance();

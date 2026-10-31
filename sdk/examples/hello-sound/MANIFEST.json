@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.hello-sound",
+  "name": "Hello Sound",
+  "version": "1.0.0",
+  "description": "Example mod: plays a sound from its own assets, with a panel that shows whether it is still playing.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.0",
+  "modules": ["Core", "UI", "Audio", "Assets"],
+  "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
+}
