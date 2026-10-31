@@ -1,0 +1,46 @@
+# A compiler cache for every CMake build in CI, one line per job:
+#
+#     - uses: ./.github/actions/compiler-cache
+#       with: { key: windows-x64 }
+#
+# WHY. On windows-x64, 31 of a 55-minute run was COMPILING (test.yml, the
+# qualify job's note on its timeout), and every job compiled the whole game from
+# nothing on every push -- the same translation units, built again on the same
+# compiler, for a diff that touched one of them. ccache (sccache for MSVC, which
+# ccache cannot drive) turns the second build of an unchanged file into a copy.
+#
+# HOW IT REACHES THE BUILD. CMake reads CMAKE_<LANG>_COMPILER_LAUNCHER from the
+# environment when it configures a new tree (CMake 3.17+; this project needs
+# 3.20), so setting those here is the whole integration: qualify.sh, the cross
+# builds and the Android and web builds need no change of their own.
+#
+# WHERE IT IS SAVED. The cache action keys on the job and saves on every run;
+# a pull request reads main's cache and writes its own, so the nightly run on
+# main is what keeps every PR's starting point warm.
+name: compiler cache
+description: ccache (sccache on Windows) for CMake, keyed per job
+inputs:
+  key:
+    description: what this cache holds -- the job and platform, e.g. windows-x64
+    required: true
+  max-size:
+    description: largest the cache may grow; the repository has 10 GB for all of them
+    default: 400M
+runs:
+  using: composite
+  steps:
+    - uses: hendrikmuhs/ccache-action@v1.2.14
+      with:
+        key: ${{ inputs.key }}
+        max-size: ${{ inputs.max-size }}
+        variant: ${{ runner.os == 'Windows' && 'sccache' || 'ccache' }}
+    - name: Point CMake at it
+      shell: bash
+      run: |
+        tool=ccache; [ "$RUNNER_OS" = Windows ] && tool=sccache
+        echo "CMAKE_C_COMPILER_LAUNCHER=$tool" >> "$GITHUB_ENV"
+        echo "CMAKE_CXX_COMPILER_LAUNCHER=$tool" >> "$GITHUB_ENV"
+        # Absolute paths hash differently on every runner's checkout; relative
+        # to the workspace they match, and so do the cache entries.
+        echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"

@@ -43,6 +43,13 @@ on:
     branches: [main]
     tags-ignore: ["**"]        # tags are release-game.yml's job, not this one
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  # THE NIGHTLY RUN is where everything runs. A pull request runs the core tier
+  # and whatever its paths can break (tools/ci_plan.py); this is the run that
+  # catches a regression on a ninth CPU that nothing in the diff pointed at,
+  # and the one that keeps the compiler caches warm for the day's PRs.
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
   workflow_call:               # release-game.yml calls this before publishing
 
@@ -70,7 +77,29 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # WHAT THIS CHANGE NEEDS, and the cheap checks that sink a run before it
+  # costs anything. Every job below waits on this one, so a tool missing from
+  # the index or a release name out of step fails in a minute on one Linux
+  # runner instead of an hour later on thirty.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      wide: ${{ steps.p.outputs.wide }}
+      full: ${{ steps.p.outputs.full }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }    # the diff against the PR's base
+      - name: Tool index
+        run: python3 tools/help.py --check
+      - name: Release names agree
+        run: python3 tools/check_release_names.py
+      - id: p
+        name: Which tiers
+        run: python3 tools/ci_plan.py
+
   qualify:
+    needs: plan
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     # A hang must not cost six hours. GitHub's default job timeout is 360
@@ -103,6 +132,7 @@ jobs:
     strategy:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
+        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
         include:
           - { name: macos-arm64,  os: macos-15 }
           # macos-15-intel, NOT macos-13. GitHub retired the macos-13 image, so
@@ -111,12 +141,15 @@ jobs:
           # finishes, it holds the concurrency group, and every later push is
           # cancelled behind it. Six consecutive runs were lost that way before
           # anyone noticed macos-x64 had never once completed.
-          - { name: macos-x64,    os: macos-15-intel }
+          - { name: macos-x64,    os: macos-15-intel, tier: wide }
           - { name: windows-x64,  os: windows-2022 }
           - { name: linux-x64,    os: ubuntu-22.04 }
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: qualify-${{ matrix.name }}
 
       # Pinned, not inherited. The stand-in account service signs with WebCrypto
       # Ed25519, which arrived in node 18 -- and on older node the file does not
@@ -438,6 +471,8 @@ jobs:
   # prebuilt in third_party/odseal (see docs/odseal.md); without it configure
   # stops and says so, which is the right failure.
   other-arch:
+    needs: plan
+    if: needs.plan.outputs.wide == 'true'
     name: ${{ matrix.name }} (build + suite)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -452,6 +487,9 @@ jobs:
           - { name: linux-riscv64, os: ubuntu-24.04, deb_arch: riscv64, triplet: riscv64-linux-gnu,   toolchain: linux-riscv64, expect: riscv64 }
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: cross-${{ matrix.name }}
       - uses: actions/setup-node@v5
         with: { node-version: "22" }
       - uses: actions/setup-python@v6
@@ -530,6 +568,7 @@ jobs:
   # host spends opening took the crash. One sanitized build, one case, and it
   # is a real answer rather than a hope.
   race:
+    needs: plan
     name: thread safety (tsan)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -551,6 +590,7 @@ jobs:
         run: tests/net_race_test.sh "${{ github.workspace }}/build-tsan"
 
   fuzz:
+    needs: plan
     name: parsers (asan + ubsan)
     runs-on: ubuntu-22.04
     timeout-minutes: 25
@@ -573,15 +613,24 @@ jobs:
   # run side by side here and the package job below puts all four into the
   # one APK that is published.
   android-lib:
+    needs: plan
     name: android lib (${{ matrix.abi }})
     runs-on: ubuntu-22.04
     timeout-minutes: 40      # same reason as qualify: a link that hangs is not free
     strategy:
       fail-fast: false
       matrix:
-        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
+        include:
+          - { abi: arm64-v8a }
+          - { abi: armeabi-v7a, tier: wide }
+          - { abi: x86_64,      tier: wide }
+          - { abi: x86,         tier: wide }
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: android-${{ matrix.abi }}
 
       # The runner ships an SDK and an NDK already; name the NDK explicitly so a
       # runner image bump cannot silently change the compiler under us.
@@ -612,7 +661,7 @@ jobs:
             -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
             -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON \
             -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
-          cmake --build build-android -j 2
+          cmake --build build-android -j 4
 
       # The library that is about to be packaged, not a build made to test
       # with: if the address is not in it, the Multiplayer screen on a phone
@@ -682,7 +731,8 @@ jobs:
 
   android:
     name: android (APK, all ABIs)
-    needs: android-lib
+    needs: [plan, android-lib]
+    if: needs.plan.outputs.wide == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -791,6 +841,7 @@ jobs:
           if-no-files-found: error
 
   web:
+    needs: plan
     name: web (emscripten)
     runs-on: ubuntu-22.04
     timeout-minutes: 30      # same reason as qualify; a link that hangs is not free
@@ -806,7 +857,7 @@ jobs:
       - name: Build
         run: |
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
-          emmake cmake --build build-web -j 2
+          emmake cmake --build build-web -j 4
 
       # A link that "succeeded" without producing a loadable module is a
       # failure that reports success, so name the four files that must exist.
@@ -907,6 +958,7 @@ jobs:
   # is built and its architecture checked. The web runs under node with
   # NODERAWFS, which is the same code a browser executes against MEMFS.
   gdtl:
+    needs: plan
     name: translation layer (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -919,6 +971,9 @@ jobs:
           - { name: windows-x64, os: windows-2022 }
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: gdtl-${{ matrix.name }}
 
       # zenity, so the file chooser test builds its command through the real
       # zenity branch rather than the "no helper installed" one. The qualify
@@ -977,6 +1032,7 @@ jobs:
           "$(find_test GdtlTest)"
 
   gdtl-android:
+    needs: plan
     name: translation layer (android)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -1006,6 +1062,7 @@ jobs:
             echo "that is not an Android binary"; exit 1; }
 
   gdtl-web:
+    needs: plan
     name: translation layer (web)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -1025,6 +1082,7 @@ jobs:
           node build-gdtl-web/GdtlTest.js
 
   server:
+    needs: plan
     name: server (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -1037,6 +1095,9 @@ jobs:
           - { name: windows-x64, os: windows-2022 }
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: server-${{ matrix.name }}
 
       # raylib is configured even for this target -- the server compiles
       # against its HEADERS so the two cannot disagree about a struct -- and
@@ -1066,7 +1127,7 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then export CMAKE_GENERATOR=Ninja; fi
           cmake -B build-server -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-server --config Release --target OpenDoctrinesServer -j 2
+          cmake --build build-server --config Release --target OpenDoctrinesServer -j 4
 
       - name: Smoke test
         shell: bash
@@ -1106,15 +1167,16 @@ jobs:
   # this was exactly the second thing failing while the first was fine.
   save-exchange:
     name: saves cross-load (${{ matrix.name }})
-    needs: qualify
+    needs: [plan, qualify]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
+        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
         include:
           - { name: macos-arm64, os: macos-15 }
-          - { name: macos-x64,   os: macos-15-intel }
+          - { name: macos-x64,   os: macos-15-intel, tier: wide }
           - { name: windows-x64, os: windows-2022 }
           - { name: linux-x64,   os: ubuntu-22.04 }
 
