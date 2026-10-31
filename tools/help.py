@@ -231,6 +231,10 @@ GROUPS = [
         "templeos_map.py", "templeos_world.py", "templeos_data.py",
         "templeos_font.py", "templeos_sync.py", "templeos_release.sh",
         "templeos_collage.py",
+        # The FreeRTOS edition: the same world as const C, the kernel it runs
+        # on, a scripted game over its serial line, and the board zips.
+        "freertos_world.py", "freertos_kernel.sh", "freertos_play.py",
+        "freertos_package.py",
     ]),
     ("Building the world data", [
         "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",
