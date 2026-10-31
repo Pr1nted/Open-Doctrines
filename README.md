@@ -304,6 +304,25 @@ out by default.
 
 Porting the runtime is a separate piece of work and not scheduled.
 
+### OpenIndiana and illumos
+
+Built and published for **amd64** (`illumos-amd64`) inside a real OpenIndiana
+Hipster VM, by its own gcc, the same way as the BSDs. It ships with every
+release: `.github/workflows/other-os-game.yml` builds it — with Haiku and
+SerenityOS — on every pull request and push, and the release waits for it. It should run on any
+current illumos distribution with X11 and Mesa — OpenIndiana, or OmniOS with
+the X11 packages added — and needs `x11/library/mesa` and the usual X client
+libraries (`pkg install x11/library/mesa x11/library/libxrandr
+x11/library/libxinerama x11/library/libxcursor x11/library/libxi`).
+
+**Without mods**, for the same reason as OpenBSD and NetBSD: WAMR has no
+illumos platform layer. A source build there leaves mods out by default.
+
+**No Arm build.** illumos on Arm is an early bring-up with no package
+repository — no X11, Mesa or compiler to build the game with or run it
+against — and no CI image boots it. If an Arm OpenIndiana or OmniOS release
+appears, it is one more entry in `other-os-game.yml` and one more odseal archive.
+
 ### Windows
 
 Requires **Windows 10 or later**. Three builds are published:
@@ -656,6 +675,7 @@ playing:
   | **FreeBSD (amd64, arm64)** | builds, packages, and loads a world headlessly |
   | **OpenBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
   | **NetBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **OpenIndiana / illumos (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
 
   The BSDs' arm64 builds run in emulated VMs and take hours, so pull requests
   build the three amd64 ones; every push to main and every release builds all
@@ -703,6 +723,7 @@ playing:
   | **FreeBSD** | built every release | yes |
   | **OpenBSD** | built every release | **not available** |
   | **NetBSD** | built every release | **not available** |
+  | **OpenIndiana / illumos** | built every release | **not available** |
 
   The OpenBSD and NetBSD builds are compiled with the runtime left out rather
   than shipping one that loads nothing. Porting WAMR to them is a real piece of

@@ -44,6 +44,24 @@ endif()
 set(OD_VERSION_NUMERIC "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
 
 project(OpenDoctrines VERSION ${OD_VERSION_NUMERIC})
+
+# ILLUMOS: the whole POSIX and extension API, for every target and every
+# dependency fetched below. Code that asks for a narrow standard -- GLFW's
+# posix_time.c sets _POSIX_C_SOURCE 199309L itself -- otherwise loses
+# declarations illumos keeps behind __EXTENSIONS__ (clock_gettime there), and
+# C treats the call as implicit, which raylib builds as an error. The usual
+# illumos answer; pkgsrc and OmniOS build ports the same way.
+#
+# And the BSD socket calls live in libsocket and libnsl there, not libc:
+# every target links them (the game, the server, the tests). Unifico's
+# OpenIndiana build failed to link its tests without them.
+if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+    add_compile_definitions(__EXTENSIONS__)
+    link_libraries(socket nsl)
+    # GCC on illumos predefines `sun` as 1 (and `unix`), the way it did on
+    # every Sun before C was standardised; GlobeView's `sun()` became `1()`.
+    add_compile_options(-Usun)
+endif()
 add_compile_definitions(OD_VERSION_STRING="${OD_VERSION_FULL}")
 message(STATUS "OpenDoctrines version ${OD_VERSION_FULL}")
 
@@ -689,6 +707,18 @@ else()
                 set(ODSEAL_ARCH "aarch64")
             endif()
         endif()
+        # ILLUMOS. CMake names it by `uname -s`, SunOS, and asks `uname -p` for
+        # the processor -- which is i386 on every x86 illumos machine, 64-bit
+        # kernel and 64-bit build included. So the pointer size decides here
+        # too, and the OS is called illumos: OpenIndiana and OmniOS are what
+        # the archive is built and tested on, and Oracle Solaris, which also
+        # says SunOS, is not.
+        if(ODSEAL_OS STREQUAL "sunos")
+            set(ODSEAL_OS "illumos")
+            if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND ODSEAL_ARCH MATCHES "^(i[3-6]86|i86pc|x86_64|amd64)$")
+                set(ODSEAL_ARCH "amd64")
+            endif()
+        endif()
         set(ODSEAL_PLATFORM "${ODSEAL_OS}-${ODSEAL_ARCH}")
         set(ODSEAL_LIBNAME  "libodseal.a")
     else()
@@ -729,12 +759,13 @@ endif()
 # links -- the mod menu then reports every mod as Failed with a diagnostic
 # saying the runtime is unavailable, rather than the build breaking.
 #
-# OFF BY DEFAULT ON OpenBSD AND NetBSD. WAMR has no platform layer for either
-# (its core/shared/platform has freebsd and no other BSD), so ON there fails at
-# configure with a missing directory that does not say why. The release builds
-# pass OFF explicitly anyway; this is so a source build on those systems works
-# without knowing that. README.md, "FreeBSD, OpenBSD and NetBSD", says the same.
-if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD")
+# OFF BY DEFAULT ON OpenBSD, NetBSD AND illumos. WAMR has no platform layer for
+# any of them (its core/shared/platform has freebsd and no other BSD, and no
+# solaris), so ON there fails at configure with a missing directory that does
+# not say why. The release builds pass OFF explicitly anyway; this is so a
+# source build on those systems works without knowing that. README.md says the
+# same under "FreeBSD, OpenBSD and NetBSD" and "OpenIndiana and illumos".
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS")
     set(od_mods_default OFF)
 else()
     set(od_mods_default ON)

@@ -328,6 +328,14 @@ std::string GameUpdates::platformKey() {
   #else
     return "OpenDoctrines-netbsd-unknown";
   #endif
+#elif defined(__sun)
+  // illumos (OpenIndiana, OmniOS). x86-64 only: no illumos distribution ships
+  // for anything else that could run the game.
+  #if defined(__x86_64__)
+    return "OpenDoctrines-illumos-amd64";
+  #else
+    return "OpenDoctrines-illumos-unknown";
+  #endif
 #else
     return "OpenDoctrines-unknown";
 #endif

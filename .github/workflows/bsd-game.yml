@@ -1,4 +1,5 @@
-# The game, built on FreeBSD, OpenBSD and NetBSD, for amd64 and arm64.
+# The game, built on FreeBSD, OpenBSD and NetBSD for amd64 and arm64.
+# (OpenIndiana, Haiku and SerenityOS are other-os-game.yml.)
 #
 # WHY A SEPARATE WORKFLOW
 #
