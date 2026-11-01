@@ -227,7 +227,12 @@ endif()
 # NOT EMSCRIPTEN: wasm32 also has 4-byte pointers, and Emscripten's toolchain
 # reports CMAKE_SYSTEM_PROCESSOR as "x86" for historical reasons -- so without
 # this the web build was handed -msse2, which em++ refuses without -msimd128.
-if(NOT MSVC AND NOT EMSCRIPTEN AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
+#
+# NOT DJGPP: DOS promises a Pentium (packaging/dos/DOS.TXT), which has no SSE
+# at all; the first DOSBox-X run died on a movss in a static initialiser. The
+# DOS build is offline and single-player -- it never runs a simulation in step
+# with another machine -- so x87's last-bit differences cost it nothing.
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|x86_64|amd64|AMD64)$")
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-msse2> $<$<COMPILE_LANGUAGE:C,CXX>:-mfpmath=sse>)
 endif()
@@ -265,7 +270,9 @@ endif()
 # Not MSVC: /GS is its own stack cookie and is on by default. Not Emscripten:
 # wasm bounds every access inside its linear memory already, so a canary buys
 # nothing there and costs code size and speed the web build is tight on.
-if(NOT MSVC AND NOT EMSCRIPTEN)
+# Not on DJGPP: its libc has no stack-protector runtime (__stack_chk_fail,
+# __stack_chk_guard), so every object compiles and the final link fails.
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP)
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-strong>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-U_FORTIFY_SOURCE>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-D_FORTIFY_SOURCE=2>)
@@ -333,7 +340,11 @@ option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offs
 # not a choice. It links the system SDL3 rather than building one (below).
 # SERENITYOS LIKEWISE, and on its own SDL2: SDL3 has no SerenityOS backend,
 # and SerenityOS's ports tree carries SDL2 with one.
-if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+#
+# THE PS VITA TOO (VITA, set by VitaSDK's toolchain file): SDL3 has a Vita
+# backend -- the screen, the buttons and sticks as a gamepad, both touch
+# panels -- and is built from source here as on Linux.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" OR VITA)
    AND NOT ANDROID AND NOT EMSCRIPTEN)
     set(od_desktop_sdl_default ON)
 else()
@@ -347,13 +358,70 @@ endif()
 # with an unimplemented GLSL compiler. rlsw has render textures but no
 # shaders: the custom shaders fail to load and fall back to raylib's default,
 # so the globe and the map's lighting lose their effects and stay readable.
-# On by default on SerenityOS, the system it exists for.
-if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+# On by default on SerenityOS, the system it exists for, and on the PS Vita,
+# whose GPU has no OpenGL of its own: vitaGL provides one, but compiles its
+# shaders with a library every player would have to extract from their own
+# console first. Software rendering needs nothing installed.
+if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" OR VITA)
     set(od_software_render_default ON)
 else()
     set(od_software_render_default OFF)
 endif()
 option(OD_SOFTWARE_RENDER "Render in software (raylib rlsw), with no OpenGL driver; needs OD_DESKTOP_SDL" ${od_software_render_default})
+
+# ── OPENGL ES, FOR GPUS THAT STOP SHORT OF GL 3.3 ──
+#
+# The desktop game asks for OpenGL 3.3 core. A Raspberry Pi 4 or 5 offers GL
+# 3.1 and GLES 3.1 (Mesa v3d), so there the game came up only through the
+# software-GL relaunch -- llvmpipe on the Pi's CPU. OD_GLES builds raylib for
+# OpenGL ES 2.0 instead, and the game picks the GLSL ES shader variants it
+# already ships for Android and the web. raylib keeps its own GRAPHICS_API_*
+# define private, so the game target is given GRAPHICS_API_OPENGL_ES2 itself
+# (see below): without it the game would hand GLSL 3.30 to an ES context.
+option(OD_GLES "Build the desktop game for OpenGL ES 2.0 (Raspberry Pi and other GLES-only GPUs); needs OD_DESKTOP_SDL" OFF)
+if(OD_GLES)
+    set(OPENGL_VERSION "ES 2.0" CACHE STRING "raylib renderer: OpenGL ES 2.0" FORCE)
+endif()
+
+# ── DOS ──
+#
+# DJGPP, 32-bit protected mode under a DPMI host. No OS windowing, no GL, no
+# threads, no network stack, no sound API: so raylib runs on rlsw (above) and
+# on a platform layer of the game's own, src/platform/dos/rcore_dos.c -- a VESA
+# linear framebuffer, the INT 33h mouse and an IRQ 1 keyboard handler. raylib
+# has no DOS platform, so it is built as PLATFORM=Memory (rlsw into a buffer)
+# and that file is copied over the memory platform's own (see FetchContent
+# below). raylib's audio module is left out (miniaudio needs threads) and
+# src/platform/dos/NoAudio.cpp answers its API.
+#
+# The game is single-threaded here as it is on the web (OD_NO_THREADS, see
+# src/util/Async.h), offline (no multiplayer transport, no mods' WASM runtime),
+# and without HarfBuzz.
+#
+# ON A NON-DOS HOST the same option builds the same code against a stand-in
+# screen in memory, which is how CI runs the DOS build's frame path and its
+# single-threaded game on Linux, where a DJGPP binary cannot run.
+if(DJGPP)
+    set(od_dos_default ON)
+else()
+    set(od_dos_default OFF)
+endif()
+option(OD_DOS "Build for DOS (DJGPP): VESA framebuffer, rlsw, single-threaded, offline; on another host, the same against a stand-in screen" ${od_dos_default})
+if(OD_DOS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    # Worlds at 1/2 (peaks near 230 MB, measured). The full world reached the
+    # 8192x4096 province raster in DOSBox-X and CWSDPMI stopped with "No swap
+    # space!": DOS machines with the ~700 MB a full world needs are rare.
+    set(OD_MAP_DIVISOR 2 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    if(DJGPP)
+        list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    endif()
+    message(STATUS "OD_DOS: raylib on rlsw and the game's DOS platform layer; single-threaded, offline")
+endif()
 if(OD_SOFTWARE_RENDER)
     set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
 endif()
@@ -422,6 +490,9 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
     # with DISPLAY unset, and the game is pure raylib API, so its backend is a
     # build switch rather than a code change.
+    if(OD_DOS)
+        set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the DOS layer" FORCE)
+    endif()
     if(OD_HEADLESS_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL backend for headless" FORCE)
         message(STATUS "OD_HEADLESS_SDL: raylib on its SDL backend (headless offscreen GL)")
@@ -487,7 +558,9 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
-        set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        if(NOT VITA)
+            set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        endif()
         set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
         set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
@@ -528,6 +601,26 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
             "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/haiku/pthread_compat.h")
     endif()
     set(raylib_LIBRARY raylib)
+    # The Vita has no dlopen, and miniaudio reaches for it on anything it
+    # takes to be POSIX. None of the backends it would load exist there.
+    if(VITA)
+        target_compile_definitions(raylib PRIVATE MA_NO_RUNTIME_LINKING)
+    endif()
+
+    # DOS: the game's platform layer in place of raylib's memory platform, and
+    # no audio module (see OD_DOS above). Copied, not patched: the file is the
+    # game's, whole, and a build tree configured for DOS is only ever DOS.
+    if(OD_DOS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/rcore_dos.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_DOS: no audio device; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        if(DJGPP)
+            target_compile_options(raylib PRIVATE
+                -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h)
+        endif()
+        message(STATUS "raylib: DOS platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
     # audio against an unpatched decoder produces a silent game and nothing else
@@ -757,6 +850,16 @@ else()
     elseif(EMSCRIPTEN)
         set(ODSEAL_PLATFORM "web-wasm32")
         set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(VITA)
+        # VitaSDK's toolchain calls the system Generic, so it would otherwise
+        # fall through to "unknown". One CPU (Cortex-A9), one archive.
+        set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(DJGPP)
+        # DOS: one CPU target, the 32-bit protected-mode code DJGPP emits
+        # (i586-pc-msdosdjgpp, which runs on a 386 with the default flags).
+        set(ODSEAL_PLATFORM "dos-i586")
+        set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(APPLE)
         set(ODSEAL_PLATFORM "macos-universal")
         set(ODSEAL_LIBNAME  "libodseal.a")
@@ -867,7 +970,7 @@ endif()
 # directory that does not say why. The release builds pass OFF explicitly
 # anyway; this is so a source build on those systems works without knowing
 # that. README.md says the same under each system's section.
-if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku|SerenityOS")
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku|SerenityOS" OR VITA)
     set(od_mods_default OFF)
 else()
     set(od_mods_default ON)
@@ -1232,7 +1335,15 @@ message(STATUS "Gearbox mod runtime backend: ${OD_MODS_BACKEND}")
 #
 # The web target needs nothing fetched: the browser already has a WebSocket and
 # already has the certificate store, and would not permit a raw socket anyway.
-option(OD_ENABLE_NET "Build the multiplayer transport" ON)
+# Off by default on the PS Vita for now: its sockets need the network module
+# loaded and initialised by the program first (sceNetInit), which nothing in
+# the game does yet. The build says multiplayer is unavailable there.
+if(VITA)
+    set(od_net_default OFF)
+else()
+    set(od_net_default ON)
+endif()
+option(OD_ENABLE_NET "Build the multiplayer transport" ${od_net_default})
 
 # Which account service a build points at, baked in at compile time.
 #
@@ -1579,6 +1690,7 @@ set(GAME_SOURCES
     src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
+    src/map/RasterScale.cpp
     src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
@@ -1856,9 +1968,37 @@ if(OD_DESKTOP_SDL)
     # opengl32 on Windows. A software-rendered build has no GL to link.
     if(OD_SOFTWARE_RENDER)
         target_compile_definitions(OpenDoctrines PRIVATE OD_SOFTWARE_RENDER=1)
+    elseif(OD_GLES)
+        # The ES shader variants, chosen on raylib's own define (see OD_GLES
+        # above); and the GLES library for the one GL call the game makes itself.
+        target_compile_definitions(OpenDoctrines PRIVATE GRAPHICS_API_OPENGL_ES2=1 OD_GLES=1)
+        find_package(OpenGL REQUIRED COMPONENTS GLES2)
+        target_link_libraries(OpenDoctrines OpenGL::GLES2)
     else()
         find_package(OpenGL REQUIRED)
         target_link_libraries(OpenDoctrines OpenGL::GL)
+    endif()
+endif()
+# A world loaded at 1/N resolution (src/map/RasterScale.h), for platforms
+# that cannot hold the full 8192x4096 one. 1 is the full world.
+set(OD_MAP_DIVISOR 1 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8")
+target_compile_definitions(OpenDoctrines PRIVATE OD_MAP_DIVISOR=${OD_MAP_DIVISOR})
+if(OD_DOS)
+    # See OD_DOS above. On DJGPP the thread-less std::mutex shim goes into every
+    # C++ file; a host build has real ones and only takes the single-threaded
+    # paths, which is what lets CI check those on Linux.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_DOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    if(DJGPP)
+        # What DJGPP's libraries leave out (DosCompat.h, NoThreads.h) and the
+        # network headers it has none of (include/: every call fails).
+        target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/dos/include)
+        # libm: DJGPP keeps the C99 maths (round, lround, ...) apart from libc,
+        # and raylib's memory platform, unlike its desktop ones, names no -lm.
+        target_link_libraries(OpenDoctrines m)
+        target_compile_options(OpenDoctrines PRIVATE
+            -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h
+            $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/NoThreads.h>)
     endif()
 endif()
 if(WIN32)
@@ -1887,7 +2027,7 @@ endif()
 # library is not linked, and neither is GLFW, GL or an audio backend. A raylib
 # call with no server implementation is a LINK error naming the symbol, which
 # is the property that keeps the graphics layer out.
-if(NOT EMSCRIPTEN AND NOT ANDROID)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS)
     set(SERVER_SOURCES ${GAME_SOURCES})
     list(REMOVE_ITEM SERVER_SOURCES main.cpp)
     list(APPEND SERVER_SOURCES
@@ -2658,6 +2798,33 @@ else()
     target_link_libraries(OpenDoctrines Threads::Threads)
 endif()
 
+# ── THE PS VITA: AN EBOOT, NOT AN EXECUTABLE ──
+#
+# What runs on a Vita is eboot.bin, a signed-for-homebrew SELF made from the
+# linked ELF by VitaSDK's vita-elf-create and vita-make-fself (vita.cmake's
+# vita_create_self). tools/vita_vpk.py then puts it in a .vpk with the data
+# and the LiveArea, which is what a player installs (VitaShell).
+#
+# src/platform/vita-include holds stand-ins for the few POSIX headers newlib
+# on the Vita does not have (dlfcn.h, sys/mman.h, ifaddrs.h, net/if.h,
+# sys/un.h). Everything that includes them is a desktop feature -- Steam,
+# the dev link, LAN addresses, Discord's local socket -- and each one already
+# copes with the call failing, which is all the stand-ins do.
+if(VITA)
+    include("${VITASDK}/share/vita.cmake" REQUIRED)
+    target_sources(OpenDoctrines PRIVATE src/platform/Vita.cpp src/platform/newlib_posix_stubs.cpp)
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_link_libraries(OpenDoctrines ScePower_stub)
+    # VitaSDK's toolchain already links libpthread whole (its static
+    # initialiser has to run), and SDL3's Threads::Threads adds -lpthread
+    # again, so every pthread object is defined twice. They are the same
+    # objects from the same archive: the first copy is kept.
+    target_link_options(OpenDoctrines PRIVATE -Wl,--allow-multiple-definition)
+    # UNSAFE: full access to the memory card and the clock settings, which is
+    # what homebrew games ask for; the player sees it when installing.
+    vita_create_self(eboot.bin OpenDoctrines UNSAFE)
+endif()
+
 if(APPLE)
     # IOKit for the power assertion that keeps the Mac awake during headless
     # AI training (see Game_AITrain.cpp); CoreFoundation for CFStringRef.
@@ -3064,6 +3231,12 @@ if(OD_DESKTOP_SDL AND OD_SDL_TARGET STREQUAL "SDL3::SDL3")
     add_executable(TouchSdlTest EXCLUDE_FROM_ALL tests/touch_sdl_test.cpp src/Touch.cpp)
     target_include_directories(TouchSdlTest PRIVATE src tests)
     target_link_libraries(TouchSdlTest PRIVATE raylib SDL3::SDL3)
+    # And the same for a gamepad: a Steam Deck's controls, attached through
+    # SDL's public virtual-joystick API, read by raylib and turned by odPad
+    # into the cursor and clicks the game uses.
+    add_executable(PadSdlTest EXCLUDE_FROM_ALL tests/pad_sdl_test.cpp src/Gamepad.cpp)
+    target_include_directories(PadSdlTest PRIVATE src tests)
+    target_link_libraries(PadSdlTest PRIVATE raylib SDL3::SDL3)
 endif()
 
 # Ethnic migration has to conserve people. Pure arithmetic on shares: the

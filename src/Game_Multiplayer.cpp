@@ -383,7 +383,7 @@ void Game::mpStartHosting() {
 
         const std::string issuer = account.issuer();
         const std::string token = account.sessionToken();
-        m_mpRegisterThread = std::thread([this, issuer, token] {
+        auto registerServer = [this, issuer, token] {
             HttpRequest req;
             req.method = "POST";
             req.url = issuer + "/server/register";
@@ -407,7 +407,12 @@ void Game::mpStartHosting() {
             }
             m_mpRegisterState.store(m_mpRegisterResult.empty() ? MpRegister::Failed
                                                                : MpRegister::Done);
-        });
+        };
+#if defined(OD_NO_THREADS)
+        registerServer();   // no threads (DOS): inline, and it fails at once offline
+#else
+        m_mpRegisterThread = std::thread(std::move(registerServer));
+#endif
         return;     // picked up in updateMultiplayerMenu()
     }
 
@@ -4083,10 +4088,23 @@ std::vector<uint8_t> Game::mpSerializeOrders(int countryId) const {
     // goes wrong first. The set is at most a few dozen entries of four small
     // fields, and sending it whole means a client that reconnects is right
     // again on its next turn rather than permanently out of step.
-    for (const auto& [pid, h] : m_monuments) {
-        if (!ownsProvince(pid)) continue;
-        j["monuments"].push_back({{"province", pid}, {"kind", odmon::kindKey(h.kind)},
-                                  {"level", h.level}, {"active", h.active}});
+    // Sorted by province id. m_monuments is an unordered_map, and pushing its
+    // iteration straight into an array would order the payload by hash bucket --
+    // which differs between machines and between builds, so the same board would
+    // serialize to different bytes on the host and on a client. The host reads
+    // monuments by province, so the order never changed the result, but a wire
+    // that is byte-for-byte stable is one a seal or a diff can trust, and it
+    // keeps this payload deterministic like every other list in it.
+    {
+        std::vector<int> monProvinces;
+        for (const auto& [pid, h] : m_monuments)
+            if (ownsProvince(pid)) monProvinces.push_back(pid);
+        std::sort(monProvinces.begin(), monProvinces.end());
+        for (int pid : monProvinces) {
+            const auto& h = m_monuments.at(pid);
+            j["monuments"].push_back({{"province", pid}, {"kind", odmon::kindKey(h.kind)},
+                                      {"level", h.level}, {"active", h.active}});
+        }
     }
 
     for (auto& r : m_pendingRecruitments) if (ownsProvince(r.provinceId)) {

@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "ci_plan.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
+        "release.py", "odver.py", "package.py", "ci_plan.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_mp_order_coverage.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
@@ -136,6 +136,14 @@ GROUPS = [
         # ChromeOS's Linux container is Debian: install the .deb into a clean
         # Debian image, check every library resolves, and play a few turns.
         "chromeos_check.sh",
+        "raspios_check.sh",
+        # The PS Vita: install the pinned VitaSDK, and build (or check) the
+        # .vpk VitaShell installs -- eboot, param.sfo, LiveArea, data.
+        "vitasdk_install.sh", "vita_vpk.py",
+        # DOS: install DJGPP and CWSDPMI (pinned), run a DOS command in
+        # DOSBox-X headless and bring back its output and screen, and check
+        # the DOS screen layer shows what the game drew (on a Linux host).
+        "dos_toolchain.sh", "dos_run.sh", "dos_framebuffer_check.py",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,

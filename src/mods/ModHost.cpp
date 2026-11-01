@@ -1128,7 +1128,7 @@ void ui_draw_text_sized(ExecEnv e, uint32_t panel, int32_t x, int32_t y,
     ModDrawCmd c;
     c.kind = ModDrawCmd::Text;
     c.x = x; c.y = y; c.rgba = rgba;
-    c.fontSize = std::clamp(size, 6, 96);
+    c.fontSize = std::clamp<int32_t>(size, 6, 96);
     c.text = std::move(t);
     p->cmds.push_back(std::move(c));
 }
@@ -1142,8 +1142,8 @@ uint32_t ui_measure_text(ExecEnv e, uint32_t textPtr, uint32_t textLen, int32_t 
     std::string t;
     if (!mi->readString(textPtr, textLen, t)) return 0;
     if (t.size() > 512) t.resize(512);
-    if (!g_uiBridge.measureText) return (uint32_t)(t.size() * (size_t)std::max(1, size) / 2);
-    return g_uiBridge.measureText(t, std::clamp(size, 6, 96));
+    if (!g_uiBridge.measureText) return (uint32_t)(t.size() * (size_t)std::max<int32_t>(1, size) / 2);
+    return g_uiBridge.measureText(t, std::clamp<int32_t>(size, 6, 96));
 }
 
 uint32_t ui_panel_width(ExecEnv e, uint32_t panel) {

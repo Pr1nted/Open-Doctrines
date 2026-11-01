@@ -8,6 +8,7 @@
 // truth", so a non-fog world behaves byte for byte as it did before this file.
 
 #include "Game.h"
+#include "map/RasterScale.h"
 
 #include <cstring>   // memcpy, for the grant blob
 #include "GameInternals.h"
@@ -42,10 +43,11 @@ int Game::fogMaxPid() const {
 float Game::shipRadarPx(const NavyShip& s) const {
     // Base radar by hull: smaller than the steaming range (shipMaxRangePx), so
     // a fleet can sail into waters it has not seen. Research scales it (Phase 5).
-    if (s.type == "boat")      return 120.0f;
-    if (s.type == "destroyer") return 260.0f;
-    if (s.type == "carrier")   return 400.0f;
-    return 200.0f;
+    // In full-resolution map pixels, as loaded (see map/RasterScale.h).
+    if (s.type == "boat")      return odmap::loadedPx(120.0f);
+    if (s.type == "destroyer") return odmap::loadedPx(260.0f);
+    if (s.type == "carrier")   return odmap::loadedPx(400.0f);
+    return odmap::loadedPx(200.0f);
 }
 
 bool Game::sharesIntel(int a, int b) const {

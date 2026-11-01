@@ -126,6 +126,9 @@ def main():
                     help="keep the packaged binary's debug symbols")
     ap.add_argument("--tor", action="store_true",
                     help="carry the Tor Project's tor in data/tor (tools/fetch_tor.py)")
+    ap.add_argument("--add", action="append", default=[], metavar="FILE",
+                    help="also put FILE beside the binary (repeatable): the DOS "
+                         "build's DPMI host and its notes, for one")
     args = ap.parse_args()
 
     version = odver.read()
@@ -321,6 +324,13 @@ def main():
 
     with open(os.path.join(out, "VERSION"), "w") as f:
         f.write(str(version) + "\n")
+
+    for extra in args.add:
+        if not os.path.isfile(extra):
+            print(f"FAILED: --add {extra}: no such file", file=sys.stderr)
+            return 1
+        shutil.copy2(extra, os.path.join(out, os.path.basename(extra)))
+        print(f"  added    {os.path.basename(extra)}")
 
     total = tree_size(out)
     print(f"\n  {out}  ({human(total)})")
