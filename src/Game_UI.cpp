@@ -16,10 +16,13 @@
 #include <algorithm>
 #include <string>
 #include <fstream>
+#include "Access.h"
 #include <sstream>
 #include <cstdio>
 
 void Game::addNotification(const std::string& msg, Color color, float duration) {
+    // Longer Messages (Settings -> Accessibility) stretches every one here.
+    duration = odAccess::messageSeconds(duration);
     m_notifications.push_back({msg, duration, duration, color});
     // Silent until data/audio/sfx/notify.* exists; see data/audio/README.md.
     Audio::get().playSfx("notify");

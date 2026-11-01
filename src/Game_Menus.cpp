@@ -32,6 +32,8 @@
 #endif
 #include <ctime>
 #include "util/OpenLink.h"
+#include "Access.h"
+#include "Theme.h"
 #include "map/RasterScale.h"
 #include "Usage.h"
 
@@ -1081,7 +1083,7 @@ void Game::drawMainMenu() {
         if (fits((int)(splashSize * 1.08f))) {
             // 2 Hz, between 1.0 and about 1.08 -- enough to catch the eye and
             // not enough to be motion anybody has to look away from.
-            const float pulse = 1.0f + 0.08f * fabsf(sinf((float)GetTime() * 3.2f));
+            const float pulse = 1.0f + 0.08f * fabsf(odAccess::wave(3.2f));
             const float sz = (float)splashSize * pulse;
             const float sp = sz / 10.0f;
 
@@ -1394,7 +1396,7 @@ void Game::drawMainMenu() {
         DrawRectangleRounded(r, 0.4f, 8, fade(ColorAlpha(accent, hov ? 0.35f : 0.20f)));
         DrawRectangleRoundedLines(r, 0.4f, 8, fade(ColorAlpha(accent, 0.8f)));
         // A gentle pulse, so it reads as new without demanding attention.
-        float pulse = 0.75f + 0.25f * sinf((float)GetTime() * 3.0f);
+        float pulse = 0.75f + 0.25f * odAccess::wave(3.0f);
         const int badgeR = 7;
         const int dotX = (int)r.x + 14;
         const int dotY = (int)(r.y + r.height / 2);
@@ -3013,6 +3015,51 @@ void Game::drawSettingsFromMenu() {
 static float UI_SCALE_VALS[] = {0.75f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f, 2.0f};
 static const int   UI_SCALE_STEPS  = (int)(sizeof(UI_SCALE_VALS) / sizeof(UI_SCALE_VALS[0]));
 
+void Game::applyAccessibility() {
+    odTheme::setHighContrast(m_config.highContrast);
+    odAccess::g_reduceMotion  = m_config.reduceMotion;
+    odAccess::g_holdToConfirm = m_config.holdToConfirm;
+    odAccess::g_longMessages  = m_config.longMessages;
+    odAccess::g_soundCues     = m_config.soundCues;
+    odAccess::g_textScale     = m_config.textScale;
+}
+
+bool Game::activateAccessibilityRow(const char* label) {
+    if (m_settingsTab != ACCESSIBILITY_TAB) return false;
+    auto toggle = [&](bool& v) {
+        v = !v;
+        Audio::get().playSfx(v ? "toggle_on" : "toggle_off");
+    };
+    if      (strcmp(label, "High Contrast") == 0)   toggle(m_config.highContrast);
+    else if (strcmp(label, "Reduce Motion") == 0)   toggle(m_config.reduceMotion);
+    else if (strcmp(label, "Hold to Confirm") == 0) toggle(m_config.holdToConfirm);
+    else if (strcmp(label, "Longer Messages") == 0) toggle(m_config.longMessages);
+    else if (strcmp(label, "Sound Cues") == 0)      toggle(m_config.soundCues);
+    else if (strcmp(label, "Text Size") == 0) {
+        // Up to 120%, measured: the screens that place their titles at fixed
+        // offsets (the economy tabs, for one) are clear at 110%, touch at 120%
+        // and overlap at 130%. Bigger than that is UI Scale's job, which grows
+        // the whole layout with the text.
+        static const float steps[] = {1.0f, 1.1f, 1.2f};
+        int i = 0;
+        for (int k = 0; k < 3; ++k) if (fabsf(steps[k] - m_config.textScale) < 0.01f) i = k;
+        m_config.textScale = steps[(i + 1) % 3];
+        Audio::get().playSfx("slider_tick", 0.08f);
+        // Every cached text measurement is stale now.
+        reloadFonts();
+    } else if (strcmp(label, "Colourblind Colours") == 0) {
+        m_config.colourBlindMode = (m_config.colourBlindMode + 1) % COLOURBLIND_COUNT;
+        odPalette::setMode(m_config.colourBlindMode);
+        m_lastRelationsCountryId = -1;   // repaint the relations view (see the Display row)
+        Audio::get().playSfx("slider_tick", 0.08f);
+    } else {
+        return false;
+    }
+    applyAccessibility();
+    m_config.save(m_configPath);
+    return true;
+}
+
 bool Game::stepDisplayValueRow(int index, int dir) {
     if (m_settingsTab != 0) return false;
     const int step = (dir >= 0) ? 1 : -1;
@@ -3494,7 +3541,9 @@ void Game::updateSettingsFromMenu() {
 
     if (activate && m_settingsIndex >= 0 && m_settingsIndex < count) {
         const Setting& s = items[m_settingsIndex];
-        if (strcmp(s.label, "Back") == 0) {
+        if (activateAccessibilityRow(s.label)) {
+            // handled: Settings -> Accessibility
+        } else if (strcmp(s.label, "Back") == 0) {
             m_inSettings = false;
             m_settingsScroll = 0;
             m_config.save(m_configPath);

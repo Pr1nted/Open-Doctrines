@@ -1885,6 +1885,15 @@ if(OD_DEV_INPUT)
     target_compile_definitions(OpenDoctrines PRIVATE OD_DEV_INPUT=1)
 endif()
 
+# --- high contrast, for every screen at once -----------------------------
+#
+# Force-included like the shims below, and for the same reason: about 3,500
+# colours are written out where each screen draws them, and Theme.h decides
+# every one of them in one place by shadowing raylib's drawing calls. It is an
+# identity until a player turns High Contrast on. See src/Theme.h.
+target_compile_options(OpenDoctrines PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/Theme.h>)
+
 # --- the on-screen keyboard, for platforms that have no other one ---------
 #
 # Same mechanism, same reason: the game asks for typed characters in seventy
@@ -3797,6 +3806,13 @@ target_include_directories(ScriptExprTest PRIVATE src)
 # --- the monument catalogue and its arithmetic ---
 # Pure: no Game, no map, no window. The half that needs a world is tested with
 # the game layer. See src/Monuments.h.
+# High contrast's colour transform (src/Theme.h) against the promises it makes:
+# idempotent, 21:1 / 7:1 contrast, hues kept, off is off. Header-only, so this
+# is the whole of it.
+add_executable(ThemeTest EXCLUDE_FROM_ALL tests/theme_test.cpp)
+target_include_directories(ThemeTest PRIVATE src)
+target_link_libraries(ThemeTest PRIVATE raylib)
+
 add_executable(MonumentsTest EXCLUDE_FROM_ALL
     tests/monuments_test.cpp
     src/Monuments.cpp
