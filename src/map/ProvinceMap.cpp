@@ -72,6 +72,29 @@ bool ProvinceMap::loadFromMemory(const void* imageData, int imageSize,
     return parseJson(jsonStr);
 }
 
+bool ProvinceMap::loadFromPixels(const Color* pixels, int w, int h,
+                                 const std::string& jsonStr) {
+    if (m_loaded && m_image.data) UnloadImage(m_image);
+    m_image = Image{};
+    m_image.width = w;
+    m_image.height = h;
+    m_image.mipmaps = 1;
+    m_image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    m_image.data = MemAlloc((unsigned int)((size_t)w * (size_t)h * 4));
+    if (m_image.data == nullptr) return false;
+    unsigned char* d = static_cast<unsigned char*>(m_image.data);
+    const size_t n = (size_t)w * (size_t)h;
+    for (size_t i = 0; i < n; ++i) {
+        d[i * 4 + 0] = pixels[i].r;
+        d[i * 4 + 1] = pixels[i].g;
+        d[i * 4 + 2] = pixels[i].b;
+        d[i * 4 + 3] = 255;   // province id is RGB only; keep alpha opaque
+    }
+    m_width = w;
+    m_height = h;
+    return parseJson(jsonStr);
+}
+
 bool ProvinceMap::loadCompactFromMemory(const void* imageData, int imageSize,
                                         const std::string& jsonStr) {
     std::vector<uint16_t> index;

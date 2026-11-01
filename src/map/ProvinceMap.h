@@ -15,6 +15,12 @@ public:
     bool load(const std::string& imagePath, const std::string& jsonPath);
     bool loadFromMemory(const void* imageData, int imageSize,
                         const std::string& jsonStr);
+    // Load province pixels straight from an in-memory RGBA Color buffer. The
+    // caller already has the pixels; this skips the PNG encode-then-decode a
+    // caller would otherwise do only to hand us bytes (10+ seconds on an
+    // 8192x4096 map). Province ids are RGB, so alpha is stored opaque.
+    bool loadFromPixels(const Color* pixels, int w, int h,
+                        const std::string& jsonStr);
     /**
      * The same, straight into the compact form compact() produces, decoding
      * the PNG a row at a time so the RGBA image never exists. For a process

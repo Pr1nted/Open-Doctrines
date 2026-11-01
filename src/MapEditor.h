@@ -159,6 +159,11 @@ private:
     // Map display
     static const int MAP_W = 8192;
     static const int MAP_H = 4096;
+    // Editor land/sea paint colours. Here (not file-static in MapEditor.cpp) so
+    // the hot generation methods, split into MapEditorGen.cpp for optimisation,
+    // share the exact same values.
+    static constexpr Color COL_LAND = {200, 190, 160, 255}; // matches LandSeaMap in-game land
+    static constexpr Color COL_SEA  = { 40,  80, 160, 255}; // matches LandSeaMap in-game sea
     MapRenderer* m_renderer = nullptr;
     LandSeaMap m_editLandSea;
     ProvinceMap m_editProvinces;

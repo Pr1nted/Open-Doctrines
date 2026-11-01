@@ -1717,6 +1717,7 @@ set(GAME_SOURCES
     src/Game_Update.cpp
     src/Game_UI.cpp
     src/MapEditor.cpp
+    src/MapEditorGen.cpp
     src/MapEditorBlocks.cpp
     src/ProceduralGenerator.cpp
     src/ScriptEngine.cpp
@@ -1824,6 +1825,20 @@ if(MSVC)
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/fp:fast")
 else()
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
+endif()
+
+# Map generation runs flood-fills and per-pixel passes over millions of pixels
+# every time the map editor (or AI training) builds a world. At -O0 -- a Debug
+# build -- that is tens of seconds of frozen UI per generation. Optimise the two
+# self-contained compute kernels even in Debug, the same treatment NeuralNet.cpp
+# gets above: ProceduralGenerator.cpp, and MapEditorGen.cpp (generateMap plus the
+# per-pixel province/political passes, split out of MapEditor.cpp so the rest of
+# the editor stays easy to step-debug). No fast-math: the noise stays strict
+# IEEE so a seed reproduces.
+if(MSVC)
+    set_source_files_properties(src/ProceduralGenerator.cpp src/MapEditorGen.cpp PROPERTIES COMPILE_OPTIONS "/O2")
+else()
+    set_source_files_properties(src/ProceduralGenerator.cpp src/MapEditorGen.cpp PROPERTIES COMPILE_OPTIONS "-O2")
 endif()
 
 # ── Android: a shared library, not an executable ──
