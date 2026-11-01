@@ -123,6 +123,10 @@ jobs:
           - { name: illumos-amd64,   os: ubuntu-24.04, bsd: illumos, vm_arch: x86_64, timeout: 60 }
           # Haiku, x86-64: CMake names it Haiku and its processor x86_64.
           - { name: haiku-x86_64,    os: ubuntu-24.04, bsd: haiku,   vm_arch: x86_64, timeout: 60 }
+          # SerenityOS: cross-compiled with its own GNU toolchain, built from
+          # the commit other-os-game.yml pins and shared with it through the
+          # Actions cache. An hour the first time, seconds after.
+          - { name: serenityos-x86_64, os: ubuntu-24.04, serenity: x86_64, timeout: 150 }
 
     steps:
       - uses: actions/checkout@v5
@@ -350,6 +354,56 @@ jobs:
           prepare: pkgman install -y cmd:gcc
           run: CXX=g++ sh tools/odseal_bsd.sh
 
+      # ── SerenityOS ──
+      #
+      # The toolchain is SerenityOS's own (Toolchain/BuildGNU.sh), at the
+      # commit other-os-game.yml pins -- KEEP THE TWO IN STEP -- and the cache
+      # key is the one that job saves under, so whichever runs first builds it.
+      # A compiler is all this needs: the archive is one object file, so the
+      # sysroot only has to hold libc's headers, which link_libc_headers.cmake
+      # puts there in a second.
+      - uses: actions/checkout@v5
+        if: matrix.serenity
+        with:
+          repository: SerenityOS/serenity
+          ref: b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+          path: serenity
+      - name: SerenityOS toolchain (cache)
+        if: matrix.serenity
+        id: sertc
+        uses: actions/cache/restore@v4
+        with:
+          path: serenity/Toolchain/Local/x86_64
+          key: serenity-toolchain-x86_64-b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+      - name: Build the SerenityOS toolchain
+        if: matrix.serenity && steps.sertc.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake curl libmpfr-dev libmpc-dev libgmp-dev \
+            ninja-build texinfo libssl-dev zlib1g-dev gcc-14 g++-14
+          serenity/Toolchain/BuildGNU.sh --ci
+        env: { ARCH: x86_64, CC: gcc-14, CXX: g++-14 }
+      - name: Save the SerenityOS toolchain
+        if: matrix.serenity && steps.sertc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: serenity/Toolchain/Local/x86_64
+          key: serenity-toolchain-x86_64-b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+      - name: Build (SerenityOS x86_64)
+        if: matrix.serenity
+        shell: bash
+        run: |
+          set -e
+          ( cd serenity && cmake -DSERENITY_ARCH=x86_64 -DSERENITY_SYSROOT="$PWD/Build/x86_64/Root" \
+                -P Meta/CMake/link_libc_headers.cmake )
+          TC="$PWD/serenity/Toolchain/Local/x86_64/bin"
+          mkdir -p out
+          "$TC/x86_64-serenity-g++" -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC/x86_64-serenity-strip" --strip-unneeded odseal.o
+          "$TC/x86_64-serenity-ar" rcs out/libodseal.a odseal.o
+          rm -rf serenity
+
       - name: Drop the sealed source
         if: always()
         shell: bash
@@ -401,13 +455,21 @@ jobs:
       # cannot be executed. What CAN be checked is the shape of the archive:
       # the four entry points, and nothing else exported to point a reader at
       # what it does.
-      - name: Check the archive (android, symbols only)
-        if: startsWith(matrix.name, 'android-')
+      # SerenityOS too: a SerenityOS program cannot run on the runner, so its
+      # archive is held to the same exports rules and its test is not run --
+      # running it means booting SerenityOS, which other-os-game.yml does not
+      # do yet either. Plain nm reads an x86-64 ELF object whatever OS it is for.
+      - name: Check the archive (android and SerenityOS, symbols only)
+        if: startsWith(matrix.name, 'android-') || matrix.serenity
         shell: bash
         run: |
           set -e
-          TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          GOT="$("$TC/llvm-nm" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
+          if [ -n "$ANDROID_NDK_HOME" ] && [ -z "${{ matrix.serenity }}" ]; then
+            NM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          else
+            NM=nm
+          fi
+          GOT="$("$NM" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
           echo "exports: $GOT"
           # An EXACT list here meant the check failed the moment the sealed
           # source grew an entry point -- the archive was correct and the
