@@ -1,0 +1,100 @@
+# The FreeRTOS edition: built for every board, and every board made to play
+# the same game.
+#
+# Separate from test.yml because it shares nothing with the desktop game but
+# a world file and a list of numbers, and has no reason to wait on -- or hold
+# up -- a desktop build. It is small: four compiles of a few thousand lines,
+# and four QEMU runs that take seconds.
+#
+# What it proves (tests/freertos_test.sh): the core on the host, the FreeRTOS
+# kernel's POSIX port, a Cortex-M3 (mps2-an385), an STM32F405 (netduinoplus2)
+# and a RISC-V core (virt) each play tests/freertos/play.txt and print exactly
+# tests/freertos/play.expected. What it does not prove: real hardware. The
+# STM32F405 image is the one a board would be flashed with, and nothing here
+# flashes one.
+#
+# A tag freertos-v* publishes the zip as a release of its own, as the
+# TempleOS edition has templeos-v*: a separate build with a separate promise.
+
+name: FreeRTOS edition
+
+on:
+  push:
+    branches: [main]
+    tags: ["freertos-v*"]
+    paths:
+      - "freertos/**"
+      - "templeos/world.odw"
+      - "templeos/Sync.HH"
+      - "tools/freertos_*"
+      - "tests/freertos*"
+      - "tests/freertos/**"
+      - ".github/workflows/freertos.yml"
+  pull_request:
+    paths:
+      - "freertos/**"
+      - "templeos/world.odw"
+      - "templeos/Sync.HH"
+      - "tools/freertos_*"
+      - "tests/freertos*"
+      - "tests/freertos/**"
+      - ".github/workflows/freertos.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: freertos-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  boards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchains and emulators
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi \
+            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
+            qemu-system-arm qemu-system-misc
+
+      - name: Every board plays the same game
+        run: tests/freertos_test.sh --all-boards
+
+      - name: Package
+        run: |
+          python3 tools/freertos_package.py --builds build/freertos \
+            --out dist/OpenDoctrines-freertos.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDoctrines-freertos
+          path: dist/OpenDoctrines-freertos.zip
+
+      - name: Transcripts, when they differ
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freertos-transcripts
+          path: build/freertos/transcripts/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/freertos-v')
+    needs: boards
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenDoctrines-freertos
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/OpenDoctrines-freertos.zip
+          prerelease: true

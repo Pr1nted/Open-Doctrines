@@ -55,7 +55,7 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq \
     "g++-$triplet" pkg-config qemu-user-static \
     "libasound2-dev:$arch" "libx11-dev:$arch" "libxrandr-dev:$arch" "libxi-dev:$arch" \
-    "libgl1-mesa-dev:$arch" "libglu1-mesa-dev:$arch" "libxcursor-dev:$arch" \
+    "libgl1-mesa-dev:$arch" "libglu1-mesa-dev:$arch" "libgles-dev:$arch" "libxcursor-dev:$arch" \
     "libxinerama-dev:$arch" "libwayland-dev:$arch" "libxkbcommon-dev:$arch" "libudev-dev:$arch" \
     "libc6:$arch" "libstdc++6:$arch"
 

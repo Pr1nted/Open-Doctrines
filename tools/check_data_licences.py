@@ -226,8 +226,13 @@ def main():
 
     # ── 4. the reference dataset must not be in the tree ─────────
     for dirpath, dirnames, filenames in os.walk(ROOT):
+        # .ccache and .sccache are CI's compiler caches (the compiler-cache
+        # action keeps them in the workspace). Their file names are hashes,
+        # and one came out as "...lungadmkR", which reads as "gadm" to the
+        # substring match below.
         if any(part in dirpath for part in (".git", "build", "node_modules",
-                                            ".toolchains", "_deps")):
+                                            ".toolchains", "_deps",
+                                            ".ccache", ".sccache")):
             dirnames[:] = []
             continue
         for name in list(dirnames) + filenames:

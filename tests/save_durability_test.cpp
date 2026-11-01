@@ -125,6 +125,39 @@ static bool forceMetadata(const std::string& path, const std::string& newMeta) {
     return std::rename(tmp.c_str(), path.c_str()) == 0;
 }
 
+/**
+ * Rewrite the archive with one named entry removed, to forge a gap from the
+ * outside. Nothing in SaveManager drops a turn in the middle, so a hole in the
+ * history can only be built this way -- the same reason forceMetadata() exists.
+ */
+static bool dropEntry(const std::string& path, const std::string& drop) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::fseek(f, 0, SEEK_END);
+    std::vector<uint8_t> buf((size_t)std::ftell(f));
+    std::fseek(f, 0, SEEK_SET);
+    if (std::fread(buf.data(), 1, buf.size(), f) != buf.size()) { std::fclose(f); return false; }
+    std::fclose(f);
+
+    mz_zip_archive src{};
+    if (!mz_zip_reader_init_mem(&src, buf.data(), buf.size(), 0)) return false;
+    const std::string tmp = path + ".rewrite";
+    mz_zip_archive out{};
+    if (!mz_zip_writer_init_file(&out, tmp.c_str(), 0)) { mz_zip_reader_end(&src); return false; }
+    const int fc = (int)mz_zip_reader_get_num_files(&src);
+    for (int i = 0; i < fc; ++i) {
+        mz_zip_archive_file_stat st{};
+        if (!mz_zip_reader_file_stat(&src, i, &st)) continue;
+        if (drop == st.m_filename) continue;
+        mz_zip_writer_add_from_zip_reader(&out, &src, (mz_uint)i);
+    }
+    mz_zip_writer_finalize_archive(&out);
+    mz_zip_writer_end(&out);
+    mz_zip_reader_end(&src);
+    std::remove(path.c_str());
+    return std::rename(tmp.c_str(), path.c_str()) == 0;
+}
+
 static std::string makeSave(const std::string& path) {
     SaveMetadata meta;
     meta.saveName = "Durability";
@@ -395,6 +428,55 @@ int main() {
         ok(!SaveManager::createSave(p, std::string(odm.begin(), odm.end()), meta),
            "creating a save over a played world is refused");
         ok(historyAgrees(p, 20, why), "and the refusal left the world untouched", why);
+    }
+
+    section("writes are atomic -- no .part survives");
+    {
+        // Every writer now builds a .part and renames it over the save, so a
+        // crash mid-write leaves the old save whole. The observable proof here
+        // is that NONE of them leaves its temp behind: a .part on disk after a
+        // successful call would mean the rename never happened.
+        namespace fs = std::filesystem;
+        const std::string p = makeSave(dir + "atomic.odsv");
+        for (int t = 1; t <= 4; ++t) SaveManager::appendTurn(p, aTurn(t));
+        ok(!fs::exists(p + ".part"), "appendTurn leaves no .part");
+
+        SaveMetadata m = SaveManager::readMetadata(p);
+        SaveManager::updateLastPlayed(p, &m);
+        ok(!fs::exists(p + ".part"), "updateLastPlayed leaves no .part");
+
+        SaveManager::writeState(p, "{\"s\":1}", {});
+        ok(!fs::exists(p + ".part"), "writeState leaves no .part");
+
+        SaveManager::updatePlayerCountry(p, 3);
+        ok(!fs::exists(p + ".part"), "updatePlayerCountry leaves no .part");
+
+        ok(historyAgrees(p, 4, why), "and all four turns survive every rewrite", why);
+    }
+
+    section("turn history contiguity");
+    {
+        // turnSequenceOk reports whether the turns/ entries are a gapless 1..N.
+        // A gap is the one damage replay cannot see on its own: the forward scan
+        // stops at the hole and drops everything past it without a word.
+        int highest = -1;
+        const std::string p = makeSave(dir + "contig.odsv");
+        ok(SaveManager::turnSequenceOk(p, &highest) && highest == 0,
+           "a new world holds zero turns and is trivially contiguous",
+           "highest=" + std::to_string(highest));
+
+        for (int t = 1; t <= 10; ++t) SaveManager::appendTurn(p, aTurn(t));
+        highest = -1;
+        ok(SaveManager::turnSequenceOk(p, &highest) && highest == 10,
+           "ten turns played read back as a contiguous 1..10",
+           "highest=" + std::to_string(highest));
+
+        ok(dropEntry(p, "turns/t_00006.dat"), "turn six is removed from the archive");
+        highest = -1;
+        ok(!SaveManager::turnSequenceOk(p, &highest),
+           "and the save is then reported non-contiguous");
+        ok(highest == 10, "while the highest turn present is still counted",
+           "highest=" + std::to_string(highest));
     }
 
     printf("\n%d checks, %d failed\n", g_checks, g_failed);

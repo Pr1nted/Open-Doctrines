@@ -59,7 +59,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest ThemeTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -94,8 +94,64 @@ failed_steps=()
 
 note_fail() { failed_steps+=("$1"); fail=1; }
 
+# THE TEST PROGRAMS RUN SIDE BY SIDE; EVERYTHING ELSE RUNS ALONE.
+#
+# Most of this file is a run of self-contained test binaries -- a run() of
+# one program from the build directory, at most with the data directory -- each writing
+# only under its own temp directory. They used to run one after another on a
+# four-core runner, so three cores sat idle for most of the suite. Now
+# consecutive ones go into a pool of OD_TEST_JOBS (default: the core count),
+# and the pool is drained -- every result printed, in the order the file names
+# them -- before any other step starts. So the scripts, and with them every
+# network and multiplayer test that has a clock in it, still run with nothing
+# else on the machine. OD_TEST_JOBS=1 is the old, serial behaviour.
+OD_TEST_JOBS="${OD_TEST_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}"
+pool_dir="$(mktemp -d "${TMPDIR:-/tmp}/od-suite.XXXXXX")"
+pool_names=()
+pool_pids=()
+
+is_test_program() {     # one binary from $bin, at most with the data dir
+    case "$1" in "$bin"/*) ;; *) return 1 ;; esac
+    [ $# -eq 1 ] || { [ $# -eq 2 ] && [ "$2" = "$root/data/" ]; }
+}
+
+pool_add() {            # <name> <command...>
+    local name="$1"; shift
+    # bash 3.2 (macOS) has no `wait -n`, so a slot is found by asking.
+    while :; do
+        local live=0 pid
+        # ${a[@]+"${a[@]}"}: bash 3.2 under set -u calls an EMPTY array unbound.
+        for pid in ${pool_pids[@]+"${pool_pids[@]}"}; do kill -0 "$pid" 2>/dev/null && live=$((live + 1)); done
+        [ "$live" -lt "$OD_TEST_JOBS" ] && break
+        sleep 0.2
+    done
+    local i=${#pool_names[@]}
+    ( "$@" < /dev/null > "$pool_dir/$i.out" 2>&1; echo $? > "$pool_dir/$i.rc" ) &
+    pool_pids+=("$!")
+    pool_names+=("$name")
+}
+
+pool_drain() {
+    [ ${#pool_names[@]} -eq 0 ] && return 0
+    wait ${pool_pids[@]+"${pool_pids[@]}"} 2>/dev/null
+    local i
+    for i in "${!pool_names[@]}"; do
+        step "${pool_names[$i]}"
+        cat "$pool_dir/$i.out"
+        if [ "$(cat "$pool_dir/$i.rc" 2>/dev/null)" != 0 ]; then
+            echo "${pool_names[$i]} FAILED"; note_fail "${pool_names[$i]}"
+        fi
+        rm -f "$pool_dir/$i.out" "$pool_dir/$i.rc"
+    done
+    pool_names=(); pool_pids=()
+}
+
 run() {
     local name="$1"; shift
+    if [ "$OD_TEST_JOBS" -gt 1 ] && is_test_program "$@"; then
+        pool_add "$name" "$@"; return 0
+    fi
+    pool_drain
     step "$name"
     if "$@"; then :; else echo "$name FAILED"; note_fail "$name"; fi
 }
@@ -103,6 +159,7 @@ run() {
 # For the drift checks, which are a bare command rather than a named run().
 check() {
     local name="$1"; shift
+    pool_drain
     step "$name"
     if "$@"; then :; else note_fail "$name"; fi
 }
@@ -119,6 +176,9 @@ run "nationalisation rules" "$bin/NationalisationTest"
 # The monument catalogue: the slot series, what one gives and why the tenth is
 # not worth ten. Pure arithmetic; see src/Monuments.h.
 run "monument rules"   "$bin/MonumentsTest"
+# High contrast: the colour transform keeps its contrast and idempotence
+# promises across the whole colour cube. See src/Theme.h.
+run "high contrast"    "$bin/ThemeTest"
 run "fog of war"       "$bin/FogTest"
 # Every test this RUNS must be one it BUILDS -- six were not, and that is what
 # failed the SDK 1.3 release after a green local suite. See the checker.
@@ -343,6 +403,12 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
 # load. Gating again now that it is fixed.
 # Needs no build: it reads the C++ source and the HolyC beside it.
 run "templeos in sync with C++" "$root/tests/templeos_sync_test.sh"
+# The FreeRTOS edition's rules, on the host with no kernel: needs only a C
+# compiler. CI's FreeRTOS workflow plays the same game on every board.
+run "freertos edition plays its game" "$root/tests/freertos_test.sh"
+# The Plan 9 edition: the same core in the C 9front's compilers take, and the
+# same game through its printf. CI's Plan 9 workflow builds it inside 9front.
+run "plan9 edition plays its game" "$root/tests/plan9_test.sh"
 run "a damaged save is refused" "$root/tests/save_corrupt_test.sh" "$build"
 run "map scripts reach the mechanics" "$root/tests/script_mechanics_test.sh" "$build"
 run "neural net gradients" "$bin/NeuralNetTest"
@@ -533,6 +599,12 @@ check "the mod registry knows every capability" $PY "$root/tools/check_registry_
 # down twice, in two languages. See tools/check_relay_limits.py.
 check "the game knows what the relay will carry" $PY "$root/tools/check_relay_limits.py"
 
+# An order vector left out of the multiplayer wire is processed in singleplayer
+# and vanishes online with no refusal -- how a boat ordered ashore never moved
+# in the tournament. This fails if any m_pending* order is on one side of the
+# wire but not the other, or on neither. See tools/check_mp_order_coverage.py.
+check "every player order crosses the multiplayer wire" $PY "$root/tools/check_mp_order_coverage.py"
+
 # The web build preloads a subset of the font and fetches the rest on demand,
 # which cannot help the language picker: that list has to be readable BEFORE a
 # language is chosen. See tools/check_web_font.py.
@@ -647,6 +719,8 @@ while IFS= read -r m; do
 done < <(find "$root/sdk" -name "*.odmod" -not -path "*/node_modules/*" | sort)
 [ $found -eq 1 ] || echo "skip  no example mods built yet"
 
+pool_drain
+rm -rf "$pool_dir"
 printf '\n'
 if [ $fail -eq 0 ]; then
     echo "ALL PASSED"

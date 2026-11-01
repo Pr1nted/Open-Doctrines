@@ -4,17 +4,45 @@
 #include "WinFatalDialog.h"
 #include "util/SoftwareGlRelaunch.h"
 #include "GifEncoder.h"
+#include "platform/Vita.h"
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
 #include <string>
 #include <vector>
+#if defined(__DJGPP__)
+#include <unistd.h>
+#endif
 
 int main(int argc, char** argv) {
     // Banked before anything can chdir, so a software-GL retry can re-exec this
     // exact binary with the exact arguments. See util/SoftwareGlRelaunch.
     odRememberRelaunch(argc, argv);
+
+#if defined(__DJGPP__)
+    // One console on DOS, and COMMAND.COM can redirect only standard output:
+    // without this, every error the game reports on stderr is lost from a
+    // "DOCTRINE > OUT.TXT" run, which is how CI and a player's bug report
+    // both capture it.
+    dup2(1, 2);
+    // OD_DOS_TRACE=1 (CI sets it): leave a mark that main() was reached, and
+    // with what, so a run that exits with nothing on screen can still be told
+    // apart from one that never started.
+    if (std::getenv("OD_DOS_TRACE")) {
+        if (FILE* t = std::fopen("TRACE.TXT", "w")) {
+            std::fprintf(t, "main reached, argc=%d\n", argc);
+            for (int i = 0; i < argc; ++i) std::fprintf(t, "argv[%d]=%s\n", i, argv[i]);
+            std::fclose(t);
+        }
+    }
+#endif
+
+#if defined(__vita__)
+    // The game's own folder (app0:) is read-only on a Vita; see platform/Vita.h.
+    odVitaPrepareData();
+#endif
 
     // No dialogs in a run with nobody at the keyboard.
     //

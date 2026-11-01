@@ -8,6 +8,10 @@
 #if !defined(_WIN32)
 #  include <climits>
 #  include <unistd.h>
+// newlib (Vita, 3DS, Wii) has no PATH_MAX.
+#  ifndef PATH_MAX
+#    define PATH_MAX 1024
+#  endif
 #endif
 #include "raylib.h"
 #if defined(__APPLE__)
@@ -28,7 +32,7 @@ std::string        g_exePath;   // absolute, resolved before any chdir
 // argv[0]. Resolved ONCE at startup: /proc and the like are cheap, but cwd is
 // not guaranteed to stay put, so a relative argv[0] has to be banked early.
 std::string resolveExe(const char* argv0) {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__serenity__)   // SerenityOS's ProcFS has the same link
     char buf[4096];
     ssize_t n = ::readlink("/proc/self/exe", buf, sizeof buf - 1);
     if (n > 0) { buf[n] = '\0'; return buf; }
@@ -116,8 +120,9 @@ bool odSoftwareGlAlreadyTried() {
 }
 
 bool odTrySoftwareGlRelaunch() {
-#if defined(_WIN32) || defined(__APPLE__)
-    // No llvmpipe to fall back to. The caller keeps its existing message.
+#if defined(_WIN32) || defined(__APPLE__) || defined(_NEWLIB_VERSION)
+    // No llvmpipe to fall back to (and on newlib's consoles no exec either).
+    // The caller keeps its existing message.
     return false;
 #else
     if (odSoftwareGlAlreadyTried()) return false;   // already the retry: give up
