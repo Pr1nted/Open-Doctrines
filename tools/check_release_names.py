@@ -63,7 +63,7 @@ def built_artifacts():
               re.findall(r'"name":\s*"([a-z]+bsd-[A-Za-z0-9_-]+)"', read(".github/workflows/bsd-game.yml"))}
     # other-os-game.yml names its entries in a YAML matrix, not a JSON plan.
     names |= {"OpenDoctrines-" + n for n in
-              re.findall(r"-\s*\{\s*name:\s*([a-z]+-[A-Za-z0-9_]+)\s*,", read(".github/workflows/other-os-game.yml"))}
+              re.findall(r"-\s*\{\s*name:\s*([a-z0-9]+-[A-Za-z0-9_]+)\s*,", read(".github/workflows/other-os-game.yml"))}
     # The browser build is a page, not an install, and has no updater key.
     return {n for n in names if not n.endswith("-web")}
 
@@ -113,7 +113,7 @@ def main():
     # The dedicated server ships wherever the game does -- it is what people
     # run on a Pi or an Arm VPS -- except the BSDs, which have no server build.
     game_desktop = {n.replace("OpenDoctrines-", "") for n in built
-                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity|raspios|dos|wii)-", n)}
+                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity|raspios|dos|wii|3ds|riscos)-", n)}
     server = server_platforms()
     for p in sorted(game_desktop - server):
         problems.append(f"the game ships for {p}, but release-server.yml has no server for it")

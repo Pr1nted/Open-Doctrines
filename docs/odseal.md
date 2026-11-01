@@ -24,6 +24,8 @@ one prebuilt per platform, and CMake picks the matching one:
 | Haiku x86_64 | `haiku-x86_64/` | gcc 13 from HaikuPorts, `-fPIC`, in a Haiku VM on a Linux runner |
 | SerenityOS x86_64 | `serenityos-x86_64/` | SerenityOS's own GNU cross toolchain, `-fPIC`; exports checked, not run |
 | PS Vita | `vita-arm/` | VitaSDK's `arm-vita-eabi` gcc (pinned by `tools/vitasdk_install.sh`); exports checked, not run |
+| RISC OS 5 | `riscos-arm/` | GCCSDK's `arm-riscos-gnueabihf` gcc 10.2 in the riscos-crossdev image; exports checked, not run |
+| Nintendo 3DS | `3ds-arm/` | devkitARM's `arm-none-eabi` gcc (armv6k, hard float) in devkitPro's image; exports checked, not run |
 | Wii | `wii-ppc/` | devkitPPC's `powerpc-eabi` gcc in devkitPro's image; exports checked, not run |
 | DOS (32-bit) | `dos-i586/` | DJGPP's `i586-pc-msdosdjgpp` gcc (pinned by `tools/dos_toolchain.sh`); test run in DOSBox-X |
 | Web (wasm32) | `web-wasm32/` | emscripten `em++` |
