@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
+        "release.py", "odver.py", "package.py", "ci_plan.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
@@ -339,6 +339,9 @@ GROUPS = [
         # vector font instead of raylib's bitmap one. Applied to the raylib the
         # build compiles; the server stub generator knows it too.
         "patch_raylib_default_font.py",
+        # A software-rendered build's screen readback (screenshots, feedback
+        # pictures) right way up and in RGBA on rlsw. Applied to that build only.
+        "patch_raylib_sw_readback.py",
         # The relations view says who is at war and who is allied with hue
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.

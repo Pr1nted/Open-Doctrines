@@ -127,7 +127,7 @@ EM_JS(int, odFitCanvasJS, (), {
 #elif !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
-#if defined(OD_DESKTOP_SDL)
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
 // SDL_InitSubSystem and SDL_GetError, ahead of InitWindow (see Game::init).
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_error.h>
@@ -1407,7 +1407,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // configuration exists for. Read by SDL_Init, inside InitWindow below.
     if (!getenv("SDL_VIDEODRIVER")) setenv("SDL_VIDEODRIVER", "offscreen", 1);
 #endif
-#if defined(OD_DESKTOP_SDL)
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
     // NO DISPLAY, SAID AS SUCH. raylib 6.2's SDL backend checks SDL_Init the
     // SDL2 way, `result < 0`; SDL3 returns false on failure, which is never
     // below zero, so a session with no display at all sails past it and fails
@@ -1416,6 +1416,8 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // relaunch. So video is brought up here first and a failure is reported in
     // the words the trace-log callback reads as no display. SDL counts
     // initialisations, so raylib's own SDL_Init inside InitWindow is unaffected.
+    // Not on SDL2 (SerenityOS): there SDL_Init does return < 0, and raylib's
+    // check already says no display in the right words.
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif

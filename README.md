@@ -341,6 +341,28 @@ Haiku machines, so the globe and large maps are slower than on other systems.
 32-bit Haiku is the gcc2 hybrid, which cannot build C++20, and Haiku's Arm
 and RISC-V ports are not releases yet.
 
+### SerenityOS
+
+Built for **x86-64** (`serenity-x64`) with every release
+(`other-os-game.yml`), by SerenityOS's own cross toolchain against a SerenityOS
+built in the same job from one pinned commit.
+
+**Built against one commit.** SerenityOS has no releases and its system
+interfaces change, so the binary is for a SerenityOS built from the commit the
+workflow pins (`SERENITY_COMMIT` in `other-os-game.yml`); on a much newer or
+older SerenityOS it may not start. Build that commit, then copy the unpacked
+release in.
+
+**Drawn in software.** SerenityOS's OpenGL is fixed-function with no shaders,
+so this build renders with raylib's software rasteriser (`OD_SOFTWARE_RENDER`)
+and needs no GPU. The map, the panels and the text are as everywhere else; the
+globe has no day/night lighting, atmosphere or stars, which are shaders. The
+political map and its overlays are painted on the CPU from the same tables the
+shaders read, so their colours are exact.
+
+**Without mods** (WAMR has no SerenityOS platform layer). It uses SerenityOS's
+own SDL2 port for the window and input.
+
 ### Windows
 
 Requires **Windows 10 or later**. Three builds are published:

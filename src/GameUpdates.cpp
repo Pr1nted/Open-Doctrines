@@ -347,6 +347,13 @@ std::string GameUpdates::platformKey() {
   #else
     return "OpenDoctrines-haiku-unknown";
   #endif
+#elif defined(__serenity__)
+  // x86-64 only: the one architecture this build is made and tested on.
+  #if defined(__x86_64__)
+    return "OpenDoctrines-serenity-x64";
+  #else
+    return "OpenDoctrines-serenity-unknown";
+  #endif
 #else
     return "OpenDoctrines-unknown";
 #endif

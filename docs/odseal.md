@@ -22,6 +22,7 @@ one prebuilt per platform, and CMake picks the matching one:
 | NetBSD arm64 | `netbsd-aarch64/` | base gcc, `-fPIC`, in an emulated VM on a Linux runner |
 | illumos amd64 | `illumos-amd64/` | gcc from IPS, `-fPIC`, in an OpenIndiana VM on a Linux runner |
 | Haiku x86_64 | `haiku-x86_64/` | gcc 13 from HaikuPorts, `-fPIC`, in a Haiku VM on a Linux runner |
+| SerenityOS x86_64 | `serenityos-x86_64/` | SerenityOS's own GNU cross toolchain, `-fPIC`; exports checked, not run |
 | Web (wasm32) | `web-wasm32/` | emscripten `em++` |
 | Windows x86_64 | `windows-x86_64/` | MSVC, `/O2 /GR-` |
 | Windows x86 (32-bit) | `windows-x86/` | MSVC `amd64_x86`, `/O2 /GR-`, on the x64 runner |
