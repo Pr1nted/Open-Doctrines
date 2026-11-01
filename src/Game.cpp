@@ -2045,9 +2045,9 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     std::vector<int> missing;
     std::vector<int> missingAt;
     for (int i = 0; i < n; ++i) {
-        if (odIsBlankCodepoint(cps[i])) continue;
+        if (odIsBlankCodepoint(codepoints[i])) continue;
         if (glyphs[i].advanceX == 0 && glyphs[i].image.width == 0) {
-            missing.push_back(cps[i]);
+            missing.push_back(codepoints[i]);
             missingAt.push_back(i);
         }
     }
@@ -3070,6 +3070,12 @@ void Game::run() {
         // every frame, and a popup is exactly when it must not stutter.
         Audio::get().update(dt);
         updateMusic(dt);
+        // Beside them and for the same reason: the mod bus is mixed on the
+        // audio thread and reads its gains from here, so this has to run on
+        // every frame and on every screen. Game::update() was the wrong home
+        // -- it is only called on the gameplay branch, so a mod's sound went
+        // unmixed at the menu, which is exactly where a mod load plays one.
+        pumpModAudio();
         // Also above the early-out: the resource panel is a system control, not
         // a game screen, so it has to answer F10 even with a popup up.
         samplePerformance();
