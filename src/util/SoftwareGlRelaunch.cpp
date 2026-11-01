@@ -8,6 +8,10 @@
 #if !defined(_WIN32)
 #  include <climits>
 #  include <unistd.h>
+// newlib (Vita, 3DS, Wii) has no PATH_MAX.
+#  ifndef PATH_MAX
+#    define PATH_MAX 1024
+#  endif
 #endif
 #include "raylib.h"
 #if defined(__APPLE__)
@@ -116,8 +120,9 @@ bool odSoftwareGlAlreadyTried() {
 }
 
 bool odTrySoftwareGlRelaunch() {
-#if defined(_WIN32) || defined(__APPLE__)
-    // No llvmpipe to fall back to. The caller keeps its existing message.
+#if defined(_WIN32) || defined(__APPLE__) || defined(_NEWLIB_VERSION)
+    // No llvmpipe to fall back to (and on newlib's consoles no exec either).
+    // The caller keeps its existing message.
     return false;
 #else
     if (odSoftwareGlAlreadyTried()) return false;   // already the retry: give up

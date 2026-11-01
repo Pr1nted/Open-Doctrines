@@ -1328,6 +1328,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // There is no setting to respect here -- a phone's panel is its panel.
     m_screenW = 0;
     m_screenH = 0;
+#elif defined(__vita__)
+    // The Vita's panel, whatever the config says: SDL's Vita window is the
+    // whole screen, and a 1600x900 request would only be cropped by it.
+    m_screenW = 960;
+    m_screenH = 544;
 #endif
 
     int winFlags = FLAG_WINDOW_RESIZABLE;

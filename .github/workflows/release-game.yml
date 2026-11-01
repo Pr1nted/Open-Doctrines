@@ -786,7 +786,7 @@ jobs:
           echo "Download each artifact above, run it, and play far enough to be"
           echo "sure it works. Approving this job publishes to players."
           find artifacts \( -name '*.zip' -o -name '*.exe' -o -name '*.dmg' \
-                            -o -name '*.apk' \) -exec ls -lh {} \;
+                            -o -name '*.apk' -o -name '*.vpk' \) -exec ls -lh {} \;
 
   publish:
     name: Publish
@@ -893,6 +893,7 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.apk
+            artifacts/**/*.vpk
             artifacts/**/*.AppImage
             artifacts/**/*.deb
             artifacts/**/*.rpm

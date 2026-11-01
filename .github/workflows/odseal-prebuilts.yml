@@ -127,6 +127,9 @@ jobs:
           # the commit other-os-game.yml pins and shared with it through the
           # Actions cache. An hour the first time, seconds after.
           - { name: serenityos-x86_64, os: ubuntu-24.04, serenity: x86_64, timeout: 150 }
+          # The PS Vita, by VitaSDK's arm-vita-eabi gcc (the pinned snapshot
+          # tools/vitasdk_install.sh takes). CMakeLists.txt asks for vita-arm.
+          - { name: vita-arm,          os: ubuntu-24.04, vita: true }
 
     steps:
       - uses: actions/checkout@v5
@@ -404,6 +407,20 @@ jobs:
           "$TC/x86_64-serenity-ar" rcs out/libodseal.a odseal.o
           rm -rf serenity
 
+      # ── PS Vita ──
+      - name: Build (PS Vita)
+        if: matrix.vita
+        shell: bash
+        run: |
+          set -e
+          bash tools/vitasdk_install.sh "$HOME/vitasdk"
+          TC="$HOME/vitasdk/bin"
+          mkdir -p out
+          "$TC/arm-vita-eabi-g++" -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC/arm-vita-eabi-strip" --strip-unneeded odseal.o
+          "$TC/arm-vita-eabi-ar" rcs out/libodseal.a odseal.o
+
       - name: Drop the sealed source
         if: always()
         shell: bash
@@ -459,12 +476,14 @@ jobs:
       # archive is held to the same exports rules and its test is not run --
       # running it means booting SerenityOS, which other-os-game.yml does not
       # do yet either. Plain nm reads an x86-64 ELF object whatever OS it is for.
-      - name: Check the archive (android and SerenityOS, symbols only)
-        if: startsWith(matrix.name, 'android-') || matrix.serenity
+      - name: Check the archive (android, SerenityOS and the Vita, symbols only)
+        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita
         shell: bash
         run: |
           set -e
-          if [ -n "$ANDROID_NDK_HOME" ] && [ -z "${{ matrix.serenity }}" ]; then
+          if [ -n "${{ matrix.vita }}" ]; then
+            NM="$HOME/vitasdk/bin/arm-vita-eabi-nm"
+          elif [ -n "$ANDROID_NDK_HOME" ] && [ -z "${{ matrix.serenity }}" ]; then
             NM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
           else
             NM=nm

@@ -333,7 +333,11 @@ option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offs
 # not a choice. It links the system SDL3 rather than building one (below).
 # SERENITYOS LIKEWISE, and on its own SDL2: SDL3 has no SerenityOS backend,
 # and SerenityOS's ports tree carries SDL2 with one.
-if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+#
+# THE PS VITA TOO (VITA, set by VitaSDK's toolchain file): SDL3 has a Vita
+# backend -- the screen, the buttons and sticks as a gamepad, both touch
+# panels -- and is built from source here as on Linux.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" OR VITA)
    AND NOT ANDROID AND NOT EMSCRIPTEN)
     set(od_desktop_sdl_default ON)
 else()
@@ -347,8 +351,11 @@ endif()
 # with an unimplemented GLSL compiler. rlsw has render textures but no
 # shaders: the custom shaders fail to load and fall back to raylib's default,
 # so the globe and the map's lighting lose their effects and stay readable.
-# On by default on SerenityOS, the system it exists for.
-if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+# On by default on SerenityOS, the system it exists for, and on the PS Vita,
+# whose GPU has no OpenGL of its own: vitaGL provides one, but compiles its
+# shaders with a library every player would have to extract from their own
+# console first. Software rendering needs nothing installed.
+if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" OR VITA)
     set(od_software_render_default ON)
 else()
     set(od_software_render_default OFF)
@@ -501,7 +508,9 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
-        set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        if(NOT VITA)
+            set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        endif()
         set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
         set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
@@ -542,6 +551,11 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
             "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/haiku/pthread_compat.h")
     endif()
     set(raylib_LIBRARY raylib)
+    # The Vita has no dlopen, and miniaudio reaches for it on anything it
+    # takes to be POSIX. None of the backends it would load exist there.
+    if(VITA)
+        target_compile_definitions(raylib PRIVATE MA_NO_RUNTIME_LINKING)
+    endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
     # audio against an unpatched decoder produces a silent game and nothing else
@@ -771,6 +785,11 @@ else()
     elseif(EMSCRIPTEN)
         set(ODSEAL_PLATFORM "web-wasm32")
         set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(VITA)
+        # VitaSDK's toolchain calls the system Generic, so it would otherwise
+        # fall through to "unknown". One CPU (Cortex-A9), one archive.
+        set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(APPLE)
         set(ODSEAL_PLATFORM "macos-universal")
         set(ODSEAL_LIBNAME  "libodseal.a")
@@ -881,7 +900,7 @@ endif()
 # directory that does not say why. The release builds pass OFF explicitly
 # anyway; this is so a source build on those systems works without knowing
 # that. README.md says the same under each system's section.
-if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku|SerenityOS")
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku|SerenityOS" OR VITA)
     set(od_mods_default OFF)
 else()
     set(od_mods_default ON)
@@ -1246,7 +1265,15 @@ message(STATUS "Gearbox mod runtime backend: ${OD_MODS_BACKEND}")
 #
 # The web target needs nothing fetched: the browser already has a WebSocket and
 # already has the certificate store, and would not permit a raw socket anyway.
-option(OD_ENABLE_NET "Build the multiplayer transport" ON)
+# Off by default on the PS Vita for now: its sockets need the network module
+# loaded and initialised by the program first (sceNetInit), which nothing in
+# the game does yet. The build says multiplayer is unavailable there.
+if(VITA)
+    set(od_net_default OFF)
+else()
+    set(od_net_default ON)
+endif()
+option(OD_ENABLE_NET "Build the multiplayer transport" ${od_net_default})
 
 # Which account service a build points at, baked in at compile time.
 #
@@ -2667,6 +2694,33 @@ if(EMSCRIPTEN)
 else()
     find_package(Threads REQUIRED)
     target_link_libraries(OpenDoctrines Threads::Threads)
+endif()
+
+# ── THE PS VITA: AN EBOOT, NOT AN EXECUTABLE ──
+#
+# What runs on a Vita is eboot.bin, a signed-for-homebrew SELF made from the
+# linked ELF by VitaSDK's vita-elf-create and vita-make-fself (vita.cmake's
+# vita_create_self). tools/vita_vpk.py then puts it in a .vpk with the data
+# and the LiveArea, which is what a player installs (VitaShell).
+#
+# src/platform/vita-include holds stand-ins for the few POSIX headers newlib
+# on the Vita does not have (dlfcn.h, sys/mman.h, ifaddrs.h, net/if.h,
+# sys/un.h). Everything that includes them is a desktop feature -- Steam,
+# the dev link, LAN addresses, Discord's local socket -- and each one already
+# copes with the call failing, which is all the stand-ins do.
+if(VITA)
+    include("${VITASDK}/share/vita.cmake" REQUIRED)
+    target_sources(OpenDoctrines PRIVATE src/platform/Vita.cpp src/platform/newlib_posix_stubs.cpp)
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_link_libraries(OpenDoctrines ScePower_stub)
+    # VitaSDK's toolchain already links libpthread whole (its static
+    # initialiser has to run), and SDL3's Threads::Threads adds -lpthread
+    # again, so every pthread object is defined twice. They are the same
+    # objects from the same archive: the first copy is kept.
+    target_link_options(OpenDoctrines PRIVATE -Wl,--allow-multiple-definition)
+    # UNSAFE: full access to the memory card and the clock settings, which is
+    # what homebrew games ask for; the player sees it when installing.
+    vita_create_self(eboot.bin OpenDoctrines UNSAFE)
 endif()
 
 if(APPLE)
