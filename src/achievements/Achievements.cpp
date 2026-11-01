@@ -588,7 +588,7 @@ void Tracker::update() {
     }
     if (AccountClient::get().status() != AccountClient::Status::SignedIn) return;
     im.busy = true;
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     im.syncOnce();
     im.busy = false;
 #else

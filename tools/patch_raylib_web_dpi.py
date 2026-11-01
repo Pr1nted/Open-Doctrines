@@ -30,7 +30,7 @@ load. 2x is already past what the eye resolves on a map.
 
 WHY A SCRIPT, AND WHY IT IS FATAL WHEN IT FAILS
 
-raylib is pinned at 5.5 and built from source (CMakeLists.txt), so the delta
+raylib is pinned (CMakeLists.txt's GIT_TAG) and built from source (CMakeLists.txt), so the delta
 stays the two hunks that matter and visible in one file rather than a vendored
 fork. If the anchors no longer match, raylib has restructured the resize
 callback and the patch must be re-derived -- shipping the web build unpatched
@@ -81,7 +81,26 @@ BECOME2 = (
     "    SetupViewport(width, height); // Reset viewport and projection matrix for new size"
 )
 
-PATCHES = [(WANT1, BECOME1), (WANT2, BECOME2)]
+# raylib 6.x names the canvas through platform.canvasId (configurable) instead
+# of the literal "#canvas", so its hunk 2 anchors there and the CSS fix finds
+# the element by that same selector rather than assuming its id.
+WANT2_6 = (
+    "    emscripten_set_canvas_element_size(platform.canvasId, width, height);\n"
+    "\n"
+    "    SetupViewport(width, height); // Reset viewport and projection matrix for new size"
+)
+BECOME2_6 = (
+    "    emscripten_set_canvas_element_size(platform.canvasId, width, height);   // backing = device px\n"
+    "    // OD PATCH: CSS box stays at layout pixels, so the page footprint is\n"
+    "    // unchanged while the framebuffer behind it is denser.\n"
+    "    EM_ASM({ var c = document.querySelector(UTF8ToString($2)); if (c) { c.style.width = $0 + 'px'; c.style.height = $1 + 'px'; } }, odCssW, odCssH, platform.canvasId);\n"
+    "\n"
+    "    SetupViewport(width, height); // Reset viewport and projection matrix for new size"
+)
+
+# Each hunk is a list of alternatives -- raylib 5.5's shape, then 6.x's -- and
+# exactly one of them must match.
+PATCHES = [[(WANT1, BECOME1)], [(WANT2, BECOME2), (WANT2_6, BECOME2_6)]]
 
 
 def main(argv):
@@ -97,18 +116,21 @@ def main(argv):
         src = f.read()
 
     applied = already = 0
-    for want, become in PATCHES:
-        if become in src:
+    for alternatives in PATCHES:
+        if any(become in src for _, become in alternatives):
             already += 1
             continue
-        n = src.count(want)
-        if n != 1:
+        hits = [(w, b) for w, b in alternatives if src.count(w) == 1]
+        if len(hits) != 1:
+            want = alternatives[-1][0]
             print(f"patch_raylib_web_dpi: expected exactly one occurrence of the "
-                  f"anchor\n    {want.splitlines()[-1].strip()}\n  in {path}, found "
-                  f"{n}. raylib's web resize callback has moved; the DPI patch must "
-                  f"be re-derived before the web build can ship.",
+                  f"anchor\n    {want.splitlines()[-1].strip()}\n  in {path} (raylib "
+                  f"5.5 or 6.x shape), found {len(hits)}. raylib's web resize "
+                  f"callback has moved; the DPI patch must be re-derived before "
+                  f"the web build can ship.",
                   file=sys.stderr)
             return 1
+        want, become = hits[0]
         src = src.replace(want, become, 1)
         applied += 1
 

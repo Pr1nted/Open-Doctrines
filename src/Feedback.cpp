@@ -109,6 +109,14 @@ const char* platformName() {
     return "freebsd";
 #elif defined(__OpenBSD__)
     return "openbsd";
+#elif defined(__NetBSD__)
+    return "netbsd";
+#elif defined(__sun)
+    return "illumos";
+#elif defined(__HAIKU__)
+    return "haiku";
+#elif defined(__serenity__)
+    return "serenityos";
 #else
     return "unknown";
 #endif
@@ -340,8 +348,8 @@ bool send(const Report& report, Config& cfg, const std::string& configPath,
         }
     };
 
-#ifdef __EMSCRIPTEN__
-    // Single-threaded, and httpRequest is a stub there: run it inline so the
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
+    // Single-threaded (the browser, DOS), and httpRequest is a stub there: run it inline so the
     // player gets the sentence rather than a frozen tab.
     job();
     s.busy.store(false);

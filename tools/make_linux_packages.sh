@@ -72,8 +72,23 @@ APPID=io.github.Pr1nted.OpenDoctrines
 case "$ARCH" in
     amd64) RPM_ARCH=x86_64;  APPIMAGE_ARCH=x86_64  ;;
     arm64) RPM_ARCH=aarch64; APPIMAGE_ARCH=aarch64 ;;
-    *) die "arch must be amd64 or arm64, not $ARCH" ;;
+    # 32-bit Raspberry Pi OS. Built as a .deb only (see the raspios job in
+    # release-game.yml); no rpm or AppImage is made for it.
+    armhf) RPM_ARCH=armv7hl; APPIMAGE_ARCH=armhf ;;
+    *) die "arch must be amd64, arm64 or armhf, not $ARCH" ;;
 esac
+
+# ── WHICH GL THE BINARY LINKS, READ FROM THE BINARY ──
+#
+# A desktop build links libOpenGL (GLVND); a GLES build (OD_GLES, the
+# Raspberry Pi packages) links libGLESv2 and needs EGL beside it. Taken from
+# the ELF's own NEEDED list, not from a flag passed in, so a package cannot
+# declare one GL while the program inside it asks for the other.
+if readelf -d "$TREE/OpenDoctrines" 2>/dev/null | grep -q 'Shared library: \[libGLESv2'; then
+    GL_DEPENDS=(--depends libgles2 --depends libegl1)
+else
+    GL_DEPENDS=(--depends libgl1 --depends libopengl0)
+fi
 
 # ── the layout every package shares ──
 #
@@ -152,6 +167,16 @@ deb)
     # The runtime libraries raylib's X11 backend dlopens or links. Named
     # explicitly rather than left to fpm, because a .deb that installs and then
     # cannot open a window is worse than one that refuses to install.
+    #
+    # libopengl0 IS THE ONE THE BINARY ACTUALLY LINKS. CMake's FindOpenGL
+    # prefers GLVND, so the game's only GL link is libOpenGL.so.0 -- which
+    # Debian ships in libopengl0, NOT in libgl1. A desktop usually has it
+    # anyway; a fresh Debian does not, and the first install into one (the
+    # ChromeOS check, tools/chromeos_check.sh) reported "libOpenGL.so.0 =>
+    # not found": the package installed and the game could not start.
+    #
+    # libxext6 is for SDL (OD_DESKTOP_SDL), linked statically: its X11 driver
+    # loads libXext at run time and will not start without it.
     fpm -s dir -t deb -C "$STAGE" \
         --name opendoctrines \
         --version "$VERSION" \
@@ -161,7 +186,7 @@ deb)
         --description 'OpenDoctrines -- a grand strategy game of doctrines, economies and war' \
         --license 'See LICENSE: free to play, modify and share non-commercially' \
         --depends libc6 --depends libx11-6 --depends libxrandr2 --depends libxi6 \
-        --depends libxcursor1 --depends libxinerama1 --depends libgl1 \
+        --depends libxcursor1 --depends libxinerama1 --depends libxext6 "${GL_DEPENDS[@]}" \
         --depends libasound2 --depends libxkbcommon0 \
         --package "$OUT/opendoctrines_${VERSION}_${ARCH}.deb" \
         usr

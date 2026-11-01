@@ -238,8 +238,9 @@ Every mainstream desktop install already has them; a minimal or headless install
 may not.
 
 **x86_64 and arm64** are published in every format; **32-bit x86, 32-bit Arm
-(armv7, e.g. a Raspberry Pi running a 32-bit OS) and RISC-V (riscv64)** as the
-tarball:
+(armv7) and RISC-V (riscv64)** as the tarball. On a Raspberry Pi, use the
+[Raspberry Pi OS](#raspberry-pi-os) build instead — these ask for desktop
+OpenGL 3.3, which a Pi's GPU does not have:
 
 | | what it is | arches | glibc |
 |---|---|---|---|
@@ -275,25 +276,166 @@ An AppImage bundles the application's libraries but **not** the C library under
 them, so it is not a way around the glibc requirement. On Debian 11, Ubuntu
 20.04 or RHEL 9, use the Flatpak or build from source.
 
-### FreeBSD and OpenBSD
+### FreeBSD, OpenBSD and NetBSD
 
-Both are built and published as **amd64** zips, the same shape as every other
-desktop download, by each system's own compiler inside a real VM — not
-cross-compiled from Linux. Unpack and run.
+All three are built and published for **amd64** and **arm64**, the same shape
+as every other desktop download, by each system's own compiler inside a real
+VM — not cross-compiled from Linux. Unpack and run.
 
-You need the usual X11, Mesa and ALSA runtime libraries. On FreeBSD they are
-ports (`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
-libxkbcommon`); on OpenBSD X and Mesa are already in base.
+| System | Release built on | Downloads | Mods |
+|---|---|---|---|
+| FreeBSD | 14.2 | `freebsd-amd64`, `freebsd-arm64` | yes |
+| OpenBSD | 7.7 | `openbsd-amd64`, `openbsd-arm64` | no |
+| NetBSD | 10.1 (runs on 10 and later) | `netbsd-amd64`, `netbsd-arm64` | no |
 
-**Mods do not work on OpenBSD, and the build says so rather than pretending.**
-The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
-which has no OpenBSD port, and OpenBSD's W^X policy is a poor fit for an
-interpreter that wants pages it can write and then execute. The OpenBSD build
-is compiled with the runtime left out: there is no mod menu, rather than one
-that is there and does nothing. Everything else — the full game, scenarios,
-saves, multiplayer — is unaffected. FreeBSD has mods as normal.
+You need the usual X11 and Mesa runtime libraries. On FreeBSD they are ports
+(`pkg install mesa-libs libX11 libXrandr libXi libXcursor libXinerama
+libxkbcommon`); on OpenBSD and NetBSD X and Mesa are already in base (on
+NetBSD, install the X11 sets if you left them out).
+
+**Mods do not work on OpenBSD or NetBSD, and the build says so rather than
+pretending.** The Gearbox mod runtime is [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime),
+which has a FreeBSD port and none for either of the others, and OpenBSD's W^X
+policy is a poor fit for an interpreter that wants pages it can write and then
+execute. Those builds are compiled with the runtime left out: there is no mod
+menu, rather than one that is there and does nothing. Everything else — the
+full game, scenarios, saves, multiplayer — is unaffected. FreeBSD has mods as
+normal, on both architectures. A source build on OpenBSD or NetBSD leaves mods
+out by default.
 
 Porting the runtime is a separate piece of work and not scheduled.
+
+### OpenIndiana and illumos
+
+Built and published for **amd64** (`illumos-amd64`) inside a real OpenIndiana
+Hipster VM, by its own gcc, the same way as the BSDs. It ships with every
+release: `.github/workflows/other-os-game.yml` builds it — with Haiku,
+SerenityOS and the PS Vita — on every pull request and push, and the release waits for it. It should run on any
+current illumos distribution with X11 and Mesa — OpenIndiana, or OmniOS with
+the X11 packages added — and needs `x11/library/mesa` and the usual X client
+libraries (`pkg install x11/library/mesa x11/library/libxrandr
+x11/library/libxinerama x11/library/libxcursor x11/library/libxi`).
+
+**Without mods**, for the same reason as OpenBSD and NetBSD: WAMR has no
+illumos platform layer. A source build there leaves mods out by default.
+
+**No Arm build.** illumos on Arm is an early bring-up with no package
+repository — no X11, Mesa or compiler to build the game with or run it
+against — and no CI image boots it. If an Arm OpenIndiana or OmniOS release
+appears, it is one more entry in `other-os-game.yml` and one more odseal archive.
+
+### Haiku
+
+Built and published for **x86-64** (`haiku-x64`) inside a real Haiku
+R1/beta6 VM, by its own gcc, with every release (`other-os-game.yml`, as
+OpenIndiana). Install the two libraries it uses first:
+
+    pkgman install libsdl3 mesa
+
+then unpack and run. Haiku has no GLFW, so this is the SDL build — the same
+raylib-on-SDL3 backend as Linux and Windows, touch input included — linked
+against Haiku's own `libsdl3` from HaikuPorts, which carries a Haiku display
+fix upstream SDL does not have yet. OpenGL is Mesa's software renderer on most
+Haiku machines, so the globe and large maps are slower than on other systems.
+
+**Without mods** (WAMR has no Haiku platform layer). **x86-64 only:** the
+32-bit Haiku is the gcc2 hybrid, which cannot build C++20, and Haiku's Arm
+and RISC-V ports are not releases yet.
+
+### SerenityOS
+
+Built for **x86-64** (`serenity-x64`) with every release
+(`other-os-game.yml`), by SerenityOS's own cross toolchain against a SerenityOS
+built in the same job from one pinned commit.
+
+**Built against one commit.** SerenityOS has no releases and its system
+interfaces change, so the binary is for a SerenityOS built from the commit the
+workflow pins (`SERENITY_COMMIT` in `other-os-game.yml`); on a much newer or
+older SerenityOS it may not start. Build that commit, then copy the unpacked
+release in.
+
+**Drawn in software.** SerenityOS's OpenGL is fixed-function with no shaders,
+so this build renders with raylib's software rasteriser (`OD_SOFTWARE_RENDER`)
+and needs no GPU. The map, the panels and the text are as everywhere else; the
+globe has no day/night lighting, atmosphere or stars, which are shaders. The
+political map and its overlays are painted on the CPU from the same tables the
+shaders read, so their colours are exact.
+
+**Without mods** (WAMR has no SerenityOS platform layer). It uses SerenityOS's
+own SDL2 port for the window and input.
+
+### PS Vita
+
+Homebrew for a **PS Vita** running HENkaku or Ensō, as a `.vpk`
+(`OpenDoctrines-vita.vpk`) installed with VitaShell. Built with every release
+by the `vita` job in `other-os-game.yml`, with VitaSDK (a pinned snapshot,
+checked by hash: `tools/vitasdk_install.sh`).
+
+**The first start copies the game's data** to `ux0:data/OpenDoctrines/` on
+the memory card: a Vita app's own folder is read-only, and the game writes its
+config and saves beside its data, as everywhere else. A new version copies its
+data again and leaves your config and saves alone. Allow a few hundred MB.
+
+**Controls.** The sticks and buttons work as the gamepad does on a Steam
+Deck — left stick moves the cursor, ✕ clicks, □ right-clicks, ○ is back, the
+shoulder buttons zoom — and the front touch screen works as a touchscreen. It
+is raylib on SDL3, as on Linux, and SDL3 has a Vita backend.
+
+**Drawn in software**, as on SerenityOS (`OD_SOFTWARE_RENDER`): the Vita's
+GPU has no OpenGL of its own, and the GL layer homebrew uses (vitaGL) needs a
+shader compiler every player would first have to extract from their own
+console. The globe has no lighting effects; the map, panels and text are as
+everywhere else. The game asks for the Vita's full clock speed.
+
+**Single player, for now.** Multiplayer and sign-in are off (the Vita's
+network stack has to be started by the game, which it does not do yet), and so
+is sound (raylib's audio library has no Vita backend), and mods (WAMR has no
+Vita platform layer). The in-game updater does not run: a new `.vpk` is the
+update.
+
+**Not yet played on a Vita.** CI builds it, links it against VitaSDK's
+database of the system's functions (an unknown import fails the build), and
+checks the package's layout, title id, version and LiveArea images
+(`tools/vita_vpk.py --check`); it cannot run it, because that needs a Vita or
+Vita3K with Sony's firmware installed. Reports welcome.
+
+### DOS
+
+A **32-bit DOS** program (`dos-x86`), built with DJGPP (gcc 12, a pinned
+toolchain checked by hash: `tools/dos_toolchain.sh`) with every release by the
+`dos` job in `other-os-game.yml`, and shipped with CWSDPMI, the DPMI host it
+runs under. Unzip it and run `DOCTRINE`; `DOS.TXT` in the zip says the
+same as this.
+
+**What it needs.** A Pentium-class PC (or DOSBox-X), a VESA 2.0 graphics card
+with a linear framebuffer — the game picks the largest 15/16/24/32-bit mode up
+to the size it asks for, or `SET OD_VESA=1024x768` — a mouse driver, **long
+file names** (they work in a Windows 9x DOS prompt and in DOSBox-X; in plain
+MS-DOS or FreeDOS load DOSLFN), and **about 320 MB of memory**: worlds load
+at half resolution on DOS, which peaks near 230 MB.
+
+**How it draws.** raylib has no DOS backend, so the game carries one:
+`src/platform/dos/rcore_dos.c`, which sets a VESA mode, maps its linear
+framebuffer and converts raylib's software-rendered frame into its pixel
+format, reads the mouse through INT 33h (and its wheel, with CuteMouse), and
+the keyboard from its own IRQ 1 handler (a US layout: DOS has no keyboard
+layout a program that reads the keyboard controller can ask for). The cursor
+is painted into each frame, since DOS draws none in a VESA mode. Rendering is
+raylib's software rasteriser, as on SerenityOS and the Vita.
+
+**Single player, silent, offline.** DJGPP has no threads, so the game runs
+single-threaded — the same paths the browser build takes (`OD_NO_THREADS`) —
+and no network stack, so there is no multiplayer, sign-in, mod directory or
+in-game updater; and no sound yet (raylib's audio needs threads: a Sound
+Blaster mixer is the next step).
+
+**Run in CI, in DOSBox-X.** The packaged zip is unpacked and plays three turns
+of 1939 in DOSBox-X (an emulated Pentium with an S3 card), and its screen is
+captured as it starts. On every pull request, the DOS build's own code — the
+single-threaded game and the screen layer — is also built for Linux
+(`-DOD_DOS=ON`, which draws into a stand-in screen) and checked to show
+exactly what the game drew (`tools/dos_framebuffer_check.py`). **Not yet run
+on a real DOS machine**: reports welcome.
 
 ### Windows
 
@@ -308,9 +450,95 @@ Requires **Windows 10 or later**. Three builds are published:
 The build is unsigned, so SmartScreen will show *"Windows protected your PC"*
 on first run — **More info → Run anyway**.
 
+### Steam Deck and other handhelds
+
+Use the ordinary download for the device's system: **Linux x64** on a Steam
+Deck (Desktop Mode, or add it to Steam as a non-Steam game for Game Mode),
+**Windows x64** on an ROG Ally, Legion Go or MSI Claw, **Linux arm64** on Arm
+Linux handhelds, and the [Android](#android--experimental) APK on Android ones.
+
+What a handheld needs is in those builds:
+
+- **The built-in controls.** The Linux and Windows builds use SDL, whose
+  controller database knows the Deck's and the Windows handhelds' pads, and
+  Steam Input's virtual one. The pad drives the pointer, as on every platform.
+- **The touchscreen, properly.** Tap to click, drag to move the pointer,
+  pinch to zoom, long-press for right-click — the same gestures as on Android,
+  where the pointer stays put between touches so the hover-driven parts of the
+  interface keep working. Until the desktop builds moved to SDL, a finger
+  reached the game only as the system's emulated mouse.
+- **An on-screen keyboard** that comes up for text fields while you are using
+  touch, and stays away while a mouse is in use.
+- **The screen.** In Game Mode (gamescope) the game goes fullscreen at the
+  panel's own 1280x800 rather than drawing at 1600x900 and being squeezed; on
+  the Deck's desktop, as on any small screen, a window too big for the screen
+  opens fitted to it instead of off its edges. Neither changes your saved
+  fullscreen setting.
+
+On the Deck's controls: the **left stick** moves the pointer, **A** clicks,
+**X** right-clicks, **B** goes back, the **d-pad** walks menus, the
+**bumpers** zoom, and **Y**, the **triggers** and **L3** hold the map actions
+(artillery, ship moves, box select, ship wheel) — the keybinds screen shows
+which button is which.
+
+Every pull request checks all of this on the SDL backend the game ships on,
+on Linux and Windows: real touches (`tests/touch_sdl_test.cpp`), a Steam Deck
+controller attached as one (`tests/pad_sdl_test.cpp`, Valve's 28de:1205), and
+on Linux the window at 1280x800 on the desktop and under gamescope. It has
+**not** yet been played on a physical Deck or Ally; reports welcome.
+
+### Raspberry Pi OS
+
+Built for **Raspberry Pi 4 and 5** on Raspberry Pi OS (bookworm), 64-bit
+(`raspios-arm64`) and 32-bit (`raspios-armhf`), as a `.deb` and as a zip:
+
+    sudo apt install ./OpenDoctrines-raspios-arm64.deb
+
+**Why a separate build.** The desktop Linux builds ask for OpenGL 3.3. A Pi 4
+or 5 offers OpenGL 3.1 and OpenGL ES 3.1 (Mesa's v3d driver), so on a Pi they
+start only through the software-GL fallback — llvmpipe on the CPU, which is
+slow. These are built for **OpenGL ES** instead (`OD_GLES`), with the GLSL ES
+shaders the Android and web builds already use, and draw on the Pi's GPU. The
+same build on an x86 desktop renders the menus, the map and the lit globe the
+same as the desktop-GL build.
+
+**Checked for every release** in Raspberry Pi OS itself — Debian bookworm with
+Raspberry Pi's own repository (`archive.raspberrypi.com`) added — by
+`tools/raspios_check.sh`: the `.deb` installs with apt, every library resolves,
+it links OpenGL ES and not desktop GL, and the installed game plays three turns.
+64-bit runs on an Arm runner (and on every pull request); 32-bit runs the same
+check under QEMU at release. It has **not** yet been played on a physical Pi;
+reports welcome.
+
+The installed game updates itself to the next Raspberry Pi OS build, not to
+the desktop Linux one of the same CPU.
+
+### ChromeOS
+
+Two ways in, and both are built for every release:
+
+- **Linux (recommended on a laptop).** Turn on *Linux development environment*
+  in ChromeOS Settings, then open `OpenDoctrines-chromeos-x64.deb` (Intel and
+  AMD Chromebooks) or `OpenDoctrines-chromeos-arm64.deb` (Arm) from the Files
+  app. It installs into ChromeOS's Linux container and appears in the
+  launcher. This is the full desktop game: keyboard and mouse, mods,
+  multiplayer, the map editor.
+- **Android.** The [Android](#android--experimental) APK runs on Chromebooks
+  that have the Play Store, natively on Intel, AMD and Arm alike.
+
+The ChromeOS `.deb` is the Linux build, because ChromeOS's Linux environment
+*is* Debian 12. What makes it ChromeOS's is how it is checked: every release
+installs it with apt in a Debian 12 container on its own architecture, checks
+every library resolves and the launcher entry is there, and plays three turns
+of 1939 from the installed copy on software rendering — which is what a
+Chromebook without Linux GPU acceleration gives it. Pull requests run the same
+check on x86-64 (`tools/chromeos_check.sh`).
+
 ### Android — experimental
 
-Requires **Android 7.0 (API 24) or later**, **arm64** only. Sideload the APK;
+Requires **Android 7.0 (API 24) or later**. One APK carries the game for
+**arm64, 32-bit Arm, x86-64 and x86**, and Android installs the one that
+matches the device. Sideload the APK;
 it is signed with a debug key, so Android will ask you to allow installs from
 whatever app you downloaded it with.
 
@@ -340,7 +568,8 @@ Specifically:
   therefore takes noticeably longer than later ones.
 
 Build it with `tools/package_android.sh` after configuring with the NDK
-toolchain; the CI builds and checks the same APK on every push.
+toolchain; the CI builds and checks the same APK on every push, one NDK build
+per ABI (`OD_ANDROID_ABIS` lists them; see the script).
 
 ### TempleOS
 
@@ -616,8 +845,15 @@ playing:
   | **Linux (x64)** | qualified — built, tested, and played a game |
   | **Windows (x64)** | qualified — built, tested, and played a game |
   | **macOS (arm64, x64)** | qualified *with one gap*: playing a real game is unproven |
-  | **FreeBSD (amd64)** | builds, packages, and loads a world headlessly |
-  | **OpenBSD (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **FreeBSD (amd64, arm64)** | builds, packages, and loads a world headlessly |
+  | **OpenBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **NetBSD (amd64, arm64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **OpenIndiana / illumos (amd64)** | builds, packages, and loads a world headlessly, **without mods** |
+  | **Haiku (x86-64)** | builds, packages, and loads a world headlessly, **without mods** |
+
+  The BSDs' arm64 builds run in emulated VMs and take hours, so pull requests
+  build the three amd64 ones; every push to main and every release builds all
+  six.
 
   The macOS gap is the hosted runner and not the build: GitHub's macOS images
   have no usable display, so the game cannot open a window there and the play
@@ -650,32 +886,35 @@ playing:
   attests to the packaging, the registry and the shortcuts rather than to the
   binary on x64 hardware.
 
-  **FreeBSD and OpenBSD ship, and they are not equal.**
+  **FreeBSD, OpenBSD and NetBSD ship, and they are not equal.**
   The mod runtime is WebAssembly Micro Runtime, and WAMR ships platform support
-  for `freebsd` and none for `openbsd` — checked against its own
-  `core/shared/platform` directory, which lists sixteen platforms and not that
-  one. So:
+  for `freebsd` and none for `openbsd` or `netbsd` — checked against its own
+  `core/shared/platform` directory, which lists sixteen platforms and not those
+  two. So:
 
   | | the game | mods and the Gearbox SDK |
   |---|---|---|
   | **FreeBSD** | built every release | yes |
   | **OpenBSD** | built every release | **not available** |
+  | **NetBSD** | built every release | **not available** |
+  | **OpenIndiana / illumos** | built every release | **not available** |
+  | **Haiku** | built every release | **not available** |
 
-  The OpenBSD build is compiled with the runtime left out rather than shipping
-  one that loads nothing. Porting WAMR to OpenBSD is a real piece of work and
-  belongs to its own project, not to a release of this one; if it lands, the
-  platform gains mods without anything else changing.
+  The OpenBSD and NetBSD builds are compiled with the runtime left out rather
+  than shipping one that loads nothing. Porting WAMR to them is a real piece of
+  work and belongs to its own project, not to a release of this one; if it
+  lands, those platforms gain mods without anything else changing.
 
-  Neither BSD has a GitHub-hosted runner, so both build inside a real BSD VM on
+  No BSD has a GitHub-hosted runner, so all three build inside a real BSD VM on
   a Linux runner (`.github/workflows/bsd-game.yml`) — by the target system's
-  own compiler, not cross-compiled. That workflow is dispatchable on its own,
-  so a BSD break is found before a tag rather than by one.
+  own compiler, not cross-compiled. That workflow runs on every pull request
+  and push as well as on a tag, so a BSD break is found before a tag rather
+  than by one.
 
-  Both are **amd64 only**, and the reason is the sealed `odseal` archive: the
-  VM images those jobs run are x86_64, so there is no machine in the pipeline
-  that can produce a `freebsd-aarch64` one. The codebase itself is fine there —
-  every source file of the server target compiles on FreeBSD 14.5/arm64, and
-  the build reaches the final link.
+  Each is built for **amd64 and arm64**. The arm64 guests are emulated on the
+  x86 runner, which is slow but is the target's own kernel, libc and compiler;
+  their sealed `odseal` archives are built the same way
+  (`.github/workflows/odseal-prebuilts.yml`).
 
   What each release actually proves on a BSD: the game compiles and packages,
   and the headless server **runs** — it loads the 1939 scenario and reports

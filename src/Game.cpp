@@ -126,6 +126,11 @@ EM_JS(int, odFitCanvasJS, (), {
 #elif !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
+// SDL_InitSubSystem and SDL_GetError, ahead of InitWindow (see Game::init).
+#include <SDL3/SDL_init.h>
+#include <SDL3/SDL_error.h>
+#endif
 #include "GameInternals.h"
 #include "FontValidate.h"
 // odEnsureAsset(): the full font is fetched, not preloaded. See reloadFonts().
@@ -994,7 +999,14 @@ void odWindowsGlTraceLog(int level, const char* text, va_list args) {
 
     if (std::strstr(line, "does not appear to support OpenGL") ||
         std::strstr(line, "Failed to find a suitable pixel format") ||
-        std::strstr(line, "Failed to initialize GLFW")) {
+        std::strstr(line, "Failed to initialize GLFW")
+#if defined(OD_DESKTOP_SDL)
+        // The SDL backend words the same two failures its own way: no video
+        // subsystem at all, or a window/GL context it could not create.
+        || std::strstr(line, "SDL: Failed to initialize SDL")
+        || std::strstr(line, "PLATFORM: Failed to initialize graphics device")
+#endif
+        ) {
         // odFatalDialog, not MessageBoxA: this file includes <windows.h> with
         // NOUSER, which removes it. See src/WinFatalDialog.h.
         odFatalDialog("OpenDoctrines",
@@ -1075,12 +1087,26 @@ void odGlTraceLog(int level, const char* text, va_list args) {
     // pixel format" / "does not support OpenGL" mean a display IS there and it
     // is the GL CAPABILITY that is missing -- a VM without 3D, an old driver --
     // which llvmpipe can supply. Only the second kind is worth a software retry.
+    //
+    // On the SDL backend the same split, in SDL's words: SDL_Init failing means
+    // no video at all (no display), and a window or GL context it could not
+    // create after that means the display is there and GL is what is missing.
+    // GLFW logs "graphics device" too, but only after its own lines, so it is
+    // matched on SDL builds alone and GLFW builds decide exactly as before.
     const bool noDisplay =
         std::strstr(line, "Failed to determine Monitor") ||
-        std::strstr(line, "Failed to initialize GLFW");
+        std::strstr(line, "Failed to initialize GLFW")
+#if defined(OD_DESKTOP_SDL)
+        || std::strstr(line, "SDL: Failed to initialize SDL")
+#endif
+        ;
     const bool noGl =
         std::strstr(line, "Failed to find a suitable pixel format") ||
-        std::strstr(line, "does not appear to support OpenGL");
+        std::strstr(line, "does not appear to support OpenGL")
+#if defined(OD_DESKTOP_SDL)
+        || std::strstr(line, "PLATFORM: Failed to initialize graphics device")
+#endif
+        ;
 
     if (noGl && !noDisplay) {
         // Never returns on success: the process is replaced by one that draws
@@ -1103,7 +1129,7 @@ void odGlTraceLog(int level, const char* text, va_list args) {
         } else {
             std::fprintf(stderr,
                 "\nOpenDoctrines could not open a window.\n"
-                "GLFW found no display to open it on, so there is no OpenGL "
+                "The windowing system found no display to open it on, so there is no OpenGL "
                 "context and the next call inside raylib would fault.\n"
                 "This is what a headless or detached session looks like: ssh "
                 "without a forwarded display, a CI runner, a launchd job, or a "
@@ -1165,7 +1191,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // name and none of the right contents. Choosing that one starts the game
     // with no fonts, no audio and no maps, and it DOES start, which is exactly
     // how a wrong data directory goes unnoticed.
-    std::string appDir = GetApplicationDirectory();
+    std::string appDir = odApplicationDirectory();
     if (!appDir.empty() && appDir.back() != '/' && appDir.back() != '\\')
         appDir += '/';
     m_dataDir = appDir + "../data/";
@@ -1260,7 +1286,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // GetApplicationDirectory() is the executable's own directory, which is
     // what an update must replace; the working directory can be anywhere when
     // the game is launched by double-clicking it.
-    GameUpdates::setInstallDir(GetApplicationDirectory());
+    GameUpdates::setInstallDir(odApplicationDirectory());
 
     // Sweep up after any update that installed on the previous run: the
     // staging directory and the binary that was displaced to make room. Both
@@ -1302,6 +1328,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // There is no setting to respect here -- a phone's panel is its panel.
     m_screenW = 0;
     m_screenH = 0;
+#elif defined(__vita__)
+    // The Vita's panel, whatever the config says: SDL's Vita window is the
+    // whole screen, and a 1600x900 request would only be cropped by it.
+    m_screenW = 960;
+    m_screenH = 544;
 #endif
 
     int winFlags = FLAG_WINDOW_RESIZABLE;
@@ -1313,14 +1344,32 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // interface and the text is drawn once and shown as four. Reported as a
     // blurry font, and the font was only the part that showed it first.
     //
-    // COORDINATE-TRANSPARENT ON macOS, which is the reason this is a flag and
-    // not a rewrite. raylib 5.5's SetupViewport has an __APPLE__ branch that
-    // sizes the GL viewport by the content scale while leaving the ortho
-    // projection in logical units, and its GLFW backend deliberately skips its
-    // own mouse and screen scaling there -- "system should manage window/input
-    // scaling". So every draw call and every hit test keeps the numbers it
-    // already uses, and only the resolution they are rasterised at changes.
+    // COORDINATE-TRANSPARENT, which is the reason this is a flag and not a
+    // rewrite. Since raylib 6 the framebuffer and the ortho projection are both
+    // the content-scaled size, BeginDrawing multiplies everything drawn by the
+    // content scale (CORE.Window.screenScale), and the pointer arrives in
+    // logical units -- macOS hands them back that way, and elsewhere the GLFW
+    // backend calls SetMouseScale(1/scale). (raylib 5.5 reached the same place
+    // on macOS by a different route, an __APPLE__ branch in SetupViewport.) So
+    // every draw call and every hit test keeps the numbers it already uses, and
+    // only the resolution they are rasterised at changes.
+#if defined(OD_DESKTOP_SDL)
+    // ── ON SDL, PHYSICAL PIXELS INSTEAD ──
+    //
+    // raylib 6.2's SDL backend does not size the framebuffer from the drawable
+    // (render size = window size at InitWindow, and FLAG_WINDOW_HIGHDPI only
+    // half-applies on a later resize), so the flag there would ask SDL for a
+    // high-density drawable that raylib then draws a window-sized viewport
+    // into. Instead the window, the framebuffer and the pointer are all in
+    // physical pixels: sharp, and one coordinate space. X11 already works that
+    // way, and so does Windows under SDL3, which declares per-monitor-v2 DPI
+    // awareness itself unless told otherwise. The interface scales from the
+    // window's pixel height (UiScale), so a dense panel gets a larger
+    // interface rather than a smaller one.
+    (void)m_config.highDpi;
+#else
     if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
+#endif
     SetConfigFlags(winFlags);
     // Before InitWindow, because the failure it catches happens inside it and
     // never comes back out. See odWindowsGlTraceLog / odGlTraceLog above.
@@ -1336,6 +1385,20 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // build in a window -- but unset means headless, which is what this
     // configuration exists for. Read by SDL_Init, inside InitWindow below.
     if (!getenv("SDL_VIDEODRIVER")) setenv("SDL_VIDEODRIVER", "offscreen", 1);
+#endif
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
+    // NO DISPLAY, SAID AS SUCH. raylib 6.2's SDL backend checks SDL_Init the
+    // SDL2 way, `result < 0`; SDL3 returns false on failure, which is never
+    // below zero, so a session with no display at all sails past it and fails
+    // later creating the GL context -- the line that means "a display, but no
+    // GL", which would send a headless session into a pointless software-GL
+    // relaunch. So video is brought up here first and a failure is reported in
+    // the words the trace-log callback reads as no display. SDL counts
+    // initialisations, so raylib's own SDL_Init inside InitWindow is unaffected.
+    // Not on SDL2 (SerenityOS): there SDL_Init does return < 0, and raylib's
+    // check already says no display in the right words.
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
+        TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif
     InitWindow(m_screenW, m_screenH, title);
     if (getenv("OD_DPI_PROBE")) {
@@ -1540,6 +1603,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
         int mon = GetCurrentMonitor();
         int mw = GetMonitorWidth(mon);
         int mh = GetMonitorHeight(mon);
+        // NEVER LARGER THAN THE SCREEN. The default window is 1600x900 and a
+        // Steam Deck's panel is 1280x800, so on the Deck's desktop -- and on
+        // any small laptop -- the window opened past the screen's edges and
+        // was centred at a negative position, its title bar and the bottom of
+        // the interface out of reach. A window that does not fit is shrunk to
+        // 90% of the screen, keeping its shape; one that fits is left alone.
+        if (mw > 0 && mh > 0 && (m_screenW > mw || m_screenH > mh)) {
+            const float k = std::min(0.9f * mw / m_screenW, 0.9f * mh / m_screenH);
+            m_screenW = std::max(640, (int)(m_screenW * k));
+            m_screenH = std::max(400, (int)(m_screenH * k));
+        }
         SetWindowSize(m_screenW, m_screenH);
         SetWindowSize(m_screenW, m_screenH);
         PollInputEvents();
@@ -1656,7 +1730,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
     TraceLog(LOG_INFO, ("[OD] m_screen: " + std::to_string(m_screenW) + "x" + std::to_string(m_screenH)).c_str());
 #endif
 
-    if (m_config.fullscreen) {
+    // UNDER GAMESCOPE, FULLSCREEN. Gamescope -- the compositor of a Steam
+    // Deck's Game Mode, and of SteamOS on anything -- shows one game at a time
+    // across the whole panel, so a window there is only ever scaled up from
+    // whatever size it asked for: 1600x900 drawn and then squeezed onto
+    // 1280x800. Fullscreen draws at the panel's own resolution instead. Not
+    // written to the config: the same install started from the Deck's
+    // desktop, or on a PC, keeps the player's own choice.
+    const bool underGamescope =
+        getenv("GAMESCOPE_WAYLAND_DISPLAY") != nullptr ||
+        (getenv("XDG_CURRENT_DESKTOP") && std::strcmp(getenv("XDG_CURRENT_DESKTOP"), "gamescope") == 0);
+    if (m_config.fullscreen || underGamescope) {
         int mon = GetCurrentMonitor();
         m_windowedW = m_screenW;
         m_windowedH = m_screenH;
@@ -1668,6 +1752,15 @@ bool Game::init(int screenW, int screenH, const char* title) {
         SetWindowSize(m_screenW, m_screenH);
         SetWindowPosition(0, 0);
     }
+    // The size the window settled on, after fitting and fullscreen -- the
+    // [DPI] line above is from before either. Not its position: raylib's copy
+    // of that is only refreshed by a window event, and printed here it still
+    // says where the window was before it was moved.
+    if (getenv("OD_DPI_PROBE"))
+        printf("[WINDOW] %dx%d  fullscreen=%d gamescope=%d  monitor=%dx%d\n",
+               m_screenW, m_screenH,
+               (m_config.fullscreen || underGamescope) ? 1 : 0, underGamescope ? 1 : 0,
+               GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
 
     // Budget first: applyFpsTarget reads it, so setting it afterwards would
     // leave the first frames running unthrottled.
@@ -1846,15 +1939,21 @@ static int odFontGlyphsMissing(const Font& f, const std::vector<int>& want,
                                const std::vector<int>& only,
                                int* firstMissing = nullptr) {
     if (f.glyphs == nullptr || f.recs == nullptr) return 0;
-    const int n = std::min(f.glyphCount, (int)want.size());
+    // BY CODEPOINT, NOT BY POSITION. A merged atlas (odLoadMergedFont) keeps
+    // one entry per requested codepoint with a missing one zeroed in place, but
+    // raylib 6's LoadFontEx -- the fallback below -- packs only the glyphs the
+    // face has, so position i is no longer codepoint i. Asking "does the atlas
+    // hold a drawn glyph for this value" is right for both.
+    std::unordered_set<int> drawn;
+    drawn.reserve((size_t)f.glyphCount);
+    for (int i = 0; i < f.glyphCount; ++i)
+        if (f.glyphs[i].advanceX != 0 || f.recs[i].width != 0) drawn.insert(f.glyphs[i].value);
     int missing = 0;
-    for (int i = 0; i < n; ++i) {
-        const int cp = want[i];
+    for (const int cp : want) {
         if (odIsBlankCodepoint(cp)) continue;
-        // `only` is sorted; the atlas order is not, so this is a search rather
-        // than a walk in step.
+        // `only` is sorted; `want` is not, so this is a search.
         if (!std::binary_search(only.begin(), only.end(), cp)) continue;
-        if (f.glyphs[i].advanceX == 0 && f.recs[i].width == 0) {
+        if (!drawn.count(cp)) {
             if (firstMissing && missing == 0) *firstMissing = cp;
             ++missing;
         }
@@ -1891,6 +1990,37 @@ static int odFontGlyphsMissing(const Font& f, const std::vector<int>& want,
 // rtext.c's own sequence -- the padding, the atlas, and re-pointing each glyph
 // image into it -- because the Font handed back is used by raylib's own
 // drawing and measuring code and has to be the shape those expect.
+// ── ONE GLYPH PER REQUESTED CODEPOINT, IN ORDER ──
+//
+// Everything below reads LoadFontData's array as ALIGNED with the codepoints it
+// asked for: entry i is codepoint i, and a codepoint the face does not have is
+// an all-zero entry at its own index (that is how a missing glyph is found and
+// then borrowed from the cover face). raylib 5.5 returned it that way. raylib
+// 6.x does not: it stores only the glyphs the face HAS, packed, and reports how
+// many in a new glyphCount argument -- so taken as it comes, every glyph after
+// the first missing one would land on the wrong character and nothing would be
+// missing any more. The new argument is the only reason that was a build error
+// and not a garbled font.
+//
+// So it is realigned here. raylib fills its packed array walking the request in
+// order and skipping only misses, which makes a lockstep walk exact, duplicates
+// included. Allocated with MemAlloc so UnloadFontData frees it like its own.
+static GlyphInfo* odLoadGlyphsAligned(const unsigned char* data, int dataSize, int size,
+                                      const int* codepoints, int n) {
+    int got = 0;
+    GlyphInfo* packed = LoadFontData(data, dataSize, size, codepoints, n, FONT_DEFAULT, &got);
+    if (packed == nullptr) return nullptr;
+    GlyphInfo* aligned = (GlyphInfo*)MemAlloc((unsigned int)(n * sizeof(GlyphInfo)));   // zeroed
+    int k = 0;
+    for (int i = 0; i < n; ++i) {
+        if (k < got && packed[k].value == codepoints[i]) aligned[i] = packed[k++];
+        else aligned[i].value = codepoints[i];   // missing: zero, as 5.5 left it
+    }
+    for (; k < got; ++k) UnloadImage(packed[k].image);   // never happens; never leaks
+    MemFree(packed);
+    return aligned;
+}
+
 static Font odLoadMergedFont(const std::string& primaryPath,
                              const std::string& coverPath,
                              int size, const std::vector<int>& codepoints,
@@ -1900,11 +2030,11 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     const int n = (int)codepoints.size();
     if (n <= 0) return font;
 
-    std::vector<int> cps = codepoints;   // LoadFontData takes a non-const pointer
+    std::vector<int> cps = codepoints;
     int pSize = 0;
     unsigned char* pData = LoadFileData(primaryPath.c_str(), &pSize);
     if (pData == nullptr) return font;
-    GlyphInfo* glyphs = LoadFontData(pData, pSize, size, cps.data(), n, FONT_DEFAULT);
+    GlyphInfo* glyphs = odLoadGlyphsAligned(pData, pSize, size, cps.data(), n);
     UnloadFileData(pData);
     if (glyphs == nullptr) return font;
 
@@ -1925,8 +2055,8 @@ static Font odLoadMergedFont(const std::string& primaryPath,
         int cSize = 0;
         unsigned char* cData = LoadFileData(coverPath.c_str(), &cSize);
         if (cData != nullptr) {
-            GlyphInfo* cover = LoadFontData(cData, cSize, size, missing.data(),
-                                            (int)missing.size(), FONT_DEFAULT);
+            GlyphInfo* cover = odLoadGlyphsAligned(cData, cSize, size, missing.data(),
+                                                   (int)missing.size());
             UnloadFileData(cData);
             if (cover != nullptr) {
                 for (size_t k = 0; k < missing.size(); ++k) {
@@ -2934,6 +3064,7 @@ void Game::run() {
         odPad::update(dt, m_screenW, m_screenH);
         // After the pad, so a device with both lets the last thing touched win.
         odTouch::update(dt, m_screenW, m_screenH);
+        osk::setTouchDriving(odTouch::active());
 
         // Above the popup early-out below: the music stream has to be fed on
         // every frame, and a popup is exactly when it must not stutter.

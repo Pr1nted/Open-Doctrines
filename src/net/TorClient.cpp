@@ -172,9 +172,13 @@ std::string status() {
 }
 
 int ensure(std::string& why, int timeoutSec) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     (void)timeoutSec;
+#if defined(__EMSCRIPTEN__)
     why = "a browser cannot connect through Tor";
+#else
+    why = "this build has no network to connect through Tor with";
+#endif
     return 0;
 #else
     // Somebody's Tor already answering is the best answer: a configured port,

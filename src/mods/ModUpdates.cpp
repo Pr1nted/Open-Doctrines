@@ -149,8 +149,9 @@ void ModUpdates::checkAll(const ModManager& mm, bool enabled) {
     if (!enabled) return;
     if (m_pending.load() > 0) return;          // a round is already in flight
 
-#ifdef __EMSCRIPTEN__
-    // Nothing to do in a browser, and trying would abort the tab: the web build
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
+    // Nothing to do in a browser (or on DOS, which has no threads and no
+    // network), and trying would abort the tab: the web build
     // is single-threaded and built without exceptions, so the std::thread below
     // does not fail, it calls abort(). It would also have nothing to fetch
     // with -- httpRequest() has no emscripten implementation.
@@ -158,8 +159,9 @@ void ModUpdates::checkAll(const ModManager& mm, bool enabled) {
     // Off by default (modUpdateChecks), so this only ever fired for a player
     // who turned it on, which is exactly the kind of crash that goes unreported
     // because almost nobody reproduces it.
+    (void)mm;
     return;
-#endif
+#else
 
     for (const auto& e : mm.mods()) {
         if (!e.manifestValid) continue;
@@ -191,6 +193,7 @@ void ModUpdates::checkAll(const ModManager& mm, bool enabled) {
             m_pending.fetch_sub(1);
         }).detach();
     }
+#endif
 }
 
 const ModUpdates::Info* ModUpdates::infoFor(const std::string& modId) const {

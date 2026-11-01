@@ -3,15 +3,15 @@
 #include <deque>
 #include <mutex>
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(OD_NO_THREADS)
 #include <thread>
 #endif
 
 namespace odasync {
 namespace {
 
-#ifdef __EMSCRIPTEN__
-// Single-threaded: no lock is needed, and taking one would be a claim about
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
+// Single-threaded (the browser, and DOS): no lock is needed, and taking one would be a claim about
 // concurrency that is not true here.
 std::deque<std::function<void()>> g_queue;
 int g_running = 0;
@@ -23,7 +23,7 @@ int g_live = 0;
 }  // namespace
 
 void run(std::function<void()> fn) {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     g_queue.push_back(std::move(fn));
 #else
     {
@@ -39,7 +39,7 @@ void run(std::function<void()> fn) {
 }
 
 bool pump() {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     if (g_queue.empty()) return false;
     // Taken off the queue BEFORE running: the job blocks for as long as the
     // request takes, and ASYNCIFY resumes the loop underneath it, so a job left
@@ -56,7 +56,7 @@ bool pump() {
 }
 
 int outstanding() {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     return (int)g_queue.size() + g_running;
 #else
     std::lock_guard<std::mutex> g(g_lock);

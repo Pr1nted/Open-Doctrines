@@ -26,6 +26,11 @@
 //
 // On desktop this is exactly the detached thread it replaces, and pump() does
 // nothing.
+//
+// DOS has no threads either (DJGPP's C++ library has no thread model), and
+// takes the browser's path: OD_NO_THREADS, set by the DOS build, means "queue
+// it and run it from pump()". There the job simply blocks the loop while it
+// runs -- there is nothing to unwind into -- which is what a DOS program does.
 
 #include <functional>
 

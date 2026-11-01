@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 // ── A SECOND CHANCE AT A WINDOW, IN SOFTWARE ──
 //
 // When a machine has a display but its GPU driver cannot give OpenGL 3.3 -- a
@@ -22,6 +24,14 @@
 /// Remember argv and an absolute path to this executable, before anything can
 /// chdir. Call once, first thing in main().
 void odRememberRelaunch(int argc, char** argv);
+
+// This program's absolute path, as resolved by odRememberRelaunch (empty if
+// nothing could be). And its directory, with a trailing slash: raylib's
+// GetApplicationDirectory() where raylib knows the platform, this path's
+// directory where it does not (OpenBSD, NetBSD), so the data folder is found
+// beside the binary however the game was started.
+const std::string& odExecutablePath();
+std::string odApplicationDirectory();
 
 /// Re-exec this process with software OpenGL forced on. Returns ONLY on
 /// failure (nothing to exec, or exec refused); on success it never returns

@@ -32,6 +32,7 @@
 #endif
 #include <ctime>
 #include "util/OpenLink.h"
+#include "map/RasterScale.h"
 #include "Usage.h"
 
 namespace {
@@ -193,11 +194,14 @@ void Game::initMenuBackground() {
     // KEEP ONLY WHAT THE SILHOUETTE NEEDS. The source decodes to 128 MB of
     // RGBA to make a picture the height of the screen, and only its red
     // channel is ever read (the land test below). One channel at up to 4096
-    // wide is 8 MB and still larger than any screen draws it.
+    // wide is 8 MB and still larger than any screen draws it. On a reduced
+    // world (the small-memory platforms, map/RasterScale.h) narrower still:
+    // their screens are 480 lines or fewer, and 8 MB is a tenth of a Wii.
     if (lsImgOwned && lsImg.data != nullptr) {
         Image small = ImageFromChannel(lsImg, 0);
         UnloadImage(lsImg);
-        if (small.width > 4096) ImageResize(&small, 4096, (int)((long long)small.height * 4096 / small.width));
+        const int maxW = std::max(1024, 4096 / odmap::rasterDivisor());
+        if (small.width > maxW) ImageResize(&small, maxW, (int)((long long)small.height * maxW / small.width));
         m_menuBgSource = small;
         lsImg = m_menuBgSource;
         lsImgOwned = false;
@@ -238,6 +242,7 @@ void Game::initMenuBackground() {
             }
         }
     }
+    m_menuBgLandCoords.shrink_to_fit();   // kept all session: drop push_back's slack
 
     // Create display texture
     Image bgImg{};

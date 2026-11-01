@@ -149,6 +149,9 @@ const Key* keyAt(float gx, float gy, bool shifted, bool symbols) {
 }
 
 bool g_forShot = false;
+bool g_touchDriving = false;
+
+void setTouchDriving(bool on) { g_touchDriving = on; }
 
 void forceForShot(bool on) {
     g_forShot = on;
@@ -174,11 +177,13 @@ bool enabled() {
     }
     return touch == 1 || forced();
 #else
-    // Everywhere else it is off unless asked for: a desktop has a keyboard,
-    // and one drawn over the game would be in the way. The switch exists so
-    // this can be looked at and photographed on a machine with a screen big
-    // enough to see it (the screenshot tour uses it).
-    return forced();
+    // Everywhere else it is off unless asked for or the player is using
+    // touch: a desktop has a keyboard, and one drawn over the game would be in
+    // the way -- but a Steam Deck, a Windows handheld or a touchscreen laptop
+    // being driven by fingers has none within reach (setTouchDriving). The
+    // forced() switch exists so this can be looked at and photographed on a
+    // machine with a screen big enough to see it (the screenshot tour uses it).
+    return g_touchDriving || forced();
 #endif
 }
 

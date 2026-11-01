@@ -443,6 +443,46 @@ int Game::serverBegin(ServerConfig& config, ServerConsole& console,
                      m_srv->startRequested = true;
                  }});
 
+    console.add({"schedule", "schedule <delay> <command...>",
+                 "run a command after a delay (e.g. schedule +3d start, schedule +2h step-go)",
+                 2, -1,
+                 [&](const std::vector<std::string>& a, ServerConsole& c) {
+                     const std::string& d = a[0];
+                     if (d.size() < 3 || d[0] != '+') {
+                         c.warn("delay must be +Nd, +Nh, +Nm or +Ns (e.g. +3d, +2h, +30m).");
+                         return;
+                     }
+                     const char unit = d.back();
+                     const long long n = atoll(d.substr(1).c_str());
+                     double mult = 0;
+                     if (unit == 's') mult = 1;
+                     else if (unit == 'm') mult = 60;
+                     else if (unit == 'h') mult = 3600;
+                     else if (unit == 'd') mult = 86400;
+                     if (mult == 0 || n <= 0) {
+                         c.warn("delay must be +Nd, +Nh, +Nm or +Ns (e.g. +3d, +2h, +30m).");
+                         return;
+                     }
+                     std::string cmd;
+                     for (size_t i = 1; i < a.size(); ++i) {
+                         if (i > 1) cmd += " ";
+                         cmd += a[i];
+                     }
+                     const double fireAt = nowSeconds() + static_cast<double>(n) * mult;
+                     m_srv->scheduledCommands.push_back({fireAt, cmd});
+                     const double hoursLeft = (n * mult) / 3600.0;
+                     c.info("scheduled `" + cmd + "` in " + d.substr(1) +
+                            (hoursLeft >= 1.0 ? " (" + std::to_string(static_cast<int>(hoursLeft)) +
+                                                "h)" : "") + ".");
+                 }});
+
+    console.add({"unschedule", "unschedule", "cancel all scheduled commands", 0, 0,
+                 [&](const std::vector<std::string>&, ServerConsole& c) {
+                     const size_t n = m_srv->scheduledCommands.size();
+                     m_srv->scheduledCommands.clear();
+                     c.info("cancelled " + std::to_string(n) + " scheduled command(s).");
+                 }});
+
     /** A country by id, ISO code or name (case-insensitive, prefix allowed). */
     auto findCountry = [&](const std::string& what) -> int {
         if (what.empty()) return 0;
@@ -1033,6 +1073,17 @@ bool Game::serverTick() {
             }
         }
 
+        // 1c. Scheduled commands (from `schedule +3d start` etc.).
+        for (size_t i = m_srv->scheduledCommands.size(); i-- > 0;) {
+            if (nowSeconds() >= m_srv->scheduledCommands[i].fireAt) {
+                const std::string cmd = m_srv->scheduledCommands[i].command;
+                m_srv->scheduledCommands.erase(
+                    m_srv->scheduledCommands.begin() + static_cast<long>(i));
+                console.info("scheduled: " + cmd);
+                console.dispatch(cmd);
+            }
+        }
+
         // 2. The network, and the game's own host logic. Unchanged from the
         //    client's: this is the point of running the same code.
         const int turnBefore = m_turnNumber;
@@ -1161,6 +1212,21 @@ bool Game::serverTick() {
                     console.warn("could not start: " + why);
                 }
             }
+
+            // 4b. Stale seats: players who disconnected and never came back.
+            if (au.idleReleaseSeconds > 0) {
+                auto released = m_netHost->lobby().releaseStaleSeats(
+                    nowSeconds(), static_cast<double>(au.idleReleaseSeconds));
+                for (const std::string& name : released) {
+                    console.info("released " + name + "'s seat (idle " +
+                                 std::to_string(au.idleReleaseSeconds) + "s).");
+                    m_netHost->sendChat(name + "'s seat was released (idle too long).");
+                }
+                if (!released.empty()) {
+                    m_netHost->broadcastLobby();
+                    mpSaveSeats();
+                }
+            }
         }
 
         // 5. Turns. The schedule itself is the turn clock, in mpHostTurnUpdate
@@ -1175,6 +1241,21 @@ bool Game::serverTick() {
                 if (m_turnNumber != before) {
                     console.info("turn " + std::to_string(m_turnNumber) + " resolved.");
                     srvCheckpoint(/*force=*/true);
+                }
+            }
+
+            // 5b. Stale seats mid-game.
+            if (au.idleReleaseSeconds > 0) {
+                auto released = m_netHost->lobby().releaseStaleSeats(
+                    nowSeconds(), static_cast<double>(au.idleReleaseSeconds));
+                for (const std::string& name : released) {
+                    console.info("released " + name + "'s seat (idle " +
+                                 std::to_string(au.idleReleaseSeconds) + "s).");
+                    m_netHost->sendChat(name + "'s seat was released (idle too long).");
+                }
+                if (!released.empty()) {
+                    m_netHost->broadcastLobby();
+                    mpSaveSeats();
                 }
             }
 

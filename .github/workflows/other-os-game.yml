@@ -1,0 +1,591 @@
+# The game, built for the systems that are neither a desktop runner's own nor
+# a BSD: OpenIndiana (illumos), Haiku, SerenityOS and DOS -- and the PS Vita, a
+# console rather than a computer, built and shipped the same way (its job is
+# at the end).
+#
+# WHY ITS OWN WORKFLOW
+#
+# GitHub hosts no runner for any of them, so each is built on its own system
+# by its own compiler -- inside a real VM (vmactions) where one exists -- on a
+# Linux runner. The BSDs work the same way but are three flavours of one
+# family with an arm64 half; these three have nothing in common but that, and
+# they are released, versioned and gated together: release-game.yml and
+# release-dryrun.yml CALL this workflow beside bsd-game.yml, and a release
+# waits for it before it can be confirmed.
+#
+# AND IT RUNS ON ITS OWN, on every pull request and every push to main, the
+# same triggers as test.yml and bsd-game.yml, so a break on one of these
+# systems is found before a tag rather than by one.
+#
+# WHAT EVERY ENTRY DOES
+#
+# Build the game and the headless server, check the binary is the
+# architecture its name says, load 1939 in the server, package -- the same
+# tools/bsd_game_build.sh the BSDs use -- then check the packaged copy
+# carries the account service and upload it under its release name. Mods are
+# off on all three: WAMR has a platform layer for none of them.
+#
+# SerenityOS is the exception in HOW: it cross-compiles against a SerenityOS
+# sysroot built in the job (see its job below), so the binary is checked to
+# be a SerenityOS x86-64 program but is not yet RUN -- that needs the system
+# booted in QEMU, which is the next step for it.
+
+name: Other OS game
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["**"]        # a tag is release-game.yml's, which calls this
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: "17 3 * * *"          # the nightly full run, as test.yml
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# As bsd-game.yml: on a pull request the newest commit makes an older run
+# moot; anywhere else every run finishes.
+concurrency:
+  group: other-os-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Whether this change can break these systems at all (tools/ci_plan.py).
+  # A VM per system is the slowest thing CI runs; a pull request that touches
+  # none of their paths leaves them to the nightly run on main.
+  tiers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.p.outputs.otheros }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - id: p
+        run: python3 tools/ci_plan.py
+
+  build:
+    needs: tiers
+    if: needs.tiers.outputs.run == 'true'
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86-64 only: no illumos distribution ships for Arm.
+          - { name: illumos-amd64, os: illumos, machine: x86_64, odseal: illumos-amd64, timeout: 150 }
+          # x86-64 only: 32-bit Haiku is the gcc2 hybrid, which cannot build
+          # C++20, and the Arm and RISC-V ports are not releases.
+          - { name: haiku-x64,     os: haiku,   machine: x86_64, odseal: haiku-x86_64,  timeout: 240 }
+    env:
+      ARTIFACT: OpenDoctrines-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab), which builds it in the \
+          same system this job uses, and merge the branch it pushes. See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      # OPENINDIANA, for illumos. The image is the TEXT install, so X11, Mesa
+      # and the compiler all come from IPS here. Each package is installed on
+      # its own and a miss is printed rather than fatal: `pkg install` refuses
+      # the whole list over one unknown name, and the checks after it say what
+      # actually matters. Exit 4 is "nothing to do", which is success -- and
+      # is caught with `|| rc=$?`, not read from $? afterwards: vmactions runs
+      # prepare with errexit, so a bare `pkg install` answering 4 (a package an
+      # earlier one already pulled in) ended the whole step there, silently.
+      - name: Build and package (OpenIndiana)
+        if: matrix.os == 'illumos'
+        uses: vmactions/openindiana-vm@v1
+        with:
+          release: '202604'
+          copyback: true
+          prepare: |
+            for p in build-essential developer/build/cmake developer/build/ninja \
+                     developer/versioning/git runtime/python-313 \
+                     x11/library/mesa x11/library/libx11 x11/library/libxext \
+                     x11/library/libxrandr x11/library/libxinerama x11/library/libxcursor \
+                     x11/library/libxi x11/header/x11-protocols library/libxkbcommon; do
+              rc=0; pkg install -q "$p" || rc=$?
+              [ $rc = 0 ] || [ $rc = 4 ] || echo "pkg: $p not installed (exit $rc)"
+            done
+            for t in cmake ninja gcc g++ python3; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
+            ls /usr/include/GL/gl.h /usr/include/X11/Xlib.h || { echo "prepare failed: no GL/X11 headers"; exit 1; }
+            gcc --version | head -1
+          run: |
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" CC=gcc CXX=g++ \
+              sh tools/bsd_game_build.sh ${{ env.ARTIFACT }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
+
+      # HAIKU. GLFW has no Haiku backend, so this is the SDL build (raylib on
+      # SDL3, as Linux and Windows are) against the system's own libsdl3 --
+      # see "EXCEPT ON HAIKU" in CMakeLists.txt for why not the pinned one.
+      # Packages by what they provide (cmd:, devel:) rather than by package
+      # name, so a renamed or re-versioned HaikuPorts package still resolves.
+      - name: Build and package (Haiku)
+        if: matrix.os == 'haiku'
+        uses: vmactions/haiku-vm@v1
+        with:
+          release: 'r1beta6'
+          copyback: true
+          prepare: |
+            set -e
+            pkgman install -y cmd:cmake cmd:ninja cmd:python3 cmd:git cmd:gcc cmd:zip
+            pkgman install -y devel:libGL || pkgman install -y mesa_devel
+            # SDL3 by its HaikuPorts package name: "devel:libSDL3" did not
+            # resolve on r1beta6. Without it CMake builds SDL3 from source
+            # (see "EXCEPT ON HAIKU"), so a miss is reported, not fatal.
+            pkgman install -y libsdl3_devel || pkgman install -y libsdl3 || {
+              echo "no libsdl3 package; SDL3 will be built from source"; pkgman search sdl || true; }
+            for t in cmake ninja python3 gcc g++; do
+              command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
+            done
+            gcc --version | head -1
+          run: |
+            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+              sh tools/bsd_game_build.sh ${{ env.ARTIFACT }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
+
+      # The same check bsd-game.yml makes, for the same reason: a build that
+      # silently lost its account service configures, builds and packages
+      # fine, and only fails in a player's hands.
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/$ARTIFACT" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service::$ARTIFACT does not carry $issuer."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── SERENITYOS ──
+  #
+  # No VM image to boot, so this builds SerenityOS's own cross toolchain and
+  # system from a pinned commit -- exactly as SerenityOS's CI does
+  # (.github/workflows/serenity-template.yml there) -- then its SDL2 port, and
+  # cross-compiles the game against that sysroot: raylib on SDL2 (SDL3 has no
+  # SerenityOS backend) with the software renderer (OD_SOFTWARE_RENDER, on by
+  # default there), because SerenityOS's LibGL has no shaders.
+  #
+  # PINNED, AND THAT IS PART OF THE PRODUCT. SerenityOS has no releases and
+  # its ABI moves; the build runs on a SerenityOS built from this commit, and
+  # the README and download page say which. Moving it means moving both.
+  #
+  # CACHED IN TWO LAYERS, each saved the moment it is built rather than at the
+  # end of the job: the toolchain (an hour) and the installed system plus SDL2
+  # (another). A failure later in the job -- the game not compiling -- must
+  # not throw those away, and actions/cache's own end-of-job save would.
+  serenity:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: serenity-x64, machine: x86_64, odseal: serenityos-x86_64 }
+    env:
+      ARTIFACT: OpenDoctrines-${{ matrix.name }}
+      # The same commit odseal-prebuilts.yml builds the SerenityOS archive's
+      # toolchain from, under the same cache key: keep the two in step.
+      SERENITY_COMMIT: b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+      SERENITY_ARCH: x86_64
+    steps:
+      - uses: actions/checkout@v5
+
+      # A SerenityOS build is tens of GB; the runner image's preinstalled SDKs
+      # are most of what is in the way.
+      - name: Room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: actions/checkout@v5
+        with:
+          repository: SerenityOS/serenity
+          ref: ${{ env.SERENITY_COMMIT }}
+          path: serenity
+
+      - name: Host packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake curl libmpfr-dev libmpc-dev libgmp-dev \
+            e2fsprogs ninja-build qemu-system-x86 qemu-utils ccache rsync unzip texinfo libssl-dev \
+            zlib1g-dev gcc-14 g++-14 fuse2fs
+
+      - name: Toolchain (cache)
+        id: tc
+        uses: actions/cache/restore@v4
+        with:
+          path: serenity/Toolchain/Local/x86_64
+          key: serenity-toolchain-x86_64-${{ env.SERENITY_COMMIT }}
+      - name: Build the toolchain
+        if: steps.tc.outputs.cache-hit != 'true'
+        run: serenity/Toolchain/BuildGNU.sh --ci
+        env: { ARCH: x86_64, CC: gcc-14, CXX: g++-14 }
+      - name: Save the toolchain
+        if: steps.tc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: serenity/Toolchain/Local/x86_64
+          key: serenity-toolchain-x86_64-${{ env.SERENITY_COMMIT }}
+
+      - name: System and SDL2 (cache)
+        id: sys
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            serenity/Build/x86_64/Root
+            serenity/Build/x86_64/CMakeToolchain.txt
+          key: serenity-root-sdl2-x86_64-${{ env.SERENITY_COMMIT }}
+      - name: Build SerenityOS
+        if: steps.sys.outputs.cache-hit != 'true'
+        working-directory: serenity
+        run: |
+          cmake -S Meta/CMake/Superbuild -B Build/superbuild -GNinja \
+            -DSERENITY_ARCH=x86_64 -DSERENITY_TOOLCHAIN=GNU \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DENABLE_PCI_IDS_DOWNLOAD=OFF -DENABLE_USB_IDS_DOWNLOAD=OFF
+          cmake --build Build/superbuild
+          ninja -C Build/x86_64 install
+      - name: Build the SDL2 port
+        if: steps.sys.outputs.cache-hit != 'true'
+        working-directory: serenity/Ports/SDL2
+        run: ./package.sh
+      - name: Save the system and SDL2
+        if: steps.sys.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            serenity/Build/x86_64/Root
+            serenity/Build/x86_64/CMakeToolchain.txt
+          key: serenity-root-sdl2-x86_64-${{ env.SERENITY_COMMIT }}
+
+      # After the two caches, not first as the other entries have it: until the
+      # archive is committed, every run still builds and saves the toolchain and
+      # the system, so the first one that has it starts warm.
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab) and merge the branch it pushes. \
+          See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Build the game for SerenityOS
+        run: |
+          export PATH="$PWD/serenity/Toolchain/Local/x86_64/bin:$PATH"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/serenity/Build/x86_64/CMakeToolchain.txt" \
+            -DOD_ENABLE_MODS=OFF \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            -DOD_DISCORD_APP_ID=1547303703370014830
+          cmake --build build --target OpenDoctrines OpenDoctrinesServer -j 4
+
+      # A SerenityOS binary, not a Linux one that happened to link: x86-64,
+      # and asking for SerenityOS's dynamic loader.
+      - name: The binary is a SerenityOS x86-64 program
+        run: |
+          for b in build/OpenDoctrines build/OpenDoctrinesServer; do
+            readelf -h "$b" | grep -q "Advanced Micro Devices X86-64" || { echo "$b: not x86-64"; exit 1; }
+            interp=$(readelf -l "$b" | sed -n 's/.*Requesting program interpreter: \(.*\)]/\1/p')
+            echo "$b: interpreter $interp"
+            [ "$interp" = "/usr/lib/Loader.so" ] || { echo "$b: not a SerenityOS program"; exit 1; }
+          done
+
+      - name: Package
+        run: python3 tools/package.py --binary build/OpenDoctrines --out "dist/$ARTIFACT" --zip
+
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/$ARTIFACT" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service::$ARTIFACT does not carry $issuer."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── DOS ──
+  #
+  # Cross-compiled with DJGPP (tools/dos_toolchain.sh: a pinned gcc 12.2 and
+  # CWSDPMI, both checked by hash) into a 32-bit protected-mode .exe, on the
+  # game's own raylib platform layer for DOS -- a VESA linear framebuffer, the
+  # INT 33h mouse, an IRQ 1 keyboard handler -- with the software renderer
+  # (OD_DOS in CMakeLists.txt). Single-threaded and offline: DJGPP has neither
+  # threads nor a network stack.
+  #
+  # AND RUN: unlike SerenityOS and the Vita, DOS can be run right here.
+  # DOSBox-X (an emulated Pentium with an S3 card and long file names) plays
+  # three turns of 1939 in the PACKAGED copy, and the screen is captured while
+  # the game starts up normally, so what VESA showed is in the artifacts.
+  dos:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: dos-x86, odseal: dos-i586 }
+    env:
+      ARTIFACT: OpenDoctrines-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The odseal prebuilt for ${{ matrix.odseal }} is committed
+        run: |
+          lib="third_party/odseal/${{ matrix.odseal }}/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for ${{ matrix.name }}::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab) and merge the branch it pushes. \
+          See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Host packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build dosbox-x xvfb imagemagick unzip
+
+      - name: DJGPP and CWSDPMI
+        run: |
+          bash tools/dos_toolchain.sh "$HOME/dos"
+          echo "DJGPP_PREFIX=$HOME/dos/djgpp" >> "$GITHUB_ENV"
+
+      - name: Build the game for DOS
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/dos/djgpp.toolchain.cmake" \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            -DOD_DISCORD_APP_ID=1547303703370014830
+          cmake --build build --target OpenDoctrines -j 4
+
+      # A DOS program, not something the runner's compiler made: an MZ
+      # executable carrying DJGPP's go32 stub in front of the COFF image.
+      - name: The binary is a DJGPP DOS program
+        run: |
+          exe=build/OpenDoctrines.exe
+          [ "$(head -c 2 "$exe")" = "MZ" ] || { echo "$exe: not an MZ executable"; exit 1; }
+          LC_ALL=C grep -qa "go32stub" "$exe" || { echo "$exe: no DJGPP stub"; exit 1; }
+          "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-strip" "$exe"
+          ls -l "$exe"
+
+      # DOCTRINE.EXE, an 8.3 name: DJGPP's stub reopens its own image by the
+      # short name DOS hands it, so OpenDoctrines.exe started as
+      # "OpenDoctrines" went looking for C:\OPENDOCT.EXE and found nothing.
+      - name: Package
+        run: |
+          cp build/OpenDoctrines.exe build/DOCTRINE.EXE
+          python3 tools/package.py --binary build/DOCTRINE.EXE --out "dist/$ARTIFACT" --no-strip \
+            --add "$HOME/dos/cwsdpmi/CWSDPMI.EXE" --add "$HOME/dos/cwsdpmi/CWSDPMI.DOC" \
+            --add packaging/dos/DOS.TXT --zip
+
+      - name: The packaged copy carries the account service
+        shell: bash
+        run: |
+          set -e
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          found=$(LC_ALL=C grep -rla "$issuer" "dist/$ARTIFACT" 2>/dev/null | head -3 || true)
+          if [ -z "$found" ]; then
+            echo "::error title=No account service::$ARTIFACT does not carry $issuer."
+            exit 1
+          fi
+          echo "account service found in:"
+          echo "$found"
+
+      # The packaged copy, unzipped as a player would, played in DOSBox-X.
+      - name: Play three turns in DOSBox-X
+        run: |
+          rm -rf dosrun && mkdir dosrun && unzip -q "dist/$ARTIFACT.zip" -d dosrun
+          game="dosrun/$ARTIFACT"
+          # Whatever DOS and the extender said goes into this log, not only
+          # into an artifact: a run that dies before main() prints nothing to
+          # OUT.TXT, and DOSBox-X's own log is then the only account of it.
+          show_log() {
+            echo "--- the game folder"; ls -la "$game"
+            echo "--- TRACE.TXT"; cat "$game/TRACE.TXT" 2>/dev/null || echo "(none: main() was never reached)"
+            echo "--- OUT.TXT"; cat "$game/OUT.TXT" 2>/dev/null || true
+            echo "--- DOSBOX.LOG (tail)"; tail -25 "$game/DOSBOX.LOG" 2>/dev/null || true
+            # A CPU exception names its EIP; the instruction there is the
+            # answer to "what does this machine not have".
+            eip=$(grep -o 'at eip=[0-9a-f]*' "$game/OUT.TXT" 2>/dev/null | head -1 | cut -d= -f2)
+            if [ -n "$eip" ]; then
+              a=$((0x$eip - 16)); b=$((0x$eip + 16))
+              echo "--- the code at eip=$eip"
+              "$DJGPP_PREFIX/bin/i586-pc-msdosdjgpp-objdump" -d --start-address=$a --stop-address=$b \
+                build/OpenDoctrines.exe | tail -12 || true
+            fi
+          }
+          # DJGPP's REDIR (djdev205), for the run only -- never packaged:
+          # COMMAND.COM cannot redirect stderr, and an extender or stub that
+          # fails before main() reports there and nowhere else.
+          run='DOCTRINE --simulate data\STDmaps\1939.odmap 3 PkgCheck'
+          for u in https://www.delorie.com/pub/djgpp/current/v2/djdev205.zip \
+                   https://ftp.fau.de/djgpp/current/v2/djdev205.zip; do
+            if curl -fsSL --retry 3 -o djdev.zip "$u"; then
+              echo "djdev205.zip from $u: $(sha256sum djdev.zip | cut -d' ' -f1)"
+              unzip -qjo djdev.zip bin/redir.exe -d "$game" && mv "$game/redir.exe" "$game/REDIR.EXE" \
+                && run="REDIR -eo $run"
+              break
+            fi
+          done
+          tools/dos_run.sh --memsize 2048 --timeout 3000 "$game" "$run" | tee dos-sim.log || true
+          grep -q '^\[SIM\] turn 3/3' dos-sim.log || { show_log; echo "::error title=DOS::the game did not finish three turns"; exit 1; }
+
+      # The game started as a player starts it, the screen captured as it
+      # comes up. Not a pass/fail on its own (the timeout ends it); what VESA
+      # showed is uploaded for a person to look at.
+      - name: The screen in DOSBox-X
+        run: |
+          game="dosrun/$ARTIFACT"
+          tools/dos_run.sh --memsize 2048 --timeout 900 --grab dos-screen.png --grab-every 120 \
+            "$game" DOCTRINE | tail -20 || true
+          ls -l dos-screen*.png || echo "no screen captured"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.ARTIFACT }}-dosbox
+          path: |
+            dos-sim.log
+            dos-screen*.png
+            dosrun/*/DOSBOX.LOG
+            dosrun/*/OUT.TXT
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── PS VITA ──
+  #
+  # Cross-compiled with VitaSDK (tools/vitasdk_install.sh, a pinned snapshot
+  # checked by hash) on raylib's SDL backend -- SDL3 built from source, as on
+  # Linux, which has a Vita backend -- with the software renderer, because the
+  # Vita's GPU has no OpenGL of its own (see OD_SOFTWARE_RENDER in
+  # CMakeLists.txt). The product is a .vpk, which a player installs with
+  # VitaShell; tools/vita_vpk.py builds it and then holds it to the shape the
+  # Vita needs.
+  #
+  # NOT A MATRIX, and so not one of the release names check_release_names.py
+  # reads above: a .vpk is installed by VitaShell and never unpacked by the
+  # in-game updater, so there is no OpenDoctrines-vita-*.zip for an updater key
+  # to name -- the same arrangement as the Android APK.
+  #
+  # NOT RUN. A Vita program needs a Vita, or Vita3K with the console's own
+  # firmware installed, which a CI runner cannot be given. What IS checked:
+  # it compiles and links, vita-elf-create resolved every import against
+  # VitaSDK's NID database (it fails the build otherwise), and the package's
+  # layout, SFO and LiveArea images are what the Vita accepts.
+  vita:
+    name: vita
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARTIFACT: OpenDoctrines-vita
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The odseal prebuilt for vita-arm is committed
+        run: |
+          lib="third_party/odseal/vita-arm/libodseal.a"
+          if [ ! -f "$lib" ]; then
+            echo "::error title=No odseal for the Vita::$lib is not committed. \
+          Run the 'odseal prebuilts' workflow (Actions tab) and merge the branch it pushes. \
+          See docs/odseal.md."
+            exit 1
+          fi
+          ls -l "$lib"
+
+      - name: Host packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build python3-pil
+
+      - name: VitaSDK
+        run: |
+          bash tools/vitasdk_install.sh "$HOME/vitasdk"
+          echo "VITASDK=$HOME/vitasdk" >> "$GITHUB_ENV"
+          echo "$HOME/vitasdk/bin" >> "$GITHUB_PATH"
+
+      - name: Build the game for the PS Vita
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake" \
+            -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev \
+            "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            -DOD_DISCORD_APP_ID=1547303703370014830
+          cmake --build build --target eboot.bin-self -j 4
+
+      # A 32-bit Arm program for the Vita, not something the runner's own
+      # compiler made: the ELF's machine, and the SELF magic on what was made
+      # from it.
+      - name: The binary is a PS Vita program
+        run: |
+          readelf -h build/OpenDoctrines | grep -q "Machine:.*ARM" || { echo "not an Arm ELF"; exit 1; }
+          readelf -h build/OpenDoctrines | grep -q "ELF32" || { echo "not 32-bit"; exit 1; }
+          head -c 4 build/eboot.bin | od -c | head -1
+          [ "$(head -c 3 build/eboot.bin)" = "SCE" ] || { echo "eboot.bin is not a SELF"; exit 1; }
+          ls -l build/OpenDoctrines build/eboot.bin
+
+      - name: The build carries the account service
+        run: |
+          issuer="https://opendoctrines-net.opendoctrines.workers.dev"
+          LC_ALL=C grep -qa "$issuer" build/OpenDoctrines || {
+            echo "::error title=No account service::the Vita build does not carry $issuer."; exit 1; }
+
+      - name: Package (.vpk)
+        run: |
+          python3 tools/package.py --binary build/OpenDoctrines --out dist/stage --no-strip
+          python3 tools/vita_vpk.py --eboot build/eboot.bin --stage dist/stage --out "dist/$ARTIFACT.vpk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.vpk
+          if-no-files-found: error
+          retention-days: 14

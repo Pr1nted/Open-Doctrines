@@ -1,5 +1,7 @@
 #include "TurnRunner.h"
 
+#include <algorithm>
+
 void TurnRunner::beginTurn(uint32_t turnNumber, long long nowMs) {
     m_turnNumber = turnNumber;
     m_running = true;
@@ -74,6 +76,18 @@ std::vector<TurnResolution> TurnRunner::resolve(const Lobby& lobby,
 
         out.push_back(std::move(r));
     }
+
+    // Apply order must not depend on who joined first. The host hands these to
+    // mpApplyOrders in this order, which appends each seat's moves into the
+    // shared pending-order queues, and the turn resolver later works those
+    // queues in queue order -- so two seats marching into one province resolve
+    // by whichever was applied first. lobby.members() is join order, which
+    // differs between a host restart and a rejoin; sorting by countryId makes
+    // the resolved turn, and the delta saved from it, identical on every host.
+    std::sort(out.begin(), out.end(),
+              [](const TurnResolution& a, const TurnResolution& b) {
+                  return a.countryId < b.countryId;
+              });
     return out;
 }
 

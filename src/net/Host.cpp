@@ -522,6 +522,12 @@ bool NetHost::open(const Config& config) {
         m_impl->required = mine.shared();
     }
 
+#if defined(OD_NO_THREADS)
+    // A build with no threads has no network either (DOS): the listen above
+    // has already failed there, and there is nothing to open a session with.
+    m_impl->fail("This build cannot host a game.");
+    return false;
+#else
     m_impl->opener = std::thread([impl = m_impl.get()] {
         Config c;
         {
@@ -644,6 +650,7 @@ bool NetHost::open(const Config& config) {
     });
     m_impl->keeper = std::thread([impl = m_impl.get()] { impl->keeperLoop(); });
     return true;
+#endif
 }
 
 void NetHost::Impl::takeHostSeat() {
@@ -1374,7 +1381,7 @@ void NetHost::Impl::checkLiveness() {
             const uint16_t peerId = s.peerId;
             closePeer(s.conn, "silent");
             seated.erase(seated.begin() + static_cast<long>(i));
-            lobby.disconnect(peerId);
+            lobby.disconnect(peerId, static_cast<double>(now));
             chatGate.forget(peerId);
             frameBudget.forget(peerId);
             byteBudget.forget(peerId);
@@ -1403,7 +1410,7 @@ void NetHost::Impl::handleDisconnected(WsConnId conn) {
 
     // Disconnected, not evicted: the seat, the country and any orders are kept
     // so the same player can come back to them.
-    lobby.disconnect(peerId);
+    lobby.disconnect(peerId, static_cast<double>(nowSeconds()));
     chatGate.forget(peerId);   // relay handles are reused; see ChatRules.h
     frameBudget.forget(peerId);
     byteBudget.forget(peerId);

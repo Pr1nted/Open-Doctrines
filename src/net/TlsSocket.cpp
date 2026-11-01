@@ -41,6 +41,7 @@
 #include <poll.h>
 #include <csignal>
 #include <sys/socket.h>
+#include <sys/time.h>  // timeval: SerenityOS does not pull it in through sys/socket.h
 #include <sys/types.h>
 #include <unistd.h>
 #endif
@@ -90,6 +91,7 @@ const char* const kTrustDirs[] = {
     "/system/etc/security/cacerts",             // Android 13 and earlier
     "/etc/ssl/certs",                           // Debian and friends, when the
                                                 // bundle above is absent
+    "/etc/openssl/certs",                       // NetBSD (certctl, in base)
 };
 
 const char* const kTrustBundles[] = {
@@ -99,7 +101,10 @@ const char* const kTrustBundles[] = {
     "/etc/ssl/ca-bundle.pem",                   // openSUSE
     "/etc/ssl/certs/ca-bundle.crt",
     "/usr/local/share/certs/ca-root-nss.crt",   // FreeBSD ports
-    "/etc/certs/ca-certificates.crt",           // Solaris
+    "/usr/pkg/share/mozilla-rootcerts/cacert.pem", // NetBSD pkgsrc
+    "/etc/certs/ca-certificates.crt",           // illumos (OpenIndiana, OmniOS), Solaris
+    "/boot/system/data/ssl/CARootCertificates.pem", // Haiku
+    "/etc/cacert.pem",                          // SerenityOS (LibTLS reads it from here too)
 };
 
 #if defined(_WIN32)
