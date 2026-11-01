@@ -97,6 +97,8 @@ void od_world_reset(uint32_t seed);
 int  od_slot_of_iso(const char *iso);         /* -1 if none */
 int  od_find_province(const char *name);      /* by index or name prefix; -1 */
 const char *od_iso(uint16_t slot);
-static inline int od_neighbour(int ix, int k) { return od_adj[od_prov0[ix].adjo + k]; }
+/* A macro rather than a static inline function: Plan 9's compilers have no
+ * "inline", and this is the same expression either way. */
+#define od_neighbour(ix, k) ((int)od_adj[od_prov0[(ix)].adjo + (k)])
 
 #endif

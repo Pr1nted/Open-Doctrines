@@ -9,19 +9,24 @@
 
 static const od_io_t *io;
 
+/* The banner's first words. A port that is not a FreeRTOS board (Plan 9's
+ * console program) says so here before od_shell_run. */
+const char *od_edition = "FreeRTOS";
+
 void od_printf(const char *fmt, ...)
 {
     char buf[160];
+    char out[200];
+    size_t k = 0;
+    int n, i;
     va_list ap;
     va_start(ap, fmt);
-    int n = vsnprintf(buf, sizeof buf, fmt, ap);
+    n = vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     if (n < 0) return;
     if ((size_t)n >= sizeof buf) n = sizeof buf - 1;
     /* A serial terminal wants CR LF; a pipe on the host wants LF alone. */
-    char out[200];
-    size_t k = 0;
-    for (int i = 0; i < n && k < sizeof out - 2; i++) {
+    for (i = 0; i < n && k < sizeof out - 2; i++) {
         if (buf[i] == '\n' && io->echo) out[k++] = '\r';
         out[k++] = buf[i];
     }
@@ -34,14 +39,14 @@ void od_printf(const char *fmt, ...)
 static const char *num(uint64_t v, char *buf)
 {
     char tmp[32];
-    int n = 0, k = 0;
+    int n = 0, k = 0, i;
     do {
         if (n && n % 3 == 0) tmp[k++] = ',';
         tmp[k++] = (char)('0' + v % 10);
         v /= 10;
         n++;
     } while (v);
-    for (int i = 0; i < k; i++) buf[i] = tmp[k - 1 - i];
+    for (i = 0; i < k; i++) buf[i] = tmp[k - 1 - i];
     buf[k] = 0;
     return buf;
 }
@@ -62,11 +67,12 @@ static int need_me(void)
 
 static int province_arg(const char *s)
 {
+    int p;
     if (!s) {
         od_printf("which province? a number from \"list\", or a name\n");
         return -1;
     }
-    int p = od_find_province(s);
+    p = od_find_province(s);
     if (p < 0) od_printf("no province \"%s\"\n", s);
     return p;
 }
@@ -91,29 +97,31 @@ static void cmd_help(void)
         "new [SEED]        start again",
         "quit              leave (QEMU exits; a real board idles)",
     };
-    for (size_t i = 0; i < sizeof lines / sizeof lines[0]; i++) od_printf("  %s\n", lines[i]);
+    size_t i;
+    for (i = 0; i < sizeof lines / sizeof lines[0]; i++) od_printf("  %s\n", lines[i]);
 }
 
 static void cmd_countries(const char *arg)
 {
-    int n = arg ? atoi(arg) : 10;
-    if (n < 1) n = 1;
     static uint16_t count[OD_MAXC];
-    for (int c = 0; c < od_nc; c++) count[c] = 0;
-    for (int i = 0; i < od_np; i++)
+    static uint8_t shown[OD_MAXC];
+    int n = arg ? atoi(arg) : 10;
+    int c, i, r;
+    if (n < 1) n = 1;
+    for (c = 0; c < od_nc; c++) count[c] = 0;
+    for (i = 0; i < od_np; i++)
         if (od_w.own[i] < od_nc) count[od_w.own[i]]++;
     /* n passes of a selection: n is small and this runs once a command */
-    static uint8_t shown[OD_MAXC];
     memset(shown, 0, sizeof shown);
-    for (int r = 0; r < n; r++) {
+    for (r = 0; r < n; r++) {
         int best = -1;
-        for (int c = 0; c < od_nc; c++)
-            if (!shown[c] && count[c] && (best < 0 || count[c] > count[best])) best = c;
-        if (best < 0) break;
-        shown[best] = 1;
         uint32_t prov, inc;
         uint64_t men;
         char a[32], b[32];
+        for (c = 0; c < od_nc; c++)
+            if (!shown[c] && count[c] && (best < 0 || count[c] > count[best])) best = c;
+        if (best < 0) break;
+        shown[best] = 1;
         od_country_stats(best, &prov, &men, &inc);
         od_printf("%3d. %s %-19s %4lu prov %13s men  %10s in treasury%s\n", r + 1,
                   od_ctry0[best].iso, od_ctry0[best].name, (unsigned long)prov,
@@ -124,18 +132,20 @@ static void cmd_countries(const char *arg)
 
 static void cmd_status(void)
 {
-    if (!need_me()) return;
-    uint16_t me = od_w.me;
+    uint16_t me;
     uint32_t prov, inc;
     uint64_t men;
     char a[32], b[32], c[32];
+    int c2;
+    if (!need_me()) return;
+    me = od_w.me;
     od_country_stats(me, &prov, &men, &inc);
     od_printf("%s (%s), turn %u\n", od_ctry0[me].name, od_ctry0[me].iso, od_w.turn);
     od_printf("  %lu provinces, %s men, income %s a turn, treasury %s\n",
               (unsigned long)prov, num(men, a), money(inc, b), money(od_w.tre[me], c));
     if (od_w.enemy[me] < od_nc)
         od_printf("  at war with %s\n", od_ctry0[od_w.enemy[me]].name);
-    for (int c2 = 0; c2 < od_nc; c2++)
+    for (c2 = 0; c2 < od_nc; c2++)
         if (c2 != me && od_w.enemy[c2] == me)
             od_printf("  %s is at war with you\n", od_ctry0[c2].name);
     if (od_w.pacify) od_printf("  pacifying: %u%% of income\n", od_w.pacify);
@@ -143,11 +153,12 @@ static void cmd_status(void)
 
 static void cmd_list(const char *arg)
 {
-    if (!need_me()) return;
-    int page = arg ? atoi(arg) : 1, k = 0, shown = 0;
-    if (page < 1) page = 1;
+    int page, k = 0, shown = 0, i;
     char a[32], b[32];
-    for (int i = 0; i < od_np; i++)
+    if (!need_me()) return;
+    page = arg ? atoi(arg) : 1;
+    if (page < 1) page = 1;
+    for (i = 0; i < od_np; i++)
         if (od_w.own[i] == od_w.me) {
             if (k / 20 == page - 1) {
                 od_printf("%5d %-15s %12s men %13s people  unrest %3u%%\n", i, od_prov0[i].name,
@@ -163,19 +174,22 @@ static void cmd_list(const char *arg)
 static void cmd_show(const char *arg)
 {
     int p = province_arg(arg);
+    char a[32], b[32], c[32];
+    const od_prov_t *pr;
+    uint32_t fleet;
+    int k;
     if (p < 0) return;
-    char a[32], b[32];
-    const od_prov_t *pr = &od_prov0[p];
+    pr = &od_prov0[p];
     od_printf("%d %s, held by %s\n", p, pr->name, od_iso(od_w.own[p]));
     od_printf("  %s people, %s men, frontage %s, fort %u, harbour %u\n",
-              num(od_w.pop[p], a), num(od_w.army[p], b), num(od_width(p), (char[32]){0}),
+              num(od_w.pop[p], a), num(od_w.army[p], b), num(od_width(p), c),
               od_w.fort[p], pr->port);
     od_printf("  income %s, unrest %u%%, alignment %u%%",
               money(od_w.inc[p], a), od_w.unrest[p], od_w.align[p]);
-    uint32_t fleet = od_fleet_at(p, od_w.own[p]);
+    fleet = od_fleet_at(p, od_w.own[p]);
     if (fleet) od_printf(", fleet strength %lu", (unsigned long)fleet);
     od_printf("\n  borders:\n");
-    for (int k = 0; k < pr->adjn; k++) {
+    for (k = 0; k < pr->adjn; k++) {
         int nb = od_neighbour(p, k);
         od_printf("  %5d %-15s %s %12s men%s\n", nb, od_prov0[nb].name, od_iso(od_w.own[nb]),
                   num(od_w.army[nb], a),
@@ -185,35 +199,40 @@ static void cmd_show(const char *arg)
 
 static void cmd_recruit(const char *ps, const char *ns)
 {
+    int p;
+    uint32_t cap, men;
+    char a[32], b[32];
     if (!need_me()) return;
-    int p = province_arg(ps);
+    p = province_arg(ps);
     if (p < 0) return;
     if (od_w.own[p] != od_w.me) {
         od_printf("%s is not yours\n", od_prov0[p].name);
         return;
     }
-    uint32_t cap = od_recruit_cap(p);
-    uint32_t men = (!ns || !strcmp(ns, "max")) ? cap : (uint32_t)strtoul(ns, NULL, 10);
+    cap = od_recruit_cap(p);
+    men = (!ns || !strcmp(ns, "max")) ? cap : (uint32_t)strtoul(ns, NULL, 10);
     if (men > cap) men = cap;
     od_w.ord_recruit[p] = men;
-    char a[32], b[32];
     od_printf("ordered: raise %s men in %s, for %s\n", num(men, a), od_prov0[p].name,
               money(od_recruit_cost(p, men), b));
 }
 
 static int adjacent(int a, int b)
 {
-    for (int k = 0; k < od_prov0[a].adjn; k++)
+    int k;
+    for (k = 0; k < od_prov0[a].adjn; k++)
         if (od_neighbour(a, k) == b) return 1;
     return 0;
 }
 
 static void cmd_attack(const char *fs, const char *ts, int bombard)
 {
+    int f, t;
+    char a[32], b[32], c[32];
     if (!need_me()) return;
-    int f = province_arg(fs);
+    f = province_arg(fs);
     if (f < 0) return;
-    int t = province_arg(ts);
+    t = province_arg(ts);
     if (t < 0) return;
     if (od_w.own[f] != od_w.me) {
         od_printf("%s is not yours\n", od_prov0[f].name);
@@ -236,10 +255,10 @@ static void cmd_attack(const char *fs, const char *ts, int bombard)
         od_printf("ordered: shell %s from %s\n", od_prov0[t].name, od_prov0[f].name);
         return;
     }
-    if (!od_at_war(od_w.me, od_w.own[t]))
-        od_printf("(declaring war on %s)\n", od_ctry0[od_w.own[t]].name),
-            od_declare_war(od_w.me, od_w.own[t]);
-    char a[32], b[32], c[32];
+    if (!od_at_war(od_w.me, od_w.own[t])) {
+        od_printf("(declaring war on %s)\n", od_ctry0[od_w.own[t]].name);
+        od_declare_war(od_w.me, od_w.own[t]);
+    }
     od_w.ord_attack[f] = (uint16_t)t;
     od_printf("ordered: %s men from %s against %s defenders; frontage %s\n",
               num(od_w.army[f], a), od_prov0[f].name, num(od_w.army[t], b), num(od_width(t), c));
@@ -247,8 +266,9 @@ static void cmd_attack(const char *fs, const char *ts, int bombard)
 
 static void cmd_war(const char *iso)
 {
+    int s;
     if (!need_me()) return;
-    int s = iso ? od_slot_of_iso(iso) : -1;
+    s = iso ? od_slot_of_iso(iso) : -1;
     if (s < 0 || s == od_w.me) {
         od_printf("war on whom? an ISO code, e.g. war NOR\n");
         return;
@@ -260,9 +280,10 @@ static void cmd_war(const char *iso)
 static void end_turns(const char *arg)
 {
     int n = arg ? atoi(arg) : 1;
-    if (n < 1) n = 1;
+    int t, i;
     char a[32], b[32];
-    for (int t = 0; t < n; t++) {
+    if (n < 1) n = 1;
+    for (t = 0; t < n; t++) {
         io->end_turn();
         if (od_w.me < od_nc) {
             uint32_t prov, inc;
@@ -278,15 +299,16 @@ static void end_turns(const char *arg)
         } else {
             od_printf("turn %u: %lu battles world-wide\n", od_w.turn, (unsigned long)od_battles);
         }
-        for (int i = 0; i < od_nlog; i++) od_printf("  %s\n", od_log[i]);
+        for (i = 0; i < od_nlog; i++) od_printf("  %s\n", od_log[i]);
     }
 }
 
 static char *next_word(char **s)
 {
+    char *w;
     while (**s == ' ' || **s == '\t') ++*s;
     if (!**s) return NULL;
-    char *w = *s;
+    w = *s;
     while (**s && **s != ' ' && **s != '\t') ++*s;
     if (**s) *(*s)++ = 0;
     return w;
@@ -296,9 +318,11 @@ int od_shell_line(char *line)
 {
     char *s = line;
     char *cmd = next_word(&s);
+    char *a1, *a2;
+    int i;
     if (!cmd) return 1;
-    char *a1 = next_word(&s);
-    char *a2 = next_word(&s);
+    a1 = next_word(&s);
+    a2 = next_word(&s);
 
     if (!strcmp(cmd, "help") || !strcmp(cmd, "?")) cmd_help();
     else if (!strcmp(cmd, "play")) {
@@ -340,7 +364,7 @@ int od_shell_line(char *line)
     else if (!strcmp(cmd, "end")) end_turns(a1);
     else if (!strcmp(cmd, "log")) {
         if (!od_nlog) od_printf("nothing of yours happened\n");
-        for (int i = 0; i < od_nlog; i++) od_printf("  %s\n", od_log[i]);
+        for (i = 0; i < od_nlog; i++) od_printf("  %s\n", od_log[i]);
     }
     else if (!strcmp(cmd, "hk")) {
         if (io->housekeeping) io->housekeeping();
@@ -356,17 +380,22 @@ int od_shell_line(char *line)
     return 1;
 }
 
-void od_shell_run(const od_io_t *the_io)
+void od_shell_attach(const od_io_t *the_io)
 {
     io = the_io;
-    od_printf("\nOpen Doctrines on FreeRTOS, %s\n", io->board);
+}
+
+void od_shell_run(const od_io_t *the_io)
+{
+    char line[96];
+    od_shell_attach(the_io);
+    od_printf("\nOpen Doctrines on %s, %s\n", od_edition, io->board);
     od_printf("%u provinces, %u countries, %u hulls. \"help\" for commands.\n",
               od_np, od_nc, od_ns);
-    char line[96];
     for (;;) {
-        od_printf("> ");
         size_t n = 0;
         int c;
+        od_printf("> ");
         for (;;) {
             c = io->getch();
             if (c < 0) {

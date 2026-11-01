@@ -24,8 +24,10 @@ typedef struct {
     int  echo;                               /* echo what is typed: a serial line does not */
 } od_io_t;
 
+extern const char *od_edition;                /* "FreeRTOS", unless a port says otherwise */
 void od_printf(const char *fmt, ...);
 void od_shell_run(const od_io_t *io);        /* returns at end of input or "quit" */
+void od_shell_attach(const od_io_t *io);      /* od_printf's output, without the loop */
 int  od_shell_line(char *line);              /* one command; 0 when it asked to quit */
 
 #endif

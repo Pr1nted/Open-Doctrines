@@ -1,0 +1,35 @@
+# Open Doctrines on Plan 9 (9front).
+#
+#   mk                 6.opendoctrines (the console) and 6.odmap (the map)
+#   mk install         both into /$objtype/bin/games
+#   mk clean
+#
+# The rules and the shell are the FreeRTOS edition's core, compiled as they
+# are (core_*.c include ../freertos/core/od_*.c), with ./include standing in
+# for the C99 headers it names (see include/od9.h). The world and its map are C generated on a
+# machine with Python, by tools/plan9_package.py (or
+# tools/freertos_world.py --map) -- a source zip from a release has them.
+</$objtype/mkfile
+
+TARG=opendoctrines odmap
+OFILES=\
+	core_world.$O\
+	core_rules.$O\
+	core_shell.$O\
+	od_world_data.$O\
+	od_map_data.$O\
+	od9fmt.$O\
+
+HFILES=\
+	../freertos/core/od_world.h\
+	../freertos/core/od_rules.h\
+	../freertos/core/od_shell.h\
+	../templeos/Sync.HH\
+	include/od9.h\
+	od9fmt.h\
+	od_map.h\
+
+BIN=/$objtype/bin/games
+CFLAGS=$CFLAGS -I. -Iinclude -I../freertos/core -I../templeos
+
+</sys/src/cmd/mkmany

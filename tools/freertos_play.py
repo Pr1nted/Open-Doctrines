@@ -14,6 +14,13 @@ other's: carriage returns go, and so does the echo of each command, which a
 serial line has and a terminal does not. The banner (it names the board) and
 the "hk" lines (uptime, stacks and heap are the board's own) are dropped.
 Exit status: the program's, or 2 if it went quiet for --timeout seconds.
+
+    tools/freertos_play.py --raw-in FILE SCRIPT
+
+normalises a transcript captured elsewhere instead of running anything: the
+Plan 9 edition's, which plays the script as a file on its standard input
+inside a 9front guest (tests/plan9_9front.py), where nothing here can wait on
+its prompts. Lines of FILE before the first "> " are dropped as the banner.
 """
 import argparse
 import os
@@ -28,10 +35,15 @@ def main():
     ap.add_argument("script")
     ap.add_argument("--timeout", type=float, default=120)
     ap.add_argument("--raw", action="store_true", help="print the transcript as it came")
+    ap.add_argument("--raw-in", help="normalise this captured output; run nothing")
     ap.add_argument("command", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     cmd = a.command[1:] if a.command[:1] == ["--"] else a.command
     lines = [l.rstrip("\n") for l in open(a.script) if l.strip() and not l.startswith("#")]
+    if a.raw_in:
+        with open(a.raw_in, "rb") as f:
+            sys.stdout.write(normalise(f.read().decode("latin-1").replace("\r", ""), lines))
+        return 0
 
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = b""
@@ -63,6 +75,11 @@ def main():
         sys.stdout.write(text)
         return code
 
+    sys.stdout.write(normalise(text, lines))
+    return code
+
+
+def normalise(text, lines):
     # Split at the prompts: block k is what command k-1 printed.
     blocks = text.split("> ")
     keep = []
@@ -73,8 +90,7 @@ def main():
         if command.split()[:1] == ["hk"]:
             block = ""
         keep.append(f"> {command}\n{block}")
-    sys.stdout.write("".join(keep))
-    return code
+    return "".join(keep)
 
 
 if __name__ == "__main__":
