@@ -102,6 +102,11 @@ freertos/ports/   one directory per board: a UART, a linker script, and
 freertos/host/    the core with no kernel, for the tests
 ```
 
+The core is shared with the [Plan 9 edition](../plan9/README.md), which
+compiles it with 9front's compilers. So it is kept to the C those take as
+well as C99: declarations at the top of a block, none in a `for`, no compound
+literals and no `inline`. `tests/plan9_test.sh` checks this.
+
 **The rules are a port of [`templeos/Rules.HC`](../templeos/Rules.HC)**, with
 the same turn in the same order. The combat numbers are not copied.
 `od_rules.c` includes `templeos/Sync.HH`, which `tools/templeos_sync.py`

@@ -405,6 +405,9 @@ run "templeos in sync with C++" "$root/tests/templeos_sync_test.sh"
 # The FreeRTOS edition's rules, on the host with no kernel: needs only a C
 # compiler. CI's FreeRTOS workflow plays the same game on every board.
 run "freertos edition plays its game" "$root/tests/freertos_test.sh"
+# The Plan 9 edition: the same core in the C 9front's compilers take, and the
+# same game through its printf. CI's Plan 9 workflow builds it inside 9front.
+run "plan9 edition plays its game" "$root/tests/plan9_test.sh"
 run "a damaged save is refused" "$root/tests/save_corrupt_test.sh" "$build"
 run "map scripts reach the mechanics" "$root/tests/script_mechanics_test.sh" "$build"
 run "neural net gradients" "$bin/NeuralNetTest"

@@ -252,6 +252,9 @@ GROUPS = [
         # on, a scripted game over its serial line, and the board zips.
         "freertos_world.py", "freertos_kernel.sh", "freertos_play.py",
         "freertos_package.py",
+        # The Plan 9 edition: that core's source with its world as C, for
+        # 9front's mk, and a 9front guest in QEMU that builds and plays it.
+        "plan9_package.py", "plan9_9front.py",
     ]),
     ("Building the world data", [
         "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",

@@ -742,6 +742,23 @@ qemu-system-arm -M netduinoplus2 -nographic -semihosting-config enable=on,target
 [freertos/README.md](freertos/README.md) has the commands, the boards, what
 this version leaves out, and how all five builds are held to one transcript.
 
+### Plan 9 — experimental
+
+There is a Plan 9 version too, for 9front. Plan 9 has no C++ compiler and no
+OpenGL, so it is the FreeRTOS version's C core, unchanged, built with 9front's
+own compilers: `opendoctrines`, the console, which plays in a rio window or
+over a serial line, and `odmap`, a libdraw map of the provinces in their
+owners' colours that you click to select and type the same commands at.
+
+```
+cd plan9; mk install; games/odmap
+```
+
+[plan9/README.md](plan9/README.md) has how it builds, what it shares with the
+FreeRTOS version, and what has been verified: so far, its core and its
+printf on Linux, against the same transcript. It has not yet been built on
+9front itself.
+
 ## Building
 
 Needs CMake 3.20+ and a C++20 compiler. Everything else is fetched or vendored.
@@ -1032,6 +1049,10 @@ playing:
   [FreeRTOS](#freertos--experimental) is another: its rules and world run on a
   microcontroller, it has been played on three emulated boards, and it has no
   map, no research and no saves.
+  [Plan 9](#plan-9--experimental) shares that core, built by 9front's
+  compilers; it plays the same transcript on Linux through its own printf,
+  and its CI build inside a pinned 9front ISO under QEMU is still being
+  brought up.
 - **The AI plays a whole game now, and is still not a match for a good
   player.** Both halves of that are worth saying plainly.
 
