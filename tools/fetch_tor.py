@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.error
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -140,10 +141,25 @@ def main(argv):
         url = man["url"].format(version=man["version"], platform=a.platform)
         archive = os.path.join(a.cache, os.path.basename(url))
         if not (os.path.exists(archive) and sha256(archive) == want):
-            print(f"fetch_tor: {url}")
-            req = urllib.request.Request(url, headers={"User-Agent": "OpenDoctrines-release"})
-            with urllib.request.urlopen(req, timeout=120) as r, open(archive, "wb") as f:
-                shutil.copyfileobj(r, f)
+            # dist.torproject.org keeps only current releases; a pinned one
+            # moves to archive.torproject.org when the next ships (the 404 that
+            # failed every server build). The SHA-256 below still decides.
+            mirrors = [url, url.replace("https://dist.torproject.org/torbrowser/",
+                                        "https://archive.torproject.org/tor-package-archive/torbrowser/")]
+            last = None
+            for u in dict.fromkeys(mirrors):
+                print(f"fetch_tor: {u}")
+                req = urllib.request.Request(u, headers={"User-Agent": "OpenDoctrines-release"})
+                try:
+                    with urllib.request.urlopen(req, timeout=120) as r, open(archive, "wb") as f:
+                        shutil.copyfileobj(r, f)
+                    last = None
+                    break
+                except urllib.error.HTTPError as e:
+                    last = e
+                    print(f"fetch_tor: {e.code} from {u}")
+            if last:
+                raise last
     got = sha256(archive)
     if got != want:
         sys.exit(f"fetch_tor: checksum mismatch for {archive}\n  want {want}\n  got  {got}")
