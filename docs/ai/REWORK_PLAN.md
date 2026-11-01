@@ -108,11 +108,39 @@ and the save round trip are unchanged.
    including the AI executors, goes through it.
    - *Unlocks:* move generation can emit orders, the visualiser can display
      them, and the AI's real action space becomes visible.
+   - **Done (groundwork).** `sim::Order` in `src/sim/Order.h`: a variant over
+     the 14 `Pending*` structs plus `WithdrawOrder` for `m_pendingWithdraws`.
+     `sim::apply` (`src/sim/OrderApply.cpp`) is exactly the push into the
+     matching queue, no validation. The byte encoding (`encodeOrder` /
+     `decodeOrder`) is little-endian with pinned `OrderKind` tags numbered in
+     the wire's key order; `orderKindName` returns the wire's keys. The
+     multiplayer wire itself is JSON and is unchanged. `OrderCodecTest`
+     round-trips every kind and refuses every truncation.
+   - *Left:* the player's UI, `mpApplyOrders`, mods and scripts still push
+     into `m_pending*` directly. They validate and charge first, so each needs
+     its check kept in front of `apply`.
 2. **An `AIPlayer` interface.** `decide(const WorldView&, cid) →
    std::vector<Order>` replaces direct writes into `m_pending*`. Parrot Zero
    becomes the first implementation behind it.
    - *Unlocks:* a second engine can be developed beside Parrot Zero, chosen
      per country or per difficulty, and A/B-tested with `tools/ai_ab.py`.
+   - **Done (groundwork).** `AIPlayer` (`src/ai/AIPlayer.h`): `beginTurn`,
+     `takeTurn(cid, sim::OrderSink&)`, `endTurn`, `decideDiplomacy`,
+     `setTraceSink`. `AISystem` implements it, and the turn loop
+     (`Game_TurnLogic.cpp`) calls those three through it with a
+     `sim::ImmediateOrderSink`. All 25 sites in `AISystem.cpp` that push a
+     new order now call `issueOrder`, which goes to the sink.
+   - *Left, for 1.3.4b* (also listed beside `m_orderSink` in `AISystem.h`):
+     diplomacy through `Game::queueDiplomaticAction` (it validates and answers
+     whether it queued) and in-place edits of queued diplomatic actions; edits
+     and removals of queued orders (move-order `pct` top-ups, the ship-move
+     re-route that erases a voyage, the disembark rewrite); `orderWithdraw`;
+     every read of the queues. The reads are why the sink must apply at once
+     for now: the executors check the queues to avoid issuing an order twice.
+     `decide(const WorldView&, cid) -> vector<Order>` needs those reads gone,
+     which needs `WorldState` (item 4). `Game::m_ai` is still an `AISystem*`
+     for training, overlay and bench calls, and the diplomacy callers still
+     use it directly.
 3. **Deterministic randomness everywhere.** The four leftover `rand()` calls
    in turn resolution and the `srand(time)` seeding move onto `simRand()`.
    `g_simRng` becomes a member of the state instead of a file static.
@@ -138,6 +166,22 @@ and the save round trip are unchanged.
    existing `Decision` log. When nothing is attached it costs nothing.
    - This is small and can land first. The 1.3.3b visualiser needs nothing
      else from the AI.
+   - **Done (groundwork).** `AITraceSink` (`src/ai/AITrace.h`) gets one
+     `AIDecisionTrace` per module pick: features, trunk and policy-head
+     activations, logits, mask, sampled distribution, chosen action, its
+     source (policy, book, search, mod...) and the value estimate. It is
+     attached with `AIPlayer::setTraceSink`, or with `OD_AI_TRACE=<path>`,
+     which writes JSON Lines (`docs/ai/TRACE_FORMAT.md`). The record is
+     rebuilt with `forwardInto` into its own scratch, so tracing cannot move
+     a decision.
+   - *Left:* the orders each action expanded into (a recording `OrderSink`
+     can add them), and records for the stance, diplomacy, target and attack
+     heads.
+
+**Groundwork 1, 2 and 6 checked behaviour-neutral:** `OD_DECISION_HASH` on
+`--eval-ai 2 30 7` with the shipped model gives `4920909173029835569 over 8512
+decisions` before, after, and after with `OD_AI_TRACE` set. The eval's CSV row
+is identical.
 
 Items 1, 2 and 6 are independent and small. Items 4 and 5 are most of the
 work, and are what the rework is waiting on.
@@ -176,7 +220,7 @@ The trace file format should come first, so both are possible.
 
 | Version | Content |
 |---|---|
-| groundwork (now) | items 1, 2 and 6: small, behaviour-neutral |
+| groundwork (done) | items 1, 2 and 6: small, behaviour-neutral. Remaining direct writes listed under item 2 |
 | 1.3.3b | the visualiser, on the trace sink; item 3 alone; `WorldState` extraction under way |
 | 1.3.4b | pure `step()`; hand-written evaluator; shallow best-response search behind `AIPlayer`, A/B against Parrot Zero |
 | after 1.3.4b | value net trained on search; MCTS with sampled opponents; retire executors that plans replace |

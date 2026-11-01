@@ -63,6 +63,8 @@
 #include <condition_variable>
 
 class AISystem;
+class AIPlayer;
+struct OrderApplier;
 struct NetMail;
 
 class Game {
@@ -170,6 +172,9 @@ public:
 
     friend class ScriptEngine;
     friend class AISystem;
+    // sim::apply (src/sim/OrderApply.cpp): the one door an Order goes through
+    // into the m_pending* queues. See src/sim/Order.h.
+    friend struct OrderApplier;
     /**
      * The order-validation test, which drives mpApplyOrders directly.
      *

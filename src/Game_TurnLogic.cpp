@@ -12,6 +12,8 @@
 #include "Keybinds.h"
 #include "SaveManager.h"
 #include "ai/AISystem.h"
+#include "ai/AIPlayer.h"
+#include "sim/Order.h"
 #include "raymath.h"
 #include <bit>          // std::popcount -- MSVC has no __builtin_popcount
 #include <iostream>
@@ -555,7 +557,11 @@ void Game::processTurn() {
     // a toggle in Experimental and a player may turn it off mid-game -- which
     // is exactly when they mean it.
     AISystem::s_readOnlyModel = !m_config.aiLearning;
-    m_ai->beginTurn();
+    // The turn loop drives the AI through AIPlayer (src/ai/AIPlayer.h) --
+    // beginTurn, takeTurn and endTurn and nothing else -- so a second engine
+    // can stand where ParrotZero stands. m_ai stays an AISystem* for the
+    // training, overlay and bench calls that are ParrotZero's own.
+    static_cast<AIPlayer*>(m_ai)->beginTurn();
     drawFrame(0.02f, "Processing countries...");
     // Process per-country actions in batches with loading frames
     // Pre-count active countries for progress tracking
@@ -851,7 +857,7 @@ void Game::processTurn() {
     // AI learning step: rewards from the turn's state deltas. Runs while the
     // income cache recordIncomeSnapshot just refreshed is still hot, so the
     // per-country post-turn income reads are O(1) instead of full map scans.
-    if (m_ai) m_ai->endTurn();
+    if (m_ai) static_cast<AIPlayer*>(m_ai)->endTurn();
     m_countryIncomeCache.clear();
     // Cleanup sunk ships AFTER delta building so ship indices stay stable during comparison
     cleanupSunkShips();
@@ -1075,7 +1081,14 @@ void Game::processCountryTurn(int countryId) {
     // Research progresses AFTER the AI's snapshot: a node completed here is
     // then visible as a delta in the learning step — progressing before the
     // snapshot made every completion invisible (and unrewarded, and uncounted).
-    if (m_ai && !humanHolds(countryId)) m_ai->takeTurn(countryId);
+    //
+    // Its orders go through an OrderSink. The immediate one applies each to
+    // the m_pending* queues as it is issued, which is exactly what the
+    // executors' own push_backs did -- see src/sim/Order.h.
+    if (m_ai && !humanHolds(countryId)) {
+        sim::ImmediateOrderSink orders(this);
+        static_cast<AIPlayer*>(m_ai)->takeTurn(countryId, orders);
+    }
     // A remote human's research still advances here: their orders set what
     // is active, and only the local player's runs through addResearchPoints.
     if (countryId != m_playerCountryId) progressCountryResearch(countryId);
