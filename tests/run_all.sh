@@ -94,8 +94,64 @@ failed_steps=()
 
 note_fail() { failed_steps+=("$1"); fail=1; }
 
+# THE TEST PROGRAMS RUN SIDE BY SIDE; EVERYTHING ELSE RUNS ALONE.
+#
+# Most of this file is a run of self-contained test binaries -- a run() of
+# one program from the build directory, at most with the data directory -- each writing
+# only under its own temp directory. They used to run one after another on a
+# four-core runner, so three cores sat idle for most of the suite. Now
+# consecutive ones go into a pool of OD_TEST_JOBS (default: the core count),
+# and the pool is drained -- every result printed, in the order the file names
+# them -- before any other step starts. So the scripts, and with them every
+# network and multiplayer test that has a clock in it, still run with nothing
+# else on the machine. OD_TEST_JOBS=1 is the old, serial behaviour.
+OD_TEST_JOBS="${OD_TEST_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}"
+pool_dir="$(mktemp -d "${TMPDIR:-/tmp}/od-suite.XXXXXX")"
+pool_names=()
+pool_pids=()
+
+is_test_program() {     # one binary from $bin, at most with the data dir
+    case "$1" in "$bin"/*) ;; *) return 1 ;; esac
+    [ $# -eq 1 ] || { [ $# -eq 2 ] && [ "$2" = "$root/data/" ]; }
+}
+
+pool_add() {            # <name> <command...>
+    local name="$1"; shift
+    # bash 3.2 (macOS) has no `wait -n`, so a slot is found by asking.
+    while :; do
+        local live=0 pid
+        # ${a[@]+"${a[@]}"}: bash 3.2 under set -u calls an EMPTY array unbound.
+        for pid in ${pool_pids[@]+"${pool_pids[@]}"}; do kill -0 "$pid" 2>/dev/null && live=$((live + 1)); done
+        [ "$live" -lt "$OD_TEST_JOBS" ] && break
+        sleep 0.2
+    done
+    local i=${#pool_names[@]}
+    ( "$@" < /dev/null > "$pool_dir/$i.out" 2>&1; echo $? > "$pool_dir/$i.rc" ) &
+    pool_pids+=("$!")
+    pool_names+=("$name")
+}
+
+pool_drain() {
+    [ ${#pool_names[@]} -eq 0 ] && return 0
+    wait ${pool_pids[@]+"${pool_pids[@]}"} 2>/dev/null
+    local i
+    for i in "${!pool_names[@]}"; do
+        step "${pool_names[$i]}"
+        cat "$pool_dir/$i.out"
+        if [ "$(cat "$pool_dir/$i.rc" 2>/dev/null)" != 0 ]; then
+            echo "${pool_names[$i]} FAILED"; note_fail "${pool_names[$i]}"
+        fi
+        rm -f "$pool_dir/$i.out" "$pool_dir/$i.rc"
+    done
+    pool_names=(); pool_pids=()
+}
+
 run() {
     local name="$1"; shift
+    if [ "$OD_TEST_JOBS" -gt 1 ] && is_test_program "$@"; then
+        pool_add "$name" "$@"; return 0
+    fi
+    pool_drain
     step "$name"
     if "$@"; then :; else echo "$name FAILED"; note_fail "$name"; fi
 }
@@ -103,6 +159,7 @@ run() {
 # For the drift checks, which are a bare command rather than a named run().
 check() {
     local name="$1"; shift
+    pool_drain
     step "$name"
     if "$@"; then :; else note_fail "$name"; fi
 }
@@ -646,6 +703,8 @@ while IFS= read -r m; do
 done < <(find "$root/sdk" -name "*.odmod" -not -path "*/node_modules/*" | sort)
 [ $found -eq 1 ] || echo "skip  no example mods built yet"
 
+pool_drain
+rm -rf "$pool_dir"
 printf '\n'
 if [ $fail -eq 0 ]; then
     echo "ALL PASSED"
