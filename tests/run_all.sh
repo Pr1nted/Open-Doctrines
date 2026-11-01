@@ -589,6 +589,12 @@ check "the mod registry knows every capability" $PY "$root/tools/check_registry_
 # down twice, in two languages. See tools/check_relay_limits.py.
 check "the game knows what the relay will carry" $PY "$root/tools/check_relay_limits.py"
 
+# An order vector left out of the multiplayer wire is processed in singleplayer
+# and vanishes online with no refusal -- how a boat ordered ashore never moved
+# in the tournament. This fails if any m_pending* order is on one side of the
+# wire but not the other, or on neither. See tools/check_mp_order_coverage.py.
+check "every player order crosses the multiplayer wire" $PY "$root/tools/check_mp_order_coverage.py"
+
 # The web build preloads a subset of the font and fetches the rest on demand,
 # which cannot help the language picker: that list has to be readable BEFORE a
 # language is chosen. See tools/check_web_font.py.
