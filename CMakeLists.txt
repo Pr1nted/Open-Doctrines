@@ -1834,10 +1834,11 @@ if(OD_ANGLE)
         endif()
         set(OD_ANGLE_DIR "${od_angle_fetched}")
     endif()
-    # The libraries, SwiftShader and its ICD file go beside the game, where the
+    # The libraries, SwiftShader, its ICD file and (off macOS) the Vulkan
+    # loader go beside the game, where the
     # patched GLFW and ANGLE look; the licences into licenses/ANGLE.
     file(GLOB od_angle_libs "${OD_ANGLE_DIR}/*EGL*" "${OD_ANGLE_DIR}/*GLESv2*"
-                            "${OD_ANGLE_DIR}/*vk_swiftshader*")
+                            "${OD_ANGLE_DIR}/*vk_swiftshader*" "${OD_ANGLE_DIR}/*vulkan*")
     foreach(lib ${od_angle_libs})
         add_custom_command(TARGET OpenDoctrines POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib}" "$<TARGET_FILE_DIR:OpenDoctrines>")

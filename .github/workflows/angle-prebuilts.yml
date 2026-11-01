@@ -79,16 +79,26 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
 
+      # A display for ANGLE's X11 platform, as a player's Linux desktop has.
+      - name: Virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends xvfb
+
       - name: Smoke test
         shell: bash
         run: |
+          # Dash switches for cl: Git Bash rewrites /nologo into a Windows path.
           if [ "$RUNNER_OS" = Windows ]; then
-            cl /nologo /O1 tools/angle_smoke.c /Fe:angle_smoke.exe && smoke=./angle_smoke.exe
+            cl -nologo -O1 tools/angle_smoke.c -Fe:angle_smoke.exe
+            smoke=./angle_smoke.exe
           else
-            cc -O1 -o angle_smoke tools/angle_smoke.c -ldl && smoke=./angle_smoke
+            cc -O1 -o angle_smoke tools/angle_smoke.c -ldl
+            smoke=./angle_smoke
           fi
+          [ "$RUNNER_OS" = Linux ] && smoke="xvfb-run -a $smoke"
           dir="$PWD/out/angle"
-          [ "$RUNNER_OS" = Windows ] && dir="$(cygpath -w "$dir")"
+          if [ "$RUNNER_OS" = Windows ]; then dir="$(cygpath -w "$dir")"; fi
+          ls -la "$PWD/out/angle"
           $smoke "$dir" swiftshader
           if [ -n "${{ matrix.native }}" ]; then
             # The native API is checked when the runner has a GPU path for it

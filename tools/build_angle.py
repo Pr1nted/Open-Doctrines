@@ -13,6 +13,8 @@ What it produces in --out, flat, beside each other the way the game loads them:
   libEGL / libGLESv2       ANGLE itself (.dylib, .dll or .so)
   libvk_swiftshader        SwiftShader, ANGLE's Vulkan on the CPU -- the last
   vk_swiftshader_icd.json  rung of the game's backend ladder (Game.cpp)
+  libvulkan.so.1 /         the Vulkan loader, off macOS (linked in there)
+    vulkan-1.dll
   licenses/                every LICENSE in the checkout that was compiled in
 
 Backends, per platform, are the game's ladder and nothing else: Metal on macOS,
@@ -73,6 +75,13 @@ LIBS = ["libEGL", "libGLESv2", "libvk_swiftshader"]
 TARGETS = ["libEGL", "libGLESv2",
            "third_party/SwiftShader/src/Vulkan:swiftshader_libvulkan",
            "third_party/SwiftShader/src/Vulkan:icd_file"]
+# Off macOS, ANGLE's Vulkan backend loads the Vulkan loader as a separate
+# library at run time (angle_shared_libvulkan) instead of linking it in. Without
+# it beside libGLESv2, Vulkan -- and so SwiftShader, the software rung -- fails
+# at eglInitialize on any machine with no system loader, as a fresh CI runner has.
+VULKAN_LOADER = None if MAC else ("vulkan-1.dll" if WIN else "libvulkan.so.1")
+if VULKAN_LOADER:
+    TARGETS.append("third_party/vulkan-loader/src:libvulkan")
 
 
 def use_installed_windows_sdk(angle):
@@ -153,6 +162,8 @@ def main():
             # An unsigned arm64 dylib is refused by the kernel the moment it loads.
             run(["codesign", "-s", "-", "-f", dest])
     shutil.copy2(os.path.join(builds[0], "vk_swiftshader_icd.json"), a.out)
+    if VULKAN_LOADER:
+        shutil.copy2(os.path.join(builds[0], VULKAN_LOADER), a.out)
 
     # Every licence in the tree that was checked out to build this. More than
     # strictly compiled in, never less: provenance.json names the two that matter
