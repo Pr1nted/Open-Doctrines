@@ -69,9 +69,40 @@ def lib(name):
 
 
 LIBS = ["libEGL", "libGLESv2", "libvk_swiftshader"]
+# ANGLE's own checkout spells it SwiftShader (Chromium's is swiftshader).
 TARGETS = ["libEGL", "libGLESv2",
-           "third_party/swiftshader/src/Vulkan:swiftshader_libvulkan",
-           "third_party/swiftshader/src/Vulkan:icd_file"]
+           "third_party/SwiftShader/src/Vulkan:swiftshader_libvulkan",
+           "third_party/SwiftShader/src/Vulkan:icd_file"]
+
+
+def use_installed_windows_sdk(angle):
+    """Point Chromium's toolchain at the newest Windows SDK this machine has.
+
+    build/toolchain/win/setup_toolchain.py hardcodes the SDK it hands to
+    vcvarsall (10.0.28000.0 at this pin), matching Google's packaged toolchain,
+    and no gn argument overrides it. A machine with the Visual Studio it already
+    has -- DEPOT_TOOLS_WIN_TOOLCHAIN=0, every CI runner -- usually has an older
+    one, and gn gen stops on the missing include path. So the constant is
+    rewritten in the checkout to the newest SDK that is installed. A pinned
+    ANGLE that genuinely needs the newer SDK fails at compile time and says
+    which header, which is the right place to find that out.
+    """
+    import re
+    inc = r"C:\Program Files (x86)\Windows Kits\10\Include"
+    found = sorted((d for d in os.listdir(inc) if re.fullmatch(r"10\.0\.\d+\.\d+", d)
+                    and os.path.isdir(os.path.join(inc, d, "um"))),
+                   key=lambda v: tuple(int(x) for x in v.split(".")))
+    if not found:
+        sys.exit("build_angle: no Windows 10/11 SDK under " + inc)
+    sdk = found[-1]
+    for rel in ("build/toolchain/win/setup_toolchain.py", "build/vs_toolchain.py"):
+        path = os.path.join(angle, rel)
+        text = open(path).read()
+        new = re.sub(r"^SDK_VERSION = '[0-9.]+'", f"SDK_VERSION = '{sdk}'", text, flags=re.M)
+        if new == text and f"SDK_VERSION = '{sdk}'" not in text:
+            sys.exit(f"build_angle: no SDK_VERSION line to rewrite in {rel}")
+        open(path, "w").write(new)
+    print(f"build_angle: building against Windows SDK {sdk}", flush=True)
 
 
 def main():
@@ -96,6 +127,8 @@ def main():
     run(["git", "checkout", "-q", "FETCH_HEAD"], cwd=angle)
     run([sys.executable, "scripts/bootstrap.py"], cwd=angle, env=env)
     run(["gclient", "sync", "-D", "--no-history", "--shallow", "-j8"], cwd=angle, env=env)
+    if WIN:
+        use_installed_windows_sdk(angle)
 
     builds = []
     for cpu in cpus:
