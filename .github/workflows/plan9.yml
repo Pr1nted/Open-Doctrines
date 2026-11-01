@@ -17,7 +17,9 @@
 #          host, the POSIX port and every QEMU board are held to.
 # What it does not prove: odmap's drawing. It is built, not looked at.
 #
-# The 9front ISO is pinned by URL and SHA-256 below. Both are empty until a
+# The 9front ISO is pinned by URL and SHA-256 below. While both are empty, a
+# development run takes the newest ISO on 9front.org (trust on first use) and
+# prints the two values to pin; releases refuse to run unpinned. Both empty until a
 # maintainer fills them in from https://9front.org/iso/ -- the session that
 # wrote this could not reach 9front.org to take a hash it could vouch for, and
 # a guessed one would be worse than none. While they are empty, the 9front
@@ -91,15 +93,26 @@ jobs:
           if [ -n "$NINEFRONT_ISO_URL" ] && [ -n "$NINEFRONT_ISO_SHA256" ]; then
             echo "pinned=1" >> "$GITHUB_OUTPUT"
           elif [[ "$GITHUB_REF" == refs/tags/plan9-v* ]]; then
-            echo "::error::A plan9-v* release needs a pinned 9front ISO: nothing would have built it in 9front."
+            echo "::error::A plan9-v* release needs a pinned 9front ISO: trust on first use is for development runs, not releases."
             exit 1
           else
-            echo "::warning::No 9front ISO pinned in plan9.yml (NINEFRONT_ISO_URL, NINEFRONT_ISO_SHA256): the guest build and game did not run."
-            echo "pinned=0" >> "$GITHUB_OUTPUT"
+            # TRUST ON FIRST USE, as tools/dos_toolchain.sh does for CWSDPMI.
+            # Nothing pinned yet: take the newest amd64 ISO 9front.org lists,
+            # print its URL and SHA-256 for plan9.yml, and run with it. Once
+            # the two env values above are filled in, this branch is dead.
+            url=$(curl -fsSL --retry 3 https://9front.org/iso/ \
+                  | grep -oE '9front-[0-9]+\.amd64\.iso(\.gz)?' | sort -t- -k2 -n | tail -1)
+            if [ -z "$url" ]; then
+              echo "::warning::No 9front ISO pinned, and none found on https://9front.org/iso/: the guest build and game did not run."
+              echo "pinned=0" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "NINEFRONT_ISO_URL=https://9front.org/iso/$url" >> "$GITHUB_ENV"
+            echo "pinned=tofu" >> "$GITHUB_OUTPUT"
           fi
 
       - name: KVM, when the runner has it
-        if: steps.pin.outputs.pinned == '1'
+        if: steps.pin.outputs.pinned != '0'
         run: |
           if [ -e /dev/kvm ]; then
             echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -109,22 +122,27 @@ jobs:
           fi
 
       - uses: actions/cache@v4
-        if: steps.pin.outputs.pinned == '1'
+        if: steps.pin.outputs.pinned != '0'
         with:
           path: build/9front-iso
-          key: 9front-iso-${{ env.NINEFRONT_ISO_SHA256 }}
+          key: 9front-iso-${{ env.NINEFRONT_ISO_SHA256 || env.NINEFRONT_ISO_URL }}
 
       - name: The 9front ISO, checked against its pin
-        if: steps.pin.outputs.pinned == '1'
+        if: steps.pin.outputs.pinned != '0'
         run: |
           mkdir -p build/9front-iso
           f="build/9front-iso/$(basename "$NINEFRONT_ISO_URL")"
           [ -f "$f" ] || curl -fsSL --retry 3 -o "$f" "$NINEFRONT_ISO_URL"
-          echo "$NINEFRONT_ISO_SHA256  $f" | sha256sum -c -
+          if [ -n "$NINEFRONT_ISO_SHA256" ]; then
+            echo "$NINEFRONT_ISO_SHA256  $f" | sha256sum -c -
+          else
+            h=$(sha256sum "$f" | cut -d' ' -f1)
+            echo "::notice title=Pin this 9front ISO in plan9.yml::NINEFRONT_ISO_URL: \"$NINEFRONT_ISO_URL\"  NINEFRONT_ISO_SHA256: \"$h\""
+          fi
           echo "ISO=$f" >> "$GITHUB_ENV"
 
       - name: Built and played inside 9front
-        if: steps.pin.outputs.pinned == '1'
+        if: steps.pin.outputs.pinned != '0'
         run: |
           tests/plan9_test.sh --9front "$ISO"
           # the binaries 6l linked in the guest, for the zip
