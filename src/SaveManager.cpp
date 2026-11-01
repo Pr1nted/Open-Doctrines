@@ -2,6 +2,7 @@
 #include "util/WebPersist.h"
 #include "miniz.h"
 #include "miniz_zip.h"
+#include "libdeflate.h"
 #include "json.hpp"
 #include <fstream>
 #include <sstream>
@@ -664,18 +665,115 @@ std::string SaveManager::newSealSalt() {
     return s;
 }
 
+// ─── Compression ─────────────────────────────────────────
+//
+// libdeflate compresses and inflates; miniz only lays out the zip around it. On
+// a late-game state.json libdeflate is 2.8x faster than miniz at level 6 and 3%
+// smaller, inflates 3.4x faster, and its CRC-32 runs on the CPU's instructions
+// rather than a table. What it writes is ordinary deflate, so a save written
+// here opens in every older build, and an older save opens here.
+
+// One compressor per level per thread: they are not thread-safe, and building
+// one costs more than compressing a small entry.
+static libdeflate_compressor* compressorFor(int level) {
+    struct Cache {
+        libdeflate_compressor* c[13] = {};
+        ~Cache() { for (auto* p : c) if (p) libdeflate_free_compressor(p); }
+    };
+    thread_local Cache cache;
+    level = level < 1 ? 1 : level > 12 ? 12 : level;
+    if (!cache.c[level]) cache.c[level] = libdeflate_alloc_compressor(level);
+    return cache.c[level];
+}
+
+static libdeflate_decompressor* decompressor() {
+    struct Holder {
+        libdeflate_decompressor* d = libdeflate_alloc_decompressor();
+        ~Holder() { if (d) libdeflate_free_decompressor(d); }
+    };
+    thread_local Holder h;
+    return h.d;
+}
+
+static uint32_t crc32Of(const void* data, size_t n) {
+    return libdeflate_crc32(0, data, n);
+}
+
+// An entry deflated once, to be added under one name or several.
+struct Deflated {
+    std::string bytes;      // raw deflate; empty when it did not pay
+    uint32_t crc = 0;
+};
+
+static Deflated deflateEntry(const void* data, size_t n, mz_uint level) {
+    Deflated out;
+    // Tiny or incompressible entries are left to miniz, which stores them.
+    if (level == 0 || n < 64) return out;
+    libdeflate_compressor* c = compressorFor((int)level);
+    if (!c) return out;
+    // Room for one byte less than the input: an entry that does not shrink
+    // fails to fit, and is stored.
+    out.bytes.resize(n - 1);
+    const size_t got = libdeflate_deflate_compress(c, data, n, &out.bytes[0], out.bytes.size());
+    if (got == 0) { out.bytes.clear(); return out; }
+    out.bytes.resize(got);
+    out.crc = crc32Of(data, n);
+    return out;
+}
+
+static mz_bool zipAddDeflated(mz_zip_archive* z, const char* name, const Deflated& d,
+                              const void* data, size_t n, mz_uint level) {
+    if (d.bytes.empty()) return mz_zip_writer_add_mem(z, name, data, n, level);
+    return mz_zip_writer_add_mem_ex(z, name, d.bytes.data(), d.bytes.size(), nullptr, 0,
+                                    level | MZ_ZIP_FLAG_COMPRESSED_DATA, n, d.crc);
+}
+
+// mz_zip_writer_add_mem, compressed by libdeflate.
+static mz_bool zipAdd(mz_zip_archive* z, const char* name, const void* data, size_t n, mz_uint level) {
+    return zipAddDeflated(z, name, deflateEntry(data, n, level), data, n, level);
+}
+
+// mz_zip_reader_extract_to_heap, inflated by libdeflate and checked against the
+// entry's CRC. Anything that is not plain deflate goes to miniz.
+static std::string zipExtract(mz_zip_archive& zip, mz_uint idx, bool& ok) {
+    ok = false;
+    mz_zip_archive_file_stat st;
+    if (!mz_zip_reader_file_stat(&zip, idx, &st)) return {};
+    if (st.m_method != MZ_DEFLATED || st.m_uncomp_size > ((mz_uint64)1 << 31) || st.m_is_encrypted) {
+        size_t sz = 0;
+        void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
+        if (!d) return {};
+        std::string out((const char*)d, sz);
+        mz_free(d);
+        ok = true;
+        return out;
+    }
+    size_t rawLen = 0;
+    void* raw = mz_zip_reader_extract_to_heap(&zip, idx, &rawLen, MZ_ZIP_FLAG_COMPRESSED_DATA);
+    if (!raw) return {};
+    std::string out((size_t)st.m_uncomp_size, '\0');
+    size_t got = 0;
+    libdeflate_decompressor* dd = decompressor();
+    const bool inflated = dd && libdeflate_deflate_decompress(dd, raw, rawLen, out.empty() ? nullptr : &out[0],
+                                                              out.size(), &got) == LIBDEFLATE_SUCCESS;
+    mz_free(raw);
+    if (!inflated || got != out.size() || crc32Of(out.data(), out.size()) != st.m_crc32) return {};
+    ok = true;
+    return out;
+}
+
 // The bytes to write for entry `name`: sealed when the save is, plain otherwise.
 static std::string sealFor(const SaveMetadata& meta, const char* name, const void* data, size_t n) {
     std::string plain((const char*)data, n);
 #ifdef OD_HAS_P2
     if (meta.sealSalt.empty() || !sealedName(name)) return plain;
     // u64 plain length, then the deflated bytes.
-    mz_ulong zlen = mz_compressBound((mz_ulong)n);
-    std::string packed(8 + zlen, '\0');
+    libdeflate_compressor* zc = compressorFor(MZ_BEST_COMPRESSION);
+    if (!zc) return plain;
+    std::string packed(8 + libdeflate_zlib_compress_bound(zc, n), '\0');
     for (int i = 0; i < 8; ++i) packed[(size_t)i] = (char)((uint64_t)n >> (8 * i));
-    if (mz_compress2((unsigned char*)&packed[8], &zlen, (const unsigned char*)data, (mz_ulong)n,
-                     MZ_BEST_COMPRESSION) != MZ_OK)
-        return plain;
+    const size_t zlen = libdeflate_zlib_compress(zc, data, n, &packed[8], packed.size() - 8);
+    if (zlen == 0) return plain;
     packed.resize(8 + zlen);
     std::string out(kSealHeader + packed.size() + 16, '\0');
     memcpy(&out[0], kSealMagic, 4);
@@ -699,12 +797,8 @@ static SaveMetadata parseMetadataJson(const std::string& js);
 static std::string extractRaw(mz_zip_archive& zip, const char* name) {
     const int idx = mz_zip_reader_locate_file(&zip, name, nullptr, 0);
     if (idx < 0) return {};
-    size_t sz = 0;
-    void* d = mz_zip_reader_extract_to_heap(&zip, idx, &sz, 0);
-    if (!d) return {};
-    std::string out((const char*)d, sz);
-    free(d);
-    return out;
+    bool ok = false;
+    return zipExtract(zip, (mz_uint)idx, ok);
 }
 
 // One entry of an open archive, or empty when it is absent or unreadable --
@@ -730,10 +824,11 @@ static std::string extractEntry(mz_zip_archive& zip, const char* name) {
                 for (int i = 0; i < 8; ++i) n |= (uint64_t)(unsigned char)out[(size_t)i] << (8 * i);
                 if (n <= (uint64_t)1 << 31) {
                     std::string plain((size_t)n, '\0');
-                    mz_ulong got = (mz_ulong)n;
-                    if (mz_uncompress(plain.empty() ? nullptr : (unsigned char*)&plain[0], &got,
-                                      (const unsigned char*)&out[8], (mz_ulong)(out.size() - 8)) == MZ_OK &&
-                        got == (mz_ulong)n)
+                    size_t got = 0;
+                    if (libdeflate_zlib_decompress(decompressor(), &out[8], out.size() - 8,
+                                                   plain.empty() ? nullptr : &plain[0], plain.size(),
+                                                   &got) == LIBDEFLATE_SUCCESS &&
+                        got == (size_t)n)
                         return plain;
                 }
             }
@@ -764,7 +859,7 @@ static void writeSealedTreasuries(mz_zip_archive& zip, const SaveMetadata& meta)
     for (auto& [cid, tr] : meta.countryTreasuries) j[std::to_string(cid)] = tr;
     const std::string plain = j.dump();
     const std::string data = sealFor(meta, "fog/treasuries.json", plain.data(), plain.size());
-    mz_zip_writer_add_mem(&zip, "fog/treasuries.json", data.data(), data.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&zip, "fog/treasuries.json", data.data(), data.size(), MZ_BEST_COMPRESSION);
 }
 
 // ─── Per-turn state as a diff ───────────────────────────
@@ -943,7 +1038,7 @@ uint32_t getU32(const std::string& s, size_t at) {
     return v;
 }
 uint32_t crcOf(const std::string& s) {
-    return (uint32_t)mz_crc32(MZ_CRC32_INIT, (const unsigned char*)s.data(), s.size());
+    return crc32Of(s.data(), s.size());
 }
 
 std::string fullStateName(int turn) {
@@ -1200,17 +1295,17 @@ bool SaveManager::createSave(const std::string& odsvPath,
     // Embed the original .odmap
     // Stored, not deflated — see the note in appendTurn(); the embedded map is
     // already-compressed data and re-deflating it is wasted time.
-    mz_zip_writer_add_mem(&zip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
+    zipAdd(&zip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     // Write metadata.json with country compasses
     const std::string metaJson = metadataJson(meta);
     
-    mz_zip_writer_add_mem(&zip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&zip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
     writeSealedTreasuries(zip, meta);
 
     // Write empty index
     const char* idx = "{\"turns\":[]}\n";
-    mz_zip_writer_add_mem(&zip, "index.json", idx, strlen(idx), MZ_BEST_COMPRESSION);
+    zipAdd(&zip, "index.json", idx, strlen(idx), MZ_BEST_COMPRESSION);
 
     // CHECKED, not called and forgotten. A finalize that failed still returned
     // true from here, so a save that was never written reported success and
@@ -1364,12 +1459,12 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // five times as long for 4.6% less, and it is written every turn.
     constexpr mz_uint kTurnLevel = 6;
     auto addNew = [&](mz_zip_archive& z) -> bool {
-        bool ok = mz_zip_writer_add_mem(&z, "metadata.json", metaJson.data(), metaJson.size(), kTurnLevel);
-        ok = mz_zip_writer_add_mem(&z, "index.json", idx.data(), idx.size(), kTurnLevel) && ok;
+        bool ok = zipAdd(&z, "metadata.json", metaJson.data(), metaJson.size(), kTurnLevel);
+        ok = zipAdd(&z, "index.json", idx.data(), idx.size(), kTurnLevel) && ok;
         // Add new turn
         auto packedPlain = packTurn(delta);
         const std::string packed = sealFor(meta, turnPath, packedPlain.data(), packedPlain.size());
-        ok = ok && mz_zip_writer_add_mem(&z, turnPath, packed.data(), packed.size(), kTurnLevel);
+        ok = ok && zipAdd(&z, turnPath, packed.data(), packed.size(), kTurnLevel);
 
         // Fold the state snapshot into this same rewrite when supplied.
         // It is written twice: state.json is the "resume where I left off" copy,
@@ -1381,46 +1476,36 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
         if (!reanchoredState.empty()) {
             const std::string name = fullStateName(delta.turnNumber + 1);
             const std::string c = sealFor(meta, name.c_str(), reanchoredState.data(), reanchoredState.size());
-            ok = ok && mz_zip_writer_add_mem(&z, name.c_str(), c.data(), c.size(), kTurnLevel);
+            ok = ok && zipAdd(&z, name.c_str(), c.data(), c.size(), kTurnLevel);
         }
         if (stateJson && !stateDiff.empty()) {
             // state.json stays whole: it is what a load resumes from, in this build
             // and in every older one.
             const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
             const std::string sd = sealFor(meta, turnDiffPath.c_str(), stateDiff.data(), stateDiff.size());
-            ok = ok && mz_zip_writer_add_mem(&z, "state.json", st.data(), st.size(), kTurnLevel);
-            ok = ok && mz_zip_writer_add_mem(&z, turnDiffPath.c_str(), sd.data(), sd.size(), kTurnLevel);
+            ok = ok && zipAdd(&z, "state.json", st.data(), st.size(), kTurnLevel);
+            ok = ok && zipAdd(&z, turnDiffPath.c_str(), sd.data(), sd.size(), kTurnLevel);
         } else if (stateJson) {
             const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
             const std::string ts = sealFor(meta, turnStatePath, stateJson->data(), stateJson->size());
             // DEFLATED ONCE WHEN THE TWO ARE THE SAME BYTES, which they are unless
             // the save is sealed (the seal is keyed by entry name). The snapshot
             // is the largest thing written each turn and compressing it twice at
-            // best compression was a fifth of a turn's whole cost. Same flags as
-            // the writer's own deflate, so the archive is byte-for-byte what two
-            // separate adds produce.
-            void* packedState = nullptr;
-            size_t packedLen = 0;
-            if (st == ts && st.size() > 3)       // <= 3 bytes the writer stores instead
-                packedState = tdefl_compress_mem_to_heap(st.data(), st.size(), &packedLen,
-                    tdefl_create_comp_flags_from_zip_params(kTurnLevel, -15, MZ_DEFAULT_STRATEGY));
-            if (packedState) {
-                const mz_uint32 crc = (mz_uint32)mz_crc32(MZ_CRC32_INIT, (const unsigned char*)st.data(), st.size());
-                const mz_uint flags = kTurnLevel | MZ_ZIP_FLAG_COMPRESSED_DATA;
-                ok = ok && mz_zip_writer_add_mem_ex(&z, "state.json", packedState, packedLen, nullptr, 0,
-                                         flags, st.size(), crc);
-                ok = ok && mz_zip_writer_add_mem_ex(&z, turnStatePath, packedState, packedLen, nullptr, 0,
-                                         flags, st.size(), crc);
-                mz_free(packedState);
+            // best compression was a fifth of a turn's whole cost. The archive is
+            // byte-for-byte what two separate zipAdd calls produce.
+            if (st == ts) {
+                const Deflated d = deflateEntry(st.data(), st.size(), kTurnLevel);
+                ok = ok && zipAddDeflated(&z, "state.json", d, st.data(), st.size(), kTurnLevel);
+                ok = ok && zipAddDeflated(&z, turnStatePath, d, st.data(), st.size(), kTurnLevel);
             } else {
-                ok = ok && mz_zip_writer_add_mem(&z, "state.json", st.data(), st.size(), kTurnLevel);
-                ok = ok && mz_zip_writer_add_mem(&z, turnStatePath, ts.data(), ts.size(), kTurnLevel);
+                ok = ok && zipAdd(&z, "state.json", st.data(), st.size(), kTurnLevel);
+                ok = ok && zipAdd(&z, turnStatePath, ts.data(), ts.size(), kTurnLevel);
             }
         }
         if (extraFiles)
             for (auto& [name, content] : *extraFiles) {
                 const std::string c = sealFor(meta, name.c_str(), content.data(), content.size());
-                ok = ok && mz_zip_writer_add_mem(&z, name.c_str(), c.data(), c.size(), kTurnLevel);
+                ok = ok && zipAdd(&z, name.c_str(), c.data(), c.size(), kTurnLevel);
             }
         return ok;
     };
@@ -1540,10 +1625,10 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     // PNGs, so max-level deflate burns hundreds of ms per call and saves
     // essentially nothing. This runs on every save rewrite, so it dominated
     // turn time.
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
+    zipAdd(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     const std::string metaJson = metadataJson(meta);
-    mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
     writeSealedTreasuries(newZip, meta);
 
     // Everything the archive already held, except the three entries this
@@ -1588,7 +1673,7 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
         idxStr += "\"" + std::string(5 - std::to_string(t).size(), '0') + std::to_string(t) + "\"";
     }
     idxStr += "]}\n";
-    mz_zip_writer_add_mem(&newZip, "index.json", idxStr.data(), idxStr.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&newZip, "index.json", idxStr.data(), idxStr.size(), MZ_BEST_COMPRESSION);
 
     mz_zip_writer_finalize_archive(&newZip);
     mz_zip_writer_end(&newZip);
@@ -1875,10 +1960,10 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     // PNGs, so max-level deflate burns hundreds of ms per call and saves
     // essentially nothing. This runs on every save rewrite, so it dominated
     // turn time.
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
+    zipAdd(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
 
     const std::string metaJson = metadataJson(meta);
-    mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
     writeSealedTreasuries(newZip, meta);
 
     // Everything else the archive held, verbatim -- see appendTurn. This used
@@ -1978,11 +2063,11 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     // PNGs, so max-level deflate burns hundreds of ms per call and saves
     // essentially nothing. This runs on every save rewrite, so it dominated
     // turn time.
-    mz_zip_writer_add_mem(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
+    zipAdd(&newZip, "map.odmap", odmData.data(), odmData.size(), MZ_NO_COMPRESSION);
     // Parse metadata from the in-memory buffer (NOT from the truncated file on disk)
     meta = parseMetadataFromZip(zipData);
     const std::string metaJson = metadataJson(meta);
-    mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
 
     std::string idxStr = "{\"turns\":[";
     for (int t = 1; t <= meta.turnCount; ++t) {
@@ -1990,7 +2075,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
         idxStr += "\"" + std::string(5 - std::to_string(t).size(), '0') + std::to_string(t) + "\"";
     }
     idxStr += "]}\n";
-    mz_zip_writer_add_mem(&newZip, "index.json", idxStr.data(), idxStr.size(), MZ_BEST_COMPRESSION);
+    zipAdd(&newZip, "index.json", idxStr.data(), idxStr.size(), MZ_BEST_COMPRESSION);
 
     {
         mz_zip_archive srcZip{};
@@ -2012,17 +2097,17 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
 
     {
         const std::string st = sealFor(meta, "state.json", stateJson.data(), stateJson.size());
-        mz_zip_writer_add_mem(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
+        zipAdd(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
     }
 
     // Already sealed, if the save is: carried as stored.
     for (auto& [name, data] : existingExtra)
-        mz_zip_writer_add_mem(&newZip, name.c_str(), data.data(), data.size(), MZ_BEST_COMPRESSION);
+        zipAdd(&newZip, name.c_str(), data.data(), data.size(), MZ_BEST_COMPRESSION);
 
     // Write new extra files (rebel SVGs, etc.) from caller
     for (auto& [name, content] : extraFiles) {
         const std::string c = sealFor(meta, name.c_str(), content.data(), content.size());
-        mz_zip_writer_add_mem(&newZip, name.c_str(), c.data(), c.size(), MZ_BEST_COMPRESSION);
+        zipAdd(&newZip, name.c_str(), c.data(), c.size(), MZ_BEST_COMPRESSION);
     }
 
     mz_zip_writer_finalize_archive(&newZip);

@@ -102,6 +102,7 @@ the same one and wonder why it is not here.
 | [nlohmann/json](https://github.com/nlohmann/json) | vendored | MIT | JSON parsing |
 | [nanosvg](https://github.com/memononen/nanosvg) | vendored | zlib | SVG parsing and rasterising for flags and symbols |
 | [miniz](https://github.com/richgel999/miniz) | vendored | MIT | ZIP and deflate for .odmap, .odsv and .odmod |
+| [libdeflate](https://github.com/ebiggers/libdeflate) | 1.24 | MIT | Deflate, inflate and CRC-32 for .odsv saves |
 | [stb_image / stb_image_write](https://github.com/nothings/stb) | vendored | Public domain (Unlicense/MIT dual) | PNG decode and encode in the map generator |
 | [Tor (Tor Expert Bundle)](https://www.torproject.org/download/tor/) | 15.0.25 | BSD-3-Clause (tor, libevent), Apache-2.0 (OpenSSL) | Optional: onion hosting and "hide my IP"; shipped unmodified in data/tor/, licence texts in data/tor/licenses/ |
 | [Simple Icons](https://simpleicons.org/) | 16.33.0 | CC0-1.0 | The Apple, Linux, Android, FreeBSD and OpenBSD marks on the download page; the Discord, itch.io, GitHub and Ko-fi marks in the game's Community menu |

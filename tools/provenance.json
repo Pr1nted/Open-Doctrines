@@ -135,6 +135,13 @@
       "what": "ZIP and deflate for .odmap, .odsv and .odmod"
     },
     {
+      "name": "libdeflate",
+      "version": "1.24",
+      "license": "MIT",
+      "url": "https://github.com/ebiggers/libdeflate",
+      "what": "Deflate, inflate and CRC-32 for .odsv saves"
+    },
+    {
       "name": "stb_image / stb_image_write",
       "version": "vendored",
       "license": "Public domain (Unlicense/MIT dual)",
