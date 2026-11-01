@@ -43,6 +43,13 @@ on:
     branches: [main]
     tags-ignore: ["**"]        # tags are release-game.yml's job, not this one
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  # THE NIGHTLY RUN is where everything runs. A pull request runs the core tier
+  # and whatever its paths can break (tools/ci_plan.py); this is the run that
+  # catches a regression on a ninth CPU that nothing in the diff pointed at,
+  # and the one that keeps the compiler caches warm for the day's PRs.
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
   workflow_call:               # release-game.yml calls this before publishing
 
@@ -70,7 +77,29 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # WHAT THIS CHANGE NEEDS, and the cheap checks that sink a run before it
+  # costs anything. Every job below waits on this one, so a tool missing from
+  # the index or a release name out of step fails in a minute on one Linux
+  # runner instead of an hour later on thirty.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      wide: ${{ steps.p.outputs.wide }}
+      full: ${{ steps.p.outputs.full }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }    # the diff against the PR's base
+      - name: Tool index
+        run: python3 tools/help.py --check
+      - name: Release names agree
+        run: python3 tools/check_release_names.py
+      - id: p
+        name: Which tiers
+        run: python3 tools/ci_plan.py
+
   qualify:
+    needs: plan
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     # A hang must not cost six hours. GitHub's default job timeout is 360
@@ -103,20 +132,24 @@ jobs:
     strategy:
       fail-fast: false     # one platform failing must not hide the others
       matrix:
+        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
         include:
-          - { name: macos-arm64,  os: macos-14 }
+          - { name: macos-arm64,  os: macos-15 }
           # macos-15-intel, NOT macos-13. GitHub retired the macos-13 image, so
           # a job asking for it is never scheduled -- it sits queued forever
           # rather than failing. That is worse than a failure: the run never
           # finishes, it holds the concurrency group, and every later push is
           # cancelled behind it. Six consecutive runs were lost that way before
           # anyone noticed macos-x64 had never once completed.
-          - { name: macos-x64,    os: macos-15-intel }
+          - { name: macos-x64,    os: macos-15-intel, tier: wide }
           - { name: windows-x64,  os: windows-2022 }
           - { name: linux-x64,    os: ubuntu-22.04 }
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: qualify-${{ matrix.name }}
 
       # Pinned, not inherited. The stand-in account service signs with WebCrypto
       # Ed25519, which arrived in node 18 -- and on older node the file does not
@@ -229,6 +262,74 @@ jobs:
       - name: Qualify
         shell: bash
         run: tools/qualify.sh build
+
+      # ── THE TRANSLATION LAYER, folded in from its own job ──
+      #
+      # It was a separate job on these same three platforms: a second runner,
+      # a second checkout and a second toolchain setup to build two test
+      # programs. Here it is a second build tree on the runner that is already
+      # set up. zenity only for this step, so the main suite above still runs
+      # its file chooser test the way it always has (see that test).
+      - name: Translation layer -- zenity for the file chooser
+        if: runner.os == 'Linux' && matrix.name == 'linux-x64'
+        run: sudo apt-get install -y zenity xvfb
+      - name: Translation layer -- build and run
+        if: matrix.name != 'macos-x64'
+        shell: bash
+        run: |
+          set -e
+          cmake -B build-gdtl -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
+                -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
+          cmake --build build-gdtl --config Release --target GdtlTest NativeDialogTest -j 4
+
+          # Both layouts, for the same reason as everywhere else here.
+          find_test() {
+            for c in "build-gdtl/$1" "build-gdtl/$1.exe" "build-gdtl/Release/$1.exe"; do
+              [ -f "$c" ] && { echo "$c"; return 0; }
+            done
+            echo "no $1 was built" >&2; return 1
+          }
+
+          # Under a display on Linux: with one the chooser test asks the real
+          # zenity whether it takes these flags, without one it can only check
+          # the command it built. Windows needs no display -- the PowerShell
+          # probe stops short of showing the window.
+          # An if, not `[ ... ] && RUN=...`: this step runs under `set -e`, and
+          # a false test as the last command of a line is a non-zero status,
+          # which would end the step on the two platforms that are not Linux.
+          RUN=""
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
+          $RUN "$(find_test NativeDialogTest)"
+          "$(find_test GdtlTest)"
+
+      # ── THE DEDICATED SERVER LINKS NOTHING GRAPHICAL, folded in ──
+      #
+      # The server job built and smoke-tested OpenDoctrinesServer on these
+      # platforms, which qualify.sh already does ("the dedicated server
+      # starts"). What it alone checked was this, now run on the binary this
+      # job built.
+      - name: The binary needs no graphics stack
+        if: runner.os != 'Windows' && matrix.name != 'macos-x64'
+        shell: bash
+        run: |
+          set -e
+          bin=build/OpenDoctrinesServer
+          test -x "$bin" || { echo "no server binary at $bin"; exit 1; }
+          if [ "$RUNNER_OS" = "Linux" ]; then libs=$(ldd "$bin"); else libs=$(otool -L "$bin"); fi
+          echo "$libs"
+          for bad in raylib libGL libGLX libEGL libX11 libXrandr libXi libXcursor \
+                     libXinerama libwayland libxkbcommon libasound OpenGL.framework; do
+            if printf '%s' "$libs" | grep -qi -- "$bad"; then
+              echo "FAIL: the dedicated server links $bad -- it is meant to run headless"
+              exit 1
+            fi
+          done
+          echo "ok: links nothing graphical"
+
+  # Every platform's save, read on every platform. This is the half that a
+  # per-platform test cannot do: "it round-trips here" is not "the file one
+  # machine writes is the file another can open", and the report that started
+  # this was exactly the second thing failing while the first was fine.
 
       # ── A FINGER REACHES THE GAME ──
       #
@@ -486,6 +587,8 @@ jobs:
   # prebuilt in third_party/odseal (see docs/odseal.md); without it configure
   # stops and says so, which is the right failure.
   other-arch:
+    needs: plan
+    if: needs.plan.outputs.wide == 'true'
     name: ${{ matrix.name }} (build + suite)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -500,6 +603,9 @@ jobs:
           - { name: linux-riscv64, os: ubuntu-24.04, deb_arch: riscv64, triplet: riscv64-linux-gnu,   toolchain: linux-riscv64, expect: riscv64 }
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: cross-${{ matrix.name }}
       - uses: actions/setup-node@v5
         with: { node-version: "22" }
       - uses: actions/setup-python@v6
@@ -671,6 +777,7 @@ jobs:
           done
 
   race:
+    needs: plan
     name: thread safety (tsan)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -692,6 +799,7 @@ jobs:
         run: tests/net_race_test.sh "${{ github.workspace }}/build-tsan"
 
   fuzz:
+    needs: plan
     name: parsers (asan + ubsan)
     runs-on: ubuntu-22.04
     timeout-minutes: 25
@@ -714,15 +822,24 @@ jobs:
   # run side by side here and the package job below puts all four into the
   # one APK that is published.
   android-lib:
+    needs: plan
     name: android lib (${{ matrix.abi }})
     runs-on: ubuntu-22.04
     timeout-minutes: 40      # same reason as qualify: a link that hangs is not free
     strategy:
       fail-fast: false
       matrix:
-        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
+        include:
+          - { abi: arm64-v8a }
+          - { abi: armeabi-v7a, tier: wide }
+          - { abi: x86_64,      tier: wide }
+          - { abi: x86,         tier: wide }
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/compiler-cache
+        with:
+          key: android-${{ matrix.abi }}
 
       # The runner ships an SDK and an NDK already; name the NDK explicitly so a
       # runner image bump cannot silently change the compiler under us.
@@ -753,7 +870,7 @@ jobs:
             -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
             -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=ON \
             -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev
-          cmake --build build-android -j 2
+          cmake --build build-android -j 4
 
       # The library that is about to be packaged, not a build made to test
       # with: if the address is not in it, the Multiplayer screen on a phone
@@ -821,9 +938,26 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+      # ── THE TRANSLATION LAYER ON ANDROID, folded in from its own job ──
+      # A second build tree on the runner that already found the NDK.
+      - name: Translation layer -- cross-compile the test
+        if: matrix.abi == 'arm64-v8a'
+        run: |
+          set -e
+          cmake -B build-gdtl-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
+            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF -DOD_ENABLE_GDTL=ON
+          cmake --build build-gdtl-android --target GdtlTest -j 4
+          file build-gdtl-android/GdtlTest
+          file build-gdtl-android/GdtlTest | grep -q "ARM aarch64" || {
+            echo "that is not an Android binary"; exit 1; }
+
   android:
     name: android (APK, all ABIs)
-    needs: android-lib
+    needs: [plan, android-lib]
+    if: needs.plan.outputs.wide == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -932,6 +1066,7 @@ jobs:
           if-no-files-found: error
 
   web:
+    needs: plan
     name: web (emscripten)
     runs-on: ubuntu-22.04
     timeout-minutes: 30      # same reason as qualify; a link that hangs is not free
@@ -947,7 +1082,7 @@ jobs:
       - name: Build
         run: |
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
-          emmake cmake --build build-web -j 2
+          emmake cmake --build build-web -j 4
 
       # A link that "succeeded" without producing a loadable module is a
       # failure that reports success, so name the four files that must exist.
@@ -1047,117 +1182,9 @@ jobs:
   # Three platforms build the test and RUN it. Android cannot run here, so it
   # is built and its architecture checked. The web runs under node with
   # NODERAWFS, which is the same code a browser executes against MEMFS.
-  gdtl:
-    name: translation layer (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: linux-x64,   os: ubuntu-22.04 }
-          - { name: macos-arm64, os: macos-14 }
-          - { name: windows-x64, os: windows-2022 }
-    steps:
-      - uses: actions/checkout@v5
-
-      # zenity, so the file chooser test builds its command through the real
-      # zenity branch rather than the "no helper installed" one. The qualify
-      # job installs neither, so this is the only place that path is exercised.
-      #
-      # The test's last step -- asking the installed zenity whether it accepts
-      # those flags -- does NOT run here, and the test says so rather than
-      # pretending. zenity pulls in xdg-desktop-portal, and on a runner with no
-      # desktop it starts GTK and never returns; it hung this job at its thirty
-      # minute cap three runs running before the test learned to bound it.
-      # Reproduced with Xvfb and a real session bus, and it hangs there too.
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
-            libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev \
-            zenity xvfb
-
-      # Same generator as everywhere else on Windows -- see the qualify job.
-      - name: MSVC environment (for Ninja)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-      - name: Build with Ninja
-        if: runner.os == 'Windows'
-        shell: bash
-        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
-
-      - name: Build and run
-        shell: bash
-        run: |
-          set -e
-          cmake -B build-gdtl -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
-                -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF
-          cmake --build build-gdtl --config Release --target GdtlTest NativeDialogTest -j 4
-
-          # Both layouts, for the same reason as everywhere else here.
-          find_test() {
-            for c in "build-gdtl/$1" "build-gdtl/$1.exe" "build-gdtl/Release/$1.exe"; do
-              [ -f "$c" ] && { echo "$c"; return 0; }
-            done
-            echo "no $1 was built" >&2; return 1
-          }
-
-          # Under a display on Linux: with one the chooser test asks the real
-          # zenity whether it takes these flags, without one it can only check
-          # the command it built. Windows needs no display -- the PowerShell
-          # probe stops short of showing the window.
-          # An if, not `[ ... ] && RUN=...`: this step runs under `set -e`, and
-          # a false test as the last command of a line is a non-zero status,
-          # which would end the step on the two platforms that are not Linux.
-          RUN=""
-          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; fi
-          $RUN "$(find_test NativeDialogTest)"
-          "$(find_test GdtlTest)"
-
-  gdtl-android:
-    name: translation layer (android)
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - name: Locate the NDK
-        run: |
-          set -e
-          NDK="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
-          test -n "$NDK" || { echo "no NDK on this runner"; exit 1; }
-          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
-      # Built, not run: this is an aarch64 Android binary on an x86 Linux
-      # runner. What it proves is that the layer compiles and LINKS for the
-      # platform -- which is where a #ifdef that forgot Android shows up, since
-      # __linux__ is defined there too.
-      - name: Cross-compile the test
-        run: |
-          set -e
-          cmake -B build-gdtl-android \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
-            -DPLATFORM=Android -DCMAKE_BUILD_TYPE=Release \
-            -DOD_ENABLE_MODS=OFF -DOD_ENABLE_NET=OFF -DOD_ENABLE_GDTL=ON
-          cmake --build build-gdtl-android --target GdtlTest -j 4
-          file build-gdtl-android/GdtlTest
-          file build-gdtl-android/GdtlTest | grep -q "ARM aarch64" || {
-            echo "that is not an Android binary"; exit 1; }
-
-  gdtl-web:
-    name: translation layer (web)
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - uses: mymindstorm/setup-emsdk@v14
-      # Run, not merely built. NODERAWFS hands it node's filesystem in place of
-      # the MEMFS a browser gives it; the conversion reads and writes ordinary
-      # paths either way, so this exercises the same code the download path
-      # runs before it hands the browser a blob.
-      - name: Build and run under node
+      # ── THE TRANSLATION LAYER IN THE BROWSER BUILD, folded in ──
+      # A second build tree on the runner that already has Emscripten.
+      - name: Translation layer -- build and run under node
         run: |
           set -e
           emcmake cmake -B build-gdtl-web -DCMAKE_BUILD_TYPE=Release -DOD_ENABLE_GDTL=ON \
@@ -1165,97 +1192,18 @@ jobs:
           emmake cmake --build build-gdtl-web --target GdtlTest -j 4
           node build-gdtl-web/GdtlTest.js
 
-  server:
-    name: server (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: linux-x64,   os: ubuntu-22.04 }
-          - { name: macos-arm64, os: macos-14 }
-          - { name: windows-x64, os: windows-2022 }
-    steps:
-      - uses: actions/checkout@v5
-
-      # raylib is configured even for this target -- the server compiles
-      # against its HEADERS so the two cannot disagree about a struct -- and
-      # raylib's own CMakeLists wants the X11/GL/ALSA development headers on
-      # Linux before it will configure. So they are installed to BUILD it. The
-      # point of the server is that none of them are needed to RUN it, and that
-      # is what the link check below actually asserts.
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
-                                  libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
-                                  libxcursor-dev libxinerama-dev libwayland-dev \
-                                  libxkbcommon-dev libudev-dev
-
-      # Same generator as the qualify job, for the same reason -- see the note
-      # on it there. Kept in step deliberately: two Windows jobs building the
-      # same code through different generators is a difference that only ever
-      # shows up as one of them failing.
-      - name: MSVC environment (for Ninja)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build the server only
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then export CMAKE_GENERATOR=Ninja; fi
-          cmake -B build-server -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-server --config Release --target OpenDoctrinesServer -j 2
-
-      - name: Smoke test
-        shell: bash
-        run: tests/server_smoke_test.sh build-server
-
-      # THE PROPERTY THE SERVER EXISTS FOR.
-      #
-      # "Runs on a VPS or in a container" is a claim about what the binary
-      # needs at runtime, and it is one line of CMake away from being false --
-      # target_link_libraries(OpenDoctrinesServer raylib) would build, pass
-      # every test, and quietly require a GPU stack on the host. Nothing else
-      # in this repository would notice. This does.
-      #
-      # Windows is left out rather than faked: dumpbin needs a developer shell,
-      # and asserting nothing is worse than asserting it somewhere else.
-      - name: The binary needs no graphics stack
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -e
-          bin=build-server/OpenDoctrinesServer
-          test -x "$bin" || { echo "no server binary at $bin"; exit 1; }
-          if [ "$RUNNER_OS" = "Linux" ]; then libs=$(ldd "$bin"); else libs=$(otool -L "$bin"); fi
-          echo "$libs"
-          for bad in raylib libGL libGLX libEGL libX11 libXrandr libXi libXcursor \
-                     libXinerama libwayland libxkbcommon libasound OpenGL.framework; do
-            if printf '%s' "$libs" | grep -qi -- "$bad"; then
-              echo "FAIL: the dedicated server links $bad -- it is meant to run headless"
-              exit 1
-            fi
-          done
-          echo "ok: links nothing graphical"
-
-  # Every platform's save, read on every platform. This is the half that a
-  # per-platform test cannot do: "it round-trips here" is not "the file one
-  # machine writes is the file another can open", and the report that started
-  # this was exactly the second thing failing while the first was fine.
   save-exchange:
     name: saves cross-load (${{ matrix.name }})
-    needs: qualify
+    needs: [plan, qualify]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
+        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
         include:
-          - { name: macos-arm64, os: macos-14 }
-          - { name: macos-x64,   os: macos-15-intel }
+          - { name: macos-arm64, os: macos-15 }
+          - { name: macos-x64,   os: macos-15-intel, tier: wide }
           - { name: windows-x64, os: windows-2022 }
           - { name: linux-x64,   os: ubuntu-22.04 }
 

@@ -143,16 +143,45 @@ and where there are none.
 - **No sandbox is perfect.** The mod system is designed so that a bug is a bug
   rather than a missing check, but it is software. LICENSE clause 7 is the
   legal version of this sentence.
-- **The updater verifies integrity, not provenance.** It refuses any download
-  not served from the release hosts, and checks the SHA-256 that the release
-  metadata carries — but that digest arrives over the same connection as the
-  file, so it catches a truncated or corrupted download, not a compromised
-  GitHub account. There is no separate signing key. Saying so is more useful
-  than implying the checksum proves something it does not.
+- **A mod's boundary is the wasm sandbox *and* the host decoders.** The sandbox
+  is airtight for code, but a mod ships bytes too — a thumbnail, images it draws
+  through `ui.draw_image`, sounds it plays through `audio.play` — and those are
+  decoded by the game's own PNG and audio decoders (stb_image, dr_wav and the
+  rest), which run in the host process, outside the sandbox. A crafted asset
+  that triggers memory corruption in one of those decoders is a code-execution
+  path the wasm boundary does not cover, which is why the same decoders are
+  listed under **File parsing** in scope above. The mod layer bounds what it can
+  — input sizes are capped and an image whose declared dimensions would exceed
+  `4096×4096` is refused before it reaches the decoder, so a decompression bomb
+  cannot OOM the host — but the decoders' own robustness is the real control,
+  and hardening them (including fuzzing) is where that work lives.
+- **The updater verifies provenance when a signing key is pinned.** Releases
+  carry a manifest of each asset's SHA-256, signed with an Ed25519 key that
+  lives offline (a CI secret, never on the release host). The client verifies it
+  against the public key compiled into `src/ReleaseSigningKey.h` and installs
+  only what that offline key signed — so swapping an asset on a compromised
+  GitHub account no longer suffices, because the digest it would also have to
+  forge is signed by a key GitHub never holds. A release that is unsigned or
+  whose signature does not verify is refused for self-install and the player is
+  sent to the release page; refusing the unsigned case is what stops an attacker
+  from stripping the signature to fall back to the weaker check. The bare
+  SHA-256 the API reports is still checked as a cheap integrity guard, and a
+  build with no key pinned (a fork that has not run `tools/gen_release_key.py`)
+  keeps the old integrity-only behaviour. The remaining trust is that the
+  **right** public key is compiled in, which rests on the source, not on GitHub.
 - **The builds are not code-signed.** The Windows build is unsigned, which is
   why SmartScreen objects to it, and the Android APK is signed with a debug
-  key. Neither is a certificate you can check anything against. Until that
-  changes, the provenance of a binary rests on where you downloaded it from.
+  key. Neither is a certificate you can check anything against, so the OS-level
+  provenance of the *first* download rests on where you got it from. (What the
+  update path verifies is separate and now cryptographic: see the signed-release
+  bullet above — once you have a trusted copy, its updates are provenance-checked
+  against a key no release host holds.) Closing the first-download gap needs
+  paid certificates this project does not hold: an Authenticode certificate to
+  sign the Windows build (and, for the sharpest result, an EV certificate, which
+  earns SmartScreen reputation immediately), an Apple Developer ID plus
+  notarization for macOS, and a real upload-signing key for the Play Store APK.
+  Each is a credential to provision rather than code to write; until then the
+  signed update manifest is the strongest provenance control in the chain.
 - **A blob store can destroy a long-form turn**, which is an outage rather
   than a rigged game. The distinction is deliberate and is documented where
   the code lives.

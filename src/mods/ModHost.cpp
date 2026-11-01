@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <vector>
 
 ModHostContext g_modHost;
@@ -14,7 +15,15 @@ ModGameAccess* g_modGame = nullptr;
 
 namespace {
 
+// The mod log is written by pushLog from every host call that logs, and read by
+// the mod menu and tests. A host call can arrive on the game thread or on the
+// async network pump, exactly as ModProtected's counters can -- and ModProtected
+// locks for that reason. This guards the log the same way, so the two cannot
+// disagree about whether cross-thread host calls are possible: they are, and
+// both lock. modHostLog() hands back a COPY taken under the lock rather than a
+// reference into a vector another thread may be reallocating.
 std::vector<ModLogLine> g_log;
+std::mutex g_logMutex;
 constexpr size_t kMaxLogLines = 512;
 
 // WAMR hands every native its execution environment as the first argument. The
@@ -24,12 +33,26 @@ using ExecEnv = void*;
 
 ModInstance* self(ExecEnv e) { return modCurrentInstance(e); }
 
+// Defence in depth behind the instantiation gate. Every native that reaches the
+// game re-resolves its instance and re-checks the capability, so that even if a
+// future import-resolution bug let an un-granted module through, the function
+// still refuses. Defined here, before the first native, so the 1.0 reads use it
+// too -- they predate the macro and relied on the load-time gate alone, which is
+// the one inconsistency a reader (and an auditor) would trip over.
+// `(void)mi;` keeps it quiet for the natives that only needed the capability
+// check and never touch the instance again.
+#define MOD_GUARD(bit, fail) \
+    ModInstance* mi = self(e); \
+    if (!mi || !mi->has(bit) || !g_modGame) return fail; \
+    (void)mi;
+
 void pushLog(const std::string& id, int level, std::string text) {
     if (text.size() > 2048) text.resize(2048);
-    if (g_log.size() >= kMaxLogLines) g_log.erase(g_log.begin());
     static const char* kNames[] = {"TRACE", "INFO", "WARN", "ERROR"};
     const char* lname = kNames[(level < 0 || level > 3) ? 1 : level];
     printf("[MOD %s] %s: %s\n", id.c_str(), lname, text.c_str());
+    std::lock_guard<std::mutex> lk(g_logMutex);
+    if (g_log.size() >= kMaxLogLines) g_log.erase(g_log.begin());
     g_log.push_back({id, std::move(text), level});
 }
 
@@ -219,26 +242,26 @@ uint32_t ui_button(ExecEnv e, uint32_t panel, int32_t x, int32_t y,
 
 constexpr uint32_t kInvalid = 0xFFFFFFFFu;
 
+// The 1.0 reads re-check MODULE_GAMESTATE_READ at call time, like every 1.1+
+// function does -- they used to rely on the instantiation gate alone, the one
+// defence-in-depth gap an audit could point at.
 uint32_t gs_turn_number(ExecEnv e) {
-    (void)e;
-    return g_modGame ? g_modGame->turnNumber() : 0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return g_modGame->turnNumber();
 }
 
 uint32_t gs_country_count(ExecEnv e) {
-    (void)e;
-    return g_modGame ? g_modGame->countryCount() : 0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return g_modGame->countryCount();
 }
 
 uint32_t gs_country_at(ExecEnv e, uint32_t index) {
-    (void)e;
-    return g_modGame ? g_modGame->countryAt(index) : kInvalid;
+    MOD_GUARD(MODULE_GAMESTATE_READ, kInvalid) return g_modGame->countryAt(index);
 }
 
 // Two-call sizing: returns the full byte length and writes at most `cap`. A
 // return greater than cap means truncation, not failure.
 uint32_t gs_country_name(ExecEnv e, uint32_t cid, uint32_t bufPtr, uint32_t cap) {
-    ModInstance* mi = self(e);
-    if (!mi || !g_modGame || !g_modGame->countryExists(cid)) return 0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0)
+    if (!g_modGame->countryExists(cid)) return 0;
     std::string n = g_modGame->countryName(cid);
     if (cap > 0 && bufPtr != 0) {
         uint32_t n2 = (uint32_t)n.size() < cap ? (uint32_t)n.size() : cap;
@@ -248,41 +271,36 @@ uint32_t gs_country_name(ExecEnv e, uint32_t cid, uint32_t bufPtr, uint32_t cap)
 }
 
 double gs_country_treasury(ExecEnv e, uint32_t cid) {
-    (void)e;
-    if (!g_modGame || !g_modGame->countryExists(cid)) return 0.0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0.0)
+    if (!g_modGame->countryExists(cid)) return 0.0;
     return g_modGame->countryTreasury(cid);
 }
 
 uint32_t gs_country_province_count(ExecEnv e, uint32_t cid) {
-    (void)e;
-    if (!g_modGame || !g_modGame->countryExists(cid)) return 0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0)
+    if (!g_modGame->countryExists(cid)) return 0;
     return g_modGame->countryProvinceCount(cid);
 }
 
 int64_t gs_province_population(ExecEnv e, uint32_t pid) {
-    (void)e;
-    return g_modGame ? (int64_t)g_modGame->provincePopulation(pid) : 0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return (int64_t)g_modGame->provincePopulation(pid);
 }
 
 uint32_t gs_province_owner(ExecEnv e, uint32_t pid) {
-    (void)e;
-    return g_modGame ? g_modGame->provinceOwner(pid) : kInvalid;
+    MOD_GUARD(MODULE_GAMESTATE_READ, kInvalid) return g_modGame->provinceOwner(pid);
 }
 
 // Monuments. The index, not the key: see ModGameAccess::provinceMonument.
 int32_t gs_province_monument(ExecEnv e, uint32_t pid) {
-    (void)e;
-    return g_modGame ? g_modGame->provinceMonument(pid) : -1;
+    MOD_GUARD(MODULE_GAMESTATE_READ, -1) return g_modGame->provinceMonument(pid);
 }
 
 int32_t gs_province_monument_level(ExecEnv e, uint32_t pid) {
-    (void)e;
-    return g_modGame ? g_modGame->provinceMonumentLevel(pid) : 0;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return g_modGame->provinceMonumentLevel(pid);
 }
 
 uint32_t gs_province_monument_active(ExecEnv e, uint32_t pid) {
-    (void)e;
-    return (g_modGame && g_modGame->provinceMonumentActive(pid)) ? 1u : 0u;
+    MOD_GUARD(MODULE_GAMESTATE_READ, 0) return g_modGame->provinceMonumentActive(pid) ? 1u : 0u;
 }
 
 // ---------------------------------------------------------------- Assets --
@@ -389,6 +407,10 @@ uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_NET) || !g_netBridge.send) return 0;
     if (dataLen > 8192) return 0;
+    // Per-turn flood cap: without this the browser backend, which has no fuel,
+    // lets a mod spray the relay from a hook. Charged before the copy so a
+    // refused send costs nothing.
+    if (!mi->chargeNet(dataLen)) return 0;
     std::vector<uint8_t> buf(dataLen);
     if (dataLen && !mi->memRead(dataPtr, dataLen, buf.data())) return 0;
     // The mod id is stamped HERE, by the host. A mod cannot send as another.
@@ -790,6 +812,11 @@ int32_t map_morph_province(ExecEnv e, uint32_t pid, uint32_t pathPtr,
                            uint32_t pathLen, uint32_t mode) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_MAP_WRITE) || !g_modGame) return 0;
+    // mode is an enum in disguise: 0 = move the border, 1 = keep inside the
+    // country. Reject anything else at the boundary rather than trusting the
+    // game to treat an out-of-range value as one of the two -- the ABI defines
+    // exactly these, and readString already bounds the path (<= 1 MiB).
+    if (mode > 1) return 0;
     std::string path;
     if (!mi->readString(pathPtr, pathLen, path)) return 0;
     const int moved = g_modGame->morphProvince(pid, path, mode);
@@ -1422,11 +1449,6 @@ uint32_t prot_mod_name(ExecEnv e, uint32_t index, uint32_t buf, uint32_t cap) {
     return retStr(mi, g_listBridge.name(index), buf, cap);
 }
 
-#define MOD_GUARD(bit, fail) \
-    ModInstance* mi = self(e); \
-    if (!mi || !mi->has(bit) || !g_modGame) return fail; \
-    (void)mi;
-
 // ---- military.read ----
 
 uint32_t mil_ship_count(ExecEnv e) {
@@ -1909,7 +1931,9 @@ uint32_t map_point_is_land(ExecEnv e, double lon, double lat) {
     MOD_GUARD(MODULE_MAP, 0) return g_modGame->pointIsLand(lon, lat) ? 1u : 0u;
 }
 
-#undef MOD_GUARD
+// MOD_GUARD stays defined to end of file: it is now the one guard every native
+// uses, including the 1.0 gs_* reads above and the fog reads below. (ED_GUARD is
+// still scoped to the editor section, which adds its own editorActive() gate.)
 
 // ---- mapeditor ----
 //
@@ -2070,44 +2094,46 @@ uint32_t neural_model_loaded(ExecEnv e) {
 // has() is also what a REVOKED capability answers -- a grant can be taken away
 // between the link and the call.
 
+// The fog reads re-check MODULE_FOG at call time, like the fog writes below
+// already re-check MODULE_FOG_WRITE.
 int32_t fog_enabled(ExecEnv e) {
-    (void)e; return g_modGame && g_modGame->fogEnabled() ? 1 : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogEnabled() ? 1 : 0;
 }
 int32_t fog_country_sees(ExecEnv e, uint32_t cid) {
-    (void)e; return g_modGame && g_modGame->fogCountrySees(cid) ? 1 : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogCountrySees(cid) ? 1 : 0;
 }
 int32_t fog_province_visible(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame && g_modGame->fogProvinceVisible(cid, pid) ? 1 : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogProvinceVisible(cid, pid) ? 1 : 0;
 }
 int32_t fog_province_seen_turn(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogProvinceSeenTurn(cid, pid) : -1;
+    MOD_GUARD(MODULE_FOG, -1) return g_modGame->fogProvinceSeenTurn(cid, pid);
 }
 uint32_t fog_known_owner(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogKnownOwner(cid, pid) : kInvalid;
+    MOD_GUARD(MODULE_FOG, kInvalid) return g_modGame->fogKnownOwner(cid, pid);
 }
 int32_t fog_point_visible(ExecEnv e, uint32_t cid, double x, double y) {
-    (void)e; return g_modGame && g_modGame->fogPointVisible(cid, x, y) ? 1 : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogPointVisible(cid, x, y) ? 1 : 0;
 }
 int32_t fog_ship_visible(ExecEnv e, uint32_t cid, uint32_t ship) {
-    (void)e; return g_modGame && g_modGame->fogShipVisible(cid, ship) ? 1 : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogShipVisible(cid, ship) ? 1 : 0;
 }
 int64_t fog_intel_garrison(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogIntelGarrison(cid, pid) : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogIntelGarrison(cid, pid);
 }
 int64_t fog_intel_population(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogIntelPopulation(cid, pid) : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogIntelPopulation(cid, pid);
 }
 int32_t fog_intel_industry(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogIntelIndustry(cid, pid) : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogIntelIndustry(cid, pid);
 }
 int32_t fog_intel_fort(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogIntelFort(cid, pid) : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogIntelFort(cid, pid);
 }
 int32_t fog_intel_port(ExecEnv e, uint32_t cid, uint32_t pid) {
-    (void)e; return g_modGame ? g_modGame->fogIntelPort(cid, pid) : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogIntelPort(cid, pid);
 }
 int32_t fog_grant_count(ExecEnv e, uint32_t cid) {
-    (void)e; return g_modGame ? g_modGame->fogGrantCount(cid) : 0;
+    MOD_GUARD(MODULE_FOG, 0) return g_modGame->fogGrantCount(cid);
 }
 
 int32_t fog_add_sight(ExecEnv e, uint32_t cid, double x, double y, double r) {
@@ -2587,7 +2613,16 @@ void ModConflicts::beginTurn(int turn) {
 void ModConflicts::recordWrite(const std::string& modId,
                                const std::string& target,
                                const std::string& value) {
-    auto& latest = m_thisTurn[target];
+    // Bound distinct targets per turn (see kMaxTargetsPerTurn): once the cap is
+    // reached, a target we have not seen this turn is dropped rather than
+    // allocated, so a mod cannot grow this map without limit where no fuel stops
+    // it. A target already in the map keeps clash-checking.
+    auto it = m_thisTurn.find(target);
+    if (it == m_thisTurn.end()) {
+        if (m_thisTurn.size() >= kMaxTargetsPerTurn) return;
+        it = m_thisTurn.emplace(target, std::map<std::string, std::string>{}).first;
+    }
+    auto& latest = it->second;
 
     for (const auto& other : latest) {
         if (other.first == modId) continue;     // a mod may overwrite itself
@@ -2868,5 +2903,11 @@ void ModUI::clear() {
     m_nextId = 1;
 }
 
-const std::vector<ModLogLine>& modHostLog() { return g_log; }
-void modHostLogClear() { g_log.clear(); }
+std::vector<ModLogLine> modHostLog() {
+    std::lock_guard<std::mutex> lk(g_logMutex);
+    return g_log;                  // a snapshot, so the caller never holds a
+}                                  // reference into a vector pushLog may grow
+void modHostLogClear() {
+    std::lock_guard<std::mutex> lk(g_logMutex);
+    g_log.clear();
+}
