@@ -39,6 +39,7 @@
 // between versions lingers; that is the right way round.
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -87,6 +88,8 @@ public:
         std::string assetUrl;     // the archive for THIS platform, if any
         long long   assetSize = 0;// what the API says it weighs, for progress
         std::string sha256;       // as reported by the API, may be empty
+        std::string manifestUrl;    // release.manifest (signed), if present
+        std::string manifestSigUrl; // release.manifest.sig, if present
         std::string notes;        // first lines of the release body
         std::string error;        // why it failed, in a player's words
         int         percent = 0;  // download progress, 0-100
@@ -164,6 +167,33 @@ public:
     static bool isReleaseHostUrl(const std::string& url);
 
     static std::string sha256Hex(const std::string& bytes);
+
+    // True when a release-signing public key is compiled in (ReleaseSigningKey.h
+    // is not all-zero). When it is, the updater REQUIRES a valid signed manifest
+    // before it will self-install -- an unsigned or tampered release is refused
+    // and the player is sent to the release page to install by hand. A fork that
+    // has not run tools/gen_release_key.py pins no key, and the updater keeps its
+    // old integrity-only behaviour.
+    static bool releaseKeyPinned();
+
+    // The SHA-256 the SIGNED manifest records for `assetName`, or "" if the
+    // signature does not verify against the pinned key, the manifest is not for
+    // `version`, or it does not list the asset. `sig` is the 64 raw bytes of the
+    // Ed25519 signature over `manifest`.
+    static std::string verifiedAssetSha(const std::string& manifest,
+                                        const std::string& sig,
+                                        const std::string& version,
+                                        const std::string& assetName);
+
+    // The same, against a caller-supplied public key. The one above passes the
+    // compiled-in key; this seam lets tests/release_signing_test drive the whole
+    // parse-and-verify path with a throwaway fixture key, so no private key is
+    // ever needed in the tree.
+    static std::string verifiedAssetShaWithKey(const std::string& manifest,
+                                               const std::string& sig,
+                                               const std::string& version,
+                                               const std::string& assetName,
+                                               const uint8_t pub[32]);
 
     // Copies `staged` over `install`, overwriting what the release contains
     // and removing nothing. Returns false and changes nothing further on the

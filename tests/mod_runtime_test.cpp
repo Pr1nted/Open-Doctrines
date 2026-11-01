@@ -20,6 +20,7 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -292,6 +293,39 @@ int main(int argc, char** argv) {
             bool cheap = mi->callExport("t_env_size", nullptr, 0, nullptr, err);
             check("a per-turn hook is still held to fuelPerTurn", !cheap, err);
         }
+    }
+
+    // ---- the instance co-owns its package -----------------------------------
+    // A mod reads its own assets and audio out of the ModPackage through a raw
+    // pointer. The instance now holds a SHARE of that package, so dropping the
+    // manager's own copy -- which hot-reload, disable, and a failed mid-session
+    // update all do -- cannot pull the bytes out from under a live instance.
+    // This is the lifetime a raw back-pointer used to leave to convention.
+    printf("\npackage co-ownership\n");
+    {
+        std::weak_ptr<const ModPackage> watch;
+        std::unique_ptr<ModInstance> mi;
+        {
+            auto owner = std::make_shared<ModPackage>();
+            auto r = owner->openFromMemory(
+                packMod(manifestFor("com.test.coown", "\"Core\""), coreWasm), "coown");
+            check("co-own package opens", r == ModLoadResult::Ok, owner->diagnostic());
+            watch = owner;
+            mi = rt.instantiate(owner, MODULE_CORE, err);
+            check("instantiates from a shared_ptr", mi != nullptr, err);
+            // `owner` leaves scope here: the manager's copy of the package is gone.
+        }
+        check("package outlives its owner because the instance co-owns it",
+              !watch.expired());
+        if (mi) {
+            check("the instance still points at a live package",
+                  mi->package() != nullptr);
+            uint32_t ret = 0;
+            bool ok = mi->callExport("mod_load", nullptr, 0, &ret, err);
+            check("a hook still runs after the package owner was dropped", ok, err);
+        }
+        mi.reset();
+        check("dropping the last share frees the package", watch.expired());
     }
 
     // ---- GameState.Write ----------------------------------------------------

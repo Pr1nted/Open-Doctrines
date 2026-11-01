@@ -1287,7 +1287,7 @@ if(OD_ENABLE_NET)
         set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
         FetchContent_Declare(mbedtls
             GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-            GIT_TAG v3.6.2
+            GIT_TAG v3.6.7
             GIT_SHALLOW TRUE
             EXCLUDE_FROM_ALL
         )
@@ -2366,6 +2366,12 @@ if(EMSCRIPTEN)
     target_compile_options(OpenDoctrines PRIVATE -fexceptions)
     target_link_options(OpenDoctrines PRIVATE
         "-sUSE_GLFW=3"
+        # The browser mod backend has no instruction limit of its own, so a mod
+        # hook that loops forever would hang the tab. This installs the gas meter
+        # (globalThis.__odWasmMeter) that the backend uses to rewrite a mod's wasm
+        # with a fuel counter before instantiation; see src/mods/ModRuntime.cpp
+        # (OD_MODS_WEB) and src/mods/wasm_meter.js.
+        "SHELL:--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/src/mods/wasm_meter.js"
         # emscripten_websocket_*; the browser does the TLS.
         "-lwebsocket.js"
         # IDBFS, the only filesystem here that outlives the tab. Without
@@ -3895,6 +3901,7 @@ add_executable(GameUpdatesTest EXCLUDE_FROM_ALL
     tests/game_updates_test.cpp
     src/GameUpdates.cpp
     src/util/RunCurl.cpp
+    src/util/Ed25519.cpp          # GameUpdates verifies the signed release manifest
     tools/map_generator/miniz.c
     tools/map_generator/miniz_tdef.c
     tools/map_generator/miniz_tinfl.c
