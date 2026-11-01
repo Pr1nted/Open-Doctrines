@@ -144,6 +144,9 @@ GROUPS = [
         # DOSBox-X headless and bring back its output and screen, and check
         # the DOS screen layer shows what the game drew (on a Linux host).
         "dos_toolchain.sh", "dos_run.sh", "dos_framebuffer_check.py",
+        # The Wii: build (or check) the Homebrew Channel's SD-card zip --
+        # boot.dol, meta.xml, the 128x48 icon, data.
+        "wii_package.py",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,
