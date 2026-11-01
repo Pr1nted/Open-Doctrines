@@ -728,7 +728,8 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         // file shows its own filename.
         const std::string& fc = cfg.fontChoice;
         label += ": " + (fc == "pixel" ? std::string("Pixel")
-                       : fc == "readable" ? std::string("Readable") : fc);
+                       : fc == "readable" ? std::string("Readable")
+                       : fc == "hyperlegible" ? std::string("Hyperlegible") : fc);
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
     } else if (isVolumeSetting(tab, index)) {
@@ -2346,7 +2347,15 @@ std::string Game::fontOutlinePath() const {
     // and still passes validation -- otherwise fall back to DejaVuSans rather
     // than leave the interface with no font.
     const std::string& c = m_config.fontChoice;
-    if (c != "pixel" && c != "readable") {
+    // Atkinson Hyperlegible: the Braille Institute's face for low vision, every
+    // letter shaped to differ from its neighbours (I/l/1, O/0, b/d). Latin
+    // only, like DejaVuSans's role here; Unifont still fills in everything
+    // else. See NOTICE.md and ACCESSIBILITY.md.
+    if (c == "hyperlegible") {
+        const std::string hl = m_dataDir + "fonts/AtkinsonHyperlegible-Regular.ttf";
+        if (FileExists(hl.c_str())) return hl;
+    }
+    if (c != "pixel" && c != "readable" && c != "hyperlegible") {
         const std::string custom = m_dataDir + "fonts/custom/" + c;
         std::string why;
         if (FileExists(custom.c_str()) && odfont::validate(custom, why))
@@ -2358,10 +2367,10 @@ std::string Game::fontOutlinePath() const {
 }
 
 std::vector<std::string> Game::availableFonts() const {
-    // The ones the Font setting cycles through: the two built-ins, then every
+    // The ones the Font setting cycles through: the three built-ins, then every
     // validated file in data/fonts/custom/. Scanned fresh so a font dropped in
     // while the game runs appears without a restart.
-    std::vector<std::string> list = {"pixel", "readable"};
+    std::vector<std::string> list = {"pixel", "readable", "hyperlegible"};
     const std::string dir = m_dataDir + "fonts/custom";
     if (DirectoryExists(dir.c_str())) {
         FilePathList files = LoadDirectoryFiles(dir.c_str());

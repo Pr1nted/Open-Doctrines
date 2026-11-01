@@ -124,6 +124,13 @@ the same one and wonder why it is not here.
 - **Source:** <https://unifoundry.com/unifont/>
 - **Notes:** CJK and fallback glyph coverage. Unifont is dual-licensed OFL 1.1 / GPLv2+ with a font-embedding exception; OpenDoctrines takes the OFL grant, under which the font may be bundled with and sold as part of a larger work provided it is not sold on its own.
 
+### Atkinson Hyperlegible
+
+- **Files:** `data/fonts/AtkinsonHyperlegible-Regular.ttf`, licence text in `data/fonts/AtkinsonHyperlegible-OFL.txt`
+- **Licence:** SIL OFL 1.1 (Copyright 2020 Braille Institute of America, Inc.)
+- **Source:** <https://github.com/googlefonts/atkinson-hyperlegible>
+- **Notes:** The *Hyperlegible* choice under Settings → Display → Font, for low-vision players. Bundled unmodified with its licence, as the OFL requires; it is not sold on its own.
+
 ## Artwork
 
 - **SVG symbol set** — Heraldic symbols used by the procedural flag generator. Public domain. Adapted from Wikimedia Commons; all sources public domain. <https://commons.wikimedia.org/>

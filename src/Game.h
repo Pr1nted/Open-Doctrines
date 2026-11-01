@@ -2820,9 +2820,10 @@ public:
     /// every reloadFonts() and whenever the setting changes.
     void applyFontStyle();
     /// The outline face reloadFonts merges with Unifont: the validated imported
-    /// font for m_config.fontChoice, or DejaVuSans for "pixel"/"readable"/invalid.
+    /// font for m_config.fontChoice: Atkinson Hyperlegible for "hyperlegible",
+    /// DejaVuSans for "pixel"/"readable"/invalid.
     std::string fontOutlinePath() const;
-    /// Font setting choices: "pixel", "readable", then every validated file in
+    /// Font setting choices: "pixel", "readable", "hyperlegible", then every validated file in
     /// data/fonts/custom/. Scanned fresh each call.
     std::vector<std::string> availableFonts() const;
     /// Switch language, rebuild the atlas and remember the choice.
