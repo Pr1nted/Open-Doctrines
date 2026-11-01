@@ -14,9 +14,10 @@ for ES, and GLFW 3.4 already knows ANGLE. Two things are missing:
 1. WHERE THE LIBRARY IS. GLFW dlopens EGL and GLES by leaf name
    ("libEGL.dylib"), which on macOS searches DYLD_LIBRARY_PATH, the current
    directory and /usr/lib -- never the folder the game is in, nor an app
-   bundle's Frameworks. On Windows LoadLibrary already looks beside the .exe,
-   so only the Apple names change: @executable_path first, then
-   @executable_path/../Frameworks, then the leaf name as before.
+   bundle's Frameworks. On Windows LoadLibrary already looks beside the .exe.
+   So on Apple: @executable_path first, then @executable_path/../Frameworks,
+   then the leaf name as before; on Linux, $ORIGIN (which glibc expands in a
+   dlopen path) and ANGLE's unversioned names, then the system ones.
 
 2. WHICH BACKEND. OD_ANGLE_BACKEND (metal, vulkan, opengl, d3d11, d3d9, or
    swiftshader -- ANGLE's Vulkan backend on its CPU device) is applied where
@@ -56,6 +57,22 @@ GLES_NEW = '''#elif defined(__APPLE__)
             "@executable_path/libGLESv2.dylib",
             "@executable_path/../Frameworks/libGLESv2.dylib",
             "libGLESv2.dylib",'''
+
+
+EGL_LINUX_OLD = '''#else
+        "libEGL.so.1",'''
+EGL_LINUX_NEW = '''#else
+        // OpenDoctrines (tools/patch_raylib_angle.py): ANGLE beside the game.
+        // glibc expands $ORIGIN in a dlopen path to the calling binary's folder.
+        "$ORIGIN/libEGL.so",
+        "$ORIGIN/libEGL.so.1",
+        "libEGL.so.1",'''
+
+GLES_LINUX_OLD = '''#else
+            "libGLESv2.so.2",'''
+GLES_LINUX_NEW = '''#else
+            "$ORIGIN/libGLESv2.so",
+            "libGLESv2.so.2",'''
 
 DISPLAY_OLD = '''    _glfw.egl.platform = _glfw.platform.getEGLPlatform(&attribs);
     if (_glfw.egl.platform)'''
@@ -146,6 +163,8 @@ F12_DONE = "BEFORE the swap"
 EDITS = [
     ("src/external/glfw/src/egl_context.c", EGL_OLD, EGL_NEW, "@executable_path/libEGL.dylib"),
     ("src/external/glfw/src/egl_context.c", GLES_OLD, GLES_NEW, "@executable_path/libGLESv2.dylib"),
+    ("src/external/glfw/src/egl_context.c", EGL_LINUX_OLD, EGL_LINUX_NEW, "$ORIGIN/libEGL.so"),
+    ("src/external/glfw/src/egl_context.c", GLES_LINUX_OLD, GLES_LINUX_NEW, "$ORIGIN/libGLESv2.so"),
     ("src/external/glfw/src/egl_context.c", DISPLAY_OLD, DISPLAY_NEW, "OD_ANGLE_BACKEND"),
     # Order matters: drop the late capture before adding the early one, or the
     # second anchor would match the block just inserted.
