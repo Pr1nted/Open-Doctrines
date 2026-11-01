@@ -91,9 +91,15 @@ and RISC-V transcripts unchanged; the source tree and zip; the FAT image.
 edition had no network route to 9front.org and so no 9front image to boot.
 The mkfile, `include/od9.h`, `opendoctrines.c`, `odmap.c` and the guest
 driver are written to 9front's documented conventions, but have not been
-compiled by 6c or booted. The workflow's ISO pin (`NINEFRONT_ISO_URL`,
-`NINEFRONT_ISO_SHA256` in `plan9.yml`) is empty for the same reason, and
-until it is filled in the 9front job runs only the host checks and says so.
-The likeliest places for a first run to need a fix: whether QEMU's multiboot
-loader takes `9pc64` directly, the disk names (`/dev/sdC1`, `/dev/sdD0`),
+compiled by 6c or booted. CI pins 9front-11952 (`plan9.yml`).
+
+The guest driver reads the kernel out of the ISO with bsdtar, 7z, isoinfo or
+its own ISO9660 reader, logging what the image is (size, first bytes, gzip,
+ISO9660 and MBR marks). If none can read it, or QEMU's `-kernel` gets nothing
+from it, it boots the image itself with SeaBIOS's serial console turned on
+(fw_cfg `etc/sercon-port`), so 9boot's screen and keyboard are the serial
+line: it presses a key to stop the countdown, types `console=0` and `boot`
+at 9boot's `>` prompt, and goes on as before.
+The likeliest places for a first run to need a fix: 9boot's prompt as
+seen through sercon, the disk names (`/dev/sdC1`, `/dev/sdD0`),
 and whether `<u.h>` on the 9front release has every type `od9.h` names.

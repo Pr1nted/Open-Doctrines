@@ -981,7 +981,8 @@ playing:
   map, no research and no saves.
   [Plan 9](#plan-9--experimental) shares that core, built by 9front's
   compilers; it plays the same transcript on Linux through its own printf,
-  and has not yet been built on 9front by CI (the ISO pin is not filled in).
+  and its CI build inside a pinned 9front ISO under QEMU is still being
+  brought up.
 - **The AI plays a whole game now, and is still not a match for a good
   player.** Both halves of that are worth saying plainly.
 

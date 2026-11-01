@@ -17,13 +17,10 @@
 #          host, the POSIX port and every QEMU board are held to.
 # What it does not prove: odmap's drawing. It is built, not looked at.
 #
-# The 9front ISO is pinned by URL and SHA-256 below. While both are empty, a
-# development run takes the newest ISO on 9front.org (trust on first use) and
-# prints the two values to pin; releases refuse to run unpinned. Both empty until a
-# maintainer fills them in from https://9front.org/iso/ -- the session that
-# wrote this could not reach 9front.org to take a hash it could vouch for, and
-# a guessed one would be worse than none. While they are empty, the 9front
-# job says so in a warning and runs only the host checks.
+# The 9front ISO is pinned by URL and SHA-256 below: 9front-11952, the hash
+# taken by this workflow's trust-on-first-use run. Emptied, a development run
+# takes the newest ISO on 9front.org again and prints the two values to pin;
+# releases refuse to run unpinned.
 #
 # A tag plan9-v* publishes the zip as a release of its own, as freertos-v*
 # and templeos-v* do: a separate build with a separate promise.
@@ -68,8 +65,8 @@ permissions:
 
 env:
   # e.g. https://9front.org/iso/9front-NNNNN.amd64.iso.gz and its sha256sum.
-  NINEFRONT_ISO_URL: ""
-  NINEFRONT_ISO_SHA256: ""
+  NINEFRONT_ISO_URL: "https://9front.org/iso/9front-11952.amd64.iso.gz"
+  NINEFRONT_ISO_SHA256: "59ba79f1304f02c1aae573b337fa2569fc78027ce8e4c2056c4117e971025b91"
 
 jobs:
   guest:
@@ -82,7 +79,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
-            qemu-system-x86 qemu-utils dosfstools mtools libarchive-tools
+            qemu-system-x86 qemu-utils dosfstools mtools libarchive-tools \
+            p7zip-full genisoimage file
 
       - name: The host checks
         run: tests/plan9_test.sh
@@ -144,7 +142,18 @@ jobs:
       - name: Built and played inside 9front
         if: steps.pin.outputs.pinned != '0'
         run: |
-          tests/plan9_test.sh --9front "$ISO"
+          if ! tests/plan9_test.sh --9front "$ISO"; then
+            echo "::group::Diagnostics"
+            ls -la build/plan9/guest || true
+            file build/plan9/guest/*.iso build/plan9/guest/iso/*/* 2>/dev/null || true
+            for l in build/plan9/guest/serial.log*; do
+              echo "== $l (last 80 lines, escapes removed)"
+              sed 's/\x1b\[[0-9;?]*[A-Za-z]//g' "$l" | tr -d '\r' | tail -80
+            done
+            cat build/plan9/9front.diff 2>/dev/null | head -60 || true
+            echo "::endgroup::"
+            exit 1
+          fi
           # the binaries 6l linked in the guest, for the zip
           mkdir -p build/plan9/bin
           for b in 6.opendoctrines 6.odmap; do
@@ -171,7 +180,7 @@ jobs:
             build/plan9/*.txt
             build/plan9/*.diff
             build/plan9/*.log
-            build/plan9/guest/serial.log
+            build/plan9/guest/serial.log*
             build/plan9/guest/transcript.raw
 
   release:

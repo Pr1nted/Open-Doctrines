@@ -40,24 +40,137 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BEGIN, END = "OD-TRANSCRIPT-BEGIN", "OD-TRANSCRIPT-END"
 
 
+def describe(path):
+    """What a file is, for the log: size, first bytes, file(1), ISO/MBR marks."""
+    with open(path, "rb") as f:
+        head = f.read(64)
+        f.seek(0x8000)
+        pvd = f.read(8)
+        f.seek(510)
+        mbr = f.read(2)
+    size = os.path.getsize(path)
+    kind = subprocess.run(["file", "-b", path], capture_output=True, text=True).stdout.strip() \
+        if shutil.which("file") else "?"
+    print(f"{path}: {size} bytes; file: {kind}", flush=True)
+    print(f"  first bytes: {head[:32].hex()}", flush=True)
+    gz, iso, boot = head[:2] == b"\x1f\x8b", pvd[1:6] == b"CD001", mbr == b"\x55\xaa"
+    print(f"  gzip magic: {gz}; ISO9660 PVD at 0x8000: {iso}; MBR 55aa: {boot}", flush=True)
+    return head, iso, boot
+
+
+def gunzip(src, work):
+    """However many layers of gzip there are: an .iso.gz served gzipped again
+    (or a .gz that was not) must not reach the readers still compressed."""
+    cur, n = src, 0
+    while True:
+        with open(cur, "rb") as f:
+            if f.read(2) != b"\x1f\x8b":
+                return cur
+        n += 1
+        dst = os.path.join(work, f"9front.{n}.iso")
+        with gzip.open(cur, "rb") as a, open(dst, "wb") as b:
+            shutil.copyfileobj(a, b, 1 << 20)
+        print(f"gunzipped {cur} -> {dst}", flush=True)
+        cur = dst
+
+
+def iso9660_read(iso, path):
+    """One file out of an ISO9660 image, by walking its directories (no Rock
+    Ridge or Joliet needed: names compare case-blind, without ';1')."""
+    with open(iso, "rb") as f:
+        lb = 2048
+        sector = 16
+        root = None
+        while sector < 64:
+            f.seek(sector * 2048)
+            vd = f.read(2048)
+            if vd[1:6] != b"CD001":
+                break
+            if vd[0] == 1:
+                lb = int.from_bytes(vd[128:130], "little")
+                root = vd[156:156 + 34]
+                break
+            if vd[0] == 255:
+                break
+            sector += 1
+        if root is None:
+            raise ValueError("no ISO9660 primary volume descriptor")
+        ext, size = int.from_bytes(root[2:6], "little"), int.from_bytes(root[10:14], "little")
+        parts = path.split("/")
+        for i, want in enumerate(parts):
+            f.seek(ext * lb)
+            data = f.read(size)
+            off, found = 0, None
+            while off < len(data):
+                ln = data[off]
+                if ln == 0:
+                    off = (off // 2048 + 1) * 2048
+                    continue
+                rec = data[off:off + ln]
+                nl = rec[32]
+                name = rec[33:33 + nl].decode("latin-1").split(";")[0].rstrip(".").lower()
+                if name == want.lower():
+                    found = rec
+                    break
+                off += ln
+            if found is None:
+                raise FileNotFoundError(f"{path} not in {iso}")
+            ext, size = int.from_bytes(found[2:6], "little"), int.from_bytes(found[10:14], "little")
+        f.seek(ext * lb)
+        return f.read(size)
+
+
 def extract(iso, work):
-    """amd64/9pc64 and cfg/plan9.ini out of the ISO, as data."""
-    if iso.endswith(".gz"):
-        plain = os.path.join(work, "9front.iso")
-        if not os.path.exists(plain):
-            with gzip.open(iso, "rb") as src, open(plain, "wb") as dst:
-                shutil.copyfileobj(src, dst)
-        iso = plain
+    """amd64/9pc64 and cfg/plan9.ini out of the ISO, as data, by whichever
+    reader works. Returns (image, kernel, plan9.ini, is_iso9660); kernel and
+    plan9.ini are None when nothing could read them -- the caller then boots
+    the image itself and talks to 9boot instead."""
+    describe(iso)
+    iso = gunzip(iso, work)
+    _, is_iso, _ = describe(iso)
     out = os.path.join(work, "iso")
     os.makedirs(out, exist_ok=True)
     want = ["amd64/9pc64", "cfg/plan9.ini"]
+    paths = [os.path.join(out, w) for w in want]
+
+    def have():
+        return all(os.path.isfile(p) and os.path.getsize(p) > 0 for p in paths)
+
+    readers = []
     if shutil.which("bsdtar"):
-        subprocess.check_call(["bsdtar", "-xf", iso, "-C", out] + want)
-    elif shutil.which("7z"):
-        subprocess.check_call(["7z", "x", "-y", "-o" + out, iso] + want, stdout=subprocess.DEVNULL)
-    else:
-        sys.exit("need bsdtar (libarchive-tools) or 7z (p7zip-full) to read the ISO")
-    return iso, os.path.join(out, "amd64", "9pc64"), os.path.join(out, "cfg", "plan9.ini")
+        readers.append(("bsdtar", ["bsdtar", "-xf", iso, "-C", out] + want))
+    if shutil.which("7z"):
+        readers.append(("7z", ["7z", "x", "-y", "-o" + out, iso] + want))
+    for name, cmd in readers:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        print(f"{name}: exit {r.returncode} {(r.stderr or '').strip()[:300]}", flush=True)
+        if r.returncode == 0 and have():
+            return iso, paths[0], paths[1], is_iso
+    if shutil.which("isoinfo"):
+        ok = True
+        for w, p in zip(want, paths):
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            for args in (["-J", "-x", "/" + w], ["-R", "-x", "/" + w], ["-x", "/" + w.upper() + ";1"]):
+                with open(p, "wb") as fo:
+                    r = subprocess.run(["isoinfo", "-i", iso] + args, stdout=fo, stderr=subprocess.DEVNULL)
+                if r.returncode == 0 and os.path.getsize(p) > 0:
+                    break
+            else:
+                ok = False
+        print(f"isoinfo: {'ok' if ok else 'failed'}", flush=True)
+        if ok and have():
+            return iso, paths[0], paths[1], is_iso
+    try:
+        for w, p in zip(want, paths):
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "wb") as fo:
+                fo.write(iso9660_read(iso, w))
+        print("built-in ISO9660 reader: ok", flush=True)
+        return iso, paths[0], paths[1], is_iso
+    except (ValueError, OSError) as e:
+        print(f"built-in ISO9660 reader: {e}", flush=True)
+    print("could not read the kernel out of the image: booting it through 9boot instead", flush=True)
+    return iso, None, None, is_iso
 
 
 def kernel_args(ini):
@@ -156,6 +269,39 @@ def boot(g, deadline):
         g.read(1.0)
 
 
+def boot9(g, deadline):
+    """Drive 9boot, 9front's bootloader, over the serial line.
+
+    Used when the kernel could not be read out of the image. SeaBIOS's serial
+    console (fw_cfg etc/sercon-port) carries the BIOS screen and keyboard to
+    COM1, and 9boot speaks through the BIOS, so its plan9.ini listing and its
+    "> " prompt arrive here. Keys are pressed after "Booting from" to stop any
+    countdown; at the prompt console=0 is added, so the kernel's console is
+    this serial line too, and then "boot"."""
+    since = 0
+    poked = 0.0
+    seen_boot = None
+    while time.time() < deadline:
+        # sercon draws the BIOS screen with ANSI sequences: drop them
+        text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "\n",
+                      g.out[since:].decode("latin-1")).replace("\r", "\n")
+        if seen_boot is None and "Booting from" in text:
+            seen_boot = time.time()
+        if re.search(r"\n\s*>\s*$", text):
+            print("9boot prompt: console=0, boot", flush=True)
+            g.send("\b" * 8 + "console=0\r")
+            settle = time.time() + 2
+            while time.time() < settle:
+                g.read(0.2)
+            g.send("boot\r")
+            return
+        if seen_boot and time.time() - seen_boot < 30 and time.time() - poked > 1.0:
+            g.send(" ")
+            poked = time.time()
+        g.read(0.5)
+    raise TimeoutError("no 9boot prompt on the serial line")
+
+
 def run(g, cmd, deadline):
     since = len(g.out)
     g.send(cmd + "\n")
@@ -173,26 +319,55 @@ def main():
     a = ap.parse_args()
 
     os.makedirs(a.work, exist_ok=True)
-    iso, kernel, ini = extract(os.path.abspath(a.iso), a.work)
+    iso, kernel, ini, is_iso = extract(os.path.abspath(a.iso), a.work)
     tree = os.path.join(a.work, "src")
     subprocess.check_call([sys.executable, os.path.join(ROOT, "tools", "plan9_package.py"),
                            "--tree", tree], stdout=subprocess.DEVNULL)
     img = os.path.join(a.work, "src.img")
     fat_image(tree, img)
 
-    cmd = ["qemu-system-x86_64", "-m", a.memory, "-display", "none", "-monitor", "none",
-           "-serial", "stdio", "-no-reboot", "-net", "none",
-           "-kernel", kernel, "-append", kernel_args(ini),
-           "-drive", f"file={img},format=raw,if=ide,index=1",
-           "-drive", f"file={iso},media=cdrom,if=ide,index=2,readonly=on"]
-    if os.access("/dev/kvm", os.R_OK | os.W_OK):
-        cmd[1:1] = ["-enable-kvm", "-cpu", "host"]
-    print("+ " + " ".join(cmd), flush=True)
+    kvm = os.access("/dev/kvm", os.R_OK | os.W_OK)
+
+    def qemu(direct):
+        cmd = ["qemu-system-x86_64", "-m", a.memory, "-display", "none", "-monitor", "none",
+               "-serial", "stdio", "-no-reboot", "-net", "none",
+               "-drive", f"file={img},format=raw,if=ide,index=1"]
+        if kvm:
+            cmd[1:1] = ["-enable-kvm", "-cpu", "host"]
+        medium = (["-drive", f"file={iso},media=cdrom,if=ide,index=2,readonly=on"] if is_iso
+                  else ["-drive", f"file={iso},format=raw,if=ide,index=0,snapshot=on"])
+        if direct:
+            return cmd + ["-kernel", kernel, "-append", kernel_args(ini)] + medium
+        # SeaBIOS's serial console, at COM1 (0x3f8, little-endian), for 9boot.
+        sercon = os.path.join(a.work, "sercon-port")
+        with open(sercon, "wb") as f:
+            f.write((0x3F8).to_bytes(2, "little"))
+        return cmd + ["-fw_cfg", f"name=etc/sercon-port,file={sercon}"] + medium + \
+            ["-boot", "d" if is_iso else "c"]
 
     deadline = time.time() + a.timeout
-    g = Guest(cmd, os.path.join(a.work, "serial.log"))
+    log = os.path.join(a.work, "serial.log")
     raw = None
+    g = None
     try:
+        direct = kernel is not None
+        if direct:
+            # The kernel straight from QEMU (multiboot). If QEMU refuses it, or
+            # it says nothing on the serial line, go round by 9boot instead.
+            cmd = qemu(True)
+            print("+ " + " ".join(cmd), flush=True)
+            g = Guest(cmd, log)
+            try:
+                g.wait(r"\S", min(deadline, time.time() + (90 if kvm else 240)), 0)
+            except (TimeoutError, EOFError) as e:
+                print(f"direct kernel boot: {e}; output: {g.out[-500:]!r}", flush=True)
+                g.kill()
+                g, direct = None, False
+        if not direct:
+            cmd = qemu(False)
+            print("+ " + " ".join(cmd), flush=True)
+            g = Guest(cmd, log + ".9boot" if kernel else log)
+            boot9(g, deadline)
         boot(g, deadline)
         print("9front is up", flush=True)
         for c in ["dossrv >[2]/dev/null; sleep 1",
@@ -214,8 +389,11 @@ def main():
         print(f"mk: {mk[-1] if mk else 'no status'}", flush=True)
     except (TimeoutError, EOFError) as e:
         print(f"guest: {e}", flush=True)
+        tail = (g.out if g else b"").decode("latin-1").replace("\r", "").split("\n")[-40:]
+        print("last of the serial line:\n  " + "\n  ".join(tail), flush=True)
     finally:
-        g.kill()
+        if g:
+            g.kill()
 
     if a.bin:
         os.makedirs(a.bin, exist_ok=True)
