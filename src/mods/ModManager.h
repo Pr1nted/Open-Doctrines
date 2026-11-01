@@ -52,7 +52,11 @@ struct ModEntry {
 
     long long   fileMTime = 0;   // to notice the file being replaced on disk
 
-    std::unique_ptr<ModPackage>  package;
+    // Shared, not unique: the live instance co-owns this through its own
+    // shared_ptr (ModRuntime::instantiate), so the package cannot be freed out
+    // from under a running mod regardless of the order these two fields, or the
+    // whole entry, are torn down in.
+    std::shared_ptr<ModPackage>  package;
     std::unique_ptr<ModInstance> instance;
 };
 

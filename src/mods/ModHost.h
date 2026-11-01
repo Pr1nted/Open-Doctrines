@@ -565,7 +565,10 @@ struct ModLogLine {
     int level = 1;
 };
 
-const std::vector<ModLogLine>& modHostLog();
+// A snapshot copy, taken under the log's mutex: a mod host call can run on the
+// game thread or the network pump, so a reference into the live vector is not
+// safe to hand out. See the note on g_logMutex in ModHost.cpp.
+std::vector<ModLogLine> modHostLog();
 void modHostLogClear();
 
 // ------------------------------------------------------------------- UI ----
@@ -669,6 +672,15 @@ private:
     std::vector<Clash> m_clashes;
 
     static constexpr size_t kMaxClashes = 256;
+    // m_thisTurn gains an entry per DISTINCT write target, and is only cleared
+    // at the turn boundary. On the browser backend, where no fuel bounds a hook,
+    // a mod writing to a fresh target in a loop would grow it without limit and
+    // OOM the tab. Past this many distinct targets in one turn, conflict
+    // detection stops tracking NEW targets for the rest of the turn -- the ones
+    // already seen still clash-check, which is all a real game ever needs (every
+    // province and country, each field, is far under this). m_clashes has its
+    // own cap above.
+    static constexpr size_t kMaxTargetsPerTurn = 50000;
 };
 
 // Persistent key-value storage, namespaced per mod id.

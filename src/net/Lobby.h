@@ -77,6 +77,9 @@ struct LobbyMember {
 
     /** The player asked to be left idle, not AI-played, when they miss a turn. */
     bool awayIdle = false;
+
+    /** When this member last disconnected (monotonic seconds, 0 = connected). */
+    double disconnectedAt = 0.0;
 };
 
 struct LobbySettings {
@@ -253,7 +256,14 @@ public:
     void pruneSpectators(size_t keep);
 
     /** Mark gone. The slot is kept so the player can come back to it. */
-    void disconnect(uint16_t peerId);
+    void disconnect(uint16_t peerId, double now = 0.0);
+
+    /**
+     * Release seats held by players who disconnected more than `maxIdleSeconds`
+     * ago. Returns the names of the released members. Safe against iterator
+     * invalidation: collects first, then releases.
+     */
+    std::vector<std::string> releaseStaleSeats(double now, double maxIdleSeconds);
 
     /** Remove entirely -- a kick, not a dropped connection. */
     void evict(uint16_t peerId);

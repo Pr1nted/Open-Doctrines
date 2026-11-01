@@ -94,8 +94,64 @@ failed_steps=()
 
 note_fail() { failed_steps+=("$1"); fail=1; }
 
+# THE TEST PROGRAMS RUN SIDE BY SIDE; EVERYTHING ELSE RUNS ALONE.
+#
+# Most of this file is a run of self-contained test binaries -- a run() of
+# one program from the build directory, at most with the data directory -- each writing
+# only under its own temp directory. They used to run one after another on a
+# four-core runner, so three cores sat idle for most of the suite. Now
+# consecutive ones go into a pool of OD_TEST_JOBS (default: the core count),
+# and the pool is drained -- every result printed, in the order the file names
+# them -- before any other step starts. So the scripts, and with them every
+# network and multiplayer test that has a clock in it, still run with nothing
+# else on the machine. OD_TEST_JOBS=1 is the old, serial behaviour.
+OD_TEST_JOBS="${OD_TEST_JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}"
+pool_dir="$(mktemp -d "${TMPDIR:-/tmp}/od-suite.XXXXXX")"
+pool_names=()
+pool_pids=()
+
+is_test_program() {     # one binary from $bin, at most with the data dir
+    case "$1" in "$bin"/*) ;; *) return 1 ;; esac
+    [ $# -eq 1 ] || { [ $# -eq 2 ] && [ "$2" = "$root/data/" ]; }
+}
+
+pool_add() {            # <name> <command...>
+    local name="$1"; shift
+    # bash 3.2 (macOS) has no `wait -n`, so a slot is found by asking.
+    while :; do
+        local live=0 pid
+        # ${a[@]+"${a[@]}"}: bash 3.2 under set -u calls an EMPTY array unbound.
+        for pid in ${pool_pids[@]+"${pool_pids[@]}"}; do kill -0 "$pid" 2>/dev/null && live=$((live + 1)); done
+        [ "$live" -lt "$OD_TEST_JOBS" ] && break
+        sleep 0.2
+    done
+    local i=${#pool_names[@]}
+    ( "$@" < /dev/null > "$pool_dir/$i.out" 2>&1; echo $? > "$pool_dir/$i.rc" ) &
+    pool_pids+=("$!")
+    pool_names+=("$name")
+}
+
+pool_drain() {
+    [ ${#pool_names[@]} -eq 0 ] && return 0
+    wait ${pool_pids[@]+"${pool_pids[@]}"} 2>/dev/null
+    local i
+    for i in "${!pool_names[@]}"; do
+        step "${pool_names[$i]}"
+        cat "$pool_dir/$i.out"
+        if [ "$(cat "$pool_dir/$i.rc" 2>/dev/null)" != 0 ]; then
+            echo "${pool_names[$i]} FAILED"; note_fail "${pool_names[$i]}"
+        fi
+        rm -f "$pool_dir/$i.out" "$pool_dir/$i.rc"
+    done
+    pool_names=(); pool_pids=()
+}
+
 run() {
     local name="$1"; shift
+    if [ "$OD_TEST_JOBS" -gt 1 ] && is_test_program "$@"; then
+        pool_add "$name" "$@"; return 0
+    fi
+    pool_drain
     step "$name"
     if "$@"; then :; else echo "$name FAILED"; note_fail "$name"; fi
 }
@@ -103,6 +159,7 @@ run() {
 # For the drift checks, which are a bare command rather than a named run().
 check() {
     local name="$1"; shift
+    pool_drain
     step "$name"
     if "$@"; then :; else note_fail "$name"; fi
 }
@@ -190,6 +247,13 @@ if [ "${OD_TSAN:-0}" != "0" ]; then
 fi
 run "abi conformance"  "$bin/ModAbiTest" "$root/sdk/abi.json"
 run "runtime"          "$bin/ModRuntimeTest" "$build/testmods"
+# The browser backend's gas meter (src/mods/wasm_meter.js): rewrite each real
+# test mod with a fuel counter, prove it validates and that a runaway hook traps
+# while a cheap one runs. node only -- skipped where it is missing, like the
+# connectivity test. The desktop fuel limit is covered by "runtime" above.
+if command -v node >/dev/null 2>&1; then
+    run "wasm meter (browser)" node "$root/tests/wasm_meter_test.mjs" "$build/testmods"
+fi
 # Every capability, called. ModAbiTest proves the host's table matches
 # abi.json and the binding checks prove each SDK describes it; this is the
 # only thing that invokes them. It found gearbox:country set_number declared
@@ -432,6 +496,19 @@ check "generated bindings vs abi.json" $PY "$root/tools/gen_bindings.py" --check
 
 check "sdk bindings vs abi.json" $PY "$root/tools/check_bindings.py"
 
+# Defence in depth behind the instantiation gate: every mod native that reaches
+# the game -- read or write -- must re-check its capability at call time.
+# ModCapabilityTest proves a GRANTED import answers; this proves an un-granted
+# one could not, if a future import-resolution bug ever let it through.
+check "mod natives re-check capability" $PY "$root/tools/check_mod_capability_guards.py"
+
+# The WAMR signature string in the registration table drives how the asm
+# trampoline marshals a mod's arguments. A mismatch with the C function is a
+# host-side memory bug (the "(iiiF)" typo that once shipped). This reads the C
+# function and compares, which the table-vs-abi.json check cannot (a typo in
+# both agrees with itself).
+check "mod host signatures match C functions" $PY "$root/tools/check_mod_host_signatures.py"
+
 # The research screen draws each node as a 160x50 box at coordinates written
 # by hand. Three monument nodes sat 100 apart and overlapped; nothing could
 # see it, because the coordinates live in a function that needs the whole game
@@ -626,6 +703,8 @@ while IFS= read -r m; do
 done < <(find "$root/sdk" -name "*.odmod" -not -path "*/node_modules/*" | sort)
 [ $found -eq 1 ] || echo "skip  no example mods built yet"
 
+pool_drain
+rm -rf "$pool_dir"
 printf '\n'
 if [ $fail -eq 0 ]; then
     echo "ALL PASSED"

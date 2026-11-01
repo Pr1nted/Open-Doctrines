@@ -35,6 +35,9 @@ on:
     branches: [main]
     tags-ignore: ["**"]        # a tag is release-game.yml's, which calls this
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: "17 3 * * *"          # the nightly full run, as test.yml
   workflow_call:
   workflow_dispatch:
 
@@ -48,7 +51,23 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Whether this change can break these systems at all (tools/ci_plan.py).
+  # A VM per system is the slowest thing CI runs; a pull request that touches
+  # none of their paths leaves them to the nightly run on main.
+  tiers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.p.outputs.otheros }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - id: p
+        run: python3 tools/ci_plan.py
+
   build:
+    needs: tiers
+    if: needs.tiers.outputs.run == 'true'
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ matrix.timeout }}
