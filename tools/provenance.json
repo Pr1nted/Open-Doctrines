@@ -108,7 +108,7 @@
     },
     {
       "name": "Mbed TLS",
-      "version": "3.6.2",
+      "version": "3.6.7",
       "license": "Apache-2.0",
       "url": "https://github.com/Mbed-TLS/mbedtls",
       "what": "TLS for the multiplayer transport, the updater and the account client"

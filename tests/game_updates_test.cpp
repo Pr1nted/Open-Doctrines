@@ -504,6 +504,80 @@ void testAgainstARealGitHubDocument() {
           m.assetUrl.find("macos-arm64") != std::string::npos, m.assetUrl);
 }
 
+// The signed-release manifest: the provenance check that makes a compromised
+// release host unable to push a swapped binary. The fixture under
+// tests/fixtures/release_signing was produced by tools/sign_release.py with a
+// throwaway key whose private half was discarded; only its public key, the
+// manifest and the signature are committed, which is the whole point -- the
+// client never needs a private key. This drives GameUpdates' own verifier with
+// that public key, so the test proves the format, the Ed25519 verification and
+// every rejection without touching the compiled-in release key.
+void testSignedManifest() {
+    const std::string dir = "tests/fixtures/release_signing/";
+    std::string manifest = read(dir + "release.manifest");
+    std::string sig = read(dir + "release.manifest.sig");
+    std::string pubHex = read(dir + "pubkey.hex");
+
+    // pubkey.hex -> 32 raw bytes.
+    uint8_t pub[32] = {0};
+    bool pubOk = pubHex.size() >= 64;
+    for (int i = 0; i < 32 && pubOk; ++i) {
+        auto nib = [&](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+        int hi = nib(pubHex[2 * i]), lo = nib(pubHex[2 * i + 1]);
+        if (hi < 0 || lo < 0) { pubOk = false; break; }
+        pub[i] = (uint8_t)((hi << 4) | lo);
+    }
+    check("fixture loads (manifest, sig, pubkey)",
+          pubOk && manifest.size() > 32 && sig.size() == 64);
+
+    const std::string ver = "1.2.3b";
+    const std::string asset = "OpenDoctrines-linux-x64.zip";
+    // sha256 of "linux\n", the fixture's linux asset -- the manifest must carry
+    // exactly this, and the verifier must return it for a good signature.
+    const std::string wantSha = GameUpdates::sha256Hex("linux\n");
+
+    std::string got = GameUpdates::verifiedAssetShaWithKey(manifest, sig, ver, asset, pub);
+    check("a valid signature yields the signed sha for this asset",
+          got == wantSha, got + " vs " + wantSha);
+    check("the other platform's line is addressable too",
+          GameUpdates::verifiedAssetShaWithKey(manifest, sig, ver, asset, pub).size() == 64);
+
+    // Every rejection returns "" and they must not be distinguishable.
+    std::string tampered = manifest;
+    tampered[40] ^= 1;  // flip a byte inside the signed region
+    check("a tampered manifest verifies to nothing",
+          GameUpdates::verifiedAssetShaWithKey(tampered, sig, ver, asset, pub).empty());
+
+    std::string badSig = sig;
+    badSig[0] ^= 1;
+    check("a tampered signature verifies to nothing",
+          GameUpdates::verifiedAssetShaWithKey(manifest, badSig, ver, asset, pub).empty());
+
+    check("a signature of the wrong length is refused",
+          GameUpdates::verifiedAssetShaWithKey(manifest, sig.substr(0, 63), ver, asset, pub).empty());
+
+    check("a manifest for another version is not accepted for this one",
+          GameUpdates::verifiedAssetShaWithKey(manifest, sig, "9.9.9b", asset, pub).empty());
+
+    check("an asset the manifest does not list yields nothing",
+          GameUpdates::verifiedAssetShaWithKey(manifest, sig, ver,
+                                               "OpenDoctrines-macos-arm64.zip", pub).empty());
+
+    // A different key must reject this signature.
+    uint8_t other[32];
+    for (int i = 0; i < 32; ++i) other[i] = (uint8_t)(pub[i] ^ 0xFF);
+    check("the wrong public key verifies to nothing",
+          GameUpdates::verifiedAssetShaWithKey(manifest, sig, ver, asset, other).empty());
+
+    // This build should have a key pinned (the committed ReleaseSigningKey.h).
+    check("a release-signing key is compiled in", GameUpdates::releaseKeyPinned());
+}
+
 }  // namespace
 
 int main() {
@@ -516,6 +590,7 @@ int main() {
     testInstallNeverDeletes();
     testInstallDirIsExplicit();
     testPlatformRules();
+    testSignedManifest();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     if (g_failures) { printf("FAILED\n"); return 1; }

@@ -1,4 +1,6 @@
 #include "GameUpdates.h"
+#include "ReleaseSigningKey.h"
+#include "util/Ed25519.h"
 #include "util/Sha256.h"
 #include "util/RunCurl.h"
 
@@ -9,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 #include "miniz.h"
@@ -514,7 +517,72 @@ bool GameUpdates::parseRelease(const std::string& raw, const std::string& platfo
         }
         break;
     }
+
+    // The signed manifest and its signature, if this release carries them (every
+    // release from the first signed one on does; see tools/sign_release.py). Both
+    // are named assets on the same release, fetched and checked before any
+    // self-install. A separate scan per name so order in the array does not
+    // matter.
+    auto findAssetUrl = [&](const char* wantName) -> std::string {
+        size_t p = 0;
+        while (true) {
+            size_t nameEnd = 0;
+            std::string name = jsonString(body, p, "name", 128, &nameEnd);
+            if (name.empty()) return {};
+            p = nameEnd;
+            if (name != wantName) continue;
+            std::string url = jsonString(body, p, "browser_download_url", 1024);
+            return isReleaseHostUrl(url) ? url : std::string();
+        }
+    };
+    out.manifestUrl    = findAssetUrl("release.manifest");
+    out.manifestSigUrl = findAssetUrl("release.manifest.sig");
     return true;
+}
+
+bool GameUpdates::releaseKeyPinned() {
+    for (unsigned char b : kReleaseSigningPublicKey)
+        if (b != 0) return true;
+    return false;
+}
+
+std::string GameUpdates::verifiedAssetSha(const std::string& manifest,
+                                          const std::string& sig,
+                                          const std::string& version,
+                                          const std::string& assetName) {
+    return verifiedAssetShaWithKey(manifest, sig, version, assetName,
+                                   kReleaseSigningPublicKey);
+}
+
+std::string GameUpdates::verifiedAssetShaWithKey(const std::string& manifest,
+                                                 const std::string& sig,
+                                                 const std::string& version,
+                                                 const std::string& assetName,
+                                                 const uint8_t pub[32]) {
+    // The signature is 64 raw bytes over the manifest's exact bytes.
+    if (sig.size() != 64) return {};
+    if (!ed25519Verify(reinterpret_cast<const uint8_t*>(sig.data()),
+                       reinterpret_cast<const uint8_t*>(manifest.data()),
+                       manifest.size(), pub))
+        return {};
+
+    // Verified: now read it. Line 1 is the format magic, line 2 "version X",
+    // then "<assetName> <64 hex>" lines. Must name THIS release's version, so a
+    // valid manifest for a different release cannot be replayed onto this one.
+    std::istringstream in(manifest);
+    std::string line;
+    if (!std::getline(in, line) || line != "opendoctrines-release v1") return {};
+    if (!std::getline(in, line) || line != "version " + version) return {};
+    while (std::getline(in, line)) {
+        size_t sp = line.find(' ');
+        if (sp == std::string::npos) continue;
+        if (line.substr(0, sp) != assetName) continue;
+        std::string hex = line.substr(sp + 1);
+        if (hex.size() != 64) return {};
+        for (char c : hex) if (!isxdigit((unsigned char)c)) return {};
+        return hex;
+    }
+    return {};
 }
 
 // -------------------------------------------------------------- installing --
@@ -746,18 +814,47 @@ void GameUpdates::runUpdate() {
         return;
     }
 
-    // Only catches a truncated or corrupted download -- the digest arrived
-    // over the same connection as the file, so it is not evidence about
-    // GitHub itself. Worth doing anyway: a half-written archive that unpacked
-    // over a working install would be much worse than a refused update.
-    if (!s.sha256.empty()) {
+    // Provenance, not just integrity. When a signing key is compiled in, the
+    // archive must match a SHA-256 the OFFLINE key signed -- not the digest the
+    // API reported over the same connection as the file, which a compromised
+    // host could swap along with the asset. A release that is unsigned, or whose
+    // signature does not verify, is refused and the player is sent to the release
+    // page to install by hand; refusing the unsigned case (rather than falling
+    // back to the weaker check) is what stops an attacker from simply stripping
+    // the signature. A fork with no key compiled in keeps the integrity-only
+    // check, which still catches a truncated download.
+    {
         std::string bytes = readFile(zip.string(), 512u * 1024 * 1024);
-        if (sha256Hex(bytes) != s.sha256) {
-            s.stage = Stage::Failed;
-            s.error = "the download did not match its checksum and was discarded";
-            setStatus(s);
-            fs::remove_all(work, ec);
-            return;
+        const std::string assetName = platformKey() + ".zip";
+
+        if (releaseKeyPinned()) {
+            std::string manifest, sig;
+            if (!s.manifestUrl.empty() && !s.manifestSigUrl.empty()) {
+                fs::path manPath = work / "release.manifest";
+                fs::path sigPath = work / "release.manifest.sig";
+                if (fetchToFile(s.manifestUrl, manPath.string(), 1024 * 1024))
+                    manifest = readFile(manPath.string(), 1024 * 1024);
+                if (fetchToFile(s.manifestSigUrl, sigPath.string(), 4096))
+                    sig = readFile(sigPath.string(), 4096);
+            }
+            std::string signedSha = verifiedAssetSha(manifest, sig, s.latest, assetName);
+            if (signedSha.empty() || sha256Hex(bytes) != signedSha) {
+                s.stage = Stage::Failed;
+                s.error = manifest.empty()
+                    ? "this release is not signed; install it from the release page"
+                    : "the update could not be verified and was discarded";
+                setStatus(s);
+                fs::remove_all(work, ec);
+                return;
+            }
+        } else if (!s.sha256.empty()) {
+            if (sha256Hex(bytes) != s.sha256) {
+                s.stage = Stage::Failed;
+                s.error = "the download did not match its checksum and was discarded";
+                setStatus(s);
+                fs::remove_all(work, ec);
+                return;
+            }
         }
     }
 
