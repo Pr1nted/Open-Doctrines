@@ -32,9 +32,40 @@
 ; _WIN32, Arm64 included; unpatched, argv[8] is the first stack argument and
 ; every host call that reads its exec_env crashes. The patch makes Windows on
 ; Arm64 pack for AAPCS64, which is what this routine and Windows both expect.
+; That patch is NOT optional and cannot be skipped silently: it is a mandatory
+; PATCH_COMMAND on the WAMR fetch (CMakeLists.txt), and the script FAILS THE
+; CONFIGURE (FATAL_ERROR) if the text it edits has moved -- so there is no way to
+; build a Windows-on-Arm64 mod runtime with the x64 packing and this unpacker.
+; A subtler mismatch (patched but wrong) would make self(e) return the wrong or
+; no instance, which ModCapabilityTest catches wherever it runs on Arm64.
 ;
 ; Assembled by CMakeLists.txt with armasm64.exe and linked into WAMR's vmlib.
 ; Copyright of the original: Intel Corporation, Apache-2.0 WITH LLVM-exception.
+;
+; AUDITED 2026-10 against AAPCS64 and the GAS original, register by register.
+; A mod cannot drive this with a crafted signature: the signature string is the
+; HOST's (from the NativeSymbol table registerNatives builds), WAMR validates a
+; mod's import type against it at link, and wasm_runtime_invoke_native -- not the
+; mod -- computes (funcptr, argv, nStackArgs). The trampoline only ever sees
+; integers. Points checked:
+;   * x0-x7 / d0-d7 loaded from argv[8..15] / argv[0..7]; x20 then at argv[16],
+;     the stack args, which is the layout wasm_runtime_invoke_native packs.
+;   * sp is 16-byte aligned at every `blr`: x22 (sp after the 0x30 prologue) is
+;     aligned because entry sp is, 0x30 is a multiple of 16, and the stack-arg
+;     reservation rounds its size up to 16 before subtracting.
+;   * lr is preserved across the call in x20, which is sound ONLY because x20 is
+;     callee-saved under AAPCS64, so the callee must restore it; x19-x24 are
+;     saved/restored for the caller, x18 (the Windows TEB) is never touched.
+;   * the stack-arg copy writes below sp into space this frame reserved, never
+;     over the saved registers.
+; The stack-argument path (argv[16..], nStackArgs > 0) is the subtle half, and it
+; IS reachable. gearbox:ui.draw_image ("(iiiiiiii)") declares eight slots, which
+; with the exec_env in x0 spills one past x0-x7 onto the stack, and
+; ModCapabilityTest calls every gearbox import once -- so on a runner using this
+; trampoline it drives the stack path, not only the register one. (The widest of
+; all is the denied WASI stub path_open, "(iiiiiIIii)i", nine slots spilling two.)
+; The asm itself was verified by inspection above because no CI runner is
+; Windows-on-Arm64 today.
 ;
 
         AREA    |.text|, CODE, READONLY, ALIGN=2

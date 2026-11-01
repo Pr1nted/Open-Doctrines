@@ -27,10 +27,18 @@
 struct ServerConfig;
 class ServerConsole;
 
+struct ScheduledCommand {
+    double      fireAt = 0.0;   // monotonic seconds (nowSeconds())
+    std::string command;
+};
+
 struct ServerRuntime {
     ServerConfig*  config = nullptr;
     ServerConsole* console = nullptr;
     std::string    configPath;
+
+    /** Commands queued by `schedule`, fired by serverTick. */
+    std::vector<ScheduledCommand> scheduledCommands;
 
     /** Monotonic seconds, 0 meaning "has not happened yet". */
     double firstArrivalAt = 0.0;      // nobody has ever joined

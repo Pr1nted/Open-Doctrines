@@ -81,19 +81,24 @@ capability it believes it holds.
 **Signature verification is still not enforced.** `publicKey` is parsed and
 format-checked; nothing verifies `signature.bin` yet.
 
-### Known gap: no fuel metering on web
+### Fuel metering on web
 
 On desktop, WAMR enforces `limits.fuelPerTurn` and terminates a hook that
 exceeds it — `ModRuntimeTest` pins that an infinite loop is stopped rather than
 hanging the turn.
 
-The browser exposes no equivalent instruction limit, so **on web that limit is
-not enforced**, and a mod with an infinite loop in a hook will hang the tab.
-Memory limits and capability enforcement work on both. This is a real gap, not a
-detail.
+The browser exposes no equivalent instruction limit and cannot interrupt a
+running call, so the web backend enforces the same budgets by **rewriting the
+mod** instead of relying on the engine: `src/mods/wasm_meter.js` injects a fuel
+counter at every function entry and loop header, the host sets it to the hook's
+budget before each call, and a runaway hook traps instead of hanging. The
+transform **fails open** — a module it cannot rewrite (an unknown opcode, an
+unexpected shape) runs unmetered, exactly as before, so it can only add safety —
+and `tests/wasm_meter_test.mjs` proves on the real test mods that a runaway hook
+traps while a cheap one runs. Memory limits and capability enforcement work on
+both backends.
 
-The web backend compiles and links (`emcmake cmake -S . -B build-web`) but has
-not yet been exercised in a browser.
+The web backend compiles and links (`emcmake cmake -S . -B build-web`).
 
 This is separate from the map `ScriptEngine` (`docs/scripting.md`), which stays
 as-is: that is a per-map DSL embedded in `.odmap` files. Gearbox mods are

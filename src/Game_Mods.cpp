@@ -440,8 +440,29 @@ const Texture2D* modImage(const std::string& modId, const std::string& name) {
     const ModPackage* pkg = nullptr;
     for (const auto& m : ModManager::get().mods())
         if (m.id == modId) { pkg = m.package.get(); break; }
+    // Decompression-bomb guard. A few hundred PNG bytes can declare an enormous
+    // frame, and stb_image would try to allocate width*height*4 for it before we
+    // ever see a result -- an easy way for a mod to OOM the host through a
+    // decoder that runs OUTSIDE the wasm sandbox. Read the IHDR and refuse the
+    // image up front when its pixels would exceed the cap. Other formats fall
+    // through to the size-bounded decode below; see SECURITY.md on why the mod
+    // boundary is "wasm sandbox + host decoder", not the sandbox alone.
+    auto pngPixelsOver = [](const std::vector<uint8_t>& b, uint64_t cap) -> bool {
+        if (b.size() < 24) return false;
+        static const unsigned char sig[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        if (memcmp(b.data(), sig, 8) != 0 || memcmp(b.data() + 12, "IHDR", 4) != 0)
+            return false;                       // not a PNG: let the decoder judge
+        auto be = [&](size_t o) {
+            return ((uint32_t)b[o] << 24) | ((uint32_t)b[o + 1] << 16) |
+                   ((uint32_t)b[o + 2] << 8) | (uint32_t)b[o + 3];
+        };
+        const uint64_t w = be(16), h = be(20);
+        return w == 0 || h == 0 || w * h > cap;
+    };
+
     std::vector<uint8_t> bytes;
-    if (pkg && pkg->readAsset(name, bytes) && !bytes.empty() && bytes.size() < 32u * 1024 * 1024) {
+    if (pkg && pkg->readAsset(name, bytes) && !bytes.empty() &&
+        bytes.size() < 32u * 1024 * 1024 && !pngPixelsOver(bytes, 4096ull * 4096ull)) {
         // The extension decides the decoder; raylib needs it and the name a mod
         // passed is the only hint available.
         std::string ext = ".png";
@@ -1520,6 +1541,13 @@ void Game::installModBridges() {
         // Silence is a valid outcome everywhere in this game: no device, or a
         // file raylib cannot decode, leaves the mod running and quiet.
         if (Audio::s_disabled || !IsAudioDeviceReady()) return 0;
+
+        // Bound the bytes handed to the audio decoder (dr_wav / stb_vorbis / ...),
+        // which runs OUTSIDE the wasm sandbox on mod-supplied input. 32 MiB is far
+        // more than any UI sound needs and keeps a crafted or bomb file from
+        // driving a huge allocation in the host. See SECURITY.md on the decoder
+        // boundary.
+        if (bytes.empty() || bytes.size() > 32u * 1024 * 1024) return 0;
 
         // A mod that never stops its sounds must not grow the table forever.
         modSoundsCollect();

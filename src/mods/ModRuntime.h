@@ -56,6 +56,20 @@ public:
     // Instantiates `pkg` with `granted` capabilities. Returns nullptr and sets
     // `err` on any failure, including a mod importing something it was not
     // granted -- that is refused here, at load, not at the call.
+    //
+    // Two overloads, differing only in who owns the package the instance reads
+    // its assets and audio out of:
+    //
+    //  * The shared_ptr form CO-OWNS it. The returned instance holds a share, so
+    //    the package cannot be freed while the instance is alive even if the
+    //    manager drops its own copy first -- the one lifetime coupling a raw
+    //    back-pointer used to leave to convention. This is what the game uses.
+    //  * The reference form BORROWS it, exactly as before: the instance holds a
+    //    non-owning pointer and the caller must outlive it. Kept for tests and
+    //    tools that own a ModPackage on the stack and manage its lifetime.
+    std::unique_ptr<ModInstance> instantiate(std::shared_ptr<const ModPackage> pkg,
+                                             uint32_t granted,
+                                             std::string& err);
     std::unique_ptr<ModInstance> instantiate(const ModPackage& pkg,
                                              uint32_t granted,
                                              std::string& err);
@@ -105,6 +119,26 @@ public:
     // gearbox_abort, which the ABI declares noreturn.
     void setAbort(const std::string& msg);
 
+    // --- per-turn network budget ---------------------------------------------
+    //
+    // net.send has an 8 KiB per-message cap, but nothing bounded how MANY a mod
+    // could send. On desktop WAMR the fuel limit does, loosely; on the browser
+    // backend there is no fuel, so a MODULE_NET mod could flood the relay from a
+    // hook as fast as the frame loop runs. This caps bytes AND messages per
+    // turn, consumed by every hook between two turn boundaries (draw included),
+    // and the manager resets it each turn. chargeNet returns false when the
+    // budget is spent, and net.send then reports the send as refused.
+    static constexpr uint32_t kMaxNetMsgsPerTurn  = 512;
+    static constexpr uint64_t kMaxNetBytesPerTurn = 512 * 1024;
+    bool chargeNet(uint32_t bytes) {
+        if (m_netMsgsThisTurn >= kMaxNetMsgsPerTurn) return false;
+        if (m_netBytesThisTurn + bytes > kMaxNetBytesPerTurn) return false;
+        ++m_netMsgsThisTurn;
+        m_netBytesThisTurn += bytes;
+        return true;
+    }
+    void resetNetBudget() { m_netMsgsThisTurn = 0; m_netBytesThisTurn = 0; }
+
     // Panels this instance registered, in registration order.
     std::vector<uint32_t>& panels() { return m_panels; }
 
@@ -114,7 +148,7 @@ public:
     void bumpWasiRandom(uint64_t n) { m_wasiRandom += n; }
 
     // Backing package, for Assets reads.
-    const ModPackage* package() const { return m_package; }
+    const ModPackage* package() const { return m_package.get(); }
 
 private:
     friend class ModRuntime;
@@ -122,11 +156,17 @@ private:
 
     ModManifest  m_manifest;
     uint32_t     m_granted = 0;
-    const ModPackage* m_package = nullptr;
+    // Co-owned when the game instantiates it, a non-owning alias when a test or
+    // tool borrows a stack-owned package. Either way package() hands out the raw
+    // pointer the Assets natives read -- but the owning case means that pointer
+    // cannot outlive what it points at. See ModRuntime::instantiate.
+    std::shared_ptr<const ModPackage> m_package;
     std::string  m_lastError;
     std::vector<uint32_t> m_panels;
 
     uint64_t m_wasiRandom = 0;
+    uint32_t m_netMsgsThisTurn = 0;    // reset per turn; see chargeNet
+    uint64_t m_netBytesThisTurn = 0;
     uint64_t m_fuelBudget = 0;
     // Applied to mod_load and _initialize instead of m_fuelBudget: starting an
     // interpreter costs far more than any single turn, and it happens once.
