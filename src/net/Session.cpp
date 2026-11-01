@@ -481,7 +481,7 @@ void NetSession::Impl::answerChallenge(const std::string& challenge) {
     //
     // If web HTTP is ever implemented, this has to become asyncify-aware
     // rather than staying inline -- a real request here WOULD stall the frame.
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     // QUEUED, not inline. The comment above used to say this was safe because
     // httpRequest() on emscripten was a stub that never touched the network --
     // and it warned that a real implementation would have to become
@@ -587,7 +587,7 @@ void NetSession::update() {
             impl.pendingChallenge = res.body;
             impl.havePendingChallenge = true;
         };
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
         odasync::run(askRelay);
 #else
         if (impl.joinWorker.joinable()) impl.joinWorker.join();

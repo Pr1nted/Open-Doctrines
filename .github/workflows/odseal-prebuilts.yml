@@ -130,6 +130,10 @@ jobs:
           # The PS Vita, by VitaSDK's arm-vita-eabi gcc (the pinned snapshot
           # tools/vitasdk_install.sh takes). CMakeLists.txt asks for vita-arm.
           - { name: vita-arm,          os: ubuntu-24.04, vita: true }
+          # DOS, by DJGPP's i586-pc-msdosdjgpp gcc (tools/dos_toolchain.sh, as
+          # other-os-game.yml uses). CMakeLists.txt asks for dos-i586. Its test
+          # RUNS: DOSBox-X executes the DOS build of tests/odseal_test.cpp.
+          - { name: dos-i586,          os: ubuntu-24.04, djgpp: true, timeout: 30 }
 
     steps:
       - uses: actions/checkout@v5
@@ -421,6 +425,28 @@ jobs:
           "$TC/arm-vita-eabi-strip" --strip-unneeded odseal.o
           "$TC/arm-vita-eabi-ar" rcs out/libodseal.a odseal.o
 
+      # ── DOS ──
+      #
+      # No -fvisibility (COFF has none) and no -fPIC (nothing is relocated at
+      # load on DOS); otherwise the flags every other archive is built with.
+      # <dirent.h> forced in: the sealed source includes it on systems that
+      # say they are Unix, and DJGPP has it but says it is MSDOS. And gnu++17,
+      # not c++17: DJGPP declares DIR, opendir and the rest of POSIX only when
+      # __STRICT_ANSI__ is off, which -std=c++17 turns on (the game itself is
+      # built as gnu++20, CMake's default).
+      - name: Build (DOS, DJGPP)
+        if: matrix.djgpp
+        shell: bash
+        run: |
+          set -e
+          bash tools/dos_toolchain.sh "$HOME/dos"
+          TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
+          mkdir -p out
+          "$TC-g++" -std=gnu++17 -O3 -fno-rtti -fomit-frame-pointer -include dirent.h \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC-strip" --strip-unneeded odseal.o
+          "$TC-ar" rcs out/libodseal.a odseal.o
+
       - name: Drop the sealed source
         if: always()
         shell: bash
@@ -458,6 +484,21 @@ jobs:
               out/libodseal.a -o odseal_test
           qemu-${{ matrix.qemu }}-static ./odseal_test
 
+      # A DOS program runs in DOSBox-X, so DOS gets the same test as the native
+      # builds: the DJGPP build of tests/odseal_test.cpp, under CWSDPMI.
+      - name: Test the archive (DOS, in DOSBox-X)
+        if: matrix.djgpp
+        shell: bash
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dosbox-x xvfb
+          TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
+          mkdir -p dosrun
+          "$TC-g++" -std=gnu++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o dosrun/ODTEST.EXE
+          cp "$HOME/dos/cwsdpmi/CWSDPMI.EXE" dosrun/
+          tools/dos_run.sh --timeout 600 dosrun ODTEST
+
       # wasm cannot run natively, but node runs what emscripten emits, so this
       # is the same test rather than a weaker stand-in.
       - name: Test the archive (web, under node)
@@ -476,12 +517,14 @@ jobs:
       # archive is held to the same exports rules and its test is not run --
       # running it means booting SerenityOS, which other-os-game.yml does not
       # do yet either. Plain nm reads an x86-64 ELF object whatever OS it is for.
-      - name: Check the archive (android, SerenityOS and the Vita, symbols only)
-        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita
+      - name: Check the archive (android, SerenityOS, the Vita and DOS, symbols)
+        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita || matrix.djgpp
         shell: bash
         run: |
           set -e
-          if [ -n "${{ matrix.vita }}" ]; then
+          if [ -n "${{ matrix.djgpp }}" ]; then
+            NM="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp-nm"
+          elif [ -n "${{ matrix.vita }}" ]; then
             NM="$HOME/vitasdk/bin/arm-vita-eabi-nm"
           elif [ -n "$ANDROID_NDK_HOME" ] && [ -z "${{ matrix.serenity }}" ]; then
             NM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
@@ -489,6 +532,9 @@ jobs:
             NM=nm
           fi
           GOT="$("$NM" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
+          # COFF (DJGPP) prefixes C names with an underscore; the names are
+          # the same entry points without it.
+          if [ -n "${{ matrix.djgpp }}" ]; then GOT="$(printf '%s\n' $GOT | sed 's/^_//' | tr '\n' ' ')"; fi
           echo "exports: $GOT"
           # An EXACT list here meant the check failed the moment the sealed
           # source grew an entry point -- the archive was correct and the
@@ -519,6 +565,11 @@ jobs:
   commit:
     name: commit the archives
     needs: build
+    # Whatever built, even if a platform did not: a new toolchain failing
+    # (fail-fast is off above for the same reason) must not throw away every
+    # other archive. "Place the archives" commits what arrived and fails if
+    # nothing did.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:

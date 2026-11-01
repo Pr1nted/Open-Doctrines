@@ -97,6 +97,16 @@ public:
      */
     bool compact();
 
+    /**
+     * Which provinces touch, as the FULL-resolution raster had it -- filled only
+     * when the map was loaded reduced (see map/RasterScale.h), and empty
+     * otherwise. Sampling a raster down drops the thinnest borders, so a pixel
+     * scan of the reduced map would lose real neighbours; the loader saw every
+     * row at full resolution anyway and wrote down every touching pair (8-way,
+     * wrapping east-west), once. Each pair is (smaller id, larger id).
+     */
+    const std::vector<std::pair<int, int>>& fullResolutionAdjacency() const { return m_fullAdjacency; }
+
 private:
     bool parseJson(const std::string& jsonStr);
     /** Palette slot for `id` in the compact form, allocating one if new. -1 when
@@ -106,6 +116,7 @@ private:
     std::vector<uint16_t> m_index;   ///< after compact(): palette slot per pixel
     std::vector<int>      m_palette; ///< after compact(): slot -> province id
     std::unordered_map<int, uint16_t> m_slotOf; ///< id -> palette slot, lazy; see slotForId
+    std::vector<std::pair<int, int>> m_fullAdjacency; ///< see fullResolutionAdjacency
     int m_width = 0;
     int m_height = 0;
     bool m_loaded = false;

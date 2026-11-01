@@ -717,6 +717,65 @@ jobs:
       - name: Raspberry Pi OS -- installs, links OpenGL ES, plays
         run: tools/raspios_check.sh "$(ls dist/raspios/*.deb)" arm64
 
+  # ── DOS, ON LINUX ──
+  #
+  # The DOS build's own code -- single-threaded (OD_NO_THREADS), offline, and
+  # presenting through its platform layer (src/platform/dos/rcore_dos.c) -- built
+  # for Linux with -DOD_DOS=ON, where that layer draws into a stand-in screen.
+  # Minutes, where the real DJGPP build and its DOSBox-X run in
+  # other-os-game.yml take most of an hour. Checks: three turns play with no
+  # threads, and what the "screen" shows is what the game drew, in a 32-bit and
+  # a 16-bit mode (tools/dos_framebuffer_check.py).
+  dos-host:
+    name: DOS build's code, on Linux (OD_DOS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build python3-pil libasound2-dev libx11-dev \
+            libxrandr-dev libxi-dev libgl1-mesa-dev libxcursor-dev libxinerama-dev
+      - name: Build with OD_DOS
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOD_DOS=ON
+          cmake --build build --target OpenDoctrines -j 4
+      - name: Three turns, single-threaded
+        run: |
+          mkdir -p "$RUNNER_TEMP/dos-cwd" && cd "$RUNNER_TEMP/dos-cwd"
+          "$GITHUB_WORKSPACE/build/OpenDoctrines" --simulate "$GITHUB_WORKSPACE/data/STDmaps/1939.odmap" 3 DosCheck | tee sim.log
+          grep -q '^\[SIM\] turn 3/3' sim.log
+      # The small-memory platforms load worlds at 1/4 resolution
+      # (src/map/RasterScale.h). It has to play, keep every province, and fit:
+      # the full world peaks near 700 MB, this under 200.
+      - name: A world at 1/4 resolution plays, in under 200 MB
+        run: |
+          cd "$RUNNER_TEMP/dos-cwd"
+          OD_MAP_DIVISOR=4 python3 - "$GITHUB_WORKSPACE/build/OpenDoctrines" "$GITHUB_WORKSPACE/data/STDmaps/1939.odmap" <<'PY'
+          import resource, subprocess, sys
+          r = subprocess.run([sys.argv[1], "--simulate", sys.argv[2], "3", "SmallWorld"],
+                             capture_output=True, text=True)
+          out = r.stdout + r.stderr
+          peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024
+          print("\n".join(l for l in out.splitlines() if l.startswith("[SIM]") or "sampled to" in l))
+          print(f"peak resident: {peak:.0f} MB")
+          assert r.returncode == 0, "the reduced world did not play"
+          assert "[SIM] turn 3/3" in out, "three turns did not resolve"
+          assert "sampled to 2048x1024" in out, "the world was not loaded reduced"
+          assert peak < 200, f"peak {peak:.0f} MB is not under 200 MB"
+          PY
+
+      - name: The screen shows what the game drew (32-bit and 16-bit modes)
+        run: |
+          cp -r data "$RUNNER_TEMP/dos-data"
+          for bpp in 32 16; do
+            mkdir -p "shots$bpp"
+            OD_DATA_DIR="$RUNNER_TEMP/dos-data" OD_DOS_FB_BPP=$bpp OD_DOS_FB_DUMP="fb$bpp.ppm" \
+              build/OpenDoctrines --screenshots "shots$bpp" > "tour$bpp.log" 2>&1 || { tail -20 "tour$bpp.log"; exit 1; }
+            python3 tools/dos_framebuffer_check.py "fb$bpp.ppm" "shots$bpp" --bpp $bpp
+          done
+
   race:
     needs: plan
     name: thread safety (tsan)

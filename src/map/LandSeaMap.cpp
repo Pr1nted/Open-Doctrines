@@ -1,4 +1,5 @@
 #include "LandSeaMap.h"
+#include "RasterScale.h"
 #include "util/PngRows.h"
 #include <cstring>
 #include <cmath>
@@ -45,24 +46,44 @@ void LandSeaMap::rebuildMask() {
 
 bool LandSeaMap::loadMaskFromMemory(const void* data, int size) {
     int w = 0, h = 0;
-    std::vector<unsigned char> mask;
+    // A reduced world samples every div-th pixel, as the province raster does
+    // (see RasterScale.h), so the two stay the same size.
+    const int div = odmap::rasterDivisor();
+    std::vector<unsigned char> mask, full;
+    int fw = 0, fh = 0;
     const bool ok = pngForEachRow(static_cast<const uint8_t*>(data), (size_t)size,
         [&](int ww, int hh) {
-            w = ww; h = hh;
+            w = ww / div; h = hh / div;
+            if (w <= 0 || h <= 0) return false;
             mask.assign(((size_t)w * h + 7) / 8, 0);
+            if (div > 1) { fw = ww; fh = hh; full.assign(((size_t)fw * fh + 7) / 8, 0); }
             return true;
         },
         [&](int y, const uint8_t* rgba) {
+            if (div > 1) {
+                const size_t fbase = (size_t)y * (size_t)fw;
+                for (int x = 0; x < fw; ++x)
+                    if (rgba[(size_t)x * 4] > 128) {
+                        const size_t i = fbase + (size_t)x;
+                        full[i >> 3] |= (unsigned char)(1u << (i & 7));
+                    }
+            }
+            if ((y % div) != 0 || y / div >= h) return;
             // The rule rebuildMask() applies: red above 128 is land.
-            const size_t base = (size_t)y * (size_t)w;
+            const size_t base = (size_t)(y / div) * (size_t)w;
             for (int x = 0; x < w; ++x)
-                if (rgba[(size_t)x * 4] > 128) {
+                if (rgba[(size_t)x * div * 4] > 128) {
                     const size_t i = base + (size_t)x;
                     mask[i >> 3] |= (unsigned char)(1u << (i & 7));
                 }
         });
     if (!ok) {
         if (!loadFromMemory(data, size, /*withTexture=*/false)) return false;
+        if (div > 1 && m_image.data) {
+            ImageResizeNN(&m_image, m_image.width / div, m_image.height / div);
+            m_width = m_image.width;
+            m_height = m_image.height;
+        }
         dropPixels();
         return true;
     }
@@ -71,6 +92,9 @@ bool LandSeaMap::loadMaskFromMemory(const void* data, int size) {
     m_width = w;
     m_height = h;
     m_landMask.swap(mask);
+    m_fullMask.swap(full);
+    m_fullWidth = fw;
+    m_fullHeight = fh;
     m_loaded = true;
     return true;
 }
@@ -84,6 +108,7 @@ void LandSeaMap::dropPixels() {
 }
 
 bool LandSeaMap::load(const std::string& path) {
+    std::vector<unsigned char>().swap(m_fullMask);   // full world: see fullWidth()
     m_image = LoadImage(path.c_str());
     if (m_image.data == nullptr) return false;
 
@@ -115,6 +140,7 @@ bool LandSeaMap::load(const std::string& path) {
 }
 
 bool LandSeaMap::loadFromMemory(const void* data, int size, bool withTexture) {
+    std::vector<unsigned char>().swap(m_fullMask);   // full world: see fullWidth()
     m_image = LoadImageFromMemory(".png", static_cast<const unsigned char*>(data), size);
     if (m_image.data == nullptr) return false;
 
@@ -216,6 +242,18 @@ bool LandSeaMap::isLand(float lon, float lat) const {
 void LandSeaMap::pixelToLonLat(int px, int py, float& lon, float& lat) const {
     lon = (static_cast<float>(px) / m_width) * 360.0f - 180.0f;
     lat = 90.0f - (static_cast<float>(py) / m_height) * 180.0f;
+}
+
+bool LandSeaMap::isLandFull(int pixelX, int pixelY) const {
+    if (m_fullMask.empty()) return isLand(pixelX, pixelY);
+    if (pixelX < 0 || pixelX >= m_fullWidth || pixelY < 0 || pixelY >= m_fullHeight) return false;
+    const size_t i = (size_t)pixelY * m_fullWidth + pixelX;
+    return (m_fullMask[i >> 3] >> (i & 7)) & 1u;
+}
+
+void LandSeaMap::lonLatToFullPixel(float lon, float lat, int& px, int& py) const {
+    px = static_cast<int>(std::round((lon + 180.0f) / 360.0f * fullWidth()));
+    py = static_cast<int>(std::round((90.0f - lat) / 180.0f * fullHeight()));
 }
 
 void LandSeaMap::lonLatToPixel(float lon, float lat, int& px, int& py) const {

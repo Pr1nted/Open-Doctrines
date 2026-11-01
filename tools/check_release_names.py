@@ -11,10 +11,11 @@
 3. The download page's buttons (packaging/web/site/download.html).
 4. The dedicated server's platforms (release-server.yml), which must match the
    game's desktop platforms -- the server is what people run on a Pi or an Arm
-   VPS -- apart from the BSDs (FreeBSD, OpenBSD, NetBSD) and the other-os
-   systems (illumos, Haiku, SerenityOS), which have no server build, and the
-   Raspberry Pi OS game builds, whose server is the Linux arm64/armv7 one: a
-   server draws nothing, so OpenGL ES changes nothing for it.
+   VPS -- apart from the BSDs (FreeBSD, OpenBSD, NetBSD), the other-os
+   systems (illumos, Haiku, SerenityOS) and DOS, which have no server build
+   (DOS has no network to serve on), and the Raspberry Pi OS game builds,
+   whose server is the Linux arm64/armv7 one: a server draws nothing, so
+   OpenGL ES changes nothing for it.
 5. The PS Vita's .vpk, which no updater key names (a .vpk is installed by
    VitaShell, never unpacked over the game -- as the APK): the page's .vpk
    button must name what other-os-game.yml uploads.
@@ -104,7 +105,7 @@ def main():
     # The dedicated server ships wherever the game does -- it is what people
     # run on a Pi or an Arm VPS -- except the BSDs, which have no server build.
     game_desktop = {n.replace("OpenDoctrines-", "") for n in built
-                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity|raspios)-", n)}
+                    if not re.match(r"OpenDoctrines-(?:[a-z]+bsd|illumos|haiku|serenity|raspios|dos)-", n)}
     server = server_platforms()
     for p in sorted(game_desktop - server):
         problems.append(f"the game ships for {p}, but release-server.yml has no server for it")
