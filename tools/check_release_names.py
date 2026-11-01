@@ -68,6 +68,13 @@ def built_artifacts():
     return {n for n in names if not n.endswith("-web")}
 
 
+def edition_zips():
+    # Editions with releases of their own (freertos-v* tags): the page offers
+    # them, but no build's updater ever replaces itself with one.
+    return set(re.findall(r"dist/(OpenDoctrines-[A-Za-z0-9_-]+)\.zip",
+                          read(".github/workflows/freertos.yml")))
+
+
 def server_platforms():
     names = re.findall(r"artifact:\s*OpenDoctrinesServer-([A-Za-z0-9_-]+)",
                        read(".github/workflows/release-server.yml"))
@@ -101,7 +108,7 @@ def main():
         problems.append(f"updater asks for {n}.zip, but no release workflow builds it")
     for n in sorted(built - keys):
         problems.append(f"{n}.zip is released, but no build's updater ever asks for it")
-    for n in sorted(page - built):
+    for n in sorted(page - built - edition_zips()):
         problems.append(f"download page offers {n}.zip, which no release workflow builds")
     # The dedicated server ships wherever the game does -- it is what people
     # run on a Pi or an Arm VPS -- except the BSDs, which have no server build.
