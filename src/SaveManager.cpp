@@ -6,10 +6,19 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <cstdint>
+#include <functional>
+#include <vector>
 #include <cstdio>
 #include <cmath>
 #include <ctime>
 #include <random>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 #ifdef OD_HAS_P2
 #include "odseal.h"
 #endif
@@ -140,15 +149,19 @@ static std::string metadataJson(const SaveMetadata& meta) {
 // count from the entries makes it unrepresentable rather than merely unlikely,
 // and it repairs a save already in that state the next time one is read.
 static int highestTurnInBuffer(const std::vector<uint8_t>& zipData);
+static bool openSaveMem(mz_zip_archive& zip, const std::vector<uint8_t>& data);
 
 static int highestTurnIn(mz_zip_archive& zip) {
     int highest = 0;
     const int fc = (int)mz_zip_reader_get_num_files(&zip);
+    // The name alone. mz_zip_reader_file_stat also turns each entry's DOS
+    // timestamp into a time_t through mktime(), which is slow, and this runs
+    // over every entry of the save on every turn.
+    char name[64];
     for (int i = 0; i < fc; ++i) {
-        mz_zip_archive_file_stat st{};
-        if (!mz_zip_reader_file_stat(&zip, i, &st)) continue;
+        if (!mz_zip_reader_get_filename(&zip, (mz_uint)i, name, sizeof(name))) continue;
         int n = 0;
-        if (std::sscanf(st.m_filename, "turns/t_%d.dat", &n) == 1 && n > highest)
+        if (std::sscanf(name, "turns/t_%d.dat", &n) == 1 && n > highest)
             highest = n;
     }
     return highest;
@@ -157,7 +170,7 @@ static int highestTurnIn(mz_zip_archive& zip) {
 static int highestTurnInBuffer(const std::vector<uint8_t>& zipData) {
     if (zipData.empty()) return 0;
     mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return 0;
+    if (!openSaveMem(zip, zipData)) return 0;
     const int n = highestTurnIn(zip);
     mz_zip_reader_end(&zip);
     return n;
@@ -535,9 +548,48 @@ static std::vector<uint8_t> readFile(const std::string& path) {
 // miniz can read the archive from the file instead: the central directory,
 // then only the entries asked for, in chunks. Still stdio underneath (see
 // readFile for why that matters on the web).
+// THE INTACT PART OF A SAVE WHOSE LAST APPEND DID NOT FINISH. A turn is
+// appended after the end of the archive (see appendInPlace), so a process that
+// dies mid-append leaves the previous archive whole and some bytes after it.
+// This finds where that archive ends: just past the last end-of-directory
+// record whose directory sits directly before it. 0 when there is none.
+static size_t intactArchiveEnd(const unsigned char* d, size_t n) {
+    if (n < 22) return 0;
+    auto u16 = [&](size_t at) { return (uint32_t)d[at] | (uint32_t)d[at + 1] << 8; };
+    auto u32 = [&](size_t at) { return u16(at) | u16(at + 2) << 16; };
+    for (size_t p = n - 22 + 1; p-- > 0;) {
+        if (d[p] != 0x50 || d[p + 1] != 0x4b || d[p + 2] != 0x05 || d[p + 3] != 0x06) continue;
+        const uint64_t cdSize = u32(p + 12), cdOfs = u32(p + 16), entries = u16(p + 10);
+        const size_t end = p + 22 + u16(p + 20);
+        if (cdOfs + cdSize != p || end > n) continue;
+        if (entries > 0 && (cdOfs + 4 > n || u32((size_t)cdOfs) != 0x02014b50)) continue;
+        return end;
+    }
+    return 0;
+}
+
 static bool openSaveFile(mz_zip_archive& zip, const std::string& path) {
     zip = mz_zip_archive{};
-    return mz_zip_reader_init_file(&zip, path.c_str(), 0);
+    if (mz_zip_reader_init_file(&zip, path.c_str(), 0)) return true;
+    // Only on failure: read it whole and look for the archive inside. Opened
+    // as that prefix, never truncated here -- reading a save does not write it.
+    const std::vector<uint8_t> data = readFile(path);
+    const size_t end = intactArchiveEnd(data.data(), data.size());
+    if (end == 0 || end >= data.size()) return false;
+    zip = mz_zip_archive{};
+    if (!mz_zip_reader_init_file_v2(&zip, path.c_str(), 0, 0, end)) return false;
+    fprintf(stderr, "[SAVE] %s: the last write did not finish; reading the save as it was before it "
+                    "(%zu stray bytes ignored)\n", path.c_str(), data.size() - end);
+    return true;
+}
+
+// The same, for a save already read into memory.
+static bool openSaveMem(mz_zip_archive& zip, const std::vector<uint8_t>& data) {
+    zip = mz_zip_archive{};
+    if (mz_zip_reader_init_mem(&zip, data.data(), data.size(), 0)) return true;
+    const size_t end = intactArchiveEnd(data.data(), data.size());
+    zip = mz_zip_archive{};
+    return end > 0 && end < data.size() && mz_zip_reader_init_mem(&zip, data.data(), end, 0);
 }
 
 // ─── Sealed entries (fog-of-war saves) ──────────────────
@@ -715,6 +767,396 @@ static void writeSealedTreasuries(mz_zip_archive& zip, const SaveMetadata& meta)
     mz_zip_writer_add_mem(&zip, "fog/treasuries.json", data.data(), data.size(), MZ_BEST_COMPRESSION);
 }
 
+// ─── Per-turn state as a diff ───────────────────────────
+//
+// EVERY TURN KEPT A WHOLE COPY OF THE GAME STATE. turns/s_NNNNN.json pins the
+// state at the end of a turn so that rewinding to it can restore orders,
+// policies and research, which the binary delta does not carry. Each copy is
+// ~750 KB of JSON and ~115 KB stored, and consecutive copies are nearly the
+// same bytes: in an 820-turn campaign they were 94 MB of a 102 MB save, and
+// because the save is carried across whole every turn, also most of what a
+// turn's save cost.
+//
+// So most turns now store turns/sd_NNNNN.bin, the state as a diff against the
+// turn before, with a full s_NNNNN.json every kStateKeyframe turns so that
+// rebuilding any turn reads at most that many entries:
+//
+//     "ODSD" | u8 version 1 | u32 base turn | u32 base length | u32 base crc32
+//            | u32 length   | u32 crc32     | ops (savedelta::encode)
+//
+// The checksums are of the base and of the result, so a chain that does not
+// rebuild EXACTLY reads as no snapshot -- the answer an older save already
+// gets -- never as a different state. state.json, which loading resumes from,
+// stays whole. Old saves keep their full snapshots and read as before.
+namespace savedelta {
+
+namespace {
+
+constexpr size_t kBlock = 32;    // shortest copy worth finding by hash
+constexpr size_t kStride = 8;    // base positions indexed: a copy of kBlock + kStride is always found
+constexpr uint64_t kMul = 0x100000001B3ull;
+
+uint64_t blockHash(const unsigned char* p) {
+    uint64_t h = 0;
+    for (size_t i = 0; i < kBlock; ++i) h = h * kMul + p[i];
+    return h;
+}
+
+void putVarint(std::string& out, uint64_t v) {
+    while (v >= 0x80) { out += (char)(0x80 | (v & 0x7F)); v >>= 7; }
+    out += (char)v;
+}
+
+bool getVarint(const unsigned char*& p, const unsigned char* end, uint64_t& v) {
+    v = 0;
+    for (int shift = 0; shift < 64; shift += 7) {
+        if (p >= end) return false;
+        const unsigned char c = *p++;
+        v |= (uint64_t)(c & 0x7F) << shift;
+        if (!(c & 0x80)) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+// Ops, each a varint of (length << 1 | kind):
+//   kind 0, ADD:  `length` literal bytes follow
+//   kind 1, COPY: a zigzag varint follows -- where in the base the copy starts,
+//                 relative to where the previous copy ended (0 when the two
+//                 snapshots simply line up, which is most of them)
+std::string encode(const std::string& baseStr, const std::string& targetStr) {
+    const unsigned char* base = (const unsigned char*)baseStr.data();
+    const unsigned char* tgt = (const unsigned char*)targetStr.data();
+    const size_t bn = baseStr.size(), tn = targetStr.size();
+    std::string out;
+
+    size_t tableSize = 1024;
+    while (tableSize < 2 * (bn / kStride + 1)) tableSize <<= 1;
+    std::vector<int64_t> table(tableSize, -1);
+    int shift = 64;   // the top log2(tableSize) bits of a hash pick its slot
+    for (size_t n = tableSize; n > 1; n >>= 1) --shift;
+    if (bn >= kBlock)
+        for (size_t p = 0; p + kBlock <= bn; p += kStride) table[blockHash(base + p) >> shift] = (int64_t)p;
+
+    uint64_t pow = 1;   // kMul^(kBlock-1), to roll a byte out of the hash
+    for (size_t i = 1; i < kBlock; ++i) pow *= kMul;
+
+    size_t lit = 0;          // first target byte not yet emitted
+    size_t copyEnd = 0;      // base position after the last copy
+    auto emitAdd = [&](size_t upto) {
+        if (upto <= lit) return;
+        putVarint(out, (uint64_t)(upto - lit) << 1);
+        out.append((const char*)tgt + lit, upto - lit);
+        lit = upto;
+    };
+    auto emitCopy = [&](size_t from, size_t len) {
+        putVarint(out, ((uint64_t)len << 1) | 1);
+        const int64_t rel = (int64_t)from - (int64_t)copyEnd;
+        putVarint(out, (uint64_t)((rel << 1) ^ (rel >> 63)));
+        copyEnd = from + len;
+    };
+
+    size_t j = 0;
+    uint64_t h = 0;
+    bool hashValid = false;
+    while (j < tn) {
+        // Where the snapshots line up -- carry on from the last copy, past
+        // any bytes that were replaced one for one since.
+        size_t from = SIZE_MAX, len = 0;
+        const size_t expect = copyEnd + (j - lit);
+        if (expect < bn) {
+            while (expect + len < bn && j + len < tn && base[expect + len] == tgt[j + len]) ++len;
+            if (len >= 16) from = expect; else len = 0;
+        }
+        if (from == SIZE_MAX && j + kBlock <= tn && bn >= kBlock) {
+            if (!hashValid) { h = blockHash(tgt + j); hashValid = true; }
+            const int64_t cand = table[h >> shift];
+            if (cand >= 0 && memcmp(base + cand, tgt + j, kBlock) == 0) {
+                size_t b = (size_t)cand, t = j;
+                while (b > 0 && t > lit && base[b - 1] == tgt[t - 1]) { --b; --t; }
+                len = j - t + kBlock;
+                while (b + len < bn && t + len < tn && base[b + len] == tgt[t + len]) ++len;
+                from = b;
+                j = t;
+            }
+        }
+        if (from != SIZE_MAX) {
+            emitAdd(j);
+            emitCopy(from, len);
+            j += len;
+            lit = j;
+            hashValid = false;
+            continue;
+        }
+        // No copy here: this byte is literal. Roll the hash one byte on.
+        if (hashValid && j + kBlock < tn) h = (h - tgt[j] * pow) * kMul + tgt[j + kBlock];
+        else hashValid = false;
+        ++j;
+    }
+    emitAdd(tn);
+    return out;
+}
+
+bool decode(const std::string& baseStr, const std::string& ops, std::string& out) {
+    const unsigned char* p = (const unsigned char*)ops.data();
+    const unsigned char* end = p + ops.size();
+    out.clear();
+    size_t copyEnd = 0;
+    while (p < end) {
+        uint64_t op = 0;
+        if (!getVarint(p, end, op)) return false;
+        const uint64_t len = op >> 1;
+        if (op & 1) {
+            uint64_t z = 0;
+            if (!getVarint(p, end, z)) return false;
+            const int64_t rel = (int64_t)(z >> 1) ^ -(int64_t)(z & 1);
+            const int64_t from = (int64_t)copyEnd + rel;
+            if (from < 0 || (uint64_t)from > baseStr.size() || len > baseStr.size() - (uint64_t)from)
+                return false;
+            out.append(baseStr, (size_t)from, (size_t)len);
+            copyEnd = (size_t)(from + (int64_t)len);
+        } else {
+            if (len > (uint64_t)(end - p)) return false;
+            out.append((const char*)p, (size_t)len);
+            p += len;
+        }
+    }
+    return true;
+}
+
+}  // namespace savedelta
+
+namespace {
+
+// A full snapshot every this many turns, so a chain is at most this long.
+// Measured on an 820-turn campaign: see the PR that introduced it.
+constexpr int kStateKeyframe = 32;
+
+constexpr char kDiffMagic[4] = {'O', 'D', 'S', 'D'};
+constexpr size_t kDiffHeader = 4 + 1 + 5 * 4;
+
+void putU32(std::string& s, uint32_t v) { for (int i = 0; i < 4; ++i) s += (char)(v >> (8 * i)); }
+uint32_t getU32(const std::string& s, size_t at) {
+    uint32_t v = 0;
+    for (int i = 0; i < 4; ++i) v |= (uint32_t)(unsigned char)s[at + (size_t)i] << (8 * i);
+    return v;
+}
+uint32_t crcOf(const std::string& s) {
+    return (uint32_t)mz_crc32(MZ_CRC32_INIT, (const unsigned char*)s.data(), s.size());
+}
+
+std::string fullStateName(int turn) {
+    char b[40];
+    std::snprintf(b, sizeof(b), "turns/s_%05d.json", turn);
+    return b;
+}
+std::string diffStateName(int turn) {
+    char b[40];
+    std::snprintf(b, sizeof(b), "turns/sd_%05d.bin", turn);
+    return b;
+}
+
+std::string makeDiff(int baseTurn, const std::string& base, const std::string& target) {
+    std::string d(kDiffMagic, 4);
+    d += (char)1;
+    putU32(d, (uint32_t)baseTurn);
+    putU32(d, (uint32_t)base.size());
+    putU32(d, crcOf(base));
+    putU32(d, (uint32_t)target.size());
+    putU32(d, crcOf(target));
+    d += savedelta::encode(base, target);
+    return d;
+}
+
+bool diffHeader(const std::string& d, int& baseTurn) {
+    if (d.size() < kDiffHeader || memcmp(d.data(), kDiffMagic, 4) != 0 || d[4] != 1) return false;
+    baseTurn = (int)getU32(d, 5);
+    return true;
+}
+
+}  // namespace
+
+// The state at the end of `turn`, rebuilt from whichever form the archive holds
+// it in, and how many diffs that took (`depth`). "" when there is none, or when
+// a diff does not rebuild exactly.
+static std::string turnStateFrom(mz_zip_archive& zip, int turn, int* depth = nullptr) {
+    std::vector<std::string> diffs;
+    int t = turn;
+    std::string state;
+    for (;;) {
+        state = extractEntry(zip, fullStateName(t).c_str());
+        if (!state.empty()) break;
+        std::string d = extractEntry(zip, diffStateName(t).c_str());
+        int baseTurn = 0;
+        // Each step must go back: a chain that loops or runs forward is damage.
+        if (!diffHeader(d, baseTurn) || baseTurn >= t || diffs.size() > 4096) return {};
+        diffs.push_back(std::move(d));
+        t = baseTurn;
+    }
+    if (depth) *depth = (int)diffs.size();
+    // Lengths at every step, the checksum of the result once. The keyframe is
+    // checked by the zip's own CRC on the way out, and a step that went wrong
+    // anywhere in the chain changes the bytes it ends in -- so one CRC of the
+    // turn asked for catches it, where one per step cost 62 passes over the
+    // whole state on a 31-diff chain and was most of what reading one cost.
+    for (auto it = diffs.rbegin(); it != diffs.rend(); ++it) {
+        const std::string& d = *it;
+        if (getU32(d, 9) != state.size()) return {};
+        std::string next;
+        const bool last = (it + 1 == diffs.rend());
+        if (!savedelta::decode(state, d.substr(kDiffHeader), next) ||
+            getU32(d, 17) != next.size() || (last && getU32(d, 21) != crcOf(next))) {
+            fprintf(stderr, "[SAVE] the state of turn %d does not rebuild exactly; treating it as absent\n", turn);
+            return {};
+        }
+        state.swap(next);
+    }
+    return state;
+}
+
+// ─── Appending a turn in place ──────────────────────────
+//
+// THE WHOLE SAVE WAS REWRITTEN TO ADD ONE TURN. Carrying every entry across,
+// even as raw compressed bytes, costs per entry, and a campaign holds two or
+// three entries a turn: measured on an 820-turn save, appending turn 700 took
+// 296 ms, and it grew with every turn played -- so a long game's total save
+// time grew with the square of its length.
+//
+// A zip can be added to without being rewritten. The new entries go after the
+// end of the archive, followed by a new central directory listing the old
+// entries that are still current and the new ones, and a new end record:
+//
+//     [entries][old directory][old end] [new entries][new directory][new end]
+//
+// NOTHING ALREADY IN THE FILE IS OVERWRITTEN, which is what keeps this as safe
+// as the write-then-rename it replaces. Until the new end record is complete
+// the file still holds the previous save whole, plus some bytes after it, and
+// openSaveFile() reads it as exactly that save (see intactArchiveEnd). A
+// process killed mid-append loses the turn it was writing, and nothing else.
+//
+// What is replaced -- last turn's state.json, metadata.json, index.json -- and
+// each old directory stay in the file as dead bytes. When they pass a quarter
+// of it, the next save is a full rewrite instead, which drops them; so is any
+// save this cannot append to (one that does not end in a plain end record,
+// one large enough to need zip64). Old builds read the result as any zip.
+enum class AppendResult { Done, Rewrite, Failed };
+
+static AppendResult appendInPlace(const std::string& path,
+                                  const std::function<bool(mz_zip_archive&)>& addNew,
+                                  const std::function<bool(const char*)>& replaced) {
+    auto u16 = [](const unsigned char* p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; };
+    auto u32 = [&](const unsigned char* p) { return u16(p) | u16(p + 2) << 16; };
+    auto put16 = [](std::string& s, uint32_t v) { s += (char)v; s += (char)(v >> 8); };
+    auto put32 = [&](std::string& s, uint32_t v) { put16(s, v & 0xFFFF); put16(s, v >> 16); };
+
+    std::FILE* f = std::fopen(path.c_str(), "r+b");
+    if (!f) return AppendResult::Rewrite;
+    auto rewrite = [&]() { std::fclose(f); return AppendResult::Rewrite; };
+    if (std::fseek(f, 0, SEEK_END) != 0) return rewrite();
+    const long sizeL = std::ftell(f);
+    // Well inside 4 GB, past which offsets need zip64, which this does not write.
+    if (sizeL < 22 || sizeL > 0x60000000L) return rewrite();
+    const uint32_t size = (uint32_t)sizeL;
+
+    unsigned char end[22];
+    if (std::fseek(f, (long)size - 22, SEEK_SET) != 0 || std::fread(end, 1, 22, f) != 22) return rewrite();
+    if (u32(end) != 0x06054b50 || u16(end + 4) != 0 || u16(end + 6) != 0 || u16(end + 20) != 0) return rewrite();
+    const uint32_t entries = u16(end + 10), cdSize = u32(end + 12), cdOfs = u32(end + 16);
+    if (entries == 0xFFFF || u16(end + 8) != entries || (uint64_t)cdOfs + cdSize != size - 22) return rewrite();
+
+    std::string cd(cdSize, '\0');
+    if (cdSize && (std::fseek(f, (long)cdOfs, SEEK_SET) != 0 || std::fread(&cd[0], 1, cdSize, f) != cdSize))
+        return rewrite();
+
+    // The old directory, less what this turn replaces.
+    std::string kept;
+    uint32_t keptCount = 0;
+    uint64_t live = 0;   // bytes of entry data still in use, to know when to compact
+    for (size_t pos = 0, i = 0; i < entries; ++i) {
+        const unsigned char* r = (const unsigned char*)cd.data() + pos;
+        if (pos + 46 > cd.size() || u32(r) != 0x02014b50) return rewrite();
+        const uint32_t n = u16(r + 28), e = u16(r + 30), c = u16(r + 32), comp = u32(r + 20);
+        const size_t rec = 46 + n + e + c;
+        if (pos + rec > cd.size() || comp == 0xFFFFFFFF || u32(r + 42) == 0xFFFFFFFF) return rewrite();
+        const std::string name((const char*)r + 46, n);
+        if (!replaced(name.c_str())) {
+            kept.append((const char*)r, rec);
+            ++keptCount;
+            live += 30 + n + e + comp;
+        }
+        pos += rec;
+    }
+
+    // This turn's entries, built in memory as an archive of their own.
+    mz_zip_archive hz{};
+    if (!mz_zip_writer_init_heap(&hz, 0, 0)) return rewrite();
+    void* buf = nullptr;
+    size_t bufSize = 0;
+    const bool built = addNew(hz) && mz_zip_writer_finalize_heap_archive(&hz, &buf, &bufSize);
+    mz_zip_writer_end(&hz);
+    std::string added;
+    if (buf) { added.assign((const char*)buf, bufSize); mz_free(buf); }
+    if (!built || added.size() < 22) return rewrite();
+    const unsigned char* a = (const unsigned char*)added.data();
+    const unsigned char* ae = a + added.size() - 22;
+    if (u32(ae) != 0x06054b50) return rewrite();
+    const uint32_t aEntries = u16(ae + 10), aCdSize = u32(ae + 12), aCdOfs = u32(ae + 16);
+    if ((uint64_t)aCdOfs + aCdSize + 22 != added.size()) return rewrite();
+
+    // Its directory, pointed at where its entries will sit in the save.
+    std::string newDir = kept;
+    for (size_t pos = aCdOfs, i = 0; i < aEntries; ++i) {
+        if (pos + 46 > (size_t)aCdOfs + aCdSize || u32(a + pos) != 0x02014b50) return rewrite();
+        const size_t rec = 46 + u16(a + pos + 28) + u16(a + pos + 30) + u16(a + pos + 32);
+        std::string r(added, pos, rec);
+        const uint32_t local = u32(a + pos + 42) + size;
+        for (int b = 0; b < 4; ++b) r[42 + (size_t)b] = (char)(local >> (8 * b));
+        newDir += r;
+        pos += rec;
+    }
+    const uint64_t newEntries = (uint64_t)keptCount + aEntries;
+    const uint64_t newCdOfs = (uint64_t)size + aCdOfs;
+    const uint64_t after = newCdOfs + newDir.size() + 22;
+    if (newEntries >= 0xFFFF || after > 0x60000000ull) return rewrite();
+    const uint64_t dead = after - (live + aCdOfs) - newDir.size() - 22;
+    if (after > (1u << 20) && dead * 4 > after) return rewrite();   // time to compact
+
+    std::string tail;
+    put32(tail, 0x06054b50);
+    put16(tail, 0); put16(tail, 0);
+    put16(tail, (uint32_t)newEntries); put16(tail, (uint32_t)newEntries);
+    put32(tail, (uint32_t)newDir.size());
+    put32(tail, (uint32_t)newCdOfs);
+    put16(tail, 0);
+
+    // Every write checked: a short write is a full disk, and a save that
+    // reports success after one is the save that will not open tomorrow.
+    bool ok = std::fseek(f, (long)size, SEEK_SET) == 0 &&
+              std::fwrite(added.data(), 1, aCdOfs, f) == aCdOfs &&
+              std::fwrite(newDir.data(), 1, newDir.size(), f) == newDir.size() &&
+              std::fwrite(tail.data(), 1, tail.size(), f) == tail.size() &&
+              std::fflush(f) == 0;
+#ifdef _WIN32
+    ok = ok && _commit(_fileno(f)) == 0;
+#elif !defined(__EMSCRIPTEN__)
+    ok = ok && fsync(fileno(f)) == 0;
+#endif
+    if (!ok) {
+        // Put the file back as it was. If even that fails, what follows the old
+        // archive is ignored by openSaveFile() all the same.
+        std::fflush(f);
+#ifdef _WIN32
+        (void)_chsize_s(_fileno(f), (__int64)size);
+#else
+        (void)ftruncate(fileno(f), (off_t)size);
+#endif
+        std::fclose(f);
+        return AppendResult::Failed;
+    }
+    return std::fclose(f) == 0 ? AppendResult::Done : AppendResult::Failed;
+}
+
 // ─── Create initial .odsv ────────────────────────────────
 
 bool SaveManager::createSave(const std::string& odsvPath,
@@ -835,10 +1277,165 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
         return false;
     }
 
-    // Re-read metadata (from the file as it still stands -- see the temp path
-    // below, which is why this is safe).
+    // Re-read metadata (from the file as it still stands: neither way of
+    // writing below changes it before the new turn is complete).
     SaveMetadata meta = readMetadata(odsvPath);
 
+    meta.turnCount++;
+    // ...and never below what the archive already holds, nor below the turn
+    // being written. See highestTurnIn(): the count is a cache of the entries,
+    // so a stale cache must lose to them, not the other way round.
+    const int heldTurns = highestTurnIn(srcZip);
+    if (heldTurns > meta.turnCount)        meta.turnCount = heldTurns;
+    if (delta.turnNumber > meta.turnCount) meta.turnCount = delta.turnNumber;
+    const std::string metaJson = metadataJson(meta);
+
+    // Index
+    std::string idx = "{\"turns\":[";
+    for (int t = 1; t <= meta.turnCount; ++t) {
+        if (t > 1) idx += ",";
+        idx += "\"" + std::string(5 - std::to_string(t).size(), '0') + std::to_string(t) + "\"";
+    }
+    idx += "]}\n";
+
+    // Carry over map.odmap, the previous turn files, and anything else already
+    // in the archive (rebellion/*.svg and friends), byte for byte.
+    // metadata.json / index.json are regenerated above, so they're skipped
+    // here. state.json is skipped when we're writing a fresh one below;
+    // entries supplied via extraFiles are skipped too, since those override.
+    // THE TURN BEING WRITTEN IS NOT CARRIED OVER. Re-appending a turn number
+    // the archive already has -- which a rewind, a replay, or a host resolving
+    // the same turn twice all do -- used to leave TWO entries with the same
+    // name. `data/saves/Quick Start.odsv` has 160 such pairs. miniz finds an
+    // entry by binary search over the sorted directory, so which of the two
+    // any later read returns is unspecified: in multiplayer that means the
+    // host can broadcast a different turn from the one it resolved, and the
+    // game desyncs permanently with nothing to see.
+    char turnPath[32];
+    snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", delta.turnNumber);
+    char turnStatePath[40];
+    snprintf(turnStatePath, sizeof(turnStatePath), "turns/s_%05d.json", delta.turnNumber);
+    const std::string turnDiffPath = diffStateName(delta.turnNumber);
+
+    // THIS TURN'S STATE, AS A DIFF WHEN IT CAN BE (see "Per-turn state as a
+    // diff"). Against the turn before, rebuilt from this archive -- never from
+    // a copy held in memory, which could be of some other version of the file.
+    // A full snapshot instead on every kStateKeyframe-th turn, when the chain
+    // behind the base is already that long, or when there is no base to diff
+    // against (the first turn, a turn after a gap, a base that does not rebuild).
+    std::string stateDiff;
+    if (stateJson && delta.turnNumber > 1 && delta.turnNumber % kStateKeyframe != 0) {
+        int depth = 0;
+        const std::string base = turnStateFrom(srcZip, delta.turnNumber - 1, &depth);
+        if (!base.empty() && depth + 1 < kStateKeyframe)
+            stateDiff = makeDiff(delta.turnNumber - 1, base, *stateJson);
+    }
+
+    // REWRITING A TURN THE NEXT ONE IS A DIFF OF. A rewind, a replay or a host
+    // resolving the same turn twice re-appends turn N while N+1 is still in the
+    // archive -- and if N+1 is stored as a diff of N, replacing N leaves it a
+    // diff of bytes that no longer exist. So N+1 is rebuilt now, from the old
+    // N, and kept as a full snapshot; nothing after it changes.
+    std::string reanchoredName, reanchoredState;
+    if (stateJson) {
+        const std::string nextDiff = diffStateName(delta.turnNumber + 1);
+        if (mz_zip_reader_locate_file(&srcZip, nextDiff.c_str(), nullptr, 0) >= 0) {
+            reanchoredName = nextDiff;
+            reanchoredState = turnStateFrom(srcZip, delta.turnNumber + 1);
+        }
+    }
+    // The old entries this turn replaces. Everything else is carried over.
+    auto replaced = [&](const char* name) {
+        if (strcmp(name, "metadata.json") == 0 || strcmp(name, "index.json") == 0) return true;
+        if (strcmp(name, turnPath) == 0) return true;
+        if (stateJson && strcmp(name, turnStatePath) == 0) return true;
+        if (stateJson && turnDiffPath == name) return true;
+        if (!reanchoredName.empty() && reanchoredName == name) return true;
+        if (!reanchoredState.empty() && fullStateName(delta.turnNumber + 1) == name) return true;
+        if (stateJson && strcmp(name, "state.json") == 0) return true;
+        if (extraFiles)
+            for (auto& [n, c] : *extraFiles)
+                if (n == name) return true;
+        return false;
+    };
+
+    // Everything this turn writes, into whichever archive is being built.
+    // Level 6, not the best: on a late-game state.json (1.2 MB) level 9 took
+    // five times as long for 4.6% less, and it is written every turn.
+    constexpr mz_uint kTurnLevel = 6;
+    auto addNew = [&](mz_zip_archive& z) -> bool {
+        bool ok = mz_zip_writer_add_mem(&z, "metadata.json", metaJson.data(), metaJson.size(), kTurnLevel);
+        ok = mz_zip_writer_add_mem(&z, "index.json", idx.data(), idx.size(), kTurnLevel) && ok;
+        // Add new turn
+        auto packedPlain = packTurn(delta);
+        const std::string packed = sealFor(meta, turnPath, packedPlain.data(), packedPlain.size());
+        ok = ok && mz_zip_writer_add_mem(&z, turnPath, packed.data(), packed.size(), kTurnLevel);
+
+        // Fold the state snapshot into this same rewrite when supplied.
+        // It is written twice: state.json is the "resume where I left off" copy,
+        // and turns/s_NNNNN.json pins the state as it was at the END of this turn.
+        // The binary .dat only carries province/ship/army numbers, so without this
+        // per-turn copy the pending orders, policies and research could not be
+        // reconstructed for any turn but the latest — which is what rewinding to
+        // an earlier turn needs.
+        if (!reanchoredState.empty()) {
+            const std::string name = fullStateName(delta.turnNumber + 1);
+            const std::string c = sealFor(meta, name.c_str(), reanchoredState.data(), reanchoredState.size());
+            ok = ok && mz_zip_writer_add_mem(&z, name.c_str(), c.data(), c.size(), kTurnLevel);
+        }
+        if (stateJson && !stateDiff.empty()) {
+            // state.json stays whole: it is what a load resumes from, in this build
+            // and in every older one.
+            const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
+            const std::string sd = sealFor(meta, turnDiffPath.c_str(), stateDiff.data(), stateDiff.size());
+            ok = ok && mz_zip_writer_add_mem(&z, "state.json", st.data(), st.size(), kTurnLevel);
+            ok = ok && mz_zip_writer_add_mem(&z, turnDiffPath.c_str(), sd.data(), sd.size(), kTurnLevel);
+        } else if (stateJson) {
+            const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
+            const std::string ts = sealFor(meta, turnStatePath, stateJson->data(), stateJson->size());
+            // DEFLATED ONCE WHEN THE TWO ARE THE SAME BYTES, which they are unless
+            // the save is sealed (the seal is keyed by entry name). The snapshot
+            // is the largest thing written each turn and compressing it twice at
+            // best compression was a fifth of a turn's whole cost. Same flags as
+            // the writer's own deflate, so the archive is byte-for-byte what two
+            // separate adds produce.
+            void* packedState = nullptr;
+            size_t packedLen = 0;
+            if (st == ts && st.size() > 3)       // <= 3 bytes the writer stores instead
+                packedState = tdefl_compress_mem_to_heap(st.data(), st.size(), &packedLen,
+                    tdefl_create_comp_flags_from_zip_params(kTurnLevel, -15, MZ_DEFAULT_STRATEGY));
+            if (packedState) {
+                const mz_uint32 crc = (mz_uint32)mz_crc32(MZ_CRC32_INIT, (const unsigned char*)st.data(), st.size());
+                const mz_uint flags = kTurnLevel | MZ_ZIP_FLAG_COMPRESSED_DATA;
+                ok = ok && mz_zip_writer_add_mem_ex(&z, "state.json", packedState, packedLen, nullptr, 0,
+                                         flags, st.size(), crc);
+                ok = ok && mz_zip_writer_add_mem_ex(&z, turnStatePath, packedState, packedLen, nullptr, 0,
+                                         flags, st.size(), crc);
+                mz_free(packedState);
+            } else {
+                ok = ok && mz_zip_writer_add_mem(&z, "state.json", st.data(), st.size(), kTurnLevel);
+                ok = ok && mz_zip_writer_add_mem(&z, turnStatePath, ts.data(), ts.size(), kTurnLevel);
+            }
+        }
+        if (extraFiles)
+            for (auto& [name, content] : *extraFiles) {
+                const std::string c = sealFor(meta, name.c_str(), content.data(), content.size());
+                ok = ok && mz_zip_writer_add_mem(&z, name.c_str(), c.data(), c.size(), kTurnLevel);
+            }
+        return ok;
+    };
+
+    // APPENDED IN PLACE when it can be: see appendInPlace(). The archive is
+    // closed first -- everything needed from it has been read above.
+    mz_zip_reader_end(&srcZip);
+    switch (appendInPlace(odsvPath, addNew, replaced)) {
+        case AppendResult::Done:   return true;
+        case AppendResult::Failed: return false;
+        case AppendResult::Rewrite: break;
+    }
+    if (!openSaveFile(srcZip, odsvPath)) return false;
+
+    // THE FULL REWRITE, which also drops whatever earlier appends left behind.
     // WRITTEN BESIDE THE SAVE, THEN MOVED OVER IT.
     //
     // mz_zip_writer_init_file truncates its target, so writing straight to
@@ -859,58 +1456,12 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
         std::remove(tmpPath.c_str());
         return false;
     };
-
-    meta.turnCount++;
-    // ...and never below what the archive already holds, nor below the turn
-    // being written. See highestTurnIn(): the count is a cache of the entries,
-    // so a stale cache must lose to them, not the other way round.
-    const int heldTurns = highestTurnIn(srcZip);
-    if (heldTurns > meta.turnCount)        meta.turnCount = heldTurns;
-    if (delta.turnNumber > meta.turnCount) meta.turnCount = delta.turnNumber;
-    const std::string metaJson = metadataJson(meta);
-    mz_zip_writer_add_mem(&newZip, "metadata.json", metaJson.data(), metaJson.size(), MZ_BEST_COMPRESSION);
-
-    // Index
-    std::string idx = "{\"turns\":[";
-    for (int t = 1; t <= meta.turnCount; ++t) {
-        if (t > 1) idx += ",";
-        idx += "\"" + std::string(5 - std::to_string(t).size(), '0') + std::to_string(t) + "\"";
-    }
-    idx += "]}\n";
-    mz_zip_writer_add_mem(&newZip, "index.json", idx.data(), idx.size(), MZ_BEST_COMPRESSION);
-
-    // Carry over map.odmap, the previous turn files, and anything else already
-    // in the archive (rebellion/*.svg and friends), byte for byte.
-    // metadata.json / index.json are regenerated above, so they're skipped
-    // here. state.json is skipped when we're writing a fresh one below;
-    // entries supplied via extraFiles are skipped too, since those override.
-    // THE TURN BEING WRITTEN IS NOT CARRIED OVER. Re-appending a turn number
-    // the archive already has -- which a rewind, a replay, or a host resolving
-    // the same turn twice all do -- used to leave TWO entries with the same
-    // name. `data/saves/Quick Start.odsv` has 160 such pairs. miniz finds an
-    // entry by binary search over the sorted directory, so which of the two
-    // any later read returns is unspecified: in multiplayer that means the
-    // host can broadcast a different turn from the one it resolved, and the
-    // game desyncs permanently with nothing to see.
-    char turnPath[32];
-    snprintf(turnPath, sizeof(turnPath), "turns/t_%05d.dat", delta.turnNumber);
-    char turnStatePath[40];
-    snprintf(turnStatePath, sizeof(turnStatePath), "turns/s_%05d.json", delta.turnNumber);
     {
         const int fc = (int)mz_zip_reader_get_num_files(&srcZip);
         for (int i = 0; i < fc; ++i) {
             mz_zip_archive_file_stat st{};
             if (!mz_zip_reader_file_stat(&srcZip, i, &st)) continue;
-            if (strcmp(st.m_filename, "metadata.json") == 0 ||
-                strcmp(st.m_filename, "index.json") == 0) continue;
-            if (strcmp(st.m_filename, turnPath) == 0) continue;
-            if (stateJson && strcmp(st.m_filename, turnStatePath) == 0) continue;
-            if (stateJson && strcmp(st.m_filename, "state.json") == 0) continue;
-            bool overridden = false;
-            if (extraFiles)
-                for (auto& [n, c] : *extraFiles)
-                    if (n == st.m_filename) { overridden = true; break; }
-            if (overridden) continue;
+            if (replaced(st.m_filename)) continue;
 
             // Compressed bytes straight across: no inflate, no deflate. This
             // is the whole of the fix -- see the note at the top.
@@ -919,51 +1470,7 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
         }
     }
 
-    // Add new turn
-    auto packedPlain = packTurn(delta);
-    const std::string packed = sealFor(meta, turnPath, packedPlain.data(), packedPlain.size());
-    mz_zip_writer_add_mem(&newZip, turnPath, packed.data(), packed.size(), MZ_BEST_COMPRESSION);
-
-    // Fold the state snapshot into this same rewrite when supplied.
-    // It is written twice: state.json is the "resume where I left off" copy,
-    // and turns/s_NNNNN.json pins the state as it was at the END of this turn.
-    // The binary .dat only carries province/ship/army numbers, so without this
-    // per-turn copy the pending orders, policies and research could not be
-    // reconstructed for any turn but the latest — which is what rewinding to
-    // an earlier turn needs.
-    if (stateJson) {
-        const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
-        const std::string ts = sealFor(meta, turnStatePath, stateJson->data(), stateJson->size());
-        // DEFLATED ONCE WHEN THE TWO ARE THE SAME BYTES, which they are unless
-        // the save is sealed (the seal is keyed by entry name). The snapshot
-        // is the largest thing written each turn and compressing it twice at
-        // best compression was a fifth of a turn's whole cost. Same flags as
-        // the writer's own deflate, so the archive is byte-for-byte what two
-        // separate adds produce.
-        void* packedState = nullptr;
-        size_t packedLen = 0;
-        if (st == ts && st.size() > 3)       // <= 3 bytes the writer stores instead
-            packedState = tdefl_compress_mem_to_heap(st.data(), st.size(), &packedLen,
-                tdefl_create_comp_flags_from_zip_params(MZ_BEST_COMPRESSION, -15, MZ_DEFAULT_STRATEGY));
-        if (packedState) {
-            const mz_uint32 crc = (mz_uint32)mz_crc32(MZ_CRC32_INIT, (const unsigned char*)st.data(), st.size());
-            const mz_uint flags = MZ_BEST_COMPRESSION | MZ_ZIP_FLAG_COMPRESSED_DATA;
-            mz_zip_writer_add_mem_ex(&newZip, "state.json", packedState, packedLen, nullptr, 0,
-                                     flags, st.size(), crc);
-            mz_zip_writer_add_mem_ex(&newZip, turnStatePath, packedState, packedLen, nullptr, 0,
-                                     flags, st.size(), crc);
-            mz_free(packedState);
-        } else {
-            mz_zip_writer_add_mem(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
-            mz_zip_writer_add_mem(&newZip, turnStatePath, ts.data(), ts.size(), MZ_BEST_COMPRESSION);
-        }
-    }
-    if (extraFiles)
-        for (auto& [name, content] : *extraFiles) {
-            const std::string c = sealFor(meta, name.c_str(), content.data(), content.size());
-            mz_zip_writer_add_mem(&newZip, name.c_str(), c.data(), c.size(), MZ_BEST_COMPRESSION);
-        }
-
+    if (!addNew(newZip)) return fail();
     if (!mz_zip_writer_finalize_archive(&newZip)) return fail();
     mz_zip_writer_end(&newZip);
     mz_zip_reader_end(&srcZip);
@@ -1013,7 +1520,7 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     std::vector<uint8_t> odmData;
     {
         mz_zip_archive tmpZip{};
-        if (!mz_zip_reader_init_mem(&tmpZip, zipData.data(), zipData.size(), 0))
+        if (!openSaveMem(tmpZip, zipData))
             return false;
         int idx = mz_zip_reader_locate_file(&tmpZip, "map.odmap", nullptr, 0);
         if (idx < 0) { mz_zip_reader_end(&tmpZip); return false; }
@@ -1055,7 +1562,7 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     // default rather than by being remembered.
     {
         mz_zip_archive srcZip{};
-        if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
+        if (openSaveMem(srcZip, zipData)) {
             int fc = (int)mz_zip_reader_get_num_files(&srcZip);
             for (int i = 0; i < fc; ++i) {
                 mz_zip_archive_file_stat st{};
@@ -1145,7 +1652,7 @@ static SaveMetadata parseMetadataJson(const std::string& js) {
 static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
     if (zipData.empty()) return {};
     mz_zip_archive zip{};
-    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return {};
+    if (!openSaveMem(zip, zipData)) return {};
     const std::string js = extractEntry(zip, "metadata.json");
     SaveMetadata meta = parseMetadataJson(js);
     readSealedTreasuries(zip, meta);
@@ -1216,6 +1723,10 @@ TurnDelta SaveReader::readTurn(int turn) {
 
 bool SaveReader::hasEntry(const std::string& name) {
     return m_ok && mz_zip_reader_locate_file(static_cast<mz_zip_archive*>(m_zip), name.c_str(), nullptr, 0) >= 0;
+}
+
+bool SaveReader::hasTurnState(int turn) {
+    return hasEntry(fullStateName(turn)) || hasEntry(diffStateName(turn));
 }
 
 // ─── Extract .odmap from .odsv ───────────────────────────
@@ -1345,7 +1856,7 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     std::vector<uint8_t> odmData;
     {
         mz_zip_archive tmpZip{};
-        if (!mz_zip_reader_init_mem(&tmpZip, zipData.data(), zipData.size(), 0))
+        if (!openSaveMem(tmpZip, zipData))
             return false;
         int idx = mz_zip_reader_locate_file(&tmpZip, "map.odmap", nullptr, 0);
         if (idx < 0) { mz_zip_reader_end(&tmpZip); return false; }
@@ -1376,7 +1887,7 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     // rebellion/<cid>.svg and, in a fog world, what every country had seen.
     {
         mz_zip_archive srcZip{};
-        if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
+        if (openSaveMem(srcZip, zipData)) {
             int fc = (int)mz_zip_reader_get_num_files(&srcZip);
             for (int i = 0; i < fc; ++i) {
                 mz_zip_archive_file_stat st{};
@@ -1413,7 +1924,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
     std::vector<std::pair<std::string, std::vector<uint8_t>>> existingExtra;
     {
         mz_zip_archive tmpZip{};
-        if (!mz_zip_reader_init_mem(&tmpZip, zipData.data(), zipData.size(), 0))
+        if (!openSaveMem(tmpZip, zipData))
             return false;
         int odmIdx = mz_zip_reader_locate_file(&tmpZip, "map.odmap", nullptr, 0);
         if (odmIdx >= 0) {
@@ -1483,7 +1994,7 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
 
     {
         mz_zip_archive srcZip{};
-        if (mz_zip_reader_init_mem(&srcZip, zipData.data(), zipData.size(), 0)) {
+        if (openSaveMem(srcZip, zipData)) {
             int fc = (int)mz_zip_reader_get_num_files(&srcZip);
             for (int i = 0; i < fc; ++i) {
                 mz_zip_archive_file_stat st{};
@@ -1531,4 +2042,12 @@ std::string SaveManager::readEntry(const std::string& odsvPath, const std::strin
 
 std::string SaveManager::readState(const std::string& odsvPath) {
     return readEntry(odsvPath, "state.json");
+}
+
+std::string SaveManager::readTurnState(const std::string& odsvPath, int turn) {
+    mz_zip_archive zip{};
+    if (!openSaveFile(zip, odsvPath)) return {};
+    std::string state = turnStateFrom(zip, turn);
+    mz_zip_reader_end(&zip);
+    return state;
 }

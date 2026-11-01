@@ -3822,6 +3822,33 @@ add_executable(SaveRoundTripTest EXCLUDE_FROM_ALL
 )
 target_include_directories(SaveRoundTripTest PRIVATE src tests tools/map_generator)
 
+# The per-turn state diffs and the in-place append: exact rebuilds, old saves,
+# rewinds, appends cut short at any byte (tests/save_format_test.cpp).
+add_executable(SaveFormatTest EXCLUDE_FROM_ALL
+    tests/save_format_test.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveFormatTest PRIVATE src tests tools/map_generator)
+
+# A real campaign's save written again turn by turn: size, append time, and
+# every snapshot read back exactly. Not in run_all.sh -- it needs a long save
+# to say anything (tests/save_stream_bench.cpp).
+add_executable(SaveStreamBench EXCLUDE_FROM_ALL
+    tests/save_stream_bench.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveStreamBench PRIVATE src tests tools/map_generator)
+
 
 # The archive the web build writes on a timer. Built everywhere, because
 # OdState.cpp is: the archiving half is plain std::filesystem and miniz.
