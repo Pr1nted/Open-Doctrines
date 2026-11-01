@@ -305,7 +305,11 @@ private:
     Texture2D m_politicalTex{};
     Texture2D m_claimsTex{};
     Texture2D m_provinceIndexTex{};
-    struct OverlaySlot { Texture2D base{}, stripe{}; bool active = false; };
+    struct OverlaySlot {
+        Texture2D base{}, stripe{};
+        bool active = false;
+        std::vector<Color> cpuBase, cpuStripe;   ///< software rendering only; see m_cpuIndex
+    };
     OverlaySlot m_overlays[(int)Overlay::Count_];
     Texture2D m_noStripe{};          ///< 1x1 transparent, bound when a slot has none
     RenderTexture2D m_overlayTarget{};   ///< the shown overlay, painted from its table
@@ -320,6 +324,21 @@ private:
     Texture2D m_seaFog{};
     const std::vector<int>* m_displayOwners = nullptr;
     bool m_seaFogOn = false;
+    // ── Software rendering (OD_SOFTWARE_RENDER) ──
+    //
+    // rlsw has no shaders, so the political and overlay layers are painted on
+    // the CPU instead, from copies of exactly the tables the shaders sample.
+    // Filled only in that build; empty, and costing nothing, everywhere else.
+    // Present in every build so the class is the same shape in every target.
+    std::vector<uint16_t> m_cpuIndex;       ///< province id per texel, the index texture's size
+    int m_cpuIndexW = 0, m_cpuIndexH = 0;
+    std::vector<uint8_t> m_cpuOwners;       ///< kOverlayEntries x RGBA, as m_politicalOwners
+    std::vector<Color> m_cpuColours;        ///< kPoliticalColumns x m_politicalRows
+    std::vector<uint8_t> m_cpuDistance;     ///< border distance, the index texture's size
+    std::vector<uint8_t> m_cpuSeaFog;       ///< as m_seaFog
+    int m_cpuSeaFogW = 0, m_cpuSeaFogH = 0;
+    void paintPoliticalCpu();
+    void paintOverlayCpu(const OverlaySlot& slot);
     void preparePolitical();
     RenderTexture2D makeTarget(int w, int h);
     int m_overlayPainted = -1;           ///< which Overlay m_overlayTarget holds

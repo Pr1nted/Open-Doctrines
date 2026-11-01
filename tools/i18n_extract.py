@@ -74,7 +74,7 @@ LABEL_TABLES = (
     # language is loaded and freeze English in. So the labels are collected
     # here and looked up when the row is built, in makeSettingLabel().
     "DISPLAY_ITEMS", "CONTROLS_ITEMS", "AUDIO_ITEMS", "KEYBINDS_ITEMS",
-    "ADVANCED_ITEMS", "EXPERIMENTAL_ITEMS", "AI_DIFFICULTY_NAMES",
+    "ADVANCED_ITEMS", "EXPERIMENTAL_ITEMS", "ACCESSIBILITY_ITEMS", "AI_DIFFICULTY_NAMES",
     "COLOURBLIND_NAMES",
     # The keybind rows name the ACTION, and KEYBINDS_ITEMS holds references to
     # this table rather than literals -- so the section headers around them

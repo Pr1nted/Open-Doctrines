@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
     if (!rt.init(err)) { printf("\nruntime failed: %s\n", err.c_str()); return 1; }
     installContentBridge();
 
-    uint32_t grants = m.modules;
+    uint64_t grants = m.modules;
     for (const auto& name : revoked) {
         uint32_t bit = modModuleFromName(name);
         if (!bit) { printf("\nunknown module to revoke: %s\n", name.c_str()); return 2; }

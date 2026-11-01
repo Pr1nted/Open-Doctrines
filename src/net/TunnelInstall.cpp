@@ -169,6 +169,13 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
     m_impl->set(TunnelInstallStatus::Phase::Asking,
                 "Asking Cloudflare which version is current...", 0, 0);
 
+#if defined(OD_NO_THREADS)
+    // Nothing to download with on a build with no threads (DOS has no network).
+    (void)toolsDir;
+    m_impl->running.store(false);
+    m_impl->set(TunnelInstallStatus::Phase::Failed, "This build cannot download the tunnel.");
+    return false;
+#else
     Impl* impl = m_impl.get();
     m_impl->worker = std::thread([impl, toolsDir] {
         const PlatformAsset asset = platformAsset();
@@ -331,4 +338,5 @@ bool TunnelInstaller::begin(const std::string& toolsDir) {
         impl->running.store(false);
     });
     return true;
+#endif
 }

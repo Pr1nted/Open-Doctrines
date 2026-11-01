@@ -5,6 +5,7 @@
 #include "mods/ModManager.h"
 #include "DevLink.h"
 #include "Game.h"
+#include "Access.h"
 #include "net/Socks5.h"
 #include "net/TorClient.h"
 #include "util/SoftwareGlRelaunch.h"
@@ -126,7 +127,7 @@ EM_JS(int, odFitCanvasJS, (), {
 #elif !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
-#if defined(OD_DESKTOP_SDL)
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
 // SDL_InitSubSystem and SDL_GetError, ahead of InitWindow (see Game::init).
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_error.h>
@@ -208,8 +209,8 @@ const int SINGLEPLAYER_COUNT = 2;
 #endif
 const char* GAME_VERSION = OD_VERSION_STRING;
 
-const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental", "Language"};
-const int TAB_COUNT = 7;
+const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental", "Language", "Accessibility"};
+const int TAB_COUNT = 8;
 
 const int RESOLUTIONS[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 const int RES_COUNT = 5;
@@ -429,8 +430,17 @@ const int EXPERIMENTAL_COUNT = 9;
 const Setting LANGUAGE_ITEMS[] = {{"", false, -1}};
 const int LANGUAGE_COUNT = 0;
 
-const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS, LANGUAGE_ITEMS};
-const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT, LANGUAGE_COUNT};
+// Settings -> Accessibility. Every row is a toggle, or (Text Size) a cycle, so
+// one click does it: see Game::activateAccessibilityRow. ACCESSIBILITY.md
+// describes each for players; src/Theme.h and src/Access.h say how.
+const Setting ACCESSIBILITY_ITEMS[] = {
+    {"High Contrast", false, -1}, {"Text Size", false, -1}, {"Reduce Motion", false, -1},
+    {"Hold to Confirm", false, -1}, {"Longer Messages", false, -1}, {"Sound Cues", false, -1},
+    {"Colourblind Colours", false, -1}, {"Back", false, -1}};
+const int ACCESSIBILITY_COUNT = 8;
+
+const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS, LANGUAGE_ITEMS, ACCESSIBILITY_ITEMS};
+const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT, LANGUAGE_COUNT, ACCESSIBILITY_COUNT};
 
 const char* keyName(int key) {
     if (key == 0) return "\xe2\x80\x94"; // em dash
@@ -508,6 +518,7 @@ static_assert(ACCENT_PRESETS_COUNT == OD_COUNT_OF(ACCENT_PRESETS),      "ACCENT_
 static_assert(CONTROLS_COUNT       == OD_COUNT_OF(CONTROLS_ITEMS),      "CONTROLS_COUNT");
 static_assert(AUDIO_COUNT          == OD_COUNT_OF(AUDIO_ITEMS),         "AUDIO_COUNT");
 static_assert(VOLUME_COUNT         == OD_COUNT_OF(VOLUME_DEFAULTS),     "VOLUME_DEFAULTS");
+static_assert(ACCESSIBILITY_COUNT  == OD_COUNT_OF(ACCESSIBILITY_ITEMS), "ACCESSIBILITY_COUNT");
 // The volume rows are the first VOLUME_COUNT of the Audio tab, and "Back" has
 // to stay after them: isVolumeSetting() decides by index alone.
 static_assert(VOLUME_COUNT         <  AUDIO_COUNT,                      "Audio tab needs a Back row");
@@ -666,6 +677,21 @@ bool settingUsesArrows(int tab, int index) {
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     const Setting& s = TAB_ITEMS[tab][index];
     std::string label = od::i18n::tr(s.label);
+    if (tab == ACCESSIBILITY_TAB) {
+        switch (index) {
+            case 0: return label + onOff(cfg.highContrast);
+            case 1: { char b[32]; snprintf(b, sizeof b, ": %d%%", (int)lroundf(cfg.textScale * 100.0f));
+                      return label + b; }
+            case 2: return label + onOff(cfg.reduceMotion);
+            case 3: return label + onOff(cfg.holdToConfirm);
+            case 4: return label + onOff(cfg.longMessages);
+            case 5: return label + onOff(cfg.soundCues);
+            case 6: return label + ": " + od::i18n::tr(COLOURBLIND_NAMES[
+                        (cfg.colourBlindMode < 0 || cfg.colourBlindMode >= COLOURBLIND_COUNT)
+                            ? 0 : cfg.colourBlindMode]);
+            default: return label;
+        }
+    }
     if (tab == 0 && index == 0) {
         label += onOff(cfg.fullscreen);
     } else if (tab == 0 && index == 1) {
@@ -1341,6 +1367,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // There is no setting to respect here -- a phone's panel is its panel.
     m_screenW = 0;
     m_screenH = 0;
+#elif defined(__vita__)
+    // The Vita's panel, whatever the config says: SDL's Vita window is the
+    // whole screen, and a 1600x900 request would only be cropped by it.
+    m_screenW = 960;
+    m_screenH = 544;
 #endif
 
     int winFlags = FLAG_WINDOW_RESIZABLE;
@@ -1394,7 +1425,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // configuration exists for. Read by SDL_Init, inside InitWindow below.
     if (!getenv("SDL_VIDEODRIVER")) setenv("SDL_VIDEODRIVER", "offscreen", 1);
 #endif
-#if defined(OD_DESKTOP_SDL)
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
     // NO DISPLAY, SAID AS SUCH. raylib 6.2's SDL backend checks SDL_Init the
     // SDL2 way, `result < 0`; SDL3 returns false on failure, which is never
     // below zero, so a session with no display at all sails past it and fails
@@ -1403,6 +1434,8 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // relaunch. So video is brought up here first and a failure is reported in
     // the words the trace-log callback reads as no display. SDL counts
     // initialisations, so raylib's own SDL_Init inside InitWindow is unaffected.
+    // Not on SDL2 (SerenityOS): there SDL_Init does return < 0, and raylib's
+    // check already says no display in the right words.
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif
@@ -1546,6 +1579,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
              (float)::GetScreenHeight() / odUi::scale());
 
     odPalette::setMode(m_config.colourBlindMode);
+    applyAccessibility();
 
     // InitWindow cannot fail loudly -- it returns void, logs a warning, and
     // leaves the process running with no window and no GL context. Everything
@@ -1645,6 +1679,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
         int mon = GetCurrentMonitor();
         int mw = GetMonitorWidth(mon);
         int mh = GetMonitorHeight(mon);
+        // NEVER LARGER THAN THE SCREEN. The default window is 1600x900 and a
+        // Steam Deck's panel is 1280x800, so on the Deck's desktop -- and on
+        // any small laptop -- the window opened past the screen's edges and
+        // was centred at a negative position, its title bar and the bottom of
+        // the interface out of reach. A window that does not fit is shrunk to
+        // 90% of the screen, keeping its shape; one that fits is left alone.
+        if (mw > 0 && mh > 0 && (m_screenW > mw || m_screenH > mh)) {
+            const float k = std::min(0.9f * mw / m_screenW, 0.9f * mh / m_screenH);
+            m_screenW = std::max(640, (int)(m_screenW * k));
+            m_screenH = std::max(400, (int)(m_screenH * k));
+        }
         SetWindowSize(m_screenW, m_screenH);
         SetWindowSize(m_screenW, m_screenH);
         PollInputEvents();
@@ -1761,7 +1806,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
     TraceLog(LOG_INFO, ("[OD] m_screen: " + std::to_string(m_screenW) + "x" + std::to_string(m_screenH)).c_str());
 #endif
 
-    if (m_config.fullscreen) {
+    // UNDER GAMESCOPE, FULLSCREEN. Gamescope -- the compositor of a Steam
+    // Deck's Game Mode, and of SteamOS on anything -- shows one game at a time
+    // across the whole panel, so a window there is only ever scaled up from
+    // whatever size it asked for: 1600x900 drawn and then squeezed onto
+    // 1280x800. Fullscreen draws at the panel's own resolution instead. Not
+    // written to the config: the same install started from the Deck's
+    // desktop, or on a PC, keeps the player's own choice.
+    const bool underGamescope =
+        getenv("GAMESCOPE_WAYLAND_DISPLAY") != nullptr ||
+        (getenv("XDG_CURRENT_DESKTOP") && std::strcmp(getenv("XDG_CURRENT_DESKTOP"), "gamescope") == 0);
+    if (m_config.fullscreen || underGamescope) {
         int mon = GetCurrentMonitor();
         m_windowedW = m_screenW;
         m_windowedH = m_screenH;
@@ -1773,6 +1828,15 @@ bool Game::init(int screenW, int screenH, const char* title) {
         SetWindowSize(m_screenW, m_screenH);
         SetWindowPosition(0, 0);
     }
+    // The size the window settled on, after fitting and fullscreen -- the
+    // [DPI] line above is from before either. Not its position: raylib's copy
+    // of that is only refreshed by a window event, and printed here it still
+    // says where the window was before it was moved.
+    if (getenv("OD_DPI_PROBE"))
+        printf("[WINDOW] %dx%d  fullscreen=%d gamescope=%d  monitor=%dx%d\n",
+               m_screenW, m_screenH,
+               (m_config.fullscreen || underGamescope) ? 1 : 0, underGamescope ? 1 : 0,
+               GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
 
     // Budget first: applyFpsTarget reads it, so setting it afterwards would
     // leave the first frames running unthrottled.
@@ -2057,9 +2121,9 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     std::vector<int> missing;
     std::vector<int> missingAt;
     for (int i = 0; i < n; ++i) {
-        if (odIsBlankCodepoint(cps[i])) continue;
+        if (odIsBlankCodepoint(codepoints[i])) continue;
         if (glyphs[i].advanceX == 0 && glyphs[i].image.width == 0) {
-            missing.push_back(cps[i]);
+            missing.push_back(codepoints[i]);
             missingAt.push_back(i);
         }
     }
@@ -3082,6 +3146,12 @@ void Game::run() {
         // every frame, and a popup is exactly when it must not stutter.
         Audio::get().update(dt);
         updateMusic(dt);
+        // Beside them and for the same reason: the mod bus is mixed on the
+        // audio thread and reads its gains from here, so this has to run on
+        // every frame and on every screen. Game::update() was the wrong home
+        // -- it is only called on the gameplay branch, so a mod's sound went
+        // unmixed at the menu, which is exactly where a mod load plays one.
+        pumpModAudio();
         // Also above the early-out: the resource panel is a system control, not
         // a game screen, so it has to answer F10 even with a popup up.
         samplePerformance();
@@ -3978,6 +4048,9 @@ void Game::endFrame() {
     // LAST, over everything: it is a keyboard, and a keyboard is in front of
     // the thing being typed into. It draws nothing unless a field asked for a
     // character during this frame -- see TouchKeyboard.h.
+    // The refusal marker for Sound Cues, at the pointer (src/Access.h).
+    odAccess::drawCue(getMouse());
+
     osk::draw();
     osk::endFrame();
 

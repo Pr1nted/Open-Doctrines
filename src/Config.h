@@ -28,6 +28,15 @@ struct Config {
     /// 0 off, 1 deuteranopia, 2 protanopia, 3 tritanopia -- odPalette::Mode.
     /// See src/Palette.h and tools/check_palette.py.
     int colourBlindMode = 0;
+    /// Settings -> Accessibility. All off by default; see ACCESSIBILITY.md and
+    /// src/Theme.h (high contrast) and src/Access.h (the rest).
+    bool highContrast = false;
+    bool reduceMotion = false;
+    bool holdToConfirm = false;
+    bool longMessages = false;
+    bool soundCues = false;
+    /// Text size on top of UI Scale: 1.0, 1.1 or 1.2 (see the Text Size row).
+    float textScale = 1.0f;
     int screenW = 1600;
     int screenH = 900;
     bool fullscreen = false;

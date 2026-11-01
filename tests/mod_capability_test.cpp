@@ -37,6 +37,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -65,7 +66,7 @@ std::vector<uint8_t> readFile(const std::string& path) {
 
 // Every capability a generated mod can ask for. Core is always granted: a mod
 // without it cannot log, and Core is what abi.json gives a null capability.
-uint32_t bitFor(const std::string& cap) {
+uint64_t bitFor(const std::string& cap) {
     // ONE LIST, NOT TWO. This was a hand-kept copy of the table in
     // ModPackage.cpp, so every capability added to the game failed here until
     // somebody remembered to add it twice -- a test that reports "the
@@ -92,6 +93,34 @@ std::string manifestFor(const std::string& id, const std::string& cap) {
 int main(int argc, char** argv) {
     const std::string dir = argc > 1 ? argv[1] : "build/capmods";
     printf("Every capability, called -- fixtures from %s\n\n", dir.c_str());
+
+    // The grant mask is 64 bits. Map.Write took bit 30 and left exactly one,
+    // so it was widened before the last was spent -- and the widening is only
+    // real if a bit above 31 survives every hop a grant makes: the mask, the
+    // persisted JSON number, and the capability test back. On a uint32_t mask
+    // kHigh truncates to zero and all three of these fail.
+    {
+        // Against the PRODUCTION types, not locals of this test's choosing:
+        // a check written with its own uint64_t passes just as well while the
+        // real field is still 32 bits, which is the mistake worth avoiding in
+        // a test whose whole subject is a field's width.
+        static_assert(sizeof(ModManifest::modules) >= 8,
+                      "the manifest's module mask must hold a bit above 31");
+        static_assert(sizeof(decltype(std::declval<ModInstance&>().granted())) >= 8,
+                      "a granted mask must hold a bit above 31");
+
+        constexpr uint64_t kHigh = 1ull << 40;
+        decltype(ModManifest::modules) grants = MODULE_CORE | kHigh;
+        check("a bit above 31 survives the grant mask", (grants & kHigh) != 0);
+        check("and does not disturb Core", (grants & MODULE_CORE) != 0);
+
+        nlohmann::json j;
+        j["grants"] = grants;
+        const uint64_t back = j["grants"].get<uint64_t>();
+        check("and survives the state file", back == grants,
+              "read back " + std::to_string(back) + " from " + std::to_string(grants));
+    }
+
 
     const std::string descPath = dir + "/capabilities.json";
     std::ifstream df(descPath);
@@ -150,7 +179,7 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        const uint32_t bit = bitFor(cap);
+        const uint64_t bit = bitFor(cap);
         if (!bit) { check("the capability has a module bit", false, cap); continue; }
 
         Zip z;

@@ -293,6 +293,34 @@ std::string GameUpdates::platformKey() {
 #elif defined(__ANDROID__)
     // An APK is replaced by reinstalling it, never by unpacking a zip over it.
     return "OpenDoctrines-android-none";
+#elif defined(__riscos)
+    // The RISC OS application zip: no network on this build, no self-update.
+    return "OpenDoctrines-riscos-arm";
+#elif defined(__3DS__)
+    // The 3DS homebrew zip, as the Wii's below: no network, no self-update.
+    return "OpenDoctrines-3ds-arm";
+#elif defined(__wii__)
+    // The Wii homebrew zip. Named so the release and this key agree; there is
+    // no network on this build, so check() never asks (see canSelfInstall).
+    return "OpenDoctrines-wii-ppc";
+#elif defined(__DJGPP__)
+    // DOS. Named so the release and this key agree (check_release_names.py);
+    // the DOS build has no network, so check() never gets as far as asking.
+    return "OpenDoctrines-dos-x86";
+#elif defined(__vita__)
+    // As the APK: a .vpk is installed by VitaShell, never unpacked over the
+    // game's own folder (app0: is read-only), so no zip is the update.
+    return "OpenDoctrines-vita-none";
+#elif defined(__linux__) && defined(OD_GLES)
+  // The Raspberry Pi OS build (OpenGL ES, OD_GLES): it updates to itself, not
+  // to the desktop-GL Linux build of the same CPU, which a Pi cannot draw.
+  #if defined(__aarch64__)
+    return "OpenDoctrines-raspios-arm64";
+  #elif defined(__arm__)
+    return "OpenDoctrines-raspios-armhf";
+  #else
+    return "OpenDoctrines-raspios-unknown";
+  #endif
 #elif defined(__linux__)
   #if defined(__x86_64__)
     return "OpenDoctrines-linux-x64";
@@ -347,6 +375,13 @@ std::string GameUpdates::platformKey() {
   #else
     return "OpenDoctrines-haiku-unknown";
   #endif
+#elif defined(__serenity__)
+  // x86-64 only: the one architecture this build is made and tested on.
+  #if defined(__x86_64__)
+    return "OpenDoctrines-serenity-x64";
+  #else
+    return "OpenDoctrines-serenity-unknown";
+  #endif
 #else
     return "OpenDoctrines-unknown";
 #endif
@@ -370,6 +405,10 @@ bool GameUpdates::canSelfInstall() {
     return false;
 #elif defined(__APPLE__)
     return false;   // unnotarized replacement would not launch; see the header
+#elif defined(__vita__)
+    return false;   // app0: is read-only; a new .vpk is installed by VitaShell
+#elif defined(__DJGPP__) || defined(__wii__) || defined(__3DS__) || defined(__riscos)
+    return false;   // no network to fetch with; a new zip is the update
 #else
     // Checked before returning true, not after: an installer-managed copy must
     // not be told it can replace its own files, whatever the platform allows.
@@ -670,7 +709,9 @@ void GameUpdates::check(bool enabled) {
     // "thread constructor failed", which in -fno-exceptions mode is an
     // immediate abort(). The game reached the main menu and died on the first
     // frame that drew it, because that frame is what calls this.
-#ifdef __EMSCRIPTEN__
+    //
+    // DOS likewise: no threads, and no network to ask over.
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     return;
 #else
     if (m_asked.exchange(true)) return;    // once per session
@@ -743,10 +784,21 @@ void GameUpdates::beginUpdate() {
     s.stage = Stage::Downloading;
     s.percent = 0;
     setStatus(s);
+#if defined(OD_NO_THREADS)
+    runUpdate();   // fails at once: see below
+#else
     std::thread([this]() { runUpdate(); }).detach();
+#endif
 }
 
 void GameUpdates::runUpdate() {
+#if defined(OD_NO_THREADS)
+    // Never reached: check() finds nothing to update to without a network.
+    Status s = status();
+    s.stage = Stage::Failed;
+    s.error = "this build cannot download updates";
+    setStatus(s);
+#else
     Status s = status();
     std::error_code ec;
 
@@ -908,4 +960,5 @@ void GameUpdates::runUpdate() {
     s.stage = Stage::Restart;
     s.percent = 100;
     setStatus(s);
+#endif
 }

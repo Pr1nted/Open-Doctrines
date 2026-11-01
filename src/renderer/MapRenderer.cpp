@@ -1,3 +1,4 @@
+#include "Access.h"   // reduce motion: odAccess::wave
 #include "MapRenderer.h"
 #include "GlobeView.h"
 // Not just the pad's cursor but its buttons: this renderer answers the clicks
@@ -468,6 +469,14 @@ constexpr bool kOverlayEs = true;
 constexpr bool kOverlayEs = false;
 #endif
 
+// Software rendering (OD_SOFTWARE_RENDER, raylib's rlsw): no shaders, so the
+// two paint passes above run on the CPU instead -- see paintPoliticalCpu.
+#if defined(OD_SOFTWARE_RENDER)
+constexpr bool kCpuPaint = true;
+#else
+constexpr bool kCpuPaint = false;
+#endif
+
 Texture2D makeTableTexture(int w, int h) {
     Image img = GenImageColor(w, h, BLANK);
     Texture2D t = LoadTextureFromImage(img);
@@ -510,6 +519,10 @@ int mapTexCap() {
         int glmax = 0; glGetIntegerv(GL_MAX_TEXTURE_SIZE, &glmax);
         const int def = 4096;
         return (glmax >= 256 && glmax < def) ? glmax : def;
+#elif defined(OD_SOFTWARE_RENDER)
+        // rlsw (OD_SOFTWARE_RENDER) has no GL driver to ask and no texture
+        // ceiling but memory; 4096 keeps the composited layers to tens of MB.
+        return 4096;
 #elif defined(OD_SERVER)
         // Headless builds (the server, OrderValidationTest) link no GL and draw
         // nothing, so there is no driver to ask; the cap is never used to size a
@@ -534,6 +547,16 @@ int mapDownscale(int w, int h) {
 }
 
 }  // namespace
+
+// The index texture's two bytes per texel (low, high), kept as the id itself
+// for the software paint passes.
+static void keepCpuIndex(std::vector<uint16_t>& out, int& ow, int& oh,
+                         const std::vector<uint8_t>& ids, int w, int h) {
+    out.resize((size_t)w * h);
+    for (size_t i = 0; i < out.size(); ++i) out[i] = (uint16_t)(ids[i * 2] | (ids[i * 2 + 1] << 8));
+    ow = w;
+    oh = h;
+}
 
 void MapRenderer::setProvinceIndex(const Image& provinces) {
     if (!provinces.data || provinces.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) return;
@@ -565,6 +588,7 @@ void MapRenderer::setProvinceIndex(const Image& provinces) {
     }
     if (wide) TraceLog(LOG_WARNING, "MAP: province ids above 65535 draw as sea in overlays");
     if (f != 1) TraceLog(LOG_INFO, "MAP: index downscaled %dx%d -> %dx%d (GL cap %d)", fw, fh, w, h, mapTexCap());
+    if (kCpuPaint) keepCpuIndex(m_cpuIndex, m_cpuIndexW, m_cpuIndexH, ids, w, h);
     if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
     Image img{};
     img.data = ids.data();
@@ -606,6 +630,7 @@ void MapRenderer::setProvinceIndex(const ProvinceMap& pm) {
     }
     if (wide) TraceLog(LOG_WARNING, "MAP: province ids above 65535 draw as sea in overlays");
     if (f != 1) TraceLog(LOG_INFO, "MAP: index (compact) downscaled %dx%d -> %dx%d", fw, fh, w, h);
+    if (kCpuPaint) keepCpuIndex(m_cpuIndex, m_cpuIndexW, m_cpuIndexH, ids, w, h);
     if (m_provinceIndexTex.id > 0) UnloadTexture(m_provinceIndexTex);
     Image img{};
     img.data = ids.data();
@@ -624,6 +649,10 @@ void MapRenderer::setOverlayColours(Overlay which, const std::vector<Color>& bas
     uploadTable(slot.base, base);
     if (stripe) uploadTable(slot.stripe, *stripe);
     else if (slot.stripe.id > 0) { UnloadTexture(slot.stripe); slot.stripe = Texture2D{}; }
+    if (kCpuPaint) {
+        slot.cpuBase = base;
+        if (stripe) slot.cpuStripe = *stripe; else slot.cpuStripe.clear();
+    }
     slot.active = true;
     if (m_overlayPainted == (int)which) m_overlayPainted = -1;   // repaint before next draw
 }
@@ -670,6 +699,7 @@ void MapRenderer::setPoliticalOwners(const std::vector<uint16_t>& owners, const 
         bytes[i * 4 + 2] = (uint8_t)(r & 0xFF);
         bytes[i * 4 + 3] = (uint8_t)(r >> 8);
     }
+    if (kCpuPaint) m_cpuOwners = bytes;
     if (m_politicalOwners.id == 0) {
         Image img{bytes.data(), 256, N / 256, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
         m_politicalOwners = LoadTextureFromImage(img);
@@ -683,6 +713,7 @@ void MapRenderer::setPoliticalOwners(const std::vector<uint16_t>& owners, const 
 
 void MapRenderer::setPoliticalColours(const std::vector<Color>& colours, int rows) {
     if (rows <= 0 || colours.size() < (size_t)rows * kPoliticalColumns) return;
+    if (kCpuPaint) m_cpuColours.assign(colours.begin(), colours.begin() + (size_t)rows * kPoliticalColumns);
     if (m_politicalColours.id == 0 || rows != m_politicalRows) {
         if (m_politicalColours.id > 0) UnloadTexture(m_politicalColours);
         Image img{(void*)colours.data(), kPoliticalColumns, rows, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
@@ -719,6 +750,7 @@ void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int fw
     // A new texture each time rather than an update, for the reason in the
     // header: the Mac keeps copies of a texture that is written after it is
     // made. This changes when a border moves, at most once a turn.
+    if (kCpuPaint) m_cpuDistance.assign(src, src + (size_t)w * h);
     if (m_borderDistance.id > 0) UnloadTexture(m_borderDistance);
     Image img{(void*)src, w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
     m_borderDistance = LoadTextureFromImage(img);
@@ -732,6 +764,7 @@ void MapRenderer::setBorderDistance(const std::vector<uint8_t>& distance, int fw
 // staircase of eighth-scale pixels. Rebuilt once a turn at most.
 void MapRenderer::setSeaFog(const std::vector<uint8_t>& mask, int w, int h) {
     if (w <= 0 || h <= 0 || mask.size() != (size_t)w * h) return;
+    if (kCpuPaint) { m_cpuSeaFog = mask; m_cpuSeaFogW = w; m_cpuSeaFogH = h; }
     if (m_seaFog.id > 0) UnloadTexture(m_seaFog);
     Image img{(void*)mask.data(), w, h, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
     m_seaFog = LoadTextureFromImage(img);
@@ -751,6 +784,12 @@ void MapRenderer::preparePolitical() {
     if (!m_politicalStale || m_politicalTarget.id == 0 || m_provinceIndexTex.id == 0 ||
         m_politicalOwners.id == 0 || m_politicalColours.id == 0 || m_borderDistance.id == 0)
         return;
+    if (kCpuPaint) {
+        paintPoliticalCpu();
+        m_politicalStale = false;
+        m_surfaceDirty = true;
+        return;
+    }
     if (!m_politicalShaderTried) {
         m_politicalShaderTried = true;
         m_politicalShader = LoadShaderFromMemory(nullptr, kOverlayEs ? kPoliticalFragEs : kPoliticalFrag330);
@@ -793,6 +832,83 @@ void MapRenderer::preparePolitical() {
     m_surfaceDirty = true;   // the globe samples a composite of these
 }
 
+// ── The two paint passes, on the CPU ──
+//
+// What kPoliticalFrag330 and kOverlayFrag330 compute, texel for texel, for a
+// build with no shaders (OD_SOFTWARE_RENDER). Both are table lookups with no
+// arithmetic on colour -- the property the shaders were written to have -- so
+// the result is the same picture, not an approximation of it. The one
+// exception is the sea-fog mask, which the GPU samples bilinearly and this
+// samples the same way. Once a turn at most, like the shader pass it replaces.
+void MapRenderer::paintPoliticalCpu() {
+    const int w = m_cpuIndexW, h = m_cpuIndexH;
+    if (w <= 0 || h <= 0 || m_cpuOwners.empty() || m_cpuColours.empty() ||
+        m_cpuDistance.size() != (size_t)w * h ||
+        m_politicalTarget.texture.width != w || m_politicalTarget.texture.height != h)
+        return;
+    const int rows = m_politicalRows;
+    const uint16_t* idx = m_cpuIndex.data();
+    auto ownerOf = [&](size_t i) -> int {
+        const uint8_t* o = &m_cpuOwners[(size_t)idx[i] * 4];
+        return o[0] | (o[1] << 8);
+    };
+    auto fogAt = [&](int x, int y) -> float {
+        if (!m_seaFogOn || m_cpuSeaFog.empty()) return 1.0f;
+        // Bilinear, wrapping east-west and clamped north-south, as the texture is.
+        const float fx = (x + 0.5f) / w * m_cpuSeaFogW - 0.5f, fy = (y + 0.5f) / h * m_cpuSeaFogH - 0.5f;
+        const int x0 = (int)std::floor(fx), y0 = (int)std::floor(fy);
+        const float tx = fx - x0, ty = fy - y0;
+        auto at = [&](int xx, int yy) {
+            xx = ((xx % m_cpuSeaFogW) + m_cpuSeaFogW) % m_cpuSeaFogW;
+            yy = std::clamp(yy, 0, m_cpuSeaFogH - 1);
+            return m_cpuSeaFog[(size_t)yy * m_cpuSeaFogW + xx] / 255.0f;
+        };
+        const float a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        const float b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        return a + (b - a) * ty;
+    };
+    std::vector<Color> out((size_t)w * h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const size_t i = (size_t)y * w + x;
+            const uint8_t* own = &m_cpuOwners[(size_t)idx[i] * 4];
+            const int cid = own[0] | (own[1] << 8);
+            const int row = std::min(own[2] | (own[3] << 8), std::max(rows - 1, 0));
+            const int d = std::min<int>(m_cpuDistance[i], 63);
+            int edge = 0;
+            if (cid > 0 && ((x > 0 && ownerOf(i - 1) != cid) || (x < w - 1 && ownerOf(i + 1) != cid) ||
+                            (y > 0 && ownerOf(i - w) != cid) || (y < h - 1 && ownerOf(i + w) != cid)))
+                edge = 1;
+            Color c = m_cpuColours[(size_t)row * kPoliticalColumns + d + 64 * edge];
+            if (m_seaFogOn && idx[i] == 0) {   // sea
+                const float k = 0.42f + (1.0f - 0.42f) * fogAt(x, y);
+                c.r = (unsigned char)(c.r * k);
+                c.g = (unsigned char)(c.g * k);
+                c.b = (unsigned char)(c.b * k);
+            }
+            out[i] = c;
+        }
+    }
+    UpdateTexture(m_politicalTarget.texture, out.data());
+}
+
+void MapRenderer::paintOverlayCpu(const OverlaySlot& slot) {
+    const int w = m_cpuIndexW, h = m_cpuIndexH;
+    if (w <= 0 || h <= 0 || m_overlayTarget.texture.width != w || m_overlayTarget.texture.height != h) return;
+    const Color clear{0, 0, 0, 0};
+    std::vector<Color> out((size_t)w * h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const size_t i = (size_t)y * w + x;
+            const uint16_t id = m_cpuIndex[i];
+            Color c = id < slot.cpuBase.size() ? slot.cpuBase[id] : clear;
+            if (id < slot.cpuStripe.size() && slot.cpuStripe[id].a > 0 && (x + y) % 10 < 4) c = slot.cpuStripe[id];
+            out[i] = c;
+        }
+    }
+    UpdateTexture(m_overlayTarget.texture, out.data());
+}
+
 int MapRenderer::wantedOverlay() const {
     if (m_showClaims && overlayReady(Overlay::Claims)) return (int)Overlay::Claims;
     if (m_showClaims && m_claimsTex.id > 0) return -1;   // the editor's image
@@ -808,6 +924,12 @@ void MapRenderer::prepareOverlay() {
     const int w = m_provinceIndexTex.width, h = m_provinceIndexTex.height;
     if (m_overlayTarget.id == 0) m_overlayTarget = makeTarget(w, h);
     if (m_overlayTarget.id == 0) return;
+    if (kCpuPaint) {
+        paintOverlayCpu(m_overlays[want]);
+        m_overlayPainted = want;
+        m_surfaceDirty = true;
+        return;
+    }
     if (!m_overlayShaderTried) {
         m_overlayShaderTried = true;
         m_overlayShader = LoadShaderFromMemory(nullptr, kOverlayEs ? kOverlayFragEs : kOverlayFrag330);
@@ -2503,7 +2625,7 @@ void MapRenderer::drawSubregion(int sx, int sy, int sw, int sh,
 
     // Pulsing selection highlight (map editor)
     if (m_highlightTex.id > 0) {
-        float pulse = 0.30f + 0.18f * sinf((float)GetTime() * 4.0f);
+        float pulse = 0.30f + 0.18f * odAccess::wave(4.0f);
         Color hc = ColorAlpha(WHITE, pulse);
         for (int tx = tileStart; tx < tileEnd; ++tx) {
             DrawTexture(m_highlightTex, tx * m_mapW + m_highlightX, m_highlightY, hc);

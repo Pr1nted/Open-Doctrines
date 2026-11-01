@@ -127,7 +127,7 @@ void ModRuntime::shutdown() {
 }
 
 std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage> pkgPtr,
-                                                     uint32_t granted,
+                                                     uint64_t granted,
                                                      std::string& err) {
     if (!pkgPtr) { err = "no package"; return nullptr; }
     const ModPackage& pkg = *pkgPtr;
@@ -417,7 +417,7 @@ EM_JS(void, od_mods_boot, (), {
 // Returns 0 on success. On failure writes a message into errPtr.
 EM_JS(int, od_mods_instantiate,
       (uint32_t inst, uint32_t bytesPtr, uint32_t len, uint32_t recPtr,
-       uint32_t recCount, uint32_t granted, double loadFuel,
+       uint32_t recCount, uint64_t granted, double loadFuel,
        uint32_t errPtr, uint32_t errCap), {
     function fail(msg) { stringToUTF8(msg, errPtr, errCap); return 1; }
     try {
@@ -596,7 +596,7 @@ bool ModRuntime::init(std::string& err) {
 void ModRuntime::shutdown() { m_inited = false; }
 
 std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage> pkgPtr,
-                                                     uint32_t granted,
+                                                     uint64_t granted,
                                                      std::string& err) {
     if (!pkgPtr) { err = "no package"; return nullptr; }
     const ModPackage& pkg = *pkgPtr;
@@ -726,7 +726,7 @@ bool ModRuntime::init(std::string& err) {
 void ModRuntime::shutdown() {}
 
 std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage>,
-                                                     uint32_t, std::string& err) {
+                                                     uint64_t, std::string& err) {
     err = "this build has no WebAssembly runtime, so mods cannot run";
     return nullptr;
 }
@@ -754,7 +754,7 @@ ModInstance* modCurrentInstance(void*) { return nullptr; }
 // owns `pkg` and must outlive the instance. Tests and tools that hold a package
 // on the stack use this; the game co-owns through the shared_ptr overload.
 std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
-                                                     uint32_t granted,
+                                                     uint64_t granted,
                                                      std::string& err) {
     return instantiate(std::shared_ptr<const ModPackage>(
                            std::shared_ptr<const ModPackage>{}, &pkg),

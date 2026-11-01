@@ -1186,7 +1186,7 @@ void Game::installLlmRunner() {
 
     const std::string dataDir = m_dataDir;
     const std::string doneMsg = T("Installed. Start it, then press Test the runner.");
-    std::thread([dataDir, doneMsg]() {
+    odasync::run([dataDir, doneMsg]() {
         const llm::Install result = llm::fetch(dataDir, [](const char* what) {
             // Each phase, so a long download is not a frozen screen. Left in
             // the box for the game thread; see pumpLlmTest().
@@ -1201,7 +1201,7 @@ void Game::installLlmRunner() {
         g_testOk = result.ok();
         g_testFresh = true;
         g_installDone = true;
-    }).detach();
+    });
 }
 
 // ─────────────────────────────────────────────── pulling the weights ────
@@ -1252,7 +1252,7 @@ void Game::pullLlmModel(const std::string& model) {
         g_pullFinished = false;
         g_pullError.clear();
     }
-    std::thread([apiBase, model, streamFile]() {
+    odasync::run([apiBase, model, streamFile]() {
         const bool ok = llm::pullModel(apiBase, model, streamFile);
         std::lock_guard<std::mutex> g(g_pullLock);
         g_pullRunning = false;
@@ -1260,7 +1260,7 @@ void Game::pullLlmModel(const std::string& model) {
         g_pullOk = ok;
         if (!ok) g_pullError = "Ollama did not accept that. Is it running, and is "
                                "the model name right?";
-    }).detach();
+    });
 }
 
 /**

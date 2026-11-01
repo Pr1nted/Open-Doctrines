@@ -115,7 +115,7 @@ uint32_t modSideGrantMask(ModSide side, bool multiplayer) {
     return ~(MODULE_GAMESTATE_WRITE | MODULE_GAMEPROCESS);
 }
 
-std::string modModuleMaskToString(uint32_t mask) {
+std::string modModuleMaskToString(uint64_t mask) {
     std::string out;
     for (const auto& m : kModules) {
         if (!(mask & m.bit)) continue;

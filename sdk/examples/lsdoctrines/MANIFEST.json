@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.lsdoctrines",
+  "name": "LSDoctrines",
+  "version": "1.0.0",
+  "description": "Example mod: the map, but as though the cartographer were having a time. Rolling colour across every province, driven from a panel.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.3",
+  "modules": ["Core", "UI", "Map", "Render"],
+  "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
+}

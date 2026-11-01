@@ -23,7 +23,7 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
-        "release.py", "odver.py", "package.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_web_font.py", "build.py", "screenshots.sh",
+        "release.py", "odver.py", "package.py", "ci_plan.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_mp_order_coverage.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package
         # cannot differ from the archive it claims to contain.
@@ -140,6 +140,23 @@ GROUPS = [
         # ChromeOS's Linux container is Debian: install the .deb into a clean
         # Debian image, check every library resolves, and play a few turns.
         "chromeos_check.sh",
+        "raspios_check.sh",
+        # The PS Vita: install the pinned VitaSDK, and build (or check) the
+        # .vpk VitaShell installs -- eboot, param.sfo, LiveArea, data.
+        "vitasdk_install.sh", "vita_vpk.py",
+        # DOS: install DJGPP and CWSDPMI (pinned), run a DOS command in
+        # DOSBox-X headless and bring back its output and screen, and check
+        # the DOS screen layer shows what the game drew (on a Linux host).
+        "dos_toolchain.sh", "dos_run.sh", "dos_framebuffer_check.py",
+        # The Wii: build (or check) the Homebrew Channel's SD-card zip --
+        # boot.dol, meta.xml, the 128x48 icon, data.
+        "wii_package.py",
+        # The 3DS: build (or check) the Homebrew Launcher's SD-card zip -- the
+        # .3dsx with its SMDH (name, 48x48 icon), data.
+        "n3ds_package.py",
+        # RISC OS: build (or check) the application zip -- !Doctrines with !Run,
+        # !Boot, !Sprites (made from the icon), the AIF !RunImage, filetyped.
+        "riscos_package.py",
         # Does run_all.sh build every test it runs? It names its targets twice
         # -- a --target list and one `run` line each -- and nothing made the
         # two agree. Six tests ended up in the second list and not the first,
@@ -235,6 +252,13 @@ GROUPS = [
         "templeos_map.py", "templeos_world.py", "templeos_data.py",
         "templeos_font.py", "templeos_sync.py", "templeos_release.sh",
         "templeos_collage.py",
+        # The FreeRTOS edition: the same world as const C, the kernel it runs
+        # on, a scripted game over its serial line, and the board zips.
+        "freertos_world.py", "freertos_kernel.sh", "freertos_play.py",
+        "freertos_package.py",
+        # The Plan 9 edition: that core's source with its world as C, for
+        # 9front's mk, and a 9front guest in QEMU that builds and plays it.
+        "plan9_package.py", "plan9_9front.py",
     ]),
     ("Building the world data", [
         "run_pipeline.py", "generate_scenario.py", "overlay_real_data.py",
@@ -346,6 +370,9 @@ GROUPS = [
         # OD_ANGLE only: finds ANGLE beside the game, applies OD_ANGLE_BACKEND
         # where GLFW opens the EGL display, and takes F12 before the swap.
         "patch_raylib_angle.py",
+        # A software-rendered build's screen readback (screenshots, feedback
+        # pictures) right way up and in RGBA on rlsw. Applied to that build only.
+        "patch_raylib_sw_readback.py",
         # The relations view says who is at war and who is allied with hue
         # alone, so whether those four can be told apart without normal colour
         # vision is a measurement rather than a claim.

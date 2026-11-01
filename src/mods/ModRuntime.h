@@ -68,10 +68,10 @@ public:
     //    non-owning pointer and the caller must outlive it. Kept for tests and
     //    tools that own a ModPackage on the stack and manage its lifetime.
     std::unique_ptr<ModInstance> instantiate(std::shared_ptr<const ModPackage> pkg,
-                                             uint32_t granted,
+                                             uint64_t granted,
                                              std::string& err);
     std::unique_ptr<ModInstance> instantiate(const ModPackage& pkg,
-                                             uint32_t granted,
+                                             uint64_t granted,
                                              std::string& err);
 
 private:
@@ -86,8 +86,8 @@ public:
     ModInstance& operator=(const ModInstance&) = delete;
 
     const ModManifest& manifest() const { return m_manifest; }
-    uint32_t granted() const { return m_granted; }
-    bool has(uint32_t capability) const { return (m_granted & capability) != 0; }
+    uint64_t granted() const { return m_granted; }
+    bool has(uint64_t capability) const { return (m_granted & capability) != 0; }
     const std::string& id() const { return m_manifest.id; }
 
     // --- linear memory, always bounds-checked ---------------------------------
@@ -155,7 +155,7 @@ private:
     ModInstance() = default;
 
     ModManifest  m_manifest;
-    uint32_t     m_granted = 0;
+    uint64_t     m_granted = 0;
     // Co-owned when the game instantiates it, a non-owning alias when a test or
     // tool borrows a stack-owned package. Either way package() hands out the raw
     // pointer the Assets natives read -- but the owning case means that pointer
