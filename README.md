@@ -399,6 +399,107 @@ checks the package's layout, title id, version and LiveArea images
 (`tools/vita_vpk.py --check`); it cannot run it, because that needs a Vita or
 Vita3K with Sony's firmware installed. Reports welcome.
 
+### Wii
+
+Homebrew for a **Wii** with the Homebrew Channel (`wii-ppc`): unzip
+`OpenDoctrines-wii-ppc.zip` onto the root of the SD card and start it from the
+channel. Built with every release by the `wii` job in `other-os-game.yml`, with
+devkitPPC and libogc inside devkitPro's own image, pinned by digest.
+
+**Controls.** Point with the Wii Remote: **A** clicks, **B** is the right
+button, **+** and **−** zoom, the d-pad moves, **1** is back (Escape) and **2**
+is Enter; **HOME** returns to the channel. A USB keyboard works for typing.
+
+**How it draws.** The Wii's GPU is not OpenGL, so the game carries a platform
+layer for it, as for DOS: `src/platform/wii/rcore_wii.c` shows raylib's
+software-rendered frame on the video interface's framebuffer (converted to its
+YUY2 format, double-buffered at the TV's 640x480, or 640x528 on PAL) and paints
+the pointer into it.
+
+**Worlds at 1/8 resolution.** A Wii has 88 MB of memory in all, and a world at
+full resolution needs about 700 MB to load. Worlds are loaded at 1024x512
+(`OD_MAP_DIVISOR`, see `src/map/RasterScale.h`): every province kept, the same
+rules, a coarser-looking map.
+
+**Single player, silent.** The network is off for now (libogc's sockets have
+to be started by the game), so are sound (raylib's audio library has no Wii
+backend), mods and self-updates.
+
+**Not yet run.** CI builds it, checks it is a big-endian PowerPC program, and
+holds the zip to the channel's layout (`tools/wii_package.py --check`). Running
+it in Dolphin, headless, is the next step; it has not been tried on a Wii.
+Reports welcome.
+
+### Nintendo 3DS
+
+Homebrew for a **New 3DS** or **New 2DS XL** with the Homebrew Launcher
+(`3ds-arm`): unzip `OpenDoctrines-3ds-arm.zip` onto the root of the SD card and
+start Open Doctrines from the launcher. Built with every release by the `n3ds`
+job in `other-os-game.yml`, with devkitARM and libctru inside devkitPro's own
+image, pinned by digest.
+
+**Two screens.** The game draws 640x480, which neither screen is. The top
+screen shows all of it at half size, with a box where the bottom screen is
+looking; the bottom screen shows that part at full size, readable and touchable.
+
+**Controls.** Touch with the stylus to point and click; the **Circle Pad** moves
+the pointer, and the bottom screen follows it. **A** clicks, **B** is the right
+button, **L** and **R** zoom, the D-pad moves, **START** is back (Escape), **X**
+is Enter, **SELECT** is Tab, and **Y** opens the system keyboard for typing.
+
+**How it draws.** As on the Wii: the 3DS's GPU is not OpenGL, and
+`src/platform/3ds/rcore_3ds.c` shows raylib's software-rendered frame on both
+screens.
+
+**Worlds at 1/8 resolution, one thread.** A New 3DS gives an application
+124 MB, and a world at 1/8 resolution (`OD_MAP_DIVISOR`, see
+`src/map/RasterScale.h`) peaks near 80 MB: every province kept, the same rules,
+a coarser-looking map. The original 3DS's 64 MB is not enough. The AI does not
+train in the background, as on DOS: one 804 MHz core is the game's.
+
+**Single player, silent.** Network, sound, mods and self-updates are off, as on
+the Wii.
+
+**Not yet run.** CI builds it, checks it is an ARM11 program, and holds the zip
+to the launcher's layout and the .3dsx to its header and icon
+(`tools/n3ds_package.py --check`). Running it in Azahar (Citra's successor) is
+the next step; it has not been tried on a 3DS. Reports welcome.
+
+### RISC OS
+
+For **RISC OS 5** (`riscos-arm`) on a Raspberry Pi or any other ARMv7 machine
+it runs on: unzip `OpenDoctrines-riscos-arm.zip` and double-click
+`!Doctrines`. Built with every release by the `riscos` job in
+`other-os-game.yml`, with GCCSDK's GCC 10.2 and UnixLib from the
+[riscos-crossdev](https://github.com/adyoull/riscos-crossdev) image, pinned by
+digest.
+
+**Full-screen.** As games on RISC OS usually are, it is a single-tasking
+program: it takes the screen in a mode of its own (the size it asks for, or
+1280x720, 1024x768 and down; `OD_RISCOS_MODE=WxH` picks one), pauses the
+desktop, and gives the desktop its mode back when it quits.
+
+**Controls.** The mouse: **Select** clicks, **Adjust** is the right button,
+**Menu** the middle one. There is no scroll wheel outside the desktop, so
+**Page Up** and **Page Down** zoom. The keyboard works as on any other
+platform, typing included.
+
+**How it draws.** RISC OS has no OpenGL the game can count on, so, as on DOS,
+`src/platform/riscos/rcore_riscos.c` shows raylib's software-rendered frame in
+screen memory, at 32 or 16 bits a pixel.
+
+**Worlds at 1/2 resolution, one thread.** A full world needs about 700 MB to
+load, more than a RISC OS application slot holds; at half resolution
+(`OD_MAP_DIVISOR`, see `src/map/RasterScale.h`) it peaks near 230 MB, and
+`!Run` asks for 320 MB. The AI does not train in the background.
+
+**Single player, silent.** Network, sound, mods and self-updates are off for now.
+
+**Not yet run.** CI builds it, checks it is an ARM program made into an AIF
+image, and holds the zip to the shape of a RISC OS application with its
+filetypes (`tools/riscos_package.py --check`). It has not been tried on RISC OS.
+Reports welcome.
+
 ### DOS
 
 A **32-bit DOS** program (`dos-x86`), built with DJGPP (gcc 12, a pinned
@@ -620,6 +721,43 @@ map views, 86 technologies, 59 policies, fleets and a sea to sail them on.
 `templeos/Net.HC` — TempleOS ships without one — but no game uses it yet.
 
 [tos-rel]: https://github.com/Pr1nted/Open-Doctrines/releases/tag/templeos-v1.2.2a
+
+### FreeRTOS — experimental
+
+There is also a FreeRTOS version, made for the kind of microcontroller that
+flies on a CubeSat. It is the TempleOS game's rules ported to C, with the
+same world: 1,632 provinces, 183 countries, the desktop game's combat width,
+and an opponent for every country. It runs on the chip under the FreeRTOS
+kernel, and you play it over a serial line.
+
+It has three boards: an STM32F405 (Cortex-M4F), ARM's MPS2 Cortex-M3 and a
+32-bit RISC-V core. All three run in QEMU, and the STM32F405 image can also be
+flashed to a real board. There is no map: you give orders as commands and
+read the results as text.
+
+```
+qemu-system-arm -M netduinoplus2 -nographic -semihosting-config enable=on,target=native -kernel stm32f405.elf
+```
+
+[freertos/README.md](freertos/README.md) has the commands, the boards, what
+this version leaves out, and how all five builds are held to one transcript.
+
+### Plan 9 — experimental
+
+There is a Plan 9 version too, for 9front. Plan 9 has no C++ compiler and no
+OpenGL, so it is the FreeRTOS version's C core, unchanged, built with 9front's
+own compilers: `opendoctrines`, the console, which plays in a rio window or
+over a serial line, and `odmap`, a libdraw map of the provinces in their
+owners' colours that you click to select and type the same commands at.
+
+```
+cd plan9; mk install; games/odmap
+```
+
+[plan9/README.md](plan9/README.md) has how it builds, what it shares with the
+FreeRTOS version, and what has been verified: so far, its core and its
+printf on Linux, against the same transcript. It has not yet been built on
+9front itself.
 
 ## Building
 
@@ -908,6 +1046,13 @@ playing:
   go through `qualify.sh`, which needs a window and a filesystem.
   [TempleOS](#templeos) is a separate build and a separate promise: it has been
   played in QEMU, it will not run on real hardware, and it has no multiplayer.
+  [FreeRTOS](#freertos--experimental) is another: its rules and world run on a
+  microcontroller, it has been played on three emulated boards, and it has no
+  map, no research and no saves.
+  [Plan 9](#plan-9--experimental) shares that core, built by 9front's
+  compilers; it plays the same transcript on Linux through its own printf,
+  and its CI build inside a pinned 9front ISO under QEMU is still being
+  brought up.
 - **The AI plays a whole game now, and is still not a match for a good
   player.** Both halves of that are worth saying plainly.
 

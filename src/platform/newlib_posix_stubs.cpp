@@ -24,6 +24,8 @@ OD_WEAK pid_t waitpid(pid_t, int*, int) { errno = ENOSYS; return -1; }
 OD_WEAK ssize_t readlink(const char*, char*, size_t) { errno = ENOSYS; return -1; }
 OD_WEAK FILE* popen(const char*, const char*) { errno = ENOSYS; return nullptr; }
 OD_WEAK int pclose(FILE*) { errno = ENOSYS; return -1; }
+OD_WEAK int pipe(int[2]) { errno = ENOSYS; return -1; }
+OD_WEAK pid_t setsid(void) { errno = ENOSYS; return -1; }
 }
 
 // newlib declares getrusage outside extern "C" on these targets, so the

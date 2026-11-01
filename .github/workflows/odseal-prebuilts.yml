@@ -134,6 +134,15 @@ jobs:
           # other-os-game.yml uses). CMakeLists.txt asks for dos-i586. Its test
           # RUNS: DOSBox-X executes the DOS build of tests/odseal_test.cpp.
           - { name: dos-i586,          os: ubuntu-24.04, djgpp: true, timeout: 30 }
+          # The Wii, by devkitPPC's powerpc-eabi gcc inside devkitPro's image
+          # (the digest other-os-game.yml pins). CMakeLists.txt asks for wii-ppc.
+          - { name: wii-ppc,           os: ubuntu-24.04, wii: true, timeout: 30 }
+          # The 3DS, by devkitARM's arm-none-eabi gcc inside devkitPro's image
+          # (the digest other-os-game.yml pins). CMakeLists.txt asks for 3ds-arm.
+          - { name: 3ds-arm,           os: ubuntu-24.04, ctr: true, timeout: 30 }
+          # RISC OS, by GCCSDK's arm-riscos-gnueabihf gcc in the riscos-crossdev
+          # image (the digest other-os-game.yml pins). CMakeLists.txt asks for riscos-arm.
+          - { name: riscos-arm,        os: ubuntu-24.04, riscos: true, timeout: 30 }
 
     steps:
       - uses: actions/checkout@v5
@@ -447,6 +456,62 @@ jobs:
           "$TC-strip" --strip-unneeded odseal.o
           "$TC-ar" rcs out/libodseal.a odseal.o
 
+      # ── THE WII ──
+      #
+      # In devkitPro's image, as the game is built. The machine flags are the
+      # ones its Wii.cmake gives every Wii program (-mrvl -mcpu=750 -meabi
+      # -mhard-float); a library built without them will not link into one.
+      - name: Build (Wii, devkitPPC)
+        if: matrix.wii
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            devkitpro/devkitppc@sha256:5dfd7bfb8174368261b4e82e1f8feba03fbeab3ed2370d67149c87c1f95af265 \
+            sh -c 'TC=$DEVKITPPC/bin/powerpc-eabi && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -mrvl -mcpu=750 -meabi -mhard-float \
+                -ffunction-sections -fdata-sections -D__wii__ -DGEKKO -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
+      # ── THE 3DS ──
+      #
+      # As the Wii, in devkitPro's devkitARM image, with the machine flags its
+      # 3DS.cmake gives every 3DS program (ARM11 MPCore, hard float, the
+      # thread pointer read in software).
+      - name: Build (3DS, devkitARM)
+        if: matrix.ctr
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            devkitpro/devkitarm@sha256:15b79ce75822c289538d8153da5fa7aafe5e6adc32ad8a575a197beca0f0761b \
+            sh -c 'TC=$DEVKITARM/bin/arm-none-eabi && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft \
+                -ffunction-sections -fdata-sections -D__3DS__ -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
+      # ── RISC OS ──
+      #
+      # In the riscos-crossdev image, with GCCSDK's own defaults for the CPU
+      # and float ABI: whatever it builds the game with, it builds this with.
+      - name: Build (RISC OS, GCCSDK)
+        if: matrix.riscos
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            ghcr.io/adyoull/riscos-crossdev@sha256:fbc3abb0bcea23aba6231fe93fb0948ae4967db1712dd45a3dbb4c99d3665f5f \
+            sh -c 'set -e; TC=arm-riscos-gnueabihf && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer \
+                -ffunction-sections -fdata-sections -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
       - name: Drop the sealed source
         if: always()
         shell: bash
@@ -517,12 +582,14 @@ jobs:
       # archive is held to the same exports rules and its test is not run --
       # running it means booting SerenityOS, which other-os-game.yml does not
       # do yet either. Plain nm reads an x86-64 ELF object whatever OS it is for.
-      - name: Check the archive (android, SerenityOS, the Vita and DOS, symbols)
-        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita || matrix.djgpp
+      - name: Check the archive (android, SerenityOS, the consoles and DOS, symbols)
+        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita || matrix.djgpp || matrix.wii || matrix.ctr || matrix.riscos
         shell: bash
         run: |
           set -e
-          if [ -n "${{ matrix.djgpp }}" ]; then
+          if [ -n "${{ matrix.wii }}" ] || [ -n "${{ matrix.ctr }}" ] || [ -n "${{ matrix.riscos }}" ]; then
+            NM=nm   # the runner's GNU nm reads PowerPC and ARM ELF objects alike
+          elif [ -n "${{ matrix.djgpp }}" ]; then
             NM="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp-nm"
           elif [ -n "${{ matrix.vita }}" ]; then
             NM="$HOME/vitasdk/bin/arm-vita-eabi-nm"

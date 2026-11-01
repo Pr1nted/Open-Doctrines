@@ -5,7 +5,8 @@
 # DJGPP and stops the configure. They are never built for DOS (each is
 # EXCLUDE_FROM_ALL and the DOS build asks for OpenDoctrines alone), so this
 # answers the question with an empty target. Only on the module path when
-# cross-compiling with DJGPP; see OD_DOS in CMakeLists.txt.
+# cross-compiling with DJGPP (see OD_DOS in CMakeLists.txt) -- and for the
+# Wii, whose threads are libogc's own and need no flag (see OD_WII).
 set(Threads_FOUND TRUE)
 set(CMAKE_THREAD_LIBS_INIT "")
 set(CMAKE_USE_PTHREADS_INIT FALSE)

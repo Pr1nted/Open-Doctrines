@@ -59,7 +59,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest OrderCodecTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest ThemeTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest SaveFormatTest OrderCodecTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -176,6 +176,9 @@ run "nationalisation rules" "$bin/NationalisationTest"
 # The monument catalogue: the slot series, what one gives and why the tenth is
 # not worth ten. Pure arithmetic; see src/Monuments.h.
 run "monument rules"   "$bin/MonumentsTest"
+# High contrast: the colour transform keeps its contrast and idempotence
+# promises across the whole colour cube. See src/Theme.h.
+run "high contrast"    "$bin/ThemeTest"
 run "fog of war"       "$bin/FogTest"
 # Every test this RUNS must be one it BUILDS -- six were not, and that is what
 # failed the SDK 1.3 release after a green local suite. See the checker.
@@ -310,6 +313,7 @@ run "industry capacity" "$bin/IndustryCapacityTest"
 # The goods recipes: can every country feed itself, and do the strategic goods
 # stay strategic. Pure arithmetic over the recipe table, no data dir.
 run "goods recipes"  "$bin/GoodsRecipeTest"
+run "border distance" "$bin/BorderDistanceTest"
 # Which ground a country may release: contiguity, majorities, and the rule that
 # a nation cannot release its own people. Pure arithmetic, no data dir.
 run "release rules"  "$bin/ReleaseRulesTest"
@@ -399,6 +403,12 @@ cmake --build "$build" --config Release --target OpenDoctrinesServer \
 # load. Gating again now that it is fixed.
 # Needs no build: it reads the C++ source and the HolyC beside it.
 run "templeos in sync with C++" "$root/tests/templeos_sync_test.sh"
+# The FreeRTOS edition's rules, on the host with no kernel: needs only a C
+# compiler. CI's FreeRTOS workflow plays the same game on every board.
+run "freertos edition plays its game" "$root/tests/freertos_test.sh"
+# The Plan 9 edition: the same core in the C 9front's compilers take, and the
+# same game through its printf. CI's Plan 9 workflow builds it inside 9front.
+run "plan9 edition plays its game" "$root/tests/plan9_test.sh"
 run "a damaged save is refused" "$root/tests/save_corrupt_test.sh" "$build"
 run "map scripts reach the mechanics" "$root/tests/script_mechanics_test.sh" "$build"
 run "neural net gradients" "$bin/NeuralNetTest"
@@ -415,6 +425,7 @@ run "sealed fog saves" "$bin/SaveSealTest"
 # -- which until now had no test at any level.
 run "odsv round trip"  "$bin/SaveRoundTripTest"
 run "save durability" "$bin/SaveDurabilityTest"
+run "save format: diffs, appends, cuts" "$bin/SaveFormatTest"
 
 # A world's name becomes a filename, and Windows refuses five characters
 # the name fields allowed, plus any name that is a DOS device. Both were

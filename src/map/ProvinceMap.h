@@ -15,6 +15,12 @@ public:
     bool load(const std::string& imagePath, const std::string& jsonPath);
     bool loadFromMemory(const void* imageData, int imageSize,
                         const std::string& jsonStr);
+    // Load province pixels straight from an in-memory RGBA Color buffer. The
+    // caller already has the pixels; this skips the PNG encode-then-decode a
+    // caller would otherwise do only to hand us bytes (10+ seconds on an
+    // 8192x4096 map). Province ids are RGB, so alpha is stored opaque.
+    bool loadFromPixels(const Color* pixels, int w, int h,
+                        const std::string& jsonStr);
     /**
      * The same, straight into the compact form compact() produces, decoding
      * the PNG a row at a time so the RGBA image never exists. For a process
@@ -98,6 +104,15 @@ public:
     bool compact();
 
     /**
+     * Changes whenever the raster may have: every load, clear, paint, pixel
+     * update and compaction takes a new value, unique across all maps in the
+     * process. A cache derived from the pixels alone (the province adjacency,
+     * the border distance field) keys itself on this and rebuilds when it
+     * moves, instead of every caller having to remember to invalidate it.
+     */
+    uint64_t rasterGeneration() const { return m_rasterGen; }
+
+    /**
      * Which provinces touch, as the FULL-resolution raster had it -- filled only
      * when the map was loaded reduced (see map/RasterScale.h), and empty
      * otherwise. Sampling a raster down drops the thinnest borders, so a pixel
@@ -108,6 +123,8 @@ public:
     const std::vector<std::pair<int, int>>& fullResolutionAdjacency() const { return m_fullAdjacency; }
 
 private:
+    void bumpRaster();
+    uint64_t m_rasterGen = 0;
     bool parseJson(const std::string& jsonStr);
     /** Palette slot for `id` in the compact form, allocating one if new. -1 when
      *  the palette is full. Builds the reverse index lazily on first write. */

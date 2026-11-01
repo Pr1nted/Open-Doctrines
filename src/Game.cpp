@@ -5,6 +5,7 @@
 #include "mods/ModManager.h"
 #include "DevLink.h"
 #include "Game.h"
+#include "Access.h"
 #include "net/Socks5.h"
 #include "net/TorClient.h"
 #include "util/SoftwareGlRelaunch.h"
@@ -208,8 +209,8 @@ const int SINGLEPLAYER_COUNT = 2;
 #endif
 const char* GAME_VERSION = OD_VERSION_STRING;
 
-const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental", "Language"};
-const int TAB_COUNT = 7;
+const char* TAB_NAMES[] = {"Display", "Controls", "Audio", "Keybinds", "Advanced", "Experimental", "Language", "Accessibility"};
+const int TAB_COUNT = 8;
 
 const int RESOLUTIONS[][2] = {{1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 const int RES_COUNT = 5;
@@ -429,8 +430,17 @@ const int EXPERIMENTAL_COUNT = 9;
 const Setting LANGUAGE_ITEMS[] = {{"", false, -1}};
 const int LANGUAGE_COUNT = 0;
 
-const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS, LANGUAGE_ITEMS};
-const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT, LANGUAGE_COUNT};
+// Settings -> Accessibility. Every row is a toggle, or (Text Size) a cycle, so
+// one click does it: see Game::activateAccessibilityRow. ACCESSIBILITY.md
+// describes each for players; src/Theme.h and src/Access.h say how.
+const Setting ACCESSIBILITY_ITEMS[] = {
+    {"High Contrast", false, -1}, {"Text Size", false, -1}, {"Reduce Motion", false, -1},
+    {"Hold to Confirm", false, -1}, {"Longer Messages", false, -1}, {"Sound Cues", false, -1},
+    {"Colourblind Colours", false, -1}, {"Back", false, -1}};
+const int ACCESSIBILITY_COUNT = 8;
+
+const Setting* TAB_ITEMS[] = {DISPLAY_ITEMS, CONTROLS_ITEMS, AUDIO_ITEMS, KEYBINDS_ITEMS, ADVANCED_ITEMS, EXPERIMENTAL_ITEMS, LANGUAGE_ITEMS, ACCESSIBILITY_ITEMS};
+const int TAB_ITEM_COUNTS[] = {DISPLAY_COUNT, CONTROLS_COUNT, AUDIO_COUNT, KEYBINDS_COUNT, ADVANCED_COUNT, EXPERIMENTAL_COUNT, LANGUAGE_COUNT, ACCESSIBILITY_COUNT};
 
 const char* keyName(int key) {
     if (key == 0) return "\xe2\x80\x94"; // em dash
@@ -508,6 +518,7 @@ static_assert(ACCENT_PRESETS_COUNT == OD_COUNT_OF(ACCENT_PRESETS),      "ACCENT_
 static_assert(CONTROLS_COUNT       == OD_COUNT_OF(CONTROLS_ITEMS),      "CONTROLS_COUNT");
 static_assert(AUDIO_COUNT          == OD_COUNT_OF(AUDIO_ITEMS),         "AUDIO_COUNT");
 static_assert(VOLUME_COUNT         == OD_COUNT_OF(VOLUME_DEFAULTS),     "VOLUME_DEFAULTS");
+static_assert(ACCESSIBILITY_COUNT  == OD_COUNT_OF(ACCESSIBILITY_ITEMS), "ACCESSIBILITY_COUNT");
 // The volume rows are the first VOLUME_COUNT of the Audio tab, and "Back" has
 // to stay after them: isVolumeSetting() decides by index alone.
 static_assert(VOLUME_COUNT         <  AUDIO_COUNT,                      "Audio tab needs a Back row");
@@ -561,6 +572,18 @@ int budgetedFpsCeiling() {
 }
 
 
+// ANGLE's OpenGL backend on macOS presents through a layer and ignores the swap
+// interval: measured at ~3,900 fps with VSync on. There VSync has to be a frame
+// cap at the display's rate, or the GPU runs flat out behind a 120 Hz screen.
+static bool odSwapIntervalIgnored() {
+#if defined(OD_ANGLE) && defined(__APPLE__)
+    const char* b = getenv("OD_ANGLE_BACKEND");
+    return b && std::strcmp(b, "opengl") == 0;
+#else
+    return false;
+#endif
+}
+
 void applyFpsTarget(int target) {
     ClearWindowState(FLAG_VSYNC_HINT);
     SetTargetFPS(0);
@@ -571,6 +594,7 @@ void applyFpsTarget(int target) {
         // A budget below 100% is an explicit request to run slower than the
         // display, so it wins.
         if (ceiling > 0) SetTargetFPS(ceiling);
+        else if (odSwapIntervalIgnored()) SetTargetFPS(std::max(30, GetMonitorRefreshRate(GetCurrentMonitor())));
         else SetWindowState(FLAG_VSYNC_HINT);
     } else if (target > 0) {
         SetTargetFPS(ceiling > 0 ? std::min(target, ceiling) : target);
@@ -653,6 +677,21 @@ bool settingUsesArrows(int tab, int index) {
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     const Setting& s = TAB_ITEMS[tab][index];
     std::string label = od::i18n::tr(s.label);
+    if (tab == ACCESSIBILITY_TAB) {
+        switch (index) {
+            case 0: return label + onOff(cfg.highContrast);
+            case 1: { char b[32]; snprintf(b, sizeof b, ": %d%%", (int)lroundf(cfg.textScale * 100.0f));
+                      return label + b; }
+            case 2: return label + onOff(cfg.reduceMotion);
+            case 3: return label + onOff(cfg.holdToConfirm);
+            case 4: return label + onOff(cfg.longMessages);
+            case 5: return label + onOff(cfg.soundCues);
+            case 6: return label + ": " + od::i18n::tr(COLOURBLIND_NAMES[
+                        (cfg.colourBlindMode < 0 || cfg.colourBlindMode >= COLOURBLIND_COUNT)
+                            ? 0 : cfg.colourBlindMode]);
+            default: return label;
+        }
+    }
     if (tab == 0 && index == 0) {
         label += onOff(cfg.fullscreen);
     } else if (tab == 0 && index == 1) {
@@ -1400,7 +1439,43 @@ bool Game::init(int screenW, int screenH, const char* title) {
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif
+#if defined(OD_ANGLE)
+    // THE BACKEND LADDER (experimental, OD_ANGLE builds). Native API first, then
+    // Vulkan, then OpenGL, then SwiftShader -- ANGLE's Vulkan on the CPU, for a
+    // machine whose GPU driver offers none of them. A backend this machine
+    // lacks fails at eglInitialize and InitWindow() returns without a window
+    // (tools/patch_raylib_angle.py makes sure it fails rather than quietly
+    // becoming ANGLE's default), so the next is tried. A backend the player
+    // named in OD_ANGLE_BACKEND goes first, and the ladder still stands behind it.
+    {
+#if defined(__APPLE__)
+        static const char* const kLadder[] = {"metal", "vulkan", "opengl", "swiftshader"};
+#elif defined(_WIN32)
+        static const char* const kLadder[] = {"d3d11", "vulkan", "opengl", "d3d9", "swiftshader"};
+#else
+        static const char* const kLadder[] = {"vulkan", "opengl", "swiftshader"};
+#endif
+        std::vector<std::string> order;
+        if (const char* want = getenv("OD_ANGLE_BACKEND"); want && *want) order.push_back(want);
+        for (const char* b : kLadder)
+            if (order.empty() || order[0] != b) order.push_back(b);
+        for (const std::string& b : order) {
+#ifdef _WIN32
+            _putenv_s("OD_ANGLE_BACKEND", b.c_str());
+#else
+            setenv("OD_ANGLE_BACKEND", b.c_str(), 1);
+#endif
+            InitWindow(m_screenW, m_screenH, title);
+            if (IsWindowReady()) {
+                TraceLog(LOG_INFO, "ANGLE: rendering through %s", b.c_str());
+                break;
+            }
+            TraceLog(LOG_WARNING, "ANGLE: %s is not available here, trying the next backend", b.c_str());
+        }
+    }
+#else
     InitWindow(m_screenW, m_screenH, title);
+#endif
     if (getenv("OD_DPI_PROBE")) {
         const Vector2 sc = GetWindowScaleDPI();
         printf("[DPI] highdpi_flag=%d  scale=%.2f,%.2f  screen=%dx%d  render=%dx%d  monitor=%dx%d\n",
@@ -1504,6 +1579,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
              (float)::GetScreenHeight() / odUi::scale());
 
     odPalette::setMode(m_config.colourBlindMode);
+    applyAccessibility();
 
     // InitWindow cannot fail loudly -- it returns void, logs a warning, and
     // leaves the process running with no window and no GL context. Everything
@@ -2045,9 +2121,9 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     std::vector<int> missing;
     std::vector<int> missingAt;
     for (int i = 0; i < n; ++i) {
-        if (odIsBlankCodepoint(cps[i])) continue;
+        if (odIsBlankCodepoint(codepoints[i])) continue;
         if (glyphs[i].advanceX == 0 && glyphs[i].image.width == 0) {
-            missing.push_back(cps[i]);
+            missing.push_back(codepoints[i]);
             missingAt.push_back(i);
         }
     }
@@ -3070,6 +3146,12 @@ void Game::run() {
         // every frame, and a popup is exactly when it must not stutter.
         Audio::get().update(dt);
         updateMusic(dt);
+        // Beside them and for the same reason: the mod bus is mixed on the
+        // audio thread and reads its gains from here, so this has to run on
+        // every frame and on every screen. Game::update() was the wrong home
+        // -- it is only called on the gameplay branch, so a mod's sound went
+        // unmixed at the menu, which is exactly where a mod load plays one.
+        pumpModAudio();
         // Also above the early-out: the resource panel is a system control, not
         // a game screen, so it has to answer F10 even with a popup up.
         samplePerformance();
@@ -3966,8 +4048,20 @@ void Game::endFrame() {
     // LAST, over everything: it is a keyboard, and a keyboard is in front of
     // the thing being typed into. It draws nothing unless a field asked for a
     // character during this frame -- see TouchKeyboard.h.
+    // The refusal marker for Sound Cues, at the pointer (src/Access.h).
+    odAccess::drawCue(getMouse());
+
     osk::draw();
     osk::endFrame();
+
+    // A requested capture (the screenshot tour, the letter check): taken here,
+    // over everything, while the back buffer still holds this frame. Flushed
+    // first, since raylib only sends its batch to the framebuffer at EndDrawing.
+    if (!m_frameCapturePath.empty()) {
+        rlDrawRenderBatchActive();
+        TakeScreenshot(m_frameCapturePath.c_str());
+        m_frameCapturePath.clear();
+    }
 
     EndDrawing();
 

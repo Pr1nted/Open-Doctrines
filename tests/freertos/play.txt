@@ -1,0 +1,32 @@
+# A game every board must play identically (tests/freertos_test.sh).
+# Sweden raises an army, goes to war with Norway and takes ground; the world
+# fights its own wars meanwhile. One line per command.
+help
+play SWE
+show 154
+show Norway #815
+recruit 154 max
+recruit 129 max
+recruit 134 max
+end
+status
+attack 154 153
+attack 134 128
+end 2
+log
+list
+show 153
+pacify 20
+recruit 154 max
+end 5
+countries 10
+war FIN
+peace
+end 20
+status
+hk
+new 7
+play FRA
+end 3
+countries 3
+quit

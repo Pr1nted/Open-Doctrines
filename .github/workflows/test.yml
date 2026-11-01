@@ -87,6 +87,14 @@ jobs:
     outputs:
       wide: ${{ steps.p.outputs.wide }}
       full: ${{ steps.p.outputs.full }}
+      # The build-and-suite matrices, already filtered to this run's tier. They
+      # are emitted here rather than filtered in each job with `exclude`: an
+      # `exclude` on an include-only matrix removes nothing, and once the matrix
+      # has a base axis to exclude from, a matching `include` entry adds the
+      # excluded combination straight back ("use include to add back excluded
+      # combinations"). A pre-filtered include list has neither trap.
+      qualify_matrix: ${{ steps.m.outputs.qualify_matrix }}
+      android_matrix: ${{ steps.m.outputs.android_matrix }}
     steps:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }    # the diff against the PR's base
@@ -97,6 +105,23 @@ jobs:
       - id: p
         name: Which tiers
         run: python3 tools/ci_plan.py
+      - id: m
+        name: Platform matrices for this tier
+        # macos-x64 asks for macos-15-intel, NOT the retired macos-13 image: a
+        # job asking for macos-13 is never scheduled, sits queued forever, holds
+        # the concurrency group and cancels every later push behind it.
+        run: |
+          if [ "${{ steps.p.outputs.wide }}" = "true" ]; then
+            qualify='[{"name":"macos-arm64","os":"macos-15"},{"name":"macos-x64","os":"macos-15-intel"},{"name":"windows-x64","os":"windows-2022"},{"name":"linux-x64","os":"ubuntu-22.04"}]'
+            android='["arm64-v8a","armeabi-v7a","x86_64","x86"]'
+          else
+            qualify='[{"name":"macos-arm64","os":"macos-15"},{"name":"windows-x64","os":"windows-2022"},{"name":"linux-x64","os":"ubuntu-22.04"}]'
+            android='["arm64-v8a"]'
+          fi
+          {
+            echo "qualify_matrix=$qualify"
+            echo "android_matrix=$android"
+          } >> "$GITHUB_OUTPUT"
 
   qualify:
     needs: plan
@@ -131,19 +156,10 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false     # one platform failing must not hide the others
+      # The platforms for this run's tier, pre-filtered by the plan job (macos-x64
+      # is the wide tier). An include-only matrix runs exactly these entries.
       matrix:
-        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
-        include:
-          - { name: macos-arm64,  os: macos-15 }
-          # macos-15-intel, NOT macos-13. GitHub retired the macos-13 image, so
-          # a job asking for it is never scheduled -- it sits queued forever
-          # rather than failing. That is worse than a failure: the run never
-          # finishes, it holds the concurrency group, and every later push is
-          # cancelled behind it. Six consecutive runs were lost that way before
-          # anyone noticed macos-x64 had never once completed.
-          - { name: macos-x64,    os: macos-15-intel, tier: wide }
-          - { name: windows-x64,  os: windows-2022 }
-          - { name: linux-x64,    os: ubuntu-22.04 }
+        include: ${{ fromJSON(needs.plan.outputs.qualify_matrix) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -828,13 +844,10 @@ jobs:
     timeout-minutes: 40      # same reason as qualify: a link that hangs is not free
     strategy:
       fail-fast: false
+      # arm64-v8a is the core ABI; the other three are the wide tier. The plan
+      # job pre-filters the list to this run's tier.
       matrix:
-        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
-        include:
-          - { abi: arm64-v8a }
-          - { abi: armeabi-v7a, tier: wide }
-          - { abi: x86_64,      tier: wide }
-          - { abi: x86,         tier: wide }
+        abi: ${{ fromJSON(needs.plan.outputs.android_matrix) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/compiler-cache
@@ -1199,13 +1212,10 @@ jobs:
     timeout-minutes: 10
     strategy:
       fail-fast: false
+      # Same platform set as qualify (its artifacts are what this loads back),
+      # pre-filtered to this run's tier by the plan job.
       matrix:
-        exclude: ${{ fromJSON(needs.plan.outputs.wide == 'true' && '[]' || '[{"tier":"wide"}]') }}
-        include:
-          - { name: macos-arm64, os: macos-15 }
-          - { name: macos-x64,   os: macos-15-intel, tier: wide }
-          - { name: windows-x64, os: windows-2022 }
-          - { name: linux-x64,   os: ubuntu-22.04 }
+        include: ${{ fromJSON(needs.plan.outputs.qualify_matrix) }}
 
     steps:
       # Every platform's saves...

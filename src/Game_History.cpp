@@ -118,7 +118,7 @@ bool Game::buildTurnSnapshots(const std::string& savePath, std::vector<TurnSnaps
         }
         // A per-turn state snapshot means this turn can be fully restored.
         // Present is enough; this used to inflate the whole snapshot to ask.
-        cur.hasState = reader.hasEntry("turns/s_" + turnTag(t) + ".json");
+        cur.hasState = reader.hasTurnState(t);
         cur.mapEdits = std::move(d.mapEdits);   // replayed onto the raster at render time
         out.push_back(cur);
     }
@@ -652,8 +652,7 @@ bool Game::revertToTurn(int turn) {
     std::string savePath = m_historySavePath.empty() ? m_currentSavePath : m_historySavePath;
     if (savePath.empty()) { m_historyStatus = "No save file"; return false; }
 
-    std::string tag = turnTag(turn);
-    std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" + tag + ".json");
+    std::string stateJson = SaveManager::readTurnState(savePath, turn);
     if (stateJson.empty()) {
         // Saves made before per-turn snapshots existed can't be restored
         // faithfully — refuse rather than silently load the wrong state.
@@ -701,8 +700,7 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
         m_historyStatus = "Turn rewind needs the full map -- turn off Risky RAM";
         return false;
     }
-    std::string stateJson = SaveManager::readEntry(savePath, "turns/s_" +
-        turnTag(turn) + ".json");
+    std::string stateJson = SaveManager::readTurnState(savePath, turn);
     if (stateJson.empty()) {
         m_historyStatus = "Turn " + std::to_string(turn) + " has no snapshot (older save)";
         return false;

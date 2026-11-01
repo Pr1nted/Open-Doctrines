@@ -1,3 +1,4 @@
+#include "Access.h"   // reduce motion: odAccess::wave
 #include "MapRenderer.h"
 #include "GlobeView.h"
 // Not just the pad's cursor but its buttons: this renderer answers the clicks
@@ -54,7 +55,23 @@ extern "C" bool rlFramebufferComplete(unsigned int id);
 // Windows, because x64 and ARM64 have one convention and ignore the keyword.
 // So the mistake built everywhere the project is usually built and broke
 // exactly one job.
+//
+// UNDER OD_ANGLE THE NAME WOULD BIND TO THE WRONG GL. raylib still links the
+// system OpenGL there, so a plain glGetIntegerv resolves into a library with no
+// current context. The entry point is asked of the context that is current,
+// through GLFW, which raylib builds in.
+#if defined(OD_ANGLE)
+extern "C" void* glfwGetProcAddress(const char* name);
 #if defined(_WIN32)
+static void glGetIntegerv(unsigned int pname, int* data) {
+    using Fn = void(__stdcall*)(unsigned int, int*);
+#else
+static void glGetIntegerv(unsigned int pname, int* data) {
+    using Fn = void (*)(unsigned int, int*);
+#endif
+    if (auto fn = reinterpret_cast<Fn>(glfwGetProcAddress("glGetIntegerv"))) fn(pname, data);
+}
+#elif defined(_WIN32)
 extern "C" void __stdcall glGetIntegerv(unsigned int pname, int* data);
 #else
 extern "C" void glGetIntegerv(unsigned int pname, int* data);
@@ -2608,7 +2625,7 @@ void MapRenderer::drawSubregion(int sx, int sy, int sw, int sh,
 
     // Pulsing selection highlight (map editor)
     if (m_highlightTex.id > 0) {
-        float pulse = 0.30f + 0.18f * sinf((float)GetTime() * 4.0f);
+        float pulse = 0.30f + 0.18f * odAccess::wave(4.0f);
         Color hc = ColorAlpha(WHITE, pulse);
         for (int tx = tileStart; tx < tileEnd; ++tx) {
             DrawTexture(m_highlightTex, tx * m_mapW + m_highlightX, m_highlightY, hc);

@@ -1,4 +1,5 @@
 #include "Audio.h"
+#include "Access.h"
 #include "util/LoadLog.h"
 
 #include <algorithm>
@@ -480,6 +481,10 @@ void Audio::readSidecar(const std::string& musicPath, TrackMeta& out) const {
 // ────────────────────────────────────────────────────────────────────────────
 
 void Audio::playSfx(const std::string& name, float pitchJitter) {
+    // Sound Cues (Settings -> Accessibility): a refusal is shown as well as
+    // heard. BEFORE the early return, because a player who cannot hear it may
+    // well be playing with no audio device at all.
+    if (name == "deny") odAccess::cue();
     if (!m_available || !gestureReady()) return;
     auto it = m_sfx_map.find(name);
     if (it == m_sfx_map.end()) return;

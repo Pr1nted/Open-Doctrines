@@ -5,9 +5,15 @@
 #include "../json.hpp"
 #include <fstream>
 #include <iostream>
+#include <atomic>
 #include <cstring>
 #include <algorithm>
 #include <unordered_set>
+
+void ProvinceMap::bumpRaster() {
+    static std::atomic<uint64_t> s_next{0};
+    m_rasterGen = ++s_next;
+}
 
 ProvinceMap::~ProvinceMap() {
     if (m_loaded && m_image.data) {
@@ -16,6 +22,7 @@ ProvinceMap::~ProvinceMap() {
 }
 
 bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath) {
+    bumpRaster();
     m_image = LoadImage(imagePath.c_str());
     if (m_image.data == nullptr) return false;
 
@@ -63,6 +70,7 @@ bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath
 
 bool ProvinceMap::loadFromMemory(const void* imageData, int imageSize,
                                   const std::string& jsonStr) {
+    bumpRaster();
     m_image = LoadImageFromMemory(".png", static_cast<const unsigned char*>(imageData), imageSize);
     if (m_image.data == nullptr) return false;
 
@@ -72,8 +80,32 @@ bool ProvinceMap::loadFromMemory(const void* imageData, int imageSize,
     return parseJson(jsonStr);
 }
 
+bool ProvinceMap::loadFromPixels(const Color* pixels, int w, int h,
+                                 const std::string& jsonStr) {
+    if (m_loaded && m_image.data) UnloadImage(m_image);
+    m_image = Image{};
+    m_image.width = w;
+    m_image.height = h;
+    m_image.mipmaps = 1;
+    m_image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    m_image.data = MemAlloc((unsigned int)((size_t)w * (size_t)h * 4));
+    if (m_image.data == nullptr) return false;
+    unsigned char* d = static_cast<unsigned char*>(m_image.data);
+    const size_t n = (size_t)w * (size_t)h;
+    for (size_t i = 0; i < n; ++i) {
+        d[i * 4 + 0] = pixels[i].r;
+        d[i * 4 + 1] = pixels[i].g;
+        d[i * 4 + 2] = pixels[i].b;
+        d[i * 4 + 3] = 255;   // province id is RGB only; keep alpha opaque
+    }
+    m_width = w;
+    m_height = h;
+    return parseJson(jsonStr);
+}
+
 bool ProvinceMap::loadCompactFromMemory(const void* imageData, int imageSize,
                                         const std::string& jsonStr) {
+    bumpRaster();
     std::vector<uint16_t> index;
     std::vector<int> palette;
     std::unordered_map<int, uint16_t> slotOf;
@@ -250,12 +282,14 @@ const Province* ProvinceMap::getProvinceById(int id) const {
 }
 
 void ProvinceMap::updatePixels(const Color* pixels) {
+    bumpRaster();
     if (!m_loaded || m_image.data == nullptr) return;
     // m_image is forced to R8G8B8A8 on load, so a straight copy is safe
     memcpy(m_image.data, pixels, (size_t)m_width * m_height * sizeof(Color));
 }
 
 void ProvinceMap::updatePixelsRect(const Color* fullPixels, int x, int y, int w, int h) {
+    bumpRaster();
     if (!m_loaded || m_image.data == nullptr) return;
     if (x < 0 || y < 0 || x + w > m_width || y + h > m_height) return;
     auto* dst = static_cast<Color*>(m_image.data);
@@ -282,6 +316,7 @@ int ProvinceMap::slotForId(int id) {
 }
 
 bool ProvinceMap::paintPixels(const uint32_t* idx, size_t n, int id) {
+    bumpRaster();
     if (!m_loaded || idx == nullptr) return false;
     const size_t total = (size_t)m_width * (size_t)m_height;
     // Image form (editor, or an uncompacted map): write the RGB id directly.
@@ -311,6 +346,7 @@ bool ProvinceMap::paintPixels(const uint32_t* idx, size_t n, int id) {
 }
 
 bool ProvinceMap::compact() {
+    bumpRaster();
     if (!m_loaded || m_image.data == nullptr) return false;
     const size_t total = (size_t)m_width * (size_t)m_height;
     const auto* px = static_cast<const uint8_t*>(m_image.data);
@@ -347,6 +383,7 @@ bool ProvinceMap::compact() {
 }
 
 void ProvinceMap::clear() {
+    bumpRaster();
     if (m_loaded && m_image.data) UnloadImage(m_image);
     std::vector<uint16_t>().swap(m_index);
     std::vector<std::pair<int, int>>().swap(m_fullAdjacency);

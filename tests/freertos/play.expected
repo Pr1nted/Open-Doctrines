@@ -1,0 +1,154 @@
+> help
+  play ISO          govern a country (SWE, FRA, JPN ...)
+  countries [N]     the N largest countries (10)
+  status            your country
+  list [PAGE]       your provinces, 20 a page
+  show P            a province and its neighbours (P: number or name)
+  recruit P N|max   raise men in P this turn
+  attack FROM TO    assault TO with everything in FROM
+  bombard FROM TO   shell TO from the fleet in FROM's harbour
+  war ISO / peace   declare war; make peace
+  pacify PCT        spend PCT% of income on order each turn
+  end [N]           end the turn (N turns)
+  log               what happened last turn
+  hk                housekeeping: tasks, stacks, heap, uptime
+  new [SEED]        start again
+  quit              leave (QEMU exits; a real board idles)
+> play SWE
+Sweden (SWE), turn 0
+  11 provinces, 0 men, income 25.1 a turn, treasury 25.1
+> show 154
+154 Sweden #1234, held by SWE
+  1,448,715 people, 0 men, frontage 164,125, fort 0, harbour 1
+  income 5.5, unrest 0%, alignment 50%
+  borders:
+    128 Norway #817     NOR            0 men
+    134 Sweden #1232    SWE            0 men
+    141 Sweden #1226    SWE            0 men
+    149 Sweden #1227    SWE            0 men
+    153 Norway #815     NOR            0 men
+    175 Sweden #1228    SWE            0 men
+    185 Sweden #1233    SWE            0 men
+> show Norway #815
+153 Norway #815, held by NOR
+  323,568 people, 0 men, frontage 83,350, fort 0, harbour 1
+  income 2.4, unrest 0%, alignment 50%
+  borders:
+    128 Norway #817     NOR            0 men
+    154 Sweden #1234    SWE            0 men
+    173 Norway #814     NOR            0 men
+    174 Norway #819     NOR            0 men
+    175 Sweden #1228    SWE            0 men
+> recruit 154 max
+ordered: raise 289,743 men in Sweden #1234, for 28.9
+> recruit 129 max
+ordered: raise 217,816 men in Sweden #1235, for 21.7
+> recruit 134 max
+ordered: raise 164,959 men in Sweden #1232, for 16.4
+> end
+turn 1: 11 provinces, 382,775 men, treasury 11.1, 0 battles world-wide
+  raised 217816 men in Sweden #1235
+  raised 164959 men in Sweden #1232
+> status
+Sweden (SWE), turn 1
+  11 provinces, 382,775 men, income 25.1 a turn, treasury 11.1
+> attack 154 153
+(declaring war on Norway)
+ordered: 0 men from Sweden #1234 against 0 defenders; frontage 83,350
+> attack 134 128
+ordered: 164,959 men from Sweden #1232 against 0 defenders; frontage 74,650
+> end 2
+turn 2: 12 provinces, 382,775 men, treasury 33.3, 1 battles world-wide
+  took Norway #817
+turn 3: 12 provinces, 382,775 men, treasury 55.0, 4 battles world-wide
+> log
+nothing of yours happened
+> list
+  128 Norway #817          164,959 men       291,136 people  unrest  44%
+  129 Sweden #1235         217,816 men     1,105,501 people  unrest   4%
+  134 Sweden #1232               0 men       837,228 people  unrest   4%
+  141 Sweden #1226               0 men       834,700 people  unrest   0%
+  149 Sweden #1227               0 men       806,884 people  unrest   0%
+  154 Sweden #1234               0 men     1,470,553 people  unrest   4%
+  175 Sweden #1228               0 men       745,276 people  unrest   4%
+  185 Sweden #1233               0 men       614,472 people  unrest   0%
+  190 Sweden #1231               0 men       824,585 people  unrest   4%
+  201 Sweden #1225               0 men       618,151 people  unrest   0%
+  205 Sweden #1229               0 men       558,841 people  unrest   4%
+  221 Sweden #1230               0 men       589,645 people  unrest   0%
+> show 153
+153 Norway #815, held by NOR
+  328,444 people, 0 men, frontage 83,350, fort 0, harbour 1
+  income 2.4, unrest 4%, alignment 50%
+  borders:
+    128 Norway #817     SWE      164,959 men  (at war)
+    154 Sweden #1234    SWE            0 men  (at war)
+    173 Norway #814     NOR      411,774 men
+    174 Norway #819     NOR            0 men
+    175 Sweden #1228    SWE            0 men  (at war)
+> pacify 20
+pacifying with 20% of income
+> recruit 154 max
+ordered: raise 294,110 men in Sweden #1234, for 30.5
+> end 5
+turn 4: 12 provinces, 676,885 men, treasury 40.8, 4 battles world-wide
+  raised 294110 men in Sweden #1234
+turn 5: 12 provinces, 676,885 men, treasury 55.7, 12 battles world-wide
+turn 6: 12 provinces, 676,885 men, treasury 70.6, 0 battles world-wide
+turn 7: 12 provinces, 676,885 men, treasury 85.5, 1 battles world-wide
+turn 8: 12 provinces, 676,885 men, treasury 100.4, 1 battles world-wide
+> countries 10
+  1. UNC Unclaimed            100 prov             0 men        10.0 in treasury
+  2. RUS Russia                93 prov     7,600,000 men     1,682.9 in treasury
+  3. USA United States of Am   67 prov     1,600,000 men     3,003.0 in treasury
+  4. CAN Canada                58 prov     1,600,000 men       434.7 in treasury
+  5. CHN China                 41 prov     3,100,000 men     2,266.1 in treasury
+  6. IDN Indonesia             39 prov     1,600,000 men       598.6 in treasury
+  7. AUS Australia             38 prov     1,600,000 men       521.9 in treasury
+  8. BRA Brazil                37 prov     1,600,000 men       871.6 in treasury
+  9. GRL Greenland             24 prov         8,871 men       143.2 in treasury
+ 10. IND India                 23 prov     3,100,000 men     1,158.1 in treasury
+> war FIN
+Sweden is at war with Finland
+> peace
+at peace
+> end 20
+turn 9: 12 provinces, 676,885 men, treasury 115.3, 1 battles world-wide
+turn 10: 12 provinces, 676,885 men, treasury 130.5, 1 battles world-wide
+turn 11: 12 provinces, 676,885 men, treasury 146.5, 0 battles world-wide
+turn 12: 12 provinces, 676,885 men, treasury 162.6, 5 battles world-wide
+turn 13: 12 provinces, 676,885 men, treasury 183.9, 1 battles world-wide
+turn 14: 12 provinces, 676,885 men, treasury 205.2, 0 battles world-wide
+turn 15: 12 provinces, 676,885 men, treasury 226.5, 1 battles world-wide
+turn 16: 12 provinces, 676,885 men, treasury 247.8, 5 battles world-wide
+turn 17: 12 provinces, 676,885 men, treasury 269.1, 5 battles world-wide
+turn 18: 12 provinces, 676,885 men, treasury 290.4, 3 battles world-wide
+turn 19: 12 provinces, 676,885 men, treasury 311.7, 5 battles world-wide
+turn 20: 12 provinces, 676,885 men, treasury 333.0, 3 battles world-wide
+turn 21: 12 provinces, 676,885 men, treasury 354.3, 3 battles world-wide
+turn 22: 12 provinces, 676,885 men, treasury 375.6, 1 battles world-wide
+turn 23: 12 provinces, 676,885 men, treasury 396.9, 0 battles world-wide
+turn 24: 12 provinces, 676,885 men, treasury 418.2, 0 battles world-wide
+turn 25: 12 provinces, 676,885 men, treasury 439.5, 0 battles world-wide
+turn 26: 12 provinces, 676,885 men, treasury 460.8, 0 battles world-wide
+turn 27: 12 provinces, 676,885 men, treasury 482.1, 0 battles world-wide
+turn 28: 12 provinces, 676,885 men, treasury 503.4, 0 battles world-wide
+> status
+Sweden (SWE), turn 28
+  12 provinces, 676,885 men, income 25.6 a turn, treasury 503.4
+  pacifying: 20% of income
+> hk
+> new 7
+a new world: 1632 provinces, 183 countries
+> play FRA
+France (FRA), turn 0
+  17 provinces, 0 men, income 278.1 a turn, treasury 278.1
+> end 3
+turn 1: 17 provinces, 0 men, treasury 553.8, 0 battles world-wide
+turn 2: 17 provinces, 0 men, treasury 829.5, 1 battles world-wide
+turn 3: 17 provinces, 0 men, treasury 1,105.2, 1 battles world-wide
+> countries 3
+  1. UNC Unclaimed            100 prov             0 men        10.0 in treasury
+  2. RUS Russia                93 prov     6,600,000 men       787.4 in treasury
+  3. USA United States of Am   67 prov       600,000 men     1,358.0 in treasury
+> quit

@@ -96,7 +96,7 @@ void ModManager::rescan() {
 
     // Remember what the user had decided, keyed by mod id, so a rescan never
     // silently re-grants or disables anything.
-    struct Prev { bool enabled; uint32_t grants; ModState state; };
+    struct Prev { bool enabled; uint64_t grants; ModState state; };
     std::vector<std::pair<std::string, Prev>> prev;
     for (auto& e : m_mods)
         prev.push_back({e.id, {e.enabled, e.grants, e.state}});
@@ -251,7 +251,7 @@ void ModManager::activate(ModEntry& e) {
 
     std::string err;
     // Core is never revocable, so it is always in the effective grant set.
-    uint32_t grants = (e.grants & e.manifest.modules) | MODULE_CORE;
+    uint64_t grants = (e.grants & e.manifest.modules) | MODULE_CORE;
 
     // A client-side mod cannot write game state or run turn hooks while a
     // server owns the world. Applied here, as a mask over the same word the
@@ -500,13 +500,13 @@ void ModManager::setEnabled(size_t index, bool on) {
     save();
 }
 
-void ModManager::setGrant(size_t index, uint32_t moduleBit, bool on) {
+void ModManager::setGrant(size_t index, uint64_t moduleBit, bool on) {
     if (index >= m_mods.size()) return;
     ModEntry& e = m_mods[index];
     if (moduleBit == MODULE_CORE) return;            // not revocable
     if (!(e.manifest.modules & moduleBit)) return;   // never grant what it did not ask for
 
-    uint32_t before = e.grants;
+    uint64_t before = e.grants;
     if (on) e.grants |= moduleBit;
     else    e.grants &= ~moduleBit;
 
@@ -767,7 +767,7 @@ void ModManager::load() {
                 // Clamp to what the manifest actually requests: a stale or
                 // hand-edited file must not grant a capability the mod did not
                 // ask for and the user never saw.
-                e.grants = gr->get<uint32_t>() & e.manifest.modules;
+                e.grants = gr->get<uint64_t>() & e.manifest.modules;
             auto co = m.find("conflictOverrides");
             e.conflictOverrides.clear();
             if (co != m.end() && co->is_array())

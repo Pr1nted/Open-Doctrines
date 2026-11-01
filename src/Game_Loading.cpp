@@ -1,7 +1,9 @@
 #include "Game.h"
 #include "map/RasterScale.h"
 #include "map/SkyFile.h"
+#include "map/BorderDistance.h"
 #include "util/LoadLog.h"
+#include "util/OdEnv.h"
 // getrusage() below. Guarded the way Game.cpp guards the same header: MSVC has
 // no <sys/resource.h>, and emscripten reports the wasm heap instead.
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
@@ -973,66 +975,91 @@ static std::vector<uint32_t> odProvinceEdgePixels(const ProvinceMap& pm, int w, 
     return edges;
 }
 
+// ── THE BORDER DISTANCE FIELD ── see map/BorderDistance.h for the passes.
+static void odPumpAudio() { Audio::get().pump(); }
+
+// Seeds: a pixel with a 4-neighbour under different ownership, which can
+// only be a province-edge pixel. The owner is the province's id put through
+// the country lookup, and idAt() returns that id whether the raster is still
+// the RGBA image or the compact index -- so this reads the same for a normal
+// load and for a Risky-RAM compact one.
+static inline uint16_t odOwnerAt(const ProvinceMap& pm, const std::vector<int>& lookup, size_t i) {
+    const int pid = pm.idAt(i);
+    return (pid > 0 && (size_t)pid < lookup.size()) ? (uint16_t)lookup[(size_t)pid] : (uint16_t)0;
+}
+
+static inline bool odIsSeed(const ProvinceMap& pm, const std::vector<int>& lookup,
+                            int w, int h, uint32_t i) {
+    const int x = (int)(i % (uint32_t)w), y = (int)(i / (uint32_t)w);
+    const uint16_t o = odOwnerAt(pm, lookup, i);
+    return (x > 0     && odOwnerAt(pm, lookup, i - 1) != o) ||
+           (x < w - 1 && odOwnerAt(pm, lookup, i + 1) != o) ||
+           (y > 0     && odOwnerAt(pm, lookup, i - (size_t)w) != o) ||
+           (y < h - 1 && odOwnerAt(pm, lookup, i + (size_t)w) != o);
+}
+
+// The whole field. `edgeBox`, when given, receives each province's edge-pixel
+// box (4 ints per pid, for pids the lookup covers), which is what an
+// incremental rebuild needs to know where a change of owner can matter.
 static void odBuildGradientField(const ProvinceMap& pm, const std::vector<uint32_t>& edges,
                                  const std::vector<int>& lookup,
-                                 int w, int h, std::vector<uint8_t>& out) {
+                                 int w, int h, std::vector<uint8_t>& out,
+                                 std::vector<int>* edgeBox = nullptr) {
     const size_t total = (size_t)w * h;
     out.assign(total, 255);
-
-    // Seeds: a pixel with a 4-neighbour under different ownership, which can
-    // only be a province-edge pixel. The owner is the province's id put through
-    // the country lookup, and idAt() returns that id whether the raster is still
-    // the RGBA image or the compact index -- so this reads the same for a normal
-    // load and for a Risky-RAM compact one. It runs over the edge list only
-    // (a few MB), so the extra idAt branch costs nothing measurable.
-    auto ownerOf = [&](size_t i) -> uint16_t {
-        const int pid = pm.idAt(i);
-        return (pid > 0 && (size_t)pid < lookup.size()) ? (uint16_t)lookup[(size_t)pid] : (uint16_t)0;
-    };
+    if (edgeBox) edgeBox->assign(lookup.size() * 4, -1);
     for (uint32_t i : edges) {
-        const int x = (int)(i % (uint32_t)w), y = (int)(i / (uint32_t)w);
-        const uint16_t o = ownerOf(i);
-        if ((x > 0     && ownerOf(i - 1) != o) ||
-            (x < w - 1 && ownerOf(i + 1) != o) ||
-            (y > 0     && ownerOf(i - (size_t)w) != o) ||
-            (y < h - 1 && ownerOf(i + (size_t)w) != o))
-            out[i] = 0;
-    }
-
-    auto relax = [&out](size_t i, size_t from, uint8_t step) {
-        const uint8_t d = out[from];
-        if (d >= 60) return;                 // the BFS did not expand from here
-        const uint8_t nd = (uint8_t)(d + step);
-        if (nd < out[i]) out[i] = nd;
-    };
-
-    for (int y = 0; y < h; ++y) {            // forward: up-left half of the mask
-        Audio::get().pump();
-        const size_t row = (size_t)y * w;
-        for (int x = 0; x < w; ++x) {
-            const size_t i = row + x;
-            if (y > 0) {
-                relax(i, i - w, 2);
-                if (x > 0)     relax(i, i - w - 1, 3);
-                if (x < w - 1) relax(i, i - w + 1, 3);
-            }
-            if (x > 0) relax(i, i - 1, 2);
+        if (odIsSeed(pm, lookup, w, h, i)) out[i] = 0;
+        if (edgeBox) {
+            const int pid = pm.idAt(i);
+            if (pid <= 0 || (size_t)pid >= lookup.size()) continue;
+            int* b = &(*edgeBox)[(size_t)pid * 4];
+            const int x = (int)(i % (uint32_t)w), y = (int)(i / (uint32_t)w);
+            if (b[2] < 0) { b[0] = b[2] = x; b[1] = b[3] = y; continue; }
+            b[0] = std::min(b[0], x); b[2] = std::max(b[2], x);
+            b[1] = std::min(b[1], y); b[3] = std::max(b[3], y);
         }
     }
+    odBorderChamfer(out.data(), w, h, (size_t)w, &odPumpAudio);
+}
 
-    for (int y = h - 1; y >= 0; --y) {       // backward: down-right half
-        Audio::get().pump();
-        const size_t row = (size_t)y * w;
-        for (int x = w - 1; x >= 0; --x) {
-            const size_t i = row + x;
-            if (y < h - 1) {
-                relax(i, i + w, 2);
-                if (x > 0)     relax(i, i + w - 1, 3);
-                if (x < w - 1) relax(i, i + w + 1, 3);
-            }
-            if (x < w - 1) relax(i, i + 1, 2);
-        }
+// HOW FAR A SEED REACHES. A value is a sum of steps of 2 or 3 and is only
+// expanded below 60, so nothing above 62 is written and a seed's influence
+// ends 31 pixels away. The field at a pixel is the cheapest such path from
+// any seed, which stays within that radius of the pixel -- so a pixel's value
+// depends only on the seeds within 31 pixels of it. One spare for margin.
+static constexpr int kGradientReach = 32;
+
+// Rebuild the field inside [x0,x1]x[y0,y1] only, after owners changed on edge
+// pixels inside [cx0,cx1]x[cy0,cy1]. Outside the reach of those pixels no
+// seed moved, so nothing changed; inside it, the field is recomputed on a
+// window one more reach wider, which holds every seed and path that can
+// decide a value in the box -- the same answer the full build gives.
+static void odUpdateGradientRegion(const ProvinceMap& pm, const std::vector<uint32_t>& edges,
+                                   const std::vector<int>& lookup, int w, int h,
+                                   int cx0, int cy0, int cx1, int cy1,
+                                   std::vector<uint8_t>& out) {
+    const int R = kGradientReach;
+    // +1: a pixel's seed status also depends on its 4-neighbours' owners.
+    const int bx0 = std::max(0, cx0 - 1 - R), by0 = std::max(0, cy0 - 1 - R);
+    const int bx1 = std::min(w - 1, cx1 + 1 + R), by1 = std::min(h - 1, cy1 + 1 + R);
+    const int wx0 = std::max(0, bx0 - R), wy0 = std::max(0, by0 - R);
+    const int wx1 = std::min(w - 1, bx1 + R), wy1 = std::min(h - 1, by1 + R);
+    const int lw = wx1 - wx0 + 1, lh = wy1 - wy0 + 1;
+    std::vector<uint8_t> local((size_t)lw * lh, 255);
+    // The edge list is in raster order, so each window row's seeds are one
+    // contiguous run of it.
+    for (int y = wy0; y <= wy1; ++y) {
+        const uint32_t lo = (uint32_t)((size_t)y * w + wx0), hi = (uint32_t)((size_t)y * w + wx1);
+        auto it = std::lower_bound(edges.begin(), edges.end(), lo);
+        for (; it != edges.end() && *it <= hi; ++it)
+            if (odIsSeed(pm, lookup, w, h, *it))
+                local[(size_t)(y - wy0) * lw + (*it - lo)] = 0;
     }
+    odBorderChamfer(local.data(), lw, lh, (size_t)lw, &odPumpAudio);
+    for (int y = by0; y <= by1; ++y)
+        std::copy_n(&local[(size_t)(y - wy0) * lw + (bx0 - wx0)], bx1 - bx0 + 1,
+                    &out[(size_t)y * w + bx0]);
 }
 
 void Game::buildPopulationLookups() {
@@ -1154,7 +1181,7 @@ void Game::buildPopulationLookups() {
     if (!paint) return;          // the rest is the political texture
 
     m_provinceEdgePixels = odProvinceEdgePixels(m_provinces, w, h);
-    odBuildGradientField(m_provinces, m_provinceEdgePixels, displayOwners(), w, h, m_gradientDist);
+    buildGradientFieldFull();
 
     // ONE guard around all three, not one each. Two full-map uploads and a
     // third pass inside generatePoliticalTexture() run back to back with
@@ -1459,8 +1486,19 @@ void Game::terrainEdit(const std::vector<uint32_t>& pixels, bool toLand) {
 // replay -- so in a running game the shading kept fading toward borders that
 // had been redrawn turns ago.
 //
-// One full-raster BFS. Cheap enough once per turn, far too expensive per
-// frame, which is why the caller checks m_gradientDirty first.
+// Rebuilt around the provinces that changed hands, or in full when the raster
+// itself changed. Still far too expensive per frame, which is why the caller
+// checks m_gradientDirty first.
+void Game::buildGradientFieldFull() {
+    const int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    const std::vector<int>& owners = displayOwners();
+    odBuildGradientField(m_provinces, m_provinceEdgePixels, owners, w, h, m_gradientDist,
+                         &m_gradientBasis.edgeBox);
+    m_gradientBasis.rasterGen = m_provinces.rasterGeneration();
+    m_gradientBasis.edgeCount = m_provinceEdgePixels.size();
+    m_gradientBasis.owners = owners;
+}
+
 void Game::rebuildGradientField() {
     const Image& provImg = m_provinces.getImage();
     const int w2 = provImg.width, h2 = provImg.height;
@@ -1478,7 +1516,77 @@ void Game::rebuildGradientField() {
     // displayOwners(), not the truth: the shading steps down toward every
     // border it is drawn against, so shading from true owners would trace a
     // border the player cannot see. Without fog the two are the same vector.
-    odBuildGradientField(m_provinces, m_provinceEdgePixels, displayOwners(), w2, h2, m_gradientDist);
+    const std::vector<int>& owners = displayOwners();
+
+    // ONLY AROUND WHAT MOVED. A turn hands a handful of provinces over, and
+    // the full build is two passes over 33 million pixels -- it was 40% of a
+    // whole turn on 1939. The basis says what the field was built from; when
+    // the raster is the same one, the owners that differ name the provinces
+    // whose edges can have moved, and only their reach is rebuilt.
+    // OD_GRADIENT_FULL forces the full build; OD_GRADIENT_VERIFY builds both
+    // and aborts on any pixel that differs.
+    GradientBasis& gb = m_gradientBasis;
+    static const bool forceFull = OD_ENV("OD_GRADIENT_FULL") != nullptr;
+    static const bool verify = OD_ENV("OD_GRADIENT_VERIFY") != nullptr;
+    const bool sameRaster = gb.rasterGen == m_provinces.rasterGeneration() &&
+                            gb.edgeCount == m_provinceEdgePixels.size() &&
+                            gb.owners.size() == owners.size() &&
+                            gb.edgeBox.size() == owners.size() * 4 &&
+                            m_gradientDist.size() == (size_t)w2 * h2;
+    if (forceFull || !sameRaster) {
+        buildGradientFieldFull();
+    } else {
+        // One box per changed province's edges, then boxes whose windows
+        // would overlap merged, so conquests on opposite sides of the world
+        // rebuild two small windows rather than one box spanning both. Each
+        // window's answer depends only on the raster and the current owners,
+        // so they can be rebuilt in any order.
+        struct Box { int x0, y0, x1, y1; };
+        std::vector<Box> boxes;
+        for (size_t pid = 1; pid < owners.size(); ++pid) {
+            if ((uint16_t)owners[pid] == (uint16_t)gb.owners[pid]) continue;
+            const int* b = &gb.edgeBox[pid * 4];
+            if (b[2] < 0) continue;              // no edge pixels: cannot seed
+            boxes.push_back({b[0], b[1], b[2], b[3]});
+        }
+        const int gap = 4 * kGradientReach;
+        for (bool merged = true; merged; ) {
+            merged = false;
+            for (size_t i = 0; i < boxes.size() && !merged; ++i)
+                for (size_t j = i + 1; j < boxes.size(); ++j) {
+                    Box& A = boxes[i];
+                    const Box& B = boxes[j];
+                    if (A.x0 - gap > B.x1 || B.x0 - gap > A.x1 ||
+                        A.y0 - gap > B.y1 || B.y0 - gap > A.y1) continue;
+                    A = {std::min(A.x0, B.x0), std::min(A.y0, B.y0),
+                         std::max(A.x1, B.x1), std::max(A.y1, B.y1)};
+                    boxes.erase(boxes.begin() + (long)j);
+                    merged = true;
+                    break;
+                }
+        }
+        long long work = 0;
+        for (const Box& b : boxes)
+            work += (long long)(b.x1 - b.x0 + 1 + gap) * (b.y1 - b.y0 + 1 + gap);
+        // Past a quarter of the map the full build is no slower.
+        if (work * 4 > (long long)w2 * h2) {
+            buildGradientFieldFull();
+        } else {
+            for (const Box& b : boxes)
+                odUpdateGradientRegion(m_provinces, m_provinceEdgePixels, owners, w2, h2,
+                                       b.x0, b.y0, b.x1, b.y1, m_gradientDist);
+            gb.owners = owners;
+            if (verify) {
+                std::vector<uint8_t> full;
+                odBuildGradientField(m_provinces, m_provinceEdgePixels, owners, w2, h2, full);
+                size_t bad = 0;
+                for (size_t i = 0; i < full.size(); ++i) bad += full[i] != m_gradientDist[i];
+                fprintf(stderr, "[GRADIENT] incremental, %zu window(s), %.1f%% of the map: %zu pixel(s) differ\n",
+                        boxes.size(), 100.0 * (double)work / ((double)w2 * h2), bad);
+                if (bad) std::abort();
+            }
+        }
+    }
     m_gradientDirty = false;
     m_borderDistanceSent = false;
 }
@@ -1580,7 +1688,14 @@ void Game::generatePoliticalTexture() {
     }
     if (!m_borderDistanceSent) {
         std::vector<uint8_t> dist(m_gradientDist.size());
-        for (size_t i = 0; i < dist.size(); ++i) dist[i] = std::min<uint8_t>(m_gradientDist[i], 63);
+        // Raw pointers, not the vectors: a byte store may alias anything, so
+        // through operator[] the compiler reloaded m_gradientDist's data
+        // pointer after every pixel and could not vectorise -- 33 million
+        // scalar iterations, 12% of a turn on 1939, for a clamp.
+        const uint8_t* src = m_gradientDist.data();
+        uint8_t* dst = dist.data();
+        const size_t n = dist.size();
+        for (size_t i = 0; i < n; ++i) dst[i] = std::min<uint8_t>(src[i], 63);
         m_renderer->setBorderDistance(dist, w, h);
         m_borderDistanceSent = true;
     }
@@ -2016,6 +2131,53 @@ void Game::generateIcons() {
     });
 }
 
+// The raster half of computeCountryLabels' adjacency phase: every directed
+// (province, neighbouring province) pair the 8-connected scan meets -- right,
+// down, down-right, down-left, wrapping east-west -- once each, at its first
+// occurrence and in scan order. Ownership plays no part, so this is redone only
+// when the raster itself changes. See the caller for why the order is kept.
+void Game::ensureAdjacencyScan(int w, int h) {
+    AdjacencyScan& a = m_adjacencyScan;
+    if (a.rasterGen == m_provinces.rasterGeneration() && a.w == w && a.h == h) return;
+    a.rasterGen = m_provinces.rasterGeneration();
+    a.w = w; a.h = h;
+    a.pairs.clear();
+    static const int DX[4] = {1, 0, 1, -1};
+    static const int DY[4] = {0, 1, 1,  1};
+    std::unordered_set<int64_t> seen;
+    for (int y = 0; y < h; ++y) {
+        // The longest uninterrupted stretch of work in the whole load: a
+        // 8192x4096 raster is 33 million pixels, each looking at four
+        // neighbours, and until it finishes nothing else on this thread runs.
+        // On the web that includes the browser's audio callback, so the music
+        // repeats the last fraction of a second it was given for as long as
+        // this takes.
+        //
+        // ONCE A ROW, not once every 64. At this raster size 64 rows is longer
+        // than a Web Audio period, so the old interval let the buffer run dry
+        // between yields and the fragment looped anyway -- instrumentation that
+        // was present and too sparse to work. pump() now rate-limits itself
+        // before doing anything, so a call that is not due is a clock read.
+        Audio::get().pump();
+        for (int x = 0; x < w; ++x) {
+            const int pid = m_provinces.idAt(x, y);
+            if (pid <= 0) continue;
+            for (int d = 0; d < 4; ++d) {
+                // Wrap horizontally for equirectangular maps
+                int nx = x + DX[d];
+                if (nx < 0) nx = w - 1;
+                else if (nx >= w) nx = 0;
+                const int ny = y + DY[d];
+                if (ny >= h) continue;
+                const int npid = m_provinces.idAt(nx, ny);
+                if (npid <= 0 || npid == pid) continue;
+                if (seen.insert(((int64_t)pid << 32) | (uint32_t)npid).second)
+                    a.pairs.emplace_back(pid, npid);
+            }
+        }
+    }
+}
+
 void Game::computeCountryLabels() {
     m_countryLabels.clear();
     Font font = GetFontDefault();
@@ -2067,54 +2229,75 @@ void Game::computeCountryLabels() {
         return (static_cast<int64_t>(a) << 32) | b;
     };
 
-    // Offsets for 8-con scan: right, bottom, bottom-right, bottom-left
-    static const int DX[4] = {1, 0, 1, -1};
-    static const int DY[4] = {0, 1, 1,  1};
-
     // Also populate m_provinceNeighbors with ALL adjacencies (any province pair)
     m_provinceNeighbors.clear();
     std::unordered_set<int64_t> allAdjPairs;
 
-    for (int y = 0; y < h; ++y) {
-        // The longest uninterrupted stretch of work in the whole load: a
-        // 8192x4096 raster is 33 million pixels, each looking at four
-        // neighbours, and until it finishes nothing else on this thread runs.
-        // On the web that includes the browser's audio callback, so the music
-        // repeats the last fraction of a second it was given for as long as
-        // this takes.
-        //
-        // ONCE A ROW, not once every 64. At this raster size 64 rows is longer
-        // than a Web Audio period, so the old interval let the buffer run dry
-        // between yields and the fragment looped anyway -- instrumentation that
-        // was present and too sparse to work. pump() now rate-limits itself
-        // before doing anything, so a call that is not due is a clock read.
-        Audio::get().pump();
+    // THE RASTER IS SCANNED ONCE PER RASTER, NOT ONCE PER TURN. Which pixels
+    // touch never changes when only owners do, and this scan was 33 million
+    // pixels every turn -- most of this function's time on 1939. The scan
+    // records each directed (pixel's province, neighbour's province) pair at
+    // its first occurrence, in scan order; ownership filters it here.
+    //
+    // Replaying that list inserts the same keys into the sets IN THE SAME
+    // ORDER the per-pixel loop did -- a pair's filter depends only on the two
+    // provinces, so its first passing occurrence is its first occurrence --
+    // and an unordered_set's iteration order follows its insertion order.
+    // That matters: m_provinceNeighbors is built by iterating the set, the
+    // simulation and the AI walk it, and a reordered list is a different game.
+    // OD_ADJ_VERIFY rescans every turn and aborts if anything differs.
+    ensureAdjacencyScan(w, h);
+    for (const auto& [pid, npid] : m_adjacencyScan.pairs) {
+        if (pid > maxPid || npid > maxPid) continue;
+        const int cid = pidToCountry[pid];
+        if (cid <= 0) continue;
+        // Track ALL adjacencies for m_provinceNeighbors (not just same-country)
+        allAdjPairs.insert(pack(pid, npid));
+        // Track same-country only for component detection
+        if (pidToCountry[npid] == cid)
+            adjPairs.insert(pack(pid, npid));
+    }
+    static const bool verifyAdj = OD_ENV("OD_ADJ_VERIFY") != nullptr;
+    if (verifyAdj) {
+        // The per-pixel scan as it stood, kept as the reference.
+        std::unordered_set<int64_t> refAll, refSame;
+        static const int DX[4] = {1, 0, 1, -1};
+        static const int DY[4] = {0, 1, 1,  1};
 
-        for (int x = 0; x < w; ++x) {
-            int pid = m_provinces.idAt(x, y);
-            if (pid <= 0 || pid > maxPid) continue;
-            int cid = pidToCountry[pid];
-            if (cid <= 0) continue;
+        for (int y = 0; y < h; ++y) {
+            Audio::get().pump();
 
-            for (int d = 0; d < 4; ++d) {
-                // Wrap horizontally for equirectangular maps
-                int nx = x + DX[d];
-                if (nx < 0) nx = w - 1;
-                else if (nx >= w) nx = 0;
-                int ny = y + DY[d];
-                if (ny >= h) continue;
+            for (int x = 0; x < w; ++x) {
+                int pid = m_provinces.idAt(x, y);
+                if (pid <= 0 || pid > maxPid) continue;
+                int cid = pidToCountry[pid];
+                if (cid <= 0) continue;
 
-                int npid = m_provinces.idAt(nx, ny);
-                if (npid > 0 && npid <= maxPid && npid != pid) {
-                    int ncid = pidToCountry[npid];
-                    // Track ALL adjacencies for m_provinceNeighbors (not just same-country)
-                    allAdjPairs.insert(pack(pid, npid));
-                    // Track same-country only for component detection
-                    if (ncid == cid)
-                        adjPairs.insert(pack(pid, npid));
+                for (int d = 0; d < 4; ++d) {
+                    // Wrap horizontally for equirectangular maps
+                    int nx = x + DX[d];
+                    if (nx < 0) nx = w - 1;
+                    else if (nx >= w) nx = 0;
+                    int ny = y + DY[d];
+                    if (ny >= h) continue;
+
+                    int npid = m_provinces.idAt(nx, ny);
+                    if (npid > 0 && npid <= maxPid && npid != pid) {
+                        int ncid = pidToCountry[npid];
+                        // Track ALL adjacencies for m_provinceNeighbors (not just same-country)
+                        refAll.insert(pack(pid, npid));
+                        // Track same-country only for component detection
+                        if (ncid == cid)
+                            refSame.insert(pack(pid, npid));
+                    }
                 }
             }
         }
+        const bool same = std::equal(refAll.begin(), refAll.end(), allAdjPairs.begin(), allAdjPairs.end()) &&
+                          std::equal(refSame.begin(), refSame.end(), adjPairs.begin(), adjPairs.end());
+        fprintf(stderr, "[ADJ] cached scan %s the raster scan (%zu/%zu pairs)\n",
+                same ? "matches" : "DIFFERS FROM", allAdjPairs.size(), adjPairs.size());
+        if (!same) std::abort();
     }
 
     // A world loaded reduced (map/RasterScale.h) has lost its thinnest
