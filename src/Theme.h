@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include "raylib.h"
 
 /**
@@ -43,7 +44,7 @@ inline void setHighContrast(bool on) { g_highContrast = on; }
 namespace detail {
 inline float lin(unsigned char c) {
     const float s = c / 255.0f;
-    return s <= 0.04045f ? s / 12.92f : __builtin_powf((s + 0.055f) / 1.055f, 2.4f);
+    return s <= 0.04045f ? s / 12.92f : std::pow((s + 0.055f) / 1.055f, 2.4f);
 }
 inline float luminance(Color c) {
     return 0.2126f * lin(c.r) + 0.7152f * lin(c.g) + 0.0722f * lin(c.b);
