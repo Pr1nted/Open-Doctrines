@@ -34,7 +34,7 @@ struct ModEntry {
 
     ModState    state = ModState::Disabled;
     bool        enabled = false; // the user's intent, persisted
-    uint32_t    grants = 0;      // granted capabilities, persisted
+    uint64_t    grants = 0;      // granted capabilities, persisted
 
     std::string diagnostic;      // why it failed, or why it needs a reload
     std::vector<std::string> warnings;
@@ -52,7 +52,11 @@ struct ModEntry {
 
     long long   fileMTime = 0;   // to notice the file being replaced on disk
 
-    std::unique_ptr<ModPackage>  package;
+    // Shared, not unique: the live instance co-owns this through its own
+    // shared_ptr (ModRuntime::instantiate), so the package cannot be freed out
+    // from under a running mod regardless of the order these two fields, or the
+    // whole entry, are torn down in.
+    std::shared_ptr<ModPackage>  package;
     std::unique_ptr<ModInstance> instance;
 };
 
@@ -89,7 +93,7 @@ public:
 
     // Toggle "run these two anyway" on one side of a pair.
     void setConflictOverride(size_t index, const std::string& otherId, bool on);
-    void setGrant(size_t index, uint32_t moduleBit, bool on);
+    void setGrant(size_t index, uint64_t moduleBit, bool on);
 
     // Tears down every instance and starts the enabled set again. This is the
     // only thing that ever creates an instance.

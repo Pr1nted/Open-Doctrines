@@ -51,7 +51,7 @@ jobs:
       matrix:
         include:
           - name: macos-arm64
-            os: macos-14
+            os: macos-15
             artifact: OpenDoctrines-macos-arm64
           - name: macos-x64
             # macos-15-intel: the macos-13 image is retired, and a job asking
@@ -109,6 +109,21 @@ jobs:
             triplet: arm-linux-gnueabihf
             deb_arch: armhf
             cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake
+          # RASPBERRY PI OS. The Pi 4 and 5 GPUs offer GL 3.1 / GLES 3.1, not
+          # the GL 3.3 the desktop build asks for, so these are built for
+          # OpenGL ES (OD_GLES) -- the shader path Android and the web ship --
+          # and packaged as .debs in the raspios job below. Same CPUs as
+          # linux-arm64 and linux-armv7, same runner and toolchain.
+          - name: raspios-arm64
+            os: ubuntu-22.04-arm
+            artifact: OpenDoctrines-raspios-arm64
+            cmake_args: -DOD_GLES=ON
+          - name: raspios-armhf
+            os: ubuntu-22.04
+            artifact: OpenDoctrines-raspios-armhf
+            triplet: arm-linux-gnueabihf
+            deb_arch: armhf
+            cmake_args: -DCMAKE_TOOLCHAIN_FILE=tools/cmake/linux-armv7.cmake -DOD_GLES=ON
           - name: linux-riscv64
             os: ubuntu-24.04
             artifact: OpenDoctrines-linux-riscv64
@@ -127,7 +142,7 @@ jobs:
           # at link with errors that do not mention X11 at all.
           sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev \
             libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev
+            libxinerama-dev libwayland-dev libxkbcommon-dev libudev-dev libgles-dev
 
       # The same libraries, for another architecture: multiarch -dev packages
       # beside the host's, the cross gcc, and QEMU for anything built that the
@@ -483,8 +498,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64 }
-          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64 }
+          - { arch: amd64, os: ubuntu-22.04,     artifact: OpenDoctrines-linux-x64,   chromeos: x64 }
+          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-linux-arm64, chromeos: arm64 }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
@@ -536,6 +551,24 @@ jobs:
             && echo "  rpm: MANAGED present" \
             || { echo "  rpm: MANAGED MISSING"; exit 1; }
 
+      # ── CHROMEOS ──
+      #
+      # A Chromebook runs Linux apps in a Debian 12 container, x86-64 or arm64
+      # to match its CPU, and installs a .deb from the Files app with apt. So
+      # the ChromeOS build IS this .deb -- what makes it ChromeOS's is that it
+      # is installed and checked the way ChromeOS will, in that Debian, on this
+      # job's own architecture: every dependency from bookworm's archive, every
+      # library resolving, a launcher entry for the app grid. Published under
+      # its own name so the download page and the release list can say
+      # "ChromeOS" rather than send people to guess which Linux file is theirs.
+      - name: ChromeOS -- installs and links in Debian 12
+        run: |
+          set -eu
+          deb=$(ls dist/linux/*.deb)
+          tools/chromeos_check.sh "$deb"
+          cp "$deb" "dist/linux/OpenDoctrines-chromeos-${{ matrix.chromeos }}.deb"
+          ls -l dist/linux/*.deb
+
       - name: The desktop entry and metainfo are valid
         # Flathub and the freedesktop validators run these anyway; failing here
         # is a minute, failing there is a round trip.
@@ -564,6 +597,60 @@ jobs:
   # that already spends most of its time pulling a 1 GB runtime, and the Arm
   # audience this would serve is the same one the arm64 tarball and AppImage
   # already reach.
+  # ── Raspberry Pi OS ──
+  #
+  # The OpenGL ES builds (raspios-arm64, raspios-armhf above) as .debs for
+  # Raspberry Pi OS, each installed and played by tools/raspios_check.sh in
+  # Debian bookworm with Raspberry Pi's own repository added -- which is what
+  # Raspberry Pi OS is. armhf runs that container under QEMU; arm64 on an Arm
+  # runner, natively.
+  raspios:
+    name: Package Raspberry Pi OS ${{ matrix.arch }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, os: ubuntu-22.04-arm, artifact: OpenDoctrines-raspios-arm64 }
+          - { arch: armhf, os: ubuntu-22.04,     artifact: OpenDoctrines-raspios-armhf }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: incoming
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          sudo gem install --no-document fpm
+      - name: QEMU, for the armhf container
+        if: matrix.arch == 'armhf'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+      - name: Build the .deb
+        run: |
+          set -eu
+          cd incoming && unzip -q -o ./*.zip && cd ..
+          tree=$(find incoming -maxdepth 2 -name OpenDoctrines -type f -exec dirname {} \; | head -1)
+          [ -n "$tree" ] || { echo "no game tree in the artifact"; ls -R incoming | head -40; exit 1; }
+          tools/make_linux_packages.sh "$tree" "${GITHUB_REF_NAME#v}" "${{ matrix.arch }}" dist/raspios deb
+      - name: Raspberry Pi OS -- installs, links OpenGL ES, plays
+        run: |
+          set -eu
+          deb=$(ls dist/raspios/*.deb)
+          tools/raspios_check.sh "$deb" "${{ matrix.arch }}"
+          mv "$deb" "dist/raspios/OpenDoctrines-raspios-${{ matrix.arch }}.deb"
+          ls -l dist/raspios
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDoctrines-raspios-packages-${{ matrix.arch }}
+          path: dist/raspios/*.deb
+          retention-days: 14
+          if-no-files-found: error
+
   flatpak:
     name: Flatpak (x86_64)
     needs: build
@@ -667,18 +754,25 @@ jobs:
     name: Test
     uses: ./.github/workflows/test.yml
 
-  # FreeBSD and OpenBSD, built inside real BSDs on a Linux runner. Its own
-  # workflow because it is a different shape from this matrix -- one job per
-  # runner -- and because it is dispatchable on its own, so a BSD break is
-  # found before a tag rather than by one.
+  # FreeBSD, OpenBSD and NetBSD, amd64 and arm64, built inside real BSDs on a
+  # Linux runner. Its own workflow because it is a different shape from this
+  # matrix -- one job per runner -- and because it also runs on its own, on
+  # every pull request and push, so a BSD break is found before a tag rather
+  # than by one.
   bsd:
     name: BSD
     uses: ./.github/workflows/bsd-game.yml
 
+  # OpenIndiana, Haiku and SerenityOS: built on their own systems, released
+  # and gated exactly as the BSDs are. See other-os-game.yml.
+  other-os:
+    name: Other OS
+    uses: ./.github/workflows/other-os-game.yml
+
   confirm:
     name: Play and confirm
     # Both: the artifacts have to exist AND the platforms have to have passed.
-    needs: [build, test, web, linux-packages, flatpak, bsd]
+    needs: [build, test, web, linux-packages, raspios, flatpak, bsd, other-os]
     runs-on: ubuntu-latest
     # The gate. Configure this environment in repository Settings with yourself
     # as a required reviewer; the job then blocks here until you approve.
@@ -692,7 +786,7 @@ jobs:
           echo "Download each artifact above, run it, and play far enough to be"
           echo "sure it works. Approving this job publishes to players."
           find artifacts \( -name '*.zip' -o -name '*.exe' -o -name '*.dmg' \
-                            -o -name '*.apk' \) -exec ls -lh {} \;
+                            -o -name '*.apk' -o -name '*.vpk' \) -exec ls -lh {} \;
 
   publish:
     name: Publish
@@ -746,6 +840,41 @@ jobs:
             this game release ships without it. Release Unifico first (tag vX.Y.Z there)."
           fi
 
+      # ── SIGN THE RELEASE ──
+      #
+      # A detached Ed25519 signature over a manifest of every self-update zip's
+      # SHA-256, made with the OFFLINE key (the RELEASE_SIGNING_KEY secret, the
+      # whole PEM). The client verifies it against the key compiled into
+      # src/ReleaseSigningKey.h before it will self-install, so a compromised
+      # release host cannot push a swapped binary -- the digest the updater used
+      # to trust came over the same connection as the file. See SECURITY.md,
+      # tools/sign_release.py and tools/gen_release_key.py.
+      #
+      # Missing the secret is a loud warning, not a hard failure, so a fork that
+      # pins no key can still release: its clients keep the integrity-only check.
+      # For THIS repo set the secret -- without it, clients that pin the key
+      # refuse to self-install and send players to the release page instead.
+      - name: Sign the release
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
+            echo "::warning title=Unsigned release::RELEASE_SIGNING_KEY is not set; \
+            this release has no signed manifest. Clients that pin a release key will \
+            refuse to self-install it and send players to the release page. Set the \
+            secret to sign releases -- see tools/gen_release_key.py."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          mapfile -t zips < <(find artifacts -name 'OpenDoctrines-*.zip' | sort)
+          if [ "${#zips[@]}" -eq 0 ]; then
+            echo "::error title=Nothing to sign::no OpenDoctrines-*.zip assets found"
+            exit 1
+          fi
+          python3 tools/sign_release.py --version "$version" --out signed "${zips[@]}"
+          ls -l signed
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -764,11 +893,14 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.apk
+            artifacts/**/*.vpk
             artifacts/**/*.AppImage
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/**/*.flatpak
             launcher/*.zip
+            signed/release.manifest
+            signed/release.manifest.sig
           body_path: notes.md
           # A version with a state letter other than r is not a full release.
           prerelease: ${{ !endsWith(github.ref_name, 'r') }}

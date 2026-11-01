@@ -26,6 +26,18 @@ ModRuntime& ModRuntime::get() {
     return r;
 }
 
+// Which budget an export draws on, shared by both backends. mod_load and
+// _initialize are one-time and draw on the larger load budget; mod_ai_choose is
+// one CHOICE and draws on its own; every other export is a per-turn hook on the
+// tight budget, so a new export defaults to the safe side.
+static bool isLoadHook(const char* name) {
+    return name && (strcmp(name, "mod_load") == 0 ||
+                    strcmp(name, "_initialize") == 0);
+}
+static bool isDecisionHook(const char* name) {
+    return name && strcmp(name, "mod_ai_choose") == 0;
+}
+
 // ============================================================== WAMR ========
 #ifdef OD_MODS_WAMR
 
@@ -114,9 +126,11 @@ void ModRuntime::shutdown() {
     m_inited = false;
 }
 
-std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
-                                                     uint32_t granted,
+std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage> pkgPtr,
+                                                     uint64_t granted,
                                                      std::string& err) {
+    if (!pkgPtr) { err = "no package"; return nullptr; }
+    const ModPackage& pkg = *pkgPtr;
     if (!m_inited && !init(err)) return nullptr;
 
     auto w = new WamrInstance();
@@ -208,7 +222,7 @@ std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
     std::unique_ptr<ModInstance> mi(new ModInstance());
     mi->m_manifest = pkg.manifest();
     mi->m_granted = granted;
-    mi->m_package = &pkg;
+    mi->m_package = pkgPtr;         // co-owned: cannot dangle while mi is alive
     mi->m_impl = w;
     mi->m_fuelBudget = pkg.manifest().limits.fuelPerTurn;
     mi->m_loadFuelBudget = pkg.manifest().limits.loadFuel;
@@ -272,22 +286,6 @@ bool ModInstance::hasExport(const char* name) const {
     auto* w = (WamrInstance*)m_impl;
     if (!w || !w->inst) return false;
     return wasm_runtime_lookup_function(w->inst, name) != nullptr;
-}
-
-// The one-time calls, which draw on the load budget rather than the per-turn
-// one. Deliberately a closed list: every other export is a per-turn hook and
-// must stay on the tight budget, so a new export defaults to the safe side.
-static bool isLoadHook(const char* name) {
-    return name && (strcmp(name, "mod_load") == 0 ||
-                    strcmp(name, "_initialize") == 0);
-}
-
-// The decision hook, which draws on its own budget for the same kind of reason:
-// it is one CHOICE rather than one turn, and a mod that decides by running a
-// model spends more on a single choice than a turn of ordinary hook work.
-// A closed list again, so a new export defaults to the tight budget.
-static bool isDecisionHook(const char* name) {
-    return name && strcmp(name, "mod_ai_choose") == 0;
 }
 
 bool ModInstance::callExport(const char* name, const uint32_t* args,
@@ -377,9 +375,15 @@ ModInstance* modCurrentInstance(void* execEnv) {
 // The web build is itself WebAssembly, so the browser's own engine is the
 // sandbox. That is what makes hot-loading work on itch.io with no page reload.
 //
-// KNOWN GAP, stated plainly: the browser exposes no instruction limit, so
-// limits.fuelPerTurn is NOT enforced here. A mod with an infinite loop in a hook
-// will hang the tab. On desktop WAMR enforces it. See docs/modding.md.
+// FUEL IS ENFORCED, by rewriting the mod rather than by the engine. The browser
+// exposes no instruction limit and cannot interrupt a running call, so instead
+// od_mods_instantiate runs the mod's bytes through the gas meter in
+// wasm_meter.js, which injects a fuel counter at every function entry and loop
+// header; the host sets the counter to the hook's budget before each call, and a
+// runaway hook traps instead of hanging the tab. The transform fails open -- a
+// module it cannot rewrite runs unmetered, as before -- so it never breaks a mod
+// that worked; see the SAFETY note in wasm_meter.js. On desktop WAMR enforces
+// the same budgets directly.
 
 #include <emscripten.h>
 
@@ -413,7 +417,8 @@ EM_JS(void, od_mods_boot, (), {
 // Returns 0 on success. On failure writes a message into errPtr.
 EM_JS(int, od_mods_instantiate,
       (uint32_t inst, uint32_t bytesPtr, uint32_t len, uint32_t recPtr,
-       uint32_t recCount, uint32_t granted, uint32_t errPtr, uint32_t errCap), {
+       uint32_t recCount, uint64_t granted, double loadFuel,
+       uint32_t errPtr, uint32_t errCap), {
     function fail(msg) { stringToUTF8(msg, errPtr, errCap); return 1; }
     try {
         // Read the host function table the C side handed us: 4 words per record.
@@ -428,7 +433,23 @@ EM_JS(int, od_mods_instantiate,
             };
         }
 
-        const mod = new WebAssembly.Module(HEAPU8.slice(bytesPtr, bytesPtr + len));
+        // Gas metering. The browser cannot interrupt a running wasm call, so a
+        // mod hook with an infinite loop would hang the tab -- the one thing the
+        // desktop backend's fuel limit prevents. Rewrite the module with a fuel
+        // counter before instantiating it. FAIL OPEN: if the meter declines
+        // (returns null) or its output does not validate, run the ORIGINAL bytes
+        // unmetered, exactly as before this existed -- the transform can only add
+        // safety, never break a mod. See src/mods/wasm_meter.js.
+        let wasmBytes = HEAPU8.slice(bytesPtr, bytesPtr + len);
+        let metered = false;
+        try {
+            if (typeof globalThis !== "undefined" && globalThis.__odWasmMeter) {
+                const t = globalThis.__odWasmMeter.meter(wasmBytes, { entryCost: 1, loopCost: 1 });
+                if (t && WebAssembly.validate(t)) { wasmBytes = t; metered = true; }
+            }
+        } catch (e) { metered = false; }
+
+        const mod = new WebAssembly.Module(wasmBytes);
 
         // Same capability check the desktop backend does, for the same reason:
         // a mod importing something it was not granted must be refused at load,
@@ -467,6 +488,15 @@ EM_JS(int, od_mods_instantiate,
 
         const instance = new WebAssembly.Instance(mod, imports);
 
+        // The fuel global starts at 0, so a metered mod would trap in its own
+        // initialiser before it ran a line. Give the init its LOAD budget first
+        // (0 means unmetered). After this the per-call budget is set per hook in
+        // od_mods_call.
+        if (metered && instance.exports.__od_fuel) {
+            instance.exports.__od_fuel.value =
+                loadFuel > 0 ? BigInt(Math.floor(loadFuel)) : 9007199254740991n;
+        }
+
         // WAMR calls these for us after instantiation (wasm_runtime.c,
         // "WASI reactor instances may assume that _initialize will be called");
         // WebAssembly.Instance does not. Without this a C++ mod's static
@@ -501,7 +531,7 @@ EM_JS(int, od_mods_has_export, (uint32_t inst, uint32_t namePtr), {
 
 EM_JS(int, od_mods_call,
       (uint32_t inst, uint32_t namePtr, uint32_t argsPtr, uint32_t argc,
-       uint32_t retPtr, uint32_t errPtr, uint32_t errCap), {
+       double fuelBudget, uint32_t retPtr, uint32_t errPtr, uint32_t errCap), {
     const name = UTF8ToString(namePtr);
     const it = Module.__odMods && Module.__odMods[inst];
     if (!it) { stringToUTF8("mod is not instantiated", errPtr, errCap); return 1; }
@@ -509,6 +539,13 @@ EM_JS(int, od_mods_call,
     if (typeof fn !== "function") {
         stringToUTF8("mod does not export " + name, errPtr, errCap);
         return 1;
+    }
+    // Refuel for this hook, if the module is metered. 0 means unmetered. A hook
+    // that spends the budget traps (RuntimeError) and is reported as a failed
+    // call -- the browser equivalent of WAMR terminating it on the fuel limit.
+    if (it.exports.__od_fuel) {
+        it.exports.__od_fuel.value =
+            fuelBudget > 0 ? BigInt(Math.floor(fuelBudget)) : 9007199254740991n;
     }
     try {
         const args = [];
@@ -545,7 +582,7 @@ EM_JS(int, od_mods_mem_write,
 
 bool ModRuntime::available() const { return true; }
 const char* ModRuntime::backendName() const {
-    return "browser WebAssembly (no fuel metering)";
+    return "browser WebAssembly (metered)";
 }
 
 bool ModRuntime::init(std::string& err) {
@@ -558,15 +595,17 @@ bool ModRuntime::init(std::string& err) {
 
 void ModRuntime::shutdown() { m_inited = false; }
 
-std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
-                                                     uint32_t granted,
+std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage> pkgPtr,
+                                                     uint64_t granted,
                                                      std::string& err) {
+    if (!pkgPtr) { err = "no package"; return nullptr; }
+    const ModPackage& pkg = *pkgPtr;
     if (!m_inited && !init(err)) return nullptr;
 
     std::unique_ptr<ModInstance> mi(new ModInstance());
     mi->m_manifest = pkg.manifest();
     mi->m_granted = granted;
-    mi->m_package = &pkg;
+    mi->m_package = pkgPtr;         // co-owned: cannot dangle while mi is alive
     mi->m_fuelBudget = pkg.manifest().limits.fuelPerTurn;
     mi->m_loadFuelBudget = pkg.manifest().limits.loadFuel;
     mi->m_decisionFuelBudget = pkg.manifest().limits.fuelPerDecision;
@@ -579,6 +618,7 @@ std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
                                 (uint32_t)pkg.wasm().size(),
                                 (uint32_t)(uintptr_t)tbl.data(),
                                 (uint32_t)tbl.size(), granted,
+                                (double)mi->m_loadFuelBudget,
                                 (uint32_t)(uintptr_t)buf, (uint32_t)sizeof buf);
     if (r != 0) {
         err = buf[0] ? buf : "mod.wasm did not instantiate";
@@ -617,11 +657,30 @@ bool ModInstance::callExport(const char* name, const uint32_t* args, uint32_t ar
     if (argc > 8) { err = "too many arguments"; return false; }
     for (uint32_t i = 0; i < argc; i++) argv[i] = args[i];
 
-    // No fuel is applied here: the browser has no instruction limit to set.
+    // The browser cannot interrupt a running call, so the fuel is enforced by
+    // the gas counter the module was rewritten with (wasm_meter.js): set the
+    // budget for THIS hook and a runaway hook traps instead of hanging. Same
+    // budget choice as the WAMR backend -- load and decision hooks draw on their
+    // own. 0 means unmetered (an un-rewritten module, the fail-open case).
+    const bool loadHook = isLoadHook(name);
+    const bool decisionHook = isDecisionHook(name);
+    const uint64_t budget = loadHook     ? m_loadFuelBudget
+                          : decisionHook ? m_decisionFuelBudget
+                                         : m_fuelBudget;
+    const bool wasInLoadHook = m_inLoadHook;
+    const bool wasInDecisionHook = m_inDecisionHook;
+    m_inLoadHook = loadHook;
+    m_inDecisionHook = decisionHook;
+    struct Restore {
+        bool* flag; bool prev;
+        ~Restore() { *flag = prev; }
+    } restore{&m_inLoadHook, wasInLoadHook},
+      restoreDecision{&m_inDecisionHook, wasInDecisionHook};
+
     char buf[512] = {0};
     uint32_t out = 0;
     int r = od_mods_call((uint32_t)(uintptr_t)m_impl, (uint32_t)(uintptr_t)name,
-                         (uint32_t)(uintptr_t)argv, argc,
+                         (uint32_t)(uintptr_t)argv, argc, (double)budget,
                          (uint32_t)(uintptr_t)&out,
                          (uint32_t)(uintptr_t)buf, (uint32_t)sizeof buf);
     if (r != 0) {
@@ -635,8 +694,13 @@ bool ModInstance::callExport(const char* name, const uint32_t* args, uint32_t ar
 
 void ModInstance::resetFuel(uint64_t fuel) { m_fuelBudget = fuel; }
 uint64_t ModInstance::fuelRemaining() const {
-    // Reported so a mod can size its work, but not enforced on this backend.
-    return m_fuelBudget == 0 ? UINT64_MAX : m_fuelBudget;
+    // The budget for the current hook, now enforced by the injected gas counter
+    // (see the FUEL IS ENFORCED note above); like WAMR this is the budget, not a
+    // live countdown.
+    const uint64_t budget = m_inLoadHook     ? m_loadFuelBudget
+                          : m_inDecisionHook ? m_decisionFuelBudget
+                                             : m_fuelBudget;
+    return budget == 0 ? UINT64_MAX : budget;
 }
 
 void ModInstance::setAbort(const std::string& msg) { m_lastError = msg; }
@@ -661,8 +725,8 @@ bool ModRuntime::init(std::string& err) {
 
 void ModRuntime::shutdown() {}
 
-std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage&, uint32_t,
-                                                     std::string& err) {
+std::unique_ptr<ModInstance> ModRuntime::instantiate(std::shared_ptr<const ModPackage>,
+                                                     uint64_t, std::string& err) {
     err = "this build has no WebAssembly runtime, so mods cannot run";
     return nullptr;
 }
@@ -684,6 +748,18 @@ ModInstance* modCurrentInstance(void*) { return nullptr; }
 #endif
 
 // ------------------------------------------------------ backend-independent --
+
+// Borrowing overload. A non-owning alias so the instance's package() still
+// points at `pkg`, but nothing is freed when the instance goes away: the caller
+// owns `pkg` and must outlive the instance. Tests and tools that hold a package
+// on the stack use this; the game co-owns through the shared_ptr overload.
+std::unique_ptr<ModInstance> ModRuntime::instantiate(const ModPackage& pkg,
+                                                     uint64_t granted,
+                                                     std::string& err) {
+    return instantiate(std::shared_ptr<const ModPackage>(
+                           std::shared_ptr<const ModPackage>{}, &pkg),
+                       granted, err);
+}
 
 bool ModInstance::readString(uint32_t ptr, uint32_t len, std::string& out) const {
     if (len == 0) { out.clear(); return true; }

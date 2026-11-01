@@ -26,6 +26,7 @@
 #include "Game.h"
 #include "ai/AISystem.h"
 
+#include <filesystem>
 #include <cstdio>
 #include <string>
 
@@ -274,8 +275,14 @@ bool Game::tickLlmLetterWalk() {
         // screen rather than of whatever was on the buffer.
         if (m_llmLetterFrame < 2) return true;
         if (!m_llmLetterShot.empty()) {
-            TakeScreenshot(m_llmLetterShot.c_str());
-            printf("[LETTER] wrote %s\n", m_llmLetterShot.c_str());
+            // Absolute, for the reason in tickScreenshotTour: a relative name
+            // lands beside the executable on raylib's SDL backend. Taken by the
+            // next endFrame, before its swap, for the reason in m_frameCapturePath.
+            std::error_code ec;
+            const std::string shot = std::filesystem::absolute(m_llmLetterShot, ec).string();
+            if (m_llmLetterFrame == 2) { m_frameCapturePath = shot; return true; }
+            if (!m_frameCapturePath.empty()) return true;
+            printf("[LETTER] wrote %s\n", shot.c_str());
         }
         return false;
     }

@@ -2030,6 +2030,8 @@ public:
     void        mpDrainModMessages();
     /** Free sounds a mod started; empty id means every mod's. */
     void        unloadModSounds(const std::string& modId = std::string());
+    /** Once a frame: refresh the mixer's gains and reap finished voices. */
+    void        pumpModAudio();
     bool        modSetCountryTreasury(int cid, double value);
     bool        modAddCountryTreasury(int cid, double delta);
     bool        modSetProvinceOwner(int pid, int toCid);
@@ -2303,7 +2305,14 @@ public:
         // a scale of 1.00 -- so it is reasoned from raylib's source and written
         // down rather than left to be discovered on somebody's monitor.
         if (IsWindowState(FLAG_WINDOW_HIGHDPI)) return 1.0f;
-#if defined(__APPLE__)
+#if defined(OD_DESKTOP_SDL)
+        // On the SDL backend the pointer, the window and the framebuffer are
+        // all physical pixels (see Game::init), so there is nothing to undo.
+        // GetWindowScaleDPI() would be wrong here, not just redundant: under
+        // SDL3 it reports the display's content scale, 1.5 on a 150% Windows
+        // panel, while the pointer is already in the framebuffer's pixels.
+        return 1.0f;
+#elif defined(__APPLE__)
         // And with the flag off it is still one here: macOS hands back logical
         // coordinates whatever the framebuffer is doing.
         return 1.0f;
@@ -2443,6 +2452,12 @@ public:
     bool stepDisplayValueRow(int index, int dir);
     /** Puts a row handled by stepDisplayValueRow back to its default. */
     bool resetDisplayValueRow(int index);
+    /// Settings -> Accessibility: toggles or cycles the row named `label` when
+    /// the Accessibility tab is open. False for any other row, so both settings
+    /// screens can ask it first and fall through to their own chains.
+    bool activateAccessibilityRow(const char* label);
+    /// Push the accessibility settings into Theme.h and Access.h.
+    void applyAccessibility();
     /** Draws one volume row's bar. Called from the settings item-draw loop. */
     void drawVolumeSlider(int index, int y, int centerX, bool selected);
     /** Nudges a volume row by delta and applies it. Used by LEFT/RIGHT and R. */
@@ -3949,9 +3964,27 @@ public:
     bool m_borderDistanceSent = false;
     std::vector<uint8_t> m_gradientDist; // distance-to-border (0-255, capped at ~30)
     // Set by reindexProvinceOwner whenever a province changes hands; cleared
-    // by rebuildGradientField(). Rebuilding is a full-raster BFS, so it runs
-    // once per turn that actually moved territory rather than every frame.
+    // by rebuildGradientField(), once per turn that actually moved territory
+    // rather than every frame -- and then only around the provinces that moved.
     bool m_gradientDirty = false;
+    /// What m_gradientDist was last built from, so a turn that moved a few
+    /// borders rebuilds the field only around them. Valid while the raster
+    /// generation and edge list still match; otherwise the next build is full.
+    struct GradientBasis {
+        uint64_t rasterGen = 0;
+        size_t edgeCount = 0;
+        std::vector<int> owners;        ///< displayOwners() at the build
+        std::vector<int> edgeBox;       ///< pid -> x0,y0,x1,y1 of its edge pixels
+    } m_gradientBasis;
+    void buildGradientFieldFull();
+    /// computeCountryLabels' province adjacency scan, kept per raster. See
+    /// ensureAdjacencyScan.
+    struct AdjacencyScan {
+        uint64_t rasterGen = 0;
+        int w = -1, h = -1;
+        std::vector<std::pair<int, int>> pairs;   ///< directed, first occurrence, scan order
+    } m_adjacencyScan;
+    void ensureAdjacencyScan(int w, int h);
     void rebuildGradientField();
     void generatePopulationTexture(int countryId, int prevCountryId);
     void generatePoliticalTexture();
@@ -5119,6 +5152,11 @@ private:
     int m_shotIndex = 0;                 // which shot in the list
     bool m_ojhFps = false;             // --ojh-fps: timing frame-rate scenes
     int m_shotFrame = 0;                 // frames spent settling on it
+    bool m_shotAsked = false;            // capture requested for the current shot
+    // A file the next endFrame() writes the finished frame to, just before
+    // EndDrawing. A capture taken after the swap reads an undefined back buffer:
+    // desktop GL kept the pixels, ANGLE's Metal backend hands back black.
+    std::string m_frameCapturePath;
     int m_shotProvince = 0;              // the province the panel shots describe
     int m_shotForeignProvince = 0;       // one somebody else owns, for the diplomacy shots
 

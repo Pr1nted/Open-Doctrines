@@ -89,6 +89,7 @@ extern const Setting ADVANCED_ITEMS[];
 extern const int ADVANCED_COUNT;
 extern const Setting EXPERIMENTAL_ITEMS[];
 extern const int EXPERIMENTAL_COUNT;
+extern const int ACCESSIBILITY_COUNT;
 // Unsized deliberately: the count lives in TAB_COUNT and nowhere else, so
 // adding a tab is one edit rather than one edit and a silent excess-elements
 // error in a file that does not mention tabs.
@@ -105,6 +106,7 @@ extern const int MAX_ZOOM_COUNT;
 // naming the tab here is what keeps that from being a bare 2 in a dozen places.
 constexpr int AUDIO_TAB = 2;
 constexpr int LANGUAGE_TAB = 6;   ///< the tab with no rows; see TAB_ITEMS
+constexpr int ACCESSIBILITY_TAB = 7;
 constexpr int VOLUME_COUNT = 3;
 
 bool isVolumeSetting(int tab, int index);

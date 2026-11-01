@@ -522,6 +522,12 @@ bool NetHost::open(const Config& config) {
         m_impl->required = mine.shared();
     }
 
+#if defined(OD_NO_THREADS)
+    // A build with no threads has no network either (DOS): the listen above
+    // has already failed there, and there is nothing to open a session with.
+    m_impl->fail("This build cannot host a game.");
+    return false;
+#else
     m_impl->opener = std::thread([impl = m_impl.get()] {
         Config c;
         {
@@ -644,6 +650,7 @@ bool NetHost::open(const Config& config) {
     });
     m_impl->keeper = std::thread([impl = m_impl.get()] { impl->keeperLoop(); });
     return true;
+#endif
 }
 
 void NetHost::Impl::takeHostSeat() {

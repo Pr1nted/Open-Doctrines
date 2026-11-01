@@ -1,10 +1,19 @@
 #include "ProvinceMap.h"
+#include "RasterScale.h"
 #include "util/LoadLog.h"
 #include "util/PngRows.h"
 #include "../json.hpp"
 #include <fstream>
 #include <iostream>
+#include <atomic>
 #include <cstring>
+#include <algorithm>
+#include <unordered_set>
+
+void ProvinceMap::bumpRaster() {
+    static std::atomic<uint64_t> s_next{0};
+    m_rasterGen = ++s_next;
+}
 
 ProvinceMap::~ProvinceMap() {
     if (m_loaded && m_image.data) {
@@ -13,6 +22,7 @@ ProvinceMap::~ProvinceMap() {
 }
 
 bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath) {
+    bumpRaster();
     m_image = LoadImage(imagePath.c_str());
     if (m_image.data == nullptr) return false;
 
@@ -60,6 +70,7 @@ bool ProvinceMap::load(const std::string& imagePath, const std::string& jsonPath
 
 bool ProvinceMap::loadFromMemory(const void* imageData, int imageSize,
                                   const std::string& jsonStr) {
+    bumpRaster();
     m_image = LoadImageFromMemory(".png", static_cast<const unsigned char*>(imageData), imageSize);
     if (m_image.data == nullptr) return false;
 
@@ -69,28 +80,71 @@ bool ProvinceMap::loadFromMemory(const void* imageData, int imageSize,
     return parseJson(jsonStr);
 }
 
+bool ProvinceMap::loadFromPixels(const Color* pixels, int w, int h,
+                                 const std::string& jsonStr) {
+    if (m_loaded && m_image.data) UnloadImage(m_image);
+    m_image = Image{};
+    m_image.width = w;
+    m_image.height = h;
+    m_image.mipmaps = 1;
+    m_image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    m_image.data = MemAlloc((unsigned int)((size_t)w * (size_t)h * 4));
+    if (m_image.data == nullptr) return false;
+    unsigned char* d = static_cast<unsigned char*>(m_image.data);
+    const size_t n = (size_t)w * (size_t)h;
+    for (size_t i = 0; i < n; ++i) {
+        d[i * 4 + 0] = pixels[i].r;
+        d[i * 4 + 1] = pixels[i].g;
+        d[i * 4 + 2] = pixels[i].b;
+        d[i * 4 + 3] = 255;   // province id is RGB only; keep alpha opaque
+    }
+    m_width = w;
+    m_height = h;
+    return parseJson(jsonStr);
+}
+
 bool ProvinceMap::loadCompactFromMemory(const void* imageData, int imageSize,
                                         const std::string& jsonStr) {
+    bumpRaster();
     std::vector<uint16_t> index;
     std::vector<int> palette;
     std::unordered_map<int, uint16_t> slotOf;
-    int w = 0, h = 0;
+    int w = 0, h = 0;           // the index's size: the image's, over the divisor
     bool tooMany = false;
     std::string why;
+    // A reduced world (see RasterScale.h): every div-th pixel of every div-th
+    // row is kept. Each colour's first full-resolution pixel is remembered, and
+    // whether sampling ever kept one, so none is lost below.
+    const int div = odmap::rasterDivisor();
+    std::vector<uint32_t> firstAt;      // per slot: (y/div)*w + x/div of its first pixel
+    std::vector<uint8_t> kept;          // per slot: sampling put it in the index
+    // Full-resolution neighbours (see fullResolutionAdjacency): each row's
+    // slots against the row above, as slot pairs.
+    std::vector<uint16_t> prevRow, curRow;
+    std::unordered_set<uint32_t> slotPairs;
+    auto touch = [&](uint16_t a, uint16_t b) {
+        if (a == b) return;
+        if (a > b) std::swap(a, b);
+        slotPairs.insert(((uint32_t)a << 16) | b);
+    };
     const bool ok = pngForEachRow(static_cast<const uint8_t*>(imageData), (size_t)imageSize,
         [&](int ww, int hh) {
-            w = ww; h = hh;
+            w = ww / div; h = hh / div;
+            if (w <= 0 || h <= 0) return false;
             index.resize((size_t)w * (size_t)h);
+            if (div > 1) { prevRow.assign((size_t)w * div, 0); curRow.assign((size_t)w * div, 0); }
             return true;
         },
         [&](int y, const uint8_t* rgba) {
             if (tooMany) return;
+            const bool sampledRow = (y % div) == 0 && y / div < h;
+            const int fullW = w * div;
             // The same table compact() builds, in the same order of first
             // appearance, so the two forms are indistinguishable.
             int lastId = -1;
             uint16_t lastSlot = 0;
-            uint16_t* out = index.data() + (size_t)y * (size_t)w;
-            for (int x = 0; x < w; ++x) {
+            uint16_t* out = sampledRow ? index.data() + (size_t)(y / div) * (size_t)w : nullptr;
+            for (int x = 0; x < fullW; ++x) {
                 const uint8_t* p = rgba + (size_t)x * 4;
                 const int id = (p[0] << 16) | (p[1] << 8) | p[2];
                 if (id != lastId) {
@@ -99,17 +153,62 @@ bool ProvinceMap::loadCompactFromMemory(const void* imageData, int imageSize,
                         if (palette.size() >= 0xFFFF) { tooMany = true; return; }
                         it = slotOf.emplace(id, (uint16_t)palette.size()).first;
                         palette.push_back(id);
+                        if (div > 1) {
+                            const int sy = std::min(y / div, h - 1), sx = std::min(x / div, w - 1);
+                            firstAt.push_back((uint32_t)sy * (uint32_t)w + (uint32_t)sx);
+                            kept.push_back(0);
+                        }
                     }
                     lastId = id;
                     lastSlot = it->second;
                 }
-                out[x] = lastSlot;
+                if (div == 1) out[x] = lastSlot;
+                else {
+                    if (out && (x % div) == 0) { out[x / div] = lastSlot; kept[lastSlot] = 1; }
+                    curRow[(size_t)x] = lastSlot;
+                }
+            }
+            if (div > 1) {
+                // Left-right (wrapping at the date line), then up, up-left and
+                // up-right: with the row above, every 8-way contact once.
+                for (int x = 0; x < fullW; ++x) {
+                    const uint16_t s = curRow[(size_t)x];
+                    touch(s, curRow[(size_t)((x + 1) % fullW)]);
+                    if (y > 0) {
+                        touch(s, prevRow[(size_t)x]);
+                        touch(s, prevRow[(size_t)((x + fullW - 1) % fullW)]);
+                        touch(s, prevRow[(size_t)((x + 1) % fullW)]);
+                    }
+                }
+                prevRow.swap(curRow);
             }
         }, &why);
+    m_fullAdjacency.clear();
+    if (ok && !tooMany && div > 1) {
+        m_fullAdjacency.reserve(slotPairs.size());
+        for (uint32_t pr : slotPairs) {
+            int a = palette[pr >> 16], b = palette[pr & 0xFFFF];
+            if (a > b) std::swap(a, b);
+            m_fullAdjacency.emplace_back(a, b);
+        }
+        int rescued = 0;
+        for (size_t s = 0; s < kept.size(); ++s)
+            if (!kept[s]) { index[firstAt[s]] = (uint16_t)s; ++rescued; }
+        LoadLog() << "  provinces.png: " << w * div << "x" << h * div << " sampled to " << w << "x" << h
+                  << (rescued ? ", " + std::to_string(rescued) + " small province(s) kept at one pixel" : std::string())
+                  << std::endl;
+    }
     if (!ok || tooMany) {
         LoadLog() << "  provinces.png: row decode unavailable (" << (tooMany ? "too many colours" : why)
                   << "); decoding whole" << std::endl;
         if (!loadFromMemory(imageData, imageSize, jsonStr)) return false;
+        if (div > 1) {
+            // No province rescue on this rare path (a raster with more than
+            // 65535 colours): plain nearest-neighbour.
+            ImageResizeNN(&m_image, m_image.width / div, m_image.height / div);
+            m_width = m_image.width;
+            m_height = m_image.height;
+        }
         compact();
         return true;
     }
@@ -183,12 +282,14 @@ const Province* ProvinceMap::getProvinceById(int id) const {
 }
 
 void ProvinceMap::updatePixels(const Color* pixels) {
+    bumpRaster();
     if (!m_loaded || m_image.data == nullptr) return;
     // m_image is forced to R8G8B8A8 on load, so a straight copy is safe
     memcpy(m_image.data, pixels, (size_t)m_width * m_height * sizeof(Color));
 }
 
 void ProvinceMap::updatePixelsRect(const Color* fullPixels, int x, int y, int w, int h) {
+    bumpRaster();
     if (!m_loaded || m_image.data == nullptr) return;
     if (x < 0 || y < 0 || x + w > m_width || y + h > m_height) return;
     auto* dst = static_cast<Color*>(m_image.data);
@@ -215,6 +316,7 @@ int ProvinceMap::slotForId(int id) {
 }
 
 bool ProvinceMap::paintPixels(const uint32_t* idx, size_t n, int id) {
+    bumpRaster();
     if (!m_loaded || idx == nullptr) return false;
     const size_t total = (size_t)m_width * (size_t)m_height;
     // Image form (editor, or an uncompacted map): write the RGB id directly.
@@ -244,6 +346,7 @@ bool ProvinceMap::paintPixels(const uint32_t* idx, size_t n, int id) {
 }
 
 bool ProvinceMap::compact() {
+    bumpRaster();
     if (!m_loaded || m_image.data == nullptr) return false;
     const size_t total = (size_t)m_width * (size_t)m_height;
     const auto* px = static_cast<const uint8_t*>(m_image.data);
@@ -280,8 +383,10 @@ bool ProvinceMap::compact() {
 }
 
 void ProvinceMap::clear() {
+    bumpRaster();
     if (m_loaded && m_image.data) UnloadImage(m_image);
     std::vector<uint16_t>().swap(m_index);
+    std::vector<std::pair<int, int>>().swap(m_fullAdjacency);
     std::vector<int>().swap(m_palette);
     m_image = Image{};
     m_width = 0;

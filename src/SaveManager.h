@@ -191,7 +191,22 @@ struct SaveMetadata {
 
 // Bump when a save written by this build cannot be read correctly by an older
 // one. 3 = fog of war (1.3.1b); 2 is the compass convention, kept separately.
+//
+// NOT bumped for turns/sd_NNNNN.bin (per-turn state as a diff, see
+// SaveManager.cpp): an older build loads such a save -- the world comes from
+// the turn deltas and state.json, both unchanged -- and only cannot rewind to a
+// turn stored as a diff, which it reports the way it reports any save from
+// before per-turn snapshots.
 constexpr int kSaveFormat = 3;
+
+// The per-turn state diff: `target` as copies out of `base` plus inserted
+// bytes. Exact -- decode(base, encode(base, target)) == target for any input --
+// and with no framing; SaveManager adds the header and checksums. Public so a
+// test can drive it directly.
+namespace savedelta {
+std::string encode(const std::string& base, const std::string& target);
+bool decode(const std::string& base, const std::string& ops, std::string& out);
+}
 
 class SaveManager {
 public:
@@ -212,6 +227,11 @@ public:
     static SaveMetadata readMetadata(const std::string& odsvPath);
     // Read a specific turn's delta
     static TurnDelta readTurn(const std::string& odsvPath, int turn);
+    // Do the turns/t_NNNNN.dat entries form a contiguous 1..N run with no gaps
+    // or duplicates? A gap means replay stops early and loses every turn past
+    // it, so a save that fails this is damaged. `highestOut`, when given, gets
+    // the largest turn number present (0 for a new world) regardless.
+    static bool turnSequenceOk(const std::string& odsvPath, int* highestOut = nullptr);
     // Update only the last_played timestamp (also accepts updated meta)
     static bool updateLastPlayed(const std::string& odsvPath, const SaveMetadata* updatedMeta = nullptr);
     // Update the player country ID in metadata
@@ -225,6 +245,10 @@ public:
     static std::string readState(const std::string& odsvPath);
     // Read any single entry out of the archive by name (returns "" if absent)
     static std::string readEntry(const std::string& odsvPath, const std::string& entryName);
+    // The game state as it was at the end of `turn` -- turns/s_NNNNN.json --
+    // whichever way the archive stores it. "" when the save has none for that
+    // turn (older saves, or a snapshot that cannot be rebuilt exactly).
+    static std::string readTurnState(const std::string& odsvPath, int turn);
     // Estimate size of a delta in bytes
     static size_t estimateDeltaSize(const TurnDelta& delta);
     // Estimate total save growth over N turns
@@ -262,6 +286,9 @@ public:
     bool ok() const { return m_ok; }
     TurnDelta readTurn(int turn);
     bool hasEntry(const std::string& name);
+    // Whether `turn` has a state snapshot, full or as a diff. Does not rebuild
+    // it: a diff whose chain is broken still counts, and reads back as "".
+    bool hasTurnState(int turn);
 private:
     void* m_zip = nullptr;   // mz_zip_archive, kept out of this header
     bool m_ok = false;

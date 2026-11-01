@@ -1,3 +1,4 @@
+#include "Access.h"   // reduce motion: odAccess::wave
 #include "Game.h"
 #include "util/LoadLog.h"
 #include "Palette.h"
@@ -1710,7 +1711,16 @@ void Game::drawCountryPanel() {
                     else if (ab.action == "request_guarantee")  m_btnSfxOverride = "request_guarantee";
                     else if (ab.action == "request_ceasefire")  m_btnSfxOverride = "request_ceasefire";
                 }
-                if (drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border, whyDisabled) && !disabled) {
+                bool fire = drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border, whyDisabled) && !disabled;
+                // Hold to Confirm (Settings -> Accessibility): a declaration of
+                // war is the one act here that cannot be taken back, so it is
+                // the one that waits for a held button rather than a click.
+                if (ab.action == "declare_war" && !pending && !disabled) {
+                    const Rectangle warBtn{(float)bx, (float)by, (float)btnW, (float)btnH};
+                    fire = odAccess::gate(&odAccess::kDeclareWar, warBtn, getMouse(), fire);
+                    odAccess::drawHoldProgress(&odAccess::kDeclareWar, warBtn);
+                }
+                if (fire) {
                     if (pending) cancelPending(ab.action);
                     else if (ab.action == "request_ceasefire" || ab.action == "propose_trade") {
                         // Open the negotiation screen. Same screen for both:
@@ -3205,7 +3215,7 @@ void Game::drawSidebarButtons() {
                      ((btns[i].id == 4 && m_researchAlert) || (btns[i].id == 1 && m_politicsAlert));
         Color accent = hexToColor(m_config.accent());
         // Gentle pulse so it reads as "new" rather than just another state
-        float pulse = alert ? 0.55f + 0.45f * (0.5f + 0.5f * sinf((float)GetTime() * 3.0f)) : 0.0f;
+        float pulse = alert ? 0.55f + 0.45f * (0.5f + 0.5f * odAccess::wave(3.0f)) : 0.0f;
 
         Color bgColor;
         if (btns[i].disabled) {
@@ -3328,7 +3338,7 @@ void Game::drawSidebarButtons() {
         // clears when the box is opened, not on a timer: post that went unread
         // because you were looking at the map is exactly what a mark is for.
         const bool unread = m_mailArrived > 0;
-        const float pulse = unread ? (0.55f + 0.45f * sinf((float)GetTime() * 3.0f)) : 0.0f;
+        const float pulse = unread ? (0.55f + 0.45f * odAccess::wave(3.0f)) : 0.0f;
 
         DrawRectangleRounded(mr, 0.25f, 8,
                              mhov ? Color{60, 60, 80, 200} : Color{40, 40, 55, 180});

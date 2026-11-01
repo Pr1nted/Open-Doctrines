@@ -23,7 +23,7 @@ void BeginScissorMode(int x, int y, int width, int height) { }
 void BeginShaderMode(Shader shader) { }
 void BeginTextureMode(RenderTexture2D target) { }
 void BeginVrStereoMode(VrStereoConfig config) { }
-bool ChangeDirectory(const char *dir) { return false; }
+int ChangeDirectory(const char *dirPath) { return 0; }
 bool CheckCollisionBoxSphere(BoundingBox box, Vector3 center, float radius) { return false; }
 bool CheckCollisionBoxes(BoundingBox box1, BoundingBox box2) { return false; }
 bool CheckCollisionCircleLine(Vector2 center, float radius, Vector2 p1, Vector2 p2) { return false; }
@@ -50,44 +50,51 @@ Vector4 ColorNormalize(Color color) { return Vector4{}; }
 Color ColorTint(Color color, Color tint) { return Color{}; }
 Vector3 ColorToHSV(Color color) { return Vector3{}; }
 unsigned char * CompressData(const unsigned char *data, int dataSize, int *compDataSize) { return nullptr; }
-unsigned int ComputeCRC32(unsigned char *data, int dataSize) { return 0; }
-unsigned int * ComputeMD5(unsigned char *data, int dataSize) { return nullptr; }
-unsigned int * ComputeSHA1(unsigned char *data, int dataSize) { return nullptr; }
-unsigned char * DecodeDataBase64(const unsigned char *data, int *outputSize) { return nullptr; }
+unsigned int ComputeCRC32(const unsigned char *data, int dataSize) { return 0; }
+unsigned int * ComputeMD5(const unsigned char *data, int dataSize) { return nullptr; }
+unsigned int * ComputeSHA1(const unsigned char *data, int dataSize) { return nullptr; }
+unsigned int * ComputeSHA256(const unsigned char *data, int dataSize) { return nullptr; }
+unsigned char * DecodeDataBase64(const char *text, int *outputSize) { return nullptr; }
 unsigned char * DecompressData(const unsigned char *compData, int compDataSize, int *dataSize) { return nullptr; }
 void DetachAudioMixedProcessor(AudioCallback processor) { }
 void DetachAudioStreamProcessor(AudioStream stream, AudioCallback processor) { }
 void DisableCursor(void) { }
 void DisableEventWaiting(void) { }
 void DrawBillboard(Camera camera, Texture2D texture, Vector3 position, float scale, Color tint) { }
-void DrawBillboardPro(Camera camera, Texture2D texture, Rectangle source, Vector3 position, Vector3 up, Vector2 size, Vector2 origin, float rotation, Color tint) { }
-void DrawBillboardRec(Camera camera, Texture2D texture, Rectangle source, Vector3 position, Vector2 size, Color tint) { }
+void DrawBillboardPro(Camera camera, Texture2D texture, Rectangle rec, Vector3 position, Vector3 up, Vector2 size, Vector2 origin, float rotation, Color tint) { }
+void DrawBillboardRec(Camera camera, Texture2D texture, Rectangle rec, Vector3 position, Vector2 size, Color tint) { }
 void DrawBoundingBox(BoundingBox box, Color color) { }
-void DrawCapsule(Vector3 startPos, Vector3 endPos, float radius, int slices, int rings, Color color) { }
-void DrawCapsuleWires(Vector3 startPos, Vector3 endPos, float radius, int slices, int rings, Color color) { }
+void DrawCapsule(Vector3 startPos, Vector3 endPos, float radius, int rings, int slices, Color color) { }
+void DrawCapsuleWires(Vector3 startPos, Vector3 endPos, float radius, int rings, int slices, Color color) { }
 void DrawCircle(int centerX, int centerY, float radius, Color color) { }
 void DrawCircle3D(Vector3 center, float radius, Vector3 rotationAxis, float rotationAngle, Color color) { }
-void DrawCircleGradient(int centerX, int centerY, float radius, Color inner, Color outer) { }
+void DrawCircleGradient(Vector2 center, float radius, Color inner, Color outer) { }
 void DrawCircleLines(int centerX, int centerY, float radius, Color color) { }
+void DrawCircleLinesEx(Vector2 center, float radius, float thick, Color color) { }
 void DrawCircleLinesV(Vector2 center, float radius, Color color) { }
 void DrawCircleSector(Vector2 center, float radius, float startAngle, float endAngle, int segments, Color color) { }
 void DrawCircleSectorLines(Vector2 center, float radius, float startAngle, float endAngle, int segments, Color color) { }
+void DrawCircleSectorLinesEx(Vector2 center, float radius, float startAngle, float endAngle, int segments, float thick, Color color) { }
 void DrawCircleV(Vector2 center, float radius, Color color) { }
 void DrawCube(Vector3 position, float width, float height, float length, Color color) { }
 void DrawCubeV(Vector3 position, Vector3 size, Color color) { }
 void DrawCubeWires(Vector3 position, float width, float height, float length, Color color) { }
 void DrawCubeWiresV(Vector3 position, Vector3 size, Color color) { }
-void DrawCylinder(Vector3 position, float radiusTop, float radiusBottom, float height, int slices, Color color) { }
+void DrawCylinder(Vector3 position, float radiusTop, float radiusBottom, float height, int sides, Color color) { }
 void DrawCylinderEx(Vector3 startPos, Vector3 endPos, float startRadius, float endRadius, int sides, Color color) { }
-void DrawCylinderWires(Vector3 position, float radiusTop, float radiusBottom, float height, int slices, Color color) { }
+void DrawCylinderWires(Vector3 position, float radiusTop, float radiusBottom, float height, int sides, Color color) { }
 void DrawCylinderWiresEx(Vector3 startPos, Vector3 endPos, float startRadius, float endRadius, int sides, Color color) { }
 void DrawEllipse(int centerX, int centerY, float radiusH, float radiusV, Color color) { }
 void DrawEllipseLines(int centerX, int centerY, float radiusH, float radiusV, Color color) { }
+void DrawEllipseLinesEx(Vector2 center, float radiusH, float radiusV, float thick, Color color) { }
+void DrawEllipseLinesV(Vector2 center, float radiusH, float radiusV, Color color) { }
+void DrawEllipseV(Vector2 center, float radiusH, float radiusV, Color color) { }
 void DrawFPS(int posX, int posY) { }
 void DrawGrid(int slices, float spacing) { }
 void DrawLine(int startPosX, int startPosY, int endPosX, int endPosY, Color color) { }
 void DrawLine3D(Vector3 startPos, Vector3 endPos, Color color) { }
 void DrawLineBezier(Vector2 startPos, Vector2 endPos, float thick, Color color) { }
+void DrawLineDashed(Vector2 startPos, Vector2 endPos, int dashSize, int spaceSize, Color color) { }
 void DrawLineEx(Vector2 startPos, Vector2 endPos, float thick, Color color) { }
 void DrawLineStrip(const Vector2 *points, int pointCount, Color color) { }
 void DrawLineV(Vector2 startPos, Vector2 endPos, Color color) { }
@@ -95,8 +102,6 @@ void DrawMesh(Mesh mesh, Material material, Matrix transform) { }
 void DrawMeshInstanced(Mesh mesh, Material material, const Matrix *transforms, int instances) { }
 void DrawModel(Model model, Vector3 position, float scale, Color tint) { }
 void DrawModelEx(Model model, Vector3 position, Vector3 rotationAxis, float rotationAngle, Vector3 scale, Color tint) { }
-void DrawModelPoints(Model model, Vector3 position, float scale, Color tint) { }
-void DrawModelPointsEx(Model model, Vector3 position, Vector3 rotationAxis, float rotationAngle, Vector3 scale, Color tint) { }
 void DrawModelWires(Model model, Vector3 position, float scale, Color tint) { }
 void DrawModelWiresEx(Model model, Vector3 position, Vector3 rotationAxis, float rotationAngle, Vector3 scale, Color tint) { }
 void DrawPixel(int posX, int posY, Color color) { }
@@ -105,22 +110,23 @@ void DrawPlane(Vector3 centerPos, Vector2 size, Color color) { }
 void DrawPoint3D(Vector3 position, Color color) { }
 void DrawPoly(Vector2 center, int sides, float radius, float rotation, Color color) { }
 void DrawPolyLines(Vector2 center, int sides, float radius, float rotation, Color color) { }
-void DrawPolyLinesEx(Vector2 center, int sides, float radius, float rotation, float lineThick, Color color) { }
+void DrawPolyLinesEx(Vector2 center, int sides, float radius, float rotation, float thick, Color color) { }
 void DrawRay(Ray ray, Color color) { }
 void DrawRectangle(int posX, int posY, int width, int height, Color color) { }
-void DrawRectangleGradientEx(Rectangle rec, Color topLeft, Color bottomLeft, Color topRight, Color bottomRight) { }
+void DrawRectangleGradientEx(Rectangle rec, Color col1, Color col2, Color col3, Color col4) { }
 void DrawRectangleGradientH(int posX, int posY, int width, int height, Color left, Color right) { }
 void DrawRectangleGradientV(int posX, int posY, int width, int height, Color top, Color bottom) { }
 void DrawRectangleLines(int posX, int posY, int width, int height, Color color) { }
-void DrawRectangleLinesEx(Rectangle rec, float lineThick, Color color) { }
+void DrawRectangleLinesEx(Rectangle rec, float thick, Color color) { }
 void DrawRectanglePro(Rectangle rec, Vector2 origin, float rotation, Color color) { }
 void DrawRectangleRec(Rectangle rec, Color color) { }
 void DrawRectangleRounded(Rectangle rec, float roundness, int segments, Color color) { }
 void DrawRectangleRoundedLines(Rectangle rec, float roundness, int segments, Color color) { }
-void DrawRectangleRoundedLinesEx(Rectangle rec, float roundness, int segments, float lineThick, Color color) { }
+void DrawRectangleRoundedLinesEx(Rectangle rec, float roundness, int segments, float thick, Color color) { }
 void DrawRectangleV(Vector2 position, Vector2 size, Color color) { }
 void DrawRing(Vector2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, int segments, Color color) { }
 void DrawRingLines(Vector2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, int segments, Color color) { }
+void DrawRingLinesEx(Vector2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, int segments, float thick, Color color) { }
 void DrawSphere(Vector3 centerPos, float radius, Color color) { }
 void DrawSphereEx(Vector3 centerPos, float radius, int rings, int slices, Color color) { }
 void DrawSphereWires(Vector3 centerPos, float radius, int rings, int slices, Color color) { }
@@ -141,14 +147,16 @@ void DrawTextEx(Font font, const char *text, Vector2 position, float fontSize, f
 void DrawTextPro(Font font, const char *text, Vector2 position, Vector2 origin, float rotation, float fontSize, float spacing, Color tint) { }
 void DrawTexture(Texture2D texture, int posX, int posY, Color tint) { }
 void DrawTextureEx(Texture2D texture, Vector2 position, float rotation, float scale, Color tint) { }
-void DrawTextureNPatch(Texture2D texture, NPatchInfo nPatchInfo, Rectangle dest, Vector2 origin, float rotation, Color tint) { }
-void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color tint) { }
-void DrawTextureRec(Texture2D texture, Rectangle source, Vector2 position, Color tint) { }
+void DrawTextureNPatch(Texture2D texture, NPatchInfo nPatchInfo, Rectangle dstrec, Vector2 origin, float rotation, Color tint) { }
+void DrawTexturePro(Texture2D texture, Rectangle srcrec, Rectangle dstrec, Vector2 origin, float rotation, Color tint) { }
+void DrawTextureRec(Texture2D texture, Rectangle rec, Vector2 position, Color tint) { }
 void DrawTextureV(Texture2D texture, Vector2 position, Color tint) { }
 void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color) { }
 void DrawTriangle3D(Vector3 v1, Vector3 v2, Vector3 v3, Color color) { }
 void DrawTriangleFan(const Vector2 *points, int pointCount, Color color) { }
+void DrawTriangleGradient(Vector2 v1, Vector2 v2, Vector2 v3, Color c1, Color c2, Color c3) { }
 void DrawTriangleLines(Vector2 v1, Vector2 v2, Vector2 v3, Color color) { }
+void DrawTriangleLinesEx(Vector2 v1, Vector2 v2, Vector2 v3, float thick, Color color) { }
 void DrawTriangleStrip(const Vector2 *points, int pointCount, Color color) { }
 void DrawTriangleStrip3D(const Vector3 *points, int pointCount, Color color) { }
 void EnableCursor(void) { }
@@ -171,6 +179,12 @@ bool ExportMesh(Mesh mesh, const char *fileName) { return false; }
 bool ExportMeshAsCode(Mesh mesh, const char *fileName) { return false; }
 bool ExportWave(Wave wave, const char *fileName) { return false; }
 bool ExportWaveAsCode(Wave wave, const char *fileName) { return false; }
+int FileCopy(const char *srcPath, const char *dstPath) { return 0; }
+int FileMove(const char *srcPath, const char *dstPath) { return 0; }
+int FileRemove(const char *fileName) { return 0; }
+int FileRename(const char *fileName, const char *fileRename) { return 0; }
+int FileTextFindIndex(const char *fileName, const char *search) { return 0; }
+int FileTextReplace(const char *fileName, const char *search, const char *replacement) { return 0; }
 Image GenImageCellular(int width, int height, int tileSize) { return Image{}; }
 Image GenImageChecked(int width, int height, int checksX, int checksY, Color col1, Color col2) { return Image{}; }
 Image GenImageFontAtlas(const GlyphInfo *glyphs, Rectangle **glyphRecs, int glyphCount, int fontSize, int padding, int packMethod) { return Image{}; }
@@ -204,6 +218,8 @@ int GetCodepointNext(const char *text, int *codepointSize) { return 0; }
 int GetCodepointPrevious(const char *text, int *codepointSize) { return 0; }
 Rectangle GetCollisionRec(Rectangle rec1, Rectangle rec2) { return Rectangle{}; }
 int GetCurrentMonitor(void) { return 0; }
+unsigned int GetDirectoryFileCount(const char *dirPath) { return 0; }
+unsigned int GetDirectoryFileCountEx(const char *basePath, const char *filter, bool scanSubdirs) { return 0; }
 const char * GetDirectoryPath(const char *filePath) { return nullptr; }
 const char * GetFileExtension(const char *fileName) { return nullptr; }
 int GetFileLength(const char *fileName) { return 0; }
@@ -225,6 +241,7 @@ Rectangle GetGlyphAtlasRec(Font font, int codepoint) { return Rectangle{}; }
 int GetGlyphIndex(Font font, int codepoint) { return 0; }
 GlyphInfo GetGlyphInfo(Font font, int codepoint) { return GlyphInfo{}; }
 Rectangle GetImageAlphaBorder(Image image, float threshold) { return Rectangle{}; }
+const char * GetKeyName(int key) { return nullptr; }
 int GetKeyPressed(void) { return 0; }
 float GetMasterVolume(void) { return 0; }
 BoundingBox GetMeshBoundingBox(Mesh mesh) { return BoundingBox{}; }
@@ -245,7 +262,7 @@ int GetMouseX(void) { return 0; }
 int GetMouseY(void) { return 0; }
 float GetMusicTimeLength(Music music) { return 0; }
 float GetMusicTimePlayed(Music music) { return 0; }
-Color GetPixelColor(void *srcPtr, int format) { return Color{}; }
+Color GetPixelColor(const void *srcPtr, int format) { return Color{}; }
 int GetPixelDataSize(int width, int height, int format) { return 0; }
 const char * GetPrevDirectoryPath(const char *dirPath) { return nullptr; }
 RayCollision GetRayCollisionBox(Ray ray, BoundingBox box) { return RayCollision{}; }
@@ -262,9 +279,10 @@ Texture2D GetShapesTexture(void) { return Texture2D{}; }
 Rectangle GetShapesTextureRectangle(void) { return Rectangle{}; }
 Vector2 GetSplinePointBasis(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4, float t) { return Vector2{}; }
 Vector2 GetSplinePointBezierCubic(Vector2 p1, Vector2 c2, Vector2 c3, Vector2 p4, float t) { return Vector2{}; }
-Vector2 GetSplinePointBezierQuad(Vector2 p1, Vector2 c2, Vector2 p3, float t) { return Vector2{}; }
+Vector2 GetSplinePointBezierQuadratic(Vector2 p1, Vector2 c2, Vector2 p3, float t) { return Vector2{}; }
 Vector2 GetSplinePointCatmullRom(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4, float t) { return Vector2{}; }
 Vector2 GetSplinePointLinear(Vector2 startPos, Vector2 endPos, float t) { return Vector2{}; }
+char * GetTextBetween(const char *text, const char *begin, const char *end) { return nullptr; }
 int GetTouchPointCount(void) { return 0; }
 int GetTouchPointId(int index) { return 0; }
 Vector2 GetTouchPosition(int index) { return Vector2{}; }
@@ -285,32 +303,41 @@ void ImageAlphaPremultiply(Image *image) { }
 void ImageBlurGaussian(Image *image, int blurSize) { }
 void ImageClearBackground(Image *dst, Color color) { }
 void ImageColorBrightness(Image *image, int brightness) { }
-void ImageColorContrast(Image *image, float contrast) { }
+void ImageColorContrast(Image *image, int contrast) { }
 void ImageColorGrayscale(Image *image) { }
 void ImageColorInvert(Image *image) { }
 void ImageColorReplace(Image *image, Color color, Color replace) { }
 void ImageColorTint(Image *image, Color color) { }
 void ImageCrop(Image *image, Rectangle crop) { }
 void ImageDither(Image *image, int rBpp, int gBpp, int bBpp, int aBpp) { }
-void ImageDraw(Image *dst, Image src, Rectangle srcRec, Rectangle dstRec, Color tint) { }
 void ImageDrawCircle(Image *dst, int centerX, int centerY, int radius, Color color) { }
+void ImageDrawCircleGradient(Image *dst, Vector2 center, float radius, Color inner, Color outer) { }
 void ImageDrawCircleLines(Image *dst, int centerX, int centerY, int radius, Color color) { }
 void ImageDrawCircleLinesV(Image *dst, Vector2 center, int radius, Color color) { }
 void ImageDrawCircleV(Image *dst, Vector2 center, int radius, Color color) { }
+void ImageDrawImage(Image *dst, Image src, int posX, int posY, Color tint) { }
+void ImageDrawImageEx(Image *dst, Image src, Vector2 position, float rotation, float scale, Color tint) { }
+void ImageDrawImagePro(Image *dst, Image src, Rectangle srcRec, Rectangle dstRec, Vector2 origin, float rotation, Color tint) { }
+void ImageDrawImageRec(Image *dst, Image src, Rectangle srcRec, Vector2 position, Color tint) { }
 void ImageDrawLine(Image *dst, int startPosX, int startPosY, int endPosX, int endPosY, Color color) { }
 void ImageDrawLineEx(Image *dst, Vector2 start, Vector2 end, int thick, Color color) { }
+void ImageDrawLineStrip(Image *dst, const Vector2 *points, int pointCount, Color color) { }
 void ImageDrawLineV(Image *dst, Vector2 start, Vector2 end, Color color) { }
 void ImageDrawPixelV(Image *dst, Vector2 position, Color color) { }
-void ImageDrawRectangleLines(Image *dst, Rectangle rec, int thick, Color color) { }
+void ImageDrawRectangleGradientEx(Image *dst, Rectangle rec, Color col1, Color col2, Color col3, Color col4) { }
+void ImageDrawRectangleLines(Image *dst, int posX, int posY, int width, int height, Color color) { }
+void ImageDrawRectangleLinesEx(Image *dst, Rectangle rec, int thick, Color color) { }
+void ImageDrawRectanglePro(Image *dst, Rectangle rec, Vector2 origin, float rotation, Color color) { }
 void ImageDrawRectangleRec(Image *dst, Rectangle rec, Color color) { }
 void ImageDrawRectangleV(Image *dst, Vector2 position, Vector2 size, Color color) { }
 void ImageDrawText(Image *dst, const char *text, int posX, int posY, int fontSize, Color color) { }
 void ImageDrawTextEx(Image *dst, Font font, const char *text, Vector2 position, float fontSize, float spacing, Color tint) { }
+void ImageDrawTextPro(Image *dst, Font font, const char *text, Vector2 position, Vector2 origin, float rotation, float fontSize, float spacing, Color tint) { }
 void ImageDrawTriangle(Image *dst, Vector2 v1, Vector2 v2, Vector2 v3, Color color) { }
-void ImageDrawTriangleEx(Image *dst, Vector2 v1, Vector2 v2, Vector2 v3, Color c1, Color c2, Color c3) { }
-void ImageDrawTriangleFan(Image *dst, Vector2 *points, int pointCount, Color color) { }
+void ImageDrawTriangleFan(Image *dst, const Vector2 *points, int pointCount, Color color) { }
+void ImageDrawTriangleGradient(Image *dst, Vector2 v1, Vector2 v2, Vector2 v3, Color c1, Color c2, Color c3) { }
 void ImageDrawTriangleLines(Image *dst, Vector2 v1, Vector2 v2, Vector2 v3, Color color) { }
-void ImageDrawTriangleStrip(Image *dst, Vector2 *points, int pointCount, Color color) { }
+void ImageDrawTriangleStrip(Image *dst, const Vector2 *points, int pointCount, Color color) { }
 void ImageFlipHorizontal(Image *image) { }
 void ImageFlipVertical(Image *image) { }
 Image ImageFromChannel(Image image, int selectedChannel) { return Image{}; }
@@ -334,6 +361,7 @@ bool IsCursorHidden(void) { return false; }
 bool IsCursorOnScreen(void) { return false; }
 bool IsFileDropped(void) { return false; }
 bool IsFileExtension(const char *fileName, const char *ext) { return false; }
+bool IsFileHidden(const char *filePath) { return false; }
 bool IsFileNameValid(const char *fileName) { return false; }
 bool IsFontValid(Font font) { return false; }
 bool IsGamepadAvailable(int gamepad) { return false; }
@@ -357,6 +385,8 @@ bool IsMouseButtonReleased(int button) { return false; }
 bool IsMouseButtonUp(int button) { return false; }
 bool IsMusicStreamPlaying(Music music) { return false; }
 bool IsMusicValid(Music music) { return false; }
+bool IsPathAbsolute(const char *path) { return false; }
+bool IsPathDirectory(const char *path) { return false; }
 bool IsRenderTextureValid(RenderTexture2D target) { return false; }
 bool IsShaderValid(Shader shader) { return false; }
 bool IsSoundPlaying(Sound sound) { return false; }
@@ -372,10 +402,10 @@ int * LoadCodepoints(const char *text, int *count) { return nullptr; }
 FilePathList LoadDirectoryFilesEx(const char *basePath, const char *filter, bool scanSubdirs) { return FilePathList{}; }
 FilePathList LoadDroppedFiles(void) { return FilePathList{}; }
 Font LoadFont(const char *fileName) { return Font{}; }
-GlyphInfo * LoadFontData(const unsigned char *fileData, int dataSize, int fontSize, int *codepoints, int codepointCount, int type) { return nullptr; }
-Font LoadFontEx(const char *fileName, int fontSize, int *codepoints, int codepointCount) { return Font{}; }
+GlyphInfo * LoadFontData(const unsigned char *fileData, int dataSize, int fontSize, const int *codepoints, int codepointCount, int type, int *glyphCount) { return nullptr; }
+Font LoadFontEx(const char *fileName, int fontSize, const int *codepoints, int codepointCount) { return Font{}; }
 Font LoadFontFromImage(Image image, Color key, int firstChar) { return Font{}; }
-Font LoadFontFromMemory(const char *fileType, const unsigned char *fileData, int dataSize, int fontSize, int *codepoints, int codepointCount) { return Font{}; }
+Font LoadFontFromMemory(const char *fileType, const unsigned char *fileData, int dataSize, int fontSize, const int *codepoints, int codepointCount) { return Font{}; }
 Image LoadImageAnim(const char *fileName, int *frames) { return Image{}; }
 Image LoadImageAnimFromMemory(const char *fileType, const unsigned char *fileData, int dataSize, int *frames) { return Image{}; }
 Image LoadImageFromScreen(void) { return Image{}; }
@@ -391,11 +421,13 @@ Music LoadMusicStream(const char *fileName) { return Music{}; }
 Music LoadMusicStreamFromMemory(const char *fileType, const unsigned char *data, int dataSize) { return Music{}; }
 int * LoadRandomSequence(unsigned int count, int min, int max) { return nullptr; }
 RenderTexture2D LoadRenderTexture(int width, int height) { return RenderTexture2D{}; }
+RenderTexture2D LoadRenderTextureEx(int width, int height, int format) { return RenderTexture2D{}; }
 Shader LoadShader(const char *vsFileName, const char *fsFileName) { return Shader{}; }
 Shader LoadShaderFromMemory(const char *vsCode, const char *fsCode) { return Shader{}; }
 Sound LoadSound(const char *fileName) { return Sound{}; }
 Sound LoadSoundAlias(Sound source) { return Sound{}; }
 Sound LoadSoundFromWave(Wave wave) { return Sound{}; }
+char ** LoadTextLines(const char *text, int *count) { return nullptr; }
 Texture2D LoadTexture(const char *fileName) { return Texture2D{}; }
 TextureCubemap LoadTextureCubemap(Image image, int layout) { return TextureCubemap{}; }
 Texture2D LoadTextureFromImage(Image image) { return Texture2D{}; }
@@ -406,6 +438,7 @@ Wave LoadWaveFromMemory(const char *fileType, const unsigned char *fileData, int
 float * LoadWaveSamples(Wave wave) { return nullptr; }
 int MakeDirectory(const char *dirPath) { return 0; }
 void MaximizeWindow(void) { }
+Vector2 MeasureTextCodepoints(Font font, const int *codepoints, int length, float fontSize, float spacing) { return Vector2{}; }
 void * MemAlloc(unsigned int size) { return nullptr; }
 void MemFree(void *ptr) { }
 void * MemRealloc(void *ptr, unsigned int size) { return nullptr; }
@@ -423,7 +456,7 @@ void RestoreWindow(void) { }
 void ResumeAudioStream(AudioStream stream) { }
 void ResumeMusicStream(Music music) { }
 void ResumeSound(Sound sound) { }
-bool SaveFileText(const char *fileName, char *text) { return false; }
+bool SaveFileText(const char *fileName, const char *text) { return false; }
 void SeekMusicStream(Music music, float position) { }
 void SetAudioStreamBufferSizeDefault(int size) { }
 void SetAudioStreamCallback(AudioStream stream, AudioCallback callback) { }
@@ -457,7 +490,7 @@ void SetShaderValue(Shader shader, int locIndex, const void *value, int uniformT
 void SetShaderValueMatrix(Shader shader, int locIndex, Matrix mat) { }
 void SetShaderValueTexture(Shader shader, int locIndex, Texture2D texture) { }
 void SetShaderValueV(Shader shader, int locIndex, const void *value, int uniformType, int count) { }
-void SetShapesTexture(Texture2D texture, Rectangle source) { }
+void SetShapesTexture(Texture2D texture, Rectangle rec) { }
 void SetSoundPan(Sound sound, float pan) { }
 void SetSoundPitch(Sound sound, float pitch) { }
 void SetSoundVolume(Sound sound, float volume) { }
@@ -487,21 +520,26 @@ void SwapScreenBuffer(void) { }
 void TakeScreenshot(const char *fileName) { }
 void TextAppend(char *text, const char *append, int *position) { }
 int TextCopy(char *dst, const char *src) { return 0; }
-int TextFindIndex(const char *text, const char *find) { return 0; }
+int TextFindIndex(const char *text, const char *search) { return 0; }
 char * TextInsert(const char *text, const char *insert, int position) { return nullptr; }
+char * TextInsertAlloc(const char *text, const char *insert, int position) { return nullptr; }
 bool TextIsEqual(const char *text1, const char *text2) { return false; }
-const char * TextJoin(const char **textList, int count, const char *delimiter) { return nullptr; }
+char * TextJoin(char **textList, int count, const char *delimiter) { return nullptr; }
 unsigned int TextLength(const char *text) { return 0; }
-char * TextReplace(const char *text, const char *replace, const char *by) { return nullptr; }
-const char ** TextSplit(const char *text, char delimiter, int *count) { return nullptr; }
+const char * TextRemoveSpaces(const char *text) { return nullptr; }
+char * TextReplace(const char *text, const char *search, const char *replacement) { return nullptr; }
+char * TextReplaceAlloc(const char *text, const char *search, const char *replacement) { return nullptr; }
+char * TextReplaceBetween(const char *text, const char *begin, const char *end, const char *replacement) { return nullptr; }
+char * TextReplaceBetweenAlloc(const char *text, const char *begin, const char *end, const char *replacement) { return nullptr; }
+char ** TextSplit(const char *text, char delimiter, int *count) { return nullptr; }
 const char * TextSubtext(const char *text, int position, int length) { return nullptr; }
-const char * TextToCamel(const char *text) { return nullptr; }
+char * TextToCamel(const char *text) { return nullptr; }
 float TextToFloat(const char *text) { return 0; }
 int TextToInteger(const char *text) { return 0; }
-const char * TextToLower(const char *text) { return nullptr; }
-const char * TextToPascal(const char *text) { return nullptr; }
-const char * TextToSnake(const char *text) { return nullptr; }
-const char * TextToUpper(const char *text) { return nullptr; }
+char * TextToLower(const char *text) { return nullptr; }
+char * TextToPascal(const char *text) { return nullptr; }
+char * TextToSnake(const char *text) { return nullptr; }
+char * TextToUpper(const char *text) { return nullptr; }
 void ToggleBorderlessWindowed(void) { }
 void ToggleFullscreen(void) { }
 void TraceLog(int logLevel, const char *text, ...) { }
@@ -515,7 +553,6 @@ void UnloadImagePalette(Color *colors) { }
 void UnloadMaterial(Material material) { }
 void UnloadMesh(Mesh mesh) { }
 void UnloadModel(Model model) { }
-void UnloadModelAnimation(ModelAnimation anim) { }
 void UnloadModelAnimations(ModelAnimation *animations, int animCount) { }
 void UnloadMusicStream(Music music) { }
 void UnloadRandomSequence(int *sequence) { }
@@ -523,6 +560,7 @@ void UnloadRenderTexture(RenderTexture2D target) { }
 void UnloadShader(Shader shader) { }
 void UnloadSound(Sound sound) { }
 void UnloadSoundAlias(Sound alias) { }
+void UnloadTextLines(char **text, int lineCount) { }
 void UnloadTexture(Texture2D texture) { }
 void UnloadUTF8(char *text) { }
 void UnloadVrStereoConfig(VrStereoConfig config) { }
@@ -532,10 +570,10 @@ void UpdateAudioStream(AudioStream stream, const void *data, int frameCount) { }
 void UpdateCamera(Camera *camera, int mode) { }
 void UpdateCameraPro(Camera *camera, Vector3 movement, Vector3 rotation, float zoom) { }
 void UpdateMeshBuffer(Mesh mesh, int index, const void *data, int dataSize, int offset) { }
-void UpdateModelAnimation(Model model, ModelAnimation anim, int frame) { }
-void UpdateModelAnimationBones(Model model, ModelAnimation anim, int frame) { }
+void UpdateModelAnimation(Model model, ModelAnimation anim, float frame) { }
+void UpdateModelAnimationEx(Model model, ModelAnimation animA, float frameA, ModelAnimation animB, float frameB, float blend) { }
 void UpdateMusicStream(Music music) { }
-void UpdateSound(Sound sound, const void *data, int sampleCount) { }
+void UpdateSound(Sound sound, const void *data, int frameCount) { }
 void UpdateTexture(Texture2D texture, const void *pixels) { }
 void UpdateTextureRec(Texture2D texture, Rectangle rec, const void *pixels) { }
 void UploadMesh(Mesh *mesh, bool dynamic) { }
@@ -544,4 +582,4 @@ void WaveCrop(Wave *wave, int initFrame, int finalFrame) { }
 void WaveFormat(Wave *wave, int sampleRate, int sampleSize, int channels) { }
 extern "C" void SetFontDefault(Font font) { (void)font; }
 
-// 530 entry points.
+// 568 entry points.

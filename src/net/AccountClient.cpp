@@ -485,7 +485,7 @@ void AccountClient::Impl::runJob(std::function<void()> job) {
     //
     // The day web HTTP is real this must go back on something asynchronous;
     // a live request run inline here would freeze the page for its duration.
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     job();
     busy.store(false);
 #else
