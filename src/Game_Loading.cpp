@@ -3825,6 +3825,22 @@ bool Game::replaySaveTurns(const std::string& savePath) {
     int turnCount = meta.turnCount;
     LoadLog() << "  Save has " << turnCount << " turn(s) to replay" << std::endl;
 
+    // A GAP in the turn history -- t_00007 missing from a save that holds 1..12
+    // -- is the one damage the recovery below cannot see: the forward scan stops
+    // at the first hole and drops everything past it without a word. Say so
+    // loudly here. Not fatal: the deltas that ARE present still replay, in the
+    // same "report, do not destroy" spirit as the count-recovery path.
+    {
+        int highest = 0;
+        if (!SaveManager::turnSequenceOk(savePath, &highest)) {
+            LoadLog() << "  WARNING: turn history is not contiguous (highest is "
+                      << highest << ") -- some turns are missing and will not replay"
+                      << std::endl;
+            fprintf(stderr, "[SAVE] non-contiguous turn history in %s (highest %d)\n",
+                    savePath.c_str(), highest);
+        }
+    }
+
     // Must happen BEFORE the deltas are applied: those deltas set province
     // owners to rebel country ids, and if those countries don't exist yet the
     // territory resolves to nothing (no owner, not even UNC/BLC).
