@@ -1907,6 +1907,11 @@ set(GAME_SOURCES
     src/dialog/DialogBox.cpp
     src/ai/NeuralNet.cpp
     src/ai/AISystem.cpp
+    # The AIPlayer seam's trace sink (OD_AI_TRACE) and the one Order type.
+    # See docs/ai/REWORK_PLAN.md, groundwork items 1, 2 and 6.
+    src/ai/AITrace.cpp
+    src/sim/Order.cpp
+    src/sim/OrderApply.cpp
     src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
@@ -4106,6 +4111,16 @@ add_executable(NeuralNetTest EXCLUDE_FROM_ALL
     tests/neural_net_test.cpp
     src/ai/NeuralNet.cpp)
 target_include_directories(NeuralNetTest PRIVATE src)
+
+# sim::Order's byte encoding, round-tripped for every kind. Links only the
+# codec (src/sim/Order.cpp), never Game: the encoding must be testable without
+# a world. raylib's headers because Order.h carries the real Pending* structs
+# from GameStructs.h -- see BattleRulesTest for why not a copy of them.
+add_executable(OrderCodecTest EXCLUDE_FROM_ALL
+    tests/order_codec_test.cpp
+    src/sim/Order.cpp)
+target_include_directories(OrderCodecTest PRIVATE src
+    $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # --- the communication window ---
 # The dialogue speaker, drawn as a video link rather than as a character: a

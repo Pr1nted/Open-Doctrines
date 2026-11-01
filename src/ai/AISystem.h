@@ -4,6 +4,8 @@
 #include <set>
 #include <utility>
 #include "NeuralNet.h"
+#include "AIPlayer.h"
+#include "AITrace.h"
 #include "../BuildCosts.h"   // TroopType, for chooseTroopType
 
 struct NavyShip;   // GameStructs.h; only referenced by pointer/reference here
@@ -55,7 +57,7 @@ struct Policy;
 // (country, module, chosen action, top alternatives, advantage on update),
 // per-country summaries for the in-game overlay (config.aiDebug), and [AI]
 // console logging.
-class AISystem {
+class AISystem : public AIPlayer {
 public:
     enum Module { MOD_ECONOMY = 0, MOD_POLITICS, MOD_WAR, MOD_NAVY, MOD_COUNT };
     /**
@@ -2368,7 +2370,7 @@ public:
     // Once per turn, before any country thinks: single-pass world aggregates
     // (army totals, province counts, frontiers, ships) so per-country feature
     // extraction never rescans the map.
-    void beginTurn();
+    void beginTurn() override;
 private:
     /** The world aggregates, without the per-turn bookkeeping. */
     void refreshStats();
@@ -2416,10 +2418,16 @@ private:
 public:
     // Decide + enqueue this country's orders through the same pending-order
     // queues the player uses. Call from processCountryTurn, player excluded.
+    //
+    // The AIPlayer form hands every order to `orders` (groundwork item 2, see
+    // AIPlayer.h); the one-argument form is the same turn with the default
+    // sink, which applies each order to Game the moment it is issued -- what
+    // every executor did before the sink existed.
+    void takeTurn(int cid, sim::OrderSink& orders) override;
     void takeTurn(int cid);
     // After the turn resolves: compute rewards from state deltas, run the
     // policy-gradient updates, periodically persist the model.
-    void endTurn();
+    void endTurn() override;
     // Incoming diplomacy aimed at an AI country: accept or reject.
     // `subjectIso` is the third party a request is ABOUT — the aggressor named
     // in a call to arms. Empty for requests that are only between the two.
@@ -2431,7 +2439,9 @@ public:
     bool decideDiplomacy(int targetCid, const std::string& action,
                          const std::string& sourceIso,
                          const std::string& subjectIso = std::string(),
-                         int* statedReasonOut = nullptr);
+                         int* statedReasonOut = nullptr) override;
+    /// The visualiser's hook; see AITrace.h. nullptr detaches. Not owned.
+    void setTraceSink(AITraceSink* sink) override { m_traceSink = sink; }
     /**
      * What to SAY, given why we actually refused.
      *
@@ -4535,6 +4545,40 @@ private:
     };
 
     Game* m_g = nullptr;
+
+    // ── WHERE ORDERS GO (groundwork item 2) ──
+    //
+    // The sink of the takeTurn in progress, or nullptr outside one -- the
+    // bench-agent doors (agentExec) run executors with no turn around them, and
+    // then issueOrder applies to Game directly, which is what the sink's default
+    // does anyway. Defined in AISystem.cpp, the only place it is called.
+    //
+    // CONVERTED: every push of a new order into a Game::m_pending* queue from
+    // an executor or reflex in AISystem.cpp. NOT CONVERTED, and left for the
+    // 1.3.4b work to finish:
+    //   * diplomacy -- Game::queueDiplomaticAction (validates, dedups, and
+    //     answers whether it queued; the callers branch on that answer), and
+    //     the in-place edits of m_pendingDiplomaticActions entries (statedGoal,
+    //     turnsRemaining) in execPolitics / the war executor;
+    //   * edits and removals of orders already queued: the move-order pct
+    //     top-ups in the attack/redeploy/garrison executors, the ship-move
+    //     re-route that erases a ship's old voyage before issuing a new one
+    //     (the naval landing reflex), and the disembark target rewrite;
+    //   * Game::orderWithdraw (validates the battle is ours);
+    //   * every READ of the queues -- the executors' dedup scans and the
+    //     features. Those are why a deferring sink is not behaviour-neutral yet.
+    sim::OrderSink* m_orderSink = nullptr;
+    template <class T> void issueOrder(T&& order);
+
+    // ── THE TRACE SINK (groundwork item 6) ──
+    // Null unless a visualiser, a test or OD_AI_TRACE attached one; the only
+    // cost when null is the check. The OD_AI_TRACE writer is process-wide, not
+    // a member: an AISystem is rebuilt on every map rotation, and one per
+    // instance would truncate the trace each time.
+    AITraceSink* m_traceSink = nullptr;
+    void traceDecision(int cid, int module, int pick, int action, const char* source,
+                       const std::vector<float>& features, const std::vector<bool>& valid,
+                       const std::vector<float>& probs);
     std::string m_modelPath;
     /** Shared encoder: FEATURE_COUNT -> 512 -> TRUNK_OUT, tanh on the output
      *  because that layer is a HIDDEN layer of the nets it replaced. */

@@ -9,6 +9,7 @@
 #include "../GameInternals.h"
 #include "../util/WebAssets.h"
 #include "../mods/ModManager.h"
+#include "../sim/Order.h"
 #include <algorithm>
 #include <functional>
 #include <chrono>
@@ -1556,8 +1557,24 @@ int AISystem::portCap(int cid) const {
     return std::clamp(std::max(1, m_g->getResearchedPortLevel(cid)), 1, 3);
 }
 
+// OD_AI_TRACE=<path>: every decision of the run, as JSON Lines, for the
+// visualiser. See AITrace.h and docs/ai/TRACE_FORMAT.md. Opened on first use
+// and kept for the life of the process, across map rotations; nullptr when
+// unset or unopenable, which leaves tracing off at the cost of one check.
+static AITraceSink* envTraceSink() {
+    static AITraceFileWriter* const w = []() -> AITraceFileWriter* {
+        const char* path = OD_ENV("OD_AI_TRACE");
+        if (!path || !*path) return nullptr;
+        // A function-local static, destroyed at exit, which closes the file.
+        static AITraceFileWriter writer(path);
+        return writer.ok() ? &writer : nullptr;
+    }();
+    return w;
+}
+
 AISystem::AISystem(Game* game, const std::string& modelPath)
     : m_g(game), m_modelPath(modelPath) {
+    m_traceSink = envTraceSink();
     // Policy nets: features -> action logits. Value nets: features -> scalar.
     // ~1M parameters across the twenty nets (~6MB on disk with Adam state).
     // Most are HEADS on the shared trunk -- {TRUNK_OUT, N} apiece -- so the
@@ -3547,6 +3564,65 @@ struct FogLensScope {
 };
 }  // namespace
 
+// The AIPlayer form: the same turn, with this caller's sink in force for its
+// duration. Restored rather than cleared, so a takeTurn nested inside another
+// (none exists today) would not strand the outer one's sink.
+void AISystem::takeTurn(int cid, sim::OrderSink& orders) {
+    sim::OrderSink* const prev = m_orderSink;
+    m_orderSink = &orders;
+    takeTurn(cid);
+    m_orderSink = prev;
+}
+
+// Every executor's new order comes through here. With no sink in force (the
+// one-argument takeTurn, agentExec) it is applied to Game at once, which is
+// what ImmediateOrderSink does too -- so both paths are the old push_back.
+template <class T>
+void AISystem::issueOrder(T&& order) {
+    if (m_orderSink) { m_orderSink->issue(sim::Order(std::forward<T>(order))); return; }
+    sim::apply(*m_g, sim::Order(std::forward<T>(order)));
+}
+
+void AISystem::traceDecision(int cid, int module, int pick, int action, const char* source,
+                             const std::vector<float>& features, const std::vector<bool>& valid,
+                             const std::vector<float>& probs) {
+    // Everything below runs the nets through forwardInto with scratches of
+    // this function's own. forwardInto reads weights and writes only the
+    // scratch -- not m_acts, which backprop and lastOutput() read -- and no
+    // random number is drawn, so tracing cannot move a decision. The policy
+    // re-run gives the same logits pickAction saw: same weights, same input.
+    AIDecisionTrace d;
+    d.turn = m_turn; d.cid = cid; d.module = module; d.pick = pick;
+    d.action = action; d.source = source;
+    d.features = features;
+    d.valid = valid;
+    d.probs = probs;
+    const NeuralNet& trunk = m_leagueThisCountry ? m_leagueTrunk : m_trunk;
+    if (trunk.valid() && (int)features.size() == trunk.inputSize()) {
+        NeuralNet::Scratch ts;
+        trunk.initScratch(ts);
+        const std::vector<float> emb = trunk.forwardInto(ts, features);
+        d.trunkActs = ts.acts;
+        if (module >= 0 && module < MOD_COUNT) {
+            const NeuralNet& pol = m_leagueThisCountry ? m_leaguePolicy[module] : m_policy[module];
+            if (pol.valid() && (int)emb.size() == pol.inputSize()) {
+                NeuralNet::Scratch ps;
+                pol.initScratch(ps);
+                d.logits = pol.forwardInto(ps, emb);
+                d.policyActs = ps.acts;
+            }
+        }
+    }
+    if (module >= 0 && module < MOD_COUNT && m_value[module].valid() &&
+        (int)features.size() == m_value[module].inputSize()) {
+        NeuralNet::Scratch vs;
+        m_value[module].initScratch(vs);
+        const std::vector<float>& v = m_value[module].forwardInto(vs, features);
+        if (!v.empty()) d.valueEstimate = v[0];
+    }
+    m_traceSink->onDecision(d);
+}
+
 void AISystem::takeTurn(int cid) {
     Game& g = *m_g;
     const Country* c = g.m_countries.getCountry(cid);
@@ -4069,10 +4145,27 @@ void AISystem::takeTurn(int cid) {
             // off when a mod is enabled and refuses to enable one while it is
             // on, and --train-ai loads no mods at all. So the `lp` and visit
             // targets recorded around here can never describe a mod's move.
+            bool modChose = false;
             if (ModManager::get().anyActive()) {
                 const int modAct = ModManager::get().aiChoose(cid, mod, valid);
-                if (modAct >= 0 && modAct < (int)valid.size() && valid[(size_t)modAct])
+                if (modAct >= 0 && modAct < (int)valid.size() && valid[(size_t)modAct]) {
+                    modChose = act != modAct;
                     act = modAct;
+                }
+            }
+            // ── THE VISUALISER'S RECORD (groundwork item 6) ──
+            // Here because `act` is final from this line on: book, search,
+            // policy and a mod's override have all had their say, and the
+            // executor has not yet run. One pointer test when nothing listens.
+            if (m_traceSink) {
+                const char* src = modChose ? "mod"
+                                : !visits.empty() ? "search"
+                                : m_scriptedThisCountry ? "script"
+                                : inBook ? "book"
+                                : m_randomThisCountry ? "random"
+                                : m_leagueThisCountry ? "league" : "policy";
+                traceDecision(cid, mod, k, act, src, k == 0 ? exp.features : curFeat,
+                              valid, nprob);
             }
             // A booked move was not sampled from the policy AT ALL: the book
             // is deterministic, so the behaviour probability is 1 and the
@@ -5917,7 +6010,7 @@ std::string AISystem::execEconomy(int cid, int action) {
             if (c.treasury - cost < siegeEarmark(cid)) return didNothing("industry: earmarked for the front");
             c.treasury -= cost;
             money::add(money::BUY_INDUSTRY, -(double)cost);
-            g.m_pendingUpgrades.push_back({bestPid, "industry", nextLv, IND_TURNS[nextLv]});
+            issueOrder(PendingUpgrade{bestPid, "industry", nextLv, IND_TURNS[nextLv]});
             return TextFormat("industry lvl %d in prov %d ($%.0f)", nextLv, bestPid, cost);
         }
         case 2: { // fortify the most THREATENED under-fortified frontier:
@@ -5944,7 +6037,7 @@ std::string AISystem::execEconomy(int cid, int action) {
             if (c.treasury < cost) return didNothing("fort: cannot afford");
             c.treasury -= cost;
             money::add(money::BUY_FORT, -(double)cost);
-            g.m_pendingUpgrades.push_back({bestPid, "fortification", nextLv, 1});
+            issueOrder(PendingUpgrade{bestPid, "fortification", nextLv, 1});
             return TextFormat("fort lvl %d in prov %d ($%.0f)", nextLv, bestPid, cost);
         }
         case 3: { // port: upgrade an existing one, else found a new one
@@ -5960,7 +6053,7 @@ std::string AISystem::execEconomy(int cid, int action) {
             const int next = (ex != g.m_provincePorts.end()) ? ex->second.level + 1 : 1;
             c.treasury -= cost;
             money::add(money::BUY_PORT, -(double)cost);
-            g.m_pendingUpgrades.push_back({pid, "port", next, 3});
+            issueOrder(PendingUpgrade{pid, "port", next, 3});
             // The answer this turn has just changed. nextPortBuy caches per
             // country per turn, and a module now gets up to
             // ACTIONS_PER_MODULE_MAX goes in one -- so a stale cache would send
@@ -5977,7 +6070,7 @@ std::string AISystem::execEconomy(int cid, int action) {
             if (c.treasury - cost < siegeEarmark(cid)) return didNothing("spec: earmarked for the front");
             c.treasury -= cost;
             money::add(money::BUY_SPECIALIZE, -(double)cost);
-            g.m_pendingSpecializations.push_back({bestPid, bestRes, 3});
+            issueOrder(PendingSpecialization{bestPid, bestRes, 3});
             return TextFormat("specialize %s in prov %d", bestRes, bestPid);
         }
         case 5: case 6: { // build ship at the best own port
@@ -6033,7 +6126,7 @@ std::string AISystem::execEconomy(int cid, int action) {
                 if (!p || p->countryId != cid || port.level < needPort) continue;
                 c.treasury -= cost;
                 money::add(money::BUY_SHIP, -(double)cost);
-                g.m_pendingShipBuilds.push_back({pid, type, 3});
+                issueOrder(PendingShipBuild{pid, type, 3});
                 if (action == 5) statsFor(cid).destroyersBuilt++;
                 else             statsFor(cid).carriersBuilt++;
                 m_shipsBoughtThisTurn[cid]++;
@@ -7023,7 +7116,7 @@ std::string AISystem::execWar(int cid, int action) {
                 return didNothing("recruit: no munitions");
             c.treasury -= price.money;
             money::add(money::BUY_TROOPS, -(double)price.money);
-            g.m_pendingRecruitments.push_back({pid, count, 1, kind});
+            issueOrder(PendingRecruitment{pid, count, 1, kind});
             return TextFormat("recruit %d in prov %d ($%.0f%s)", count, pid, price.money,
                               price.munitions > 0.005f
                                   ? TextFormat(", %.1f mun", price.munitions) : "");
@@ -7332,7 +7425,7 @@ std::string AISystem::execWar(int cid, int action) {
                         s_reatkRatio[ckey] = {m_turn, ratio};
                     }
                 }
-                g.m_pendingMoveOrders.push_back({ch.fromPid, ch.toPid, pct, cid});
+                issueOrder(PendingMoveOrder{ch.fromPid, ch.toPid, pct, cid});
                 // ── IS THIS A BATTLE WE HAVE ALREADY FOUGHT? (OD_REATTACK) ──
                 //
                 // Counted where the order is ISSUED, not where it resolves: the
@@ -7526,7 +7619,7 @@ std::string AISystem::execWar(int cid, int action) {
                     if (pending) continue;
                     c.treasury -= usePrice.money;
                     g.payWarMaterials(cid, usePrice);
-                    g.m_pendingArtilleryOrders.push_back({fr.pid, nid, use->type});
+                    issueOrder(PendingArtilleryOrder{fr.pid, nid, use->type});
                     return TextFormat("%s shell prov %d", use->type, nid);
                 }
             }
@@ -7707,7 +7800,7 @@ std::string AISystem::execWar(int cid, int action) {
             if (bestFrom < 0) return didNothing("stage: no allied crossing available");
             // Half the garrison: the province we are leaving still has its own
             // border to hold.
-            g.m_pendingMoveOrders.push_back({bestFrom, bestTo, 50, cid});
+            issueOrder(PendingMoveOrder{bestFrom, bestTo, 50, cid});
             statsFor(cid).stagingMoves++;
             return TextFormat("stage troops into allied prov %d from %d", bestTo, bestFrom);
         }
@@ -7837,7 +7930,7 @@ bool AISystem::reinforceProvince(int cid, int dstPid, long long want) {
     long long send = 50;
     if (sized && want > 0)
         send = std::max(50LL, std::min<long long>(want, srcG / 2));
-    g.m_pendingMoveOrders.push_back({srcPid, dstPid, (int)send, cid});
+    issueOrder(PendingMoveOrder{srcPid, dstPid, (int)send, cid});
     return true;
 }
 
@@ -8015,7 +8108,7 @@ void AISystem::redeployReflex(int cid) {
         if (best < 0) continue;
         // Half, not all: a province emptied completely invites a revolt and
         // leaves nothing to slow an enemy that lands behind the line.
-        g.m_pendingMoveOrders.push_back({pid, best, 50, cid});
+        issueOrder(PendingMoveOrder{pid, best, 50, cid});
         ++issued;
     }
     if (issued && g.m_config.aiDebug) {
@@ -8082,7 +8175,7 @@ void AISystem::fortifyReflex(int cid) {
     if (c->treasury < cost) return;
     c->treasury -= cost;
     money::add(money::BUY_FORT, -(double)cost);
-    g.m_pendingUpgrades.push_back({bestPid, "fortification", nextLv, 1});
+    issueOrder(PendingUpgrade{bestPid, "fortification", nextLv, 1});
 }
 
 // OD_LOSS_FREEZE (turns, default AI_LOSS_FREEZE_TURNS; 0 = off) and
@@ -8312,7 +8405,7 @@ void AISystem::austerityReflex(int cid) {
             bestCost = cost; bestIdx = (int)i;
         }
         if (bestIdx >= 0) {
-            g.m_pendingScrapShips.push_back({bestIdx});
+            issueOrder(PendingScrapShip{bestIdx});
             statsFor(cid).shipsScrapped++;
             m_shipsScrappedThisTurn[cid]++;
             scrapSaving += bestCost;
@@ -9133,7 +9226,7 @@ void AISystem::manpowerReflex(int cid) {
         long long take = std::min(n / 2, target - shed);   // never empty it
         if (take < 250) continue;
         g.traceDisband("PUSH-ai", pid, (int)take, 0);   // count is real, not the 0 sentinel
-        g.m_pendingDisbandOrders.push_back({pid, (int)take});
+        issueOrder(PendingDisbandOrder{pid, (int)take});
         shed += take;
         ++orders;
     }
@@ -9295,7 +9388,7 @@ void AISystem::amphibiousReflex(int cid) {
         // In range of a hostile shore: land, now. This is the whole point.
         if (enemyPid >= 0 && enemyD <= LAND_RANGE) {
             ++s_navySplit[0];   // [PROBE] journal 343: reflex, hostile shore
-            g.m_pendingShipDisembarks.push_back({(int)i, enemyPid});
+            issueOrder(PendingShipDisembark{(int)i, enemyPid});
             if (g.m_config.aiDebug)
                 printf("[AI] t%d %s [amphib] landing %d troops on prov %d\n",
                        m_turn, c->name.c_str(), s.crew * 100, enemyPid);
@@ -9306,13 +9399,13 @@ void AISystem::amphibiousReflex(int cid) {
         if (enemyPid < 0) {
             if (homePid >= 0 && homeD <= LAND_RANGE) {
                 ++s_navySplit[1];   // [PROBE] reflex, unload at home
-                g.m_pendingShipDisembarks.push_back({(int)i, homePid});
+                issueOrder(PendingShipDisembark{(int)i, homePid});
             } else if (homePid >= 0 && !sailingTo(i, homePid)) {
                 PendingShipMoveOrder ord;
                 ord.shipIndex = (int)i;
                 ord.destLon = homeLon; ord.destLat = homeLat;
                 ord.destProvince = homePid;
-                g.m_pendingShipMoveOrders.push_back(std::move(ord));
+                issueOrder(std::move(ord));
             }
             continue;
         }
@@ -9362,7 +9455,7 @@ void AISystem::amphibiousReflex(int cid) {
             printf("[BOAT] t%d cid=%d ship=%zu PUSH order -> prov %d at (%.2f,%.2f) from (%.2f,%.2f); orders now %zu\n",
                    m_turn, cid, i, enemyPid, enemyLon, enemyLat, s.lon, s.lat, g.m_pendingShipMoveOrders.size() + 1);
         ord.destProvince = enemyPid;
-        g.m_pendingShipMoveOrders.push_back(std::move(ord));
+        issueOrder(std::move(ord));
     }
 }
 
@@ -9513,7 +9606,7 @@ std::string AISystem::execNavy(int cid, int action) {
                 ord.shipIndex = (int)i;
                 ord.destLon = tLon; ord.destLat = tLat;
                 ord.destProvince = tp;
-                g.m_pendingShipMoveOrders.push_back(std::move(ord));
+                issueOrder(std::move(ord));
                 if (++moved >= 3) break; // a few ships per turn is plenty
             }
             if (moved) return std::string(TextFormat("move %d ship(s) to station", moved));
@@ -9560,7 +9653,7 @@ std::string AISystem::execNavy(int cid, int action) {
                     if (d > g.shipMaxRangeDeg(s)) continue;
                     c.treasury -= usePrice.money;
                     g.payWarMaterials(cid, usePrice);
-                    g.m_pendingShipBombardOrders.push_back({(int)i, pid, use->type});
+                    issueOrder(PendingShipBombardOrder{(int)i, pid, use->type});
                     return TextFormat("bombard prov %d (%s)", pid, use->type);
                 }
             }
@@ -9571,7 +9664,7 @@ std::string AISystem::execNavy(int cid, int action) {
             if (!bestEmbarkPort(cid, bestPid, bestG))
                 return didNothing("embark: no garrison at port");
             ++s_navySplit[2];   // [PROBE] head, the only embark site
-            g.m_pendingEmbarkations.push_back({bestPid, bestG / 2, 1});
+            issueOrder(PendingEmbark{bestPid, bestG / 2, 1});
             statsFor(cid).embarks++;
             return TextFormat("embark %d from prov %d", bestG / 2, bestPid);
         }
@@ -9755,7 +9848,7 @@ std::string AISystem::execNavy(int cid, int action) {
                                                     atoi(OD_ENV("OD_LANDING_PICK")) != 0;
                     if (pickWeakest) { landCands.push_back(pid); continue; }
                     ++s_navySplit[3];   // [PROBE] head, container-order shore
-                    g.m_pendingShipDisembarks.push_back({(int)i, pid});
+                    issueOrder(PendingShipDisembark{(int)i, pid});
                     return TextFormat("disembark %d troops at prov %d", s.crew * 100, pid);
                 }
                 if (!landCands.empty()) {
@@ -9778,7 +9871,7 @@ std::string AISystem::execNavy(int cid, int action) {
                     landCands.clear();
                     if (bestPid >= 0) {
                         ++s_navySplit[4];   // [PROBE] head, weakest shore
-                        g.m_pendingShipDisembarks.push_back({(int)i, bestPid});
+                        issueOrder(PendingShipDisembark{(int)i, bestPid});
                         return TextFormat("disembark %d troops at prov %d", s.crew * 100, bestPid);
                     }
                 }
@@ -9847,7 +9940,7 @@ std::string AISystem::execNavy(int cid, int action) {
                 }
             }
             if (bestIdx < 0) return didNothing("scrap: nothing worth scrapping");
-            g.m_pendingScrapShips.push_back({bestIdx});
+            issueOrder(PendingScrapShip{bestIdx});
             statsFor(cid).shipsScrapped++;
             m_shipsScrappedThisTurn[cid]++;
             return TextFormat("scrap %s #%d (saves %.0f/turn)",
@@ -9891,7 +9984,7 @@ std::string AISystem::execNavy(int cid, int action) {
                 }
             }
             if (bestMine < 0) return didNothing("engage: nothing in range");
-            g.m_pendingShipEngageOrders.push_back({bestMine, bestThem});
+            issueOrder(PendingShipEngageOrder{bestMine, bestThem});
             const auto& t = g.m_ships[bestThem];
             return TextFormat("engage %s #%d (hp %d%s)", t.type.c_str(), bestThem,
                               t.health, t.crew > 0 ? ", loaded" : "");
