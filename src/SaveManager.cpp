@@ -933,9 +933,30 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     // an earlier turn needs.
     if (stateJson) {
         const std::string st = sealFor(meta, "state.json", stateJson->data(), stateJson->size());
-        mz_zip_writer_add_mem(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
         const std::string ts = sealFor(meta, turnStatePath, stateJson->data(), stateJson->size());
-        mz_zip_writer_add_mem(&newZip, turnStatePath, ts.data(), ts.size(), MZ_BEST_COMPRESSION);
+        // DEFLATED ONCE WHEN THE TWO ARE THE SAME BYTES, which they are unless
+        // the save is sealed (the seal is keyed by entry name). The snapshot
+        // is the largest thing written each turn and compressing it twice at
+        // best compression was a fifth of a turn's whole cost. Same flags as
+        // the writer's own deflate, so the archive is byte-for-byte what two
+        // separate adds produce.
+        void* packedState = nullptr;
+        size_t packedLen = 0;
+        if (st == ts && st.size() > 3)       // <= 3 bytes the writer stores instead
+            packedState = tdefl_compress_mem_to_heap(st.data(), st.size(), &packedLen,
+                tdefl_create_comp_flags_from_zip_params(MZ_BEST_COMPRESSION, -15, MZ_DEFAULT_STRATEGY));
+        if (packedState) {
+            const mz_uint32 crc = (mz_uint32)mz_crc32(MZ_CRC32_INIT, (const unsigned char*)st.data(), st.size());
+            const mz_uint flags = MZ_BEST_COMPRESSION | MZ_ZIP_FLAG_COMPRESSED_DATA;
+            mz_zip_writer_add_mem_ex(&newZip, "state.json", packedState, packedLen, nullptr, 0,
+                                     flags, st.size(), crc);
+            mz_zip_writer_add_mem_ex(&newZip, turnStatePath, packedState, packedLen, nullptr, 0,
+                                     flags, st.size(), crc);
+            mz_free(packedState);
+        } else {
+            mz_zip_writer_add_mem(&newZip, "state.json", st.data(), st.size(), MZ_BEST_COMPRESSION);
+            mz_zip_writer_add_mem(&newZip, turnStatePath, ts.data(), ts.size(), MZ_BEST_COMPRESSION);
+        }
     }
     if (extraFiles)
         for (auto& [name, content] : *extraFiles) {

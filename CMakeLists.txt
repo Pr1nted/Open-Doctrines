@@ -1517,6 +1517,7 @@ set(GAME_SOURCES
     src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
+    src/map/BorderDistance.cpp
     src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
@@ -1597,6 +1598,18 @@ if(MSVC)
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/fp:fast")
 else()
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
+endif()
+
+# WebAssembly SIMD for the border distance field, the one hand-vectorised loop
+# (NEON and SSE2 are baseline on their targets and need no flag). OFF because
+# a module holding even one SIMD instruction fails to load at all on an engine
+# without it -- Safari before 16.4 -- and the scalar path writes the same bytes,
+# so turning it on buys speed and nothing else. Scoped to that file: -msimd128
+# on NeuralNet.cpp would let -ffast-math re-vectorise the nets and move every
+# web decision. tests/border_distance_test.cpp passes under node either way.
+option(OD_WEB_SIMD "Web build: WebAssembly SIMD for the border distance field" OFF)
+if(EMSCRIPTEN AND OD_WEB_SIMD)
+    set_source_files_properties(src/map/BorderDistance.cpp PROPERTIES COMPILE_OPTIONS "-msimd128")
 endif()
 
 # ── Android: a shared library, not an executable ──
@@ -3711,6 +3724,11 @@ target_include_directories(ReleaseRulesTest PRIVATE src)
 # sixty-four countries could not, and it was invisible in the source. Needs
 # raylib's headers only because GameStructs.h includes them; links nothing.
 # See tests/goods_recipe_test.cpp.
+# The border distance field's vector paths against the loop they replaced.
+add_executable(BorderDistanceTest EXCLUDE_FROM_ALL
+    tests/border_distance_test.cpp src/map/BorderDistance.cpp)
+target_include_directories(BorderDistanceTest PRIVATE src)
+
 add_executable(GoodsRecipeTest EXCLUDE_FROM_ALL tests/goods_recipe_test.cpp)
 target_include_directories(GoodsRecipeTest PRIVATE src
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)

@@ -3956,9 +3956,27 @@ public:
     bool m_borderDistanceSent = false;
     std::vector<uint8_t> m_gradientDist; // distance-to-border (0-255, capped at ~30)
     // Set by reindexProvinceOwner whenever a province changes hands; cleared
-    // by rebuildGradientField(). Rebuilding is a full-raster BFS, so it runs
-    // once per turn that actually moved territory rather than every frame.
+    // by rebuildGradientField(), once per turn that actually moved territory
+    // rather than every frame -- and then only around the provinces that moved.
     bool m_gradientDirty = false;
+    /// What m_gradientDist was last built from, so a turn that moved a few
+    /// borders rebuilds the field only around them. Valid while the raster
+    /// generation and edge list still match; otherwise the next build is full.
+    struct GradientBasis {
+        uint64_t rasterGen = 0;
+        size_t edgeCount = 0;
+        std::vector<int> owners;        ///< displayOwners() at the build
+        std::vector<int> edgeBox;       ///< pid -> x0,y0,x1,y1 of its edge pixels
+    } m_gradientBasis;
+    void buildGradientFieldFull();
+    /// computeCountryLabels' province adjacency scan, kept per raster. See
+    /// ensureAdjacencyScan.
+    struct AdjacencyScan {
+        uint64_t rasterGen = 0;
+        int w = -1, h = -1;
+        std::vector<std::pair<int, int>> pairs;   ///< directed, first occurrence, scan order
+    } m_adjacencyScan;
+    void ensureAdjacencyScan(int w, int h);
     void rebuildGradientField();
     void generatePopulationTexture(int countryId, int prevCountryId);
     void generatePoliticalTexture();
