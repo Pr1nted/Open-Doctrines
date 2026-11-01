@@ -1,0 +1,154 @@
+# Build ANGLE for OD_ANGLE (experimental) at the commit tools/data/angle.json
+# pins, one bundle per platform.
+#
+# WHY THIS WORKFLOW EXISTS
+#
+# ANGLE builds only with Google's toolchain (depot_tools, gn, ninja) from a
+# ~10 GB checkout, which no game build should have to do and few developer
+# machines have room for. So it is built here, once per pin, and the game
+# fetches the result (tools/fetch_angle.py), checked against a SHA-256.
+#
+# EVERY BUNDLE IS TESTED BEFORE IT CAN BE PUBLISHED. tools/angle_smoke.c loads
+# the bundle's own libEGL, clears a surface and reads the pixel back, on
+# SwiftShader -- the CPU backend every runner has -- and on the platform's
+# native API where the runner has one.
+#
+# PUBLISHING IS A SEPARATE, OPT-IN STEP. By default the bundles stay workflow
+# artifacts. With `publish` ticked they become assets of a prerelease named
+# after the pin, and the job prints the url and sha256 lines to paste into
+# tools/data/angle.json.
+
+name: ANGLE prebuilts
+
+on:
+  # A change to how ANGLE is built is built -- and smoke-tested -- before it
+  # lands. Never publishes: `inputs.publish` is empty on a pull request.
+  pull_request:
+    paths:
+      - .github/workflows/angle-prebuilts.yml
+      - tools/build_angle.py
+      - tools/angle_smoke.c
+      - tools/data/angle.json
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the bundles as a prerelease (otherwise artifacts only)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: angle-prebuilts
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Both Mac architectures from one arm64 runner, joined with lipo.
+          - { name: macos-universal, os: macos-15,     cpus: "--cpu arm64 --cpu x64", native: metal }
+          - { name: windows-x86_64,  os: windows-2022, cpus: "--cpu x64",             native: d3d11 }
+          - { name: linux-x86_64,    os: ubuntu-22.04, cpus: "--cpu x64",             native: "" }
+    steps:
+      - uses: actions/checkout@v5
+
+      # The checkout and build need ~15 GB; a stock Ubuntu runner has ~14 free.
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+
+      - name: depot_tools
+        shell: bash
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$RUNNER_TEMP/depot_tools"
+          echo "$RUNNER_TEMP/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Build ANGLE
+        shell: bash
+        env:
+          DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+        run: python3 tools/build_angle.py --work "$RUNNER_TEMP/angle-work" --out "out/angle" ${{ matrix.cpus }}
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
+      # A display for ANGLE's X11 platform, as a player's Linux desktop has.
+      - name: Virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends xvfb
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          # Dash switches for cl: Git Bash rewrites /nologo into a Windows path.
+          if [ "$RUNNER_OS" = Windows ]; then
+            cl -nologo -O1 tools/angle_smoke.c -Fe:angle_smoke.exe
+            smoke=./angle_smoke.exe
+          else
+            cc -O1 -o angle_smoke tools/angle_smoke.c -ldl
+            smoke=./angle_smoke
+          fi
+          [ "$RUNNER_OS" = Linux ] && smoke="xvfb-run -a $smoke"
+          dir="$PWD/out/angle"
+          if [ "$RUNNER_OS" = Windows ]; then dir="$(cygpath -w "$dir")"; fi
+          ls -la "$PWD/out/angle"
+          $smoke "$dir" swiftshader
+          if [ -n "${{ matrix.native }}" ]; then
+            # The native API is checked when the runner has a GPU path for it
+            # (Metal is paravirtualised on macOS runners; D3D11 falls back to
+            # WARP on Windows ones). Reported, not fatal: the runner is not a
+            # player's machine.
+            $smoke "$dir" ${{ matrix.native }} || echo "::warning::${{ matrix.native }} did not draw on this runner"
+          fi
+
+      - name: Pack
+        shell: bash
+        run: |
+          name="angle-${{ matrix.name }}.tar.gz"
+          tar -C out/angle -czf "$name" .
+          python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(), sys.argv[1])" "$name" | tee "$name.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: angle-${{ matrix.name }}
+          path: |
+            angle-${{ matrix.name }}.tar.gz
+            angle-${{ matrix.name }}.tar.gz.sha256
+
+  publish:
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Tag name
+        id: tag
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json
+          s = json.load(open("tools/data/angle.json"))["source"]
+          print("tag=angle-" + s["branch"].split("/")[-1] + "-" + s["commit"][:10])
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ANGLE ${{ steps.tag.outputs.tag }} (OD_ANGLE prebuilts)
+          prerelease: true
+          files: dist/*.tar.gz
+      - name: Lines for tools/data/angle.json
+        run: |
+          for f in dist/*.tar.gz; do
+            n=$(basename "$f" .tar.gz); n=${n#angle-}
+            echo "\"$n\": {\"url\": \"https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/$(basename "$f")\", \"sha256\": \"$(cut -d' ' -f1 "$f.sha256")\"},"
+          done

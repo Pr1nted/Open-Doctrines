@@ -32,6 +32,10 @@ GROUPS = [
         # (package.py --tor), so onion hosting and "hide my IP" need nothing
         # installed.
         "fetch_tor.py",
+        # ANGLE for the experimental OD_ANGLE build: built once per pin by the
+        # ANGLE prebuilts workflow, fetched by sha256 at configure time.
+        "build_angle.py",
+        "fetch_angle.py",
         # A disposable Linux guest to install those packages INTO. CI proves
         # they build on the machine that built them, which is the condition a
         # packaging bug hides in; this is where one gets installed and started.
@@ -363,6 +367,9 @@ GROUPS = [
         # vector font instead of raylib's bitmap one. Applied to the raylib the
         # build compiles; the server stub generator knows it too.
         "patch_raylib_default_font.py",
+        # OD_ANGLE only: finds ANGLE beside the game, applies OD_ANGLE_BACKEND
+        # where GLFW opens the EGL display, and takes F12 before the swap.
+        "patch_raylib_angle.py",
         # A software-rendered build's screen readback (screenshots, feedback
         # pictures) right way up and in RGBA on rlsw. Applied to that build only.
         "patch_raylib_sw_readback.py",

@@ -572,6 +572,18 @@ int budgetedFpsCeiling() {
 }
 
 
+// ANGLE's OpenGL backend on macOS presents through a layer and ignores the swap
+// interval: measured at ~3,900 fps with VSync on. There VSync has to be a frame
+// cap at the display's rate, or the GPU runs flat out behind a 120 Hz screen.
+static bool odSwapIntervalIgnored() {
+#if defined(OD_ANGLE) && defined(__APPLE__)
+    const char* b = getenv("OD_ANGLE_BACKEND");
+    return b && std::strcmp(b, "opengl") == 0;
+#else
+    return false;
+#endif
+}
+
 void applyFpsTarget(int target) {
     ClearWindowState(FLAG_VSYNC_HINT);
     SetTargetFPS(0);
@@ -582,6 +594,7 @@ void applyFpsTarget(int target) {
         // A budget below 100% is an explicit request to run slower than the
         // display, so it wins.
         if (ceiling > 0) SetTargetFPS(ceiling);
+        else if (odSwapIntervalIgnored()) SetTargetFPS(std::max(30, GetMonitorRefreshRate(GetCurrentMonitor())));
         else SetWindowState(FLAG_VSYNC_HINT);
     } else if (target > 0) {
         SetTargetFPS(ceiling > 0 ? std::min(target, ceiling) : target);
@@ -1426,7 +1439,43 @@ bool Game::init(int screenW, int screenH, const char* title) {
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif
+#if defined(OD_ANGLE)
+    // THE BACKEND LADDER (experimental, OD_ANGLE builds). Native API first, then
+    // Vulkan, then OpenGL, then SwiftShader -- ANGLE's Vulkan on the CPU, for a
+    // machine whose GPU driver offers none of them. A backend this machine
+    // lacks fails at eglInitialize and InitWindow() returns without a window
+    // (tools/patch_raylib_angle.py makes sure it fails rather than quietly
+    // becoming ANGLE's default), so the next is tried. A backend the player
+    // named in OD_ANGLE_BACKEND goes first, and the ladder still stands behind it.
+    {
+#if defined(__APPLE__)
+        static const char* const kLadder[] = {"metal", "vulkan", "opengl", "swiftshader"};
+#elif defined(_WIN32)
+        static const char* const kLadder[] = {"d3d11", "vulkan", "opengl", "d3d9", "swiftshader"};
+#else
+        static const char* const kLadder[] = {"vulkan", "opengl", "swiftshader"};
+#endif
+        std::vector<std::string> order;
+        if (const char* want = getenv("OD_ANGLE_BACKEND"); want && *want) order.push_back(want);
+        for (const char* b : kLadder)
+            if (order.empty() || order[0] != b) order.push_back(b);
+        for (const std::string& b : order) {
+#ifdef _WIN32
+            _putenv_s("OD_ANGLE_BACKEND", b.c_str());
+#else
+            setenv("OD_ANGLE_BACKEND", b.c_str(), 1);
+#endif
+            InitWindow(m_screenW, m_screenH, title);
+            if (IsWindowReady()) {
+                TraceLog(LOG_INFO, "ANGLE: rendering through %s", b.c_str());
+                break;
+            }
+            TraceLog(LOG_WARNING, "ANGLE: %s is not available here, trying the next backend", b.c_str());
+        }
+    }
+#else
     InitWindow(m_screenW, m_screenH, title);
+#endif
     if (getenv("OD_DPI_PROBE")) {
         const Vector2 sc = GetWindowScaleDPI();
         printf("[DPI] highdpi_flag=%d  scale=%.2f,%.2f  screen=%dx%d  render=%dx%d  monitor=%dx%d\n",
@@ -4004,6 +4053,15 @@ void Game::endFrame() {
 
     osk::draw();
     osk::endFrame();
+
+    // A requested capture (the screenshot tour, the letter check): taken here,
+    // over everything, while the back buffer still holds this frame. Flushed
+    // first, since raylib only sends its batch to the framebuffer at EndDrawing.
+    if (!m_frameCapturePath.empty()) {
+        rlDrawRenderBatchActive();
+        TakeScreenshot(m_frameCapturePath.c_str());
+        m_frameCapturePath.clear();
+    }
 
     EndDrawing();
 
