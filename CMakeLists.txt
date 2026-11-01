@@ -1758,6 +1758,30 @@ set(CMAKE_SKIP_INSTALL_RULES ON)
 FetchContent_MakeAvailable(libdeflate)
 set(CMAKE_SKIP_INSTALL_RULES "${_od_skip_install}")
 
+# libdeflate's x86 and Arm SIMD paths are chosen at compile time from the
+# compiler's architecture macros, and need target attributes and alignments
+# that not every toolchain this game targets has: DJGPP's COFF caps alignment
+# at 16 (the AVX-512 tables want 64), SerenityOS's GCC knows no 'evex512',
+# and the console and RISC OS toolchains are old ARM GCCs. There, build the
+# portable C paths only: the same bytes out, slower, and nothing to miscompile.
+if(DJGPP OR VITA OR NINTENDO_3DS OR NINTENDO_WII OR OD_RISCOS
+   OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+    set(_od_ld_defs "${libdeflate_SOURCE_DIR}/common_defs.h")
+    file(READ "${_od_ld_defs}" _od_ld)
+    if(NOT _od_ld MATCHES "OD_LIBDEFLATE_PORTABLE")
+        string(FIND "${_od_ld}" "#undef ARCH_RISCV\n#ifdef _MSC_VER" _od_ld_at)
+        if(_od_ld_at EQUAL -1)
+            message(FATAL_ERROR "libdeflate: common_defs.h changed; the portable-build patch no longer applies")
+        endif()
+        string(REPLACE "#undef ARCH_RISCV\n#ifdef _MSC_VER"
+                       "#undef ARCH_RISCV\n#if defined(OD_LIBDEFLATE_PORTABLE)\n   /* no architecture-specific code (see the game's CMakeLists.txt) */\n#elif defined(_MSC_VER)"
+                       _od_ld "${_od_ld}")
+        file(WRITE "${_od_ld_defs}" "${_od_ld}")
+    endif()
+    target_compile_definitions(libdeflate_static PRIVATE OD_LIBDEFLATE_PORTABLE=1)
+    message(STATUS "libdeflate: portable C paths only (no x86/Arm SIMD) on this toolchain")
+endif()
+
 # --- Game target ---
 # EVERY TARGET BUILT FROM THIS LIST MUST LINK `odseal`.
 #
