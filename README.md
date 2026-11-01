@@ -395,10 +395,23 @@ What a handheld needs is in those builds:
   reached the game only as the system's emulated mouse.
 - **An on-screen keyboard** that comes up for text fields while you are using
   touch, and stays away while a mouse is in use.
+- **The screen.** In Game Mode (gamescope) the game goes fullscreen at the
+  panel's own 1280x800 rather than drawing at 1600x900 and being squeezed; on
+  the Deck's desktop, as on any small screen, a window too big for the screen
+  opens fitted to it instead of off its edges. Neither changes your saved
+  fullscreen setting.
 
-Every pull request puts real touches through the SDL backend the game ships
-on and checks they arrive (`tests/touch_sdl_test.cpp`, on Linux and Windows).
-It has **not** yet been played on a physical Deck or Ally; reports welcome.
+On the Deck's controls: the **left stick** moves the pointer, **A** clicks,
+**X** right-clicks, **B** goes back, the **d-pad** walks menus, the
+**bumpers** zoom, and **Y**, the **triggers** and **L3** hold the map actions
+(artillery, ship moves, box select, ship wheel) — the keybinds screen shows
+which button is which.
+
+Every pull request checks all of this on the SDL backend the game ships on,
+on Linux and Windows: real touches (`tests/touch_sdl_test.cpp`), a Steam Deck
+controller attached as one (`tests/pad_sdl_test.cpp`, Valve's 28de:1205), and
+on Linux the window at 1280x800 on the desktop and under gamescope. It has
+**not** yet been played on a physical Deck or Ally; reports welcome.
 
 ### ChromeOS
 

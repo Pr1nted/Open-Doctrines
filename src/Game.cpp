@@ -1598,6 +1598,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
         int mon = GetCurrentMonitor();
         int mw = GetMonitorWidth(mon);
         int mh = GetMonitorHeight(mon);
+        // NEVER LARGER THAN THE SCREEN. The default window is 1600x900 and a
+        // Steam Deck's panel is 1280x800, so on the Deck's desktop -- and on
+        // any small laptop -- the window opened past the screen's edges and
+        // was centred at a negative position, its title bar and the bottom of
+        // the interface out of reach. A window that does not fit is shrunk to
+        // 90% of the screen, keeping its shape; one that fits is left alone.
+        if (mw > 0 && mh > 0 && (m_screenW > mw || m_screenH > mh)) {
+            const float k = std::min(0.9f * mw / m_screenW, 0.9f * mh / m_screenH);
+            m_screenW = std::max(640, (int)(m_screenW * k));
+            m_screenH = std::max(400, (int)(m_screenH * k));
+        }
         SetWindowSize(m_screenW, m_screenH);
         SetWindowSize(m_screenW, m_screenH);
         PollInputEvents();
@@ -1714,7 +1725,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
     TraceLog(LOG_INFO, ("[OD] m_screen: " + std::to_string(m_screenW) + "x" + std::to_string(m_screenH)).c_str());
 #endif
 
-    if (m_config.fullscreen) {
+    // UNDER GAMESCOPE, FULLSCREEN. Gamescope -- the compositor of a Steam
+    // Deck's Game Mode, and of SteamOS on anything -- shows one game at a time
+    // across the whole panel, so a window there is only ever scaled up from
+    // whatever size it asked for: 1600x900 drawn and then squeezed onto
+    // 1280x800. Fullscreen draws at the panel's own resolution instead. Not
+    // written to the config: the same install started from the Deck's
+    // desktop, or on a PC, keeps the player's own choice.
+    const bool underGamescope =
+        getenv("GAMESCOPE_WAYLAND_DISPLAY") != nullptr ||
+        (getenv("XDG_CURRENT_DESKTOP") && std::strcmp(getenv("XDG_CURRENT_DESKTOP"), "gamescope") == 0);
+    if (m_config.fullscreen || underGamescope) {
         int mon = GetCurrentMonitor();
         m_windowedW = m_screenW;
         m_windowedH = m_screenH;
@@ -1726,6 +1747,15 @@ bool Game::init(int screenW, int screenH, const char* title) {
         SetWindowSize(m_screenW, m_screenH);
         SetWindowPosition(0, 0);
     }
+    // The size the window settled on, after fitting and fullscreen -- the
+    // [DPI] line above is from before either. Not its position: raylib's copy
+    // of that is only refreshed by a window event, and printed here it still
+    // says where the window was before it was moved.
+    if (getenv("OD_DPI_PROBE"))
+        printf("[WINDOW] %dx%d  fullscreen=%d gamescope=%d  monitor=%dx%d\n",
+               m_screenW, m_screenH,
+               (m_config.fullscreen || underGamescope) ? 1 : 0, underGamescope ? 1 : 0,
+               GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
 
     // Budget first: applyFpsTarget reads it, so setting it afterwards would
     // leave the first frames running unthrottled.

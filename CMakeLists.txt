@@ -3055,6 +3055,12 @@ if(OD_DESKTOP_SDL AND OD_SDL_TARGET STREQUAL "SDL3::SDL3")
     add_executable(TouchSdlTest EXCLUDE_FROM_ALL tests/touch_sdl_test.cpp src/Touch.cpp)
     target_include_directories(TouchSdlTest PRIVATE src tests)
     target_link_libraries(TouchSdlTest PRIVATE raylib SDL3::SDL3)
+    # And the same for a gamepad: a Steam Deck's controls, attached through
+    # SDL's public virtual-joystick API, read by raylib and turned by odPad
+    # into the cursor and clicks the game uses.
+    add_executable(PadSdlTest EXCLUDE_FROM_ALL tests/pad_sdl_test.cpp src/Gamepad.cpp)
+    target_include_directories(PadSdlTest PRIVATE src tests)
+    target_link_libraries(PadSdlTest PRIVATE raylib SDL3::SDL3)
 endif()
 
 # Ethnic migration has to conserve people. Pure arithmetic on shares: the
