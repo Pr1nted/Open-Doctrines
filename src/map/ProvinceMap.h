@@ -104,6 +104,15 @@ public:
     bool compact();
 
     /**
+     * Changes whenever the raster may have: every load, clear, paint, pixel
+     * update and compaction takes a new value, unique across all maps in the
+     * process. A cache derived from the pixels alone (the province adjacency,
+     * the border distance field) keys itself on this and rebuilds when it
+     * moves, instead of every caller having to remember to invalidate it.
+     */
+    uint64_t rasterGeneration() const { return m_rasterGen; }
+
+    /**
      * Which provinces touch, as the FULL-resolution raster had it -- filled only
      * when the map was loaded reduced (see map/RasterScale.h), and empty
      * otherwise. Sampling a raster down drops the thinnest borders, so a pixel
@@ -114,6 +123,8 @@ public:
     const std::vector<std::pair<int, int>>& fullResolutionAdjacency() const { return m_fullAdjacency; }
 
 private:
+    void bumpRaster();
+    uint64_t m_rasterGen = 0;
     bool parseJson(const std::string& jsonStr);
     /** Palette slot for `id` in the compact form, allocating one if new. -1 when
      *  the palette is full. Builds the reverse index lazily on first write. */
