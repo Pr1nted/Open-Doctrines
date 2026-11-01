@@ -19,6 +19,12 @@
 // No durable disk here: the save lands in MEMFS/IDBFS and odPersistMark() is
 // what carries it across a tab close. fsync would be a no-op at best.
 #elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #else
 #include <fcntl.h>
