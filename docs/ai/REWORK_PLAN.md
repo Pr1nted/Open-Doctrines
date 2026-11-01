@@ -3,7 +3,7 @@
 The plan for turning Parrot Zero from a set of per-module policy nets into a
 search-based engine, in the manner of a chess engine: generate candidate moves,
 look ahead, and score positions with an evaluator. It also covers the network
-visualiser planned for 1.3.3b.
+visualiser planned for 1.3.3b. The rework itself is 1.3.4b.
 
 This document is the plan. The groundwork it lists is meant to land before the
 rework starts, and it must not change how the current AI plays:
@@ -176,7 +176,7 @@ The trace file format should come first, so both are possible.
 
 | Version | Content |
 |---|---|
-| groundwork | items 1, 2, 6 (small, behaviour-neutral), then 3 alone |
-| 1.3.3b | visualiser; `WorldState` extraction under way |
-| next | pure `step()`; hand-written evaluator; shallow best-response search behind `AIPlayer`, A/B against Parrot Zero |
-| after | value net trained on search; MCTS with sampled opponents; retire executors that plans replace |
+| groundwork (now) | items 1, 2 and 6: small, behaviour-neutral |
+| 1.3.3b | the visualiser, on the trace sink; item 3 alone; `WorldState` extraction under way |
+| 1.3.4b | pure `step()`; hand-written evaluator; shallow best-response search behind `AIPlayer`, A/B against Parrot Zero |
+| after 1.3.4b | value net trained on search; MCTS with sampled opponents; retire executors that plans replace |
