@@ -293,6 +293,16 @@ std::string GameUpdates::platformKey() {
 #elif defined(__ANDROID__)
     // An APK is replaced by reinstalling it, never by unpacking a zip over it.
     return "OpenDoctrines-android-none";
+#elif defined(__linux__) && defined(OD_GLES)
+  // The Raspberry Pi OS build (OpenGL ES, OD_GLES): it updates to itself, not
+  // to the desktop-GL Linux build of the same CPU, which a Pi cannot draw.
+  #if defined(__aarch64__)
+    return "OpenDoctrines-raspios-arm64";
+  #elif defined(__arm__)
+    return "OpenDoctrines-raspios-armhf";
+  #else
+    return "OpenDoctrines-raspios-unknown";
+  #endif
 #elif defined(__linux__)
   #if defined(__x86_64__)
     return "OpenDoctrines-linux-x64";
