@@ -150,14 +150,14 @@
     },
     {
       "name": "ANGLE",
-      "version": "chromium/8135 (4a5ccd7b61e6)",
+      "version": "chromium/7977 (6c82b3f1eba1)",
       "license": "BSD-3-Clause",
       "url": "https://chromium.googlesource.com/angle/angle",
       "what": "Experimental OD_ANGLE builds only (off by default): OpenGL ES on Metal, Direct3D, Vulkan or desktop OpenGL; built unmodified by the ANGLE prebuilts workflow (tools/data/angle.json), licence texts in licenses/ANGLE/"
     },
     {
       "name": "SwiftShader",
-      "version": "as pinned by ANGLE chromium/8135",
+      "version": "as pinned by ANGLE chromium/7977",
       "license": "Apache-2.0",
       "url": "https://swiftshader.googlesource.com/SwiftShader",
       "what": "Experimental OD_ANGLE builds only: Vulkan on the CPU, the last rung of the graphics backend ladder; built with ANGLE, licence texts in licenses/ANGLE/"

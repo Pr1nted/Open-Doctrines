@@ -79,13 +79,17 @@ def use_installed_windows_sdk(angle):
     """Point Chromium's toolchain at the newest Windows SDK this machine has.
 
     build/toolchain/win/setup_toolchain.py hardcodes the SDK it hands to
-    vcvarsall (10.0.28000.0 at this pin), matching Google's packaged toolchain,
-    and no gn argument overrides it. A machine with the Visual Studio it already
+    vcvarsall, matching Google's packaged toolchain, and no gn argument
+    overrides it. A machine with the Visual Studio it already
     has -- DEPOT_TOOLS_WIN_TOOLCHAIN=0, every CI runner -- usually has an older
     one, and gn gen stops on the missing include path. So the constant is
-    rewritten in the checkout to the newest SDK that is installed. A pinned
-    ANGLE that genuinely needs the newer SDK fails at compile time and says
-    which header, which is the right place to find that out.
+    rewritten in the checkout to the newest SDK that is installed.
+
+    It does not stretch far. chromium/8135 asked for 10.0.28000 and, built
+    against a runner's 10.0.26100, failed in Abseil on FILE_INFO_BY_HANDLE_CLASS.
+    That is why the pin is a branch whose own toolchain names 10.0.26100 (the
+    last are chromium/7982 and older; 7977 is Chrome 152's release branch). Move
+    the pin past that and the runner needs the newer SDK installed first.
     """
     import re
     inc = r"C:\Program Files (x86)\Windows Kits\10\Include"
