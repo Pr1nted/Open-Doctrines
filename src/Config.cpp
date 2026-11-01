@@ -167,6 +167,13 @@ bool Config::load(const std::string& path) {
     uiScale = findFloat(json, "uiScale", 1.0f);
     colourBlindMode = findInt(json, "colourBlindMode", 0);
     if (colourBlindMode < 0 || colourBlindMode > 3) colourBlindMode = 0;
+    highContrast  = findBool(json, "highContrast", false);
+    reduceMotion  = findBool(json, "reduceMotion", false);
+    holdToConfirm = findBool(json, "holdToConfirm", false);
+    longMessages  = findBool(json, "longMessages", false);
+    soundCues     = findBool(json, "soundCues", false);
+    textScale     = findFloat(json, "textScale", 1.0f);
+    if (!(textScale >= 1.0f && textScale <= 1.2f)) textScale = 1.0f;
     if (uiScale < 0.75f) uiScale = 0.75f;
     if (uiScale > 2.0f) uiScale = 2.0f;
     skipViewingOrders = findBool(json, "skipViewingOrders", false);
@@ -329,6 +336,12 @@ bool Config::save(const std::string& path) {
     file << "  \"language\": \"" << language << "\",\n";
     file << "  \"uiScale\": " << uiScale << ",\n";
     file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
+    file << "  \"highContrast\": " << (highContrast ? "true" : "false") << ",\n";
+    file << "  \"reduceMotion\": " << (reduceMotion ? "true" : "false") << ",\n";
+    file << "  \"holdToConfirm\": " << (holdToConfirm ? "true" : "false") << ",\n";
+    file << "  \"longMessages\": " << (longMessages ? "true" : "false") << ",\n";
+    file << "  \"soundCues\": " << (soundCues ? "true" : "false") << ",\n";
+    file << "  \"textScale\": " << textScale << ",\n";
     file << "  \"skipViewingOrders\": " << (skipViewingOrders ? "true" : "false") << ",\n";
     file << "  \"mpAwayIdle\": " << (mpAwayIdle ? "true" : "false") << ",\n";
     file << "  \"highDpi\": " << (highDpi ? "true" : "false") << ",\n";

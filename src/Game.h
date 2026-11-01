@@ -2450,6 +2450,12 @@ public:
     bool stepDisplayValueRow(int index, int dir);
     /** Puts a row handled by stepDisplayValueRow back to its default. */
     bool resetDisplayValueRow(int index);
+    /// Settings -> Accessibility: toggles or cycles the row named `label` when
+    /// the Accessibility tab is open. False for any other row, so both settings
+    /// screens can ask it first and fall through to their own chains.
+    bool activateAccessibilityRow(const char* label);
+    /// Push the accessibility settings into Theme.h and Access.h.
+    void applyAccessibility();
     /** Draws one volume row's bar. Called from the settings item-draw loop. */
     void drawVolumeSlider(int index, int y, int centerX, bool selected);
     /** Nudges a volume row by delta and applies it. Used by LEFT/RIGHT and R. */

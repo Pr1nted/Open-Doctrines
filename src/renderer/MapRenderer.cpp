@@ -1,3 +1,4 @@
+#include "Access.h"   // reduce motion: odAccess::wave
 #include "MapRenderer.h"
 #include "GlobeView.h"
 // Not just the pad's cursor but its buttons: this renderer answers the clicks
@@ -2487,7 +2488,7 @@ void MapRenderer::drawSubregion(int sx, int sy, int sw, int sh,
 
     // Pulsing selection highlight (map editor)
     if (m_highlightTex.id > 0) {
-        float pulse = 0.30f + 0.18f * sinf((float)GetTime() * 4.0f);
+        float pulse = 0.30f + 0.18f * odAccess::wave(4.0f);
         Color hc = ColorAlpha(WHITE, pulse);
         for (int tx = tileStart; tx < tileEnd; ++tx) {
             DrawTexture(m_highlightTex, tx * m_mapW + m_highlightX, m_highlightY, hc);

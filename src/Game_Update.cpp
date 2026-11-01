@@ -1863,7 +1863,9 @@ void Game::update(float dt) {
         }
         if (activate && m_settingsIndex >= 0 && m_settingsIndex < count) {
             const Setting& s = items[m_settingsIndex];
-            if (strcmp(s.label, "Back") == 0) {
+            if (activateAccessibilityRow(s.label)) {
+                // handled: Settings -> Accessibility
+            } else if (strcmp(s.label, "Back") == 0) {
                 m_inSettings = false;
                 m_settingsScroll = 0;
                 m_config.save(m_configPath);

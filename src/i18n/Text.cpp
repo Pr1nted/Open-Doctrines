@@ -10,6 +10,8 @@
 #include "i18n/Devanagari.h"
 #include "i18n/ArabicShape.h"
 #include "i18n/Locale.h"
+#include "Access.h"   // text size
+#include "Theme.h"    // high contrast
 #include <cstdio>
 #include <cstdlib>
 #include <unordered_set>
@@ -372,6 +374,12 @@ void fitAudit(const char* text, int width, int fontSize, const char* where) {
 
 void drawText(const char* text, int x, int y, int fontSize, Color color) {
     if (!text) return;
+    // Accessibility, applied here because every line of text in the game comes
+    // through this function: the player's text size, and high contrast (the
+    // transform is idempotent, so a path below that draws through a shadowed
+    // raylib call and applies it again changes nothing).
+    fontSize = odAccess::textSize(fontSize);
+    color = odTheme::hc(color);
     text = localised(text);
     if (!needsAtlas(text) || !ready()) {
         ::DrawText(text, x, y, fontSize, color);
@@ -436,6 +444,7 @@ void drawText(const char* text, int x, int y, int fontSize, Color color) {
 }
 
 int measureText(const char* text, int fontSize) {
+    fontSize = odAccess::textSize(fontSize);   // as drawText, so layouts that measure keep up
     if (!text) return 0;
     // The SAME lookup as drawText, or a translated label is measured at its
     // English width and every box drawn round it is the wrong size.
@@ -544,14 +553,16 @@ std::vector<std::string> wrapLines(const char* text, int maxWidth, int fontSize)
 
 int drawWrapped(const char* text, int x, int y, int maxWidth, int fontSize, Color color) {
     const std::vector<std::string> lines = wrapLines(text, maxWidth, fontSize);
-    const int step = fontSize + fontSize / 4;
+    const int shown = odAccess::textSize(fontSize);   // the size drawText will use
+    const int step = shown + shown / 4;
     for (size_t i = 0; i < lines.size(); ++i)
         drawText(lines[i].c_str(), x, y + (int)i * step, fontSize, color);
     return (int)lines.size() * step;
 }
 
 int measureWrapped(const char* text, int maxWidth, int fontSize) {
-    return (int)wrapLines(text, maxWidth, fontSize).size() * (fontSize + fontSize / 4);
+    const int shown = odAccess::textSize(fontSize);
+    return (int)wrapLines(text, maxWidth, fontSize).size() * (shown + shown / 4);
 }
 
 }  // namespace odText
