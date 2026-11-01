@@ -11,6 +11,10 @@
 # tools/freertos_world.py --map) -- a source zip from a release has them.
 </$objtype/mkfile
 
+# The first target is mk's default, and mkmany's first is a usage message:
+# make plain `mk` build both programs, as the header says.
+default:V: all
+
 TARG=opendoctrines odmap
 OFILES=\
 	core_world.$O\
