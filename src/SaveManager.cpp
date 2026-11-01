@@ -1,3 +1,8 @@
+// Before any header that might pull in <windows.h>: its min/max macros would
+// otherwise mangle std::max/std::min (MSVC C2589) later in this file.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "SaveManager.h"
 #include "util/WebPersist.h"
 #include "miniz.h"
