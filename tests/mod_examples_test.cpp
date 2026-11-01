@@ -409,13 +409,28 @@ int main(int argc, char** argv) {
     }
 
     // --- cross-language agreement -------------------------------------------
-    // The full hello-panel examples all render the same five strings. WAT is a
+    // The full hello-panel examples all render the same five strings, add the
+    // same doctrine and advance the same counter on click. WAT is a
     // deliberately minimal module and is not expected to match.
+    //
+    // THE SUBJECT IS THE HELLO-PANEL FAMILY, not every example that declares
+    // UI. That distinction did not matter while every UI example was a port of
+    // the same mod; it started mattering with sdk/examples/lsdoctrines, which
+    // owns a panel because mod_draw_panel is the only per-frame export and it
+    // needs a frame hook to animate -- not because it is another port. Judged
+    // as one it failed five checks for drawing its own strings, adding no
+    // hello:demo and having no Bortania to step to, none of which is a defect.
+    //
+    // Keyed on the directory name because that IS the family: these are ports
+    // of one mod, named for it. An example that is not a port drops out here
+    // and is still held to "loads and draws" above, which is the check that
+    // applies to any UI mod.
     printf("\ncross-language agreement\n");
     std::vector<const Capture*> full;
     for (const auto& c : caps) {
         if (!c.loaded || !c.note.empty()) continue;
         if (c.label.find("wat") != std::string::npos) continue;
+        if (c.label.compare(0, 11, "hello-panel") != 0) continue;
         full.push_back(&c);
     }
 

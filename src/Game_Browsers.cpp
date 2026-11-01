@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Access.h"
 #include "util/LoadLog.h"
 #include "TextInput.h"
 #include <cstring>
@@ -409,6 +410,7 @@ void Game::drawWorldBrowser() {
         DrawRectangleRounded(delBtn, 0.2f, 8, delHov ? Color{180, 40, 40, 255} : Color{120, 30, 30, 255});
         int delW = MeasureText(T("Delete"), 20);
         DrawText(T("Delete"), (int)(delBtn.x + (btnW - delW) / 2), (int)(delBtn.y + 10), 20, WHITE);
+        odAccess::drawHoldProgress(&odAccess::kDeleteWorld, delBtn);
 
         // Cancel button
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
@@ -640,8 +642,13 @@ void Game::updateWorldBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
-        if (clickReleasedHere()) {
-            if (CheckCollisionPointRec(mouse, delBtn)) {
+        // Hold to Confirm (Settings -> Accessibility) asks for the Delete
+        // button held rather than clicked; off, this is the click itself.
+        const bool released = clickReleasedHere();
+        const bool deleteNow = odAccess::gate(&odAccess::kDeleteWorld, delBtn, mouse,
+                                              released && CheckCollisionPointRec(mouse, delBtn));
+        if (deleteNow || released) {
+            if (deleteNow) {
                 Audio::get().playSfx("confirm");
                 // Delete the world file
                 std::string path = m_dataDir + "saves/" + m_worldInfos[m_deleteWorldIndex].filename;
@@ -1766,6 +1773,7 @@ void Game::drawMapBrowser() {
         bool delHov = CheckCollisionPointRec(mouse, delBtn);
         DrawRectangleRounded(delBtn, 0.2f, 8, delHov ? Color{180, 40, 40, 255} : Color{120, 30, 30, 255});
         DrawText(T("Delete"), (int)(delBtn.x + (btnW - MeasureText(T("Delete"), 20)) / 2), (int)(delBtn.y + 10), 20, WHITE);
+        odAccess::drawHoldProgress(&odAccess::kDeleteMap, delBtn);
 
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
         bool canHov = CheckCollisionPointRec(mouse, canBtn);
@@ -2563,8 +2571,11 @@ void Game::updateMapBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
-        if (clickReleasedHere()) {
-            if (CheckCollisionPointRec(mouse, delBtn)) {
+        const bool released = clickReleasedHere();
+        const bool deleteNow = odAccess::gate(&odAccess::kDeleteMap, delBtn, mouse,
+                                              released && CheckCollisionPointRec(mouse, delBtn));
+        if (deleteNow || released) {
+            if (deleteNow) {
                 Audio::get().playSfx("confirm");
                 // Delete custom map directory
                 if (m_mapDeleteIndex >= 0 && m_mapDeleteIndex < (int)m_mapEntries.size()) {

@@ -17,24 +17,24 @@
 // "gearbox:<module>" import namespaces in sdk/gearbox.h. A bitmask so a grant
 // set is one word and revocation in the Advanced panel is a mask-off.
 enum ModModuleBit : uint32_t {
-    MODULE_CORE            = 1u << 0,
-    MODULE_GAMESTATE_READ  = 1u << 1,
-    MODULE_GAMESTATE_WRITE = 1u << 2,
-    MODULE_GAMEPROCESS     = 1u << 3,
-    MODULE_NEURAL          = 1u << 4,
-    MODULE_UI              = 1u << 5,
-    MODULE_MAP             = 1u << 6,
-    MODULE_DIPLOMACY       = 1u << 7,
-    MODULE_ASSETS          = 1u << 8,
-    MODULE_STORAGE         = 1u << 9,
-    MODULE_AUDIO           = 1u << 11,
-    MODULE_NET             = 1u << 12,
+    MODULE_CORE            = 1ull << 0,
+    MODULE_GAMESTATE_READ  = 1ull << 1,
+    MODULE_GAMESTATE_WRITE = 1ull << 2,
+    MODULE_GAMEPROCESS     = 1ull << 3,
+    MODULE_NEURAL          = 1ull << 4,
+    MODULE_UI              = 1ull << 5,
+    MODULE_MAP             = 1ull << 6,
+    MODULE_DIPLOMACY       = 1ull << 7,
+    MODULE_ASSETS          = 1ull << 8,
+    MODULE_STORAGE         = 1ull << 9,
+    MODULE_AUDIO           = 1ull << 11,
+    MODULE_NET             = 1ull << 12,
 
     // Not a Gearbox namespace: these are the real WASI import names, provided
     // so an interpreter-in-a-mod (Python, Ruby, Lua, Java) can boot. Deliberately
     // the narrowest possible surface, off by default, and never a real WASI --
     // see the WasiStub notes in ModHost.cpp and docs/modding.md.
-    MODULE_WASISTUB        = 1u << 10,
+    MODULE_WASISTUB        = 1ull << 10,
 
     // ── Gearbox 1.1 ──────────────────────────────────────────────────────────
     //
@@ -47,14 +47,14 @@ enum ModModuleBit : uint32_t {
     // analysis tool or a map painter wants to SEE the fleet; almost none of
     // them need to move it. Granting sight should not grant command, and the
     // mod menu shows the two separately so a player can tell them apart.
-    MODULE_MILITARY_READ   = 1u << 13,
-    MODULE_MILITARY_WRITE  = 1u << 14,
-    MODULE_RESEARCH_READ   = 1u << 15,
-    MODULE_RESEARCH_WRITE  = 1u << 16,
-    MODULE_POLITICS_READ   = 1u << 17,
-    MODULE_POLITICS_WRITE  = 1u << 18,
-    MODULE_ECONOMY_READ    = 1u << 19,
-    MODULE_ECONOMY_WRITE   = 1u << 20,
+    MODULE_MILITARY_READ   = 1ull << 13,
+    MODULE_MILITARY_WRITE  = 1ull << 14,
+    MODULE_RESEARCH_READ   = 1ull << 15,
+    MODULE_RESEARCH_WRITE  = 1ull << 16,
+    MODULE_POLITICS_READ   = 1ull << 17,
+    MODULE_POLITICS_WRITE  = 1ull << 18,
+    MODULE_ECONOMY_READ    = 1ull << 19,
+    MODULE_ECONOMY_WRITE   = 1ull << 20,
     // The editor can rewrite the world, so it is deliberately its own thing and
     // is refused outside the map editor screen -- see ModHost's inEditor gate.
     // ── Gearbox 1.3 ──────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ enum ModModuleBit : uint32_t {
     // is the separate grant that lets a mod CHOOSE, through mod_ai_choose. A
     // player agreeing to "watch the AI" has not agreed to "be the AI", so the
     // two cannot be one capability.
-    MODULE_NEURAL_DECIDE   = 1u << 22,
+    MODULE_NEURAL_DECIDE   = 1ull << 22,
 
     // ── Gearbox 1.3 ──────────────────────────────────────────────────────────
     //
@@ -81,49 +81,49 @@ enum ModModuleBit : uint32_t {
     // SO IT IS A SEPARATE BIT, NOT PART OF Core. Core is granted to every mod
     // and cannot be revoked; this must be askable-for and refusable, and the
     // player is told plainly when a mod wants it. See kProtectedWarning.
-    MODULE_CORE_PROTECTED  = 1u << 23,
+    MODULE_CORE_PROTECTED  = 1ull << 23,
 
     // Fields a mod adds to every country, persisted into the save or hollow
     // and redeclared each load. Its own bit because a PERSISTED field puts the
     // mod's data inside the player's save -- which is the point, and is also
     // the reason it should be refusable. See src/CountryFields.h.
-    MODULE_COUNTRY         = 1u << 24,
+    MODULE_COUNTRY         = 1ull << 24,
 
     // Commands a mod adds to the map script language. Its own bit because a
     // registered command runs on ANY map's scripts, including maps that never
     // asked for the mod -- scripts ship inside .odmap files and mods are
     // enabled globally. See src/ScriptCommands.h.
-    MODULE_SCRIPTS         = 1u << 25,
+    MODULE_SCRIPTS         = 1ull << 25,
 
     // Tinting and labelling provinces on the map. Its own bit, and
     // deliberately NOT "rendering": a mod cannot take over the draw loop. See
     // src/ModRenderLayer.h for where that line is drawn and why.
-    MODULE_RENDER          = 1u << 26,
+    MODULE_RENDER          = 1ull << 26,
 
     // Adding entries to the game's catalogues -- doctrines, research nodes,
     // troop and artillery types, district laws. Its own bit because a
     // PERSISTED entry writes a mod's definition into the player's save, and
     // an AI-VISIBLE one changes what the trained model is offered. See
     // src/ModContent.h.
-    MODULE_CONTENT         = 1u << 27,
+    MODULE_CONTENT         = 1ull << 27,
 
-    MODULE_MAPEDITOR       = 1u << 21,
+    MODULE_MAPEDITOR       = 1ull << 21,
 
     // Fog of war. Read is its own capability rather than part of
     // GameState.Read because it answers a different question: not "what is
     // true" but "what does THIS country believe", which is the one thing a
     // mod could use to play a fogged game with the fog switched off.
-    MODULE_FOG             = 1u << 28,
+    MODULE_FOG             = 1ull << 28,
     // Writing it is separate again, and rarer: a grant changes what another
     // player can see, so it is the capability a reviewer should look hardest
     // at after Core.Protected.
-    MODULE_FOG_WRITE       = 1u << 29,
+    MODULE_FOG_WRITE       = 1ull << 29,
     // Reshaping the map while the game runs: province.morph and terrain edits.
     // Separate from the read-only MODULE_MAP (geometry + adjacency lookups)
     // because this one MOVES borders and coastlines -- its edits are recorded in
     // the turn delta and reach every save and multiplayer client, so a reviewer
     // weighs it like the other *.Write capabilities, not like a lookup.
-    MODULE_MAP_WRITE       = 1u << 30,
+    MODULE_MAP_WRITE       = 1ull << 30,
     // Bit 31 is the last in the mask. The next capability after it needs a wider
     // type and a save-format decision, not another bit.
 };
@@ -138,7 +138,7 @@ uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown
  * definition for what went wrong when it did not.
  */
 const std::vector<uint32_t>& modAllModuleBits();
-std::string modModuleMaskToString(uint32_t mask);
+std::string modModuleMaskToString(uint64_t mask);
 
 // Which side of a multiplayer game a mod belongs on. "both" is the default
 // because it is what a mod written before multiplayer existed effectively is,
@@ -254,7 +254,7 @@ struct ModManifest {
     std::vector<std::string> authors;
     int gearboxMajor = 0;
     int gearboxMinor = 0;
-    uint32_t modules = 0;              // always includes MODULE_CORE
+    uint64_t modules = 0;              // always includes MODULE_CORE
     ModSide  side = ModSide::Both;     // MANIFEST "side", default "both"
     std::vector<ModDependency> dependencies;
     std::vector<ModConflict>   conflicts;

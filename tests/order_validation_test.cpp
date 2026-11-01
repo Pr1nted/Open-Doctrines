@@ -156,6 +156,43 @@ struct OrderValidationTest {
               "and the source is empty");
     }
 
+    // ── A LANDING ORDER MUST SURVIVE THE WIRE ──
+    //
+    // Reported from the tournament (dizzy): boats ordered ashore in a hosted
+    // game never moved. mpSerializeOrders carried every other ship order --
+    // move, engage, bombard -- but not the disembark, so the order lived only on
+    // the client that gave it and the host resolved a turn that never knew about
+    // it. A round trip through the two functions the wire uses must bring it
+    // back; before the fix this test fails with the order gone.
+    void shipDisembarkSurvivesTheWire() {
+        int cid = 0, shipIdx = -1;
+        for (size_t i = 0; i < game.m_ships.size(); ++i)
+            if (game.m_ships[i].countryId > 0 && game.m_ships[i].countryId < 65530) {
+                cid = game.m_ships[i].countryId; shipIdx = (int)i; break;
+            }
+        check(cid > 0 && shipIdx >= 0, "found a ship to land");
+        if (cid <= 0 || shipIdx < 0) return;
+        int pid = foreignProvince(cid);
+        if (!pid) pid = ownedProvince(cid);
+        check(pid > 0, "found a target province");
+        if (!pid) return;
+
+        game.m_pendingShipDisembarks.clear();
+        game.m_pendingShipDisembarks.push_back({shipIdx, pid});
+
+        const std::vector<uint8_t> wire = game.mpSerializeOrders(cid);
+        const std::string txt(wire.begin(), wire.end());
+        check(txt.find("pendingShipDisembarks") != std::string::npos,
+              "the landing order is on the wire");
+
+        game.m_pendingShipDisembarks.clear();
+        game.mpApplyOrders(cid, wire);
+        bool back = false;
+        for (const auto& o : game.m_pendingShipDisembarks)
+            if (o.shipIndex == shipIdx && o.targetProvince == pid) back = true;
+        check(back, "the host reconstructs the landing order after the round trip");
+    }
+
     int industryLevel(int pid) const {
         auto it = game.m_provinceIndustry.find(pid);
         return it == game.m_provinceIndustry.end() ? 0 : it->second.level;
@@ -572,6 +609,7 @@ struct OrderValidationTest {
         worldForAJoiner();
         ordersNobodyAcknowledged();
         troopsKeepTheirKindOnMove();
+        shipDisembarkSurvivesTheWire();
         const int cid = anyCountry();
         check(cid != 0, "found a country to act as");
         const int mine = ownedProvince(cid);

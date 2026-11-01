@@ -5,6 +5,7 @@
 // rules"), so everything that can start or stop a mod lives in this file.
 
 #include "Game.h"
+#include "map/RasterScale.h"
 #include "TextInput.h"
 #include "Audio.h"
 #include "GameInternals.h"
@@ -16,6 +17,8 @@
 #include "net/Lobby.h"
 
 #include <algorithm>
+#include <atomic>
+#include <mutex>
 #include <cctype>
 #include <cmath>
 #include "ai/AISystem.h"
@@ -1499,36 +1502,169 @@ int Game::modStanceCount() const { return AISystem::STANCE_COUNT; }
 
 namespace {
 
-// A sound a mod started. The mod id rides along so one mod cannot stop, mute or
-// query another's -- the handle alone would be forgeable by counting.
-struct ModSound {
-    std::string owner;
-    Wave        wave{};
-    Sound       sound{};
+// Mod audio runs through ONE stream that this file mixes into, rather than a
+// raylib Sound per effect.
+//
+// WHY. raylib's per-stream hooks -- SetAudioStreamCallback and
+// AttachAudioStreamProcessor -- both take a bare `void(*)(void*, unsigned)`
+// with NO user-data pointer, so a callback cannot tell which sound it belongs
+// to. One stream per sound therefore cannot have per-sound processing at all.
+// One shared stream can: there is exactly one callback, it is unambiguous,
+// and the mixing happens here where a filter is ordinary arithmetic.
+//
+// It is also the shape the rest of the audio work needs -- a music bus
+// separate from effects, ducking the game's own soundtrack, and a loudness
+// limiter across everything a mod plays -- none of which can exist when each
+// sound is an opaque raylib Sound.
+//
+// THREADING. mix() runs on the audio thread. It takes the lock with try_lock
+// and writes silence if it cannot get it: a missed period is an inaudible
+// gap, where blocking would be a stall in the audio device. It allocates
+// nothing and calls nothing that might.
+
+constexpr int      kBusRate     = 44100;
+constexpr int      kBusChannels = 2;
+constexpr size_t   kMaxVoices   = 64;
+
+// A sound a mod started. The mod id rides along so one mod cannot stop, mute
+// or query another's -- the handle alone would be forgeable by counting.
+struct ModVoice {
+    std::string        owner;
+    std::vector<float> samples;         // interleaved stereo at kBusRate
+    size_t             cursor   = 0;    // next sample index to mix
+    float              volume   = 1.0f; // what the mod asked for, 0..1
+    bool               active   = false;
 };
 
-std::unordered_map<uint32_t, ModSound> g_modSounds;
-uint32_t                               g_nextModSound = 1;
+std::mutex                              g_voiceLock;
+std::unordered_map<uint32_t, ModVoice>  g_voices;
+uint32_t                                g_nextModSound = 1;
 
-/** Reap finished one-shots, so a mod that fires and forgets does not leak. */
+AudioStream g_bus{};
+bool        g_busReady = false;
+
+// Read on the audio thread, written once a frame by pumpModAudio. Plain
+// atomics rather than a call into Audio: the singleton's accessors are not
+// written for another thread, and a slider read mid-drag is not worth a lock
+// held across the mixer.
+std::atomic<float> g_sfxGain{1.0f};
+std::atomic<float> g_masterGain{1.0f};
+
+// What the mixer last produced, for OD_MOD_AUDIO_DEBUG=1. Written on the
+// audio thread as plain atomics and PRINTED on the main thread: a printf in
+// the mixer would be a diagnostic that causes the dropouts it is there to
+// find. Peak is scaled by 1000 because there is no atomic<float> fetch_max.
+std::atomic<unsigned> g_dbgPeakMilli{0};
+std::atomic<unsigned> g_dbgVoices{0};
+std::atomic<unsigned> g_dbgPeriods{0};
+
+// The audio thread asks for `frames` stereo frames. Sum every voice, advance
+// it, and mark the finished ones -- reaping happens on the main thread, since
+// freeing a vector here would allocate.
+void mixModBus(void* buffer, unsigned int frames) {
+    float* out = static_cast<float*>(buffer);
+    const size_t wanted = static_cast<size_t>(frames) * kBusChannels;
+
+    std::unique_lock<std::mutex> lock(g_voiceLock, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        for (size_t i = 0; i < wanted; ++i) out[i] = 0.0f;
+        return;
+    }
+
+    for (size_t i = 0; i < wanted; ++i) out[i] = 0.0f;
+
+    const float bus = g_sfxGain.load(std::memory_order_relaxed) *
+                      g_masterGain.load(std::memory_order_relaxed);
+
+    for (auto& kv : g_voices) {
+        ModVoice& v = kv.second;
+        if (!v.active) continue;
+        const float gain = v.volume * bus;
+        size_t n = wanted;
+        if (v.cursor + n > v.samples.size()) n = v.samples.size() - v.cursor;
+        for (size_t i = 0; i < n; ++i) out[i] += v.samples[v.cursor + i] * gain;
+        v.cursor += n;
+        if (v.cursor >= v.samples.size()) v.active = false;
+    }
+
+    unsigned peakMilli = 0, sounding = 0;
+    for (auto& kv : g_voices) if (kv.second.active) ++sounding;
+    for (size_t i = 0; i < wanted; ++i) {
+        const float a = out[i] < 0.0f ? -out[i] : out[i];
+        const unsigned m = (unsigned)(a * 1000.0f);
+        if (m > peakMilli) peakMilli = m;
+    }
+    if (peakMilli > g_dbgPeakMilli.load(std::memory_order_relaxed))
+        g_dbgPeakMilli.store(peakMilli, std::memory_order_relaxed);
+    g_dbgVoices.store(sounding, std::memory_order_relaxed);
+    g_dbgPeriods.fetch_add(1, std::memory_order_relaxed);
+
+    // Nothing here is the limiter yet. When it lands it clamps the summed bus
+    // in this spot, after every voice -- see docs/design/gearbox-audio.md.
+    for (size_t i = 0; i < wanted; ++i) {
+        if (out[i] > 1.0f) out[i] = 1.0f;
+        else if (out[i] < -1.0f) out[i] = -1.0f;
+    }
+}
+
+/** The bus is made on first use, so a game with no audio mod never has one. */
+bool ensureModBus() {
+    if (g_busReady) return true;
+    if (Audio::s_disabled || !IsAudioDeviceReady()) return false;
+    g_bus = LoadAudioStream(kBusRate, 32, kBusChannels);
+    if (!IsAudioStreamValid(g_bus)) return false;
+    SetAudioStreamCallback(g_bus, mixModBus);
+    PlayAudioStream(g_bus);
+    g_busReady = true;
+    return true;
+}
+
+/** Reap finished voices, so a mod that fires and forgets does not leak. */
 void modSoundsCollect() {
-    for (auto it = g_modSounds.begin(); it != g_modSounds.end();) {
-        if (IsSoundPlaying(it->second.sound)) { ++it; continue; }
-        UnloadSound(it->second.sound);
-        UnloadWave(it->second.wave);
-        it = g_modSounds.erase(it);
+    std::lock_guard<std::mutex> lock(g_voiceLock);
+    for (auto it = g_voices.begin(); it != g_voices.end();) {
+        if (it->second.active) ++it; else it = g_voices.erase(it);
     }
 }
 
 }  // namespace
 
+void Game::pumpModAudio() {
+    // The debug report comes FIRST, before the early return, or the one
+    // question it exists to answer -- "is anything reaching the bus?" --
+    // cannot be distinguished from "no bus was ever made".
+    static const bool debug = std::getenv("OD_MOD_AUDIO_DEBUG") != nullptr;
+    if (debug) {
+        static int dbgFrames = 0;
+        if (++dbgFrames % 60 == 0) {
+            const unsigned periods = g_dbgPeriods.exchange(0, std::memory_order_relaxed);
+            const unsigned peak    = g_dbgPeakMilli.exchange(0, std::memory_order_relaxed);
+            size_t voices = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_voiceLock);
+                voices = g_voices.size();
+            }
+            std::printf("[mod audio] bus=%s voices=%zu periods=%u peak=%.3f "
+                        "active-mods=%d\n",
+                        g_busReady ? "yes" : "no", voices, periods, peak / 1000.0f,
+                        ModManager::get().anyActive() ? 1 : 0);
+            std::fflush(stdout);
+        }
+    }
+
+    if (!g_busReady) return;
+    Audio& a = Audio::get();
+    g_sfxGain.store(a.sfxVolume(), std::memory_order_relaxed);
+    g_masterGain.store(a.masterVolume(), std::memory_order_relaxed);
+    modSoundsCollect();
+
+}
+
 void Game::unloadModSounds(const std::string& modId) {
-    for (auto it = g_modSounds.begin(); it != g_modSounds.end();) {
+    std::lock_guard<std::mutex> lock(g_voiceLock);
+    for (auto it = g_voices.begin(); it != g_voices.end();) {
         if (!modId.empty() && it->second.owner != modId) { ++it; continue; }
-        StopSound(it->second.sound);
-        UnloadSound(it->second.sound);
-        UnloadWave(it->second.wave);
-        it = g_modSounds.erase(it);
+        it = g_voices.erase(it);
     }
 }
 
@@ -1547,53 +1683,59 @@ void Game::installModBridges() {
         // driving a huge allocation in the host. See SECURITY.md on the decoder
         // boundary.
         if (bytes.empty() || bytes.size() > 32u * 1024 * 1024) return 0;
+        if (!ensureModBus()) return 0;
 
+        Wave wave = LoadWaveFromMemory(ext.c_str(), bytes.data(), (int)bytes.size());
+        if (!wave.data) return 0;
+
+        // Everything on the bus is one format, so the mixer is a sum and not a
+        // resampler. Done here on the main thread, once per sound, rather than
+        // per period on the audio thread.
+        WaveFormat(&wave, kBusRate, 32, kBusChannels);
+        if (!wave.data || wave.frameCount == 0) { UnloadWave(wave); return 0; }
+
+        ModVoice voice;
+        voice.owner  = owner;
+        voice.volume = volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume);
+        voice.active = true;
+        const size_t count = (size_t)wave.frameCount * kBusChannels;
+        voice.samples.assign(static_cast<const float*>(wave.data),
+                             static_cast<const float*>(wave.data) + count);
+        UnloadWave(wave);
+
+        std::lock_guard<std::mutex> lock(g_voiceLock);
         // A mod that never stops its sounds must not grow the table forever.
-        modSoundsCollect();
-        if (g_modSounds.size() >= 64) return 0;
-
-        ModSound entry;
-        entry.owner = owner;
-        entry.wave  = LoadWaveFromMemory(ext.c_str(), bytes.data(), (int)bytes.size());
-        if (!entry.wave.data) return 0;
-
-        entry.sound = LoadSoundFromWave(entry.wave);
-        if (!entry.sound.frameCount) {
-            UnloadWave(entry.wave);
-            return 0;
+        for (auto it = g_voices.begin(); it != g_voices.end();) {
+            if (it->second.active) ++it; else it = g_voices.erase(it);
         }
-
-        // Through the player's sfx slider, not around it: a mod is not entitled
-        // to be louder than the game the player turned down.
-        Audio& a = Audio::get();
-        SetSoundVolume(entry.sound, volume * a.sfxVolume() * a.masterVolume());
-        PlaySound(entry.sound);
+        if (g_voices.size() >= kMaxVoices) return 0;
 
         const uint32_t handle = g_nextModSound++;
-        g_modSounds[handle] = entry;
+        g_voices.emplace(handle, std::move(voice));
         return handle;
     };
 
     audio.stop = [](const std::string& owner, uint32_t handle) {
-        auto it = g_modSounds.find(handle);
-        if (it == g_modSounds.end() || it->second.owner != owner) return;
-        StopSound(it->second.sound);
-        UnloadSound(it->second.sound);
-        UnloadWave(it->second.wave);
-        g_modSounds.erase(it);
+        std::lock_guard<std::mutex> lock(g_voiceLock);
+        auto it = g_voices.find(handle);
+        if (it == g_voices.end() || it->second.owner != owner) return;
+        g_voices.erase(it);
     };
 
     audio.setVolume = [](const std::string& owner, uint32_t handle, float volume) {
-        auto it = g_modSounds.find(handle);
-        if (it == g_modSounds.end() || it->second.owner != owner) return;
-        Audio& a = Audio::get();
-        SetSoundVolume(it->second.sound, volume * a.sfxVolume() * a.masterVolume());
+        std::lock_guard<std::mutex> lock(g_voiceLock);
+        auto it = g_voices.find(handle);
+        if (it == g_voices.end() || it->second.owner != owner) return;
+        // The player's sliders are applied in the mixer, not here: they move
+        // while a sound is playing and baking them in would freeze them.
+        it->second.volume = volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume);
     };
 
     audio.isPlaying = [](const std::string& owner, uint32_t handle) -> bool {
-        auto it = g_modSounds.find(handle);
-        if (it == g_modSounds.end() || it->second.owner != owner) return false;
-        return IsSoundPlaying(it->second.sound);
+        std::lock_guard<std::mutex> lock(g_voiceLock);
+        auto it = g_voices.find(handle);
+        if (it == g_voices.end() || it->second.owner != owner) return false;
+        return it->second.active;
     };
 
     audio.stopAll = [this](const std::string& owner) { unloadModSounds(owner); };
@@ -1870,7 +2012,7 @@ void Game::drawModPanels() {
     ui.clearCommands();
     for (auto& p : ui.panels()) {
         if (!p.visible) continue;
-        float h = (float)std::max(60u, p.minH);
+        float h = (float)std::max<uint32_t>(60u, p.minH);
         if (y + h > (float)m_screenH - 16.0f) { p.visible = false; continue; }
         p.x = x; p.y = y; p.w = panelW; p.h = h;
 
@@ -2739,7 +2881,8 @@ double Game::modShipLat(int sid) const { return modShipExists(sid) ? m_ships[sid
 int Game::modShipHealth(int sid) const { return modShipExists(sid) ? m_ships[sid].health : 0; }
 int Game::modShipCrew(int sid) const { return modShipExists(sid) ? m_ships[sid].crew : 0; }
 double Game::modShipRange(int sid) const {
-    return modShipExists(sid) ? (double)shipMaxRangePx(m_ships[sid]) : 0.0;
+    // Mods are told full-resolution pixels, whatever raster the game loaded.
+    return modShipExists(sid) ? (double)shipMaxRangePx(m_ships[sid]) * odmap::rasterDivisor() : 0.0;
 }
 
 int Game::modArmyStackCount(int pid) const {

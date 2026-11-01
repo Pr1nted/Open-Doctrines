@@ -1,3 +1,8 @@
+// Before any header that might pull in <windows.h>: its min/max macros would
+// otherwise mangle std::max/std::min (MSVC C2589) later in this file.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "SaveManager.h"
 #include "util/WebPersist.h"
 #include "miniz.h"
@@ -14,6 +19,7 @@
 #include <cmath>
 #include <ctime>
 #include <random>
+#include <set>
 
 #ifdef _WIN32
 #include <io.h>
@@ -23,6 +29,92 @@
 #ifdef OD_HAS_P2
 #include "odseal.h"
 #endif
+
+#if defined(__EMSCRIPTEN__)
+// No durable disk here: the save lands in MEMFS/IDBFS and odPersistMark() is
+// what carries it across a tab close. fsync would be a no-op at best.
+#elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+// ─── Atomic, durable file replacement ────────────────────
+//
+// A save that survives the PROGRAM being killed is not the same as one that
+// survives the MACHINE being killed. The temp-file-then-rename below already
+// gives the first: a crash mid-write leaves the half-written .part and the real
+// save untouched. The second needs fsync, because a rename can reach the disk
+// while the bytes it points at are still in a write-back cache -- after a power
+// cut the directory then holds a save-sized file full of nothing. fsync orders
+// the two: data first, then the rename over the old file.
+//
+// Best-effort by design. A platform that cannot fsync (or the web, which has no
+// durable disk to fsync to) still gets the atomic rename, which is what stops a
+// torn write from being read as a valid save.
+namespace {
+
+void fsyncFile(const std::string& path) {
+#if defined(__EMSCRIPTEN__)
+    (void)path;
+#elif defined(_WIN32)
+    // GENERIC_WRITE, not READ: FlushFileBuffers requires write access on the
+    // handle, and the .part was just written and closed, so reopening it for
+    // write to flush is exactly right.
+    HANDLE h = CreateFileA(path.c_str(), GENERIC_WRITE,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h != INVALID_HANDLE_VALUE) { FlushFileBuffers(h); CloseHandle(h); }
+#else
+    int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd >= 0) { ::fsync(fd); ::close(fd); }
+#endif
+}
+
+// The rename itself is only durable once the DIRECTORY entry is flushed. POSIX
+// only: on Windows a completed rename is already durable, and the web has no
+// directory to sync.
+void fsyncDir(const std::string& path) {
+#if !defined(__EMSCRIPTEN__) && !defined(_WIN32)
+    const size_t slash = path.find_last_of('/');
+    const std::string dir = (slash == std::string::npos) ? std::string(".")
+                          : (slash == 0)                 ? std::string("/")
+                          :                                path.substr(0, slash);
+    int fd = ::open(dir.c_str(), O_RDONLY);
+    if (fd >= 0) { ::fsync(fd); ::close(fd); }
+#else
+    (void)path;
+#endif
+}
+
+// Swap a freshly finalized `.part` over the real save, atomically and durably.
+// The caller has already finalized and closed the writer on `tmpPath`. On any
+// failure the .part is removed and the existing save is left exactly as it was,
+// so a failed save never costs the player the last good one.
+bool commitReplace(const std::string& tmpPath, const std::string& finalPath) {
+    fsyncFile(tmpPath);
+#ifdef _WIN32
+    // MSVC's rename refuses an existing target, so the old file goes first. The
+    // window this opens is far shorter than the rewrite that preceded it, and
+    // the .part is intact throughout.
+    std::remove(finalPath.c_str());
+#endif
+    if (std::rename(tmpPath.c_str(), finalPath.c_str()) != 0) {
+        std::remove(tmpPath.c_str());
+        return false;
+    }
+    fsyncDir(finalPath);
+    return true;
+}
+
+}  // namespace
 
 // ─── Binary pack helpers ─────────────────────────────────
 
@@ -1317,18 +1409,10 @@ bool SaveManager::createSave(const std::string& odsvPath,
     }
     mz_zip_writer_end(&zip);
 
-    // The same rename as appendTurn, for the same reason: MSVC's rename fails
-    // if the target exists, so the old file goes first on Windows.
-#ifdef _WIN32
-    std::remove(odsvPath.c_str());
-#endif
-    if (std::rename(tmpPath.c_str(), odsvPath.c_str()) != 0) {
-        std::remove(tmpPath.c_str());
-        return false;
-    }
-    return true;
+    // Flushed, then swapped in atomically -- see commitReplace.
+    return commitReplace(tmpPath, odsvPath);
 }
- 
+
 // ─── Append a turn delta ─────────────────────────────────
  
 bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta,
@@ -1560,18 +1644,9 @@ bool SaveManager::appendTurn(const std::string& odsvPath, const TurnDelta& delta
     mz_zip_writer_end(&newZip);
     mz_zip_reader_end(&srcZip);
 
-    // Only now does the save on disk change. std::rename replaces the target
-    // atomically on POSIX; on Windows MSVC's rename fails if the target
-    // exists, so the old file goes first and the small window that opens is
-    // still far shorter than the whole rewrite it replaces.
-#ifdef _WIN32
-    std::remove(odsvPath.c_str());
-#endif
-    if (std::rename(tmpPath.c_str(), odsvPath.c_str()) != 0) {
-        std::remove(tmpPath.c_str());
-        return false;
-    }
-    return true;
+    // Only now does the save on disk change: the new archive is flushed and
+    // renamed over the old one in one durable step. See commitReplace.
+    return commitReplace(tmpPath, odsvPath);
 }
 
 // ─── Update last_played ──────────────────────────────────
@@ -1616,9 +1691,12 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     }
     if (odmData.empty()) return false;
 
-    // Build new archive
+    // Build new archive. To a .part, never straight to the save: init_file
+    // truncates its target the instant it opens, so writing in place turned a
+    // crash during a timestamp touch into a destroyed world. See commitReplace.
+    const std::string tmpPath = odsvPath + ".part";
     mz_zip_archive newZip{};
-    if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
+    if (!mz_zip_writer_init_file(&newZip, tmpPath.c_str(), 0))
         return false;
 
     // Stored, not deflated: map.odmap is itself a zip of already-compressed
@@ -1675,9 +1753,13 @@ bool SaveManager::updateLastPlayed(const std::string& odsvPath, const SaveMetada
     idxStr += "]}\n";
     zipAdd(&newZip, "index.json", idxStr.data(), idxStr.size(), MZ_BEST_COMPRESSION);
 
-    mz_zip_writer_finalize_archive(&newZip);
+    if (!mz_zip_writer_finalize_archive(&newZip)) {
+        mz_zip_writer_end(&newZip);
+        std::remove(tmpPath.c_str());
+        return false;
+    }
     mz_zip_writer_end(&newZip);
-    return true;
+    return commitReplace(tmpPath, odsvPath);
 }
 
 // ─── Read metadata ───────────────────────────────────────
@@ -1745,6 +1827,37 @@ static SaveMetadata parseMetadataFromZip(const std::vector<uint8_t>& zipData) {
     if (held > meta.turnCount) meta.turnCount = held;
     mz_zip_reader_end(&zip);
     return meta;
+}
+
+bool SaveManager::turnSequenceOk(const std::string& odsvPath, int* highestOut) {
+    if (highestOut) *highestOut = 0;
+    const std::vector<uint8_t> zipData = readFile(odsvPath);
+    if (zipData.empty()) return true;     // no file, no turns: trivially in order
+    mz_zip_archive zip{};
+    if (!mz_zip_reader_init_mem(&zip, zipData.data(), zipData.size(), 0)) return false;
+
+    int highest = 0;
+    bool duplicate = false;
+    std::set<int> seen;
+    const int fc = (int)mz_zip_reader_get_num_files(&zip);
+    for (int i = 0; i < fc; ++i) {
+        mz_zip_archive_file_stat st{};
+        if (!mz_zip_reader_file_stat(&zip, i, &st)) continue;
+        int n = 0;
+        if (std::sscanf(st.m_filename, "turns/t_%d.dat", &n) == 1 && n >= 1) {
+            if (!seen.insert(n).second) duplicate = true;
+            if (n > highest) highest = n;
+        }
+    }
+    mz_zip_reader_end(&zip);
+    if (highestOut) *highestOut = highest;
+
+    // Distinct turn ids, all in [1, highest], as many of them as `highest`:
+    // that can only be the full run 1..highest with nothing missing and nothing
+    // repeated. A gap (12 turns, t_00007 absent) fails here, which is what the
+    // forward-recovery replay cannot see -- it stops at the first hole and drops
+    // everything after it in silence.
+    return !duplicate && (int)seen.size() == highest;
 }
 
 SaveMetadata SaveManager::readMetadata(const std::string& odsvPath) {
@@ -1952,8 +2065,10 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
     }
     if (odmData.empty()) return false;
 
+    // A .part, not the save itself: init_file truncates on open. See commitReplace.
+    const std::string tmpPath = odsvPath + ".part";
     mz_zip_archive newZip{};
-    if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
+    if (!mz_zip_writer_init_file(&newZip, tmpPath.c_str(), 0))
         return false;
 
     // Stored, not deflated: map.odmap is itself a zip of already-compressed
@@ -1986,9 +2101,13 @@ bool SaveManager::updatePlayerCountry(const std::string& odsvPath, int playerCou
         }
     }
 
-    mz_zip_writer_finalize_archive(&newZip);
+    if (!mz_zip_writer_finalize_archive(&newZip)) {
+        mz_zip_writer_end(&newZip);
+        std::remove(tmpPath.c_str());
+        return false;
+    }
     mz_zip_writer_end(&newZip);
-    return true;
+    return commitReplace(tmpPath, odsvPath);
 }
 
 // ─── Write state.json into .odsv ─────────────────────────
@@ -2055,8 +2174,10 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
         mz_zip_reader_end(&tmpZip);
     }
 
+    // A .part, not the save itself: init_file truncates on open. See commitReplace.
+    const std::string tmpPath = odsvPath + ".part";
     mz_zip_archive newZip{};
-    if (!mz_zip_writer_init_file(&newZip, odsvPath.c_str(), 0))
+    if (!mz_zip_writer_init_file(&newZip, tmpPath.c_str(), 0))
         return false;
 
     // Stored, not deflated: map.odmap is itself a zip of already-compressed
@@ -2110,9 +2231,13 @@ bool SaveManager::writeState(const std::string& odsvPath, const std::string& sta
         zipAdd(&newZip, name.c_str(), c.data(), c.size(), MZ_BEST_COMPRESSION);
     }
 
-    mz_zip_writer_finalize_archive(&newZip);
+    if (!mz_zip_writer_finalize_archive(&newZip)) {
+        mz_zip_writer_end(&newZip);
+        std::remove(tmpPath.c_str());
+        return false;
+    }
     mz_zip_writer_end(&newZip);
-    return true;
+    return commitReplace(tmpPath, odsvPath);
 }
 
 // ─── Read state.json from .odsv ──────────────────────────
