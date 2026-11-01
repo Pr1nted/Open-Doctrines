@@ -137,7 +137,7 @@ void ModManager::rescan() {
         auto old = std::find_if(kept.begin(), kept.end(),
                                 [&](const ModEntry& k) { return k.path == full; });
 
-        auto pkg = std::make_unique<ModPackage>();
+        auto pkg = std::make_shared<ModPackage>();
         ModLoadResult r = pkg->open(full);
         if (r != ModLoadResult::Ok) {
             e.id = fn;
@@ -259,7 +259,7 @@ void ModManager::activate(ModEntry& e) {
     // may touch rather than a second check somewhere downstream.
     grants &= modSideGrantMask(e.manifest.side, m_multiplayer);
 
-    e.instance = ModRuntime::get().instantiate(*e.package, grants, err);
+    e.instance = ModRuntime::get().instantiate(e.package, grants, err);
     if (!e.instance) { fail(e, err); return; }
 
     uint32_t ret = 0;
@@ -451,7 +451,7 @@ void ModManager::reloadOne(size_t index) {
 
     // Re-read from disk: reloading a single mod is how a modder picks up a
     // rebuild, so the file is expected to have changed.
-    auto pkg = std::make_unique<ModPackage>();
+    auto pkg = std::make_shared<ModPackage>();
     if (pkg->open(e.path) != ModLoadResult::Ok) {
         e.warnings = pkg->warnings();
         fail(e, pkg->diagnostic());
@@ -580,6 +580,11 @@ void ModManager::preTurn(int turn) {
     // alternating turns are taking turns, not fighting.
     ModConflicts::get().beginTurn(turn);
     if (m_mods.empty()) return;
+    // A fresh network budget for the turn (see ModInstance::chargeNet). Every
+    // active mod, not only the GAMEPROCESS ones below -- a mod can send from any
+    // hook, so its budget must be refilled whether or not it runs a turn hook.
+    for (auto& e : m_mods)
+        if (e.state == ModState::Active && e.instance) e.instance->resetNetBudget();
     uint32_t args[1] = {(uint32_t)turn};
     for (auto& e : m_mods) {
         if (e.state != ModState::Active || !e.instance) continue;

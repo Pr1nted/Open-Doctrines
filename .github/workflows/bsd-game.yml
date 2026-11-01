@@ -44,6 +44,9 @@ on:
     branches: [main]
     tags-ignore: ["**"]        # a tag is release-game.yml's, which calls this
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: "17 3 * * *"          # the nightly full run, as test.yml
   workflow_call:
     inputs:
       emulated:
@@ -74,8 +77,15 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}
+      run: ${{ steps.t.outputs.bsd }}
     steps:
       - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      # Whether this change can break the BSDs at all (tools/ci_plan.py). Three
+      # VMs on every pull request was most of this workflow's cost; one that
+      # touches none of their paths leaves them to the nightly run on main.
+      - id: t
+        run: python3 tools/ci_plan.py
       # The names this workflow publishes, the updater's keys, the download
       # page and the server list, checked as one (see the script). Here
       # because this is the workflow that adds platforms most often, and it
@@ -100,9 +110,11 @@ jobs:
             {"name": "openbsd-arm64", "bsd": "openbsd", "arch": "aarch64", "machine": "aarch64", "odseal": "openbsd-aarch64", "timeout": 350},
             {"name": "netbsd-arm64",  "bsd": "netbsd",  "arch": "aarch64", "machine": "aarch64", "odseal": "netbsd-aarch64",  "timeout": 350},
           ]
-          # Pull requests build amd64 only; everything else all six unless
-          # told otherwise.
-          if os.environ["EVENT"] == "pull_request" or os.environ.get("EMULATED") == "false":
+          # Pull requests and the nightly run build amd64 only: the arm64
+          # entries are emulated, up to six hours each, and three of them
+          # would hold three runner slots through the night. A release (or a
+          # manual run) builds all six unless told otherwise.
+          if os.environ["EVENT"] in ("pull_request", "schedule") or os.environ.get("EMULATED") == "false":
               entries = [e for e in entries if e["arch"] == "x86_64"]
           for e in entries:
               e["artifact"] = "OpenDoctrines-" + e["name"]
@@ -112,6 +124,7 @@ jobs:
   build:
     name: ${{ matrix.name }}
     needs: plan
+    if: needs.plan.outputs.run == 'true'
     # 24.04, not 22.04: 22.04's QEMU predates the CPU model vmactions' Arm
     # images ask for, and OpenBSD arm64 died at boot with "unable to find CPU
     # model 'neoverse-n1'".

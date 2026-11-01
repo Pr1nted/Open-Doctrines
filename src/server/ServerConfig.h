@@ -116,6 +116,16 @@ struct ServerAutomation {
 
     /** Save the world every N turns. 0 = only when the game ends. */
     uint32_t autosaveEveryTurns = 1;
+
+    /**
+     * Release a disconnected player's seat after this many seconds. 0 = never.
+     *
+     * A lobby that runs for days accumulates seats held for people who are not
+     * coming back. This lets them go automatically, so a late arrival can take
+     * their country -- or the AI can, without an operator having to type
+     * `release` for every one.
+     */
+    uint32_t idleReleaseSeconds = 0;
 };
 
 /** Everything a dedicated server is set to. */
