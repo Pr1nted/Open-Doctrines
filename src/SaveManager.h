@@ -212,6 +212,11 @@ public:
     static SaveMetadata readMetadata(const std::string& odsvPath);
     // Read a specific turn's delta
     static TurnDelta readTurn(const std::string& odsvPath, int turn);
+    // Do the turns/t_NNNNN.dat entries form a contiguous 1..N run with no gaps
+    // or duplicates? A gap means replay stops early and loses every turn past
+    // it, so a save that fails this is damaged. `highestOut`, when given, gets
+    // the largest turn number present (0 for a new world) regardless.
+    static bool turnSequenceOk(const std::string& odsvPath, int* highestOut = nullptr);
     // Update only the last_played timestamp (also accepts updated meta)
     static bool updateLastPlayed(const std::string& odsvPath, const SaveMetadata* updatedMeta = nullptr);
     // Update the player country ID in metadata
