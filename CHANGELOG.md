@@ -1,5 +1,26 @@
 # Changelog
 
+## sdk 1.5
+
+Two imports and one capability, all additive. A mod built against 1.4 runs
+unchanged: `tools/check_abi_compat.py` passes against every shipped ABI from
+1.0 onward, and nothing was renamed, removed or re-signed.
+
+**Reshaping the map -- `Map.Write`.** `morph_province` hands the pixels inside
+an SVG path to a province (optionally only within its own land), and `terrain`
+raises sea to land or sinks land to sea along a path. Borders, adjacency, the
+political texture and the labels follow on their own. It is a capability of its
+own because it changes the map every player is looking at; the same two
+operations are open to map scripts as `morph` and `terrain` (#OD/MapEngine/4).
+
+**A wider capability mask.** `Map.Write` took bit 30 of 32, so the mask is now
+64 bits, before the last bit was spent rather than after. Grants saved by an
+older build load unchanged.
+
+**Safer to run.** Call-time guards on every import, signed releases, checked
+handle lifetimes, mod audio mixed on one bus, and fuel metered on the web
+build so a hook cannot hang the tab.
+
 ## game 1.3.3b
 
 The biggest release yet by reach: Open Doctrines now runs on more than thirty
@@ -66,8 +87,9 @@ everything the game does for players who see, hear or play differently.
 - **A readable vector font** draws the interface by default; the original pixel
   font is still a choice, and you can import a font of your own from Settings
   (checked strictly before it is used).
-- **Mods can reshape the map** at runtime -- morph provinces and edit terrain --
-  through the new Map.Write ABI, and the mod sandbox is hardened.
+- **Mods and map scripts can reshape the map** at runtime -- morph provinces and
+  edit terrain -- through Gearbox 1.5's new `Map.Write` capability, or `morph` and
+  `terrain` in a map script (`#OD/MapEngine/4`). The mod sandbox is hardened.
 - **Fog-of-war saves are sealed** in games built from source with the prebuilt libraries, as they are in official builds.
 - **The economy breakdown** shows monuments and sector flows.
 - **Built on raylib 6.2.**

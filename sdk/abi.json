@@ -31,7 +31,7 @@
     "1.4 also completes Diplomacy: alliances, non-aggression pacts and guarantees proposed and broken through the request queue the player's own buttons use, ceasefires and trades with their terms -- goods included -- through the deal screen's own path, and claims. Military.Write gains a withdrawal order, refused unless the country has a battle of its own there.",
     "1.4 adds monuments to the reads (province_monument, _level, _active under GameState.Read) and, under Economy.Read and Economy.Write, the economy surface that grew around them: building, upgrading, moving and switching monuments; sector taxes and subsidies; the goods economy's stockpiles, demand, shortfall and living standards, with \"good\" and \"raw\" enums mirroring the game's own; directed factories; and state industry. Military.Read gains combat width and who is attacking a province. EVERY WRITE TAKES THE ACTING COUNTRY EXPLICITLY and goes through the rule the player's click goes through, so cost, research, ownership and the compass-set limits bind a mod exactly as they bind a player -- a mod cannot do anything a player governing that country could not."
   ],
-  "gearbox": "1.4",
+  "gearbox": "1.5",
   "schema": 1,
   "modules": [
     {
@@ -7993,7 +7993,7 @@
   "constants": {
     "GEARBOX_INVALID": "0xFFFFFFFF",
     "GEARBOX_MAJOR": 1,
-    "GEARBOX_MINOR": 4
+    "GEARBOX_MINOR": 5
   },
   "env_struct": {
     "$comment": "Layout is ABI. Fields are only ever appended, never reordered or resized. Total size is 28 bytes on wasm32.",

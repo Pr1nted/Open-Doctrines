@@ -10,7 +10,7 @@
 /* ------------------------------------------------- constants -- */
 #define GEARBOX_INVALID 0xFFFFFFFFu
 #define GEARBOX_MAJOR 1
-#define GEARBOX_MINOR 4
+#define GEARBOX_MINOR 5
 
 typedef enum {
     GEARBOX_LOG_TRACE  = 0,
