@@ -129,10 +129,10 @@ the same one and wonder why it is not here.
 
 ### Atkinson Hyperlegible
 
-- **Files:** `data/fonts/AtkinsonHyperlegible-Regular.ttf`, licence text in `data/fonts/AtkinsonHyperlegible-OFL.txt`
-- **Licence:** SIL OFL 1.1 (Copyright 2020 Braille Institute of America, Inc.)
-- **Source:** <https://github.com/googlefonts/atkinson-hyperlegible>
-- **Notes:** The *Hyperlegible* choice under Settings → Display → Font, for low-vision players. Bundled unmodified with its licence, as the OFL requires; it is not sold on its own.
+- **File:** `data/fonts/AtkinsonHyperlegible-Regular.ttf`
+- **Licence:** SIL OFL 1.1
+- **Source:** <https://www.brailleinstitute.org/freefont/>
+- **Notes:** The Hyperlegible font choice (Settings -> Display -> Font): the Braille Institute's face for low vision, every letter shaped to differ from its neighbours. The licence ships beside it as data/fonts/AtkinsonHyperlegible-OFL.txt.
 
 ## Artwork
 

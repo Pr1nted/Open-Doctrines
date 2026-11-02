@@ -89,6 +89,7 @@ $ Flag artwork from Wikimedia Commons. Per-file licences and required attributio
 ---
 - DejaVu Sans (Bitstream Vera Fonts License)
 - GNU Unifont (SIL OFL 1.1)
+- Atkinson Hyperlegible (SIL OFL 1.1)
 @
 @Artwork
 ---

@@ -205,6 +205,13 @@
       "license": "SIL OFL 1.1",
       "url": "https://unifoundry.com/unifont/",
       "what": "CJK and fallback glyph coverage. Unifont is dual-licensed OFL 1.1 / GPLv2+ with a font-embedding exception; OpenDoctrines takes the OFL grant, under which the font may be bundled with and sold as part of a larger work provided it is not sold on its own."
+    },
+    {
+      "name": "Atkinson Hyperlegible",
+      "file": "data/fonts/AtkinsonHyperlegible-Regular.ttf",
+      "license": "SIL OFL 1.1",
+      "url": "https://www.brailleinstitute.org/freefont/",
+      "what": "The Hyperlegible font choice (Settings -> Display -> Font): the Braille Institute's face for low vision, every letter shaped to differ from its neighbours. The licence ships beside it as data/fonts/AtkinsonHyperlegible-OFL.txt."
     }
   ],
   "art": [
