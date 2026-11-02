@@ -74,3 +74,12 @@ python3 tools/package.py --binary build/OpenDoctrines --out "dist/$artifact" --z
 echo "=== packaged ==="
 ls -lh dist/
 test -d "dist/$artifact" || { echo "no packaged tree"; exit 1; }
+
+# OD_DROP_BUILD=1: delete the build tree once dist/ is packaged. The VM
+# actions copy the whole work tree back to the host, and on an emulated arm64
+# guest that rsync of build/ is slow enough that openbsd-arm64 hit its job
+# limit after the package was already made. The host needs only dist/.
+if [ "${OD_DROP_BUILD:-0}" = 1 ]; then
+  rm -rf build _deps
+  echo "=== build tree dropped; only dist/ is copied back ==="
+fi

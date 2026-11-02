@@ -107,7 +107,7 @@ jobs:
             {"name": "openbsd-amd64", "bsd": "openbsd", "arch": "x86_64",  "machine": "x86_64",  "odseal": "openbsd-amd64",   "timeout": 120},
             {"name": "netbsd-amd64",  "bsd": "netbsd",  "arch": "x86_64",  "machine": "x86_64",  "odseal": "netbsd-amd64",    "timeout": 120},
             {"name": "freebsd-arm64", "bsd": "freebsd", "arch": "aarch64", "machine": "aarch64", "odseal": "freebsd-aarch64", "timeout": 350},
-            {"name": "openbsd-arm64", "bsd": "openbsd", "arch": "aarch64", "machine": "aarch64", "odseal": "openbsd-aarch64", "timeout": 350},
+            {"name": "openbsd-arm64", "bsd": "openbsd", "arch": "aarch64", "machine": "aarch64", "odseal": "openbsd-aarch64", "timeout": 360},
             {"name": "netbsd-arm64",  "bsd": "netbsd",  "arch": "aarch64", "machine": "aarch64", "odseal": "netbsd-aarch64",  "timeout": 350},
           ]
           # Pull requests and the nightly run build amd64 only: the arm64
@@ -181,7 +181,7 @@ jobs:
               command -v $t >/dev/null || { echo "prepare failed: no $t"; exit 1; }
             done
           run: |
-            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            OD_DROP_BUILD=1 OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }}
 
       - name: Build and package (OpenBSD ${{ matrix.arch }})
@@ -225,7 +225,7 @@ jobs:
           # to install for them -- unlike FreeBSD, where they are ports.
           # OD_ENABLE_MODS=OFF: see the note at the top of this file.
           run: |
-            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            OD_DROP_BUILD=1 OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} -DOD_ENABLE_MODS=OFF
 
       - name: Build and package (NetBSD ${{ matrix.arch }})
@@ -289,7 +289,7 @@ jobs:
           # OD_ENABLE_MODS=OFF: see the note at the top of this file.
           run: |
             export PATH="/usr/pkg/sbin:/usr/pkg/bin:$PATH"
-            OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
+            OD_DROP_BUILD=1 OD_ACHIEVEMENT_KEYS="${{ vars.OD_ACHIEVEMENT_KEYS }}" \
               sh tools/bsd_game_build.sh ${{ matrix.artifact }} ${{ matrix.machine }} \
                 -DOD_ENABLE_MODS=OFF -DCMAKE_PREFIX_PATH=/usr/X11R7
 
