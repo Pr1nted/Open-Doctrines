@@ -1263,7 +1263,12 @@ int ScriptEngine::statementMinVersion(const std::string& kw) {
                                       "unless", "label", "jump", "spawn", "stop",
                                       "try", "catch", "endtry", "dialog"};
     // i18n-ignore
-    static const char* const kV3[] = {"wait", "morph", "terrain"};
+    static const char* const kV3[] = {"wait"};
+    // i18n-ignore -- 1.3.3b: reshaping the map. A 1.3.2b build runs version 3
+    // and has neither, so a script using them declares 4 and is refused there
+    // with "needs engine version 4" instead of failing on an unknown word.
+    static const char* const kV4[] = {"morph", "terrain"};
+    for (const char* k : kV4) if (kw == k) return 4;
     for (const char* k : kV3) if (kw == k) return 3;
     for (const char* k : kV2) if (kw == k) return 2;
     return 1;

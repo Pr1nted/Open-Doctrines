@@ -76,7 +76,7 @@ public:
     // Version 1 and 2 files still run: everything added is backward compatible,
     // and a file that declares an older version GETS that version's language,
     // which is what makes pinning mean something.
-    static const int ENGINE_VERSION = 3;
+    static const int ENGINE_VERSION = 4;
     static const int MIN_ENGINE_VERSION = 1;
 
     /**

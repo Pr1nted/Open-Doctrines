@@ -1,8 +1,8 @@
 # OpenDoctrines Map Scripting Engine
 
-## Version: 3 (OD/MapEngine/3)
+## Version: 4 (OD/MapEngine/4)
 
-Version 1 and 2 files still run: everything a later version ADDS is backward
+Version 1, 2 and 3 files still run: everything a later version ADDS is backward
 compatible.
 The header is not decoration, though — a file that declares version 1 gets
 version 1's language, and version 2 statements (`for`, `repeat`, `break`,
@@ -241,6 +241,8 @@ A cut with no type named comes off the largest formations first, so a partial
 reduction lands on the mass rather than wiping out a small specialist one.
 
 ### Reshaping the map (morph / terrain)
+
+*Engine version 4* (1.3.3b): a script using these declares `#OD/MapEngine/4`.
 
 A province's shape is not fixed for the life of the game. `morph` hands a
 province a shape and the pixels it covers become part of that province;
@@ -762,7 +764,7 @@ lands.
 ## Economy, monuments and doctrines
 
 ```
-#OD/MapEngine/3
+#OD/MapEngine/4
 if map.turn == 0
   # A starting state, so guarded: entry scripts run again on every load.
   set country.GER.sector_tax.oil 15            # in force from turn one

@@ -7555,7 +7555,7 @@ static const ScriptHint SCRIPT_HINTS[] = {
     {"list.",           "list.NAME.length / .front / .back"},
     {"item",            "current foreach value"},
     {"item.index",      "current foreach index"},
-    {"#OD/MapEngine/3", "entrypoint header: files carrying it auto-run; without it = library"},
+    {"#OD/MapEngine/4", "entrypoint header: files carrying it auto-run; without it = library"},
 };
 
 // Full in-IDE documentation, keyword by keyword. Mirrors docs/scripting.md
@@ -7573,7 +7573,7 @@ static const DocEntry SCRIPT_DOCS[] = {
      "on the next line. Suspension is NOT saved into save games: reloading a save\n"
      "re-runs entry scripts from the top and they re-suspend at their first false\n"
      "waitUntil, so code before a waitUntil should be safe to run more than once."},
-    {"#OD/MapEngine/3",
+    {"#OD/MapEngine/4",
      "Must be the first non-blank line of a file for it to be treated as an\n"
      "entrypoint (auto-run on map load). The trailing number is the engine version\n"
      "(3 is current; 1 and 2 still run, with the language of their version);\n"
