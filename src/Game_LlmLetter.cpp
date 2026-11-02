@@ -276,10 +276,12 @@ bool Game::tickLlmLetterWalk() {
         if (m_llmLetterFrame < 2) return true;
         if (!m_llmLetterShot.empty()) {
             // Absolute, for the reason in tickScreenshotTour: a relative name
-            // lands beside the executable on raylib's SDL backend.
+            // lands beside the executable on raylib's SDL backend. Taken by the
+            // next endFrame, before its swap, for the reason in m_frameCapturePath.
             std::error_code ec;
             const std::string shot = std::filesystem::absolute(m_llmLetterShot, ec).string();
-            TakeScreenshot(shot.c_str());
+            if (m_llmLetterFrame == 2) { m_frameCapturePath = shot; return true; }
+            if (!m_frameCapturePath.empty()) return true;
             printf("[LETTER] wrote %s\n", shot.c_str());
         }
         return false;

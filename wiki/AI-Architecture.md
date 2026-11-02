@@ -392,6 +392,13 @@ agreements. Without it, feature extraction would rescan the map once per country
 snapshotting each network's internal activations so the learning step later does
 not have to recompute them.
 
+The turn loop calls these three through `AIPlayer` (`src/ai/AIPlayer.h`), the
+interface a second engine would implement. `takeTurn` is handed a
+`sim::OrderSink`, and the executors issue their orders into it as `sim::Order`
+values (`src/sim/Order.h`) instead of pushing into `Game::m_pending*`
+themselves. The default sink applies each order at once, which is what the
+pushes did. See `docs/ai/REWORK_PLAN.md` for what still writes directly.
+
 ---
 
 ## 7. Answering diplomacy
@@ -1236,6 +1243,11 @@ them are only meaningful against the previous run:
   that is too loose, and it is visible in the log rather than silent.
 - `OD_AI_THREADS` overrides the learning thread count, mainly so the parallel and
   serial paths can be compared on one binary and one map.
+- `OD_AI_TRACE=<path>` writes every module decision as a line of JSON: input
+  features, the trunk's and policy head's activations, logits, mask, the sampled
+  distribution, the choice and the value estimate. It does not change any
+  decision. Format: `docs/ai/TRACE_FORMAT.md`. In code, attach any
+  `AITraceSink` with `AIPlayer::setTraceSink`.
 
 ---
 
@@ -1245,6 +1257,9 @@ them are only meaningful against the previous run:
 |---|---|
 | `src/ai/AISystem.h` | architecture, action menus, restraint constants, the experience record |
 | `src/ai/AISystem.cpp` | world summary, features, validity, execution, rewards, persistence |
+| `src/ai/AIPlayer.h` | the interface the turn loop drives an AI through |
+| `src/ai/AITrace.h/.cpp` | the decision trace sink and its `OD_AI_TRACE` file writer |
+| `src/sim/Order.h/.cpp`, `OrderApply.cpp` | `sim::Order`, its byte encoding, `apply`, and `OrderSink` |
 | `src/ai/NeuralNet.h/.cpp` | the network: forward pass, backward pass, Adam, batching, serialisation |
 | `src/Game_AITrain.cpp` | the self-play loop and the trainer dashboard |
 | `src/Game_TurnLogic.cpp` | where the turn calls into the AI, and where diplomacy is resolved |

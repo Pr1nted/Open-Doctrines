@@ -67,6 +67,20 @@ public:
     void pixelToLonLat(int px, int py, float& lon, float& lat) const;
     void lonLatToPixel(float lon, float lat, int& px, int& py) const;
 
+    /**
+     * The mask at the resolution the map was DRAWN at. The same as the above
+     * on a full world; on one loaded reduced (map/RasterScale.h) the loader
+     * kept the full-resolution bits as well -- 4 MB at 8192x4096 -- for the
+     * one reader that sampling would break: sea routing, whose straits can be
+     * a few pixels wide (Game::buildNavGrid). fullDivisor() is how many full
+     * pixels one loaded pixel spans.
+     */
+    int fullWidth() const { return m_fullMask.empty() ? m_width : m_fullWidth; }
+    int fullHeight() const { return m_fullMask.empty() ? m_height : m_fullHeight; }
+    int fullDivisor() const { return (m_fullMask.empty() || m_width <= 0) ? 1 : m_fullWidth / m_width; }
+    bool isLandFull(int pixelX, int pixelY) const;
+    void lonLatToFullPixel(float lon, float lat, int& px, int& py) const;
+
     const Image& getImage() const { return m_image; }
 
 private:
@@ -80,6 +94,9 @@ private:
     // is what isLand() reads, so the image only has to exist while something is
     // painting into it. See dropPixels().
     std::vector<unsigned char> m_landMask;
+    std::vector<unsigned char> m_fullMask;   ///< see fullWidth(); empty on a full world
+    int m_fullWidth = 0;
+    int m_fullHeight = 0;
 
     int m_width = 0;
     int m_height = 0;

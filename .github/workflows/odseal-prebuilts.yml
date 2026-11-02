@@ -123,6 +123,26 @@ jobs:
           - { name: illumos-amd64,   os: ubuntu-24.04, bsd: illumos, vm_arch: x86_64, timeout: 60 }
           # Haiku, x86-64: CMake names it Haiku and its processor x86_64.
           - { name: haiku-x86_64,    os: ubuntu-24.04, bsd: haiku,   vm_arch: x86_64, timeout: 60 }
+          # SerenityOS: cross-compiled with its own GNU toolchain, built from
+          # the commit other-os-game.yml pins and shared with it through the
+          # Actions cache. An hour the first time, seconds after.
+          - { name: serenityos-x86_64, os: ubuntu-24.04, serenity: x86_64, timeout: 150 }
+          # The PS Vita, by VitaSDK's arm-vita-eabi gcc (the pinned snapshot
+          # tools/vitasdk_install.sh takes). CMakeLists.txt asks for vita-arm.
+          - { name: vita-arm,          os: ubuntu-24.04, vita: true }
+          # DOS, by DJGPP's i586-pc-msdosdjgpp gcc (tools/dos_toolchain.sh, as
+          # other-os-game.yml uses). CMakeLists.txt asks for dos-i586. Its test
+          # RUNS: DOSBox-X executes the DOS build of tests/odseal_test.cpp.
+          - { name: dos-i586,          os: ubuntu-24.04, djgpp: true, timeout: 30 }
+          # The Wii, by devkitPPC's powerpc-eabi gcc inside devkitPro's image
+          # (the digest other-os-game.yml pins). CMakeLists.txt asks for wii-ppc.
+          - { name: wii-ppc,           os: ubuntu-24.04, wii: true, timeout: 30 }
+          # The 3DS, by devkitARM's arm-none-eabi gcc inside devkitPro's image
+          # (the digest other-os-game.yml pins). CMakeLists.txt asks for 3ds-arm.
+          - { name: 3ds-arm,           os: ubuntu-24.04, ctr: true, timeout: 30 }
+          # RISC OS, by GCCSDK's arm-riscos-gnueabihf gcc in the riscos-crossdev
+          # image (the digest other-os-game.yml pins). CMakeLists.txt asks for riscos-arm.
+          - { name: riscos-arm,        os: ubuntu-24.04, riscos: true, timeout: 30 }
 
     steps:
       - uses: actions/checkout@v5
@@ -350,6 +370,148 @@ jobs:
           prepare: pkgman install -y cmd:gcc
           run: CXX=g++ sh tools/odseal_bsd.sh
 
+      # ── SerenityOS ──
+      #
+      # The toolchain is SerenityOS's own (Toolchain/BuildGNU.sh), at the
+      # commit other-os-game.yml pins -- KEEP THE TWO IN STEP -- and the cache
+      # key is the one that job saves under, so whichever runs first builds it.
+      # A compiler is all this needs: the archive is one object file, so the
+      # sysroot only has to hold libc's headers, which link_libc_headers.cmake
+      # puts there in a second.
+      - uses: actions/checkout@v5
+        if: matrix.serenity
+        with:
+          repository: SerenityOS/serenity
+          ref: b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+          path: serenity
+      - name: SerenityOS toolchain (cache)
+        if: matrix.serenity
+        id: sertc
+        uses: actions/cache/restore@v4
+        with:
+          path: serenity/Toolchain/Local/x86_64
+          key: serenity-toolchain-x86_64-b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+      - name: Build the SerenityOS toolchain
+        if: matrix.serenity && steps.sertc.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake curl libmpfr-dev libmpc-dev libgmp-dev \
+            ninja-build texinfo libssl-dev zlib1g-dev gcc-14 g++-14
+          serenity/Toolchain/BuildGNU.sh --ci
+        env: { ARCH: x86_64, CC: gcc-14, CXX: g++-14 }
+      - name: Save the SerenityOS toolchain
+        if: matrix.serenity && steps.sertc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: serenity/Toolchain/Local/x86_64
+          key: serenity-toolchain-x86_64-b5d4da532a8c480da7e07d67c9263e4d35dbf0ed
+      - name: Build (SerenityOS x86_64)
+        if: matrix.serenity
+        shell: bash
+        run: |
+          set -e
+          ( cd serenity && cmake -DSERENITY_ARCH=x86_64 -DSERENITY_SYSROOT="$PWD/Build/x86_64/Root" \
+                -P Meta/CMake/link_libc_headers.cmake )
+          TC="$PWD/serenity/Toolchain/Local/x86_64/bin"
+          mkdir -p out
+          "$TC/x86_64-serenity-g++" -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer -fPIC \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC/x86_64-serenity-strip" --strip-unneeded odseal.o
+          "$TC/x86_64-serenity-ar" rcs out/libodseal.a odseal.o
+          rm -rf serenity
+
+      # ── PS Vita ──
+      - name: Build (PS Vita)
+        if: matrix.vita
+        shell: bash
+        run: |
+          set -e
+          bash tools/vitasdk_install.sh "$HOME/vitasdk"
+          TC="$HOME/vitasdk/bin"
+          mkdir -p out
+          "$TC/arm-vita-eabi-g++" -std=c++17 -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC/arm-vita-eabi-strip" --strip-unneeded odseal.o
+          "$TC/arm-vita-eabi-ar" rcs out/libodseal.a odseal.o
+
+      # ── DOS ──
+      #
+      # No -fvisibility (COFF has none) and no -fPIC (nothing is relocated at
+      # load on DOS); otherwise the flags every other archive is built with.
+      # <dirent.h> forced in: the sealed source includes it on systems that
+      # say they are Unix, and DJGPP has it but says it is MSDOS. And gnu++17,
+      # not c++17: DJGPP declares DIR, opendir and the rest of POSIX only when
+      # __STRICT_ANSI__ is off, which -std=c++17 turns on (the game itself is
+      # built as gnu++20, CMake's default).
+      - name: Build (DOS, DJGPP)
+        if: matrix.djgpp
+        shell: bash
+        run: |
+          set -e
+          bash tools/dos_toolchain.sh "$HOME/dos"
+          TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
+          mkdir -p out
+          "$TC-g++" -std=gnu++17 -O3 -fno-rtti -fomit-frame-pointer -include dirent.h \
+              -c guard/odseal.cpp -o odseal.o
+          "$TC-strip" --strip-unneeded odseal.o
+          "$TC-ar" rcs out/libodseal.a odseal.o
+
+      # ── THE WII ──
+      #
+      # In devkitPro's image, as the game is built. The machine flags are the
+      # ones its Wii.cmake gives every Wii program (-mrvl -mcpu=750 -meabi
+      # -mhard-float); a library built without them will not link into one.
+      - name: Build (Wii, devkitPPC)
+        if: matrix.wii
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            devkitpro/devkitppc@sha256:5dfd7bfb8174368261b4e82e1f8feba03fbeab3ed2370d67149c87c1f95af265 \
+            sh -c 'TC=$DEVKITPPC/bin/powerpc-eabi && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -mrvl -mcpu=750 -meabi -mhard-float \
+                -ffunction-sections -fdata-sections -D__wii__ -DGEKKO -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
+      # ── THE 3DS ──
+      #
+      # As the Wii, in devkitPro's devkitARM image, with the machine flags its
+      # 3DS.cmake gives every 3DS program (ARM11 MPCore, hard float, the
+      # thread pointer read in software).
+      - name: Build (3DS, devkitARM)
+        if: matrix.ctr
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            devkitpro/devkitarm@sha256:15b79ce75822c289538d8153da5fa7aafe5e6adc32ad8a575a197beca0f0761b \
+            sh -c 'TC=$DEVKITARM/bin/arm-none-eabi && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft \
+                -ffunction-sections -fdata-sections -D__3DS__ -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
+      # ── RISC OS ──
+      #
+      # In the riscos-crossdev image, with GCCSDK's own defaults for the CPU
+      # and float ABI: whatever it builds the game with, it builds this with.
+      - name: Build (RISC OS, GCCSDK)
+        if: matrix.riscos
+        shell: bash
+        run: |
+          set -e
+          mkdir -p out
+          docker run --rm -v "$PWD:/w" -w /w \
+            ghcr.io/adyoull/riscos-crossdev@sha256:fbc3abb0bcea23aba6231fe93fb0948ae4967db1712dd45a3dbb4c99d3665f5f \
+            sh -c 'set -e; TC=arm-riscos-gnueabihf && \
+              $TC-g++ -std=c++17 -O3 -fno-rtti -fomit-frame-pointer \
+                -ffunction-sections -fdata-sections -c guard/odseal.cpp -o odseal.o && \
+              $TC-strip --strip-unneeded odseal.o && $TC-ar rcs out/libodseal.a odseal.o'
+          sudo chown -R "$(id -u):$(id -g)" out
+
       - name: Drop the sealed source
         if: always()
         shell: bash
@@ -387,6 +549,21 @@ jobs:
               out/libodseal.a -o odseal_test
           qemu-${{ matrix.qemu }}-static ./odseal_test
 
+      # A DOS program runs in DOSBox-X, so DOS gets the same test as the native
+      # builds: the DJGPP build of tests/odseal_test.cpp, under CWSDPMI.
+      - name: Test the archive (DOS, in DOSBox-X)
+        if: matrix.djgpp
+        shell: bash
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dosbox-x xvfb
+          TC="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp"
+          mkdir -p dosrun
+          "$TC-g++" -std=gnu++17 -O1 -I third_party/odseal tests/odseal_test.cpp out/libodseal.a -o dosrun/ODTEST.EXE
+          cp "$HOME/dos/cwsdpmi/CWSDPMI.EXE" dosrun/
+          tools/dos_run.sh --timeout 600 dosrun ODTEST
+
       # wasm cannot run natively, but node runs what emscripten emits, so this
       # is the same test rather than a weaker stand-in.
       - name: Test the archive (web, under node)
@@ -401,13 +578,30 @@ jobs:
       # cannot be executed. What CAN be checked is the shape of the archive:
       # the four entry points, and nothing else exported to point a reader at
       # what it does.
-      - name: Check the archive (android, symbols only)
-        if: startsWith(matrix.name, 'android-')
+      # SerenityOS too: a SerenityOS program cannot run on the runner, so its
+      # archive is held to the same exports rules and its test is not run --
+      # running it means booting SerenityOS, which other-os-game.yml does not
+      # do yet either. Plain nm reads an x86-64 ELF object whatever OS it is for.
+      - name: Check the archive (android, SerenityOS, the consoles and DOS, symbols)
+        if: startsWith(matrix.name, 'android-') || matrix.serenity || matrix.vita || matrix.djgpp || matrix.wii || matrix.ctr || matrix.riscos
         shell: bash
         run: |
           set -e
-          TC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          GOT="$("$TC/llvm-nm" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
+          if [ -n "${{ matrix.wii }}" ] || [ -n "${{ matrix.ctr }}" ] || [ -n "${{ matrix.riscos }}" ]; then
+            NM=nm   # the runner's GNU nm reads PowerPC and ARM ELF objects alike
+          elif [ -n "${{ matrix.djgpp }}" ]; then
+            NM="$HOME/dos/djgpp/bin/i586-pc-msdosdjgpp-nm"
+          elif [ -n "${{ matrix.vita }}" ]; then
+            NM="$HOME/vitasdk/bin/arm-vita-eabi-nm"
+          elif [ -n "$ANDROID_NDK_HOME" ] && [ -z "${{ matrix.serenity }}" ]; then
+            NM="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          else
+            NM=nm
+          fi
+          GOT="$("$NM" --defined-only --extern-only out/libodseal.a | awk '$2=="T"{print $3}' | sort | tr '\n' ' ')"
+          # COFF (DJGPP) prefixes C names with an underscore; the names are
+          # the same entry points without it.
+          if [ -n "${{ matrix.djgpp }}" ]; then GOT="$(printf '%s\n' $GOT | sed 's/^_//' | tr '\n' ' ')"; fi
           echo "exports: $GOT"
           # An EXACT list here meant the check failed the moment the sealed
           # source grew an entry point -- the archive was correct and the
@@ -438,6 +632,11 @@ jobs:
   commit:
     name: commit the archives
     needs: build
+    # Whatever built, even if a platform did not: a new toolchain failing
+    # (fail-fast is off above for the same reason) must not throw away every
+    # other archive. "Place the archives" commits what arrived and fails if
+    # nothing did.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:

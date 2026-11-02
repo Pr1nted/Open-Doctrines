@@ -2038,7 +2038,15 @@ bool Game::tickScreenshotTour() {
     std::error_code ec;
     const std::string path =
         std::filesystem::absolute(m_shotDir + "/" + shot.name + ".png", ec).string();
-    TakeScreenshot(path.c_str());
+    // Captured by the NEXT endFrame, before its swap -- see m_frameCapturePath.
+    // This tick runs after the swap, when the back buffer is undefined.
+    if (!m_shotAsked) {
+        m_frameCapturePath = path;
+        m_shotAsked = true;
+        return true;
+    }
+    if (!m_frameCapturePath.empty()) return true;   // that frame has not ended yet
+    m_shotAsked = false;
     if (ec || !FileExists(path.c_str())) {
         fprintf(stderr, "[SHOT] could not write %s\n", path.c_str());
         return false;

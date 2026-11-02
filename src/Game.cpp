@@ -127,7 +127,7 @@ EM_JS(int, odFitCanvasJS, (), {
 #elif !defined(__EMSCRIPTEN__)
 #include <sys/resource.h>
 #endif
-#if defined(OD_DESKTOP_SDL)
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
 // SDL_InitSubSystem and SDL_GetError, ahead of InitWindow (see Game::init).
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_error.h>
@@ -572,6 +572,18 @@ int budgetedFpsCeiling() {
 }
 
 
+// ANGLE's OpenGL backend on macOS presents through a layer and ignores the swap
+// interval: measured at ~3,900 fps with VSync on. There VSync has to be a frame
+// cap at the display's rate, or the GPU runs flat out behind a 120 Hz screen.
+static bool odSwapIntervalIgnored() {
+#if defined(OD_ANGLE) && defined(__APPLE__)
+    const char* b = getenv("OD_ANGLE_BACKEND");
+    return b && std::strcmp(b, "opengl") == 0;
+#else
+    return false;
+#endif
+}
+
 void applyFpsTarget(int target) {
     ClearWindowState(FLAG_VSYNC_HINT);
     SetTargetFPS(0);
@@ -582,6 +594,7 @@ void applyFpsTarget(int target) {
         // A budget below 100% is an explicit request to run slower than the
         // display, so it wins.
         if (ceiling > 0) SetTargetFPS(ceiling);
+        else if (odSwapIntervalIgnored()) SetTargetFPS(std::max(30, GetMonitorRefreshRate(GetCurrentMonitor())));
         else SetWindowState(FLAG_VSYNC_HINT);
     } else if (target > 0) {
         SetTargetFPS(ceiling > 0 ? std::min(target, ceiling) : target);
@@ -1355,6 +1368,11 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // There is no setting to respect here -- a phone's panel is its panel.
     m_screenW = 0;
     m_screenH = 0;
+#elif defined(__vita__)
+    // The Vita's panel, whatever the config says: SDL's Vita window is the
+    // whole screen, and a 1600x900 request would only be cropped by it.
+    m_screenW = 960;
+    m_screenH = 544;
 #endif
 
     int winFlags = FLAG_WINDOW_RESIZABLE;
@@ -1408,7 +1426,7 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // configuration exists for. Read by SDL_Init, inside InitWindow below.
     if (!getenv("SDL_VIDEODRIVER")) setenv("SDL_VIDEODRIVER", "offscreen", 1);
 #endif
-#if defined(OD_DESKTOP_SDL)
+#if defined(OD_DESKTOP_SDL) && !defined(OD_SDL2)
     // NO DISPLAY, SAID AS SUCH. raylib 6.2's SDL backend checks SDL_Init the
     // SDL2 way, `result < 0`; SDL3 returns false on failure, which is never
     // below zero, so a session with no display at all sails past it and fails
@@ -1417,10 +1435,48 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // relaunch. So video is brought up here first and a failure is reported in
     // the words the trace-log callback reads as no display. SDL counts
     // initialisations, so raylib's own SDL_Init inside InitWindow is unaffected.
+    // Not on SDL2 (SerenityOS): there SDL_Init does return < 0, and raylib's
+    // check already says no display in the right words.
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO))
         TraceLog(LOG_WARNING, "SDL: Failed to initialize SDL (%s)", SDL_GetError());
 #endif
+#if defined(OD_ANGLE)
+    // THE BACKEND LADDER (experimental, OD_ANGLE builds). Native API first, then
+    // Vulkan, then OpenGL, then SwiftShader -- ANGLE's Vulkan on the CPU, for a
+    // machine whose GPU driver offers none of them. A backend this machine
+    // lacks fails at eglInitialize and InitWindow() returns without a window
+    // (tools/patch_raylib_angle.py makes sure it fails rather than quietly
+    // becoming ANGLE's default), so the next is tried. A backend the player
+    // named in OD_ANGLE_BACKEND goes first, and the ladder still stands behind it.
+    {
+#if defined(__APPLE__)
+        static const char* const kLadder[] = {"metal", "vulkan", "opengl", "swiftshader"};
+#elif defined(_WIN32)
+        static const char* const kLadder[] = {"d3d11", "vulkan", "opengl", "d3d9", "swiftshader"};
+#else
+        static const char* const kLadder[] = {"vulkan", "opengl", "swiftshader"};
+#endif
+        std::vector<std::string> order;
+        if (const char* want = getenv("OD_ANGLE_BACKEND"); want && *want) order.push_back(want);
+        for (const char* b : kLadder)
+            if (order.empty() || order[0] != b) order.push_back(b);
+        for (const std::string& b : order) {
+#ifdef _WIN32
+            _putenv_s("OD_ANGLE_BACKEND", b.c_str());
+#else
+            setenv("OD_ANGLE_BACKEND", b.c_str(), 1);
+#endif
+            InitWindow(m_screenW, m_screenH, title);
+            if (IsWindowReady()) {
+                TraceLog(LOG_INFO, "ANGLE: rendering through %s", b.c_str());
+                break;
+            }
+            TraceLog(LOG_WARNING, "ANGLE: %s is not available here, trying the next backend", b.c_str());
+        }
+    }
+#else
     InitWindow(m_screenW, m_screenH, title);
+#endif
     if (getenv("OD_DPI_PROBE")) {
         const Vector2 sc = GetWindowScaleDPI();
         printf("[DPI] highdpi_flag=%d  scale=%.2f,%.2f  screen=%dx%d  render=%dx%d  monitor=%dx%d\n",
@@ -1624,6 +1680,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
         int mon = GetCurrentMonitor();
         int mw = GetMonitorWidth(mon);
         int mh = GetMonitorHeight(mon);
+        // NEVER LARGER THAN THE SCREEN. The default window is 1600x900 and a
+        // Steam Deck's panel is 1280x800, so on the Deck's desktop -- and on
+        // any small laptop -- the window opened past the screen's edges and
+        // was centred at a negative position, its title bar and the bottom of
+        // the interface out of reach. A window that does not fit is shrunk to
+        // 90% of the screen, keeping its shape; one that fits is left alone.
+        if (mw > 0 && mh > 0 && (m_screenW > mw || m_screenH > mh)) {
+            const float k = std::min(0.9f * mw / m_screenW, 0.9f * mh / m_screenH);
+            m_screenW = std::max(640, (int)(m_screenW * k));
+            m_screenH = std::max(400, (int)(m_screenH * k));
+        }
         SetWindowSize(m_screenW, m_screenH);
         SetWindowSize(m_screenW, m_screenH);
         PollInputEvents();
@@ -1740,7 +1807,17 @@ bool Game::init(int screenW, int screenH, const char* title) {
     TraceLog(LOG_INFO, ("[OD] m_screen: " + std::to_string(m_screenW) + "x" + std::to_string(m_screenH)).c_str());
 #endif
 
-    if (m_config.fullscreen) {
+    // UNDER GAMESCOPE, FULLSCREEN. Gamescope -- the compositor of a Steam
+    // Deck's Game Mode, and of SteamOS on anything -- shows one game at a time
+    // across the whole panel, so a window there is only ever scaled up from
+    // whatever size it asked for: 1600x900 drawn and then squeezed onto
+    // 1280x800. Fullscreen draws at the panel's own resolution instead. Not
+    // written to the config: the same install started from the Deck's
+    // desktop, or on a PC, keeps the player's own choice.
+    const bool underGamescope =
+        getenv("GAMESCOPE_WAYLAND_DISPLAY") != nullptr ||
+        (getenv("XDG_CURRENT_DESKTOP") && std::strcmp(getenv("XDG_CURRENT_DESKTOP"), "gamescope") == 0);
+    if (m_config.fullscreen || underGamescope) {
         int mon = GetCurrentMonitor();
         m_windowedW = m_screenW;
         m_windowedH = m_screenH;
@@ -1752,6 +1829,15 @@ bool Game::init(int screenW, int screenH, const char* title) {
         SetWindowSize(m_screenW, m_screenH);
         SetWindowPosition(0, 0);
     }
+    // The size the window settled on, after fitting and fullscreen -- the
+    // [DPI] line above is from before either. Not its position: raylib's copy
+    // of that is only refreshed by a window event, and printed here it still
+    // says where the window was before it was moved.
+    if (getenv("OD_DPI_PROBE"))
+        printf("[WINDOW] %dx%d  fullscreen=%d gamescope=%d  monitor=%dx%d\n",
+               m_screenW, m_screenH,
+               (m_config.fullscreen || underGamescope) ? 1 : 0, underGamescope ? 1 : 0,
+               GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
 
     // Budget first: applyFpsTarget reads it, so setting it afterwards would
     // leave the first frames running unthrottled.
@@ -2036,9 +2122,9 @@ static Font odLoadMergedFont(const std::string& primaryPath,
     std::vector<int> missing;
     std::vector<int> missingAt;
     for (int i = 0; i < n; ++i) {
-        if (odIsBlankCodepoint(cps[i])) continue;
+        if (odIsBlankCodepoint(codepoints[i])) continue;
         if (glyphs[i].advanceX == 0 && glyphs[i].image.width == 0) {
-            missing.push_back(cps[i]);
+            missing.push_back(codepoints[i]);
             missingAt.push_back(i);
         }
     }
@@ -3069,6 +3155,12 @@ void Game::run() {
         // every frame, and a popup is exactly when it must not stutter.
         Audio::get().update(dt);
         updateMusic(dt);
+        // Beside them and for the same reason: the mod bus is mixed on the
+        // audio thread and reads its gains from here, so this has to run on
+        // every frame and on every screen. Game::update() was the wrong home
+        // -- it is only called on the gameplay branch, so a mod's sound went
+        // unmixed at the menu, which is exactly where a mod load plays one.
+        pumpModAudio();
         // Also above the early-out: the resource panel is a system control, not
         // a game screen, so it has to answer F10 even with a popup up.
         samplePerformance();
@@ -3970,6 +4062,15 @@ void Game::endFrame() {
 
     osk::draw();
     osk::endFrame();
+
+    // A requested capture (the screenshot tour, the letter check): taken here,
+    // over everything, while the back buffer still holds this frame. Flushed
+    // first, since raylib only sends its batch to the framebuffer at EndDrawing.
+    if (!m_frameCapturePath.empty()) {
+        rlDrawRenderBatchActive();
+        TakeScreenshot(m_frameCapturePath.c_str());
+        m_frameCapturePath.clear();
+    }
 
     EndDrawing();
 

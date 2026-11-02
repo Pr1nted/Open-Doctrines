@@ -1,0 +1,38 @@
+Open Doctrines for DOS
+======================
+
+Start it with:
+
+    DOCTRINE
+
+from this folder. CWSDPMI.EXE, the DPMI host it runs under, is beside it and
+is found on its own.
+
+WHAT IT NEEDS
+
+  * A 32-bit protected-mode capable PC: a Pentium or better. It runs on a 386
+    in principle; a turn there would take a very long time.
+  * About 320 MB of memory. Worlds load at half resolution on DOS, which
+    peaks near 230 MB. CWSDPMI uses extended memory (XMS) or plain
+    memory with no memory manager loaded.
+  * A VESA BIOS Extensions 2.0 graphics card with a linear framebuffer and a
+    15, 16, 24 or 32-bit colour mode of at least 640x400. Most cards from the
+    late 1990s on have one; for older ones, load a VBE driver such as UniVBE first. To
+    choose the screen size yourself: SET OD_VESA=1024x768
+  * Long file names: the game's data has them. Under Windows 95/98's DOS
+    prompt and in DOSBox-X they work as they are; in plain MS-DOS or FreeDOS,
+    load DOSLFN first.
+  * A mouse driver (CTMOUSE, or the one that came with the mouse). Without
+    one the game still runs from the keyboard. A wheel works with CuteMouse.
+
+WHAT IT DOES NOT HAVE (YET)
+
+  * Sound. There is no Sound Blaster driver; the game is silent.
+  * Multiplayer, mods, and anything else that needs a network.
+  * Self-updates. A new version is a new zip.
+
+Tested in DOSBox-X (an emulated Pentium with an S3 card). Not yet on real
+hardware: reports welcome, at the address in READ ME FIRST.txt.
+
+CWSDPMI is Charles W. Sandmann's, distributed here unmodified under its own
+terms; see CWSDPMI.DOC.

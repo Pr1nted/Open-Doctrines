@@ -227,7 +227,12 @@ endif()
 # NOT EMSCRIPTEN: wasm32 also has 4-byte pointers, and Emscripten's toolchain
 # reports CMAKE_SYSTEM_PROCESSOR as "x86" for historical reasons -- so without
 # this the web build was handed -msse2, which em++ refuses without -msimd128.
-if(NOT MSVC AND NOT EMSCRIPTEN AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
+#
+# NOT DJGPP: DOS promises a Pentium (packaging/dos/DOS.TXT), which has no SSE
+# at all; the first DOSBox-X run died on a movss in a static initialiser. The
+# DOS build is offline and single-player -- it never runs a simulation in step
+# with another machine -- so x87's last-bit differences cost it nothing.
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|x86_64|amd64|AMD64)$")
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-msse2> $<$<COMPILE_LANGUAGE:C,CXX>:-mfpmath=sse>)
 endif()
@@ -265,7 +270,12 @@ endif()
 # Not MSVC: /GS is its own stack cookie and is on by default. Not Emscripten:
 # wasm bounds every access inside its linear memory already, so a canary buys
 # nothing there and costs code size and speed the web build is tight on.
-if(NOT MSVC AND NOT EMSCRIPTEN)
+# Not on DJGPP: its libc has no stack-protector runtime (__stack_chk_fail,
+# __stack_chk_guard), so every object compiles and the final link fails.
+# Nor on RISC OS: UnixLib has no runtime for it either (the first GCCSDK link
+# failed on the same two symbols).
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT DJGPP AND
+   NOT (CMAKE_SYSTEM_NAME STREQUAL "RISCOS" OR CMAKE_C_COMPILER MATCHES "riscos"))
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-fstack-protector-strong>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-U_FORTIFY_SOURCE>)
     add_compile_options($<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<NOT:$<CONFIG:Debug>>>:-D_FORTIFY_SOURCE=2>)
@@ -275,13 +285,22 @@ endif()
 # inline; riscv64 with GCC 12 or older does not for 1- and 2-byte operations
 # (std::atomic<bool>), and the link fails with undefined __atomic_* symbols
 # that do not mention atomics. Probe instead of guessing by architecture.
+#
+# Not on devkitPro's consoles (Wii, 3DS): a probe program cannot link there
+# without libogc/libctru's system libraries, which the toolchain files add only
+# to real targets, so the probe fails whatever the atomics do. The game itself
+# links against them, and is what would report a missing __atomic_* instead.
 include(CheckCXXSourceCompiles)
 set(od_atomic_probe "
 #include <atomic>
 #include <cstdint>
 std::atomic<bool> b; std::atomic<std::uint8_t> c; std::atomic<std::int64_t> i;
 int main() { b.exchange(true); c.fetch_add(1); return (int)i.fetch_add(1); }")
-check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+if(CMAKE_SYSTEM_NAME MATCHES "^Nintendo")
+    set(OD_ATOMIC_INLINE TRUE)
+else()
+    check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_INLINE)
+endif()
 if(NOT OD_ATOMIC_INLINE)
     set(CMAKE_REQUIRED_LIBRARIES atomic)
     check_cxx_source_compiles("${od_atomic_probe}" OD_ATOMIC_WITH_LIB)
@@ -331,12 +350,207 @@ option(OD_HEADLESS_SDL "Build the game on raylib's SDL backend for headless offs
 #
 # HAIKU IS SDL OR NOTHING: GLFW has no Haiku backend, so there the option is
 # not a choice. It links the system SDL3 rather than building one (below).
-if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU) AND NOT ANDROID AND NOT EMSCRIPTEN)
+# SERENITYOS LIKEWISE, and on its own SDL2: SDL3 has no SerenityOS backend,
+# and SerenityOS's ports tree carries SDL2 with one.
+#
+# THE PS VITA TOO (VITA, set by VitaSDK's toolchain file): SDL3 has a Vita
+# backend -- the screen, the buttons and sticks as a gamepad, both touch
+# panels -- and is built from source here as on Linux.
+if((WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR HAIKU OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" OR VITA)
+   AND NOT ANDROID AND NOT EMSCRIPTEN)
     set(od_desktop_sdl_default ON)
 else()
     set(od_desktop_sdl_default OFF)
 endif()
+# ── SOFTWARE RENDERING, FOR SYSTEMS WITH NO USABLE OPENGL ──
+#
+# raylib 6 carries rlsw, an OpenGL-1.1-style rasteriser in plain C that draws
+# into memory and hands SDL a surface to show. With it the game needs no GL
+# driver at all -- what SerenityOS needs, whose LibGL is fixed-function 1.5
+# with an unimplemented GLSL compiler. rlsw has render textures but no
+# shaders: the custom shaders fail to load and fall back to raylib's default,
+# so the globe and the map's lighting lose their effects and stay readable.
+# On by default on SerenityOS, the system it exists for, and on the PS Vita,
+# whose GPU has no OpenGL of its own: vitaGL provides one, but compiles its
+# shaders with a library every player would have to extract from their own
+# console first. Software rendering needs nothing installed.
+if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" OR VITA)
+    set(od_software_render_default ON)
+else()
+    set(od_software_render_default OFF)
+endif()
+option(OD_SOFTWARE_RENDER "Render in software (raylib rlsw), with no OpenGL driver; needs OD_DESKTOP_SDL" ${od_software_render_default})
+
+# ── OPENGL ES, FOR GPUS THAT STOP SHORT OF GL 3.3 ──
+#
+# The desktop game asks for OpenGL 3.3 core. A Raspberry Pi 4 or 5 offers GL
+# 3.1 and GLES 3.1 (Mesa v3d), so there the game came up only through the
+# software-GL relaunch -- llvmpipe on the Pi's CPU. OD_GLES builds raylib for
+# OpenGL ES 2.0 instead, and the game picks the GLSL ES shader variants it
+# already ships for Android and the web. raylib keeps its own GRAPHICS_API_*
+# define private, so the game target is given GRAPHICS_API_OPENGL_ES2 itself
+# (see below): without it the game would hand GLSL 3.30 to an ES context.
+option(OD_GLES "Build the desktop game for OpenGL ES 2.0 (Raspberry Pi and other GLES-only GPUs); needs OD_DESKTOP_SDL" OFF)
+if(OD_GLES)
+    set(OPENGL_VERSION "ES 2.0" CACHE STRING "raylib renderer: OpenGL ES 2.0" FORCE)
+endif()
+
+# ── DOS ──
+#
+# DJGPP, 32-bit protected mode under a DPMI host. No OS windowing, no GL, no
+# threads, no network stack, no sound API: so raylib runs on rlsw (above) and
+# on a platform layer of the game's own, src/platform/dos/rcore_dos.c -- a VESA
+# linear framebuffer, the INT 33h mouse and an IRQ 1 keyboard handler. raylib
+# has no DOS platform, so it is built as PLATFORM=Memory (rlsw into a buffer)
+# and that file is copied over the memory platform's own (see FetchContent
+# below). raylib's audio module is left out (miniaudio needs threads) and
+# src/platform/dos/NoAudio.cpp answers its API.
+#
+# The game is single-threaded here as it is on the web (OD_NO_THREADS, see
+# src/util/Async.h), offline (no multiplayer transport, no mods' WASM runtime),
+# and without HarfBuzz.
+#
+# ON A NON-DOS HOST the same option builds the same code against a stand-in
+# screen in memory, which is how CI runs the DOS build's frame path and its
+# single-threaded game on Linux, where a DJGPP binary cannot run.
+if(DJGPP)
+    set(od_dos_default ON)
+else()
+    set(od_dos_default OFF)
+endif()
+option(OD_DOS "Build for DOS (DJGPP): VESA framebuffer, rlsw, single-threaded, offline; on another host, the same against a stand-in screen" ${od_dos_default})
+if(OD_DOS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    # Worlds at 1/2 (peaks near 230 MB, measured). The full world reached the
+    # 8192x4096 province raster in DOSBox-X and CWSDPMI stopped with "No swap
+    # space!": DOS machines with the ~700 MB a full world needs are rare.
+    set(OD_MAP_DIVISOR 2 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    if(DJGPP)
+        list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    endif()
+    message(STATUS "OD_DOS: raylib on rlsw and the game's DOS platform layer; single-threaded, offline")
+endif()
+
+# ── THE NINTENDO WII ──
+#
+# Homebrew, built with devkitPPC and libogc (devkitPro's Wii.cmake sets
+# NINTENDO_WII) and started from the Homebrew Channel. As DOS: raylib on rlsw
+# with a platform layer of the game's own, src/platform/wii/rcore_wii.c --
+# the video interface's framebuffer, the Wii Remote's pointer as the mouse, a
+# USB keyboard if there is one -- because the Wii's GPU is not OpenGL. raylib's
+# audio module is left out (miniaudio has no Wii backend) as on DOS.
+#
+# 88 MB of memory in all, so worlds load at 1/8 resolution (OD_MAP_DIVISOR,
+# src/map/RasterScale.h). Threads work (libogc's pthreads); the network is off
+# for now (libogc's sockets want net_init first); mods are off (no WAMR
+# platform layer); no HarfBuzz.
+if(NINTENDO_WII)
+    set(od_wii_default ON)
+else()
+    set(od_wii_default OFF)
+endif()
+option(OD_WII "Build for the Nintendo Wii (devkitPPC/libogc): rlsw on the video interface's framebuffer, Wii Remote pointer" ${od_wii_default})
+if(OD_WII)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    set(OD_MAP_DIVISOR 8 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    # libogc's pthreads live in libogc itself, which every Wii program links;
+    # the stock FindThreads would go looking for a -pthread flag it has none of.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    message(STATUS "OD_WII: raylib on rlsw and the game's Wii platform layer; worlds at 1/8")
+endif()
+# ── THE NINTENDO 3DS ──
+#
+# Homebrew (.3dsx), built with devkitARM and libctru (devkitPro's 3DS.cmake
+# sets NINTENDO_3DS) and started from the Homebrew Launcher. As the Wii: rlsw
+# and a platform layer of the game's own, src/platform/3ds/rcore_3ds.c. The
+# game draws 640x480, which neither screen is, so the top screen shows all of
+# it at half size and the bottom screen a full-size window of it to read and
+# touch, around the cursor.
+#
+# For the New 3DS (124 MB for applications; the original model's 64 MB is not
+# enough for a world even at 1/8). Single-threaded, as on DOS: the AI's
+# learning thread and the audio pump would share an 804 MHz ARM11 with the
+# game, and libctru's threads start with stacks a fraction of a desktop's.
+# Network, mods, HarfBuzz and audio off, as on the Wii.
+if(NINTENDO_3DS)
+    set(od_3ds_default ON)
+else()
+    set(od_3ds_default OFF)
+endif()
+option(OD_3DS "Build for the Nintendo 3DS (devkitARM/libctru): rlsw on both screens, stylus and Circle Pad" ${od_3ds_default})
+if(OD_3DS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    set(OD_MAP_DIVISOR 8 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    # libctru's pthreads are in libctru itself; see OD_WII.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    message(STATUS "OD_3DS: raylib on rlsw and the game's 3DS platform layer; worlds at 1/8, single-threaded")
+endif()
+# ── RISC OS ──
+#
+# RISC OS 5 (a Raspberry Pi, or any ARMv7 machine it runs on), cross-compiled
+# with GCCSDK's GCC 10.2 and UnixLib (arm-riscos-gnueabihf) from the
+# riscos-crossdev image. As DOS: raylib on rlsw with a platform layer of the
+# game's own, src/platform/riscos/rcore_riscos.c -- a full-screen mode set
+# through OS_ScreenMode, OS_Mouse, INKEY scans and the keyboard buffer --
+# because RISC OS has no OpenGL to count on. A single-tasking program, as games
+# on RISC OS are: the desktop pauses while it runs.
+#
+# Worlds at 1/2 resolution (a full one peaks near 700 MB, more than an
+# application slot holds; 1/2 peaks near 230). Single-threaded: UnixLib's
+# threads are switched on a timer, under one RISC OS task. Network, mods,
+# HarfBuzz and audio off for now.
+if(CMAKE_SYSTEM_NAME STREQUAL "RISCOS" OR CMAKE_C_COMPILER MATCHES "riscos")
+    set(od_riscos_default ON)
+else()
+    set(od_riscos_default OFF)
+endif()
+option(OD_RISCOS "Build for RISC OS 5 (GCCSDK): rlsw full-screen, OS_Mouse and INKEY input" ${od_riscos_default})
+if(OD_RISCOS)
+    set(OD_SOFTWARE_RENDER ON CACHE BOOL "" FORCE)
+    set(OD_DESKTOP_SDL OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_NET OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_MODS OFF CACHE BOOL "" FORCE)
+    set(OD_ENABLE_SHAPING OFF CACHE BOOL "" FORCE)
+    set(OD_MAP_DIVISOR 2 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8" FORCE)
+    # UnixLib's pthreads are in UnixLib itself; see OD_WII.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dos")
+    message(STATUS "OD_RISCOS: raylib on rlsw and the game's RISC OS platform layer; worlds at 1/2, single-threaded")
+endif()
+if(OD_SOFTWARE_RENDER)
+    set(OPENGL_VERSION "Software" CACHE STRING "raylib renderer: rlsw software rasteriser" FORCE)
+endif()
 option(OD_DESKTOP_SDL "Build the desktop game on raylib's SDL backend (real touch input), SDL3 built from source" ${od_desktop_sdl_default})
+
+# ── EXPERIMENTAL: THE NATIVE GRAPHICS API THROUGH ANGLE ──
+#
+# raylib draws through OpenGL, which macOS has deprecated and runs on Metal
+# anyway, and which Windows drivers serve unevenly. OD_ANGLE builds raylib for
+# OpenGL ES 2.0 -- the dialect the web and Android builds already use, shaders
+# included -- and runs it on ANGLE, which translates GLES to the platform's own
+# API: Metal on macOS, Direct3D 11 or Vulkan on Windows. No draw call in the
+# game changes. OD_ANGLE_BACKEND picks ANGLE's backend at run time
+# (tools/patch_raylib_angle.py).
+#
+# ANGLE comes from tools/data/angle.json's pinned bundle (tools/fetch_angle.py)
+# unless OD_ANGLE_DIR names a folder of your own. GLFW only, for now: SDL3 can
+# create the same context, but it has no switch for ANGLE's backend.
+option(OD_ANGLE "EXPERIMENTAL: render through ANGLE (GLES 2 on Metal/D3D11/Vulkan) instead of desktop OpenGL" OFF)
+set(OD_ANGLE_DIR "" CACHE PATH "Folder with ANGLE's libEGL and libGLESv2 (default: the pinned bundle, fetched)")
+if(OD_ANGLE AND OD_DESKTOP_SDL)
+    message(FATAL_ERROR "OD_ANGLE needs raylib's GLFW backend: configure with -DOD_DESKTOP_SDL=OFF")
+endif()
 
 set(od_system_raylib_ok TRUE)
 if(APPLE AND CMAKE_OSX_ARCHITECTURES AND
@@ -401,6 +615,9 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # SDL's offscreen driver gives a GL 4.5 llvmpipe context on a Debian guest
     # with DISPLAY unset, and the game is pure raylib API, so its backend is a
     # build switch rather than a code change.
+    if(OD_DOS OR OD_WII OR OD_3DS OR OD_RISCOS)
+        set(PLATFORM "Memory" CACHE STRING "raylib platform: memory framebuffer, replaced by the game's own layer" FORCE)
+    endif()
     if(OD_HEADLESS_SDL)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL backend for headless" FORCE)
         message(STATUS "OD_HEADLESS_SDL: raylib on its SDL backend (headless offscreen GL)")
@@ -433,12 +650,30 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     # Where the system has none (HaikuPorts did not offer it for every
     # release), SDL3 is built from source as everywhere else, and says so:
     # that copy lacks the fix above.
+    # The SDL target the game and its tests link: SDL3 everywhere but
+    # SerenityOS (below).
+    set(OD_SDL_TARGET SDL3::SDL3)
     if(OD_DESKTOP_SDL AND HAIKU)
         find_package(SDL3 CONFIG QUIET)
     endif()
     if(OD_DESKTOP_SDL AND HAIKU AND SDL3_FOUND)
         set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL3 desktop backend" FORCE)
         message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL3 ${SDL3_VERSION} (Haiku)")
+    elseif(OD_DESKTOP_SDL AND CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+        # ── SERENITYOS: ITS OWN SDL2 ──
+        #
+        # The SDL2 port (Ports/SDL2, installed into the sysroot) is the one
+        # with a SerenityOS video driver; SDL3 has none. raylib 6 takes an
+        # SDL2::SDL2 target the same way it takes SDL3's, and on SDL2 its own
+        # SDL_Init check is right, so the game's SDL3 pre-check is left out
+        # (OD_SDL2, see Game::init).
+        set(PLATFORM "SDL" CACHE STRING "raylib platform: SDL2 desktop backend" FORCE)
+        find_package(SDL2 REQUIRED CONFIG)
+        if(NOT TARGET SDL2::SDL2 AND TARGET SDL2::SDL2-shared)
+            add_library(SDL2::SDL2 ALIAS SDL2::SDL2-shared)
+        endif()
+        set(OD_SDL_TARGET SDL2::SDL2)
+        message(STATUS "OD_DESKTOP_SDL: raylib on the system SDL2 ${SDL2_VERSION} (SerenityOS)")
     elseif(OD_DESKTOP_SDL)
         if(HAIKU)
             message(WARNING "Haiku: no system SDL3 (pkgman install libsdl3_devel); building it "
@@ -448,7 +683,9 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
-        set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        if(NOT VITA)
+            set(SDL_STATIC_PIC ON CACHE BOOL "" FORCE)
+        endif()
         set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
         set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
@@ -471,20 +708,85 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         endif()
         message(STATUS "OD_DESKTOP_SDL: raylib on SDL3 (release-3.4.18, static)")
     endif()
+    if(OD_ANGLE)
+        set(OPENGL_VERSION "ES 2.0" CACHE STRING "raylib GL dialect: GLES 2 for ANGLE" FORCE)
+    endif()
     FetchContent_Declare(raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
         GIT_TAG 6.2
     )
     FetchContent_MakeAvailable(raylib)
+    # rcore.c includes rlgl.h before it turns PLATFORM_DESKTOP into
+    # PLATFORM_DESKTOP_GLFW, and rlgl.h needs the latter to load GLES through
+    # its own glad rather than look for system <GLES2/gl2.h>. Desktop GL never
+    # asks; GLES on desktop does. Empty, as rcore.c defines it, so the later
+    # #define is not a redefinition.
+    if(OD_ANGLE AND TARGET raylib)
+        target_compile_definitions(raylib PRIVATE PLATFORM_DESKTOP_GLFW=)
+    endif()
     # Haiku's pthreads have no pthread_attr_setinheritsched, which miniaudio
     # calls (it guards the call for BeOS, not Haiku): src/platform/haiku/
     # pthread_compat.h stands in for it.
+    # devkitPro's newlib makes uint32_t an unsigned long, so rlsw's GLuint
+    # pointers and the unsigned int pointers rlgl hands them differ in type
+    # though not in size (both 32 bits); GCC 14 made that an error.
+    if(CMAKE_SYSTEM_NAME MATCHES "^Nintendo" AND TARGET raylib)
+        target_compile_options(raylib PRIVATE -Wno-error=incompatible-pointer-types)
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "SerenityOS" AND TARGET raylib)
+        target_compile_options(raylib PRIVATE
+            "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/serenity/raylib_compat.h")
+    endif()
     if(HAIKU AND TARGET raylib)
         # A header, not -D: CMake drops function-style definitions.
         target_compile_options(raylib PRIVATE
             "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/haiku/pthread_compat.h")
     endif()
     set(raylib_LIBRARY raylib)
+    # The Vita has no dlopen, and miniaudio reaches for it on anything it
+    # takes to be POSIX. None of the backends it would load exist there.
+    if(VITA)
+        target_compile_definitions(raylib PRIVATE MA_NO_RUNTIME_LINKING)
+    endif()
+
+    # DOS: the game's platform layer in place of raylib's memory platform, and
+    # no audio module (see OD_DOS above). Copied, not patched: the file is the
+    # game's, whole, and a build tree configured for DOS is only ever DOS.
+    if(OD_DOS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/rcore_dos.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_DOS: no audio device; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        if(DJGPP)
+            target_compile_options(raylib PRIVATE
+                -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h)
+        endif()
+        message(STATUS "raylib: DOS platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
+    # The Wii's, the same way (see OD_WII above).
+    if(OD_WII)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/wii/rcore_wii.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_WII: no audio backend; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        message(STATUS "raylib: Wii platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
+    # And the 3DS's (see OD_3DS above).
+    if(OD_3DS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/3ds/rcore_3ds.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_3DS: no audio backend; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        message(STATUS "raylib: 3DS platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
+    # And RISC OS's (see OD_RISCOS above).
+    if(OD_RISCOS)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/riscos/rcore_riscos.c"
+                       "${raylib_SOURCE_DIR}/src/platforms/rcore_memory.c" COPYONLY)
+        file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c"
+             "// OD_RISCOS: no audio backend yet; src/platform/dos/NoAudio.cpp answers raylib's audio API.\n")
+        message(STATUS "raylib: RISC OS platform layer in place of platforms/rcore_memory.c; raudio left out")
+    endif()
 
     # See tools/patch_raylib_vorbis.py. FATAL, not a warning: shipping optimised
     # audio against an unpatched decoder produces a silent game and nothing else
@@ -528,6 +830,22 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
     string(STRIP "${od_deffont_out}" od_deffont_out)
     message(STATUS "raylib: ${od_deffont_out}")
 
+    # OD_ANGLE only. See tools/patch_raylib_angle.py.
+    if(OD_ANGLE)
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_angle.py"
+                    "${raylib_SOURCE_DIR}"
+            RESULT_VARIABLE od_angle_rc
+            OUTPUT_VARIABLE od_angle_out
+            ERROR_VARIABLE  od_angle_err)
+        if(NOT od_angle_rc EQUAL 0)
+            message(FATAL_ERROR "Could not patch raylib for ANGLE:\n${od_angle_err}")
+        endif()
+        string(STRIP "${od_angle_out}" od_angle_out)
+        message(STATUS "raylib: ${od_angle_out}")
+    endif()
+
     # Web only. See tools/patch_raylib_web_dpi.py. FATAL for the same reason as
     # the vorbis patch: an unpatched web resize callback silently ships the
     # zoomed-in, blurry mobile UI this fixes, and nothing else in the build
@@ -546,6 +864,25 @@ set(OD_WEB_MAXIMUM_MEMORY "4GB" CACHE STRING
         endif()
         string(STRIP "${od_webdpi_out}" od_webdpi_out)
         message(STATUS "raylib: ${od_webdpi_out}")
+    endif()
+
+    # Software rendering only. See tools/patch_raylib_sw_readback.py. FATAL as
+    # the others: unpatched, every screen readback in that build is upside down
+    # with red and blue swapped, and nothing else would notice.
+    if(OD_SOFTWARE_RENDER)
+        set(od_swread_src "${raylib_SOURCE_DIR}/src/rlgl.h")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/patch_raylib_sw_readback.py"
+                    "${od_swread_src}"
+            RESULT_VARIABLE od_swread_rc
+            OUTPUT_VARIABLE od_swread_out
+            ERROR_VARIABLE  od_swread_err)
+        if(NOT od_swread_rc EQUAL 0)
+            message(FATAL_ERROR "Could not patch raylib's software readback:\n${od_swread_err}")
+        endif()
+        string(STRIP "${od_swread_out}" od_swread_out)
+        message(STATUS "raylib: ${od_swread_out}")
     endif()
 endif()
 
@@ -695,6 +1032,29 @@ else()
     elseif(EMSCRIPTEN)
         set(ODSEAL_PLATFORM "web-wasm32")
         set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(VITA)
+        # VitaSDK's toolchain calls the system Generic, so it would otherwise
+        # fall through to "unknown". One CPU (Cortex-A9), one archive.
+        set(ODSEAL_PLATFORM "vita-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(OD_RISCOS)
+        # RISC OS: GCCSDK's arm-riscos-gnueabihf gcc, its default ARMv7 and VFP.
+        set(ODSEAL_PLATFORM "riscos-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(NINTENDO_3DS)
+        # The 3DS: devkitARM's arm-none-eabi gcc for the ARM11 MPCore (armv6k,
+        # hard float), the one CPU every model has.
+        set(ODSEAL_PLATFORM "3ds-arm")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(NINTENDO_WII)
+        # The Wii: devkitPPC's powerpc-eabi gcc, Broadway (750CL), big-endian.
+        set(ODSEAL_PLATFORM "wii-ppc")
+        set(ODSEAL_LIBNAME  "libodseal.a")
+    elseif(DJGPP)
+        # DOS: one CPU target, the 32-bit protected-mode code DJGPP emits
+        # (i586-pc-msdosdjgpp, which runs on a 386 with the default flags).
+        set(ODSEAL_PLATFORM "dos-i586")
+        set(ODSEAL_LIBNAME  "libodseal.a")
     elseif(APPLE)
         set(ODSEAL_PLATFORM "macos-universal")
         set(ODSEAL_LIBNAME  "libodseal.a")
@@ -784,11 +1144,14 @@ else()
     set_target_properties(odseal PROPERTIES
         IMPORTED_LOCATION ${ODSEAL_LIB}
         INTERFACE_INCLUDE_DIRECTORIES ${ODSEAL_DIST})
-    # The committed prebuilts export od_t4 as of the rebuild that added it, so
-    # a clone gets the rule-table check too rather than only a maintainer tree.
+    # The committed prebuilts export od_t4 AND the od_p2/od_p3 save-seal cipher
+    # as of the rebuild that synced the sealed source, so a clone gets the
+    # rule-table check and sealed fog saves too, not only a maintainer tree.
     # The archives, this header and this line move together in one commit --
-    # that is what makes the define safe to set unconditionally here.
-    target_compile_definitions(odseal INTERFACE OD_HAS_T4)
+    # that is what makes the defines safe to set unconditionally here. (Until
+    # the prebuilts carried od_p2/od_p3, OD_HAS_P2 was deliberately absent, which
+    # is why a clone used to write fog saves unsealed; see docs/odseal.md.)
+    target_compile_definitions(odseal INTERFACE OD_HAS_T4 OD_HAS_P2)
     message(STATUS "odseal: prebuilt ${ODSEAL_PLATFORM}")
 endif()
 
@@ -799,13 +1162,13 @@ endif()
 # links -- the mod menu then reports every mod as Failed with a diagnostic
 # saying the runtime is unavailable, rather than the build breaking.
 #
-# OFF BY DEFAULT ON OpenBSD, NetBSD, illumos AND Haiku. WAMR has no platform
-# layer for any of them (its core/shared/platform has freebsd and no other BSD,
-# no solaris and no haiku), so ON there fails at configure with a missing
+# OFF BY DEFAULT ON OpenBSD, NetBSD, illumos, Haiku AND SerenityOS. WAMR has no
+# platform layer for any of them (its core/shared/platform has freebsd and no
+# other BSD, no solaris, haiku or serenity), so ON there fails at configure with a missing
 # directory that does not say why. The release builds pass OFF explicitly
 # anyway; this is so a source build on those systems works without knowing
 # that. README.md says the same under each system's section.
-if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku")
+if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD|NetBSD|SunOS|Haiku|SerenityOS" OR VITA)
     set(od_mods_default OFF)
 else()
     set(od_mods_default ON)
@@ -1170,7 +1533,15 @@ message(STATUS "Gearbox mod runtime backend: ${OD_MODS_BACKEND}")
 #
 # The web target needs nothing fetched: the browser already has a WebSocket and
 # already has the certificate store, and would not permit a raw socket anyway.
-option(OD_ENABLE_NET "Build the multiplayer transport" ON)
+# Off by default on the PS Vita for now: its sockets need the network module
+# loaded and initialised by the program first (sceNetInit), which nothing in
+# the game does yet. The build says multiplayer is unavailable there.
+if(VITA)
+    set(od_net_default OFF)
+else()
+    set(od_net_default ON)
+endif()
+option(OD_ENABLE_NET "Build the multiplayer transport" ${od_net_default})
 
 # Which account service a build points at, baked in at compile time.
 #
@@ -1366,6 +1737,51 @@ message(STATUS "Greater Diplomacy translation: ${OD_GDTL_BACKEND}")
 
 message(STATUS "Peer-to-peer fallback: ${OD_P2P_BACKEND}")
 
+# --- libdeflate: deflate, inflate and CRC-32 for saves ---
+#
+# miniz still reads and writes the zip structure; libdeflate does the
+# compression of what goes in it. On a late-game state.json it compresses at
+# level 6 in a third of miniz's time and 3% smaller, inflates 3.4x faster, and
+# its CRC-32 uses the CPU's instructions rather than a table -- every zip entry
+# is checksummed on write and on read. The output is ordinary deflate, so every
+# older build reads what this one writes. Linked at the bottom of this file into
+# every target that compiles SaveManager.cpp.
+FetchContent_Declare(libdeflate
+    URL https://github.com/ebiggers/libdeflate/archive/refs/tags/v1.24.tar.gz
+    URL_HASH SHA256=ad8d3723d0065c4723ab738be9723f2ff1cb0f1571e8bfcf0301ff9661f475e8
+    EXCLUDE_FROM_ALL
+)
+set(LIBDEFLATE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+set(LIBDEFLATE_BUILD_GZIP OFF CACHE BOOL "" FORCE)
+set(_od_skip_install "${CMAKE_SKIP_INSTALL_RULES}")
+set(CMAKE_SKIP_INSTALL_RULES ON)
+FetchContent_MakeAvailable(libdeflate)
+set(CMAKE_SKIP_INSTALL_RULES "${_od_skip_install}")
+
+# libdeflate's x86 and Arm SIMD paths are chosen at compile time from the
+# compiler's architecture macros, and need target attributes and alignments
+# that not every toolchain this game targets has: DJGPP's COFF caps alignment
+# at 16 (the AVX-512 tables want 64), SerenityOS's GCC knows no 'evex512',
+# and the console and RISC OS toolchains are old ARM GCCs. There, build the
+# portable C paths only: the same bytes out, slower, and nothing to miscompile.
+if(DJGPP OR VITA OR NINTENDO_3DS OR NINTENDO_WII OR OD_RISCOS
+   OR CMAKE_SYSTEM_NAME STREQUAL "SerenityOS")
+    set(_od_ld_defs "${libdeflate_SOURCE_DIR}/common_defs.h")
+    file(READ "${_od_ld_defs}" _od_ld)
+    if(NOT _od_ld MATCHES "OD_LIBDEFLATE_PORTABLE")
+        string(FIND "${_od_ld}" "#undef ARCH_RISCV\n#ifdef _MSC_VER" _od_ld_at)
+        if(_od_ld_at EQUAL -1)
+            message(FATAL_ERROR "libdeflate: common_defs.h changed; the portable-build patch no longer applies")
+        endif()
+        string(REPLACE "#undef ARCH_RISCV\n#ifdef _MSC_VER"
+                       "#undef ARCH_RISCV\n#if defined(OD_LIBDEFLATE_PORTABLE)\n   /* no architecture-specific code (see the game's CMakeLists.txt) */\n#elif defined(_MSC_VER)"
+                       _od_ld "${_od_ld}")
+        file(WRITE "${_od_ld_defs}" "${_od_ld}")
+    endif()
+    target_compile_definitions(libdeflate_static PRIVATE OD_LIBDEFLATE_PORTABLE=1)
+    message(STATUS "libdeflate: portable C paths only (no x86/Arm SIMD) on this toolchain")
+endif()
+
 # --- Game target ---
 # EVERY TARGET BUILT FROM THIS LIST MUST LINK `odseal`.
 #
@@ -1491,6 +1907,7 @@ set(GAME_SOURCES
     src/Game_Update.cpp
     src/Game_UI.cpp
     src/MapEditor.cpp
+    src/MapEditorGen.cpp
     src/MapEditorBlocks.cpp
     src/ProceduralGenerator.cpp
     src/ScriptEngine.cpp
@@ -1514,9 +1931,16 @@ set(GAME_SOURCES
     src/dialog/DialogBox.cpp
     src/ai/NeuralNet.cpp
     src/ai/AISystem.cpp
+    # The AIPlayer seam's trace sink (OD_AI_TRACE) and the one Order type.
+    # See docs/ai/REWORK_PLAN.md, groundwork items 1, 2 and 6.
+    src/ai/AITrace.cpp
+    src/sim/Order.cpp
+    src/sim/OrderApply.cpp
     src/ai/ModelBlob.cpp
     src/map/LandSeaMap.cpp
     src/map/ProvinceMap.cpp
+    src/map/BorderDistance.cpp
+    src/map/RasterScale.cpp
     src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
@@ -1597,6 +2021,32 @@ if(MSVC)
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "/O2;/fp:fast")
 else()
     set_source_files_properties(src/ai/NeuralNet.cpp PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
+endif()
+
+# WebAssembly SIMD for the border distance field, the one hand-vectorised loop
+# (NEON and SSE2 are baseline on their targets and need no flag). OFF because
+# a module holding even one SIMD instruction fails to load at all on an engine
+# without it -- Safari before 16.4 -- and the scalar path writes the same bytes,
+# so turning it on buys speed and nothing else. Scoped to that file: -msimd128
+# on NeuralNet.cpp would let -ffast-math re-vectorise the nets and move every
+# web decision. tests/border_distance_test.cpp passes under node either way.
+option(OD_WEB_SIMD "Web build: WebAssembly SIMD for the border distance field" OFF)
+if(EMSCRIPTEN AND OD_WEB_SIMD)
+    set_source_files_properties(src/map/BorderDistance.cpp PROPERTIES COMPILE_OPTIONS "-msimd128")
+endif()
+
+# Map generation runs flood-fills and per-pixel passes over millions of pixels
+# every time the map editor (or AI training) builds a world. At -O0 -- a Debug
+# build -- that is tens of seconds of frozen UI per generation. Optimise the two
+# self-contained compute kernels even in Debug, the same treatment NeuralNet.cpp
+# gets above: ProceduralGenerator.cpp, and MapEditorGen.cpp (generateMap plus the
+# per-pixel province/political passes, split out of MapEditor.cpp so the rest of
+# the editor stays easy to step-debug). No fast-math: the noise stays strict
+# IEEE so a seed reproduces.
+if(MSVC)
+    set_source_files_properties(src/ProceduralGenerator.cpp src/MapEditorGen.cpp PROPERTIES COMPILE_OPTIONS "/O2")
+else()
+    set_source_files_properties(src/ProceduralGenerator.cpp src/MapEditorGen.cpp PROPERTIES COMPILE_OPTIONS "-O2")
 endif()
 
 # ── Android: a shared library, not an executable ──
@@ -1780,17 +2230,116 @@ if(OD_HEADLESS_SDL)
     endif()
     target_compile_definitions(OpenDoctrines PRIVATE OD_HEADLESS_SDL=1)
 endif()
+if(OD_ANGLE)
+    # raylib keeps its GRAPHICS_API_* define private, and the game picks its
+    # #version 100 shaders on it.
+    target_compile_definitions(OpenDoctrines PRIVATE OD_ANGLE=1 GRAPHICS_API_OPENGL_ES2)
+    # No OD_ANGLE_DIR: the bundle tools/data/angle.json pins, built by the
+    # "ANGLE prebuilts" workflow and checked against its SHA-256.
+    if(NOT OD_ANGLE_DIR)
+        set(od_angle_fetched "${CMAKE_BINARY_DIR}/angle")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/fetch_angle.py" "${od_angle_fetched}"
+            RESULT_VARIABLE od_angle_fetch_rc
+            ERROR_VARIABLE  od_angle_fetch_err)
+        if(NOT od_angle_fetch_rc EQUAL 0)
+            message(FATAL_ERROR "OD_ANGLE: no ANGLE to build with.\n${od_angle_fetch_err}")
+        endif()
+        set(OD_ANGLE_DIR "${od_angle_fetched}")
+    endif()
+    # The libraries, SwiftShader, its ICD file and (off macOS) the Vulkan
+    # loader go beside the game, where the
+    # patched GLFW and ANGLE look; the licences into licenses/ANGLE.
+    file(GLOB od_angle_libs "${OD_ANGLE_DIR}/*EGL*" "${OD_ANGLE_DIR}/*GLESv2*"
+                            "${OD_ANGLE_DIR}/*vk_swiftshader*" "${OD_ANGLE_DIR}/*vulkan*")
+    foreach(lib ${od_angle_libs})
+        add_custom_command(TARGET OpenDoctrines POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib}" "$<TARGET_FILE_DIR:OpenDoctrines>")
+    endforeach()
+    if(EXISTS "${OD_ANGLE_DIR}/licenses")
+        add_custom_command(TARGET OpenDoctrines POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${OD_ANGLE_DIR}/licenses"
+                    "$<TARGET_FILE_DIR:OpenDoctrines>/licenses/ANGLE")
+    endif()
+endif()
 if(OD_DESKTOP_SDL)
-    target_link_libraries(OpenDoctrines SDL3::SDL3)
+    target_link_libraries(OpenDoctrines ${OD_SDL_TARGET})
     target_compile_definitions(OpenDoctrines PRIVATE OD_DESKTOP_SDL=1)
+    if(OD_SDL_TARGET STREQUAL "SDL2::SDL2")
+        target_compile_definitions(OpenDoctrines PRIVATE OD_SDL2=1)
+    endif()
     # THE SYSTEM GL, BY NAME. MapRenderer asks the driver for its texture
     # ceiling with glGetIntegerv directly. On GLFW raylib links the system GL
     # for its own use and that call rode along; raylib's SDL backend loads GL
     # through SDL at run time and links none, so the game names it here --
     # libOpenGL (GLVND) on Linux, which the .deb already depends on, and
-    # opengl32 on Windows.
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(OpenDoctrines OpenGL::GL)
+    # opengl32 on Windows. A software-rendered build has no GL to link.
+    if(OD_SOFTWARE_RENDER)
+        target_compile_definitions(OpenDoctrines PRIVATE OD_SOFTWARE_RENDER=1)
+    elseif(OD_GLES)
+        # The ES shader variants, chosen on raylib's own define (see OD_GLES
+        # above); and the GLES library for the one GL call the game makes itself.
+        target_compile_definitions(OpenDoctrines PRIVATE GRAPHICS_API_OPENGL_ES2=1 OD_GLES=1)
+        find_package(OpenGL REQUIRED COMPONENTS GLES2)
+        target_link_libraries(OpenDoctrines OpenGL::GLES2)
+    else()
+        find_package(OpenGL REQUIRED)
+        target_link_libraries(OpenDoctrines OpenGL::GL)
+    endif()
+endif()
+# A world loaded at 1/N resolution (src/map/RasterScale.h), for platforms
+# that cannot hold the full 8192x4096 one. 1 is the full world.
+set(OD_MAP_DIVISOR 1 CACHE STRING "Load worlds at 1/N raster resolution: 1, 2, 4 or 8")
+target_compile_definitions(OpenDoctrines PRIVATE OD_MAP_DIVISOR=${OD_MAP_DIVISOR})
+if(OD_DOS)
+    # See OD_DOS above. On DJGPP the thread-less std::mutex shim goes into every
+    # C++ file; a host build has real ones and only takes the single-threaded
+    # paths, which is what lets CI check those on Linux.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_DOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    if(DJGPP)
+        # What DJGPP's libraries leave out (DosCompat.h, NoThreads.h) and the
+        # network headers it has none of (include/: every call fails).
+        target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/dos/include)
+        # libm: DJGPP keeps the C99 maths (round, lround, ...) apart from libc,
+        # and raylib's memory platform, unlike its desktop ones, names no -lm.
+        target_link_libraries(OpenDoctrines m)
+        target_compile_options(OpenDoctrines PRIVATE
+            -include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/DosCompat.h
+            $<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/src/platform/dos/NoThreads.h>)
+    endif()
+endif()
+if(OD_WII)
+    # See OD_WII above. NoAudio.cpp is the DOS build's, and is not DOS-specific:
+    # raylib's audio API as no-ops. The .dol is what the Homebrew Channel runs.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_WII=1 OD_SOFTWARE_RENDER=1)
+    # libogc has the BSD socket headers but, as newlib on the Vita, not
+    # dlfcn.h, sys/mman.h, ifaddrs.h or sys/un.h: the Vita's stand-ins (see
+    # "THE PS VITA") serve here unchanged -- every call they answer fails.
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_sources(OpenDoctrines PRIVATE src/platform/newlib_posix_stubs.cpp src/platform/wii/atomic64.c)
+    target_link_libraries(OpenDoctrines wiikeyboard fat)
+    ogc_create_dol(OpenDoctrines)
+endif()
+if(OD_3DS)
+    # See OD_3DS above. The ELF is made a .3dsx (with its icon and name) by
+    # tools/n3ds_package.py, which runs devkitPro's smdhtool and 3dsxtool.
+    # OD_NO_THREADS: the single-threaded paths DOS takes; std::mutex is real.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_3DS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_sources(OpenDoctrines PRIVATE src/platform/newlib_posix_stubs.cpp)
+    target_link_libraries(OpenDoctrines ctru m)
+endif()
+if(OD_RISCOS)
+    # See OD_RISCOS above. The ELF is made an AIF executable (!RunImage) and put
+    # in an application directory by tools/riscos_package.py.
+    target_sources(OpenDoctrines PRIVATE src/platform/dos/NoAudio.cpp src/platform/riscos/dl_stubs.c)
+    target_compile_definitions(OpenDoctrines PRIVATE OD_RISCOS=1 OD_NO_THREADS=1 OD_SOFTWARE_RENDER=1)
+    # UnixLib lacks only ifaddrs.h of the headers the game includes.
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/riscos-include)
+    target_link_libraries(OpenDoctrines m)
 endif()
 if(WIN32)
     # GetOpenFileNameW/GetSaveFileNameW, the map editor's import/export pickers
@@ -1818,7 +2367,7 @@ endif()
 # library is not linked, and neither is GLFW, GL or an audio backend. A raylib
 # call with no server implementation is a LINK error naming the symbol, which
 # is the property that keeps the graphics layer out.
-if(NOT EMSCRIPTEN AND NOT ANDROID)
+if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT OD_DOS AND NOT OD_WII AND NOT OD_3DS AND NOT OD_RISCOS)
     set(SERVER_SOURCES ${GAME_SOURCES})
     list(REMOVE_ITEM SERVER_SOURCES main.cpp)
     list(APPEND SERVER_SOURCES
@@ -1901,7 +2450,10 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
     endif()
     # The same MapRenderer, so the same direct glGetIntegerv: on the SDL
     # backend nothing links GL for it but this (see the game's own link above).
-    if(OD_DESKTOP_SDL)
+    # A software-rendered build has none, and its MapRenderer does not ask.
+    if(OD_DESKTOP_SDL AND OD_SOFTWARE_RENDER)
+        target_compile_definitions(OpenDoctrinesServerUI PRIVATE OD_SOFTWARE_RENDER=1)
+    elseif(OD_DESKTOP_SDL)
         find_package(OpenGL REQUIRED)
         target_link_libraries(OpenDoctrinesServerUI OpenGL::GL)
     endif()
@@ -2586,6 +3138,33 @@ else()
     target_link_libraries(OpenDoctrines Threads::Threads)
 endif()
 
+# ── THE PS VITA: AN EBOOT, NOT AN EXECUTABLE ──
+#
+# What runs on a Vita is eboot.bin, a signed-for-homebrew SELF made from the
+# linked ELF by VitaSDK's vita-elf-create and vita-make-fself (vita.cmake's
+# vita_create_self). tools/vita_vpk.py then puts it in a .vpk with the data
+# and the LiveArea, which is what a player installs (VitaShell).
+#
+# src/platform/vita-include holds stand-ins for the few POSIX headers newlib
+# on the Vita does not have (dlfcn.h, sys/mman.h, ifaddrs.h, net/if.h,
+# sys/un.h). Everything that includes them is a desktop feature -- Steam,
+# the dev link, LAN addresses, Discord's local socket -- and each one already
+# copes with the call failing, which is all the stand-ins do.
+if(VITA)
+    include("${VITASDK}/share/vita.cmake" REQUIRED)
+    target_sources(OpenDoctrines PRIVATE src/platform/Vita.cpp src/platform/newlib_posix_stubs.cpp)
+    target_include_directories(OpenDoctrines BEFORE PRIVATE src/platform/vita-include)
+    target_link_libraries(OpenDoctrines ScePower_stub)
+    # VitaSDK's toolchain already links libpthread whole (its static
+    # initialiser has to run), and SDL3's Threads::Threads adds -lpthread
+    # again, so every pthread object is defined twice. They are the same
+    # objects from the same archive: the first copy is kept.
+    target_link_options(OpenDoctrines PRIVATE -Wl,--allow-multiple-definition)
+    # UNSAFE: full access to the memory card and the clock settings, which is
+    # what homebrew games ask for; the player sees it when installing.
+    vita_create_self(eboot.bin OpenDoctrines UNSAFE)
+endif()
+
 if(APPLE)
     # IOKit for the power assertion that keeps the Mac awake during headless
     # AI training (see Game_AITrain.cpp); CoreFoundation for CFStringRef.
@@ -2987,10 +3566,17 @@ target_include_directories(TouchGestureTest PRIVATE
 # The same touch layer, fed by real touches through the backend the desktop
 # game ships on (OD_DESKTOP_SDL): SDL's own driver-side entry points, raylib's
 # SDL event loop, then odTouch. Needs a window, so CI runs it under Xvfb.
-if(OD_DESKTOP_SDL)
+# SDL3 only: the internal touch calls it makes are SDL3's.
+if(OD_DESKTOP_SDL AND OD_SDL_TARGET STREQUAL "SDL3::SDL3")
     add_executable(TouchSdlTest EXCLUDE_FROM_ALL tests/touch_sdl_test.cpp src/Touch.cpp)
     target_include_directories(TouchSdlTest PRIVATE src tests)
     target_link_libraries(TouchSdlTest PRIVATE raylib SDL3::SDL3)
+    # And the same for a gamepad: a Steam Deck's controls, attached through
+    # SDL's public virtual-joystick API, read by raylib and turned by odPad
+    # into the cursor and clicks the game uses.
+    add_executable(PadSdlTest EXCLUDE_FROM_ALL tests/pad_sdl_test.cpp src/Gamepad.cpp)
+    target_include_directories(PadSdlTest PRIVATE src tests)
+    target_link_libraries(PadSdlTest PRIVATE raylib SDL3::SDL3)
 endif()
 
 # Ethnic migration has to conserve people. Pure arithmetic on shares: the
@@ -3550,6 +4136,16 @@ add_executable(NeuralNetTest EXCLUDE_FROM_ALL
     src/ai/NeuralNet.cpp)
 target_include_directories(NeuralNetTest PRIVATE src)
 
+# sim::Order's byte encoding, round-tripped for every kind. Links only the
+# codec (src/sim/Order.cpp), never Game: the encoding must be testable without
+# a world. raylib's headers because Order.h carries the real Pending* structs
+# from GameStructs.h -- see BattleRulesTest for why not a copy of them.
+add_executable(OrderCodecTest EXCLUDE_FROM_ALL
+    tests/order_codec_test.cpp
+    src/sim/Order.cpp)
+target_include_directories(OrderCodecTest PRIVATE src
+    $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
+
 # --- the communication window ---
 # The dialogue speaker, drawn as a video link rather than as a character: a
 # small luminance buffer put through a filter that colours it from the
@@ -3727,6 +4323,11 @@ target_include_directories(ReleaseRulesTest PRIVATE src)
 # sixty-four countries could not, and it was invisible in the source. Needs
 # raylib's headers only because GameStructs.h includes them; links nothing.
 # See tests/goods_recipe_test.cpp.
+# The border distance field's vector paths against the loop they replaced.
+add_executable(BorderDistanceTest EXCLUDE_FROM_ALL
+    tests/border_distance_test.cpp src/map/BorderDistance.cpp)
+target_include_directories(BorderDistanceTest PRIVATE src)
+
 add_executable(GoodsRecipeTest EXCLUDE_FROM_ALL tests/goods_recipe_test.cpp)
 target_include_directories(GoodsRecipeTest PRIVATE src
     $<TARGET_PROPERTY:raylib,INTERFACE_INCLUDE_DIRECTORIES>)
@@ -3819,6 +4420,33 @@ add_executable(SaveRoundTripTest EXCLUDE_FROM_ALL
     tools/map_generator/miniz_zip.c
 )
 target_include_directories(SaveRoundTripTest PRIVATE src tests tools/map_generator)
+
+# The per-turn state diffs and the in-place append: exact rebuilds, old saves,
+# rewinds, appends cut short at any byte (tests/save_format_test.cpp).
+add_executable(SaveFormatTest EXCLUDE_FROM_ALL
+    tests/save_format_test.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveFormatTest PRIVATE src tests tools/map_generator)
+
+# A real campaign's save written again turn by turn: size, append time, and
+# every snapshot read back exactly. Not in run_all.sh -- it needs a long save
+# to say anything (tests/save_stream_bench.cpp).
+add_executable(SaveStreamBench EXCLUDE_FROM_ALL
+    tests/save_stream_bench.cpp
+    src/SaveManager.cpp
+    src/util/WebPersist.cpp
+    tools/map_generator/miniz.c
+    tools/map_generator/miniz_tdef.c
+    tools/map_generator/miniz_tinfl.c
+    tools/map_generator/miniz_zip.c
+)
+target_include_directories(SaveStreamBench PRIVATE src tests tools/map_generator)
 
 
 # The archive the web build writes on a timer. Built everywhere, because
@@ -4144,3 +4772,15 @@ if(EMSCRIPTEN)
         "--exclude-file=*/audio/*"
         "--exclude-file=*/fonts/unifont-full.ttf")
 endif()
+
+# libdeflate into every target that compiles SaveManager.cpp, found rather than
+# listed: a hand-kept list goes stale the way the odseal one did (see "Game
+# target"). The property, not target_link_libraries, because the targets mix
+# the plain and keyword signatures and CMake refuses to combine them.
+get_property(_od_all_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(_t IN LISTS _od_all_targets)
+    get_target_property(_srcs ${_t} SOURCES)
+    if(_srcs AND "${_srcs}" MATCHES "SaveManager\\.cpp")
+        set_property(TARGET ${_t} APPEND PROPERTY LINK_LIBRARIES libdeflate_static)
+    endif()
+endforeach()
