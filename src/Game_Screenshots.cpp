@@ -563,6 +563,11 @@ bool Game::tickScreenshotTour() {
             }
             hideLoadingScreen();
             m_currentScreen = SCREEN_PLAYING;
+            // The reset above runs only once a world is READY, so the shot that
+            // loads one skipped it: world-map, first after tutorial-world,
+            // photographed the pause menu the tutorial shot had left open.
+            m_paused = false;
+            m_inSettings = false;
 
             // Play as the country holding the most ground, so the panels have
             // real numbers in them. A spectator (country 0) renders the same
