@@ -520,6 +520,8 @@
  "Confirm?": "Пацвердзіць?",
  "Confirmed": "Пацверджана",
  "Confirmed (modified rules)": "Пацверджана (змененыя правілы)",
+ "Confirms in about %d hours": "Пацвердзіцца прыкладна праз %d гадз.",
+ "Confirms in about %d minutes": "Пацвердзіцца прыкладна праз %d хв.",
  "Conflicts": "Канфлікты",
  "Conflicts with %s, which is active. Repeal it first.": "Супярэчыць дзейнай «%s». Спярша адмяніце яе.",
  "Connecting...": "Падлучэнне...",

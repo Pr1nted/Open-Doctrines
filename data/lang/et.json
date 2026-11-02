@@ -520,6 +520,8 @@
  "Confirm?": "Kinnitad?",
  "Confirmed": "Kinnitatud",
  "Confirmed (modified rules)": "Kinnitatud (muudetud reeglid)",
+ "Confirms in about %d hours": "Kinnitus umbes %d tunni pärast",
+ "Confirms in about %d minutes": "Kinnitus umbes %d minuti pärast",
  "Conflicts": "Konfliktid",
  "Conflicts with %s, which is active. Repeal it first.": "Läheb vastuollu %s-ga, mis on aktiivne. Tühistage see esmalt.",
  "Connecting...": "Ühendumine...",

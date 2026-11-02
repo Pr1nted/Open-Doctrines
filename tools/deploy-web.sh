@@ -47,8 +47,17 @@ echo "== building =="
 # The same flags the release workflow uses, so what is deployed is what is
 # shipped -- including the account service, without which sign-in is missing,
 # and the Discord application id, without which there is no rich presence.
+# And the key achievement grants verify against. Without it the site builds and
+# runs perfectly, and tells every player it cannot confirm anything, so its
+# absence stops the deploy rather than shipping that.
+achievement_keys="${OD_ACHIEVEMENT_KEYS:-$(gh variable get OD_ACHIEVEMENT_KEYS --repo Pr1nted/Open-Doctrines 2>/dev/null || true)}"
+if [ -z "$achievement_keys" ]; then
+    echo "No achievement keys: set OD_ACHIEVEMENT_KEYS, or sign in to gh." >&2
+    exit 1
+fi
 emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release \
     -DOD_ACCOUNT_ISSUER="$issuer" \
+    -DOD_ACHIEVEMENT_KEYS="$achievement_keys" \
     -DOD_DISCORD_APP_ID="$app_id"
 emmake cmake --build build-web -j "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 

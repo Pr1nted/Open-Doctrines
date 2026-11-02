@@ -520,6 +520,8 @@
  "Confirm?": "Растайсыз ба?",
  "Confirmed": "Расталды",
  "Confirmed (modified rules)": "Расталды (өзгертілген ережелер)",
+ "Confirms in about %d hours": "Шамамен %d сағаттан кейін расталады",
+ "Confirms in about %d minutes": "Шамамен %d минуттан кейін расталады",
  "Conflicts": "Қақтығыстар",
  "Conflicts with %s, which is active. Repeal it first.": "Күшіндегі «%s» саясатына қайшы. Алдымен оны тоқтатыңыз.",
  "Connecting...": "Қосылуда...",

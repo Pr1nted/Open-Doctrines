@@ -520,6 +520,8 @@
  "Confirm?": "Təsdiq edilsin?",
  "Confirmed": "Təsdiqlənib",
  "Confirmed (modified rules)": "Təsdiqlənib (dəyişdirilmiş qaydalar)",
+ "Confirms in about %d hours": "Təxminən %d saata təsdiqlənəcək",
+ "Confirms in about %d minutes": "Təxminən %d dəqiqəyə təsdiqlənəcək",
  "Conflicts": "Münaqişələr",
  "Conflicts with %s, which is active. Repeal it first.": "%s ilə ziddiyyət təşkil edir, o aktivdir. Əvvəlcə onu ləğv edin.",
  "Connecting...": "Qoşulur...",

@@ -520,6 +520,8 @@
  "Confirm?": "पुष्टि करें?",
  "Confirmed": "पुष्ट",
  "Confirmed (modified rules)": "पुष्ट (संशोधित नियम)",
+ "Confirms in about %d hours": "लगभग %d घंटे में पुष्टि",
+ "Confirms in about %d minutes": "लगभग %d मिनट में पुष्टि",
  "Conflicts": "टकराव",
  "Conflicts with %s, which is active. Repeal it first.": "लागू %s से टकराव है। पहले उसे रद्द करें।",
  "Connecting...": "कनेक्ट हो रहा है...",

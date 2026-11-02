@@ -49,6 +49,7 @@ struct Entry {
     bool modded = false;       // granted under non-release rule tables
     long long when = 0;        // unix seconds: grant time, else earn time
     double progress = 0;       // current stat value, for a progress bar
+    long long retryAt = 0;     // earned, not granted: when the service said to ask again
 };
 
 /** Something to announce. Drawn as a toast on any screen. */

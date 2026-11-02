@@ -520,6 +520,8 @@
  "Confirm?": "Potvrditi?",
  "Confirmed": "Potvrđeno",
  "Confirmed (modified rules)": "Potvrđeno (izmijenjena pravila)",
+ "Confirms in about %d hours": "Potvrda za oko %d h",
+ "Confirms in about %d minutes": "Potvrda za oko %d min",
  "Conflicts": "Sukobi",
  "Conflicts with %s, which is active. Repeal it first.": "U sukobu s %s, koja je aktivna. Prvo je ukinite.",
  "Connecting...": "Povezivanje...",

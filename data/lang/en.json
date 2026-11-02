@@ -526,6 +526,8 @@
  "Confirm?": "Confirm?",
  "Confirmed": "Confirmed",
  "Confirmed (modified rules)": "Confirmed (modified rules)",
+ "Confirms in about %d hours": "Confirms in about %d hours",
+ "Confirms in about %d minutes": "Confirms in about %d minutes",
  "Conflicts": "Conflicts",
  "Conflicts with %s, which is active. Repeal it first.": "Conflicts with %s, which is active. Repeal it first.",
  "Connecting...": "Connecting...",

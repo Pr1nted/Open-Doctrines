@@ -520,6 +520,8 @@
  "Confirm?": "დავადასტუროთ?",
  "Confirmed": "დადასტურებულია",
  "Confirmed (modified rules)": "დადასტურებულია (შეცვლილი წესები)",
+ "Confirms in about %d hours": "დადასტურდება დაახლ. %d საათში",
+ "Confirms in about %d minutes": "დადასტურდება დაახლ. %d წუთში",
  "Conflicts": "კონფლიქტები",
  "Conflicts with %s, which is active. Repeal it first.": "ეწინააღმდეგება %s-ს, რომელიც აქტიურია. ჯერ გააუქმეთ იგი.",
  "Connecting...": "დაკავშირება...",

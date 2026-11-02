@@ -520,6 +520,8 @@
  "Confirm?": "Xác nhận?",
  "Confirmed": "Đã xác nhận",
  "Confirmed (modified rules)": "Đã xác nhận (luật đã chỉnh sửa)",
+ "Confirms in about %d hours": "Xác nhận sau khoảng %d giờ",
+ "Confirms in about %d minutes": "Xác nhận sau khoảng %d phút",
  "Conflicts": "Xung đột",
  "Conflicts with %s, which is active. Repeal it first.": "Xung đột với %s đang hoạt động. Hãy bãi bỏ nó trước.",
  "Connecting...": "Đang kết nối...",

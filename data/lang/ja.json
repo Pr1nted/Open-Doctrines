@@ -520,6 +520,8 @@
  "Confirm?": "確認しますか？",
  "Confirmed": "確認済み",
  "Confirmed (modified rules)": "確認済み（ルール変更あり）",
+ "Confirms in about %d hours": "あと約 %d 時間で確定",
+ "Confirms in about %d minutes": "あと約 %d 分で確定",
  "Conflicts": "衝突",
  "Conflicts with %s, which is active. Repeal it first.": "施行中の「%s」と矛盾します。先に廃止してください。",
  "Connecting...": "接続中...",

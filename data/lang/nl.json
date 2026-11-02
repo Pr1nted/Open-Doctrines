@@ -520,6 +520,8 @@
  "Confirm?": "Bevestigen?",
  "Confirmed": "Bevestigd",
  "Confirmed (modified rules)": "Bevestigd (aangepaste regels)",
+ "Confirms in about %d hours": "Bevestiging over ongeveer %d uur",
+ "Confirms in about %d minutes": "Bevestiging over ongeveer %d minuten",
  "Conflicts": "Conflicten",
  "Conflicts with %s, which is active. Repeal it first.": "In strijd met %s, dat actief is. Trek dat eerst in.",
  "Connecting...": "Verbinden...",

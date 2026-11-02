@@ -520,6 +520,8 @@
  "Confirm?": "Confermare?",
  "Confirmed": "Confermato",
  "Confirmed (modified rules)": "Confermato (regole modificate)",
+ "Confirms in about %d hours": "Conferma tra circa %d ore",
+ "Confirms in about %d minutes": "Conferma tra circa %d minuti",
  "Conflicts": "Conflitti",
  "Conflicts with %s, which is active. Repeal it first.": "È in conflitto con %s, che è in vigore. Abrogala prima.",
  "Connecting...": "Connessione...",

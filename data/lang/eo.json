@@ -520,6 +520,8 @@
  "Confirm?": "Ĉu konfirmi?",
  "Confirmed": "Konfirmita",
  "Confirmed (modified rules)": "Konfirmita (modifitaj reguloj)",
+ "Confirms in about %d hours": "Konfirmo post ĉirkaŭ %d horoj",
+ "Confirms in about %d minutes": "Konfirmo post ĉirkaŭ %d minutoj",
  "Conflicts": "Konfliktoj",
  "Conflicts with %s, which is active. Repeal it first.": "Konfliktas kun %s, kiu estas aktiva. Unue nuligu ĝin.",
  "Connecting...": "Konektado...",

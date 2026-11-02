@@ -14,6 +14,8 @@
 //   diff sees all of them, including the ones added next month.
 
 #include "Game.h"
+
+#include <ctime>
 #include "GameInternals.h"
 #include "Audio.h"
 #include "achievements/Achievements.h"
@@ -505,7 +507,15 @@ void Game::drawAchievements() {
         const char* state = nullptr;
         Color sc = faint;
         if (lit) { state = e.modded ? T("Confirmed (modified rules)") : T("Confirmed"); sc = gold; }
-        else if (e.earned) { state = T("Waiting for confirmation"); sc = Color{180, 150, 60, 255}; }
+        else if (e.earned) {
+            // Most waits are the service's plausibility clock, and hours long.
+            // A date beats an unexplained "waiting" that looks like a fault.
+            state = T("Waiting for confirmation");
+            const long long left = e.retryAt - (long long)std::time(nullptr);
+            if (left > 90 * 60) state = TextFormat(T("Confirms in about %d hours"), (int)((left + 1800) / 3600));
+            else if (left > 90) state = TextFormat(T("Confirms in about %d minutes"), (int)((left + 30) / 60));
+            sc = Color{180, 150, 60, 255};
+        }
         if (state) {
             const int sw = MeasureText(state, 14);
             DrawText(state, x + cardW - sw - 14, cy + cardH - 22, 14, sc);

@@ -520,6 +520,8 @@
  "Confirm?": "Apstiprināt?",
  "Confirmed": "Apstiprināts",
  "Confirmed (modified rules)": "Apstiprināts (mainīti noteikumi)",
+ "Confirms in about %d hours": "Apstiprinās pēc aptuveni %d st.",
+ "Confirms in about %d minutes": "Apstiprinās pēc aptuveni %d min.",
  "Conflicts": "Konflikti",
  "Conflicts with %s, which is active. Repeal it first.": "Konfliktē ar %s, kas ir aktīva. Vispirms to atceliet.",
  "Connecting...": "Savienojas...",

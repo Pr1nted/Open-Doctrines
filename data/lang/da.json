@@ -520,6 +520,8 @@
  "Confirm?": "Bekræft?",
  "Confirmed": "Bekræftet",
  "Confirmed (modified rules)": "Bekræftet (ændrede regler)",
+ "Confirms in about %d hours": "Bekræftes om cirka %d timer",
+ "Confirms in about %d minutes": "Bekræftes om cirka %d minutter",
  "Conflicts": "Konflikter",
  "Conflicts with %s, which is active. Repeal it first.": "I konflikt med %s, som er aktiv. Ophæv den først.",
  "Connecting...": "Forbinder...",

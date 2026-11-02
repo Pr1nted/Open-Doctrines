@@ -520,6 +520,8 @@
  "Confirm?": "Bestätigen?",
  "Confirmed": "Bestätigt",
  "Confirmed (modified rules)": "Bestätigt (geänderte Regeln)",
+ "Confirms in about %d hours": "Bestätigung in etwa %d Stunden",
+ "Confirms in about %d minutes": "Bestätigung in etwa %d Minuten",
  "Conflicts": "Konflikte",
  "Conflicts with %s, which is active. Repeal it first.": "Steht im Widerspruch zu %s, die in Kraft ist. Heben Sie sie zuerst auf.",
  "Connecting...": "Verbinde...",

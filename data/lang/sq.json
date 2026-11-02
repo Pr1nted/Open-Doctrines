@@ -520,6 +520,8 @@
  "Confirm?": "Konfirmo?",
  "Confirmed": "Konfirmuar",
  "Confirmed (modified rules)": "Konfirmuar (rregulla të modifikuara)",
+ "Confirms in about %d hours": "Konfirmohet pas rreth %d orësh",
+ "Confirms in about %d minutes": "Konfirmohet pas rreth %d minutash",
  "Conflicts": "Konfliktet",
  "Conflicts with %s, which is active. Repeal it first.": "Bie ndesh me %s, që është aktive. Shfuqizoje së pari.",
  "Connecting...": "Duke u lidhur...",

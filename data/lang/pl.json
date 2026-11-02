@@ -520,6 +520,8 @@
  "Confirm?": "Potwierdzić?",
  "Confirmed": "Potwierdzone",
  "Confirmed (modified rules)": "Potwierdzone (zmienione zasady)",
+ "Confirms in about %d hours": "Potwierdzenie za około %d godz.",
+ "Confirms in about %d minutes": "Potwierdzenie za około %d min",
  "Conflicts": "Konflikty",
  "Conflicts with %s, which is active. Repeal it first.": "Koliduje z obowiązującą polityką %s. Najpierw ją uchyl.",
  "Connecting...": "Łączenie...",

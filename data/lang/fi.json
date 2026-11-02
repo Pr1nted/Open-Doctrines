@@ -520,6 +520,8 @@
  "Confirm?": "Vahvista?",
  "Confirmed": "Vahvistettu",
  "Confirmed (modified rules)": "Vahvistettu (muokatut säännöt)",
+ "Confirms in about %d hours": "Vahvistus noin %d tunnin kuluttua",
+ "Confirms in about %d minutes": "Vahvistus noin %d minuutin kuluttua",
  "Conflicts": "Ristiriidat",
  "Conflicts with %s, which is active. Repeal it first.": "Ristiriidassa kohteen %s kanssa, joka on aktiivinen. Kumoa se ensin.",
  "Connecting...": "Yhdistetään...",
