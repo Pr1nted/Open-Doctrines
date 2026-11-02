@@ -45,6 +45,10 @@ please open an issue. Name the setting, or the screen you couldn't use.
 - **A readable font by default**: *Settings → Display → Font*.
   - The interface uses a clear vector face. The original pixel font is still
     available for anyone who prefers it.
+  - **Hyperlegible**: Atkinson Hyperlegible, the Braille Institute's face for
+    readers with low vision. Letters that are easy to confuse, such as I, l
+    and 1, or O and 0, are drawn so that each one looks different. It covers
+    Latin scripts; other scripts fall back to the game's usual font.
   - You can also import a font of your own, such as a dyslexia-friendly face.
     It is checked before it is used, and takes effect as soon as it is
     selected.
