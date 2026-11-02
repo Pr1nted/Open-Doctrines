@@ -6,7 +6,7 @@
  * source disagree.
  */
 
-#define SY_VERSION           "1.3.2b"
+#define SY_VERSION           "1.3.3b"
 
 #define SY_WIDTH_MIN         20000
 #define SY_WIDTH_PER_AREA    25

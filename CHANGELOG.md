@@ -1,5 +1,90 @@
 # Changelog
 
+## game 1.3.3b
+
+The biggest release yet by reach: Open Doctrines now runs on more than thirty
+platforms, from a Steam Deck to a Nintendo Wii to a microcontroller over a
+serial line. Turns process about three times faster, saves are smaller, and a
+new Accessibility tab adds high contrast, larger text and more.
+
+### New places to play
+
+- **Steam Deck and handhelds.** Linux and Windows desktop builds now run on
+  SDL3, with real touch: tap to click, drag to move, two fingers to zoom. On the
+  Deck the window fits its 1280x800 screen, Game Mode goes fullscreen at the
+  panel's own size, and the controller drives the cursor, menus and zoom.
+- **Raspberry Pi OS**, 64-bit and 32-bit, built for OpenGL ES so a Pi 4 or 5
+  draws the map on its GPU, with .deb packages that install with apt.
+- **ChromeOS**: a .deb for its Linux container, and an Android APK for every
+  CPU a Chromebook has.
+- **NetBSD**, and **Arm builds of FreeBSD, OpenBSD and NetBSD**.
+- **OpenIndiana (illumos)**, **Haiku** and **SerenityOS**. SerenityOS has no
+  usable OpenGL, so the game draws there with raylib's software renderer; the
+  colours are the same lookup tables the shaders use.
+- **PlayStation Vita** (homebrew .vpk), **Nintendo Wii** and **Nintendo 3DS**
+  (Homebrew Channel / Homebrew Launcher), **DOS** (DJGPP, with CWSDPMI
+  included; runs in DOSBox-X) and **RISC OS 5**. Consoles load worlds at reduced
+  resolution to fit their memory; network play, mods and sound are off there
+  for now.
+- **Two experiment editions**, like the TempleOS one: **FreeRTOS**, the rules
+  on a microcontroller played over a serial console, and **Plan 9 (9front)**, a
+  console game and a libdraw map built with 9front's own compiler. Both play a
+  31-turn game byte for byte the same as every other build.
+
+### Accessibility
+
+A new **Settings -> Accessibility** tab. Everything is off by default.
+
+- **High contrast**: opaque black panels and white text (21:1); coloured text,
+  lines and buttons adjusted to at least 7:1 while keeping their hue, so war is
+  still red and alliances still green, and the colour-blind palettes still work.
+- **Text size** 100%, 110% or 120%.
+- **Reduce motion**: the pulsing highlights hold still.
+- **Hold to confirm**: declaring war and deleting a world or map need the button
+  held, so a slip of the hand cannot do it.
+- **Longer messages**: notifications stay three times as long.
+- **Sound cues**: a refusal also flashes a marker at the pointer.
+- **Hyperlegible font**: Atkinson Hyperlegible, the Braille Institute's face for
+  low vision, as a choice under Settings -> Display -> Font.
+
+The new settings are translated into every language. ACCESSIBILITY.md lists
+everything the game does for players who see, hear or play differently.
+
+### Faster and smaller
+
+- **Turns process 2.7 to 3.1 times faster**, with bit-identical results. Most of
+  a turn was repainting the map; the border field is now rebuilt only where
+  provinces changed hands, with NEON and SSE2 versions of its inner loop.
+- **Saves store each turn as a diff** and append turns in place, and compress
+  with libdeflate: a third of the time and a little smaller than before, still
+  ordinary zip files that older builds read.
+- **The map editor generates worlds about three times faster**, and can no
+  longer finish with provinces on screen and an empty country list.
+
+### Also new
+
+- **A readable vector font** draws the interface by default; the original pixel
+  font is still a choice, and you can import a font of your own from Settings
+  (checked strictly before it is used).
+- **Mods can reshape the map** at runtime -- morph provinces and edit terrain --
+  through the new Map.Write ABI, and the mod sandbox is hardened.
+- **Fog-of-war saves are sealed** in games built from source with the prebuilt libraries, as they are in official builds.
+- **The economy breakdown** shows monuments and sector flows.
+- **Built on raylib 6.2.**
+- **The web build** scales correctly on Retina screens and has an on-screen
+  keyboard on touch devices.
+
+### Fixed
+
+- Multiplayer orders resolve in a fixed order on every machine, and a save is
+  written so a crash can no longer leave it half-written.
+- A signed-out multiplayer join opens the Account screen instead of a dead
+  button; a reconnect no longer shows a held seat as unverified; the browser
+  sign-in waits 30 minutes, not 10; linking a provider already tied to another
+  account now offers a way back.
+- Stack protection on far more functions, and fortified libc calls on optimised
+  builds.
+
 ## game 1.3.2b
 
 A release for hosted games, and for the tournament that runs on one. The first

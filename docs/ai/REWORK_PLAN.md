@@ -3,7 +3,7 @@
 The plan for turning Parrot Zero from a set of per-module policy nets into a
 search-based engine, in the manner of a chess engine: generate candidate moves,
 look ahead, and score positions with an evaluator. It also covers the network
-visualiser planned for 1.3.3b. The rework itself is 1.3.4b.
+visualiser. Both are planned for 1.3.4b.
 
 This document is the plan. The groundwork it lists is meant to land before the
 rework starts, and it must not change how the current AI plays:
@@ -164,7 +164,7 @@ and the save round trip are unchanged.
    test) is attached, `takeTurn` records each decision's input features,
    per-layer activations, masked logits and chosen action next to the
    existing `Decision` log. When nothing is attached it costs nothing.
-   - This is small and can land first. The 1.3.3b visualiser needs nothing
+   - This is small and can land first. The visualiser needs nothing
      else from the AI.
    - **Done (groundwork).** `AITraceSink` (`src/ai/AITrace.h`) gets one
      `AIDecisionTrace` per module pick: features, trunk and policy-head
@@ -186,7 +186,7 @@ is identical.
 Items 1, 2 and 6 are independent and small. Items 4 and 5 are most of the
 work, and are what the rework is waiting on.
 
-## The visualiser, 1.3.3b
+## The visualiser, 1.3.4b
 
 Built on the trace sink (groundwork 6). Proposed views:
 
@@ -221,6 +221,6 @@ The trace file format should come first, so both are possible.
 | Version | Content |
 |---|---|
 | groundwork (done) | items 1, 2 and 6: small, behaviour-neutral. Remaining direct writes listed under item 2 |
-| 1.3.3b | the visualiser, on the trace sink; item 3 alone; `WorldState` extraction under way |
-| 1.3.4b | pure `step()`; hand-written evaluator; shallow best-response search behind `AIPlayer`, A/B against Parrot Zero |
+| 1.3.3b | groundwork items 1, 2 and 6 ship (no change to play) |
+| 1.3.4b | the visualiser, on the trace sink; item 3 alone; `WorldState` extraction; pure `step()`; hand-written evaluator; shallow best-response search behind `AIPlayer`, A/B against Parrot Zero |
 | after 1.3.4b | value net trained on search; MCTS with sampled opponents; retire executors that plans replace |

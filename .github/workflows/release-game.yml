@@ -191,7 +191,7 @@ jobs:
         # matrix.cmake_args goes LAST, on the same line: -A Win32 / -A ARM64 for
         # the other Windows architectures, the toolchain file for cross Linux,
         # and nothing for the native builds.
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.5.2" ${{ matrix.cmake_args }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOD_ACCOUNT_ISSUER=https://opendoctrines-net.opendoctrines.workers.dev "-DOD_ACHIEVEMENT_KEYS=${{ vars.OD_ACHIEVEMENT_KEYS }}" -DOD_DISCORD_APP_ID=1547303703370014830 -DOD_ENABLE_GDTL=ON "-DOD_DRAGOMAN_REF=v0.5.3" ${{ matrix.cmake_args }}
 
       # The build gate. Every later job depends on this one, so a platform that
       # does not compile stops its own release without stopping the others.
