@@ -72,7 +72,8 @@ take less space, and the map editor generates worlds about three times faster.
 - A clear vector font draws the interface by default. The pixel font is still
   there, and you can import your own font.
 - Mods can now reshape the map while the game runs: morph provinces and edit
-  terrain.
+  terrain. Modders: this is Gearbox 1.5, out alongside, and map scripts get the
+  same two commands as engine version 4.
 - The economy breakdown shows monuments and sector flows.
 - The web version scales properly on Retina screens and has an on-screen
   keyboard on touch devices.
@@ -134,7 +135,7 @@ to confirm war and deletes, longer messages, visible sound cues, and the
 **Atkinson Hyperlegible** font. Translated into every language.
 
 **Also:** a readable vector font by default (or import your own), mods can
-reshape the map at runtime, monuments and sector flows in the economy
+reshape the map at runtime (**Gearbox 1.5**, and `#OD/MapEngine/4` for map scripts), monuments and sector flows in the economy
 breakdown, Retina-sharp web build with an on-screen keyboard.
 
 Running it on something unusual? Post a screenshot in #showcase — half these
