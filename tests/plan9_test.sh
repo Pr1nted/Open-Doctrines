@@ -41,7 +41,16 @@ fi
 
 # od_host.c's main, with the core's vsnprintf/snprintf/sprintf replaced by od9fmt's.
 fmt=(-Dvsnprintf=od9_vsnprintf -Dsnprintf=od9_snprintf -Dsprintf=od9_sprintf -U_FORTIFY_SOURCE)
-if cc -std=c99 -O2 -Wall -Wextra -Werror -include "$root/plan9/od9fmt.h" "${fmt[@]}" \
+# The transcript driver (tools/freertos_play.py) waits on the program's pipe
+# with select(), which Windows only offers for sockets -- the same reason
+# tests/freertos_test.sh skips there. The compile check above still runs.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) posix_host=0 ;;
+    *) posix_host=1 ;;
+esac
+if [ "$posix_host" = 0 ]; then
+    echo "skip  od9fmt: the transcript driver needs a POSIX host"
+elif cc -std=c99 -O2 -Wall -Wextra -Werror -include "$root/plan9/od9fmt.h" "${fmt[@]}" \
         -I"$root/freertos/core" -I"$root/templeos" -I"$root/plan9" \
         "$root/freertos/core/od_world.c" "$root/freertos/core/od_rules.c" \
         "$root/freertos/core/od_shell.c" "$root/freertos/host/od_host.c" \
