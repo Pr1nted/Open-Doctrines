@@ -37,6 +37,7 @@
 #include "map/ProvinceMap.h"
 #include "map/CountryMap.h"
 #include "map/HistoryFile.h"
+#include "sim/WorldState.h"
 #include "renderer/MapRenderer.h"
 #include "Feedback.h"
 #include "Mail.h"
@@ -2266,6 +2267,10 @@ public:
         return odPointerIn(GetMousePosition(), m_dpiScale, u);
     }
 
+    // REWORK_PLAN.md item 4: the extracted gameplay state. Declared first so the
+    // reference-alias members that forward into it (below, and more over time)
+    // are initialised after it. See src/sim/WorldState.h.
+    sim::WorldState m_world;
     LandSeaMap m_landSea;
     ProvinceMap m_provinces;
     CountryMap m_countries;
@@ -6970,7 +6975,10 @@ private:
 
     bool m_scriptRebellionsOff = false;
 
-    int m_turnNumber = 0;
+    // Moved into sim::WorldState (REWORK_PLAN item 4); this is a reference-alias
+    // into m_world so existing m_turnNumber call sites are unchanged. m_world is
+    // declared before this member, so the reference binds to a live object.
+    int& m_turnNumber = m_world.turnNumber;
 
     // ─── Script engine ───
     ScriptEngine* m_scriptEngine = nullptr;
