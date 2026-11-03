@@ -15,10 +15,13 @@
  *   text size         odText::drawText and odText::measureText scale every
  *                     size they are handed, so a screen that measures before
  *                     it draws makes room for the bigger text by itself
- *   hold to confirm   declaring war and deleting a world or a map need the
- *                     button HELD for kHoldSeconds rather than clicked, so a
- *                     tremor or a slipped click cannot do it. gate() decides,
- *                     drawHoldProgress() shows how far along the hold is
+ *   confirm actions   declaring war and deleting a world or a map ask for a
+ *                     second, deliberate gesture rather than a single click, so
+ *                     a tremor or a slipped click cannot do it. Two methods: a
+ *                     HOLD for kHoldSeconds, or a second CLICK on the same
+ *                     button within kTwoClickWindow. gate() decides which fires,
+ *                     drawHoldProgress() shows the hold filling or the armed
+ *                     second-click waiting
  *   longer messages   notifications stay three times as long
  *   sound cues        a refusal sound ("deny") also flashes a marker at the
  *                     pointer, for a player who cannot hear it
@@ -26,7 +29,10 @@
 namespace odAccess {
 
 inline bool  g_reduceMotion  = false;
-inline bool  g_holdToConfirm = false;
+// How a destructive button asks for confirmation. 0 off (a plain click), 1 hold
+// for kHoldSeconds, 2 a second click within kTwoClickWindow. See Config::confirmMode.
+enum { CONFIRM_OFF = 0, CONFIRM_HOLD = 1, CONFIRM_TWOCLICK = 2 };
+inline int   g_confirmMode   = CONFIRM_OFF;
 inline bool  g_longMessages  = false;
 inline bool  g_soundCues     = false;
 inline float g_textScale     = 1.0f;
@@ -60,25 +66,46 @@ inline void drawCue(Vector2 at) {
     DrawLineEx({at.x - 9, at.y - 9}, {at.x + 9, at.y + 9}, 3.0f, Color{235, 70, 70, a});
 }
 
-// ── Hold to confirm ──
-constexpr double kHoldSeconds = 0.8;
-/// The buttons that hold, by address: a string literal used twice is not
+// ── Confirm actions (hold, or a second click) ──
+constexpr double kHoldSeconds    = 0.8;
+constexpr double kTwoClickWindow = 2.5;   ///< how long the first click stays armed
+/// The buttons that confirm, by address: a string literal used twice is not
 /// promised to be the same object, these are.
 inline const char kDeleteWorld = 0, kDeleteMap = 0, kDeclareWar = 0;
 
 struct Hold { const void* id = nullptr; double start = 0; bool fired = false; };
 inline Hold g_hold;
 
+/// The button armed by a first click in CONFIRM_TWOCLICK, and when.
+struct Arm { const void* id = nullptr; double at = 0; };
+inline Arm g_arm;
+
+/// Whether the two-click arming on `id` is still live (armed and unexpired).
+inline bool twoClickArmed(const void* id) {
+    return g_confirmMode == CONFIRM_TWOCLICK && g_arm.id == id &&
+           GetTime() - g_arm.at <= kTwoClickWindow;
+}
+
 /**
  * Whether a destructive button fires this frame. Call it every frame the
  * button exists, with `clicked` being what the button reported. Off: the
- * click, unchanged. On: true once, when the button has been held for
- * kHoldSeconds; letting go early, or sliding off, cancels.
+ * click, unchanged. Hold: true once, when the button has been held for
+ * kHoldSeconds; letting go early, or sliding off, cancels. Click twice: the
+ * first click arms and does nothing; a second click on the same button within
+ * kTwoClickWindow fires. A click elsewhere, or the window lapsing, re-arms.
  *
  * `id` names the button: one of the k... objects above.
  */
 inline bool gate(const void* id, Rectangle r, Vector2 mouse, bool clicked) {
-    if (!g_holdToConfirm) return clicked;
+    if (g_confirmMode == CONFIRM_OFF) return clicked;
+    if (g_confirmMode == CONFIRM_TWOCLICK) {
+        if (clicked) {
+            if (twoClickArmed(id)) { g_arm.id = nullptr; return true; }
+            g_arm.id = id; g_arm.at = GetTime();   // first click (or a re-arm) only arms
+        }
+        return false;
+    }
+    // CONFIRM_HOLD
     const bool over = CheckCollisionPointRec(mouse, r);
     const bool down = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
     if (over && down) {
@@ -95,17 +122,24 @@ inline bool gate(const void* id, Rectangle r, Vector2 mouse, bool clicked) {
 
 /// How far along the hold on `id` is, 0..1.
 inline float holdProgress(const void* id) {
-    if (!g_holdToConfirm || g_hold.id != id || g_hold.fired) return 0.0f;
+    if (g_confirmMode != CONFIRM_HOLD || g_hold.id != id || g_hold.fired) return 0.0f;
     const float p = (float)((GetTime() - g_hold.start) / kHoldSeconds);
     return p < 0 ? 0 : (p > 1 ? 1 : p);
 }
 
-/// The hold's progress, as a bar filling along the bottom of the button.
+/// The hold filling along the bottom of the button, or -- once armed for a
+/// second click -- a bright outline and a bar that drains as the window closes.
 inline void drawHoldProgress(const void* id, Rectangle r) {
-    if (!g_holdToConfirm) return;
-    const float p = holdProgress(id);
-    DrawRectangle((int)r.x + 2, (int)(r.y + r.height) - 5, (int)((r.width - 4) * p), 3,
-                  Color{255, 255, 255, 230});
+    if (g_confirmMode == CONFIRM_HOLD) {
+        const float p = holdProgress(id);
+        DrawRectangle((int)r.x + 2, (int)(r.y + r.height) - 5, (int)((r.width - 4) * p), 3,
+                      Color{255, 255, 255, 230});
+    } else if (g_confirmMode == CONFIRM_TWOCLICK && twoClickArmed(id)) {
+        const float left = (float)((kTwoClickWindow - (GetTime() - g_arm.at)) / kTwoClickWindow);
+        DrawRectangleLinesEx(r, 2.0f, Color{255, 255, 255, 230});
+        DrawRectangle((int)r.x + 2, (int)(r.y + r.height) - 5,
+                      (int)((r.width - 4) * (left < 0 ? 0 : left)), 3, Color{255, 255, 255, 230});
+    }
 }
 
 }  // namespace odAccess

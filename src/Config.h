@@ -32,9 +32,14 @@ struct Config {
     /// src/Theme.h (high contrast) and src/Access.h (the rest).
     bool highContrast = false;
     bool reduceMotion = false;
-    bool holdToConfirm = false;
+    /// How destructive buttons confirm: 0 off, 1 hold, 2 a second click.
+    /// See src/Access.h. Migrated from the old bool "holdToConfirm".
+    int  confirmMode = 0;
     bool longMessages = false;
     bool soundCues = false;
+    /// Order wheels and the army-move keybind: false holds (press, aim, release),
+    /// true clicks (tap to open/arm, click to confirm). Settings -> Controls.
+    bool wheelClickMode = false;
     /// Text size on top of UI Scale: 1.0, 1.1 or 1.2 (see the Text Size row).
     float textScale = 1.0f;
     int screenW = 1600;

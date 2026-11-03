@@ -1029,8 +1029,13 @@ void Game::update(float dt) {
                         m_armyMoveDragValidDest = canArmyMoveTo(moveSrc, hoverPid);
                     }
                 }
-                // Press: start drag on province with player's own troops (allied troops move alongside)
-                if (btnPressedThis && !m_armyMoveDragActive) {
+                // Press on a province with the player's own troops (allied troops
+                // move alongside). Hold mode starts a drag that the release below
+                // completes; click mode (Order Input -> Click) instead arms the
+                // same click-to-place pick the panel's Move button uses, which the
+                // handler further down finishes on the next left-click. The pick
+                // path lives in the army tab, so click mode arms only there.
+                if (btnPressedThis && !m_armyMoveDragActive && m_armyMovePickFrom <= 0) {
                     if (hp) {
                         auto aIt = m_provinceArmies.find(hp->id);
                         bool hasMyTroops = false;
@@ -1039,10 +1044,18 @@ void Game::update(float dt) {
                                 if (u.countryId == m_playerCountryId && u.count > 0) { hasMyTroops = true; break; }
                         }
                         if (hasMyTroops) {
-                            m_armyMoveDragSource = hp->id;
-                            m_armyMoveDragActive = true;
-                            m_armyMoveDragHoverPid = -1;
-                            m_renderer->setSelectedProvince(hp->id);
+                            if (m_config.wheelClickMode) {
+                                if (m_activeViewTab == 5) {
+                                    m_armyMovePickFrom = hp->id;
+                                    m_armyMoveDragHoverPid = -1;
+                                    m_renderer->setSelectedProvince(hp->id);
+                                }
+                            } else {
+                                m_armyMoveDragSource = hp->id;
+                                m_armyMoveDragActive = true;
+                                m_armyMoveDragHoverPid = -1;
+                                m_renderer->setSelectedProvince(hp->id);
+                            }
                         }
                     }
                 }
@@ -1121,10 +1134,21 @@ void Game::update(float dt) {
                 m_armyMovePickFrom = -1;
             }
 
-            // ─── Artillery Wheel Menu (hold key over province) ───
+            // ─── Artillery Wheel Menu (hold key, or click, over province) ───
+            //
+            // Order Input (Settings -> Controls) picks the gesture. Hold: press
+            // the key over the province, aim while it is down, release to fire.
+            // Click: tap to open the wheel, move to a slice, left-click (or tap
+            // the key again) to fire; right-click, Escape or a click in the
+            // centre cancels. The committing click is swallowed so it does not
+            // also fall through to the targeting step below.
+            bool artyWheelCommittedThisFrame = false;
             if (m_turnState == TURN_NORMAL && m_activeViewTab == 5 && !m_paused && !m_inEconomy && !m_inResearch && !m_inClaims && !m_inPolitics) {
                 int wheelKey = m_config.keybinds[ACTION_ARTILLERY_WHEEL];
-                if (wheelKey >= 32 && wheelKey <= 350 && IsKeyPressed(wheelKey) && m_artillerySourceProvince < 0) {
+                const bool wheelKeyValid = (wheelKey >= 32 && wheelKey <= 350);
+                const bool clickMode = m_config.wheelClickMode;
+                bool wheelOpenedThisFrame = false;
+                if (wheelKeyValid && IsKeyPressed(wheelKey) && m_artilleryWheelProvince < 0 && m_artillerySourceProvince < 0) {
                     Vector2 mp = getMouse();
                     int px, py;
                     m_renderer->screenToPixel(mp.x, mp.y, px, py);
@@ -1132,10 +1156,14 @@ void Game::update(float dt) {
                     if (hp && hp->countryId == m_playerCountryId) {
                         m_artilleryWheelProvince = hp->id;
                         m_artilleryWheelHover = -1;
+                        wheelOpenedThisFrame = true;
                     }
                 }
                 if (m_artilleryWheelProvince > 0) {
-                    if (wheelKey >= 32 && wheelKey <= 350 && IsKeyDown(wheelKey)) {
+                    // Aim: in hold mode only while the key is held, in click mode
+                    // every frame the wheel is up.
+                    const bool aiming = clickMode ? true : (wheelKeyValid && IsKeyDown(wheelKey));
+                    if (aiming) {
                         Vector2 mp = getMouse();
                         auto cit = m_provinceCenters.find(m_artilleryWheelProvince);
                         if (cit != m_provinceCenters.end()) {
@@ -1168,21 +1196,45 @@ void Game::update(float dt) {
                                 }
                             }
                         }
-                    } else {
-                        // Key released — commit selection
-                        if (m_artilleryWheelHover >= 0) {
-                            static const char* TYPE_IDS[] = {"mortar","light","heavy","napalm","carpet","chemical","nuclear","biological"};
-                            static const char* TYPE_NODES[] = {"arty1","arty2","arty3","arty4a","arty4b","arty5","arty6a","arty6b"};
-                            if (hasResearched(TYPE_NODES[m_artilleryWheelHover])) {
-                                m_artillerySourceProvince = m_artilleryWheelProvince;
-                                m_artillerySelectedType = TYPE_IDS[m_artilleryWheelHover];
-                                m_artilleryTargetPid = -1;
-                            }
+                    }
+                    // Decide whether this frame fires or cancels the wheel.
+                    bool commit = false, cancel = false;
+                    if (clickMode) {
+                        // Keep the map from selecting or panning under the open wheel.
+                        m_renderer->setBlockLeftPan(true);
+                        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                            if (m_artilleryWheelHover >= 0) commit = true; else cancel = true;
+                        } else if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_ESCAPE)) {
+                            cancel = true;
+                        } else if (!wheelOpenedThisFrame && wheelKeyValid && IsKeyPressed(wheelKey)) {
+                            if (m_artilleryWheelHover >= 0) commit = true; else cancel = true;
                         }
+                    } else if (!(wheelKeyValid && IsKeyDown(wheelKey))) {
+                        // Hold mode: the key came up. A slice under the cursor fires.
+                        commit = (m_artilleryWheelHover >= 0);
+                        cancel = !commit;
+                    }
+                    if (commit && m_artilleryWheelHover >= 0) {
+                        static const char* TYPE_IDS[] = {"mortar","light","heavy","napalm","carpet","chemical","nuclear","biological"};
+                        static const char* TYPE_NODES[] = {"arty1","arty2","arty3","arty4a","arty4b","arty5","arty6a","arty6b"};
+                        if (hasResearched(TYPE_NODES[m_artilleryWheelHover])) {
+                            m_artillerySourceProvince = m_artilleryWheelProvince;
+                            m_artillerySelectedType = TYPE_IDS[m_artilleryWheelHover];
+                            m_artilleryTargetPid = -1;
+                        }
+                        if (clickMode) { artyWheelCommittedThisFrame = true; m_blockLeftPanTimer = 2; }
+                    }
+                    if (commit || cancel) {
                         m_artilleryWheelProvince = -1;
                         m_artilleryWheelHover = -1;
                     }
                 }
+            } else if (m_artilleryWheelProvince > 0) {
+                // Left tab 5, paused, or opened a panel with the wheel still up
+                // (only reachable in click mode): close it rather than leave a
+                // ghost wheel drawing.
+                m_artilleryWheelProvince = -1;
+                m_artilleryWheelHover = -1;
             }
 
             // ─── A FIRE MISSION NOBODY CAN SEE ANY MORE ───
@@ -1225,7 +1277,7 @@ void Game::update(float dt) {
                 Vector2 _mpTarget = getMouse();
                 bool _onPanel = (_mpTarget.x >= 0 && _mpTarget.x < 360 &&
                                  _mpTarget.y >= 68 && _mpTarget.y < 68 + std::min(m_screenH - 80 - 16 - 68, 700));
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !m_armyMoveDragActive && !_onPanel) {
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !m_armyMoveDragActive && !_onPanel && !artyWheelCommittedThisFrame) {
                     // One table, in BuildCosts.h -- this was a local copy, and
                     // so were five others. The price is now all three currencies
                     // (see Game::artilleryPrice), so every charge and every
@@ -1869,6 +1921,9 @@ void Game::update(float dt) {
                 m_inSettings = false;
                 m_settingsScroll = 0;
                 m_config.save(m_configPath);
+            } else if (strcmp(s.label, "Order Input") == 0) {
+                m_config.wheelClickMode = !m_config.wheelClickMode;
+                Audio::get().playSfx(m_config.wheelClickMode ? "toggle_on" : "toggle_off");
             } else if (strcmp(s.label, "Fullscreen") == 0) {
                 m_config.fullscreen = !m_config.fullscreen;
                 if (m_config.fullscreen) {

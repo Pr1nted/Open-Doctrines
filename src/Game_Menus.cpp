@@ -3018,7 +3018,7 @@ static const int   UI_SCALE_STEPS  = (int)(sizeof(UI_SCALE_VALS) / sizeof(UI_SCA
 void Game::applyAccessibility() {
     odTheme::setHighContrast(m_config.highContrast);
     odAccess::g_reduceMotion  = m_config.reduceMotion;
-    odAccess::g_holdToConfirm = m_config.holdToConfirm;
+    odAccess::g_confirmMode   = m_config.confirmMode;
     odAccess::g_longMessages  = m_config.longMessages;
     odAccess::g_soundCues     = m_config.soundCues;
     odAccess::g_textScale     = m_config.textScale;
@@ -3032,7 +3032,12 @@ bool Game::activateAccessibilityRow(const char* label) {
     };
     if      (strcmp(label, "High Contrast") == 0)   toggle(m_config.highContrast);
     else if (strcmp(label, "Reduce Motion") == 0)   toggle(m_config.reduceMotion);
-    else if (strcmp(label, "Hold to Confirm") == 0) toggle(m_config.holdToConfirm);
+    else if (strcmp(label, "Confirm Actions") == 0) {
+        // Off -> Hold -> Click twice -> Off. One click advances it, like the
+        // Colourblind Colours cycle two rows down.
+        m_config.confirmMode = (m_config.confirmMode + 1) % 3;
+        Audio::get().playSfx(m_config.confirmMode ? "toggle_on" : "toggle_off");
+    }
     else if (strcmp(label, "Longer Messages") == 0) toggle(m_config.longMessages);
     else if (strcmp(label, "Sound Cues") == 0)      toggle(m_config.soundCues);
     else if (strcmp(label, "Text Size") == 0) {
@@ -3547,6 +3552,9 @@ void Game::updateSettingsFromMenu() {
             m_inSettings = false;
             m_settingsScroll = 0;
             m_config.save(m_configPath);
+        } else if (strcmp(s.label, "Order Input") == 0) {
+            m_config.wheelClickMode = !m_config.wheelClickMode;
+            Audio::get().playSfx(m_config.wheelClickMode ? "toggle_on" : "toggle_off");
         } else if (strcmp(s.label, "Fullscreen") == 0) {
             m_config.fullscreen = !m_config.fullscreen;
             Audio::get().playSfx(m_config.fullscreen ? "toggle_on" : "toggle_off");

@@ -1712,9 +1712,10 @@ void Game::drawCountryPanel() {
                     else if (ab.action == "request_ceasefire")  m_btnSfxOverride = "request_ceasefire";
                 }
                 bool fire = drawActBtn(bx, by, btnW, btnH, label, disabled, bg, border, whyDisabled) && !disabled;
-                // Hold to Confirm (Settings -> Accessibility): a declaration of
+                // Confirm Actions (Settings -> Accessibility): a declaration of
                 // war is the one act here that cannot be taken back, so it is
-                // the one that waits for a held button rather than a click.
+                // the one that waits for a held, or twice-clicked, button
+                // rather than a single click.
                 if (ab.action == "declare_war" && !pending && !disabled) {
                     const Rectangle warBtn{(float)bx, (float)by, (float)btnW, (float)btnH};
                     fire = odAccess::gate(&odAccess::kDeclareWar, warBtn, getMouse(), fire);
@@ -4505,6 +4506,10 @@ void Game::drawInner() {
             rm(m_pendingShipEngageOrders);
             rm(m_pendingShipDisembarks);
         };
+        // Order Input (Settings -> Controls): false holds the wheel key, true
+        // opens it on a tap and confirms on a click. Set when the wheel opens so
+        // the opening tap is not read as the confirming second tap.
+        bool shipWheelOpenedThisFrame = false;
         if (!m_paused) {
             // Find which ship is under the cursor
             int hoverShipIdx = -1;
@@ -4548,6 +4553,7 @@ void Game::drawInner() {
                         focusShip(hoverShipIdx);
                         m_shipWheelShipIdx = hoverShipIdx;
                         m_shipWheelHover = -1;
+                        shipWheelOpenedThisFrame = true;
                     }
                 }
                 // E = Engage mode
@@ -4565,9 +4571,12 @@ void Game::drawInner() {
             }
         }
 
-        // ── Ship wheel hover tracking (independent of hoverShipIdx) ──
+        // ── Ship wheel hover + fire (hold the key, or tap and click) ──
         if (m_shipWheelShipIdx >= 0 && m_shipWheelShipIdx < (int)m_ships.size()) {
-            if (shipWheelKey >= 32 && IsKeyDown(shipWheelKey)) {
+            const bool shipClickMode = m_config.wheelClickMode;
+            // Aim: in hold mode only while the key is held, in click mode always.
+            const bool shipAiming = shipClickMode ? true : (shipWheelKey >= 32 && IsKeyDown(shipWheelKey));
+            if (shipAiming) {
                 auto& ws = m_ships[m_shipWheelShipIdx];
                 int wpx, wpy;
                 m_landSea.lonLatToPixel((float)ws.lon, (float)ws.lat, wpx, wpy);
@@ -4581,21 +4590,40 @@ void Game::drawInner() {
                 } else {
                     m_shipWheelHover = -1;
                 }
-            } else {
-                if (m_shipWheelHover >= 0) {
-                    static const char* WTYPE_IDS[] = {"mortar","light","heavy","napalm","carpet","chemical","nuclear","biological"};
-                    static const char* WTYPE_NODES[] = {"arty1","arty2","arty3","arty4a","arty4b","arty5","arty6a","arty6b"};
-                    // Only allow researched artillery types
-                    std::string selectedType = WTYPE_IDS[m_shipWheelHover];
-                    std::string requiredNode = WTYPE_NODES[m_shipWheelHover];
-                    if (hasResearched(requiredNode)) {
-                        cancelShipOrders(m_shipWheelShipIdx);
-                        m_shipActionMode = 3;
-                        m_shipActionShipIdx = m_shipWheelShipIdx;
-                        m_shipBombardAmmo = selectedType;
-                        m_shipBombardDropdownOpen = false;
-                    }
+            }
+            // Decide whether this frame fires or cancels the wheel. Click mode
+            // commits on the mouse RELEASE: the bombard-order click just above
+            // reads the same release one step earlier with the mode still 0, so
+            // confirming here cannot also drop an order at the cursor.
+            bool commit = false, cancel = false;
+            if (shipClickMode) {
+                m_renderer->setBlockLeftPan(true);
+                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                    if (m_shipWheelHover >= 0) commit = true; else cancel = true;
+                } else if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_ESCAPE)) {
+                    cancel = true;
+                } else if (!shipWheelOpenedThisFrame && shipWheelKey >= 32 && IsKeyPressed(shipWheelKey)) {
+                    if (m_shipWheelHover >= 0) commit = true; else cancel = true;
                 }
+            } else if (!(shipWheelKey >= 32 && IsKeyDown(shipWheelKey))) {
+                commit = (m_shipWheelHover >= 0);
+                cancel = !commit;
+            }
+            if (commit && m_shipWheelHover >= 0) {
+                static const char* WTYPE_IDS[] = {"mortar","light","heavy","napalm","carpet","chemical","nuclear","biological"};
+                static const char* WTYPE_NODES[] = {"arty1","arty2","arty3","arty4a","arty4b","arty5","arty6a","arty6b"};
+                // Only allow researched artillery types
+                std::string selectedType = WTYPE_IDS[m_shipWheelHover];
+                std::string requiredNode = WTYPE_NODES[m_shipWheelHover];
+                if (hasResearched(requiredNode)) {
+                    cancelShipOrders(m_shipWheelShipIdx);
+                    m_shipActionMode = 3;
+                    m_shipActionShipIdx = m_shipWheelShipIdx;
+                    m_shipBombardAmmo = selectedType;
+                    m_shipBombardDropdownOpen = false;
+                }
+            }
+            if (commit || cancel) {
                 m_shipWheelShipIdx = -1;
                 m_shipWheelHover = -1;
             }

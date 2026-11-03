@@ -169,9 +169,14 @@ bool Config::load(const std::string& path) {
     if (colourBlindMode < 0 || colourBlindMode > 3) colourBlindMode = 0;
     highContrast  = findBool(json, "highContrast", false);
     reduceMotion  = findBool(json, "reduceMotion", false);
-    holdToConfirm = findBool(json, "holdToConfirm", false);
+    // New key wins; a save from before the two-click option only has the old
+    // bool, which maps true -> hold (1), false -> off (0).
+    confirmMode   = findInt(json, "confirmMode", -1);
+    if (confirmMode < 0) confirmMode = findBool(json, "holdToConfirm", false) ? 1 : 0;
+    if (confirmMode < 0 || confirmMode > 2) confirmMode = 0;
     longMessages  = findBool(json, "longMessages", false);
     soundCues     = findBool(json, "soundCues", false);
+    wheelClickMode = findBool(json, "wheelClickMode", false);
     textScale     = findFloat(json, "textScale", 1.0f);
     if (!(textScale >= 1.0f && textScale <= 1.2f)) textScale = 1.0f;
     if (uiScale < 0.75f) uiScale = 0.75f;
@@ -338,9 +343,13 @@ bool Config::save(const std::string& path) {
     file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
     file << "  \"highContrast\": " << (highContrast ? "true" : "false") << ",\n";
     file << "  \"reduceMotion\": " << (reduceMotion ? "true" : "false") << ",\n";
-    file << "  \"holdToConfirm\": " << (holdToConfirm ? "true" : "false") << ",\n";
+    file << "  \"confirmMode\": " << confirmMode << ",\n";
+    // Kept in sync so a downgrade to a build without confirmMode still honours
+    // the hold setting (the second-click mode degrades to off there).
+    file << "  \"holdToConfirm\": " << (confirmMode == 1 ? "true" : "false") << ",\n";
     file << "  \"longMessages\": " << (longMessages ? "true" : "false") << ",\n";
     file << "  \"soundCues\": " << (soundCues ? "true" : "false") << ",\n";
+    file << "  \"wheelClickMode\": " << (wheelClickMode ? "true" : "false") << ",\n";
     file << "  \"textScale\": " << textScale << ",\n";
     file << "  \"skipViewingOrders\": " << (skipViewingOrders ? "true" : "false") << ",\n";
     file << "  \"mpAwayIdle\": " << (mpAwayIdle ? "true" : "false") << ",\n";

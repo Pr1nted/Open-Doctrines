@@ -642,8 +642,10 @@ void Game::updateWorldBrowser() {
         Rectangle delBtn = {(float)(centerX - btnW - 10), (float)btnY, (float)btnW, (float)btnH};
         Rectangle canBtn = {(float)(centerX + 10), (float)btnY, (float)btnW, (float)btnH};
 
-        // Hold to Confirm (Settings -> Accessibility) asks for the Delete
-        // button held rather than clicked; off, this is the click itself.
+        // Confirm Actions (Settings -> Accessibility) asks for the Delete
+        // button to be held, or clicked a second time, rather than fired on one
+        // click; off, this is the click itself. A first click only arms the
+        // gate here -- the dialog stays up for the second.
         const bool released = clickReleasedHere();
         const bool deleteNow = odAccess::gate(&odAccess::kDeleteWorld, delBtn, mouse,
                                               released && CheckCollisionPointRec(mouse, delBtn));

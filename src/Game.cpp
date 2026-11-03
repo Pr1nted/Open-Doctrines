@@ -250,8 +250,8 @@ const int ACCENT_PRESETS[] = {
     0xC8C8C8, // Silver
 };
 const int ACCENT_PRESETS_COUNT = 10;
-const Setting CONTROLS_ITEMS[] = {{"Fly Speed", true, -1}, {"Back", false, -1}};
-const int CONTROLS_COUNT = 2;
+const Setting CONTROLS_ITEMS[] = {{"Fly Speed", true, -1}, {"Order Input", false, -1}, {"Back", false, -1}};
+const int CONTROLS_COUNT = 3;
 // isValue stays false on the volume rows even though they hold numbers. That
 // flag routes a click into the type-a-number editor, which is right for Max
 // Zoom and wrong here: a volume is dragged or nudged, never typed. The two
@@ -435,7 +435,7 @@ const int LANGUAGE_COUNT = 0;
 // describes each for players; src/Theme.h and src/Access.h say how.
 const Setting ACCESSIBILITY_ITEMS[] = {
     {"High Contrast", false, -1}, {"Text Size", false, -1}, {"Reduce Motion", false, -1},
-    {"Hold to Confirm", false, -1}, {"Longer Messages", false, -1}, {"Sound Cues", false, -1},
+    {"Confirm Actions", false, -1}, {"Longer Messages", false, -1}, {"Sound Cues", false, -1},
     {"Colourblind Colours", false, -1}, {"Back", false, -1}};
 const int ACCESSIBILITY_COUNT = 8;
 
@@ -683,7 +683,12 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
             case 1: { char b[32]; snprintf(b, sizeof b, ": %d%%", (int)lroundf(cfg.textScale * 100.0f));
                       return label + b; }
             case 2: return label + onOff(cfg.reduceMotion);
-            case 3: return label + onOff(cfg.holdToConfirm);
+            // One tr() per line: the i18n extractor reads a single line, so a
+            // label on a wrapped ternary's continuation would never be collected.
+            case 3:
+                if (cfg.confirmMode == 2) return label + ": " + od::i18n::tr("Click twice");
+                if (cfg.confirmMode == 1) return label + ": " + od::i18n::tr("Hold");
+                return label + ": " + od::i18n::tr("Off");
             case 4: return label + onOff(cfg.longMessages);
             case 5: return label + onOff(cfg.soundCues);
             case 6: return label + ": " + od::i18n::tr(COLOURBLIND_NAMES[
@@ -692,7 +697,9 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
             default: return label;
         }
     }
-    if (tab == 0 && index == 0) {
+    if (tab == 1 && index == 1) {   // Controls -> Order Input
+        label += std::string(": ") + od::i18n::tr(cfg.wheelClickMode ? "Click" : "Hold");
+    } else if (tab == 0 && index == 0) {
         label += onOff(cfg.fullscreen);
     } else if (tab == 0 && index == 1) {
         label += onOff(cfg.showActualFlags);

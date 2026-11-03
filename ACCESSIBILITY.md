@@ -74,10 +74,16 @@ please open an issue. Name the setting, or the screen you couldn't use.
 - **Turn-based, with no clock.** Nothing in a single-player game happens
   until you end your turn, and nothing asks for speed or precise timing.
 - **Every key can be rebound**: *Settings → Keybinds*.
-- **Hold to confirm**: *Settings → Accessibility → Hold to Confirm*.
-  - Declaring war and deleting a world or a map need the button held for just
-    under a second, with a bar filling as you hold.
-  - A tremor or a slipped click can't trigger them. Letting go early cancels.
+- **Confirm actions**: *Settings → Accessibility → Confirm Actions*. Three
+  settings: **Off**, **Hold**, or **Click twice**.
+  - Declaring war and deleting a world or a map ask for a second, deliberate
+    gesture rather than a single click, so a tremor or a slipped click can't
+    trigger them.
+  - **Hold** needs the button held for just under a second, with a bar filling
+    as you hold; letting go early cancels.
+  - **Click twice** arms on the first click — the button shows a bright outline
+    and a bar that drains — and fires on a second click within a couple of
+    seconds. For anyone who finds holding a button hard.
 - **Longer messages**: *Settings → Accessibility → Longer Messages* keeps
   notifications on screen three times as long.
 - **Controllers.** A gamepad drives the same cursor and buttons as the mouse,
