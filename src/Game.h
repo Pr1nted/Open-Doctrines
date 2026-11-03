@@ -4049,7 +4049,9 @@ public:
     void recordMapEdit(uint8_t kind, int target, std::vector<uint32_t> px);
     int m_lastPopCountryId = -1;
 
-    std::unordered_map<std::string, std::unordered_map<std::string, CountryRelation>> m_relations;
+    // Moved into sim::WorldState (REWORK_PLAN item 4); reference-alias into
+    // m_world so existing m_relations call sites are unchanged.
+    std::unordered_map<std::string, std::unordered_map<std::string, CountryRelation>>& m_relations = m_world.relations;
     /** speaker -> hearer -> what the hearer thinks the speaker's word is worth. */
     std::unordered_map<std::string, std::unordered_map<std::string, float>> m_credibility;
     /** Claims still inside the window conduct can disprove them in. */
@@ -4118,7 +4120,8 @@ public:
 
     std::unordered_map<int, PortInfo> m_provincePorts;
     std::unordered_map<int, std::vector<int>> m_provinceNeighbors;
-    std::vector<NavyShip> m_ships;
+    // Moved into sim::WorldState (REWORK_PLAN item 4); reference-alias into m_world.
+    std::vector<NavyShip>& m_ships = m_world.ships;
 
     // Ship selection state
     std::vector<int> m_selectedShipIndices;

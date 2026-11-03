@@ -22,11 +22,22 @@
 // migrating call sites to m_world.* , but that is cleanup, not a blocker.
 //
 // Groups still to move: provinces' gameplay fields (not the raster), countries,
-// armies, ships, relations, pending orders, and the turn RNG.
+// armies, pending orders, and the turn RNG.
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include "../GameStructs.h"   // CountryRelation, NavyShip
+
 namespace sim {
 
 struct WorldState {
     int turnNumber = 0;   ///< the game turn counter (Game::m_turnNumber aliases this)
+
+    /// Diplomacy: relations[a][b] is a's stance toward b (Game::m_relations).
+    std::unordered_map<std::string, std::unordered_map<std::string, CountryRelation>> relations;
+
+    /// Every hull afloat (Game::m_ships).
+    std::vector<NavyShip> ships;
 };
 
 }  // namespace sim
