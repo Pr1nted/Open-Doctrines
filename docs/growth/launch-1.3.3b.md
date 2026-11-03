@@ -101,8 +101,8 @@ curl -sS -X POST https://opendoctrines-net.opendoctrines.workers.dev/admin/annou
   --data-binary @- <<'JSON'
 {"op":"put","item":{
   "id":"v1-3-3b",
-  "title":"1.3.3b: thirty platforms, three times faster",
-  "body":"Open Doctrines now runs on Steam Deck, Raspberry Pi, ChromeOS, every BSD on x64 and Arm, illumos, Haiku, SerenityOS, and as homebrew on Vita, Wii, 3DS, DOS and RISC OS. Turns process about three times faster, saves are smaller, and Settings has a new Accessibility tab: high contrast, larger text, reduce motion, hold to confirm, longer messages, visible sound cues and a Hyperlegible font.",
+  "title":"1.3.3b: our biggest update yet",
+  "body":"Open Doctrines now runs on 30+ platforms: Steam Deck, Raspberry Pi, ChromeOS, every BSD on x64 and Arm, illumos, Haiku, SerenityOS, and as homebrew on Vita, Wii, 3DS, DOS and RISC OS. Turns are about three times faster and saves smaller. New Accessibility tab: high contrast, larger text, reduce motion, hold to confirm, longer messages, visible sound cues and a Hyperlegible font. Mods can reshape the map (Gearbox 1.5), tournaments seat 32, and every update is now signed and verified before it installs.",
   "buttonLabel":"Community",
   "buttonAction":"community"
 }}
@@ -140,3 +140,54 @@ breakdown, Retina-sharp web build with an on-screen keyboard.
 
 Running it on something unusual? Post a screenshot in #showcase — half these
 platforms are new to us too.
+
+---
+
+## 4. LSDoctrines on the mod directory
+
+The example mod, built from `sdk/examples/lsdoctrines`, as a listing on the
+site's mod directory. The registry stores no files: it lists a page and a
+download link and declares the file's hash, so the `.odmod` has to be hosted
+first. It goes on the 1.3.3b release.
+
+**Step 1, attach the file to the release** (from the folder holding it):
+
+```sh
+gh release upload v1.3.3b lsdoctrines.odmod --repo Pr1nted/Open-Doctrines
+shasum -a 256 lsdoctrines.odmod   # must print fdab0fee...e1f21
+```
+
+**Step 2, publish the listing.** Your account must have agreed to the current
+modding guidelines (the site's publish page; a key cannot do it). Then, with a
+publish key from that page (`odmp_...`, shown once):
+
+```sh
+OD_PUBLISH_KEY='odmp_...'
+curl -fsS https://opendoctrines-net.opendoctrines.workers.dev/mods \
+  -H "authorization: Bearer $OD_PUBLISH_KEY" \
+  -H 'content-type: application/json' \
+  --data-binary @- <<'JSON'
+{
+  "id": "com.opendoctrines.lsdoctrines",
+  "name": "LSDoctrines",
+  "version": "1.0.0",
+  "summary": "The map, as though the cartographer were having a time: rolling colour across every province, driven from a panel.",
+  "description": "An example Gearbox mod from the Open Doctrines SDK. It washes rolling colour across every province and gives you a panel to drive it. Purely visual: it changes how the map looks on your screen and nothing about the game.",
+  "page": "https://github.com/Pr1nted/Open-Doctrines/tree/main/sdk/examples/lsdoctrines",
+  "downloadUrl": "https://github.com/Pr1nted/Open-Doctrines/releases/download/v1.3.3b/lsdoctrines.odmod",
+  "sha256": "fdab0feec5b36cbc7d3afcf072a5b073815f0f943fe2ca7f09f59ac81ebf1e21",
+  "side": "client",
+  "gearbox": "1.3",
+  "modules": ["Core", "UI", "Map", "Render"],
+  "tags": ["visual", "example"]
+}
+JSON
+```
+
+It answers with `"status": "pending"` and a queue position: the hash is checked
+before the listing appears. Watch it go to `listed` with:
+
+```sh
+curl -fsS https://opendoctrines-net.opendoctrines.workers.dev/mods/mine \
+  -H "authorization: Bearer $OD_PUBLISH_KEY"
+```
