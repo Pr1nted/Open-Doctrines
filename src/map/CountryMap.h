@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include "json.hpp"
 #include "../renderer/FlagRenderer.h"
+#include "../Personality.h"
 
 struct Country {
     int id = 0;
@@ -71,6 +72,11 @@ struct Country {
      */
     struct FlagEra { int turn = 0; FlagPattern flag; FlagPattern censored; };
     std::vector<FlagEra> flagHistory;
+
+    // Experimental AI personality (src/Personality.h). Derived on demand from
+    // politics + id when OD_AI_PERSONALITIES is set; neutral otherwise. Not
+    // saved -- recomputed on load, so no save-format change.
+    PersonalityProfile personality;
 };
 
 class CountryMap {

@@ -3122,7 +3122,17 @@ void Game::drawAiTracePanel() {
     iy += 18;
     drawHybridText(ix, iy, 13, (std::string("-> ") + labelFor(d)).c_str(),
                    hexToColor(m_config.accent()));
-    iy += 20;
+    iy += 18;
+    // Personality, when the experimental system has assigned one (src/Personality.h).
+    if (c && c->personality.set) {
+        drawHybridText(ix, iy, 11,
+                       TextFormat("agg %.2f  tact %.2f  mind %.2f  par %.2f",
+                                  c->personality.aggressiveness, c->personality.tactfulness,
+                                  c->personality.mindfulness, c->personality.paranoia),
+                       Color{205, 180, 140, 215});
+        iy += 15;
+    }
+    iy += 2;
 
     if (d.probs.empty()) {
         DrawText("(not a net decision — no distribution)", ix, iy, 12,

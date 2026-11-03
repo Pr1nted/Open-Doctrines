@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <ctime>    // std::time, for the learning-curve row
 #include <cstdlib>
+#include "../Personality.h"
 #include <cstring>
 
 // Journal 490: so actHistCountsCid can resolve an ISO to a cid.
@@ -51,6 +52,18 @@ long long g_f24BigN = 0;
 // buildCostMod() beside it, so the discount cannot be forgotten again.
 
 static const char* MODULE_NAMES[] = {"econ", "politics", "war", "navy"};
+
+// Experimental per-country personality (src/Personality.h). Gated on the env
+// var so an unset environment -- every bench seat and the shipped game -- is
+// byte-identical (the decision hash does not move). kPersonalityBar is how far
+// a profile can shift the war-bar (the odds a country demands before it will
+// attack): aggression lowers it, caution raises it. Magnitude tuned via the LOOP.
+static bool aiPersonalitiesEnabled() {
+    static const bool on = []{ const char* e = std::getenv("OD_AI_PERSONALITIES");
+                               return e && e[0] && e[0] != '0'; }();
+    return on;
+}
+static constexpr double kPersonalityBar = 0.35;
 
 // ─── What a country will pay to get its way without a war ───────────────────
 //
@@ -3897,6 +3910,7 @@ void AISystem::takeTurn(int cid) {
             for (int i = 0; i < nActs && i < 8; ++i)
                 if (s_warBias[i] != 0.0f) { qbias[i] += s_warBias[i]; any = true; }
         }
+
         if (m == MOD_NAVY) {   // see s_navyBias
             for (int i = 0; i < nActs && i < 7; ++i)
                 if (s_navyBias[i] != 0.0f) { qbias[i] += s_navyBias[i]; any = true; }
@@ -5327,6 +5341,24 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         // Opening a SECOND war costs more again, claim or no claim: one front
         // at a time unless the second is genuinely easy.
         if (myWars >= 1) bar += secondFrontBar();
+
+        // ── Personality shifts the odds a country demands (experimental) ──
+        // Aggression lowers the bar (it will fight at worse odds); mindfulness
+        // raises it (it waits for a surer thing). This is the real aggression
+        // lever -- it changes which targets clear the gate below -- so a neutral
+        // profile leaves the bar untouched and the AI plays exactly as before.
+        // Off, and byte-identical, unless OD_AI_PERSONALITIES is set.
+        if (aiPersonalitiesEnabled()) {
+            Country* pc = m_g->m_countries.getCountry(cid);
+            if (pc) {
+                if (!pc->personality.set)
+                    pc->personality = odpers::makePersonality(pc->id, pc->compassEconomic,
+                                                              pc->compassSocial);
+                const double zAgg  = 2.0 * (pc->personality.aggressiveness - 0.5);
+                const double zMind = 2.0 * (pc->personality.mindfulness - 0.5);
+                bar *= std::max(0.2, 1.0 - kPersonalityBar * (zAgg - zMind));
+            }
+        }
         // ── WHOSE ARMY THE BAR IS MEASURED AGAINST ──
         //
         // Normally this country's own, which is right: it is the one doing the
