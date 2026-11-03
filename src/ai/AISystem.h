@@ -4748,6 +4748,7 @@ private:
     // meaningful against a human seat, so self-play leaves it at 0.5.
     float m_playerAggression = 0.5f;
     bool  m_playerModelSeen  = false;
+    int   m_playerPrevProvinces = -1;   // for the expansion signal (province growth)
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
     // Overture cooldown, keyed on the UNORDERED pair. An ordered key let A and

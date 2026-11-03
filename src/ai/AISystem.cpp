@@ -63,7 +63,9 @@ static bool aiPersonalitiesEnabled() {
                                return e && e[0] && e[0] != '0'; }();
     return on;
 }
-static constexpr double kPersonalityBar = 0.35;
+static constexpr double kPersonalityBar = 0.35;         // aggression/mindfulness, all wars
+static constexpr double kPersonalitySecondFront = 0.40;  // paranoia, opening a 2nd war
+static constexpr double kPersonalityTact = 0.30;         // tactfulness, unprovoked war
 
 // Experimental fast adaptation to the human player's style (OD_AI_ADAPT). The
 // AI keeps a short-half-life estimate of how warlike the player is (beginTurn)
@@ -1837,7 +1839,17 @@ void AISystem::beginTurn() {
     if (aiAdaptEnabled()) {
         const int pcid = m_g->m_playerCountryId;
         if (pcid > 0) {
-            const float aggInstant = std::min(1.0f, (float)foreignWarCount(pcid) / 3.0f);
+            // Two cheap, observable signals of a warlike player: how many wars
+            // they are waging, and whether they are taking land (expansion). A
+            // turtle shows up as the low end of both and reads as passive.
+            const float warSig = std::min(1.0f, (float)foreignWarCount(pcid) / 3.0f);
+            auto psit = m_stats.find(pcid);
+            const int provNow = psit != m_stats.end() ? psit->second.provinces : -1;
+            float expandSig = 0.0f;
+            if (provNow >= 0 && m_playerPrevProvinces >= 0 && provNow > m_playerPrevProvinces)
+                expandSig = std::min(1.0f, (float)(provNow - m_playerPrevProvinces) / 2.0f);
+            if (provNow >= 0) m_playerPrevProvinces = provNow;
+            const float aggInstant = std::min(1.0f, 0.65f * warSig + 0.45f * expandSig);
             const float alpha = 0.34f;   // ~3-turn half-life
             m_playerAggression = m_playerModelSeen
                 ? (1.0f - alpha) * m_playerAggression + alpha * aggInstant
@@ -5372,20 +5384,30 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
         if (myWars >= 1) bar += secondFrontBar();
 
         // ── Personality shifts the odds a country demands (experimental) ──
-        // Aggression lowers the bar (it will fight at worse odds); mindfulness
-        // raises it (it waits for a surer thing). This is the real aggression
-        // lever -- it changes which targets clear the gate below -- so a neutral
-        // profile leaves the bar untouched and the AI plays exactly as before.
-        // Off, and byte-identical, unless OD_AI_PERSONALITIES is set.
+        // Four traits, four distinct levers on the war-bar the gate below reads,
+        // so each shows as a different kind of behaviour:
+        //   aggression  lowers the bar  -- fights at worse odds (all wars)
+        //   mindfulness raises the bar  -- waits for a surer thing (all wars)
+        //   paranoia    raises the SECOND-front bar -- holds the line, one war
+        //               at a time (defence), and only when already at war
+        //   tactfulness raises the UNCLAIMED bar -- avoids unprovoked wars,
+        //               preferring to keep the peace it has no claim to break
+        // A neutral profile leaves the bar untouched, so the AI plays exactly as
+        // before; off, and byte-identical, unless OD_AI_PERSONALITIES is set.
         if (aiPersonalitiesEnabled()) {
             Country* pc = m_g->m_countries.getCountry(cid);
             if (pc) {
                 if (!pc->personality.set)
                     pc->personality = odpers::makePersonality(pc->id, pc->compassEconomic,
                                                               pc->compassSocial);
-                const double zAgg  = 2.0 * (pc->personality.aggressiveness - 0.5);
-                const double zMind = 2.0 * (pc->personality.mindfulness - 0.5);
+                const PersonalityProfile& P = pc->personality;
+                const double zAgg  = 2.0 * (P.aggressiveness - 0.5);
+                const double zMind = 2.0 * (P.mindfulness - 0.5);
+                const double zPar  = 2.0 * (P.paranoia - 0.5);
+                const double zTact = 2.0 * (P.tactfulness - 0.5);
                 bar *= std::max(0.2, 1.0 - kPersonalityBar * (zAgg - zMind));
+                if (myWars >= 1) bar += kPersonalitySecondFront * zPar;
+                if (!claimed)    bar *= std::max(0.3, 1.0 + kPersonalityTact * zTact);
             }
         }
 
