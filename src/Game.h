@@ -3808,7 +3808,7 @@ public:
     odcountry::Store m_countryFields;
     /** Who governs each country. Empty unless the party rules are on. */
     std::unordered_map<int, odparty::Legislature> m_countryParties;
-    std::unordered_map<int, long long> m_provincePopulations;
+    std::unordered_map<int, long long>& m_provincePopulations = m_world.provincePopulations;  // moved into m_world (item 4)
     /**
      * Men a province can still be asked for: its population less whatever is
      * already on order there.
@@ -3823,7 +3823,7 @@ public:
      */
     long long availableManpower(int provinceId) const;
     std::unordered_map<int, Vector2> m_provinceCompass;
-    std::unordered_map<int, std::vector<MinorityGroup>> m_provinceMinorities;
+    std::unordered_map<int, std::vector<MinorityGroup>>& m_provinceMinorities = m_world.provinceMinorities;  // item 4
     std::unordered_map<std::string, Color> m_minorityColors;
     int m_playerCountryId = 0;
     std::vector<int> m_playableCountryIds;
@@ -3833,7 +3833,7 @@ public:
     float m_countrySelectScroll = 0;
     int m_pendingCountryId = 0;
     std::unordered_map<int, float> m_countryBalances;
-    std::vector<int> m_provinceCountryLookup;
+    std::vector<int>& m_provinceCountryLookup = m_world.provinceCountryLookup;  // ownership; moved into m_world (item 4)
 
     /**
      * How much GROUND each province actually covers, indexed by province id.
@@ -3899,12 +3899,12 @@ public:
      * earlier in the same turn can leave a stale entry behind.
      */
     const std::vector<int>& provincesOf(int cid) const;
-    std::unordered_map<int, int> m_provinceConquestTurn; // turn# when province was conquered (0 = not conquered)
+    std::unordered_map<int, int>& m_provinceConquestTurn = m_world.provinceConquestTurn; // turn# conquered; moved into m_world (item 4)
     std::unordered_map<int, int> m_conqueredProvincePrevOwner; // previous owner of conquered province (for ongoing war debuff)
     // Alignment points the minorities of a conquered province hold against the
     // owner that took it, on top of their national alignment. See
     // updateOccupationAnger().
-    std::unordered_map<int, float> m_provinceOccupationAnger;
+    std::unordered_map<int, float>& m_provinceOccupationAnger = m_world.provinceOccupationAnger;  // item 4
     std::vector<long long> m_provincePopArray;
     // There is no per-pixel owner array and no per-country pixel list any
     // more (64 MB and ~95 MB): ownership is per province, so a pixel's owner
@@ -4101,7 +4101,7 @@ public:
     void generateRelationsTexture(int countryId, int prevCountryId);
     int m_lastRelationsCountryId = -1;
     std::vector<Color> m_countryRelationColors;
-    std::unordered_map<int, ProvinceResources> m_provinceResources;
+    std::unordered_map<int, ProvinceResources>& m_provinceResources = m_world.provinceResources;  // item 4
     int m_activeResourceIdx = 0;   // 0=oil, 1=gold, 2=rubber, 3=gemstones, 4=metal
     // ONE resource layer in memory, not five.
     // The resource view's colour table and which resource it holds (-1: none).
@@ -4112,7 +4112,7 @@ public:
     void generateResourceTextureFor(int resIdx);
     static constexpr const char* RESOURCE_NAMES[5] = {"Oil", "Gold", "Rubber", "Gemstones", "Metal"};
 
-    std::unordered_map<int, ProvinceIndustry> m_provinceIndustry;
+    std::unordered_map<int, ProvinceIndustry>& m_provinceIndustry = m_world.provinceIndustry;  // item 4
     static std::string toRoman(int n);
     static std::string formatBalance(float val);
     static constexpr const char* ROMAN_NUMERALS[11] = {"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
@@ -4120,7 +4120,7 @@ public:
     // Moved into m_world (REWORK_PLAN item 4); reference-alias into m_world.
     std::unordered_map<int, std::vector<ArmyUnit>>& m_provinceArmies = m_world.provinceArmies;
 
-    std::unordered_map<int, PortInfo> m_provincePorts;
+    std::unordered_map<int, PortInfo>& m_provincePorts = m_world.provincePorts;  // item 4
     std::unordered_map<int, std::vector<int>> m_provinceNeighbors;
     // Moved into sim::WorldState (REWORK_PLAN item 4); reference-alias into m_world.
     std::vector<NavyShip>& m_ships = m_world.ships;
@@ -6067,7 +6067,7 @@ private:
     // provinces actually cooling down, not one entry per province on the map.
     // Owner-independent on purpose: conquering a province that has just risen
     // does not hand the new owner a fresh revolt.
-    std::unordered_map<int, int> m_provinceRebellionCooldown;
+    std::unordered_map<int, int>& m_provinceRebellionCooldown = m_world.provinceRebellionCooldown;  // item 4
     /** Per-turn countdown for m_provinceRebellionCooldown. */
     void decayRebellionCooldowns();
     // Countries already reduced to zero provinces and disbanded, so the

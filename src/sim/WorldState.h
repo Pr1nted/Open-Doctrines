@@ -21,8 +21,11 @@
 // must be unchanged. Once every group has moved, the aliases can be retired by
 // migrating call sites to m_world.* , but that is cleanup, not a blocker.
 //
-// Groups still to move: provinces' gameplay fields (not the raster), and the
-// turn RNG.
+// Still to move: the turn RNG. It is reached through free functions
+// (simRand/seedSimRng), so it needs that interface reworked rather than a plain
+// alias; see REWORK_PLAN item 3/4. The constant province geometry (centres,
+// bounds, pixels, areas, adjacency) deliberately stays in Game -- it does not
+// change during a game, so a search copy shares it.
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -42,6 +45,21 @@ struct WorldState {
 
     /// Land forces, by the province they stand in (Game::m_provinceArmies).
     std::unordered_map<int, std::vector<ArmyUnit>> provinceArmies;
+
+    // ── Per-province gameplay state ─────────────────────────────────────────
+    // The MUTABLE per-province fields. The raster and the constant geometry
+    // (centres, bounds, pixels, areas, the adjacency graph) stay in Game: they
+    // do not change during a game, so a search copy shares them rather than
+    // copying them. Game reaches each of these through a reference-alias member.
+    std::unordered_map<int, long long>                  provincePopulations;
+    std::unordered_map<int, std::vector<MinorityGroup>> provinceMinorities;
+    std::unordered_map<int, int>                        provinceConquestTurn;
+    std::unordered_map<int, float>                      provinceOccupationAnger;
+    std::unordered_map<int, ProvinceResources>          provinceResources;
+    std::unordered_map<int, ProvinceIndustry>           provinceIndustry;
+    std::unordered_map<int, PortInfo>                   provincePorts;
+    std::unordered_map<int, int>                        provinceRebellionCooldown;
+    std::vector<int>                                    provinceCountryLookup;  ///< province id -> owner cid
 
     /// Every hull afloat (Game::m_ships).
     std::vector<NavyShip> ships;
