@@ -25,6 +25,8 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <deque>
+#include <mutex>
 
 struct AIDecisionTrace {
     int turn = 0;
@@ -72,4 +74,28 @@ public:
 private:
     std::FILE* m_f = nullptr;
     std::string m_buf;
+};
+
+/**
+ * Keeps the most recent decision traces in memory for an in-game panel to draw
+ * -- the "Decision timeline" view of the 1.3.4b visualiser (REWORK_PLAN.md).
+ *
+ * Free when not attached (AISystem tests one null pointer per decision). The
+ * game attaches it only while the AI-debug overlay is on, so a normal session
+ * and every bench/training run -- which attach nothing, or the file writer --
+ * are untouched and the decision hash is unchanged. Mutex-guarded because a
+ * headless or training run can drive the AI off the render thread; normal play
+ * decides and draws on the one thread, where the lock is uncontended.
+ */
+class AITraceRing final : public AITraceSink {
+public:
+    void onDecision(const AIDecisionTrace& d) override;
+    /// The most recent `n` decisions, newest first (a copy, so the caller can
+    /// read them without holding the lock while it draws).
+    std::vector<AIDecisionTrace> recent(int n) const;
+    void clear();
+private:
+    mutable std::mutex m_mu;
+    std::deque<AIDecisionTrace> m_buf;
+    static constexpr size_t kCap = 64;
 };

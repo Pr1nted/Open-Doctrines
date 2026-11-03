@@ -35,6 +35,7 @@
 #include "SaveManager.h"
 #include "Keybinds.h"
 #include "ai/AISystem.h"
+#include "ai/AITrace.h"
 #include "renderer/FlagRenderer.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -3013,6 +3014,10 @@ void Game::drawDebugOverlay() {
     // panel was invisible in a normal session no matter what F10 did — the
     // gate now lives here so the two cannot drift apart again.
     drawResourcePanel();
+    // Attach/detach the decision-trace sink to match the overlay state, so the
+    // AI only pays for tracing while someone is looking (and play/bench stay
+    // byte-identical otherwise). Cheap: it touches the sink only on a change.
+    syncAiTraceSink();
     if (!m_config.debugMode) return;
 
     // Show FPS with GetFPS() when enabled
@@ -3049,6 +3054,110 @@ void Game::drawDebugOverlay() {
             DrawText(line.c_str(), 10, y, 12, {220, 220, 180, 210});
             y += 14;
         }
+        drawAiTracePanel();
+    }
+}
+
+void Game::syncAiTraceSink() {
+    if (!m_ai) return;
+    // Only while the AI-debug overlay is actually on screen.
+    const bool want = m_config.aiDebug && m_config.debugMode;
+    if (want) {
+        if (!m_aiTrace) m_aiTrace = std::make_unique<AITraceRing>();
+        if (!m_aiTraceAttached) { m_ai->setTraceSink(m_aiTrace.get()); m_aiTraceAttached = true; }
+    } else if (m_aiTraceAttached) {
+        // Detach only the sink we attached. A file sink from OD_AI_TRACE set
+        // before we ever attached is left alone (it is replaced only in the
+        // rare case of toggling the overlay on then off in the same session).
+        m_ai->setTraceSink(nullptr);
+        m_aiTraceAttached = false;
+    }
+}
+
+// The "Decision timeline" view (REWORK_PLAN.md, 1.3.4b): the newest AI module
+// decision with its masked action distribution, value estimate and who chose,
+// plus a short scroll of the ones before it. Drawn on the right so it clears
+// the text feed on the left. Reads only a snapshot copy of the ring.
+void Game::drawAiTracePanel() {
+    if (!m_ai || !m_aiTrace) return;
+    const std::vector<AIDecisionTrace> recent = m_aiTrace->recent(10);
+    static const char* MODN[] = {"econ", "pol", "war", "navy"};
+
+    const int pw = 380;
+    const int px = m_screenW - pw - 12;
+    int py = 84;
+    const int ph = 316;
+    DrawRectangleRounded({(float)px, (float)py, (float)pw, (float)ph}, 0.03f, 6,
+                         Color{14, 14, 22, 235});
+    DrawRectangleRoundedLines({(float)px, (float)py, (float)pw, (float)ph}, 0.03f, 6,
+                              hexToColor(m_config.accent()));
+    const int ix = px + 12;
+    int iy = py + 10;
+    drawHybridText(ix, iy, 14, "AI decision trace", {255, 220, 140, 235});
+    iy += 22;
+
+    if (recent.empty()) {
+        DrawText("(no decisions yet — advance a turn)", ix, iy, 12, Color{150, 150, 165, 210});
+        return;
+    }
+
+    // Human label for a traced decision, from the parallel Decision log.
+    auto labelFor = [&](const AIDecisionTrace& d) -> std::string {
+        for (const auto& dec : m_ai->decisions())
+            if (dec.turn == d.turn && dec.cid == d.cid &&
+                dec.module == d.module && dec.action == d.action)
+                return dec.label;
+        return std::string("action ") + std::to_string(d.action);
+    };
+
+    // ── Newest decision: header + distribution bars ──
+    const AIDecisionTrace& d = recent.front();
+    const Country* c = m_countries.getCountry(d.cid);
+    const char* mn = (d.module >= 0 && d.module < 4) ? MODN[d.module] : "?";
+    drawHybridText(ix, iy, 13,
+                   TextFormat("t%d  %s  [%s]  val %.2f  (%s)", d.turn,
+                              c ? c->name.c_str() : "?", mn, d.valueEstimate,
+                              d.source ? d.source : "policy"),
+                   Color{210, 225, 255, 230});
+    iy += 18;
+    drawHybridText(ix, iy, 13, (std::string("-> ") + labelFor(d)).c_str(),
+                   hexToColor(m_config.accent()));
+    iy += 20;
+
+    if (d.probs.empty()) {
+        DrawText("(not a net decision — no distribution)", ix, iy, 12,
+                 Color{150, 150, 165, 200});
+    } else {
+        const int barW = pw - 24 - 54;   // leave room for the index + percent
+        for (int i = 0; i < (int)d.probs.size() && iy < py + ph - 80; ++i) {
+            const bool legal = i < (int)d.valid.size() ? d.valid[i] : true;
+            if (!legal) continue;
+            const bool chosen = (i == d.action);
+            const float p = d.probs[i] < 0 ? 0 : (d.probs[i] > 1 ? 1 : d.probs[i]);
+            DrawText(TextFormat("%2d", i), ix, iy + 1, 11, Color{150, 150, 170, 210});
+            const int bx = ix + 24;
+            DrawRectangle(bx, iy, barW, 10, Color{34, 34, 46, 220});
+            Color bar = chosen ? hexToColor(m_config.accent()) : Color{90, 110, 150, 220};
+            DrawRectangle(bx, iy, (int)(barW * p), 10, bar);
+            DrawText(TextFormat("%3.0f%%", p * 100.0f), bx + barW + 6, iy, 11,
+                     chosen ? Color{255, 255, 255, 230} : Color{170, 170, 190, 200});
+            iy += 13;
+        }
+    }
+
+    // ── A short history of the ones before it ──
+    iy = py + ph - 64;
+    DrawLine(ix, iy - 4, px + pw - 12, iy - 4, Color{60, 60, 80, 180});
+    for (size_t k = 1; k < recent.size() && iy < py + ph - 4; ++k) {
+        const AIDecisionTrace& e = recent[k];
+        const Country* ec = m_countries.getCountry(e.cid);
+        const char* emn = (e.module >= 0 && e.module < 4) ? MODN[e.module] : "?";
+        drawHybridText(ix, iy, 11,
+                       TextFormat("t%d %s [%s] a%d (%s)", e.turn,
+                                  ec ? ec->name.c_str() : "?", emn, e.action,
+                                  e.source ? e.source : "policy"),
+                       Color{175, 175, 195, 195});
+        iy += 13;
     }
 }
 

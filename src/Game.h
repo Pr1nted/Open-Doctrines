@@ -64,6 +64,7 @@
 
 class AISystem;
 class AIPlayer;
+class AITraceRing;
 struct OrderApplier;
 struct NetMail;
 
@@ -5992,6 +5993,14 @@ private:
     // ── Country AI (neural-net RL, see src/ai/) ──
     // Created lazily on the first processed turn; owns its model file.
     AISystem* m_ai = nullptr;
+    // The in-game AI decision visualiser (REWORK_PLAN.md "Decision timeline").
+    // Attached as the AI's trace sink only while the AI-debug overlay is on, so
+    // play, bench and training are byte-identical when it is off. See
+    // syncAiTraceSink()/drawAiTracePanel() and src/ai/AITrace.h.
+    std::unique_ptr<AITraceRing> m_aiTrace;
+    bool m_aiTraceAttached = false;
+    void syncAiTraceSink();   ///< attach/detach the panel sink per aiDebug state
+    void drawAiTracePanel();  ///< the decision-timeline panel (aiDebug overlay)
     // Model file this process trains, relative to the data directory. A pool
     // worker points somewhere of its own; everything else uses the shared one.
     std::string m_aiModelPath = "ai/model.bin";

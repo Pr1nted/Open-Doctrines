@@ -82,3 +82,26 @@ void AITraceFileWriter::onDecision(const AIDecisionTrace& d) {
     b += "}\n";
     std::fwrite(b.data(), 1, b.size(), m_f);
 }
+
+// ── In-memory ring for the in-game panel ──
+void AITraceRing::onDecision(const AIDecisionTrace& d) {
+    std::lock_guard<std::mutex> lk(m_mu);
+    m_buf.push_back(d);
+    while (m_buf.size() > kCap) m_buf.pop_front();
+}
+
+std::vector<AIDecisionTrace> AITraceRing::recent(int n) const {
+    std::lock_guard<std::mutex> lk(m_mu);
+    std::vector<AIDecisionTrace> out;
+    if (n < 0) n = 0;
+    out.reserve((size_t)n < m_buf.size() ? (size_t)n : m_buf.size());
+    int taken = 0;
+    for (auto it = m_buf.rbegin(); it != m_buf.rend() && taken < n; ++it, ++taken)
+        out.push_back(*it);
+    return out;
+}
+
+void AITraceRing::clear() {
+    std::lock_guard<std::mutex> lk(m_mu);
+    m_buf.clear();
+}
