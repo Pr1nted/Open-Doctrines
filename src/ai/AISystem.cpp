@@ -65,6 +65,19 @@ static bool aiPersonalitiesEnabled() {
 }
 static constexpr double kPersonalityBar = 0.35;
 
+// Experimental fast adaptation to the human player's style (OD_AI_ADAPT). The
+// AI keeps a short-half-life estimate of how warlike the player is (beginTurn)
+// and treats a warlike player as the dangerous neighbour it is -- demanding
+// better odds before attacking them. Off, and byte-identical, unless the env
+// var is set; and even set it only engages against a human seat, so self-play
+// (no player) is untouched. kAdaptBar scales the war-bar shift; tuned via LOOP.
+static bool aiAdaptEnabled() {
+    static const bool on = []{ const char* e = std::getenv("OD_AI_ADAPT");
+                               return e && e[0] && e[0] != '0'; }();
+    return on;
+}
+static constexpr double kAdaptBar = 0.5;
+
 // ─── What a country will pay to get its way without a war ───────────────────
 //
 // A trade offer is money for land, or money for a renounced claim. These are
@@ -1816,6 +1829,22 @@ void AISystem::beginTurn() {
     m_shipsScrappedThisTurn.clear();
     m_requestsThisTurn.clear();   // see AI_REQUESTS_PER_TURN
     refreshStats();
+    // ── Fast adaptation: watch the human player's style (OD_AI_ADAPT) ──
+    // How warlike the player is, as a short-half-life EWMA so the AI reacts
+    // within a few turns rather than hundreds. The signal is deliberately cheap
+    // -- how many wars the player is waging -- and keyed on the human seat, so
+    // self-play (no player) never moves it. Off, nothing here runs.
+    if (aiAdaptEnabled()) {
+        const int pcid = m_g->m_playerCountryId;
+        if (pcid > 0) {
+            const float aggInstant = std::min(1.0f, (float)foreignWarCount(pcid) / 3.0f);
+            const float alpha = 0.34f;   // ~3-turn half-life
+            m_playerAggression = m_playerModelSeen
+                ? (1.0f - alpha) * m_playerAggression + alpha * aggInstant
+                : aggInstant;
+            m_playerModelSeen = true;
+        }
+    }
     updateWorld();
     // Reads m_world.largestCid and every country's army, so it goes after both.
     updateCoalition();
@@ -5358,6 +5387,18 @@ bool AISystem::findWarTarget(int cid, WarTarget& out, bool learnedChoice) {
                 const double zMind = 2.0 * (pc->personality.mindfulness - 0.5);
                 bar *= std::max(0.2, 1.0 - kPersonalityBar * (zAgg - zMind));
             }
+        }
+
+        // ── Adapt to the human player's demonstrated style (OD_AI_ADAPT) ──
+        // A player who keeps going to war is treated as the dangerous, mobilised
+        // neighbour they are: the AI demands better odds before attacking them,
+        // and a passive player is easier pickings. beginTurn's EWMA makes this
+        // react within a few turns. Keyed on the player's seat, so self-play
+        // (no human) never triggers it and the shipped game is untouched off.
+        if (aiAdaptEnabled() && m_playerModelSeen && m_g->m_playerCountryId > 0 &&
+            fr.enemyCid == m_g->m_playerCountryId) {
+            const double z = 2.0 * (m_playerAggression - 0.5);
+            bar *= std::max(0.3, 1.0 + kAdaptBar * z);
         }
         // ── WHOSE ARMY THE BAR IS MEASURED AGAINST ──
         //

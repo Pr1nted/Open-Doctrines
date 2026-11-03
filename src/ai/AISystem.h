@@ -2842,6 +2842,9 @@ public:
     std::vector<std::string> debugLines(int maxLines) const;
     std::string countrySummary(int cid) const;
     int decisionsThisTurn() const { return m_decisionsThisTurn; }
+    /// The fast player-style model's current read, or -1 when it has not seen a
+    /// human seat (OD_AI_ADAPT off, or self-play). For the visualiser.
+    float playerAggressionEstimate() const { return m_playerModelSeen ? m_playerAggression : -1.0f; }
 
     // ── Training progress feed (cheap, for the trainer dashboard) ──
     struct TrainStats {
@@ -4739,6 +4742,12 @@ private:
     // the repeats, so a loser cannot spam the head until it says yes. See the
     // ceasefire rules in decideDiplomacy.
     std::unordered_map<long long, int> m_cfWinningAsks;
+    // Fast model of the human player's style (OD_AI_ADAPT). A short-half-life
+    // EWMA of how warlike the player is, 0.5 = unknown; updated each beginTurn,
+    // read by the war-bar so the AI reacts to a rusher within a few turns. Only
+    // meaningful against a human seat, so self-play leaves it at 0.5.
+    float m_playerAggression = 0.5f;
+    bool  m_playerModelSeen  = false;
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
     // Overture cooldown, keyed on the UNORDERED pair. An ordered key let A and

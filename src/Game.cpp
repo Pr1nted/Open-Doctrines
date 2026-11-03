@@ -3096,6 +3096,13 @@ void Game::drawAiTracePanel() {
     drawHybridText(ix, iy, 14, "AI decision trace", {255, 220, 140, 235});
     iy += 22;
 
+    // Fast player-adaptation read (OD_AI_ADAPT), when it has seen the human seat.
+    if (const float pa = m_ai->playerAggressionEstimate(); pa >= 0.0f) {
+        drawHybridText(ix, iy, 11, TextFormat("player aggression (adapt): %.2f", pa),
+                       Color{235, 170, 150, 215});
+        iy += 15;
+    }
+
     if (recent.empty()) {
         DrawText("(no decisions yet — advance a turn)", ix, iy, 12, Color{150, 150, 165, 210});
         return;

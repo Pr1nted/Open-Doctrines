@@ -2494,6 +2494,7 @@
  "or type: 36h": "or type: 36h",
  "out +%.0f%%  build +%.0f%%  upkeep +%.0f%%": "out +%.0f%%  build +%.0f%%  upkeep +%.0f%%",
  "pick one": "pick one",
+ "player aggression (adapt): %.2f": "player aggression (adapt): %.2f",
  "port upgrade": "port upgrade",
  "ports, every soldier and hull, plus the treasury.": "ports, every soldier and hull, plus the treasury.",
  "reason: %s": "reason: %s",
