@@ -4733,6 +4733,12 @@ private:
     // and Experience::warTurns is its age. Maintained in beginTurn only:
     // refreshStats runs twice a turn and counting there would double.
     std::unordered_map<int, int> m_warSince;
+    // (defender<<20 | attacker) -> how many times that asker has begged a
+    // costless ceasefire while this country was plainly winning. The winning
+    // guard (OD_CEASEFIRE_WINNING) lets the head answer the first and refuses
+    // the repeats, so a loser cannot spam the head until it says yes. See the
+    // ceasefire rules in decideDiplomacy.
+    std::unordered_map<long long, int> m_cfWinningAsks;
     // cid -> sliding window of decisions awaiting their N_STEP reward
     std::unordered_map<int, std::deque<Experience>> m_pending;
     // Overture cooldown, keyed on the UNORDERED pair. An ordered key let A and

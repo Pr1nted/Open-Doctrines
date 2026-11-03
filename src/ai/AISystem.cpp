@@ -11017,6 +11017,45 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
                                    sourceIso.c_str(), (double)cfNet));
             return refuse(REFUSE_NO_INTEREST);
         }
+        // B2. THE LOSER WHO WILL NOT STOP ASKING (OD_CEASEFIRE_WINNING, off by
+        //     default). Rule B above refuses a costless peace while winning only
+        //     where the winner holds a claim -- journal 35h narrowed it there
+        //     because refusing EVERY winner's free peace bound the rung (a
+        //     winning Russia granting Sweden peace is how it consolidates and
+        //     grows). But the diplomacy head "swings to always-yes once
+        //     unfrozen", so a plainly-losing asker that keeps begging eventually
+        //     gets a yes it has not earned -- the thing a player watches and
+        //     calls broken. This keeps journal 35h's first free peace (the head
+        //     still answers the opening ask) and refuses the SPAM: once the same
+        //     asker has begged a costless ceasefire while we are winning and been
+        //     past the head once, the repeats are refused by rule.
+        {
+            const char* cfw = OD_ENV("OD_CEASEFIRE_WINNING");
+            const bool winningGuard = cfw && cfw[0] && cfw[0] != '0';
+            if (winningGuard && cfState == 0 && cfNet <= 0.0f && !hasClaimOnAsker) {
+                const long long key = ((long long)targetCid << 20) |
+                                      (long long)(srcCid & 0xFFFFF);
+                int& asks = m_cfWinningAsks[key];
+                if (asks >= 1) {
+                    ++asks;
+                    static std::atomic<long long> winRefus{0};
+                    static const bool reg = (atexit([] {
+                        fprintf(stderr, "[CFWINNING] repeated costless begs refused while winning: %lld\n",
+                                winRefus.load());
+                    }), true);
+                    (void)reg;
+                    ++winRefus;
+                    trueReason = REFUSE_NO_INTEREST;
+                    statsFor(targetCid).ceasefireRuleRefusals++;
+                    statsFor(targetCid).cfAsked[0]++;
+                    logDecision(targetCid, MOD_POLITICS, 0, 0.0f,
+                                TextFormat("REFUSE request_ceasefire from %s by rule (winning, %dth costless beg, net %.0f)",
+                                           sourceIso.c_str(), asks, (double)cfNet));
+                    return refuse(REFUSE_NO_INTEREST);
+                }
+                ++asks;   // the opening ask: record it, let the head decide
+            }
+        }
         // C. A WAR THAT HAS STALLED AND IS ALL THAT FILLS THE WAR SLOT
         //    (OD_CEASEFIRE_STALL=<turns>, off by default; journal 388).
         //
