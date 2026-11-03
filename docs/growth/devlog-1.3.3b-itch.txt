@@ -1,0 +1,134 @@
+1.3.3b - the biggest update yet: thirty platforms, three times faster, accessibility
+
+Hello strategists!
+
+This is the biggest update Open Doctrines has had. It runs on more than thirty
+platforms now, a turn takes about a third of the time it used to, there is a
+whole new Accessibility tab, releases are cryptographically signed, and mods
+can reshape the map while you play. Here is everything.
+
+
+## New places to play
+
+- **Steam Deck and handhelds.** The Linux and Windows builds now run on SDL3
+  with real touch: tap to click, drag to move, two fingers to zoom. On the Deck
+  the window fits its 1280x800 screen, Game Mode goes fullscreen, and the
+  controller drives the cursor, menus and zoom.
+- **Raspberry Pi OS**, 64-bit and 32-bit, built for OpenGL ES so a Pi 4 or 5
+  draws the map on its GPU, with .deb packages that install with apt.
+- **ChromeOS**: a .deb for its Linux container, and an Android APK for every
+  CPU a Chromebook has.
+- **NetBSD**, and **Arm builds of FreeBSD, OpenBSD and NetBSD**.
+- **OpenIndiana (illumos)**, **Haiku** and **SerenityOS**. SerenityOS has no
+  usable OpenGL, so the game draws there with a software renderer.
+- **PlayStation Vita**, **Nintendo Wii**, **Nintendo 3DS**, **DOS** and
+  **RISC OS 5** as homebrew. DOS ships as DOCTRINE.EXE and runs in DOSBox-X in
+  about 320 MB. These load worlds at reduced resolution to fit their memory,
+  and play offline for now.
+- **Two experiment editions**, like the TempleOS one: **FreeRTOS**, the rules
+  on a microcontroller played over a serial console, and **Plan 9 (9front)**,
+  with a console and a clickable map. Both play a 31-turn game byte for byte
+  the same as every other build.
+- **The Unifico launcher (0.1.2)** runs on every new desktop platform too.
+
+
+## Faster and smaller
+
+- **Turns process 2.7 to 3.1 times faster**, with bit-identical results. Most
+  of a turn was repainting the map; borders are now rebuilt only where
+  provinces changed hands, with NEON and SSE2 versions of the inner loop.
+- **Saves store each turn as a difference from the last** and append turns in
+  place. They are compressed with libdeflate, take a third of the time to write
+  and are a little smaller, and are still ordinary zip files older builds read.
+- **The map editor generates worlds about three times faster**, and can no
+  longer finish with provinces on screen and an empty country list.
+- **Smaller worlds for smaller machines**: a world can load at 1/2, 1/4 or 1/8
+  resolution, which is how the consoles and DOS fit.
+- **A game without OpenGL**: a software renderer with CPU-painted map layers,
+  for systems that have no GPU driver.
+- **Experimental ANGLE rendering** (Metal, Direct3D 11 or Vulkan underneath),
+  for machines whose OpenGL drivers misbehave. Off unless you ask for it.
+
+
+## Accessibility
+
+A new Settings -> Accessibility tab. Everything is off until you turn it on.
+
+- **High contrast**: black panels and white text; coloured text, lines and
+  buttons made readable while keeping their colour, so war is still red,
+  alliances still green, and the colour-blind palettes still work.
+- **Text size** 100%, 110% or 120%.
+- **Reduce motion**: the pulsing highlights hold still.
+- **Hold to confirm**: declaring war and deleting a world or map need the
+  button held, so a slip of the hand cannot do it.
+- **Longer messages**: notifications stay three times as long.
+- **Visible sound cues**: a refusal also flashes a marker at the pointer.
+- **Atkinson Hyperlegible**, the Braille Institute's font for low vision, under
+  Settings -> Display -> Font.
+
+All of it is translated into every language the game speaks.
+
+
+## A new look for text
+
+- **A readable vector font** draws the interface by default. The original pixel
+  font is still a choice, and the menu logo keeps it.
+- **Import your own font** from Settings. It is checked strictly before it is
+  used, so a font file cannot carry anything but a font.
+- The **web build** is sharp on Retina screens and has an on-screen keyboard on
+  touch devices.
+- Built on **raylib 6.2**.
+
+
+## Modding: Gearbox 1.5 and map scripts
+
+- **Mods can reshape the map while the game runs**: give an area to a province,
+  raise sea to land, or sink land to sea. Borders, neighbours, the map and the
+  labels follow on their own. It is a new capability, Map.Write, that a player
+  grants on purpose.
+- **Map scripts** get the same two commands, `morph` and `terrain`, as engine
+  version 4 (#OD/MapEngine/4).
+- **A safer sandbox**: every call a mod makes is checked when it is made, mod
+  releases are signed, mod audio is mixed on one channel, and on the web a mod
+  has a time budget so it cannot freeze the tab.
+- A mod built for Gearbox 1.4 runs unchanged.
+
+
+## Multiplayer and servers
+
+- **Orders resolve in the same fixed order on every machine**, and boat
+  landings now travel over the multiplayer connection like every other order.
+- **Tournaments seat 32 players**, up from 16.
+- Hosts can **schedule a start** ("schedule +3d start"), and can release a
+  disconnected player's seat after a set time.
+- Signing in got friendlier: a signed-out join opens the Account screen instead
+  of a dead button, a reconnect no longer shows a held seat as unverified, the
+  browser sign-in waits 30 minutes instead of 10, and linking a provider that is
+  already tied to another account now offers a way back.
+
+
+## Safer
+
+- **Releases are signed.** Each update carries a signed list of its files, and
+  the game checks it against a key built into the game before it installs
+  anything. If the download server were ever compromised, it still could not
+  slip in a different program.
+- **Saves are written so a crash cannot leave one half-written.**
+- **Fog-of-war saves are sealed** in games built from source, as they are in
+  official builds.
+- Stack protection on far more of the game, hardened library calls, and an
+  updated TLS library with its latest security fixes.
+
+
+## Coming next
+
+The groundwork for a new AI is in: Parrot Zero now issues its moves through one
+order type, behind an interface a second AI can share, and can record why it
+made each decision. 1.3.4b builds on that with a network visualiser and a
+search-based AI that looks ahead before it moves.
+
+
+Pick the build for your system from the download list. If yours is one of the
+new ones, tell us how it runs: most of these platforms are new to us, too.
+
+See you on the map.
