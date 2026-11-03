@@ -1805,6 +1805,59 @@ export declare function _tintCount(): u32;
 @external("gearbox:render", "label_count")
 export declare function _labelCount(): u32;
 
+// Ask for one of the host's effects on a target. permille is 0..1000 and
+// means something different per effect -- 0..360 degrees of hue, 0..2x
+// saturation where 500 is unchanged, none..full for vignette and grain,
+// for HUE_CYCLE a SPEED (0 to half a turn of the wheel per second), and
+// for WOBBLE an AMPLITUDE -- how far the image is pushed around. WOBBLE on
+// the SCREEN target is capped well below a control's height, and the
+// reason is worth knowing: it moves PIXELS, not hit boxes. A button drawn
+// away from itself still answers where it really is, so the host will not
+// let the interface lie about itself by more than a few pixels, whatever
+// you pass. HUE_CYCLE is the one to reach for if you want movement,
+// because mod_draw_panel is the only per-frame export there is: without
+// it, a mod that wants a rolling colour has to register a panel purely to
+// use as a clock. Set the speed once and the host turns the wheel, which
+// also means the rate is the host's and no mod can ask for a faster one.
+// Out of range is CLAMPED, not refused: a value one past the end is an
+// arithmetic slip, and failing the call would have you debugging a silent
+// nothing. Returns false when the target or effect is not one this host
+// has (ask supported() first), or when ANOTHER MOD already holds that
+// target. A target has one owner, first to claim it, because two mods
+// tinting one layer produce a picture neither of them wrote and neither
+// can debug. Within your target you may set every effect; they compose
+// into one pass. WHAT YOU ASK FOR IS NOT WHAT IS DRAWN THIS FRAME. The
+// host moves the rendered value toward yours at a bounded rate, so a value
+// that jumps every frame comes out as a fade. That is the photosensitivity
+// guarantee and it is not negotiable: write the effect you want and let it
+// arrive. A player can also switch screen effects off. The call still
+// succeeds and nothing here tells you which it was -- if you could tell,
+// you could route round it.
+// gearbox:shaders "set_effect"
+// `(iii)i`
+@external("gearbox:shaders", "set_effect")
+export declare function _shadersSetEffect(target: u32, effect: u32, permille: u32): u32;
+
+// Release a target. It fades back to neutral rather than snapping, and
+// another mod may claim it at once. You cannot clear a target you do not
+// hold, and unloading clears yours automatically -- an effect left behind
+// by a mod that is no longer running is indistinguishable, to a player,
+// from the game being broken.
+// gearbox:shaders "clear"
+// `(i)i`
+@external("gearbox:shaders", "clear")
+export declare function _shadersClear(target: u32): u32;
+
+// Whether this host has that target and that effect. The lists grow by
+// release, so ask rather than assuming: a mod that checks can fall back to
+// what an older host does have instead of discovering refusals one call at
+// a time. It says nothing about whether anything is being drawn -- on a
+// server, as with audio, there is nobody to draw to.
+// gearbox:shaders "supported"
+// `(ii)i`
+@external("gearbox:shaders", "supported")
+export declare function _shadersSupported(target: u32, effect: u32): u32;
+
 // Add or replace one entry in a catalogue. kind 0 doctrine, 1 research, 2
 // troop type, 3 artillery, 4 district law. mode 0 HOLLOW, 1 PERSIST. The
 // definition is the SAME JSON the game's own data file uses, and goes

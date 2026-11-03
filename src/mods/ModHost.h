@@ -108,6 +108,20 @@ struct ModRenderBridge {
     std::function<uint32_t(const std::string&)> labelCount;
 };
 
+/**
+ * Screen effects a mod may ask for. See src/ModEffectLayer.h.
+ *
+ * Deliberately NOT a shader, a framebuffer or a draw callback: the whole of
+ * what crosses this bridge is a target, an effect index and a clamped integer.
+ */
+struct ModShaderBridge {
+    /** (modId, target, effect, permille) -> accepted */
+    std::function<bool(const std::string&, uint32_t, uint32_t, uint32_t)> setEffect;
+    std::function<void(const std::string&, uint32_t)> clearTarget;
+    /** Everything this mod holds, because it is going away. */
+    std::function<void(const std::string&)> clearAll;
+};
+
 /** Catalogue content a mod adds. See src/ModContent.h. */
 struct ModContentBridge {
     std::function<bool(uint32_t, const std::string&, const std::string&,
@@ -154,12 +168,25 @@ void modReleaseAudio(const std::string& modId);
 
 void modSetAudioBridge(const ModAudioBridge& bridge);
 
+/**
+ * Drop what a mod has drawn, for the same reason as the sound above.
+ *
+ * Both are called from ModManager, beside modReleaseAudio. The render one is
+ * not a tidy-up: nothing used to clear a disabled mod's tints and labels, so
+ * they stayed on the map until the game was restarted -- a mark from a mod that
+ * is no longer running, which is the exact failure src/ModRenderLayer.h was
+ * written to prevent and which the ABI already promised did not happen.
+ */
+void modReleaseRender(const std::string& modId);
+void modReleaseEffects(const std::string& modId);
+
 /** Hand the mod host a session, or take it away with a default-constructed one. */
 void modSetNetBridge(const ModNetBridge& bridge);
 void modSetListBridge(const ModListBridge& bridge);
 void modSetCountryBridge(const ModCountryBridge& bridge);
 void modSetScriptBridge(const ModScriptBridge& bridge);
 void modSetRenderBridge(const ModRenderBridge& bridge);
+void modSetShaderBridge(const ModShaderBridge& bridge);
 void modSetContentBridge(const ModContentBridge& bridge);
 /**
  * The installed content bridge.

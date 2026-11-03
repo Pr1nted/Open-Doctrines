@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "com.opendoctrines.screeneffects",
+  "name": "Screen Effects",
+  "version": "1.0.0",
+  "description": "Example mod: the host's screen effects on the map and on this panel, with a button that tries to strobe and cannot.",
+  "authors": ["OpenDoctrines"],
+  "gearbox": "1.4",
+  "modules": ["Core", "UI", "Shaders"],
+  "limits": { "memoryPages": 16, "fuelPerTurn": 200000 }
+}

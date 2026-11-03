@@ -142,6 +142,61 @@ typedef enum {
     GEARBOX_DISCLOSURE_DISTRICT_LAWS = 3   /* how its districts are governed  */
 } gearbox_disclosure_field;
 
+/* ---------------------------------------------------------------------------
+ * SCREEN EFFECTS  (Gearbox 1.4)
+ *
+ * You name a TARGET and pick one of the host's effects with a 0..1000
+ * parameter. You are not given a framebuffer, a shader or a draw callback, and
+ * there is no target for the interface: the panels, the dialogs and the Mod
+ * Menu that is the only way to switch you off are all drawn afterwards.
+ *
+ * Two things will surprise you if nobody says them first.
+ *
+ * What you ask for is NOT what is drawn this frame. The host moves the rendered
+ * value toward yours at a bounded rate, so a parameter that jumps every frame
+ * comes out as a fade. That is deliberate and it is not a performance
+ * compromise: a full-screen value alternating at the frame rate is the thing
+ * that triggers photosensitive seizures. Write the effect you want and let it
+ * arrive.
+ *
+ * And a player can switch screen effects off entirely. Your calls still
+ * succeed and nothing here reports it, because a mod that could read the
+ * setting could route round it.
+ *
+ * Mirrors the `shader_target` and `shader_effect` enums in sdk/abi.json;
+ * tools/check_sdk_enums.py fails the build if they drift apart.
+ * ------------------------------------------------------------------------- */
+typedef enum {
+    GEARBOX_SHADER_TARGET_MAP   = 0,  /* the province raster, under everything */
+    GEARBOX_SHADER_TARGET_PANEL = 1,  /* your own panels, clipped to their box  */
+    /* The whole game screen -- map, counters, panels, sidebar, dialogs.
+     *
+     * NOT the always-on-top layer: toasts, the feedback form and the Mod Menu
+     * are drawn after your effect, and the Mod Menu suppresses effects
+     * entirely while it is open. You cannot paint over your own off switch. */
+    GEARBOX_SHADER_TARGET_SCREEN = 2
+} gearbox_shader_target;
+
+typedef enum {
+    GEARBOX_SHADER_EFFECT_HUE_ROTATE = 0,  /* 0..1000 -> 0..360 degrees        */
+    GEARBOX_SHADER_EFFECT_SATURATION = 1,  /* 0..1000 -> 0..2x, 500 unchanged  */
+    GEARBOX_SHADER_EFFECT_VIGNETTE   = 2,  /* 0..1000 -> none..full            */
+    GEARBOX_SHADER_EFFECT_GRAIN      = 3,  /* 0..1000 -> none..full            */
+    /* A hue that rolls on its own. 0..1000 is a SPEED, up to half a turn of
+     * the wheel per second -- set it once and the host keeps turning.
+     *
+     * Reach for this rather than driving a hue from mod_draw_panel. That
+     * export is the only per-frame hook the ABI has, so animating anything
+     * otherwise means registering a panel to use as a clock, and the rate
+     * ends up being the mod's rather than the host's. */
+    GEARBOX_SHADER_EFFECT_HUE_CYCLE  = 4,
+    /* Push the image around. 0..1000 is an amplitude; the host picks the
+     * frequency and caps the distance. On SCREEN the cap is small on purpose:
+     * a wobble moves pixels and not hit boxes, so a button drawn away from
+     * itself still answers where it really is. */
+    GEARBOX_SHADER_EFFECT_WOBBLE     = 5
+} gearbox_shader_effect;
+
 /* True wherever there is a local player to draw for -- which includes
  * singleplayer and a host who is also playing. Use this to decide whether to
  * put up UI. */

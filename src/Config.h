@@ -140,6 +140,10 @@ struct Config {
     // bitmap as hard to read, so the vector face is the default. See
     // Game::applyFontStyle() and Game::availableFonts().
     std::string fontChoice = "readable";
+    // Screen effects a mod asked for (Gearbox Shaders). The player's switch,
+    // and NOT readable through the mod ABI: a mod that could see it could route
+    // round it, and the guarantee would be advice. See src/ModEffectLayer.h.
+    bool modScreenEffects = true;
     bool debugMode = false;
     bool showFps = false;
     bool showZoom = false;

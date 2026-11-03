@@ -1852,6 +1852,7 @@ set(GAME_SOURCES
     src/CountryFields.cpp
     src/ScriptCommands.cpp
     src/ModRenderLayer.cpp
+    src/ModEffectLayer.cpp
     src/ModContent.cpp
     src/Parties.cpp
     src/Feedback.cpp
@@ -1945,6 +1946,7 @@ set(GAME_SOURCES
     src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
+    src/renderer/EffectPass.cpp
     src/renderer/GlobeView.cpp
     src/map/SkyFile.cpp
     src/map/HistoryFile.cpp
@@ -3632,6 +3634,13 @@ target_include_directories(ScriptCommandsTest PRIVATE src tests)
 add_executable(ModRenderLayerTest EXCLUDE_FROM_ALL
                tests/mod_render_layer_test.cpp src/ModRenderLayer.cpp)
 target_include_directories(ModRenderLayerTest PRIVATE src tests)
+
+# Screen effects a mod may ask for. The property under test is NOT the colour:
+# it is that no sequence of calls produces a strobe, because that is the one
+# failure here that hurts a person rather than a picture.
+add_executable(ModEffectTest EXCLUDE_FROM_ALL
+               tests/mod_effect_test.cpp src/ModEffectLayer.cpp)
+target_include_directories(ModEffectTest PRIVATE src tests)
 
 # Content a mod adds to the catalogues. The properties under test are that ids
 # are global within a catalogue (a save records a doctrine BY ID), that AI

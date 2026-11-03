@@ -1,5 +1,6 @@
 #include "Access.h"   // reduce motion: odAccess::wave
 #include "MapRenderer.h"
+#include "EffectPass.h"
 #include "GlobeView.h"
 // Not just the pad's cursor but its buttons: this renderer answers the clicks
 // that select a province, drag an army and pan the map, and it asks raylib for
@@ -2414,6 +2415,26 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
     int tileStart = static_cast<int>(std::floor(left / m_mapW));
     int tileEnd = static_cast<int>(std::ceil(right / m_mapW));
 
+    // ── A MOD'S EFFECT ON THE MAP TARGET ──
+    //
+    // Around the layer stack, so it covers the province raster and everything
+    // painted into it -- and NOTHING else. Army counters, labels, panels and the
+    // Mod Menu are drawn by Game after this and are not in the pass, which is
+    // the property the whole capability rests on.
+    //
+    // No extra geometry and no render target: these are the quads the map was
+    // going to draw anyway, with one shader bound around them. Returns false and
+    // binds nothing when no mod has asked for anything, which is every session
+    // without an effect mod.
+    //
+    // THE GLOBE IS NOT COVERED. The sphere samples a cached composite inside its
+    // own shader, so there is nowhere to bind this; doing it there needs either a
+    // rebuild of that composite every frame or a second target, and both want
+    // eyes on a real globe before they ship. A mod cannot ask which view is up,
+    // so for now MAP means the flat map.
+    const bool fx = m_modEffects &&
+                    odeffect::beginPass(*m_modEffects, odeffect::Target::Map,
+                                        {0.0f, 0.0f, (float)m_screenW, (float)m_screenH});
     for (const Layer& l : layerStack(landSea)) {
         if (l.tex.id == 0) continue;
         // Drawn to the MAP's world size, not the texture's pixel size. A layer
@@ -2427,6 +2448,7 @@ void MapRenderer::draw(const LandSeaMap& landSea, const ProvinceMap& provinces, 
             DrawTexturePro(l.tex, src, dst, {0.0f, 0.0f}, 0.0f, l.tint);
         }
     }
+    if (fx) odeffect::endPass();
 
     EndMode2D();
 

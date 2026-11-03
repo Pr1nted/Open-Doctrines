@@ -359,6 +359,13 @@
     {"commandArgs", gbxpy_command_args, METH_NOARGS, "Inside mod_script_command: the rest of the script line, verbatim -- unparsed and untrimmed, because your command knows its own grammar and the engine does not. Empty outside that c"},
 #endif /* GBX_WITH_SCRIPTS */
 
+/* ---- Shaders (3) ---- */
+#if GBX_WITH_SHADERS
+    {"shadersSetEffect", gbxpy_shaders_set_effect, METH_VARARGS, "Ask for one of the host's effects on a target. permille is 0..1000 and means something different per effect -- 0..360 degrees of hue, 0..2x saturation where 500 is unchanged, none."},
+    {"shadersClear", gbxpy_shaders_clear, METH_VARARGS, "Release a target. It fades back to neutral rather than snapping, and another mod may claim it at once. You cannot clear a target you do not hold, and unloading clears yours automat"},
+    {"shadersSupported", gbxpy_shaders_supported, METH_VARARGS, "Whether this host has that target and that effect. The lists grow by release, so ask rather than assuming: a mod that checks can fall back to what an older host does have instead o"},
+#endif /* GBX_WITH_SHADERS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
     {"get", gbxpy_get, METH_VARARGS, "Reads one of your own keys. Two-call sizing: returns the full value length and writes at most cap bytes. Returns GEARBOX_INVALID if the key is absent -- which is NOT the same as a "},

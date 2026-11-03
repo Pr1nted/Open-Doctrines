@@ -5,6 +5,7 @@ using GlobeViewSky = GlobeView::Sky;
 #include "../map/LandSeaMap.h"
 #include "../map/ProvinceMap.h"
 #include "../map/CountryMap.h"
+#include "../ModEffectLayer.h"
 #include <vector>
 #include <cstdint>
 #include <unordered_map>
@@ -281,6 +282,12 @@ public:
     void setShowCountryNames(bool on) { m_showCountryNames = on; }
     void setCountryLabels(const std::vector<struct CountryLabel>* labels) { m_countryLabels = labels; }
     void setFallbackFont(Font font) { m_fallbackFont = font; }
+    /**
+     * Screen effects a mod has asked for on the MAP target. A POINTER, owned by
+     * Game: the renderer reads it while it draws and never writes it, and a
+     * renderer built without one (the map editor, a test) draws as it always did.
+     */
+    void setModEffects(const odeffect::Layer* fx) { m_modEffects = fx; }
     void drawSubregion(int sx, int sy, int sw, int sh,
                        float worldX, float worldY, float zoom,
                        const LandSeaMap& landSea, const ProvinceMap& provinces, const CountryMap& countries);
@@ -380,6 +387,7 @@ private:
     GlobeView::Night m_night{};
     bool m_haveNight = false;
     GlobeView* m_globe = nullptr;
+    const odeffect::Layer* m_modEffects = nullptr;
     RenderTexture2D m_surface{};
     bool m_surfaceDirty = true;
     unsigned long long m_surfaceSig = 0;  ///< which layers were last composited

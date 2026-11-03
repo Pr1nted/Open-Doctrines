@@ -7,6 +7,7 @@
 #include "WorldProvenance.h"
 #include "ModContent.h"
 #include "ModRenderLayer.h"
+#include "ModEffectLayer.h"
 #include "ScriptCommands.h"
 #include "CountryFields.h"
 #include "Parties.h"
@@ -3802,6 +3803,38 @@ public:
     odrender::Layer m_modRenderLayer;
     /** Draw the mods' tints and labels. Does nothing when none are set. */
     void drawModRenderLayer(const std::function<Vector2(Vector2)>& worldToScreen) const;
+    /** Screen effects mods have asked for. See src/ModEffectLayer.h. */
+    odeffect::Layer m_modEffects;
+    /**
+     * Where the frame is drawn when a mod holds the SCREEN target.
+     *
+     * OFF UNLESS ASKED. With no screen effect live, beginFrameCapture returns
+     * before it touches anything and the frame goes straight to the back
+     * buffer exactly as it always did -- so a session without an effect mod
+     * cannot be affected by any of this, which is the only basis on which
+     * redirecting the whole frame is a reasonable thing to do.
+     */
+    RenderTexture2D m_fxTarget{};
+    bool            m_fxCapturing = false;
+    /** Redirect the frame into m_fxTarget. Right after BeginDrawing. */
+    void beginFrameCapture();
+    /** Resolve it to the screen through the effect. At the top of endFrame. */
+    void endFrameCapture();
+    /**
+     * Move the effects toward what mods asked for. Once a frame, beside the
+     * audio pump, and from the FRAME path rather than from update(): an effect
+     * that only advanced while the game was unpaused would freeze mid-fade on a
+     * menu, which is the one moment the player most wants it gone.
+     */
+    void advanceModEffects();
+    /**
+     * The player's switch, applied to the layer and saved.
+     *
+     * One function because three rows reach it -- the arrow keys, the row's
+     * arrows and the reset button -- and the setting means nothing until it has
+     * reached the layer.
+     */
+    void setModScreenEffects(bool on);
     /** Map-script commands mods have claimed. See src/ScriptCommands.h. */
     odscript::Registry m_scriptCommands;
     /** Fields mods have added to countries. See src/CountryFields.h. */

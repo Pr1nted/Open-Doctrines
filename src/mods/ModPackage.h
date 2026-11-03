@@ -124,11 +124,19 @@ enum ModModuleBit : uint32_t {
     // the turn delta and reach every save and multiplayer client, so a reviewer
     // weighs it like the other *.Write capabilities, not like a lookup.
     MODULE_MAP_WRITE       = 1ull << 30,
-    // Bit 31 is the last in the mask. The next capability after it needs a wider
-    // type and a save-format decision, not another bit.
+    // Screen effects: a mod names a target and a host effect, and the host
+    // composites. Its own bit and NOT part of MODULE_RENDER, because the two
+    // are different sentences to show a player: "may colour provinces" against
+    // "may change how the game looks". See src/ModEffectLayer.h for the rule
+    // that keeps the second one safe -- a mod never owns the frame, and the
+    // interface draws after every target.
+    MODULE_SHADERS         = 1ull << 31,
+    // The mask is 64 bits (see tests/mod_capability_test.cpp), so bits 32..63
+    // are free. Everything that carries one is uint64_t; a uint32_t anywhere on
+    // the path truncates bit 32 to zero, which reads as "unknown module".
 };
 
-uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown
+uint64_t    modModuleFromName(const std::string& name);  // 0 when unknown
 
 /**
  * Every capability bit, in the order the permissions screen should list them.
@@ -137,7 +145,7 @@ uint32_t    modModuleFromName(const std::string& name);  // 0 when unknown
  * module is enough to make it visible and revocable. See the note by the
  * definition for what went wrong when it did not.
  */
-const std::vector<uint32_t>& modAllModuleBits();
+const std::vector<uint64_t>& modAllModuleBits();
 std::string modModuleMaskToString(uint64_t mask);
 
 // Which side of a multiplayer game a mod belongs on. "both" is the default

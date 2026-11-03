@@ -1,16 +1,7 @@
 # LSDoctrines
 
-A band of colour rolls diagonally across the map, continuously, with a panel
-to make it calmer, stronger, or stop.
-
-**What it actually looks like.** `Render` draws a tint as a DISC AT THE
-PROVINCE CENTRE -- `DrawCircleV(p, max(3, 7 * zoom))` in
-`Game::drawModRenderLayer` -- not as a filled province. The capability cannot
-touch the draw loop, deliberately: "a mod that tints wrongly makes the map
-ugly and gets switched off, while a mod that owns rendering can make the
-screen it would be switched off from unreadable." So this is a field of
-coloured dots, one per province, shifting hue. It is not the landmass itself
-changing colour, and no mod can make it be.
+The map's own colour rolls continuously round the wheel. No panel, no dots, no
+per-frame code — the whole mod is two calls in `mod_load`.
 
 ```
 ./build.sh            # produces lsdoctrines.odmod
@@ -20,48 +11,61 @@ Then drop `lsdoctrines.odmod` in your mods folder and enable it.
 
 ## What it demonstrates
 
-A mod that draws on **the map** rather than in a panel. `hello-panel` shows the
-panel path; this shows `gearbox:render`, which is a different thing: tints
-belong to the mod that drew them, survive between frames, and are dropped when
-the mod unloads.
+`Shaders`, which recolours the map ITSELF — and `HUE_CYCLE`, where the host
+turns the wheel so the mod does not have to be running every frame to animate
+anything.
 
-Four capabilities, which is all it needs: `Core`, `UI`, `Map`, `Render`. It
-reads no game state at all — it never asks who owns a province, only how many
-there are.
+Two capabilities: `Core` and `Shaders`. It reads no game state at all. It does
+not even ask how many provinces there are, because it is not drawing on them.
 
-## Two things worth copying
+## What it used to be, and why that is the interesting part
 
-**The panel is the clock.** `mod_draw_panel` is the only per-frame export in
-the ABI; `mod_pre_turn` and `mod_post_turn` fire once a turn, which would give
-one colour change per turn and no animation. So an animated map effect has to
-own a panel to get a frame hook. Making that panel the off switch and the
-intensity control is the honest version of the arrangement — a mod that
-repaints the whole map should be visibly present and easy to stop.
+Until Gearbox 1.4 this mod did the same job completely differently, and the
+difference is worth understanding before you write your own:
 
-**Colour comes from position, not from the loop counter.** The first version
-keyed hue on the province index, and province order has nothing to do with
-geography: neighbours got unrelated hues and the map read as confetti.
-`province_center_x/y` and `map width/height` turn it into a function of
-position, so what crosses the map is a band. Worth knowing before reaching
-for the obvious `for i` version.
+| then | now |
+|---|---|
+| `Render`: a coloured **disc at each province centre** | the map texture's own colour |
+| a **panel**, registered purely to get a per-frame hook | nothing; `HUE_CYCLE` rolls on its own |
+| `set_theme_accent` cycled every frame for the menus | not done — see below |
+| `Core`, `UI`, `Map`, `Render` | `Core`, `Shaders` |
+| ~280 lines, including an integer colour wheel | ~40 |
 
-**An alpha of zero removes a tint.** One call sets and clears, so the "off"
-state is the same loop with `intensity 0` rather than a second code path, and
-a per-frame repaint cannot grow the tint list forever. The cap is 4096 tints
-per mod; a larger map stops at the cap and says so in the log at load, rather
-than painting a partial rainbow that reads as a broken mod.
+The dots were never the effect anyone wanted. The map is a texture the
+renderer owns, and until there was a way to ask the host to recolour it, a mod
+could only stipple over the top. `Render` is still right for what it is for —
+marking particular provinces — but "recolour the map" was never that.
 
-## Freestanding
+The panel is the same story. `mod_draw_panel` is the only per-frame export in
+the ABI, so before `HUE_CYCLE` an animated effect had to put a window on
+screen and use it as a clock. That also meant the animation RATE was the
+mod's, and the rate is the parameter that matters to anyone photosensitive.
+Now it is the host's: `HUE_CYCLE`'s 0..1000 maps to at most half a turn per
+second, the host integrates the phase, and there is no way to ask for faster.
 
-No libc, no allocator, no float — `-nostdlib` means no libm, so a `sinf()` in
-the colour wheel would not link. The wheel is integer arithmetic over six
-256-step ramps, which also makes it byte-identical on every platform. That
-matters more than it looks: a mod that drew different colours on two machines
-in a multiplayer game would be a bug nobody could reproduce.
+## What it no longer controls, on purpose
+
+**There is no off switch in the mod.** There is no panel to put one on, and
+three better ones exist: disable the mod, open the Mod Menu (which clears
+every effect for as long as it is open), or Settings → Display → Mod Screen
+Effects, which turns all of it off without telling the mod.
+
+**The menus are not tinted.** The old version moved the theme accent, which
+reached every heading and button. The target that would actually cover the
+interface is `SCREEN`, and it is not built — see
+`docs/design/gearbox-screen-effects.md`, where the reason is draw order rather
+than safety.
+
+**The globe shows the map untinted.** `MAP` means the flat map for now.
 
 ## Gearbox version
 
-The manifest declares `"gearbox": "1.3"`, which is when `Render` arrived.
-Declaring `1.0` like `hello-panel` would compile and pack perfectly happily and
-then fail at instantiation on a 1.0–1.2 host, with an unresolved import — loud,
-but later than it needed to be.
+The manifest declares `"gearbox": "1.4"`, which is when `Shaders` arrived.
+If you are targeting an older host, the 1.3 version of this mod — `Render`
+plus a panel — is in the git history and still works.
+
+Note that updating a mod's capabilities does **not** widen its grants: the
+manifest now asks for `Shaders` where it used to ask for `UI`, `Map` and
+`Render`, and the host deliberately grants only what the mod asks for AND had
+before. So an existing install needs `Shaders` ticked in the Mod Menu before
+anything happens. That is the rule working, not a bug.

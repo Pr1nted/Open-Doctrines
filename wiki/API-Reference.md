@@ -41,6 +41,7 @@ into your memory after a call returns.
 - **Country** (`gearbox:country`): [field_add](#field-add), [field_remove](#field-remove), [field_has](#field-has), [field_count](#field-count), [field_name](#field-name), [set_number](#set-number), [get_number](#get-number), [set_text](#set-text), [get_text](#get-text)
 - **Scripts** (`gearbox:scripts`): [command_add](#command-add), [command_remove](#command-remove), [command_count](#command-count), [command_name](#command-name), [command_text](#command-text), [command_args](#command-args)
 - **Render** (`gearbox:render`): [province_tint](#province-tint), [province_label](#province-label), [clear](#clear), [tint_count](#tint-count), [label_count](#label-count)
+- **Shaders** (`gearbox:shaders`): [set_effect](#set-effect), [clear](#clear), [supported](#supported)
 - **Content** (`gearbox:content`): [add](#add), [count](#count), [id_at](#id-at), [owner_of](#owner-of), [remove](#remove)
 
 ## Core
@@ -4893,6 +4894,65 @@ How many tints you are currently holding.
 
 How many labels you are currently holding.
 
+## Shaders
+
+Import module `gearbox:shaders`. Requires the `Shaders` capability in your manifest.
+
+### set_effect
+
+```wat
+(import "gearbox:shaders" "set_effect" (func (param i32 i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `target` | `i32` |  |
+| `effect` | `i32` |  |
+| `permille` | `i32` |  |
+
+**Returns:** `i32`
+
+Ask for one of the host's effects on a target. permille is 0..1000 and means something different per effect -- 0..360 degrees of hue, 0..2x saturation where 500 is unchanged, none..full for vignette and grain, for HUE_CYCLE a SPEED (0 to half a turn of the wheel per second), and for WOBBLE an AMPLITUDE -- how far the image is pushed around.
+
+WOBBLE on the SCREEN target is capped well below a control's height, and the reason is worth knowing: it moves PIXELS, not hit boxes. A button drawn away from itself still answers where it really is, so the host will not let the interface lie about itself by more than a few pixels, whatever you pass.
+
+HUE_CYCLE is the one to reach for if you want movement, because mod_draw_panel is the only per-frame export there is: without it, a mod that wants a rolling colour has to register a panel purely to use as a clock. Set the speed once and the host turns the wheel, which also means the rate is the host's and no mod can ask for a faster one. Out of range is CLAMPED, not refused: a value one past the end is an arithmetic slip, and failing the call would have you debugging a silent nothing.
+
+Returns false when the target or effect is not one this host has (ask supported() first), or when ANOTHER MOD already holds that target. A target has one owner, first to claim it, because two mods tinting one layer produce a picture neither of them wrote and neither can debug. Within your target you may set every effect; they compose into one pass.
+
+WHAT YOU ASK FOR IS NOT WHAT IS DRAWN THIS FRAME. The host moves the rendered value toward yours at a bounded rate, so a value that jumps every frame comes out as a fade. That is the photosensitivity guarantee and it is not negotiable: write the effect you want and let it arrive.
+
+A player can also switch screen effects off. The call still succeeds and nothing here tells you which it was -- if you could tell, you could route round it.
+
+### clear
+
+```wat
+(import "gearbox:shaders" "clear" (func (param i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `target` | `i32` |  |
+
+**Returns:** `i32`
+
+Release a target. It fades back to neutral rather than snapping, and another mod may claim it at once. You cannot clear a target you do not hold, and unloading clears yours automatically -- an effect left behind by a mod that is no longer running is indistinguishable, to a player, from the game being broken.
+
+### supported
+
+```wat
+(import "gearbox:shaders" "supported" (func (param i32 i32) (result i32)))
+```
+
+| Parameter | Type | |
+|---|---|---|
+| `target` | `i32` |  |
+| `effect` | `i32` |  |
+
+**Returns:** `i32`
+
+Whether this host has that target and that effect. The lists grow by release, so ask rather than assuming: a mod that checks can fall back to what an older host does have instead of discovering refusals one call at a time. It says nothing about whether anything is being drawn -- on a server, as with audio, there is nobody to draw to.
+
 ## Content
 
 Import module `gearbox:content`. Requires the `Content` capability in your manifest.
@@ -5107,3 +5167,7 @@ that many bytes, so an older mod is safe against a newer host.
 **`good`** — `$comment`=Appended to, never reordered. Mirrors GoodId in src/GameStructs.h; a static_assert in src/Game_Mods.cpp fails the build if the two disagree., `consumer`=0, `machinery`=1, `fuel`=2, `munitions`=3
 
 **`raw`** — `$comment`=Appended to, never reordered. Mirrors RawId in src/GameStructs.h. Gold is not here on purpose: it is money, not an input to anything., `oil`=0, `metal`=1, `rubber`=2, `gemstones`=3
+
+**`shader_target`** — `$comment`=Appended to, never reordered: a mod passes the index. There is no entry for the interface layer, by design -- see the Shaders note above., `MAP`=0, `PANEL`=1, `SCREEN`=2
+
+**`shader_effect`** — `$comment`=Appended to, never reordered. Mirrors odeffect::Effect in src/ModEffectLayer.h., `HUE_ROTATE`=0, `SATURATION`=1, `VIGNETTE`=2, `GRAIN`=3, `HUE_CYCLE`=4, `WOBBLE`=5

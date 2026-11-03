@@ -59,7 +59,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest ScriptDialectTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest ThemeTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest SaveFormatTest OrderCodecTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest ScriptDialectTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest ThemeTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModEffectTest ModContentTest SaveFormatTest OrderCodecTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -189,6 +189,7 @@ run "core.protected"   "$bin/ModProtectedTest"
 run "country fields"   "$bin/CountryFieldsTest"
 run "script commands"  "$bin/ScriptCommandsTest"
 run "mod render layer" "$bin/ModRenderLayerTest"
+run "mod effects"      "$bin/ModEffectTest"
 run "mod content"      "$bin/ModContentTest"
 run "qualify play gate" "$root/tests/qualify_play_gate_test.sh"
 
@@ -583,6 +584,11 @@ check "the ai instrument guard still guards" $PY "$root/tests/ai_instruments_che
 # bump is allowed to do that -- parseModManifest refuses a mismatched major
 # outright, which is the mod being told rather than crashing.
 check "abi compatibility vs frozen baselines" $PY "$root/tools/check_abi_compat.py"
+
+# sdk/gearbox.h is the one hand-written SDK file and it mirrors four of the
+# ABI's enums as C constants. A mod compiled against a stale one passes a wrong
+# index to a call that accepts it, so the drift is silent at every layer.
+check "sdk/gearbox.h enums vs abi.json" $PY "$root/tools/check_sdk_enums.py"
 
 # The wiki is generated from the same file the bindings are, and it is
 # PUBLISHED -- .github/workflows/publish-wiki.yml pushes wiki/ to the Wiki tab
