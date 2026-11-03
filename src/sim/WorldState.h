@@ -21,20 +21,27 @@
 // must be unchanged. Once every group has moved, the aliases can be retired by
 // migrating call sites to m_world.* , but that is cleanup, not a blocker.
 //
-// Groups still to move: provinces' gameplay fields (not the raster), countries,
-// armies, pending orders, and the turn RNG.
+// Groups still to move: provinces' gameplay fields (not the raster), pending
+// orders, and the turn RNG.
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include "../GameStructs.h"   // CountryRelation, NavyShip
+#include "../GameStructs.h"       // CountryRelation, NavyShip, ArmyUnit
+#include "../map/CountryMap.h"    // CountryMap
 
 namespace sim {
 
 struct WorldState {
     int turnNumber = 0;   ///< the game turn counter (Game::m_turnNumber aliases this)
 
+    /// The countries and their per-country state (Game::m_countries).
+    CountryMap countries;
+
     /// Diplomacy: relations[a][b] is a's stance toward b (Game::m_relations).
     std::unordered_map<std::string, std::unordered_map<std::string, CountryRelation>> relations;
+
+    /// Land forces, by the province they stand in (Game::m_provinceArmies).
+    std::unordered_map<int, std::vector<ArmyUnit>> provinceArmies;
 
     /// Every hull afloat (Game::m_ships).
     std::vector<NavyShip> ships;

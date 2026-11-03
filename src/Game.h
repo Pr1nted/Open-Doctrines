@@ -2273,7 +2273,8 @@ public:
     sim::WorldState m_world;
     LandSeaMap m_landSea;
     ProvinceMap m_provinces;
-    CountryMap m_countries;
+    // Moved into m_world (REWORK_PLAN item 4); reference-alias, call sites unchanged.
+    CountryMap& m_countries = m_world.countries;
     MapRenderer* m_renderer = nullptr;
     Texture2D m_politicalTex{};
     // A source rectangle in MAP pixels, scaled to m_politicalTex's own pixels.
@@ -4116,7 +4117,8 @@ public:
     static std::string formatBalance(float val);
     static constexpr const char* ROMAN_NUMERALS[11] = {"", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"};
 
-    std::unordered_map<int, std::vector<ArmyUnit>> m_provinceArmies;
+    // Moved into m_world (REWORK_PLAN item 4); reference-alias into m_world.
+    std::unordered_map<int, std::vector<ArmyUnit>>& m_provinceArmies = m_world.provinceArmies;
 
     std::unordered_map<int, PortInfo> m_provincePorts;
     std::unordered_map<int, std::vector<int>> m_provinceNeighbors;
