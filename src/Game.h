@@ -5535,7 +5535,7 @@ private:
     void processCampaigns();
 
     /** A player or an AI asking to pull its men out of a battle. */
-    std::vector<int> m_pendingWithdraws;   ///< province ids
+    std::vector<int>& m_pendingWithdraws = m_world.pendingWithdraws;   ///< province ids (moved into m_world, item 4)
 
     /**
      * Every man this country is paying for: garrisons AND men committed to
@@ -6114,8 +6114,9 @@ private:
     }
 
     // ── Pending Actions (queued for processing on next turn) ──
-    std::vector<PendingDiplomaticAction> m_pendingDiplomaticActions;
-    std::vector<PendingUpgrade> m_pendingUpgrades;
+    // Moved into m_world (REWORK_PLAN item 4); reference-alias.
+    std::vector<PendingDiplomaticAction>& m_pendingDiplomaticActions = m_world.pendingDiplomaticActions;
+    std::vector<PendingUpgrade>& m_pendingUpgrades = m_world.pendingUpgrades;
 
     // ── ONE DIPLOMATIC CHANNEL PER PAIR ─────────────────────────────
     //
@@ -6447,19 +6448,20 @@ private:
      * would toggle it on and off again as fast as the game draws.
      */
     std::unordered_set<int> m_bulkPaintStroke;
-    std::vector<PendingSpecialization> m_pendingSpecializations;
-    std::vector<PendingRecruitment> m_pendingRecruitments;
+    // Pending-order queues moved into m_world (REWORK_PLAN item 4); reference-alias.
+    std::vector<PendingSpecialization>& m_pendingSpecializations = m_world.pendingSpecializations;
+    std::vector<PendingRecruitment>& m_pendingRecruitments = m_world.pendingRecruitments;
 
-    std::vector<PendingMoveOrder> m_pendingMoveOrders;
-    std::vector<PendingDisbandOrder> m_pendingDisbandOrders;
-    std::vector<PendingShipBuild> m_pendingShipBuilds;
-    std::vector<PendingScrapShip> m_pendingScrapShips;
-    std::vector<PendingEmbark> m_pendingEmbarkations;
-    std::vector<PendingArtilleryOrder> m_pendingArtilleryOrders;
-    std::vector<PendingShipMoveOrder> m_pendingShipMoveOrders;
-    std::vector<PendingShipEngageOrder> m_pendingShipEngageOrders;
-    std::vector<PendingShipBombardOrder> m_pendingShipBombardOrders;
-    std::vector<PendingShipDisembark> m_pendingShipDisembarks;
+    std::vector<PendingMoveOrder>& m_pendingMoveOrders = m_world.pendingMoveOrders;
+    std::vector<PendingDisbandOrder>& m_pendingDisbandOrders = m_world.pendingDisbandOrders;
+    std::vector<PendingShipBuild>& m_pendingShipBuilds = m_world.pendingShipBuilds;
+    std::vector<PendingScrapShip>& m_pendingScrapShips = m_world.pendingScrapShips;
+    std::vector<PendingEmbark>& m_pendingEmbarkations = m_world.pendingEmbarkations;
+    std::vector<PendingArtilleryOrder>& m_pendingArtilleryOrders = m_world.pendingArtilleryOrders;
+    std::vector<PendingShipMoveOrder>& m_pendingShipMoveOrders = m_world.pendingShipMoveOrders;
+    std::vector<PendingShipEngageOrder>& m_pendingShipEngageOrders = m_world.pendingShipEngageOrders;
+    std::vector<PendingShipBombardOrder>& m_pendingShipBombardOrders = m_world.pendingShipBombardOrders;
+    std::vector<PendingShipDisembark>& m_pendingShipDisembarks = m_world.pendingShipDisembarks;
 
     bool isProvinceCoastal(int pid) const;
 

@@ -21,8 +21,8 @@
 // must be unchanged. Once every group has moved, the aliases can be retired by
 // migrating call sites to m_world.* , but that is cleanup, not a blocker.
 //
-// Groups still to move: provinces' gameplay fields (not the raster), pending
-// orders, and the turn RNG.
+// Groups still to move: provinces' gameplay fields (not the raster), and the
+// turn RNG.
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -45,6 +45,26 @@ struct WorldState {
 
     /// Every hull afloat (Game::m_ships).
     std::vector<NavyShip> ships;
+
+    // ── Pending orders ──────────────────────────────────────────────────────
+    // The orders issued this turn, awaiting resolution. The same set sim::Order
+    // is a variant over (REWORK_PLAN item 1): the 14 Pending* queues plus the
+    // withdraw list. Game reaches each through a reference-alias member.
+    std::vector<int>                     pendingWithdraws;      ///< province ids
+    std::vector<PendingDiplomaticAction> pendingDiplomaticActions;
+    std::vector<PendingUpgrade>          pendingUpgrades;
+    std::vector<PendingSpecialization>   pendingSpecializations;
+    std::vector<PendingRecruitment>      pendingRecruitments;
+    std::vector<PendingMoveOrder>        pendingMoveOrders;
+    std::vector<PendingDisbandOrder>     pendingDisbandOrders;
+    std::vector<PendingShipBuild>        pendingShipBuilds;
+    std::vector<PendingScrapShip>        pendingScrapShips;
+    std::vector<PendingEmbark>           pendingEmbarkations;
+    std::vector<PendingArtilleryOrder>   pendingArtilleryOrders;
+    std::vector<PendingShipMoveOrder>    pendingShipMoveOrders;
+    std::vector<PendingShipEngageOrder>  pendingShipEngageOrders;
+    std::vector<PendingShipBombardOrder> pendingShipBombardOrders;
+    std::vector<PendingShipDisembark>    pendingShipDisembarks;
 };
 
 }  // namespace sim
