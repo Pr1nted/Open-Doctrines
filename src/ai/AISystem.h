@@ -4581,7 +4581,8 @@ private:
     AITraceSink* m_traceSink = nullptr;
     void traceDecision(int cid, int module, int pick, int action, const char* source,
                        const std::vector<float>& features, const std::vector<bool>& valid,
-                       const std::vector<float>& probs);
+                       const std::vector<float>& probs,
+                       const std::vector<float>* qbias = nullptr);
     std::string m_modelPath;
     /** Shared encoder: FEATURE_COUNT -> 512 -> TRUNK_OUT, tanh on the output
      *  because that layer is a HIDDEN layer of the nets it replaced. */

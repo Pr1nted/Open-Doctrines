@@ -50,6 +50,7 @@ hashes in.
 | `valid` | int[] | the legality mask, 1 = offered |
 | `logits` | float[] | the policy head's raw output, before bias, mask or mixing |
 | `probs` | float[] | the distribution the policy sampled from (after mask, critic and search bias, temperature and mixing). Empty when no net drove the pick. |
+| `qbias` | float[] | the steering added to each action's logit before masking — stance, war-staging, coalition, the LLM advisor's intent, the search's scores and the critic's Q, summed. "What moved the choice" away from the policy's own preference (`logits`). Empty when the pick took no bias (book, script, random, search-visits). |
 | `features` | float[] | the trunk's input, the 143 features |
 | `trunk` | float[][] | the trunk's activations per layer: the input copy first, the output (the embedding) last |
 | `policy` | float[][] | the module's policy head's activations per layer: its input (the embedding) first, the logits last |

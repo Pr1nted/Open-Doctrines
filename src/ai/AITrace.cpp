@@ -76,6 +76,7 @@ void AITraceFileWriter::onDecision(const AIDecisionTrace& d) {
     b += ']';
     b += ",\"logits\":";   putFloats(b, d.logits);
     b += ",\"probs\":";    putFloats(b, d.probs);
+    b += ",\"qbias\":";    putFloats(b, d.qbias);
     b += ",\"features\":"; putFloats(b, d.features);
     b += ",\"trunk\":";    putLayers(b, d.trunkActs);
     b += ",\"policy\":";   putLayers(b, d.policyActs);

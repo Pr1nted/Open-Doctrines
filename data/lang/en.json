@@ -2510,6 +2510,7 @@
  "signals intelligence": "signals intelligence",
  "size on disk, and which other mods you have installed.": "size on disk, and which other mods you have installed.",
  "slot %d  -  %.0f a turn": "slot %d  -  %.0f a turn",
+ "steering: none on the chosen action (policy's own pick)": "steering: none on the chosen action (policy's own pick)",
  "subsidy %.0f%%": "subsidy %.0f%%",
  "suppression x%.2f": "suppression x%.2f",
  "sure?": "sure?",

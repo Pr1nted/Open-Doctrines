@@ -47,6 +47,12 @@ struct AIDecisionTrace {
     /// The distribution the policy sampled from, after mask, bias and mixing.
     /// Empty when no net drove the pick (book, script, random).
     std::vector<float> probs;
+    /// The steering added to each action's raw logit before masking: stance,
+    /// war-staging, coalition, the LLM advisor's intent, the search's scores and
+    /// the critic's Q, summed (see AISystem qBiasFor). This is "what moved the
+    /// choice" away from the policy's own preference. Empty when the pick took no
+    /// bias (book, script, random, search-visits) or none applied.
+    std::vector<float> qbias;
 };
 
 class AITraceSink {

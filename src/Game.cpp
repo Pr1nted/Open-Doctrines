@@ -3145,7 +3145,30 @@ void Game::drawAiTracePanel() {
         DrawText("(not a net decision — no distribution)", ix, iy, 12,
                  Color{150, 150, 165, 200});
     } else {
-        const int barW = pw - 24 - 54;   // leave room for the index + percent
+        // "What moved the choice": the steering (qbias) added to each action's
+        // raw logit -- stance, coalition, the LLM advisor, the search and the
+        // critic, summed. When the chosen action took a push, say so up front:
+        // it is the difference between "the policy wanted this" and "we leaned
+        // it here". Green pushes an action up, red holds it down.
+        auto steerFor = [&](int i) -> float {
+            return (i >= 0 && i < (int)d.qbias.size()) ? d.qbias[i] : 0.0f;
+        };
+        const float chosenSteer = steerFor(d.action);
+        if (!d.qbias.empty() && std::fabs(chosenSteer) > 0.001f) {
+            drawHybridText(ix, iy, 11,
+                           TextFormat("steering on chosen: %+.2f  (stance+coalition+LLM+search+critic)",
+                                      chosenSteer),
+                           chosenSteer >= 0 ? Color{150, 220, 160, 220}
+                                            : Color{230, 160, 150, 220});
+            iy += 15;
+        } else if (!d.qbias.empty()) {
+            // Raw DrawText like the sibling debug hints below: an aiDebug-only
+            // overlay string, not part of the translated UI.
+            DrawText("steering: none on the chosen action (policy's own pick)",
+                     ix, iy, 11, Color{150, 160, 175, 200});
+            iy += 15;
+        }
+        const int barW = pw - 24 - 54 - 46;   // index + bar + percent + steer tag
         for (int i = 0; i < (int)d.probs.size() && iy < py + ph - 80; ++i) {
             const bool legal = i < (int)d.valid.size() ? d.valid[i] : true;
             if (!legal) continue;
@@ -3158,6 +3181,11 @@ void Game::drawAiTracePanel() {
             DrawRectangle(bx, iy, (int)(barW * p), 10, bar);
             DrawText(TextFormat("%3.0f%%", p * 100.0f), bx + barW + 6, iy, 11,
                      chosen ? Color{255, 255, 255, 230} : Color{170, 170, 190, 200});
+            // The steering tag: how much this action was leaned, if at all.
+            const float s = steerFor(i);
+            if (std::fabs(s) > 0.001f)
+                DrawText(TextFormat("%+.2f", s), bx + barW + 6 + 40, iy, 11,
+                         s >= 0 ? Color{140, 210, 150, 210} : Color{225, 150, 140, 210});
             iy += 13;
         }
     }

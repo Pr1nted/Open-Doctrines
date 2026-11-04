@@ -3639,7 +3639,8 @@ void AISystem::issueOrder(T&& order) {
 
 void AISystem::traceDecision(int cid, int module, int pick, int action, const char* source,
                              const std::vector<float>& features, const std::vector<bool>& valid,
-                             const std::vector<float>& probs) {
+                             const std::vector<float>& probs,
+                             const std::vector<float>* qbias) {
     // Everything below runs the nets through forwardInto with scratches of
     // this function's own. forwardInto reads weights and writes only the
     // scratch -- not m_acts, which backprop and lastOutput() read -- and no
@@ -3651,6 +3652,7 @@ void AISystem::traceDecision(int cid, int module, int pick, int action, const ch
     d.features = features;
     d.valid = valid;
     d.probs = probs;
+    if (qbias) d.qbias = *qbias;   // the steering added to the policy's logits
     const NeuralNet& trunk = m_leagueThisCountry ? m_leagueTrunk : m_trunk;
     if (trunk.valid() && (int)features.size() == trunk.inputSize()) {
         NeuralNet::Scratch ts;
@@ -4164,6 +4166,11 @@ void AISystem::takeTurn(int cid) {
                 mod >= 0 && mod < MOD_COUNT && mctsSims() > 0)
                 mctsPolicy(mod, useEmb, valid, visits, g.m_config.aiLearning);
             int act;
+            // The steering (qbias) the policy pick actually saw, kept so the
+            // visualiser can show what moved the choice. nullptr on the search,
+            // scripted and book paths, which take no qbias. Read only by the
+            // trace below; costs a pointer otherwise.
+            const std::vector<float>* qbUsed = nullptr;
             if (!visits.empty() && mod >= 0 && mod < MOD_COUNT)
                 exp.visits[mod] = visits;      // the policy target; see Experience
             if (!visits.empty()) {
@@ -4181,12 +4188,13 @@ void AISystem::takeTurn(int cid) {
                 const double p = tot > 0.0 ? visits[(size_t)act] / tot : 1.0;
                 lp = (float)std::log(std::max(1e-8, p));
                 score = visits[(size_t)act];
+            } else if (m_scriptedThisCountry || inBook) {
+                act = scriptedChoice(mod, cid, valid, scriptVariant,
+                                     /*bookTurn=*/inBook && !m_scriptedThisCountry);
             } else {
-                act = (m_scriptedThisCountry || inBook)
-                    ? scriptedChoice(mod, cid, valid, scriptVariant,
-                                     /*bookTurn=*/inBook && !m_scriptedThisCountry)
-                    : pickAction(brainFor(mod), useEmb, valid, score, graveAction,
-                                 qBiasFor(mod), &lp, netDriven ? &nprob : nullptr);
+                qbUsed = qBiasFor(mod);
+                act = pickAction(brainFor(mod), useEmb, valid, score, graveAction,
+                                 qbUsed, &lp, netDriven ? &nprob : nullptr);
             }
             // ── A MOD MAY CHOOSE INSTEAD (Gearbox 1.3, Neural.Decide) ──
             //
@@ -4220,7 +4228,7 @@ void AISystem::takeTurn(int cid) {
                                 : m_randomThisCountry ? "random"
                                 : m_leagueThisCountry ? "league" : "policy";
                 traceDecision(cid, mod, k, act, src, k == 0 ? exp.features : curFeat,
-                              valid, nprob);
+                              valid, nprob, qbUsed);
             }
             // A booked move was not sampled from the policy AT ALL: the book
             // is deterministic, so the behaviour probability is 1 and the
