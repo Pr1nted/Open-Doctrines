@@ -2129,8 +2129,13 @@ void Game::applyLlmLean(int cid, const std::string& phrase) {
         r = std::clamp(r + 0.34f * lean.direction, -1.0f, 1.0f);
         return;
     }
+    // The vocabulary numbers its modules 0 war / 1 economy / 2 politics, but
+    // llmIntentFor is queried with AISystem::Module (economy 0, politics 1, war
+    // 2). Store under the AI's numbering so the war head reads the war lean --
+    // see llm::leanModuleToAiModule.
+    const long long aiModule = llm::leanModuleToAiModule(lean.module);
     const long long key = ((long long)cid << 20) |
-                          ((long long)lean.module << 8) | (long long)lean.action;
+                          (aiModule << 8) | (long long)lean.action;
     float& v = m_llmIntent[key];
     // Accumulated and clamped, exactly like the disposition: asking twice is
     // emphasis, asking twenty times is not twenty times the emphasis.

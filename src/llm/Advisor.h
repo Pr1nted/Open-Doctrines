@@ -216,7 +216,8 @@ std::string tidyReply(std::string text, const std::string& countryName);
  */
 struct Lean {
     bool  ok = false;
-    int   module = 0;      ///< 0 war, 1 economy, 2 politics
+    int   module = 0;      ///< 0 war, 1 economy, 2 politics -- NOT AISystem's
+                           ///  numbering; bridge with leanModuleToAiModule.
     int   action = 0;      ///< index within that module's action space
     float direction = 0;   ///< +1 toward, -1 away
     /**
@@ -232,6 +233,23 @@ struct Lean {
     const char* reflex = nullptr;
 };
 Lean parseLean(const std::string& phrase);
+
+/**
+ * Bridge the Lean vocabulary's module numbering (0 war, 1 economy, 2 politics
+ * -- see Lean::module) to the AISystem::Module index that Game::llmIntentFor is
+ * queried with (MOD_ECONOMY 0, MOD_POLITICS 1, MOD_WAR 2).
+ *
+ * THESE TWO NUMBERINGS ARE INDEPENDENT and used to be assumed equal: a "war"
+ * lean (module 0) was stored under field 0, which the AI reads as the ECONOMY
+ * module, so every lean biased the wrong module's actions. This is the one
+ * place that translation happens; values outside 0..2 pass through unchanged.
+ *
+ * Kept here, in AISystem's terms but without including its header, so the one
+ * translation-unit that already links both (the unit test) can pin it against
+ * the real enum -- a renumbering of AISystem::Module that this misses fails
+ * tests/llm_influence_test.cpp rather than silently misrouting again.
+ */
+int leanModuleToAiModule(int leanModule);
 
 /// One tool the model may call, and what it is for.
 struct Tool {

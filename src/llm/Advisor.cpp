@@ -1137,6 +1137,17 @@ Lean parseLean(const std::string& phrase) {
     return out;                              // a direction with no subject is not one either
 }
 
+int leanModuleToAiModule(int leanModule) {
+    // Returns AISystem::Module values. Not the enum names, to keep this header-
+    // light; pinned to the real enum in tests/llm_influence_test.cpp.
+    switch (leanModule) {
+        case 0: return 2;   // war      -> AISystem::MOD_WAR
+        case 1: return 0;   // economy  -> AISystem::MOD_ECONOMY
+        case 2: return 1;   // politics -> AISystem::MOD_POLITICS
+        default: return leanModule;
+    }
+}
+
 float foldDisposition(float current, int stance) {
     if (stance == 0) return current;
     const float next = current + kDispositionStep * (stance > 0 ? 1.0f : -1.0f);

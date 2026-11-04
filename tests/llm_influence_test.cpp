@@ -104,6 +104,38 @@ int main() {
         ok(most > 0.0f, "but it is worth something, or none of this is wired up");
     }
 
+    section("a lean reaches the module it names, not the one next to it");
+    {
+        // The vocabulary numbers its modules 0 war / 1 economy / 2 politics
+        // (llm::Lean::module). Game::llmIntentFor is queried with
+        // AISystem::Module, which numbers them differently. The bridge must
+        // land each lean on the head that owns it -- it once did not, and a
+        // "war" lean silently biased the economy head's actions instead.
+        ok(llm::leanModuleToAiModule(0) == AISystem::MOD_WAR,
+           "the war vocabulary reaches the war head");
+        ok(llm::leanModuleToAiModule(1) == AISystem::MOD_ECONOMY,
+           "the economy vocabulary reaches the economy head");
+        ok(llm::leanModuleToAiModule(2) == AISystem::MOD_POLITICS,
+           "the politics vocabulary reaches the politics head");
+
+        // End to end, through the real phrases a model writes. "more war"
+        // resolves to {module 0, action 4}; action 4 is declare-war in the war
+        // head, so the lean must arrive at (MOD_WAR, 4), which is where
+        // qBiasFor and the coalition window both read it.
+        const llm::Lean war = llm::parseLean("more war");
+        ok(war.ok && war.action == 4, "'more war' is still war's action 4");
+        ok(llm::leanModuleToAiModule(war.module) == AISystem::MOD_WAR,
+           "'more war' lands on the war head, not the economy head");
+
+        const llm::Lean econ = llm::parseLean("more industry");
+        ok(econ.ok && llm::leanModuleToAiModule(econ.module) == AISystem::MOD_ECONOMY,
+           "'more industry' lands on the economy head");
+
+        const llm::Lean pol = llm::parseLean("more doctrine");
+        ok(pol.ok && llm::leanModuleToAiModule(pol.module) == AISystem::MOD_POLITICS,
+           "'more doctrine' lands on the politics head");
+    }
+
     printf("\n%d checks, %d failed\n", checks, fails);
     return fails == 0 ? 0 : 1;
 }
