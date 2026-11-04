@@ -138,10 +138,16 @@ def loop_body(body: str, start: int) -> str:
 
 
 def pending_members(game_h: str):
-    """Every `std::vector<...>`/`std::unordered_map<...> m_pending<Name>;`."""
+    """Every `std::vector<...>`/`std::unordered_map<...> m_pending<Name>;`.
+
+    Matches both a plain declaration and the WorldState reference-alias form
+    REWORK_PLAN item 4 introduced -- `std::vector<X>& m_pendingX = m_world.x;` --
+    where the real container lives in WorldState and Game.h holds an alias of the
+    same name. The optional `&` and ` = ...` initializer are what distinguish the
+    two; the member name, which is all the coverage check reads, is identical."""
     rx = re.compile(
-        r"(?:std::vector|std::unordered_map)\s*<[^;{}]*>\s+"
-        r"(m_pending[A-Za-z0-9_]*)\s*;")
+        r"(?:std::vector|std::unordered_map)\s*<[^;{}]*>\s*&?\s*"
+        r"(m_pending[A-Za-z0-9_]*)\b[^;{}]*;")
     return [m.group(1) for m in rx.finditer(game_h)]
 
 
