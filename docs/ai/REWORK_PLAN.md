@@ -170,6 +170,22 @@ and the save round trip are unchanged.
    `step(WorldState&, const std::vector<Order>&)` must give byte-identical
    results to `processTurn` (`[DET]` hashes). The headless server build
    already proves resolution can run without drawing.
+   - **Done, to the limit of this architecture.** `Game::resolveTurnCore`
+     holds the whole of resolution and reads/writes only `m_world` (the orders
+     it resolves are the pending-order queues item 4 moved into `WorldState`)
+     plus the constant geometry a copy shares. It does no I/O: `processTurn`
+     keeps the snapshot/delta/save, repaint, mail, chat, achievements, bench
+     and multiplayer, and the loading frames are injected as a `progress`
+     callback a headless caller leaves empty. It allocates nothing -- `m_ai` is
+     a precondition the caller sets. Byte-identical to the old inline body
+     (decision hash and `SaveRoundTripTest` unchanged at each step).
+   - *Not yet, and deferred to the search engine (below):* a Game-FREE
+     `step(WorldState&)`. Resolution still runs as Game methods that reach
+     `m_world` through Game's reference aliases, so a search resolves a
+     candidate by handing a scratch `Game` the copied `WorldState` and calling
+     `resolveTurnCore`. Lifting it off `Game` entirely means de-Game-ifying
+     every resolver, which is part of building the engine, not a precondition
+     for it.
 6. **Visualiser hooks.** `NeuralNet::forwardInto(Scratch&)` already keeps
    per-layer activations. Add an opt-in trace sink: when a visualiser (or a
    test) is attached, `takeTurn` records each decision's input features,
@@ -194,8 +210,11 @@ and the save round trip are unchanged.
 decisions` before, after, and after with `OD_AI_TRACE` set. The eval's CSV row
 is identical.
 
-Items 1, 2 and 6 are independent and small. Items 4 and 5 are most of the
-work, and are what the rework is waiting on.
+Items 1, 2 and 6 are independent and small. Items 4 and 5 were most of the
+work; they are now done (item 3 with them), so the groundwork is complete and
+the rework is no longer waiting on plumbing -- what remains is the engine
+itself: a Game-free `step(WorldState&)`, move generation, an evaluator and the
+shallow search, measured against Parrot Zero.
 
 ## The visualiser, 1.3.4b
 

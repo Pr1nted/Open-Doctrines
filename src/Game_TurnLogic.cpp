@@ -456,11 +456,24 @@ const std::vector<int>& Game::provincesOf(int cid) const {
 // than a loose one that sends them over Crimea.
 long long g_navRouteCalls = 0, g_navRouteFails = 0;
 
-// REWORK_PLAN item 5, first slice: the turn's resolution, moved verbatim out
-// of processTurn. `drawFrame` here is the injected progress callback, so the
-// body below is unchanged from when it lived inline; processTurn keeps every
-// side effect (snapshot/delta/save, repaint, mail, chat, achievements, bench,
-// multiplayer). Behaviour- and save-identical: a pure relocation.
+// REWORK_PLAN item 5: the turn's resolution -- the pure step(). It advances the
+// whole turn (income, every country's turn, navy, diplomacy, population,
+// policies, eliminations, fog) reading and writing ONLY m_world (the orders it
+// resolves are the pending-order queues that item 4 moved into WorldState) plus
+// the constant province geometry a search copy shares. It does no I/O of its
+// own: the caller's side effects -- snapshot/delta/save, repaint, mail, chat,
+// achievements, bench, multiplayer -- all stay in processTurn, and the one
+// thing resolution would otherwise reach for, the loading frames, is injected
+// as `progress` so a headless caller passes a no-op. It allocates nothing: m_ai
+// is a precondition the caller creates.
+//
+// So resolution is now a function of (WorldState, geometry) alone. What it is
+// NOT yet is a free function OFF Game: it still calls resolution as Game methods
+// (processCountryTurn and the rest), which read m_world through Game's aliases.
+// A search reaches it by giving a scratch Game the candidate WorldState and
+// calling this; lifting it to a Game-free `step(WorldState&)` is part of the
+// search engine (item E), since it means de-Game-ifying every resolver. The
+// headless server build already proves resolution runs without drawing.
 void Game::resolveTurnCore(const std::function<void(float, const char*)>& progress) {
     const auto& drawFrame = progress;
     auto tcore0 = std::chrono::steady_clock::now();
@@ -476,27 +489,11 @@ void Game::resolveTurnCore(const std::function<void(float, const char*)>& progre
     // Pre-compute all country incomes in a single province pass (avoids 356 redundant scans)
     refreshIncomeCache();
     m_rebellionsThisTurnByCid.clear();
-    // Country AI: created lazily on the first processed turn so map load stays
-    // instant; the model persists across saves in the game data directory.
-    if (!m_ai) m_ai = new AISystem(this, m_dataDir + m_aiModelPath);
-    // ── "AI LEARNING: OFF" MUST ALSO MEAN "DO NOT WRITE THE MODEL" ──
-    //
-    // aiLearning gates the learning itself -- AISystem::endTurn returns early
-    // without it -- but it did NOT gate saving. saveModel() is called from the
-    // destructor and from a timer every SAVE_INTERVAL_SECONDS with only
-    // s_readOnlyModel to stop it, and the game binary set that nowhere. So a
-    // player with learning switched off still had data/ai/model.bin rewritten
-    // on every quit: nothing learned, and the trained model overwritten anyway
-    // by whatever the session happened to hold.
-    //
-    // Set every turn rather than once at construction, because the setting is
-    // a toggle in Experimental and a player may turn it off mid-game -- which
-    // is exactly when they mean it.
-    AISystem::s_readOnlyModel = !m_config.aiLearning;
-    // The turn loop drives the AI through AIPlayer (src/ai/AIPlayer.h) --
-    // beginTurn, takeTurn and endTurn and nothing else -- so a second engine
-    // can stand where ParrotZero stands. m_ai stays an AISystem* for the
-    // training, overlay and bench calls that are ParrotZero's own.
+    // m_ai is a PRECONDITION: processTurn creates it and sets its read-only flag
+    // before calling this core, so resolution allocates nothing and owns no AI
+    // lifetime -- see the note at the call site. The turn loop drives the AI
+    // through AIPlayer (src/ai/AIPlayer.h) -- beginTurn, takeTurn, endTurn and
+    // nothing else -- so a second engine can stand where ParrotZero stands.
     static_cast<AIPlayer*>(m_ai)->beginTurn();
     drawFrame(0.02f, "Processing countries...");
     // Process per-country actions in batches with loading frames
@@ -662,6 +659,15 @@ void Game::processTurn() {
     auto prevArmies = m_provinceArmies;
     int turnNum = m_turnNumber + 1;
     auto t1 = std::chrono::steady_clock::now();
+    // Country AI: created lazily on the first processed turn so map load stays
+    // instant; the model persists across saves in the game data directory. Done
+    // here, not inside resolveTurnCore, so the core allocates nothing.
+    if (!m_ai) m_ai = new AISystem(this, m_dataDir + m_aiModelPath);
+    // "AI LEARNING: OFF" must also mean "do not write the model": aiLearning
+    // gates learning, but saveModel() (destructor + timer) is stopped only by
+    // s_readOnlyModel. Set every turn because the Experimental toggle can flip
+    // mid-game. See AISystem::endTurn.
+    AISystem::s_readOnlyModel = !m_config.aiLearning;
     resolveTurnCore(drawFrame);
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
