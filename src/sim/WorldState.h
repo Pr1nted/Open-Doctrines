@@ -21,14 +21,15 @@
 // must be unchanged. Once every group has moved, the aliases can be retired by
 // migrating call sites to m_world.* , but that is cleanup, not a blocker.
 //
-// Still to move: the turn RNG. It is reached through free functions
-// (simRand/seedSimRng), so it needs that interface reworked rather than a plain
-// alias; see REWORK_PLAN item 3/4. The constant province geometry (centres,
-// bounds, pixels, areas, adjacency) deliberately stays in Game -- it does not
-// change during a game, so a search copy shares it.
+// The turn RNG now lives here too (REWORK_PLAN item 3): simRand/seedSimRng and
+// the rest became Game members that draw from m_world.simRng, so each copied
+// world rolls its own dice -- which is what a search needs. The constant
+// province geometry (centres, bounds, pixels, areas, adjacency) deliberately
+// stays in Game -- it does not change during a game, so a search copy shares it.
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <random>
 #include "../GameStructs.h"       // CountryRelation, NavyShip, ArmyUnit
 #include "../map/CountryMap.h"    // CountryMap
 
@@ -83,6 +84,13 @@ struct WorldState {
     std::vector<PendingShipEngageOrder>  pendingShipEngageOrders;
     std::vector<PendingShipBombardOrder> pendingShipBombardOrders;
     std::vector<PendingShipDisembark>    pendingShipDisembarks;
+
+    // ── The turn RNG ────────────────────────────────────────────────────────
+    // The simulation's own stream. Seeded 1337 so an unseeded world is still
+    // deterministic; seedSimRng replaces it from a world/map seed, and its whole
+    // state (not just the seed) is saved and restored so a reload resumes the
+    // same stream. Game::simRand and friends draw from here.
+    std::mt19937 simRng{1337};
 };
 
 }  // namespace sim

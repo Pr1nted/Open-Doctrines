@@ -42,12 +42,12 @@
 // Seeding rand() per map came first and could not fix this: a second thread on
 // the same stream ruins it however it was seeded. The fix is to stop sharing.
 //
-// File-static rather than a Game member on purpose -- it is turn-resolution
-// state, not public API, and Game.h is not the place to put it.
-static std::mt19937 g_simRng{1337};
-static int simRand() { return (int)(g_simRng() >> 1); }   // non-negative, like rand()
-void seedSimRng(unsigned int seed) { g_simRng.seed(seed); }
-int simRandShared() { return simRand(); }
+// A member of WorldState (m_world.simRng) rather than a file static, so a
+// copied world -- what a search makes -- rolls its own dice. See REWORK_PLAN
+// item 3. The accessors below are Game members for the same reason.
+int Game::simRand() { return (int)(m_world.simRng() >> 1); }   // non-negative, like rand()
+void Game::seedSimRng(unsigned int seed) { m_world.simRng.seed(seed); }
+int Game::simRandShared() { return simRand(); }
 
 // ── SAVING THE STREAM, NOT JUST THE SEED ──
 //
@@ -59,21 +59,21 @@ int simRandShared() { return simRand(); }
 //
 // mt19937 streams its whole state through the standard operators, so the honest
 // thing is to write that down. It is a few hundred bytes of text in state.json.
-std::string simRngState() {
+std::string Game::simRngState() {
     std::ostringstream os;
-    os << g_simRng;
+    os << m_world.simRng;
     return os.str();
 }
-void setSimRngState(const std::string& st) {
+void Game::setSimRngState(const std::string& st) {
     if (st.empty()) return;
     // Into a SPARE generator first, and only adopted if it parsed. Reading a
-    // truncated or corrupt state straight into g_simRng half-consumes it and
-    // leaves the world's randomness in whatever state the failure stopped at,
-    // which is neither the saved stream nor a clean one. A save that cannot be
-    // read here keeps the seed it was already given.
+    // truncated or corrupt state straight into m_world.simRng half-consumes it
+    // and leaves the world's randomness in whatever state the failure stopped
+    // at, which is neither the saved stream nor a clean one. A save that cannot
+    // be read here keeps the seed it was already given.
     std::mt19937 parsed;
     std::istringstream is(st);
-    if (is >> parsed) g_simRng = parsed;
+    if (is >> parsed) m_world.simRng = parsed;
 }
 
 // === isProvinceCoastal ===

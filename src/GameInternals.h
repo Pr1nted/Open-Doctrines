@@ -160,22 +160,9 @@ inline bool settingsRowOnScreen(int y, int startY, int screenH) {
 constexpr float RESOURCE_BUDGET_MIN = 0.10f;
 /** Clamped to [RESOURCE_BUDGET_MIN, 1]. Call applyFpsTarget after changing it. */
 void setResourceBudget(float budget);
-/** Reseed the turn resolver's PRNG; called per map so a seed replays a world. */
-void seedSimRng(unsigned int seed);
-/**
- * One draw from that same PRNG, non-negative, for the rare caller outside the
- * turn resolver that legitimately needs it -- world creation, which happens
- * once and before any turn.
- *
- * NOT a general-purpose random. Every draw advances the stream the turn
- * resolver replays, so calling this from anything that runs per frame, or per
- * turn, or only when a panel is open, makes the same seed stop reproducing the
- * same world. That is the failure the determinism check exists to catch.
- */
-int simRandShared();
-/** The turn RNG's whole state, for saving; see the note on g_simRng. */
-std::string simRngState();
-void setSimRngState(const std::string& st);
+// The turn RNG (seedSimRng / simRandShared / simRngState / setSimRngState) is
+// now a set of Game members drawing from m_world.simRng -- see Game.h and
+// REWORK_PLAN item 3. It was free here when the RNG was a file static.
 float resourceBudget();
 /** Frame ceiling the budget implies, or 0 when the budget is unlimited. */
 int budgetedFpsCeiling();

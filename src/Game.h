@@ -7635,6 +7635,18 @@ private:
     // Loading frames are injected as `progress` so a headless caller passes a
     // no-op. Still lazily creates m_ai; that moves out in a later slice.
     void resolveTurnCore(const std::function<void(float, const char*)>& progress);
+
+    // The turn resolver's PRNG, drawing from m_world.simRng (REWORK_PLAN item 3,
+    // formerly a file static with free accessors in GameInternals.h). Members so
+    // a copied world rolls its own dice. simRand is non-negative, like rand();
+    // seedSimRng reseeds per map; simRngState/setSimRngState save and restore the
+    // whole stream so a reload resumes it rather than rewinding to the seed.
+    int simRand();
+    void seedSimRng(unsigned int seed);
+    int simRandShared();
+    std::string simRngState();
+    void setSimRngState(const std::string& st);
+
     void processCountryTurn(int countryId);
     void processArmyMovement(int countryId);
     void processNavyMovement(int countryId);
