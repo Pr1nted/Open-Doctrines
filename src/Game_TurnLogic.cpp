@@ -456,78 +456,14 @@ const std::vector<int>& Game::provincesOf(int cid) const {
 // than a loose one that sends them over Crimea.
 long long g_navRouteCalls = 0, g_navRouteFails = 0;
 
-void Game::processTurn() {
-    // Last turn's fights stop being last turn's the moment this one starts.
-    m_lastTurnBattles.clear();
-
-    // ── OD_SEED_KINDS=1: PUT THE OTHER KINDS INTO A WORLD THAT CANNOT RAISE
-    //    THEM YET ──
-    //
-    // A player can pick a troop kind; the AI cannot, because its recruit action
-    // has no kind on it (that is the AI session's half). So a normal eval raises
-    // 100% line infantry and every combat column added in stage 3 goes
-    // unexercised -- which is indistinguishable from a system that does not
-    // work.
-    //
-    // This assigns kinds round-robin to the starting garrisons, once, so the
-    // frontage, attack/defence and fuel columns actually run. It is a
-    // DEVELOPMENT AID, not a game rule: off unless asked for, read once on the
-    // first turn, and it makes no decision any player or AI would make.
-    // Measured with it on: survival 75.5% against 73.6% all-line, 18,077
-    // assaults, 33 battles, supply biting at 19.8% -- so the columns fire and
-    // the game is stable with mixed armies.
-    if (m_turnNumber <= 1 && OD_ENV("OD_SEED_KINDS")) {
-        int k = 0;
-        for (auto& [pid, units] : m_provinceArmies)
-            for (auto& u : units)
-                u.type = (TroopType)(1 + (k++ % (int)(TROOP_TYPE_COUNT - 1)));
-    }
-
-    // A new turn: forget every supply route. captureProvince invalidates the
-    // two countries whose ground moved, which covers the common case within a
-    // turn; this covers everything else that quietly changes a route -- a port
-    // finished, an industry level raised, an alliance signed or broken -- none
-    // of which is worth its own invalidation call. One cleared map per turn is
-    // nothing; a stale one is a stack fighting on last month's supply line.
-    m_supplyCache.clear();
-    m_seaSupplyCache.clear();   // and where the fleets were
-
-    // Lambda to draw a loading screen frame (no-op if loading screen not active)
-    auto drawFrame = [&](float pct, const char* status) {
-        // BEFORE the early-out, and that ordering is the whole point.
-        //
-        // Feeding the audio used to happen inside setLoadingProgress(), below
-        // this line -- so a turn processed WITHOUT the loading screen fed it
-        // exactly never. On the web that means the browser's audio callback
-        // never gets the thread back for the length of the turn, and the
-        // "process turn" sound that plays at the start of it repeats for as
-        // long as the turn takes. The sound is not looping; it is the last
-        // buffer being replayed because nothing drained it.
-        //
-        // Whether a progress bar is on screen has nothing to do with whether
-        // the speakers need feeding.
-        Audio::get().pump();
-        if (!m_showLoadingScreen) return;
-        setLoadingProgress(pct, status);
-        BeginDrawing();
-        ClearBackground(BLACK);
-        drawLoadingScreen();
-    };
-    Audio::get().playSfx("process_turn");
-    if (m_config.aiDebug) printf("[TURN] Processing turn %d...\n", m_turnNumber + 1);
-
-    // GameProcess hook. A mod that traps here is disabled, not fatal.
-    ModManager::get().preTurn(m_turnNumber + 1);
-    auto t0 = std::chrono::steady_clock::now();
-    // Snapshot current state for turn delta
-    drawFrame(0.01f, "Snapshoting state...");
-    auto prevOwnership = m_provinceCountryLookup;
-    auto prevPopulations = m_provincePopulations;
-    auto prevIndustry = m_provinceIndustry;
-    auto prevShips = m_ships;
-    auto prevArmies = m_provinceArmies;
-    int turnNum = m_turnNumber + 1;
-    auto t1 = std::chrono::steady_clock::now();
+// REWORK_PLAN item 5, first slice: the turn's resolution, moved verbatim out
+// of processTurn. `drawFrame` here is the injected progress callback, so the
+// body below is unchanged from when it lived inline; processTurn keeps every
+// side effect (snapshot/delta/save, repaint, mail, chat, achievements, bench,
+// multiplayer). Behaviour- and save-identical: a pure relocation.
+void Game::resolveTurnCore(const std::function<void(float, const char*)>& progress) {
+    const auto& drawFrame = progress;
+    auto tcore0 = std::chrono::steady_clock::now();
     // Ownership index first: refreshIncomeCache and every per-country pass
     // below read it, and a turn's worth of conquests can leave last turn's
     // splices slightly behind on the rare path that writes ownership without
@@ -643,6 +579,90 @@ void Game::processTurn() {
     // Fog last of all: who sees what depends on who now owns what, and the
     // result is next turn's view for every country, the AI included.
     recomputeFog();
+    auto tcoreEnd = std::chrono::steady_clock::now();
+    if (m_config.aiDebug)
+        printf("[TURN] resolve timing: countryTurn=%lldms upgrades=%lldms navy+diplo=%lldms pop=%lldms policies=%lldms elim=%lldms\n",
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t2-tcore0).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t3-t2).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t4-t3).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t5-t4).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t6-t5).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tcoreEnd-t6).count());
+}
+
+void Game::processTurn() {
+    // Last turn's fights stop being last turn's the moment this one starts.
+    m_lastTurnBattles.clear();
+
+    // ── OD_SEED_KINDS=1: PUT THE OTHER KINDS INTO A WORLD THAT CANNOT RAISE
+    //    THEM YET ──
+    //
+    // A player can pick a troop kind; the AI cannot, because its recruit action
+    // has no kind on it (that is the AI session's half). So a normal eval raises
+    // 100% line infantry and every combat column added in stage 3 goes
+    // unexercised -- which is indistinguishable from a system that does not
+    // work.
+    //
+    // This assigns kinds round-robin to the starting garrisons, once, so the
+    // frontage, attack/defence and fuel columns actually run. It is a
+    // DEVELOPMENT AID, not a game rule: off unless asked for, read once on the
+    // first turn, and it makes no decision any player or AI would make.
+    // Measured with it on: survival 75.5% against 73.6% all-line, 18,077
+    // assaults, 33 battles, supply biting at 19.8% -- so the columns fire and
+    // the game is stable with mixed armies.
+    if (m_turnNumber <= 1 && OD_ENV("OD_SEED_KINDS")) {
+        int k = 0;
+        for (auto& [pid, units] : m_provinceArmies)
+            for (auto& u : units)
+                u.type = (TroopType)(1 + (k++ % (int)(TROOP_TYPE_COUNT - 1)));
+    }
+
+    // A new turn: forget every supply route. captureProvince invalidates the
+    // two countries whose ground moved, which covers the common case within a
+    // turn; this covers everything else that quietly changes a route -- a port
+    // finished, an industry level raised, an alliance signed or broken -- none
+    // of which is worth its own invalidation call. One cleared map per turn is
+    // nothing; a stale one is a stack fighting on last month's supply line.
+    m_supplyCache.clear();
+    m_seaSupplyCache.clear();   // and where the fleets were
+
+    // Lambda to draw a loading screen frame (no-op if loading screen not active)
+    auto drawFrame = [&](float pct, const char* status) {
+        // BEFORE the early-out, and that ordering is the whole point.
+        //
+        // Feeding the audio used to happen inside setLoadingProgress(), below
+        // this line -- so a turn processed WITHOUT the loading screen fed it
+        // exactly never. On the web that means the browser's audio callback
+        // never gets the thread back for the length of the turn, and the
+        // "process turn" sound that plays at the start of it repeats for as
+        // long as the turn takes. The sound is not looping; it is the last
+        // buffer being replayed because nothing drained it.
+        //
+        // Whether a progress bar is on screen has nothing to do with whether
+        // the speakers need feeding.
+        Audio::get().pump();
+        if (!m_showLoadingScreen) return;
+        setLoadingProgress(pct, status);
+        BeginDrawing();
+        ClearBackground(BLACK);
+        drawLoadingScreen();
+    };
+    Audio::get().playSfx("process_turn");
+    if (m_config.aiDebug) printf("[TURN] Processing turn %d...\n", m_turnNumber + 1);
+
+    // GameProcess hook. A mod that traps here is disabled, not fatal.
+    ModManager::get().preTurn(m_turnNumber + 1);
+    auto t0 = std::chrono::steady_clock::now();
+    // Snapshot current state for turn delta
+    drawFrame(0.01f, "Snapshoting state...");
+    auto prevOwnership = m_provinceCountryLookup;
+    auto prevPopulations = m_provincePopulations;
+    auto prevIndustry = m_provinceIndustry;
+    auto prevShips = m_ships;
+    auto prevArmies = m_provinceArmies;
+    int turnNum = m_turnNumber + 1;
+    auto t1 = std::chrono::steady_clock::now();
+    resolveTurnCore(drawFrame);
     auto t7 = std::chrono::steady_clock::now();
     drawFrame(0.62f, "Generating political map...");
     // Self-play training never looks at the map: skip the full-raster texture
@@ -671,16 +691,11 @@ void Game::processTurn() {
         generatePopulationTexture(m_playerCountryId, -1);
     auto t9 = std::chrono::steady_clock::now();
     if (m_config.aiDebug)
-    printf("[TURN] timing: snapshot=%lldms countryTurn=%lldms upgrades=%lldms navy+diplo=%lldms pop=%lldms policies=%lldms elim=%lldms politTexture=%lldms popSync=%lldms\n",
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t3-t2).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t4-t3).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t5-t4).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t6-t5).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t7-t6).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t8-t7).count(),
-        (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t9-t8).count());
+        printf("[TURN] timing: snapshot=%lldms resolve=%lldms politTexture=%lldms popSync=%lldms\n",
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t7-t1).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t8-t7).count(),
+            (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t9-t8).count());
     // Build TurnDelta from diff
     drawFrame(0.68f, "Building turn delta...");
     TurnDelta delta;

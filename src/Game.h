@@ -7626,6 +7626,15 @@ private:
     void updateMapEditor();
 
     void processTurn();
+    // The turn's resolution mechanics, lifted out of processTurn as the first
+    // slice of REWORK_PLAN item 5 (a pure step()). It runs the whole turn --
+    // income, every country's turn, navy, diplomacy, population, policies,
+    // eliminations, fog -- on m_world, and does nothing else: processTurn keeps
+    // the snapshot/delta/save, the repaint, mail, chat, achievements, bench and
+    // multiplayer, which are the side effects item 5 separates from resolution.
+    // Loading frames are injected as `progress` so a headless caller passes a
+    // no-op. Still lazily creates m_ai; that moves out in a later slice.
+    void resolveTurnCore(const std::function<void(float, const char*)>& progress);
     void processCountryTurn(int countryId);
     void processArmyMovement(int countryId);
     void processNavyMovement(int countryId);
