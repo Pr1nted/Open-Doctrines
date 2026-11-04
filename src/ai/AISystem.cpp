@@ -1902,8 +1902,17 @@ void AISystem::beginTurn() {
     for (auto& [cid, st] : m_stats) {
         (void)st;
         auto w = m_warWith.find(cid);
-        if (w != m_warWith.end() && !w->second.empty()) m_warSince.emplace(cid, m_turn);
-        else                                           m_warSince.erase(cid);
+        if (w != m_warWith.end() && !w->second.empty()) {
+            m_warSince.emplace(cid, m_turn);
+            // Snapshot the ground held at war's start, once, beside the age. The
+            // stalled-war reflex compares it to the current count to tell losing
+            // from holding. emplace leaves the first snapshot alone, so it marks
+            // the start of THIS war period, like m_warSince.
+            m_provAtWarStart.emplace(cid, (int)m_g->provincesOf(cid).size());
+        } else {
+            m_warSince.erase(cid);
+            m_provAtWarStart.erase(cid);
+        }
     }
 }
 
@@ -4214,6 +4223,52 @@ void AISystem::takeTurn(int cid) {
                 if (modAct >= 0 && modAct < (int)valid.size() && valid[(size_t)modAct]) {
                     modChose = act != modAct;
                     act = modAct;
+                }
+            }
+            // ── THE STALLED-WAR REFLEX (OD_STALL_SUE=<turns>, off by default) ──
+            //
+            // A country LOSING ground in a long war sues for peace, rather than
+            // leaving the exit to a policy head that the journals (477-490)
+            // measured never taking it: France bled ~160 provinces to an 8-province
+            // Switzerland over ~90 turns with its one war slot held the whole time,
+            // and the "offer ceasefire" action was sampled zero times. This forces
+            // war action 6 (offer ceasefire to the strongest reachable enemy) when
+            // the war has run >= <turns> AND the country has gained no ground since
+            // it began -- a stalemate, the direct signal, not an army ratio the
+            // combat cap makes meaningless (journal 480). It unmasks the offer the
+            // ratio clause wrongly suppresses, but the cooldown and reachability
+            // still live in the executor, so this cannot offer to nobody. A reflex,
+            // it overrides the pick, the way a mod may above. Gated off, so a run
+            // without OD_STALL_SUE is byte-identical.
+            static const int stallSueTurns = [] {
+                const char* e = OD_ENV("OD_STALL_SUE");
+                return e ? atoi(e) : 0;
+            }();
+            if (stallSueTurns > 0 && mod == MOD_WAR &&
+                (int)valid.size() > 6 && act != 6) {
+                auto ws = m_warSince.find(cid);
+                auto pw = m_provAtWarStart.find(cid);
+                if (ws != m_warSince.end() && pw != m_provAtWarStart.end() &&
+                    m_turn - ws->second >= stallSueTurns &&
+                    (int)m_g->provincesOf(cid).size() <= pw->second) {
+                    // A war held >= stallSueTurns with NO net territorial gain is
+                    // stalled -- the slot is full and nothing is coming of it
+                    // (journals 477-479; a surviving country GAINS in a long war,
+                    // so <= is the discriminator, not strict loss). Sue for peace.
+                    // UNMASK, then force. valid[6] is suppressed for exactly this
+                    // case -- journal 490: the offer's army-ratio clause reads a
+                    // big-army loser as "winning" and never offers it. The
+                    // executor's case 6 still guards cooldown and reachability
+                    // (it no-ops with "no war to end"), so unmasking cannot offer
+                    // to nobody; it only overrides the ratio misjudgment.
+                    valid[6] = true;
+                    act = 6;
+                    static std::atomic<long long> stallSues{0};
+                    static const bool reg = (atexit([] {
+                        fprintf(stderr, "[STALLSUE] ceasefires forced by the stall reflex: %lld\n",
+                                stallSues.load()); }), true);
+                    (void)reg;
+                    ++stallSues;
                 }
             }
             // ── THE VISUALISER'S RECORD (groundwork item 6) ──
