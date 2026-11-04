@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include "json.hpp"
 #include "../renderer/FlagRenderer.h"
 #include "../Personality.h"
@@ -87,11 +88,14 @@ public:
     const Country* getCountry(int id) const;
     Country* getCountry(int id);
     const Country* getCountryByCode(const std::string& isoA3) const;
-    const std::unordered_map<int, Country>& getAll() const { return m_countries; }
-    std::unordered_map<int, Country>& getAll() { return m_countries; }
+    // std::map, not unordered: resolution iterates countries in id order, so a
+// turn is deterministic regardless of the hash table's layout. ~300 entries,
+// so the ordered lookup costs nothing measurable. See REWORK_PLAN item 3.
+    const std::map<int, Country>& getAll() const { return m_countries; }
+    std::map<int, Country>& getAll() { return m_countries; }
     int size() const { return (int)m_countries.size(); }
     void clear() { m_countries.clear(); }
 
 private:
-    std::unordered_map<int, Country> m_countries;
+    std::map<int, Country> m_countries;
 };

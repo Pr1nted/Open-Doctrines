@@ -147,6 +147,17 @@ and the save round trip are unchanged.
    Iteration over unordered maps in resolution becomes sorted.
    - This does change the dice. It is the one item that moves the decision
      hash, so it lands alone, with a new determinism baseline.
+   - **Done.** The `rand()`/`srand(time)` calls were already gone from
+     resolution. `g_simRng` is now `WorldState::simRng`, reached through Game
+     members (`simRand` and friends), so a copied world rolls its own dice.
+     Sorted iteration was achieved at the source: `CountryMap` and `ProvinceMap`
+     store their entries in `std::map`, not `unordered_map`, so every pass over
+     countries or provinces -- in resolution and everywhere else -- runs in id
+     order on any toolchain, with no per-loop sorting to forget. Cost: +2.8%
+     turn time on `--eval-ai 2 30 7` (ordered province lookups), which buys
+     toolchain-independent resolution. **New determinism baseline:**
+     `17598045570029044813 over 10188 decisions` on `--eval-ai 2 30 7` with the
+     shipped model (was `13447830341435898530 over 10336`).
 4. **Extract `WorldState`.** Gameplay state moves out of `Game` into a plain,
    copyable struct: provinces' gameplay fields (not the raster), countries,
    armies, ships, relations, pending orders and RNG. `Game` keeps rendering,

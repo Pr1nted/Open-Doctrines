@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <map>
 #include <vector>
 #include "Province.h"
 #include "raylib.h"
@@ -66,7 +67,10 @@ public:
     // Register a new province definition (its pixels are painted by the caller).
     void addProvince(const Province& p) { m_provinces[p.id] = p; }
 
-    const std::unordered_map<int, Province>& getAllProvinces() const { return m_provinces; }
+    // std::map, not unordered: resolution iterates provinces in id order so a turn
+// resolves the same on any toolchain. The id->slot cache below stays unordered
+// (never iterated in resolution). See REWORK_PLAN item 3.
+    const std::map<int, Province>& getAllProvinces() const { return m_provinces; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
 
@@ -137,5 +141,5 @@ private:
     int m_width = 0;
     int m_height = 0;
     bool m_loaded = false;
-    std::unordered_map<int, Province> m_provinces;
+    std::map<int, Province> m_provinces;
 };
