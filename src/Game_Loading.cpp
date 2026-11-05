@@ -745,6 +745,11 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
             // Cleared unconditionally, so a Quick Start that found nothing
             // playable falls back to country select rather than staying armed
             // and choosing a country for the next world opened by hand.
+            // How close Quick Start may come. 1.2 shows a compact country
+            // (Germany in 1939 is 253x147 px) at about a third of the screen,
+            // with its neighbours around it. The old flat 2.5 was twice that
+            // again, and showed a border region nobody could place.
+            constexpr float kQuickStartMaxZoom = 1.2f;
             if (m_quickStartPending) {
                 m_quickStartPending = false;
                 if (m_currentScreen == SCREEN_COUNTRY_SELECT) {
@@ -754,9 +759,71 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                         // The loader framed the whole world for country select.
                         // Nobody choosing their own country needs to be told
                         // where it is; somebody who was handed one does.
+                        //
+                        // FRAMED FROM THE COUNTRY'S OWN EXTENT, not a constant.
+                        // This was a flat 2.5, which is 22x the whole-world
+                        // zoom on a 1024x768 window -- so Quick Start, the
+                        // first thing a new player clicks, opened on two or
+                        // three provinces and a coastline. The one thing that
+                        // makes this game worth looking at is that it is the
+                        // whole world, and the opening shot hid it.
+                        //
+                        // THE SPREAD IS THE MIDDLE 80%, NOT THE BOUNDING BOX.
+                        // Measured on 1939: a full box puts Britain at
+                        // 8049x3091 px and France at 7533x2260, because an
+                        // empire's outlying provinces are most of the planet
+                        // apart -- so "fit the country" collapsed to the world
+                        // view for exactly the countries Quick Start hands
+                        // out. Trimming the outer tenth each way leaves France
+                        // at 2622x1390 and the USSR at 2497x880, which frame
+                        // the country somebody actually plays, while Britain
+                        // still opens on the globe because Britain IS global.
                         auto cit = m_countryCenters.find(cid);
-                        if (m_renderer && cit != m_countryCenters.end())
-                            m_renderer->flyTo(cit->second.x, cit->second.y, 2.5f, 3.0f);
+                        if (m_renderer && cit != m_countryCenters.end()) {
+                            std::vector<float> xs, ys;
+                            for (const auto& [pid, prov] : m_provinces.getAllProvinces()) {
+                                if (prov.countryId != cid) continue;
+                                auto pc = m_provinceCenters.find(pid);
+                                if (pc == m_provinceCenters.end()) continue;
+                                xs.push_back(pc->second.x);
+                                ys.push_back(pc->second.y);
+                            }
+                            const float worldZ =
+                                std::min((float)m_screenW / (float)m_landSea.getWidth(),
+                                         (float)m_screenH / (float)m_landSea.getHeight()) * 0.9f;
+                            // A country of one province has no spread, and the
+                            // clamp below is what decides it. Named so, rather
+                            // than left as a constant that is always overridden.
+                            float z = kQuickStartMaxZoom;
+                            if (xs.size() >= 2) {
+                                std::sort(xs.begin(), xs.end());
+                                std::sort(ys.begin(), ys.end());
+                                auto pct = [](const std::vector<float>& v, float q) {
+                                    const float i = (float)(v.size() - 1) * q;
+                                    const size_t lo = (size_t)i;
+                                    const size_t hi = std::min(lo + 1, v.size() - 1);
+                                    return v[lo] + (v[hi] - v[lo]) * (i - (float)lo);
+                                };
+                                const float ex = pct(xs, 0.90f) - pct(xs, 0.10f);
+                                const float ey = pct(ys, 0.90f) - pct(ys, 0.10f);
+                                // 1.6x the spread, so the country sits inside
+                                // the frame with its neighbours around it -- a
+                                // border you cannot see the far side of reads
+                                // as nothing at all.
+                                if (ex > 0.0f && ey > 0.0f)
+                                    z = std::min((float)m_screenW / (ex * 1.6f),
+                                                 (float)m_screenH / (ey * 1.6f));
+                            }
+                            z = std::clamp(z, worldZ, kQuickStartMaxZoom);
+                            // Said out loud, because the alternative is reading
+                            // three constants and a percentile to work out why
+                            // the camera went where it did.
+                            LoadLog() << "[QuickStart] framing " << xs.size()
+                                      << " province(s) at zoom " << z << " (world "
+                                      << worldZ << ", cap " << kQuickStartMaxZoom << ")"
+                                      << std::endl;
+                            m_renderer->flyTo(cit->second.x, cit->second.y, z, 1.6f);
+                        }
                     } else {
                         LoadLog() << "[QuickStart] no playable country on "
                                   << m_newWorldMapPath << " — falling back to "

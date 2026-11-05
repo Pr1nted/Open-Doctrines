@@ -174,7 +174,12 @@ struct Config {
     // continuously and the effects do not.
     float masterVolume = 0.8f;
     float musicVolume  = 0.6f;
-    float sfxVolume    = 0.8f;
+    // 0.45, not 0.8. At the old default a sound effect played at
+    // master*sfx = 0.64, and the loudest shipped effects peak at -0.0 dBFS --
+    // so the browser build, which a lot of people meet in a tab they opened
+    // on a whim, greeted them at about -4 dBFS unprompted. See Audio.cpp:
+    // there is no per-sound gain, so this one number is the only ceiling.
+    float sfxVolume    = 0.45f;
 
     // Announce each new track in a corner toast. On by default: the music picks
     // itself now, and without this there is no way to tell what was chosen or

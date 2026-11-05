@@ -209,7 +209,7 @@ bool Config::load(const std::string& path) {
     gd5Path = findConfigString(json, "gd5Path", "");
     masterVolume = std::clamp(findFloat(json, "masterVolume", 0.8f), 0.0f, 1.0f);
     musicVolume  = std::clamp(findFloat(json, "musicVolume",  0.6f), 0.0f, 1.0f);
-    sfxVolume    = std::clamp(findFloat(json, "sfxVolume",    0.8f), 0.0f, 1.0f);
+    sfxVolume    = std::clamp(findFloat(json, "sfxVolume",    0.45f), 0.0f, 1.0f);
     nowPlayingToast = findBool(json, "nowPlayingToast", true);
     mapAtmosphere   = findBool(json, "mapAtmosphere", true);
     // Absent means off: an older config file must not silently opt the
