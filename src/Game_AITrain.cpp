@@ -1156,6 +1156,13 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         hideLoadingScreen();
         m_currentSavePath.clear();  // never write an .odsv
         m_playerCountryId = 0;      // spectator: every country is AI-driven
+        // Random events in the bench. The New-World path engages these via
+        // takeNewWorldFog; the eval loop loads a map directly and bypasses it,
+        // so honour OD_EVENTS here (per map, so m_eventDefs/cooldowns reset).
+        // Off unless OD_EVENTS is set, so the no-events bench is unchanged.
+        m_events = false;
+        if (const char* e = std::getenv("OD_EVENTS")) m_events = (*e && *e != '0');
+        if (m_events) loadEventPacks();
         // Reuses the training loop's headless shortcuts (no political texture,
         // no label raster, no pixel bookkeeping). s_evaluating is what keeps
         // this from also inheriting the training exploration schedule.

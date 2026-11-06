@@ -3252,15 +3252,43 @@ public:
     // browser's choice, consumed and cleared exactly like m_newWorldFog.
     bool m_events = false;
     bool m_newWorldEvents = false;
-    // INERT SCAFFOLD: the parsed od-events/1 packs. Empty until the loader and
-    // effect vocabulary land, so processEvents() iterates nothing and is a
-    // no-op. The real EventDef gains trigger/effect fields later.
+    // The parsed od-events/1 packs. Empty when no pack is loaded, so
+    // processEvents() iterates nothing and is a no-op (byte-identical to a world
+    // without events). See src/Events.cpp and docs/design/random-events-plan.md.
+    enum class EventScope { Global, Country, Province };
+    // A flat AND of declarative predicates -- no expressions, so a mod pack
+    // cannot execute anything. Grown as needed; -1/0 means "not required".
+    struct EventWhen {
+        bool ownerReal = true;      // the scope country/owner must be a real country
+        long long minPopulation = 0;
+        int minIndustry = 0;
+        int resourceReq = -1;       // 0 oil,1 gold,2 rubber,3 gem,4 metal; -1 none
+    };
+    // A single effect. Value is either fixed (`value`) or a draw from the event's
+    // own derived stream (`isRand`, integer in [lo,hi]). The vocabulary is a
+    // fixed set mapped to existing engine stores; passive ops only for now.
+    struct EventEffect {
+        enum Op { Treasury, Population } op = Treasury;
+        bool isRand = false;
+        float value = 0.0f;         // fixed amount when !isRand
+        int lo = 0, hi = 0;         // inclusive integer range when isRand
+    };
     struct EventDef {
         std::string id;
-        uint32_t idHash = 0;
-        float chance = 0.0f;
+        uint32_t idHash = 0;        // FNV-1a of id; seeds the derived RNG
+        EventScope scope = EventScope::Province;
+        float chance = 0.0f;        // per-check probability, own stream
+        int weight = 1;             // reserved for weighted selection
+        int cooldown = 0;           // min turns before refiring for a scope key
+        EventWhen when;
+        std::vector<EventEffect> effects;
+        std::string title, text;    // flavour, {province}/{owner} interpolated
     };
     std::vector<EventDef> m_eventDefs;
+    // Per (eventId<<32 | scopeKey) last-fired turn, for cooldown. NOT persisted:
+    // replay re-runs processEvents() each turn and re-fires deterministically, so
+    // the stamps rebuild for free (see the plan's Save/replay section).
+    std::unordered_map<uint64_t, int> m_eventCooldown;
 
     // --- Fog of war state (src/Game_Fog.cpp; rules in src/Fog.h) ---
     // All empty, and every accessor answers "visible / the truth", in a world
@@ -3293,10 +3321,15 @@ public:
 
     bool fogOn() const { return m_fogOfWar; }
     bool eventsOn() const { return m_events; }
-    // Random events (docs/design/random-events-plan.md). Inert scaffold: the
-    // loader parses nothing yet and the per-turn hook iterates an empty set.
+    // Random events (docs/design/random-events-plan.md, src/Events.cpp).
     void loadEventPacks();
     void processEvents();
+    // Helpers, all pure in (m_worldSeed, m_turnNumber, deterministic state):
+    bool eventLoadPack(const std::string& path);           // parse one od-events/1 pack
+    std::vector<uint32_t> eventScopeKeys(const EventDef& e) const; // sorted, stable
+    bool eventMatches(const EventDef& e, uint32_t key) const;
+    bool eventFires(const EventDef& e, uint32_t key) const;       // derived-stream roll
+    void eventResolve(const EventDef& e, uint32_t key);           // apply effects + log
     // The two questions the map's markers ask: is this province / ship out of
     // the PLAYER's sight? False without fog, and false for a spectator.
     bool fogHides(int pid) const {

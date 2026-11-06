@@ -587,20 +587,7 @@ void Game::resolveTurnCore(const std::function<void(float, const char*)>& progre
             (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tcoreEnd-t6).count());
 }
 
-void Game::loadEventPacks() {
-    // INERT SCAFFOLD (docs/design/random-events-plan.md): no packs parsed yet.
-    // The real loader will read od-events/1 JSON from the map archive and from
-    // mods into m_eventDefs. Deliberately empty so the feature is byte-identical
-    // to "no events" while the schema and effect vocabulary are being built.
-    m_eventDefs.clear();
-}
-
-void Game::processEvents() {
-    // INERT SCAFFOLD: iterate the (empty) event set. No RNG draw, no state
-    // change -- firing, effects, choices and the derived EventRng stream all
-    // come later. Verified byte-identical via OD_DECISION_HASH.
-    for (const EventDef& e : m_eventDefs) { (void)e; }
-}
+// loadEventPacks() and processEvents() live in src/Events.cpp.
 
 void Game::processTurn() {
     // Last turn's fights stop being last turn's the moment this one starts.
