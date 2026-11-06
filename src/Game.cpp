@@ -3055,6 +3055,7 @@ void Game::drawDebugOverlay() {
             y += 14;
         }
         drawAiTracePanel();
+        drawAiNeuronPanel();
     }
 }
 
@@ -3071,6 +3072,119 @@ void Game::syncAiTraceSink() {
         // rare case of toggling the overlay on then off in the same session).
         m_ai->setTraceSink(nullptr);
         m_aiTraceAttached = false;
+    }
+}
+
+// The neuron field: the actual layer activations of one decision, drawn as grids
+// of cells (azure = negative, amber = positive, brightness = magnitude, each
+// layer normalised to its own peak so raw features and logits are legible beside
+// the tanh layers). It replays the recent-decision ring at a few frames a second
+// so the neurons visibly fire even on the player's own turn. The data is the
+// same trunkActs/policyActs the trace records (AITrace.h) -- drawing only, no AI
+// state touched. Shows, among other things, how hard the shared trunk saturates.
+void Game::drawAiNeuronPanel() {
+    if (!m_ai || !m_aiTrace) return;
+    const std::vector<AIDecisionTrace> ring = m_aiTrace->recent(64);
+    if (ring.empty()) return;
+
+    // Replay clock: ~4 frames/sec through the ring, newest-first order reversed
+    // so it reads oldest -> newest like a filmstrip.
+    m_neuronAnimT += GetFrameTime();
+    const int n = (int)ring.size();
+    const int step = (int)(m_neuronAnimT * 4.0f) % n;
+    const AIDecisionTrace& d = ring[(size_t)(n - 1 - step)];
+    static const char* MODN[] = {"econ", "pol", "war", "navy"};
+
+    // Panel geometry: a bottom band on the left, clear of the top-left feed and
+    // the top-right trace panel.
+    const int pw = (int)fminf((float)m_screenW * 0.60f, 660.0f);
+    const int ph = 232;
+    const int px = 10;
+    const int py = m_screenH - ph - 14;
+    DrawRectangleRounded({(float)px, (float)py, (float)pw, (float)ph}, 0.03f, 6,
+                         Color{14, 14, 22, 235});
+    DrawRectangleRoundedLines({(float)px, (float)py, (float)pw, (float)ph}, 0.03f, 6,
+                              hexToColor(m_config.accent()));
+    const int ix = px + 12;
+    int iy = py + 10;
+    const Country* c = m_countries.getCountry(d.cid);
+    const char* mn = (d.module >= 0 && d.module < 4) ? MODN[d.module] : "?";
+    drawHybridText(ix, iy, 14, "Neural activity", {255, 220, 140, 235});
+    DrawText(TextFormat("replaying decision %d / %d", step + 1, n),
+             ix + 150, iy + 2, 11, Color{150, 150, 170, 200});
+    // Legend.
+    DrawRectangle(px + pw - 128, iy + 1, 10, 10, Color{90, 160, 235, 230});
+    DrawText("-", px + pw - 114, iy, 12, Color{150, 150, 170, 210});
+    DrawRectangle(px + pw - 104, iy + 1, 10, 10, Color{255, 200, 110, 235});
+    DrawText("+ activation", px + pw - 90, iy, 11, Color{150, 150, 170, 210});
+    iy += 20;
+    drawHybridText(ix, iy, 12,
+                   TextFormat("t%d  %s  [%s]", d.turn, c ? c->name.c_str() : "?", mn),
+                   Color{205, 220, 250, 225});
+    iy += 18;
+
+    // The layers to draw, in order, each a (label, pointer-to-activation-vector).
+    struct LayerView { const char* label; const std::vector<float>* v; int sel; };
+    std::vector<LayerView> layers;
+    if (d.trunkActs.size() >= 1) layers.push_back({"input", &d.trunkActs.front(), -1});
+    if (d.trunkActs.size() >= 3) layers.push_back({"hidden", &d.trunkActs[1], -1});
+    if (!d.trunkActs.empty())    layers.push_back({"embedding", &d.trunkActs.back(), -1});
+    if (!d.policyActs.empty())   layers.push_back({"head", &d.policyActs.back(), d.action});
+
+    if (layers.empty()) {
+        DrawText("(this pick had no net activations -- book/script/random)",
+                 ix, iy + 6, 12, Color{150, 150, 165, 205});
+        return;
+    }
+
+    const int blockTop = iy + 4;
+    const int blockH = py + ph - 14 - blockTop;
+    const int gap = 16;
+    const int blockW = (pw - 24 - gap * ((int)layers.size() - 1)) / (int)layers.size();
+
+    for (int li = 0; li < (int)layers.size(); ++li) {
+        const LayerView& L = layers[(size_t)li];
+        const std::vector<float>& v = *L.v;
+        const int N = (int)v.size();
+        const int bx = ix + li * (blockW + gap);
+        // Label with the count.
+        DrawText(TextFormat("%s %d", L.label, N), bx, blockTop, 11,
+                 Color{170, 175, 190, 215});
+        const int gridTop = blockTop + 16;
+        const int gridH = blockH - 16;
+        if (N <= 0 || gridH <= 0) continue;
+
+        // Per-layer normalisation to its own peak magnitude.
+        float peak = 1e-6f;
+        for (float x : v) { const float a = fabsf(x); if (a > peak) peak = a; }
+        const float inv = 1.0f / peak;
+
+        // Cell grid sized to fill the block.
+        int cols = (int)ceilf(sqrtf((float)N * (float)blockW / (float)gridH));
+        if (cols < 1) cols = 1;
+        int rows = (N + cols - 1) / cols;
+        float cell = fminf((float)blockW / (float)cols, (float)gridH / (float)rows);
+        if (cell < 2.0f) cell = 2.0f;
+        const float pad = cell > 5.0f ? 1.0f : 0.5f;
+        for (int i = 0; i < N; ++i) {
+            const int cx = i % cols, cy = i / cols;
+            const float fx = bx + cx * cell;
+            const float fy = gridTop + cy * cell;
+            float nrm = v[(size_t)i] * inv;
+            if (nrm > 1.0f) nrm = 1.0f; else if (nrm < -1.0f) nrm = -1.0f;
+            const float mag = fabsf(nrm);
+            // azure for negative, amber for positive, lifted from the dark base.
+            const float tr = nrm >= 0 ? 255.0f : 90.0f;
+            const float tg = nrm >= 0 ? 200.0f : 160.0f;
+            const float tb = nrm >= 0 ? 110.0f : 235.0f;
+            Color cc{ (unsigned char)(18 + (tr - 18) * mag),
+                      (unsigned char)(19 + (tg - 19) * mag),
+                      (unsigned char)(27 + (tb - 27) * mag), 255 };
+            DrawRectangle((int)fx, (int)fy, (int)(cell - pad), (int)(cell - pad), cc);
+            if (i == L.sel)  // the chosen action, outlined
+                DrawRectangleLinesEx({fx - 1, fy - 1, cell + 1, cell + 1}, 1.0f,
+                                     Color{255, 255, 255, 230});
+        }
     }
 }
 

@@ -6011,6 +6011,8 @@ private:
     bool m_aiTraceAttached = false;
     void syncAiTraceSink();   ///< attach/detach the panel sink per aiDebug state
     void drawAiTracePanel();  ///< the decision-timeline panel (aiDebug overlay)
+    void drawAiNeuronPanel(); ///< live neuron-activation field, replays the ring (aiDebug overlay)
+    float m_neuronAnimT = 0.0f; ///< animation clock for the neuron-field replay
     // Model file this process trains, relative to the data directory. A pool
     // worker points somewhere of its own; everything else uses the shared one.
     std::string m_aiModelPath = "ai/model.bin";
