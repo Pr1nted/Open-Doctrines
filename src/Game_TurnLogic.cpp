@@ -587,6 +587,21 @@ void Game::resolveTurnCore(const std::function<void(float, const char*)>& progre
             (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tcoreEnd-t6).count());
 }
 
+void Game::loadEventPacks() {
+    // INERT SCAFFOLD (docs/design/random-events-plan.md): no packs parsed yet.
+    // The real loader will read od-events/1 JSON from the map archive and from
+    // mods into m_eventDefs. Deliberately empty so the feature is byte-identical
+    // to "no events" while the schema and effect vocabulary are being built.
+    m_eventDefs.clear();
+}
+
+void Game::processEvents() {
+    // INERT SCAFFOLD: iterate the (empty) event set. No RNG draw, no state
+    // change -- firing, effects, choices and the derived EventRng stream all
+    // come later. Verified byte-identical via OD_DECISION_HASH.
+    for (const EventDef& e : m_eventDefs) { (void)e; }
+}
+
 void Game::processTurn() {
     // Last turn's fights stop being last turn's the moment this one starts.
     m_lastTurnBattles.clear();
@@ -622,6 +637,12 @@ void Game::processTurn() {
     // nothing; a stale one is a stack fighting on last month's supply line.
     m_supplyCache.clear();
     m_seaSupplyCache.clear();   // and where the fleets were
+
+    // Random events (docs/design/random-events-plan.md): a property of the
+    // world, off by default. The ONLY line on the no-events path is this false
+    // guard. Placed here, early and fixed, so effects would be visible to the
+    // rest of the turn once real events land.
+    if (m_events) processEvents();
 
     // Lambda to draw a loading screen frame (no-op if loading screen not active)
     auto drawFrame = [&](float pct, const char* status) {

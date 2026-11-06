@@ -4166,6 +4166,13 @@ void Game::takeNewWorldFog() {
     m_fogOfWar = m_newWorldFog;
     m_newWorldFog = false;
     if (const char* e = std::getenv("OD_FOG")) m_fogOfWar = (*e && *e != '0');
+
+    // Random events, taken the same way (docs/design/random-events-plan.md).
+    // OD_EVENTS overrides the choice for the bench/trainer, same as OD_FOG.
+    m_events = m_newWorldEvents;
+    m_newWorldEvents = false;
+    if (const char* e = std::getenv("OD_EVENTS")) m_events = (*e && *e != '0');
+    if (m_events) loadEventPacks();
 }
 
 void Game::applyEconomyEnvironment() {

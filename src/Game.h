@@ -3246,6 +3246,22 @@ public:
     bool m_fogOfWar = false;
     bool m_newWorldFog = false;
 
+    // RANDOM EVENTS, a property of the world fixed at creation
+    // (docs/design/random-events-plan.md). Off by default; a world without
+    // events behaves byte-for-byte as before. m_newWorldEvents is the map
+    // browser's choice, consumed and cleared exactly like m_newWorldFog.
+    bool m_events = false;
+    bool m_newWorldEvents = false;
+    // INERT SCAFFOLD: the parsed od-events/1 packs. Empty until the loader and
+    // effect vocabulary land, so processEvents() iterates nothing and is a
+    // no-op. The real EventDef gains trigger/effect fields later.
+    struct EventDef {
+        std::string id;
+        uint32_t idHash = 0;
+        float chance = 0.0f;
+    };
+    std::vector<EventDef> m_eventDefs;
+
     // --- Fog of war state (src/Game_Fog.cpp; rules in src/Fog.h) ---
     // All empty, and every accessor answers "visible / the truth", in a world
     // without fog.
@@ -3276,6 +3292,11 @@ public:
     std::unordered_map<int, FogGrants> m_fogGrants;
 
     bool fogOn() const { return m_fogOfWar; }
+    bool eventsOn() const { return m_events; }
+    // Random events (docs/design/random-events-plan.md). Inert scaffold: the
+    // loader parses nothing yet and the per-turn hook iterates an empty set.
+    void loadEventPacks();
+    void processEvents();
     // The two questions the map's markers ask: is this province / ship out of
     // the PLAYER's sight? False without fog, and false for a spectator.
     bool fogHides(int pid) const {
