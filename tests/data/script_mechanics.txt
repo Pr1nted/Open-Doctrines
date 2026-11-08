@@ -1,4 +1,4 @@
-#OD/MapEngine/3
+#OD/MapEngine/5
 # Map-script coverage of the mechanics, checked from inside the language.
 # Run by tests/script_mechanics_test.sh, which fails on any line starting
 # "FAIL" and on any script error. Each check prints "ok <what>" or
@@ -217,5 +217,215 @@ foreach country in world
     set var.resDone = 1
   endif
 next
+
+# ── foreach neighbour (version 5) ──
+# Three things at once, because they share one walk: that the adjacency graph
+# is reachable at all, that a neighbour's OWNER is read rather than assumed to
+# be the enclosing loop's country, and that the inner loop puts the outer
+# loop's `province` back when it ends. The last one is why this is a test and
+# not a demo: the province loops bind their fields into the caller's locals,
+# and an inner loop that cleaned up by erasing would have deleted the outer
+# loop's binding and left the rest of the outer body with no province at all.
+set var.nbTotal = 0
+set var.nbForeign = 0
+set var.nbOuterOk = 1
+set var.nbViaId = 0
+foreach province in country.USA
+  set var.outerPid = province.id
+  foreach neighbour in province
+    set var.nbTotal = var.nbTotal + 1
+    if province.owner != "USA" and province.owner != ""
+      set var.nbForeign = var.nbForeign + 1
+    endif
+  next
+  # `province.id` must name the same province bare `province` does -- the
+  # docs treat them as one thing everywhere else.
+  foreach neighbour in province.id
+    set var.nbViaId = var.nbViaId + 1
+  next
+  if province.id != var.outerPid
+    set var.nbOuterOk = 0
+  endif
+next
+if var.nbTotal > 0
+  print "ok foreach neighbour reached the adjacency graph ({var.nbTotal} edges)"
+else
+  print "FAIL foreach neighbour found no neighbours at all"
+endif
+if var.nbForeign > 0
+  print "ok a neighbour's owner is read, not assumed ({var.nbForeign} foreign)"
+else
+  print "FAIL every neighbour of every US province came back owned by USA"
+endif
+if var.nbViaId == var.nbTotal and var.nbViaId > 0
+  print "ok province.id names the same province as bare province"
+else
+  print "FAIL province.id gave {var.nbViaId} edges where province gave {var.nbTotal}"
+endif
+if var.nbOuterOk == 1
+  print "ok the inner loop restored the outer province"
+else
+  print "FAIL foreach neighbour clobbered the enclosing loop variable"
+endif
+
+# A province with no entry in the adjacency graph -- an island, or an id that
+# is not a province at all -- must run the body zero times rather than raise.
+# A script that walks the whole world would otherwise die on the first one.
+set var.islandOk = 1
+foreach neighbour in province.999999
+  set var.islandOk = 0
+next
+if var.islandOk == 1
+  print "ok foreach neighbour over nothing is empty, not an error"
+else
+  print "FAIL foreach neighbour invented a neighbour for a province that has none"
+endif
+
+# ── foreach province in array.NAME (version 5) ──
+array create probe
+foreach province in country.USA
+  array push probe province.id
+next
+set var.probeN = 0
+set var.probeOwnerOk = 1
+foreach province in array.probe
+  set var.probeN = var.probeN + 1
+  if province.owner != "USA"
+    set var.probeOwnerOk = 0
+  endif
+next
+if var.probeN > 0 and var.probeN == array.probe.length
+  print "ok foreach province in array walked all {var.probeN}"
+else
+  print "FAIL array walk {var.probeN} of {array.probe.length}"
+endif
+if var.probeOwnerOk == 1
+  print "ok array-bound provinces carry their fields"
+else
+  print "FAIL a province reached through an array had the wrong owner"
+endif
+
+# ── random.N ──
+# In range, and not a constant. A generator wired to something that never
+# advances would pass a range check fifty times over.
+set var.rLo = 999
+set var.rHi = -1
+repeat 50
+  set var.r = random.10
+  if var.r < var.rLo
+    set var.rLo = var.r
+  endif
+  if var.r > var.rHi
+    set var.rHi = var.r
+  endif
+next
+if var.rLo >= 0 and var.rHi <= 9 and var.rHi > var.rLo
+  print "ok random.10 is inside 0..9 and moves ({var.rLo}..{var.rHi})"
+else
+  print "FAIL random.10 gave {var.rLo}..{var.rHi}"
+endif
+if random.7.7 == 7
+  print "ok random.7.7 is 7"
+else
+  print "FAIL random.7.7 left its own range"
+endif
+
+# ── scan-then-apply: the spread the new loops exist for ──
+# The outbreak scenario (tools/outbreak/) is this, with `wait 1 turns` where
+# the `repeat` is. Done here because it needs no turn to advance: two rings of
+# an always-succeeding spread, which must GROW and must grow by rings.
+#
+# The ring property is the one worth asserting. Scanning and applying in one
+# pass would let a province taken early in a sweep take its own neighbour
+# later in the SAME sweep, and the front would cross the map at once -- so a
+# broken implementation does not fail by taking nothing, it fails by taking
+# far too much. Ring two being larger than ring one, and the whole thing
+# still being well short of the map, is what distinguishes them.
+set var.ring0 = country.USA.province_count
+array create ring
+foreach province in country.USA
+  foreach neighbour in province
+    if province.owner != "USA" and province.owner != ""
+      array push ring province.id
+    endif
+  next
+next
+foreach province in array.ring
+  set province.owner to "USA"
+next
+set var.ring1 = country.USA.province_count
+array create ring
+foreach province in country.USA
+  foreach neighbour in province
+    if province.owner != "USA" and province.owner != ""
+      array push ring province.id
+    endif
+  next
+next
+foreach province in array.ring
+  set province.owner to "USA"
+next
+set var.ring2 = country.USA.province_count
+if var.ring1 > var.ring0 and var.ring2 > var.ring1
+  print "ok a spread advances ({var.ring0} -> {var.ring1} -> {var.ring2})"
+else
+  print "FAIL spread {var.ring0} -> {var.ring1} -> {var.ring2}"
+endif
+if var.ring2 < map.country_count * 40
+  print "ok two rings is two rings, not the whole map"
+else
+  print "FAIL two rings took {var.ring2} provinces -- the front crossed at once"
+endif
+
+# The die is what gates it: an impossible roll must take nothing at all.
+array create nothing
+foreach province in country.USA
+  foreach neighbour in province
+    if random.100 < 0
+      array push nothing province.id
+    endif
+  next
+next
+if array.nothing.length == 0
+  print "ok random gates the spread (an impossible roll takes nothing)"
+else
+  print "FAIL random.100 < 0 passed {array.nothing.length} times"
+endif
+
+# ── spawn reaches past another task's waitUntil ──
+# `spawn` used to capture the SEGMENT executeBlock was given -- the lines up
+# to the next top-level waitUntil -- so only a label inside that segment could
+# be reached. One task never showed it, because its label is in the spawner's
+# own segment; two do, because the first body ends at its own waitUntil and
+# the second label falls outside it. The checking task is spawned last on
+# purpose: tasks drain in the order they were spawned, and they all run after
+# the main flow has finished, so nothing earlier could do the asserting.
+set var.sp1 = 0
+set var.sp2 = 0
+spawn sp_one
+spawn sp_two
+spawn sp_check
+jump sp_past
+
+label sp_one
+waitUntil true
+set var.sp1 = 1
+stop
+
+label sp_two
+waitUntil true
+set var.sp2 = 1
+stop
+
+label sp_check
+waitUntil true
+if var.sp1 == 1 and var.sp2 == 1
+  print "ok spawn reaches a label past another task's waitUntil"
+else
+  print "FAIL spawn sp1={var.sp1} sp2={var.sp2}"
+endif
+stop
+
+label sp_past
 
 print "done"

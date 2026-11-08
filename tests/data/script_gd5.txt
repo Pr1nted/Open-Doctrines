@@ -1,0 +1,43 @@
+#OD/MapEngine/5 volatile gd5
+{
+  "owner": "USA",
+  "events": [
+    {
+      "name": "the dialect ran at all",
+      "fire_once": true,
+      "conditions": [{"type": "True"}],
+      "actions": [{"type": "Send Custom Message",
+                   "message": "ok gd5: a volatile script was translated and run"}]
+    },
+    {
+      "name": "a variable round-trips",
+      "fire_once": true,
+      "conditions": [{"type": "True"}],
+      "actions": [{"type": "Set Variable", "target": "gd5probe", "value": 7},
+                  {"type": "Send Custom Message",
+                   "message": "ok gd5: Set Variable reached the engine"}]
+    },
+    {
+      "name": "a turn gate does NOT fire yet",
+      "fire_once": true,
+      "conditions": [{"type": "Turn Number", "operator": ">=", "value": 9999}],
+      "actions": [{"type": "Send Custom Message",
+                   "message": "FAIL gd5: a turn-9999 gate fired on turn 0"}]
+    },
+    {
+      "name": "an action with no counterpart is dropped, the event still runs",
+      "fire_once": true,
+      "conditions": [{"type": "True"}],
+      "actions": [{"type": "Spawn Unit", "target": "USA"},
+                  {"type": "Send Custom Message",
+                   "message": "ok gd5: an event survived an untranslatable action"}]
+    },
+    {
+      "name": "a condition with no counterpart drops the whole event",
+      "fire_once": true,
+      "conditions": [{"type": "Has Nuclear Weapons", "value": "true"}],
+      "actions": [{"type": "Send Custom Message",
+                   "message": "FAIL gd5: an event with an unknown condition fired ungated"}]
+    }
+  ]
+}

@@ -3998,6 +3998,14 @@ public:
         std::vector<std::pair<int, int>> pairs;   ///< directed, first occurrence, scan order
     } m_adjacencyScan;
     void ensureAdjacencyScan(int w, int h);
+
+    /**
+     * Fill m_provinceNeighbors if it is empty, from the cached raster scan and
+     * each province's own countryId -- the adjacency a map script can ask for
+     * before the centres the labels pass needs exist. See the long note at the
+     * definition; computeCountryLabels() remains the authoritative build.
+     */
+    void ensureProvinceNeighbors();
     void rebuildGradientField();
     void generatePopulationTexture(int countryId, int prevCountryId);
     void generatePoliticalTexture();

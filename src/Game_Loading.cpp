@@ -2245,6 +2245,65 @@ void Game::ensureAdjacencyScan(int w, int h) {
     }
 }
 
+// ── The adjacency graph, buildable before the rest of the load ──
+//
+// computeCountryLabels() owns the authoritative m_provinceNeighbors, but it
+// cannot run this early: it derives every province's owner by walking
+// m_provinceCenters, and the centres do not exist yet when a map's scripts
+// run. Asked at that point it filters all 6,896 scanned pairs away and leaves
+// the graph empty, which is what `foreach neighbour` found.
+//
+// Scripts run before the centres in every loader -- runMapScripts() at line
+// 383 of this file, the labels pass at 475 -- so a script that wants the
+// graph needs one that can be built from what IS loaded: the raster, and each
+// province's own countryId.
+//
+// This is deliberately NOT a second definition of "adjacent". It fills the
+// graph only when it is empty, from the same cached scan, with the same
+// filter; computeCountryLabels clears and rebuilds it on its next pass, and
+// from then on that is the graph. The one difference is that it reads
+// Province::countryId where the labels pass reads displayOwners() -- which
+// differ only where fog or a rebellion is showing somebody a map that is not
+// the truth, and neither of those is up yet at load.
+void Game::ensureProvinceNeighbors() {
+    if (!m_provinceNeighbors.empty()) return;
+    int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    if (!m_provinces.hasPixels()) { w = 0; h = 0; }
+    ensureAdjacencyScan(w, h);
+
+    auto pack = [](int a, int b) {
+        if (a > b) std::swap(a, b);
+        return (static_cast<int64_t>(a) << 32) | static_cast<uint32_t>(b);
+    };
+    auto ownerOf = [&](int pid) -> int {
+        const Province* p = m_provinces.getProvinceById(pid);
+        return p ? p->countryId : 0;
+    };
+
+    // Insertion order is load-bearing: the graph is built by iterating this
+    // set, the simulation and the AI walk the result, and a reordered
+    // neighbour list is a different game. Replaying the cached scan in scan
+    // order is what the labels pass does too.
+    std::unordered_set<int64_t> pairs;
+    for (const auto& [pid, npid] : m_adjacencyScan.pairs) {
+        const int cid = ownerOf(pid);
+        if (cid <= 0 || cid == BLC_CID) continue;
+        pairs.insert(pack(pid, npid));
+    }
+    for (const auto& [a, b] : m_provinces.fullResolutionAdjacency()) {
+        if (a <= 0 || b <= 0) continue;
+        const int ca = ownerOf(a), cb = ownerOf(b);
+        if (ca <= 0 && cb <= 0) continue;
+        pairs.insert(pack(a, b));
+    }
+    for (int64_t pr : pairs) {
+        const int a = static_cast<int>(pr >> 32);
+        const int b = static_cast<int>(pr & 0xFFFFFFFF);
+        m_provinceNeighbors[a].push_back(b);
+        m_provinceNeighbors[b].push_back(a);
+    }
+}
+
 void Game::computeCountryLabels() {
     m_countryLabels.clear();
     Font font = GetFontDefault();

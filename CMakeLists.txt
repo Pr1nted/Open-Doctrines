@@ -1912,6 +1912,7 @@ set(GAME_SOURCES
     src/ProceduralGenerator.cpp
     src/ScriptEngine.cpp
     src/script/Expr.cpp
+    src/script/Dialects.cpp
     src/script/Blocks.cpp
     src/script/ScriptValue.cpp
     src/Audio.cpp
@@ -4061,6 +4062,17 @@ add_executable(ScriptExprTest EXCLUDE_FROM_ALL
     src/script/Blocks.cpp
     src/script/ScriptValue.cpp)
 target_include_directories(ScriptExprTest PRIVATE src)
+
+# --- the foreign-dialect translators ---
+# Links Dialects.cpp alone: no ScriptEngine, no Game, no raylib. A dialect
+# translates foreign script text into native script text and never executes
+# anything, so its whole behaviour is testable without a world. If this target
+# ever needs one, a dialect has grown an evaluator of its own.
+add_executable(ScriptDialectTest EXCLUDE_FROM_ALL
+    tests/script_dialect_test.cpp
+    src/script/Dialects.cpp
+    src/script/ScriptValue.cpp)
+target_include_directories(ScriptDialectTest PRIVATE src)
 
 # --- the monument catalogue and its arithmetic ---
 # Pure: no Game, no map, no window. The half that needs a world is tested with

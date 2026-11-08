@@ -1,4 +1,5 @@
 #include "ScriptEngine.h"
+#include "script/Dialects.h"
 #include "script/Expr.h"
 #include "Game.h"
 #include "mods/ModManager.h"
@@ -53,6 +54,32 @@ bool ScriptEngine::isEntrypoint(const std::string& content) {
     return false;
 }
 
+// ── What opens a block, in ONE place ──
+//
+// Five scanners walk the lines looking for the end of a block, and three of
+// them listed `if unless foreach while for repeat` while two listed only
+// `if foreach while`. The two short lists were wrong in a way that needed a
+// script to use the version 2 loops before it showed:
+//
+//   * runLines' segment scanner counted the `next` that closes a `repeat`
+//     without counting the `repeat` that opened it, so depth went NEGATIVE
+//     and the next TOP-LEVEL `waitUntil` was rejected as nested -- in a
+//     script whose blocks were all balanced;
+//   * the foreach block finder ended a `foreach` at the `next` of a `for`
+//     nested inside it.
+//
+// So there is one list. A seventh block statement cannot now be added to five
+// scanners and forgotten in two.
+static bool opensBlock(const std::string& kw) {
+    // i18n-ignore: statement keywords are the same word in every language
+    return kw == "if" || kw == "unless" || kw == "foreach" ||
+           kw == "while" || kw == "for" || kw == "repeat";
+}
+static bool closesBlock(const std::string& kw) {
+    // i18n-ignore
+    return kw == "endif" || kw == "next" || kw == "endwhile";
+}
+
 bool ScriptEngine::runScripts(const std::unordered_map<std::string, std::string>& scriptData) {
     m_errors.clear();
     m_suspended.clear();
@@ -78,10 +105,43 @@ bool ScriptEngine::runScripts(const std::unordered_map<std::string, std::string>
             printf("[SCRIPT] Library (not run): %s\n", name.c_str());
             continue;
         }
+        // ── `volatile <dialect>`: the file is not written in this language ──
+        //
+        // Translate it to native script text FIRST, then run that through the
+        // one preprocessor and the one interpreter. A dialect never gets an
+        // evaluator of its own: see the long note in script/Dialects.h.
+        std::string source = content;
+        std::string dialectName;
+        if (odscript::parseVolatile(odscript::headerLineOf(content), dialectName)) {
+            const odscript::Dialect* d = odscript::findDialect(dialectName);
+            if (!d) {
+                addError(name, 1, "volatile: this build has no '" + dialectName +
+                                  "' dialect (it has: " + odscript::dialectNames() + ")");
+                continue;
+            }
+            printf("[SCRIPT] Translating %s from the %s dialect (revision %d)\n",
+                   name.c_str(), d->name, d->version);
+            odscript::DialectResult tr = d->translate(odscript::bodyAfterHeader(content));
+            for (const odscript::DialectDiag& g : tr.diags) {
+                // A note is PRINTED, not recorded as an error: a GD5 event
+                // with no counterpart here is the expected case, and a map
+                // that mostly translates must still load. Only a fatal one --
+                // nothing usable came out -- is an error.
+                if (g.fatal) addError(name, 1, dialectName + ": " + g.message);
+                else printf("[SCRIPT] %s (%s): %s\n", name.c_str(), d->name, g.message.c_str());
+            }
+            if (!tr.ok) continue;
+            // The header is re-attached because the translation is native text
+            // with no header of its own, and preprocess() reads the engine
+            // version off it. So a `volatile` file still pins a version, and
+            // the dialect cannot emit a statement that version lacks.
+            source = odscript::headerLineOf(content) + "\n" + tr.nativeText;
+        }
+
         printf("[SCRIPT] Running script: %s\n", name.c_str());
         std::vector<std::string> lines;
         std::vector<std::string> stack;
-        if (preprocess(name, content, lines, stack))
+        if (preprocess(name, source, lines, stack))
             runLines(name, std::move(lines), 0);
     }
     return m_errors.empty();
@@ -245,8 +305,8 @@ void ScriptEngine::runLines(const std::string& name, std::vector<std::string> li
         while (end < (int)lines.size()) {
             auto t = tokenize(lines[end]);
             if (!t.empty()) {
-                if (t[0] == "if" || t[0] == "foreach" || t[0] == "while") depth++;
-                else if (t[0] == "endif" || t[0] == "next" || t[0] == "endwhile") depth--;
+                if (opensBlock(t[0])) depth++;
+                else if (closesBlock(t[0])) depth--;
                 else if (isWaitLine(lines[end]) || isWaitTurnsLine(lines[end])) {
                     // `wait N turns` parks exactly like a waitUntil, so the
                     // segment has to END here too. Without this the wait fell
@@ -259,7 +319,12 @@ void ScriptEngine::runLines(const std::string& name, std::vector<std::string> li
                     const char* which = isWaitLine(lines[end]) ? "waitUntil" : "wait N turns";
                     addError(name, end + 1, std::string(which) +
                              " is only allowed at top level (not inside if/foreach/while)");
-                    lines[end] = std::string("# ") + which + " ignored (nested)";
+                    // BLANK, not a `# comment`: comments are stripped in
+                    // preprocess(), which ran long before this rewrite, so a
+                    // `#` reaching executeBlock is reported as "Unknown
+                    // command: #" -- a second, confusing error for one fault.
+                    (void)which;
+                    lines[end].clear();
                 }
             }
             end++;
@@ -267,7 +332,12 @@ void ScriptEngine::runLines(const std::string& name, std::vector<std::string> li
         std::vector<std::string> segment(lines.begin() + pc, lines.begin() + end);
         std::unordered_map<std::string, ScriptValue> localVars;
         int idx = 0;
+        // `spawn` needs every line, not this segment; restored after because
+        // the drain below re-enters runLines.
+        const std::vector<std::string>* outerLines = m_scriptLines;
+        m_scriptLines = &lines;
         executeBlock(segment, idx, name, localVars);
+        m_scriptLines = outerLines;
 
         if (m_stopped) { m_stopped = false; return; }
         if (!m_jumpLabel.empty()) {
@@ -335,6 +405,58 @@ void ScriptEngine::tick() {
             m_suspended.push_back(std::move(s));
         }
     }
+}
+
+void ScriptEngine::ProvinceLocals::set(const std::string& key, const ScriptValue& val) {
+    auto it = m_vars.find(key);
+    if (it == m_vars.end()) m_added.push_back(key);
+    else                    m_saved.emplace_back(key, it->second);
+    m_vars[key] = val;
+}
+
+void ScriptEngine::ProvinceLocals::restore() {
+    // Newest first: one iteration of a loop binds each key once, but a nested
+    // loop may have bound the same key again, and the last value saved for it
+    // is the one that was there when THIS scope started.
+    for (auto it = m_saved.rbegin(); it != m_saved.rend(); ++it) m_vars[it->first] = it->second;
+    for (const std::string& k : m_added) m_vars.erase(k);
+    m_saved.clear();
+    m_added.clear();
+}
+
+void ScriptEngine::bindProvinceLocals(ProvinceLocals& scope, int pid) {
+    const Province* prov = m_game->m_provinces.getProvinceById(pid);
+    scope.set("province", ScriptValue::makeInt(pid));
+    scope.set("province.id", ScriptValue::makeInt(pid));
+    scope.set("province.population", ScriptValue::makeInt(
+        m_game->m_provincePopulations.count(pid) ? m_game->m_provincePopulations[pid] : 0));
+    auto indIt = m_game->m_provinceIndustry.find(pid);
+    const int indLevel  = (indIt != m_game->m_provinceIndustry.end()) ? indIt->second.level : 0;
+    const int fortLevel = (indIt != m_game->m_provinceIndustry.end()) ? indIt->second.fortification : 0;
+    scope.set("province.industry", ScriptValue::makeInt(indLevel));
+    scope.set("province.fortification", ScriptValue::makeInt(fortLevel));
+
+    // THE OWNER IS READ, NOT ASSUMED. The country loop could hardcode its own
+    // ISO here because every province it visited was its own; a neighbour loop
+    // crosses borders by definition, and the one field it exists to be asked
+    // about is who holds the next province along.
+    const int ownerCid = prov ? prov->countryId : -1;
+    const Country* owner = (ownerCid >= 0) ? m_game->m_countries.getCountry(ownerCid) : nullptr;
+    scope.set("province.owner", ScriptValue::makeStr(owner ? owner->isoA3 : ""));
+
+    long long men = 0;
+    auto paIt = m_game->m_provinceArmies.find(pid);
+    if (paIt != m_game->m_provinceArmies.end())
+        for (const ArmyUnit& u : paIt->second)
+            if (u.countryId == ownerCid) men += u.count;
+    scope.set("province.troops", ScriptValue::makeInt(men));
+    scope.set("province.district",
+              resolveRef("province." + std::to_string(pid) + ".district", {}));
+    const int monKind = m_game->monumentKindAt(pid);
+    scope.set("province.monument", ScriptValue::makeStr(
+        monKind < 0 ? "" : odmon::kindKey((odmon::Kind)monKind)));
+    scope.set("province.monument_level", ScriptValue::makeInt(m_game->monumentLevelAt(pid)));
+    scope.set("province.monument_active", ScriptValue::makeBool(m_game->monumentActiveAt(pid)));
 }
 
 bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& lineIdx,
@@ -426,7 +548,9 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                          "spawn: too many tasks (limit " + std::to_string(MAX_LIVE_TASKS) + ")");
                 lineIdx++; continue;
             }
-            m_pendingTasks.push_back({scriptName, lines, tokens[1]});
+            // The whole script, not this segment -- see m_scriptLines.
+            m_pendingTasks.push_back(
+                {scriptName, m_scriptLines ? *m_scriptLines : lines, tokens[1]});
             lineIdx++;
             continue;
         }
@@ -620,10 +744,9 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             for (int i = blockStart; i < (int)lines.size(); ++i) {
                 auto bt = tokenize(lines[i]);
                 if (bt.empty()) continue;
-                if (bt[0] == "if" || bt[0] == "unless" || bt[0] == "foreach" ||
-                    bt[0] == "while" || bt[0] == "for" || bt[0] == "repeat") {
+                if (opensBlock(bt[0])) {
                     depth++;
-                } else if (bt[0] == "endif" || bt[0] == "next" || bt[0] == "endwhile") {
+                } else if (closesBlock(bt[0])) {
                     if (--depth == 0) { endIdx = i; break; }
                 } else if ((bt[0] == "else" || bt[0] == "elseif") && depth == 1) {
                     arms.push_back(i);
@@ -656,11 +779,18 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
         // foreach province in country.ISO
         // foreach item in array.NAME / foreach item in list.NAME
         if (kw == "foreach") {
+            // Both spellings of neighbour. The engine's own identifiers are
+            // British throughout, but a script is written by whoever has the
+            // map open, and refusing "neighbor" would be a spelling test.
+            const bool isNeighbourLoop =
+                (tokens.size() > 1 && (tokens[1] == "neighbour" || tokens[1] == "neighbor"));
             if (tokens.size() < 4 || tokens[2] != "in" ||
                 (tokens[1] != "province" && tokens[1] != "item" &&
-                 tokens[1] != "country" && tokens[1] != "district")) {
+                 tokens[1] != "country" && tokens[1] != "district" && !isNeighbourLoop)) {
                 addError(scriptName, lineIdx + 1,
                          "foreach: expected 'foreach province in country.ISO', "
+                         "'foreach province in array.NAME', "
+                         "'foreach neighbour in province.ID', "
                          "'foreach district in country.ISO', "
                          "'foreach country in world', or 'foreach item in array/list.NAME'");
                 lineIdx++; return false;
@@ -674,8 +804,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             while (blockEnd < (int)lines.size() && depth > 0) {
                 auto bt = tokenize(lines[blockEnd]);
                 if (!bt.empty()) {
-                    if (bt[0] == "if" || bt[0] == "foreach" || bt[0] == "while") depth++;
-                    else if (bt[0] == "next" || bt[0] == "endif" || bt[0] == "endwhile") depth--;
+                    if (opensBlock(bt[0])) depth++;
+                    else if (closesBlock(bt[0])) depth--;
                 }
                 if (depth == 0) break;
                 blockEnd++;
@@ -826,9 +956,138 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 continue;
             }
 
+            // ── foreach neighbour in province.ID ──
+            //
+            // The adjacency graph the turn logic, the AI and fog all already
+            // read (m_provinceNeighbors), finally reachable from a script. It
+            // binds `province.*` exactly as the country loop does, so a body
+            // written for one works unchanged in the other -- the loop is over
+            // the provinces NEXT TO this one, and they are still provinces.
+            if (isNeighbourLoop) {
+                if (m_scriptVersion < 5) {
+                    addError(scriptName, lineIdx + 1,
+                             "'foreach neighbour' needs engine version 5; this script declares " +
+                             std::to_string(m_scriptVersion) +
+                             " (change the header to #OD/MapEngine/5)");
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                // Four ways to say which province: `province.42`, an
+                // expression (`province.var.here`), and the two names the
+                // enclosing province loop binds -- bare `province` and
+                // `province.id`, which the docs treat as the same thing
+                // everywhere else and so must here.
+                int ofPid = 0;
+                if (sourceRef == "province" || sourceRef == "province.id") {
+                    ofPid = (int)resolveRef(sourceRef, localVars).asInt();
+                } else if (sourceRef.rfind("province.", 0) == 0) {
+                    ofPid = (int)evalExpr(sourceRef.substr(9), localVars).asInt();
+                } else {
+                    ofPid = (int)evalExpr(sourceRef, localVars).asInt();
+                }
+                // ── THE GRAPH DOES NOT EXIST YET WHEN A SCRIPT RUNS ──
+                //
+                // m_provinceNeighbors is built by computeCountryLabels(), and
+                // every loader runs the map's scripts BEFORE that pass:
+                // runMapScripts() at Game_Loading.cpp:383, the labels at 475.
+                // Nothing had noticed, because until there was a `foreach
+                // neighbour` nothing a script could reach needed adjacency --
+                // morph and terrain work on pixels.
+                //
+                // So ask for it, once, through ensureProvinceNeighbors() --
+                // which fills the graph only if it is empty, from the same
+                // cached raster scan. The labels pass cannot simply be called
+                // here: it derives owners from m_provinceCenters, and the
+                // centres do not exist yet either, so it filters every scanned
+                // pair away and leaves the graph as empty as it found it.
+                if (!m_adjacencyAsked) {
+                    m_adjacencyAsked = true;
+                    m_game->ensureProvinceNeighbors();
+                }
+                auto nbrs = m_game->m_provinceNeighbors.find(ofPid);
+                if (nbrs == m_game->m_provinceNeighbors.end()) {
+                    // Not an error. An island province genuinely has no land
+                    // neighbours, and a script that walks every province must
+                    // not die on the first one.
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                // A COPY, and sorted. The body is free to change who owns what,
+                // and `set province.owner` can rebuild the adjacency graph
+                // underneath an iterator into it; sorting makes a map play the
+                // same twice, the way `foreach country in world` does.
+                std::vector<int> ids = nbrs->second;
+                std::sort(ids.begin(), ids.end());
+                for (int nid : ids) {
+                    ProvinceLocals scope(vars);
+                    bindProvinceLocals(scope, nid);
+                    int subIdx = blockStart;
+                    executeBlock(lines, subIdx, scriptName, localVars);
+                    if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                    if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
+                    if (!m_jumpLabel.empty() || m_stopped) break;
+                }
+                lineIdx = blockEnd + 1;
+                continue;
+            }
+
+            // ── foreach province in array.NAME ──
+            //
+            // Iterating a list of province ids the script collected itself,
+            // bound as `province.*` rather than as a bare `item`. This is what
+            // makes a spread a spread: scan the frontier into an array, close
+            // the scan, then walk the array and change owners. Reading and
+            // writing in one pass instead would let a province infected early
+            // in the sweep infect its own neighbour later in the SAME sweep,
+            // and the front would cross the map in one turn.
+            if (sourceRef.rfind("array.", 0) == 0 || sourceRef.rfind("list.", 0) == 0) {
+                if (m_scriptVersion < 5) {
+                    addError(scriptName, lineIdx + 1,
+                             "'foreach province in array.NAME' needs engine version 5; this script declares " +
+                             std::to_string(m_scriptVersion) +
+                             " (change the header to #OD/MapEngine/5)");
+                    lineIdx = blockEnd + 1;
+                    continue;
+                }
+                const bool fromArray = (sourceRef.rfind("array.", 0) == 0);
+                const std::string cname = sourceRef.substr(fromArray ? 6 : 5);
+                std::vector<ScriptValue> items;
+                if (fromArray) {
+                    auto ait = m_arrays.find(cname);
+                    if (ait == m_arrays.end()) {
+                        addError(scriptName, lineIdx + 1, "foreach province: unknown array " + cname);
+                        lineIdx = blockEnd + 1;
+                        continue;
+                    }
+                    items = ait->second;
+                } else {
+                    auto lit = m_lists.find(cname);
+                    if (lit == m_lists.end()) {
+                        addError(scriptName, lineIdx + 1, "foreach province: unknown list " + cname);
+                        lineIdx = blockEnd + 1;
+                        continue;
+                    }
+                    items.assign(lit->second.begin(), lit->second.end());
+                }
+                for (const ScriptValue& v : items) {
+                    const int apid = (int)v.asInt();
+                    if (!m_game->m_provinces.getProvinceById(apid)) continue;   // stale id, skip
+                    ProvinceLocals scope(vars);
+                    bindProvinceLocals(scope, apid);
+                    int subIdx = blockStart;
+                    executeBlock(lines, subIdx, scriptName, localVars);
+                    if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
+                    if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
+                    if (!m_jumpLabel.empty() || m_stopped) break;
+                }
+                lineIdx = blockEnd + 1;
+                continue;
+            }
+
             // ── foreach province in country.ISO ──
             if (sourceRef.rfind("country.", 0) != 0) {
-                addError(scriptName, lineIdx + 1, "foreach: expected country.ISO, got " + sourceRef);
+                addError(scriptName, lineIdx + 1,
+                         "foreach: expected country.ISO or array.NAME, got " + sourceRef);
                 lineIdx = blockEnd + 1;
                 continue;
             }
@@ -841,54 +1100,31 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
                 lineIdx = blockEnd + 1;
                 continue;
             }
-            for (auto& [pid, prov] : m_game->m_provinces.getAllProvinces()) {
-                if (prov.countryId != targetCid) continue;
-                // Set local var "province" = this province ID
-                vars["province"] = ScriptValue::makeInt(pid);
-                vars["province.id"] = ScriptValue::makeInt(pid);
-                // Also set province properties as locals
-                vars["province.population"] = ScriptValue::makeInt(
-                    m_game->m_provincePopulations.count(pid) ? m_game->m_provincePopulations[pid] : 0);
-                auto indIt = m_game->m_provinceIndustry.find(pid);
-                int indLevel = (indIt != m_game->m_provinceIndustry.end()) ? indIt->second.level : 0;
-                int fortLevel = (indIt != m_game->m_provinceIndustry.end()) ? indIt->second.fortification : 0;
-                vars["province.industry"] = ScriptValue::makeInt(indLevel);
-                vars["province.fortification"] = ScriptValue::makeInt(fortLevel);
-                vars["province.owner"] = ScriptValue::makeStr(iso);
-                long long men = 0;
-                auto paIt = m_game->m_provinceArmies.find(pid);
-                if (paIt != m_game->m_provinceArmies.end())
-                    for (const ArmyUnit& u : paIt->second)
-                        if (u.countryId == targetCid) men += u.count;
-                vars["province.troops"] = ScriptValue::makeInt(men);
-                vars["province.district"] = resolveRef("province." + std::to_string(pid) + ".district",
-                                                       localVars);
-                // The same three the resolver answers, so a foreach body reads
-                // the same way whether it says province.monument or
-                // province.<id>.monument.
-                const int monKind = m_game->monumentKindAt(pid);
-                vars["province.monument"] = ScriptValue::makeStr(
-                    monKind < 0 ? "" : odmon::kindKey((odmon::Kind)monKind));
-                vars["province.monument_level"] = ScriptValue::makeInt(m_game->monumentLevelAt(pid));
-                vars["province.monument_active"] = ScriptValue::makeBool(m_game->monumentActiveAt(pid));
-                // Execute the block body
+            // THE IDS FIRST, THEN THE BODY. This used to iterate the province
+            // map directly, which was safe only as long as a body could not
+            // change who owns a province -- `set province.owner` can, and a
+            // reassignment rebuilds the adjacency graph, so the loop was
+            // walking a container the body was allowed to disturb. Collecting
+            // the ids first also fixes the order: a hash map's order is not the
+            // same between runs, and this loop is the one scripts use most.
+            std::vector<int> owned;
+            for (auto& [pid, prov] : m_game->m_provinces.getAllProvinces())
+                if (prov.countryId == targetCid) owned.push_back(pid);
+            std::sort(owned.begin(), owned.end());
+            for (int pid : owned) {
+                // Re-check: an earlier iteration's body may have given this one
+                // away, and `foreach province in country.X` should not then
+                // hand the body a province X no longer holds.
+                const Province* still = m_game->m_provinces.getProvinceById(pid);
+                if (!still || still->countryId != targetCid) continue;
+                ProvinceLocals scope(vars);
+                bindProvinceLocals(scope, pid);
                 int subIdx = blockStart;
                 executeBlock(lines, subIdx, scriptName, localVars);
                 if (m_loopSignal == LoopSignal::BREAK) { m_loopSignal = LoopSignal::NONE; break; }
                 if (m_loopSignal == LoopSignal::CONTINUE) m_loopSignal = LoopSignal::NONE;
+                if (!m_jumpLabel.empty() || m_stopped) break;
             }
-            // Clean up local var
-            vars.erase("province");
-            vars.erase("province.id");
-            vars.erase("province.population");
-            vars.erase("province.industry");
-            vars.erase("province.fortification");
-            vars.erase("province.owner");
-            vars.erase("province.troops");
-            vars.erase("province.district");
-            vars.erase("province.monument");
-            vars.erase("province.monument_level");
-            vars.erase("province.monument_active");
             lineIdx = blockEnd + 1;
             continue;
         }
@@ -946,9 +1182,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             for (int i = blockStart; i < (int)lines.size(); ++i) {
                 auto bt = tokenize(lines[i]);
                 if (bt.empty()) continue;
-                if (bt[0] == "if" || bt[0] == "unless" || bt[0] == "foreach" ||
-                    bt[0] == "while" || bt[0] == "for" || bt[0] == "repeat") depth++;
-                else if (bt[0] == "next" || bt[0] == "endif" || bt[0] == "endwhile") {
+                if (opensBlock(bt[0])) depth++;
+                else if (closesBlock(bt[0])) {
                     if (--depth == 0) { endIdx = i; break; }
                 }
             }
@@ -977,9 +1212,8 @@ bool ScriptEngine::executeBlock(const std::vector<std::string>& lines, int& line
             while (blockEnd < (int)lines.size() && depth > 0) {
                 auto bt = tokenize(lines[blockEnd]);
                 if (!bt.empty()) {
-                    if (bt[0] == "if" || bt[0] == "unless" || bt[0] == "foreach" ||
-                        bt[0] == "while" || bt[0] == "for" || bt[0] == "repeat") depth++;
-                    else if (bt[0] == "endwhile" || bt[0] == "endif" || bt[0] == "next") depth--;
+                    if (opensBlock(bt[0])) depth++;
+                    else if (closesBlock(bt[0])) depth--;
                 }
                 if (depth == 0) break;
                 blockEnd++;
@@ -1488,6 +1722,54 @@ ScriptValue ScriptEngine::resolveRef(const std::string& ref,
     // Quoted string
     if (ref.size() >= 2 && ref.front() == '"' && ref.back() == '"')
         return ScriptValue::makeStr(ref.substr(1, ref.size() - 2));
+
+    // ── random.N and random.A.B ──
+    //
+    // A REFERENCE RATHER THAN A FUNCTION, deliberately. script/Expr.cpp says
+    // in its own header that it does not know what a Game is -- which is what
+    // lets it be unit-tested on `2 + 3 * 4` with no world loaded -- and a
+    // random() there would have had to be handed a generator to keep that
+    // true. The resolver already has the Game, and `if random.100 < 30` reads
+    // no worse than the call would have.
+    //
+    // It draws from m_world.simRng, THE SIMULATION'S OWN STREAM: per-world,
+    // saved as full state rather than as a seed (see Game::simRngState), and
+    // only ever touched from the turn thread, which is where tick() runs it
+    // from inside processTurn(). A second generator here would have been a
+    // second thing to save, and a bare rand() would have been the
+    // process-global, cross-thread stream that cost this project a
+    // one-run-in-four Heisenbug. See the note at the top of Game_TurnLogic.cpp.
+    //
+    // Modulo, so one draw per call whatever the range: rejection sampling
+    // would spend a variable number of draws and two runs of the same script
+    // would stop agreeing. The bias that buys is at most one part in 2^30 for
+    // any range a map script has reason to ask for.
+    if (ref.rfind("random.", 0) == 0) {
+        const std::string rest = ref.substr(7);
+        const size_t dot = rest.find('.');
+        long long lo = 0, hi = 0;
+        bool ok = true;
+        try {
+            if (dot == std::string::npos) {          // random.N  →  0 .. N-1
+                hi = std::stoll(rest) - 1;
+            } else {                                  // random.A.B →  A .. B
+                lo = std::stoll(rest.substr(0, dot));
+                hi = std::stoll(rest.substr(dot + 1));
+            }
+        } catch (...) { ok = false; }
+        if (!ok) {
+            addError("", 0, "random: expected random.<n> or random.<lo>.<hi>, got " + ref);
+            return {};
+        }
+        if (hi < lo) {
+            // random.0 asked for "a number below zero of them". Answer lo and
+            // say so, rather than taking a modulo by zero.
+            addError("", 0, "random: empty range in " + ref);
+            return ScriptValue::makeInt(lo);
+        }
+        const long long span = hi - lo + 1;
+        return ScriptValue::makeInt(lo + (long long)(m_game->simRand() % span));
+    }
 
     // ── mod.<id> and mod.<id>.<field> ──
     //

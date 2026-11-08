@@ -53,12 +53,16 @@ import sys, zipfile
 root, out = sys.argv[1], sys.argv[2]
 src = f"{root}/data/STDmaps/map.odmap"
 script = open(f"{root}/tests/data/script_mechanics.txt", encoding="utf-8").read()
+# A second entrypoint, in the gd5 dialect: the only thing that runs a
+# `volatile` script against the real engine rather than as text.
+gd5 = open(f"{root}/tests/data/script_gd5.txt", encoding="utf-8").read()
 with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
     for item in zin.infolist():
         if item.filename.startswith("scripts/") and item.filename != "scripts/":
             continue   # only this test's script runs
         zout.writestr(item, zin.read(item.filename))
     zout.writestr("scripts/script_mechanics.txt", script)
+    zout.writestr("scripts/script_gd5.txt", gd5)
 PY
 
 out="$work/server.log"
@@ -71,9 +75,9 @@ if [ "$status" -ge 128 ]; then
 fi
 
 fail=0
-oks=$(grep -c '^\[SCRIPT\] script_mechanics: ok' "$out")
-grep '^\[SCRIPT\] script_mechanics: ' "$out" | sed 's/^\[SCRIPT\] script_mechanics: /  /'
-if grep -q '^\[SCRIPT\] script_mechanics: FAIL' "$out"; then fail=1; fi
+oks=$(grep -cE '^\[SCRIPT\] script_(mechanics|gd5)( \[[^]]*\])?: ok' "$out")
+grep -E '^\[SCRIPT\] script_(mechanics|gd5)( \[[^]]*\])?: ' "$out" | sed -E 's/^\[SCRIPT\] script_(mechanics|gd5)( \[[^]]*\])?: /  /'
+if grep -qE '^\[SCRIPT\] script_(mechanics|gd5)( \[[^]]*\])?: FAIL' "$out"; then fail=1; fi
 if grep -q '^\[SCRIPT\] Failed to load' "$out"; then
     echo "  FAIL  the script reported errors:"
     grep '^\[SCRIPT\] Failed to load' "$out" | sed 's/^/        /'
