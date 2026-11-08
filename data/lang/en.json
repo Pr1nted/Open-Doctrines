@@ -2502,7 +2502,7 @@
  "ports, every soldier and hull, plus the treasury.": "ports, every soldier and hull, plus the treasury.",
  "reason: %s": "reason: %s",
  "recruiting and firing artillery": "recruiting and firing artillery",
- "replaying decision %d / %d": "replaying decision %d / %d",
+ "replaying decision %d / %d   (F8 or x closes)": "replaying decision %d / %d   (F8 or x closes)",
  "resources and troops below.": "resources and troops below.",
  "right-drag to pan.": "right-drag to pan.",
  "sampling...": "sampling...",

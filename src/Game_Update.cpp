@@ -296,6 +296,23 @@ void Game::update(float dt) {
                                         : MapRenderer::ViewMode::Flat);
         Audio::get().playSfx("click_light");
     }
+
+    // F8 toggles the AI-debug overlay (decision feed + trace + neuron panels),
+    // and the panel's on-screen x closes it. A developer view like F7/F9: it
+    // only switches ON while debug mode is set -- the trace/neuron panels need
+    // it to draw anything -- but can always be switched OFF.
+    if (IsKeyPressed(KEY_F8) && (m_config.debugMode || m_config.aiDebug)) {
+        m_config.aiDebug = !m_config.aiDebug;
+        Audio::get().playSfx("click_light");
+    }
+    if (m_config.aiDebug && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+        m_aiDebugCloseBtn.width > 0 &&
+        CheckCollisionPointRec(getMouse(), m_aiDebugCloseBtn)) {
+        m_config.aiDebug = false;
+        Audio::get().playSfx("click_light");
+        return;  // consume the click so the map underneath is not selected
+    }
+
     updateComms(dt);
     // Keybind capture mode — freezes all other input
     if (m_waitingForKey) {

@@ -3083,6 +3083,9 @@ void Game::syncAiTraceSink() {
 // same trunkActs/policyActs the trace records (AITrace.h) -- drawing only, no AI
 // state touched. Shows, among other things, how hard the shared trunk saturates.
 void Game::drawAiNeuronPanel() {
+    // Cleared up front so the close-x hotspot never lingers on a frame the
+    // panel does not draw (empty ring, no AI): update() keys off this rect.
+    m_aiDebugCloseBtn = {0, 0, 0, 0};
     if (!m_ai || !m_aiTrace) return;
     const std::vector<AIDecisionTrace> ring = m_aiTrace->recent(64);
     if (ring.empty()) return;
@@ -3110,13 +3113,21 @@ void Game::drawAiNeuronPanel() {
     const Country* c = m_countries.getCountry(d.cid);
     const char* mn = (d.module >= 0 && d.module < 4) ? MODN[d.module] : "?";
     drawHybridText(ix, iy, 14, "Neural activity", {255, 220, 140, 235});
-    DrawText(TextFormat("replaying decision %d / %d", step + 1, n),
+    DrawText(TextFormat("replaying decision %d / %d   (F8 or x closes)", step + 1, n),
              ix + 150, iy + 2, 11, Color{150, 150, 170, 200});
-    // Legend.
-    DrawRectangle(px + pw - 128, iy + 1, 10, 10, Color{90, 160, 235, 230});
-    DrawText("-", px + pw - 114, iy, 12, Color{150, 150, 170, 210});
-    DrawRectangle(px + pw - 104, iy + 1, 10, 10, Color{255, 200, 110, 235});
-    DrawText("+ activation", px + pw - 90, iy, 11, Color{150, 150, 170, 210});
+    // Legend (shifted left to clear the close-x in the corner).
+    DrawRectangle(px + pw - 152, iy + 1, 10, 10, Color{90, 160, 235, 230});
+    DrawText("-", px + pw - 138, iy, 12, Color{150, 150, 170, 210});
+    DrawRectangle(px + pw - 128, iy + 1, 10, 10, Color{255, 200, 110, 235});
+    DrawText("+ activation", px + pw - 114, iy, 11, Color{150, 150, 170, 210});
+    // Close x: top-right corner, clicking it turns the whole overlay off
+    // (consumed in update()). Hover-lit so it reads as a control.
+    m_aiDebugCloseBtn = {(float)(px + pw - 24), (float)(py + 4), 20.0f, 20.0f};
+    const bool xHover = CheckCollisionPointRec(getMouse(), m_aiDebugCloseBtn);
+    const Color xcol = xHover ? Color{255, 190, 130, 255} : Color{185, 190, 205, 220};
+    const float xl = (float)(px + pw - 19), xt = (float)(py + 8), xs = 10.0f;
+    DrawLineEx({xl, xt}, {xl + xs, xt + xs}, 1.8f, xcol);
+    DrawLineEx({xl + xs, xt}, {xl, xt + xs}, 1.8f, xcol);
     iy += 20;
     drawHybridText(ix, iy, 12,
                    TextFormat("t%d  %s  [%s]", d.turn, c ? c->name.c_str() : "?", mn),
