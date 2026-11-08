@@ -520,6 +520,8 @@
  "Confirm?": "تأكيد؟",
  "Confirmed": "مؤكَّد",
  "Confirmed (modified rules)": "مؤكَّد (قواعد معدّلة)",
+ "Confirms in about %d hours": "يُؤكَّد خلال نحو %d ساعة",
+ "Confirms in about %d minutes": "يُؤكَّد خلال نحو %d دقيقة",
  "Conflicts": "التعارضات",
  "Conflicts with %s, which is active. Repeal it first.": "تتعارض مع %s السارية. ألغِها أولًا.",
  "Connecting...": "يجري الاتصال...",

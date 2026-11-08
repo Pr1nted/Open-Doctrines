@@ -520,6 +520,8 @@
  "Confirm?": "Επιβεβαίωση;",
  "Confirmed": "Επιβεβαιώθηκε",
  "Confirmed (modified rules)": "Επιβεβαιώθηκε (τροποποιημένοι κανόνες)",
+ "Confirms in about %d hours": "Επιβεβαίωση σε περίπου %d ώρες",
+ "Confirms in about %d minutes": "Επιβεβαίωση σε περίπου %d λεπτά",
  "Conflicts": "Συγκρούσεις",
  "Conflicts with %s, which is active. Repeal it first.": "Συγκρούεται με %s, που είναι ενεργή. Καταργήστε την πρώτα.",
  "Connecting...": "Γίνεται σύνδεση...",

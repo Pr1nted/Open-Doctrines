@@ -520,6 +520,8 @@
  "Confirm?": "Patvirtinti?",
  "Confirmed": "Patvirtinta",
  "Confirmed (modified rules)": "Patvirtinta (pakeistos taisyklės)",
+ "Confirms in about %d hours": "Patvirtinimas maždaug po %d val.",
+ "Confirms in about %d minutes": "Patvirtinimas maždaug po %d min.",
  "Conflicts": "Konfliktai",
  "Conflicts with %s, which is active. Repeal it first.": "Prieštarauja %s, kuri yra aktyvi. Pirmiausia ją panaikinkite.",
  "Connecting...": "Jungiamasi...",

@@ -520,6 +520,8 @@
  "Confirm?": "Баталгаажуулах уу?",
  "Confirmed": "Баталгаажсан",
  "Confirmed (modified rules)": "Баталгаажсан (өөрчилсөн дүрэм)",
+ "Confirms in about %d hours": "Ойролцоогоор %d цагийн дараа баталгаажна",
+ "Confirms in about %d minutes": "Ойролцоогоор %d минутын дараа баталгаажна",
  "Conflicts": "Мөргөлдөөн",
  "Conflicts with %s, which is active. Repeal it first.": "%s-тай зөрчилдөж байна, тэр идэвхтэй. Эхлээд хүчингүй болго.",
  "Connecting...": "Холбогдож байна...",

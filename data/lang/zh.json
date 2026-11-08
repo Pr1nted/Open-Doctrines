@@ -520,6 +520,8 @@
  "Confirm?": "确认？",
  "Confirmed": "已确认",
  "Confirmed (modified rules)": "已确认（修改规则）",
+ "Confirms in about %d hours": "约 %d 小时后确认",
+ "Confirms in about %d minutes": "约 %d 分钟后确认",
  "Conflicts": "冲突",
  "Conflicts with %s, which is active. Repeal it first.": "与生效中的「%s」冲突。请先废止。",
  "Connecting...": "连接中...",

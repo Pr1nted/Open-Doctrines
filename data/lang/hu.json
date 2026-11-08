@@ -520,6 +520,8 @@
  "Confirm?": "Megerősíti?",
  "Confirmed": "Megerősítve",
  "Confirmed (modified rules)": "Megerősítve (módosított szabályok)",
+ "Confirms in about %d hours": "Megerősítés kb. %d óra múlva",
+ "Confirms in about %d minutes": "Megerősítés kb. %d perc múlva",
  "Conflicts": "Konfliktusok",
  "Conflicts with %s, which is active. Repeal it first.": "Ütközik ezzel: %s, amely aktív. Előbb vond vissza.",
  "Connecting...": "Kapcsolódás...",

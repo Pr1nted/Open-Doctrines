@@ -3998,6 +3998,14 @@ public:
         std::vector<std::pair<int, int>> pairs;   ///< directed, first occurrence, scan order
     } m_adjacencyScan;
     void ensureAdjacencyScan(int w, int h);
+
+    /**
+     * Fill m_provinceNeighbors if it is empty, from the cached raster scan and
+     * each province's own countryId -- the adjacency a map script can ask for
+     * before the centres the labels pass needs exist. See the long note at the
+     * definition; computeCountryLabels() remains the authoritative build.
+     */
+    void ensureProvinceNeighbors();
     void rebuildGradientField();
     void generatePopulationTexture(int countryId, int prevCountryId);
     void generatePoliticalTexture();
@@ -7157,6 +7165,18 @@ public:
      * the measured AI.
      */
     float llmIntentFor(int cid, int module, int action) const;
+
+    // ── The surrogate advisor (REWORK_PLAN workstream D) ────────────────────
+    // A deterministic stand-in for the language-model advisor, so the steering
+    // channel the LLM feeds (m_llmIntent -> llmIntentFor -> the AI's qbias) is
+    // exercised and MEASURABLE where no model runs -- the benchmark and the
+    // training loop, where llmConfigured() is false and the real advisor is
+    // silent. OFF by default (OD_AI_SURROGATE), so a run without it is
+    // byte-identical; ON, it emits a few leans from game state each turn and the
+    // policy decides with the thumb on the scale, which is what lets a bench arm
+    // ask whether the channel is worth anything. See computeSurrogateIntent.
+    static bool aiSurrogateEnabled();
+    void computeSurrogateIntent(int cid);
     /**
      * Whether this country's advisor has asked, firmly, that a reflex not run.
      *

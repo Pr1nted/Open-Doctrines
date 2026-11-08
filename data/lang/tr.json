@@ -520,6 +520,8 @@
  "Confirm?": "Onaylıyor musunuz?",
  "Confirmed": "Onaylandı",
  "Confirmed (modified rules)": "Onaylandı (değiştirilmiş kurallar)",
+ "Confirms in about %d hours": "Yaklaşık %d saat sonra onaylanır",
+ "Confirms in about %d minutes": "Yaklaşık %d dakika sonra onaylanır",
  "Conflicts": "Çakışmalar",
  "Conflicts with %s, which is active. Repeal it first.": "Yürürlükteki %s ile çelişiyor. Önce onu kaldırın.",
  "Connecting...": "Bağlanılıyor...",

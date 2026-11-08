@@ -2142,12 +2142,58 @@ void Game::applyLlmLean(int cid, const std::string& phrase) {
     v = std::clamp(v + 0.34f * lean.direction, -1.0f, 1.0f);
 }
 
+bool Game::aiSurrogateEnabled() {
+    static const bool on = []{ const char* e = std::getenv("OD_AI_SURROGATE");
+                               return e && e[0] && e[0] != '0'; }();
+    return on;
+}
+
 float Game::llmIntentFor(int cid, int module, int action) const {
-    if (!llmConfigured()) return 0.0f;
+    // The surrogate (computeSurrogateIntent) populates m_llmIntent where no real
+    // advisor runs, so it is read on the same path. Without either, 0.
+    if (!llmConfigured() && !aiSurrogateEnabled()) return 0.0f;
     const long long key = ((long long)cid << 20) |
                           ((long long)module << 8) | (long long)action;
     auto it = m_llmIntent.find(key);
     return it == m_llmIntent.end() ? 0.0f : it->second;
+}
+
+// A deterministic advisor: a handful of leans a sensible minister would push,
+// read from the country's own situation, written into m_llmIntent with the AI's
+// module numbering (MOD_ECONOMY 0, MOD_POLITICS 1, MOD_WAR 2 -- what llmIntentFor
+// reads) so llmIntentFor returns them. Recomputed each turn for the country
+// about to act, so a lean reflects this turn's board and never goes stale. No
+// randomness, so a seed still replays. Call-gated on aiSurrogateEnabled(), so it
+// does nothing -- and touches no state -- in a run that did not ask for it.
+void Game::computeSurrogateIntent(int cid) {
+    const Country* c = m_countries.getCountry(cid);
+    if (!c) return;
+    constexpr int MOD_ECON = 0, MOD_WAR = 2;
+    auto setIntent = [&](int module, int action, float v) {
+        const long long key = ((long long)cid << 20) |
+                              ((long long)module << 8) | (long long)action;
+        if (v == 0.0f) m_llmIntent.erase(key);
+        else m_llmIntent[key] = std::clamp(v, -1.0f, 1.0f);
+    };
+
+    // Overextension brake: already fighting two or more wars -> lean against
+    // opening another (war action 4 is declare war) and toward ending one (war
+    // action 6 is ceasefire/peace; see AISystem qBiasFor and the lean vocabulary
+    // in Advisor.cpp). The ceasefire lean is the one that bites: declaring is
+    // rarely the winning action anyway, so suppressing it changes little, but a
+    // stretched country is often a close call between pressing on and settling.
+    int wars = 0;
+    auto rit = m_relations.find(c->isoA3);
+    if (rit != m_relations.end())
+        for (const auto& [other, rel] : rit->second) if (rel.war) ++wars;
+    setIntent(MOD_WAR, 4, wars >= 2 ? -0.7f : 0.0f);
+    setIntent(MOD_WAR, 6, wars >= 2 ? +0.7f : 0.0f);
+
+    // Solvency: in the red -> stop recruiting (war action 1) and lean toward
+    // saving (econ action 0). A minister's first advice to a bankrupt state.
+    const bool broke = c->treasury < 0.0;
+    setIntent(MOD_WAR,  1, broke ? -0.5f : 0.0f);
+    setIntent(MOD_ECON, 0, broke ? +0.5f : 0.0f);
 }
 
 bool Game::llmSuppressesReflex(int cid, const char* reflex) const {

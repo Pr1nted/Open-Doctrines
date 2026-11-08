@@ -59,7 +59,7 @@ step "build test targets"
 # instead; without it MSVC builds Debug, and then nothing below is where this
 # script goes looking. Single-config generators (Make, Ninja) ignore the flag.
 cmake --build "$build" --config Release --target ModArchiveTest ModRuntimeTest ModManagerTest ModCapabilityTest \
-      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest ThemeTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest SaveFormatTest OrderCodecTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
+      ModAbiTest ModExamplesTest OdmodCheck GameUpdatesTest NativeDialogTest GifEncoderTest PngWriteTest OrderValidationTest PolicyRulesTest FogNetTest IndustryCapacityTest GoodsRecipeTest BorderDistanceTest ReleaseRulesTest ArmySplitTest ShipRouteTest CombatDepthTest BattleRulesTest SupplyRulesTest TroopTypesTest ResearchGroupsTest DistrictRulesTest CountryProfileTest FeedbackClientTest MailRulesTest AdvisorTest LlmInfluenceTest NetConnectTimeoutTest LlmRoundTripTest ToolReleaseTest NeuralNetTest ModelBlobTest ScriptExprTest ScriptDialectTest SaveDeltaTest SaveSealTest SaveRoundTripTest SaveDurabilityTest SafeFileNameTest SplashTest OdStateTest AchievementsTest FuzzParsersTest ModApiFuzzTest MonumentsTest ThemeTest FogTest NetAttestTest NetProtocolTest NetAccountTest NetLobbyTest NetChatTest AnnouncementsTest LfgTest ModDirTest RelayLinkTest StreamSafeTest ChatVoteTest IrcParseTest OverlayFeedTest JoinLinkTest PresenceTest NetWsServerTest NetCryptoTest NetTicketTest NetSealTest LongformPasteTest NetHostBookTest TournamentTest PngRowsTest NetTunnelTest TouchKeyboardTest DialogTest LocaleTest TouchGestureTest MinorityShareTest PartyRulesTest NationalisationTest WorldProvenanceTest ModProtectedTest CountryFieldsTest ScriptCommandsTest ModRenderLayerTest ModContentTest SaveFormatTest OrderCodecTest -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" \
       > "$build/test-targets-build.log" 2>&1 || {
     # Not >/dev/null. Suppressing this meant a compile error on a platform
     # nobody had built the tests on reported itself as the word "build failed"
@@ -418,6 +418,12 @@ run "order codec"   "$bin/OrderCodecTest"
 # on the real bytes and not only on synthetic ones.
 run "ai model container" "$bin/ModelBlobTest" "$root/data/ai/model.bin"
 run "map-script expressions" "$bin/ScriptExprTest"
+
+# The foreign-dialect translators. A dialect turns a script written in another
+# game's format into native script text and never executes anything, so every
+# mapping it claims is checkable without a world -- and this target linking
+# without Game.h is itself the proof that the rule holds.
+run "map-script dialects"    "$bin/ScriptDialectTest"
 run "odsv turn delta"  "$bin/SaveDeltaTest"
 run "sealed fog saves" "$bin/SaveSealTest"
 # The archive around those deltas: written, closed, and opened again. The
@@ -531,6 +537,15 @@ check "research tree layout" $PY "$root/tools/check_research_layout.py"
 # lint by its own admission; this asks the compiler, which is the only thing
 # that can catch a generated call with the wrong arity.
 check "generated script bindings compile" bash "$root/tools/check_script_bindings.sh"
+
+# The scripting language has four readers and only one of them is the engine:
+# docs/scripting.md, the editor's version lint, dragoman's OD <-> GD5 script
+# translator (a separate repository that cannot import this one), and mods.
+# Adding a statement updates one of them. When this check was written the
+# engine was on version 5 and dragoman still emitted #OD/MapEngine/2, knowing
+# nothing of wait, morph, terrain or fog -- three versions of silent drift.
+# So the surface is committed and compared. See tools/script_surface.py.
+check "the scripting surface is as recorded" $PY "$root/tools/script_surface.py" --check
 
 # A tool the model is OFFERED but nothing ANSWERS costs it a round of its budget
 # and teaches it the question cannot be asked. Nothing at compile time catches

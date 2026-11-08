@@ -4737,6 +4737,12 @@ private:
     // and Experience::warTurns is its age. Maintained in beginTurn only:
     // refreshStats runs twice a turn and counting there would double.
     std::unordered_map<int, int> m_warSince;
+    // cid -> province count at the moment its current war began, snapshotted
+    // beside m_warSince. The stalled-war reflex (OD_STALL_SUE) reads it to tell a
+    // war a country is LOSING ground in from one it is holding or winning: the
+    // journals (477-479) traced France bleeding provinces to a small opponent for
+    // ~90 turns while its one war slot stayed full. Erased with m_warSince.
+    std::unordered_map<int, int> m_provAtWarStart;
     // (defender<<20 | attacker) -> how many times that asker has begged a
     // costless ceasefire while this country was plainly winning. The winning
     // guard (OD_CEASEFIRE_WINNING) lets the head answer the first and refuses

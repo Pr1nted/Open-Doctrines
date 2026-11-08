@@ -520,6 +520,8 @@
  "Confirm?": "تصدیق کریں؟",
  "Confirmed": "تصدیق شدہ",
  "Confirmed (modified rules)": "تصدیق شدہ (ترمیم شدہ قواعد)",
+ "Confirms in about %d hours": "تقریباً %d گھنٹے میں تصدیق",
+ "Confirms in about %d minutes": "تقریباً %d منٹ میں تصدیق",
  "Conflicts": "تصادم",
  "Conflicts with %s, which is active. Repeal it first.": "نافذ %s سے ٹکراؤ ہے۔ پہلے اسے منسوخ کریں۔",
  "Connecting...": "جڑ رہا ہے...",

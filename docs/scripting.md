@@ -1,6 +1,6 @@
 # OpenDoctrines Map Scripting Engine
 
-## Version: 4 (OD/MapEngine/4)
+## Version: 5 (OD/MapEngine/5)
 
 Version 1, 2 and 3 files still run: everything a later version ADDS is backward
 compatible.
@@ -10,6 +10,9 @@ version 1's language, and version 2 statements (`for`, `repeat`, `break`,
 `try`, `wait`) are refused in it, with a message saying to change the header. The map
 editor shows the same warning while you type, so a pinned version never
 surprises you at load.
+
+Version 5 adds `foreach neighbour` and `foreach province in array.NAME` — see
+**Spreading across the map** — and `random.N`.
 
 ## Overview
 
@@ -287,6 +290,74 @@ Rules worth knowing:
 - **Sinking clears the province.** `terrain sea` sets those pixels to open water
   and removes them from whatever province held them.
 
+### Spreading across the map
+
+`foreach neighbour`, an array and `random.N` are between them enough for a
+script to make something spread on its own, rather than replay a shape someone
+computed in advance. The pattern is three steps, and the middle one is the one
+that matters:
+
+```
+#OD/MapEngine/5
+label spread
+
+# 1. SCAN. Collect the frontier without changing anything.
+array create next
+foreach province in country.PLG
+    foreach neighbour in province
+        if province.owner != "PLG" and province.owner != "" and random.100 < 25
+            array push next province.id
+        endif
+    next
+next
+
+# 2. APPLY. The scan is closed, so nothing infected now can infect again
+#    until the next turn.
+foreach province in array.next
+    set province.owner to "PLG"
+next
+
+wait 1 turns
+jump spread
+```
+
+**Scan, then apply — not both at once.** Setting the owner inside the scan
+would let a province infected early in the sweep infect its own neighbour
+later in the *same* sweep, and the front would cross the map in a single turn
+instead of advancing one ring. Collecting into an array and walking it
+afterwards is what makes the spread a spread. (The loops take their ids up
+front, so the scan is safe either way — the array is about the *rings*, not
+about iterator safety.)
+
+The array may hold the same province twice, when two infected neighbours both
+reach it. Setting an owner that is already set does nothing, so this is
+harmless.
+
+`province.owner` is `""` for a province nobody holds, which is how the test
+above keeps the spread off unclaimed and blocked ground.
+
+Anything a script can read is a brake: `province.fortification`,
+`province.troops`, `province.industry`, whether the province is a port. A
+spread that `random.100 < 25` normally and `random.100 < 5` into a fortified
+province is a mechanic with a counter, and the counter is something the player
+was already able to build.
+
+### random.N
+
+```
+random.6        → 0, 1, 2, 3, 4, 5
+random.1.6      → 1, 2, 3, 4, 5, 6
+```
+
+It draws from the simulation's own generator — the one saved with the world,
+not with the seed — so a map plays out the same way twice and a reloaded save
+continues the stream rather than rewinding it. It is a reference, not a
+function, so it is not gated on the engine version: on a build older than 5 it
+reads as an empty value instead of refusing the script.
+
+Each mention draws once. `if random.100 < 50 and random.100 < 50` rolls twice,
+which is a quarter, not a half.
+
 ### Map References
 ```
 map.date  → (string) current date, e.g. "January 2000" — WRITABLE via set
@@ -396,6 +467,33 @@ next
 
 - `item` → the current value
 - `item.index` → its 0-based position
+
+**`foreach neighbour in province.<id>`** (version 5) walks the provinces that
+touch one province, binding the same `province.*` fields — so a body written
+for `foreach province` works unchanged, because the things being looped over
+are still provinces. The id can be a literal, an expression, or plain
+`province` inside an enclosing province loop:
+
+```
+foreach province in country.FRA
+    foreach neighbour in province
+        print "{province.owner} borders France at {province.id}"
+    next
+next
+```
+
+A province with no land neighbours — an island — runs the body zero times
+rather than raising an error.
+
+**`foreach province in array.NAME`** (version 5) walks province ids a script
+collected itself, bound as `province.*` rather than as a bare `item`. An id
+that no longer names a province is skipped.
+
+Both loops, and `foreach province in country.ISO`, take the ids **first** and
+then run the body, in ascending id order. So the body may change who owns a
+province without disturbing the loop, and a map plays the same twice.
+`foreach province in country.ISO` also re-checks each province as it reaches
+it, and skips any the body has already given away.
 
 ### while / endwhile
 Loops while a condition is true. Safety limit: 10,000 iterations.
@@ -730,6 +828,28 @@ does, and the next turn resumes whichever tasks are ready. They interleave at
 wait boundaries, one at a time, which is what keeps the simulation
 deterministic. Up to 64 tasks may be alive at once.
 
+**Do not end the spawning flow with `stop`.** `stop` returns before the tasks
+are started, so every task spawned in that flow is silently lost. Jump past
+their bodies to a label at the end instead:
+
+```
+spawn watch_one
+spawn watch_two
+jump setup_done
+
+label watch_one
+waitUntil map.turn > 10
+...
+stop
+
+label setup_done
+```
+
+`stop` inside a task is fine — that is how a task ends.
+
+A `spawn` can name any label in the file, including one past another task's
+`waitUntil`.
+
 ## Blocks
 
 The language is a tree, and so is a block editor: `2 + 3 * 4` is one block
@@ -877,6 +997,110 @@ For hand-built archives: place files in the `scripts/` directory of the
 
 Script filenames should use `.txt` extension. The engine strips the
 extension when displaying error messages.
+
+## Foreign dialects
+
+A script can declare that it is **not written in this language**:
+
+```
+#OD/MapEngine/5 volatile gd5
+```
+
+Everything after that line is handed to the named dialect's translator, which
+turns it into ordinary Open Doctrines script text before anything runs it.
+
+| dialect | revision | what it reads |
+|---|---|---|
+| `gd5` | 1 | Greater Diplomacy 5 scripted events — a JSON array of conditions and actions |
+
+### A dialect translates; it does not execute
+
+This is the rule the whole thing rests on. Every dialect's output goes through
+the same preprocessor and the same interpreter as a native script, so a dialect
+can never acquire semantics of its own. Give each dialect its own evaluator
+instead and the engine's behaviour becomes the union of all of them, every
+dialect needs its own tests against a live world, and
+`tools/script_surface.py` — which records what this language can do — stops
+describing the thing that runs.
+
+Three consequences worth knowing:
+
+- **The translation is readable script.** It is not a private representation;
+  it is text you could have written, and the engine runs exactly that.
+- **The declared engine version still applies.** The header is re-attached to
+  the translation, so `#OD/MapEngine/3 volatile gd5` refuses a translation that
+  used a version 4 statement. A dialect cannot smuggle in a newer language.
+- **What a dialect cannot express becomes a comment and a diagnostic**, never a
+  silent omission. The game prints those at load.
+
+### Why "volatile"
+
+Because a file that declares one is pinning a moving target. A native script's
+meaning is fixed by its engine version; a `volatile` script's meaning also
+depends on a translator that can improve between builds — an event that could
+not be carried across in one release may be carried in the next, and the script
+will then do more than it used to. That is usually what you want, and it is not
+what "version 5" promises, so it is said out loud in the header.
+
+### gd5: how a GD5 event becomes a task
+
+GD5's scripts are a list of declarative events, each a set of conditions and a
+set of actions, evaluated once a turn. That is what Open Doctrines' `spawn`
+tasks already are — a flow parked on `waitUntil`, retested each turn — so each
+event becomes one task.
+
+| GD5 condition | becomes |
+|---|---|
+| `Turn Number` | `map.turn <op> <value>` |
+| `Variable` | `var.<variable> <op> <value>` |
+| `At War With` | `country.<owner>.at_war_with.<other>` |
+| `In Faction With` | `country.<owner>.allied_with.<other>` |
+| `Country Exists` | `country.<who>.province_count > 0` |
+| `True` | `true` |
+
+| GD5 action | becomes |
+|---|---|
+| `Declare War` / `Send Ceasefire` | `set country.<owner>.at_war_with.<target> true`/`false` |
+| `Join Faction` / `Invite to Faction` | `set country.<owner>.allied_with.<target> true` |
+| `Set Variable` | `set var.<name> = <value>` |
+| `Send Custom Message` | `print "..."` |
+| `Create Faction`, `Give Territory`, `Edit Name`, `Spawn Unit` | nothing — reported, left out |
+
+`chain` is folded left to right, and all five of GD5's joins are expressible
+because the expression language has `and`, `or` and `not`: `XOR` becomes
+`(a or b) and not (a and b)`, `NAND` becomes `not (a and b)`, `NOR` becomes
+`not (a or b)`.
+
+**A condition with no counterpart refuses the event; an action with no
+counterpart is dropped from it.** Those are deliberately different. Losing a
+condition would turn a gate into an unconditional fire, which is worse than the
+event not running; losing one action out of three still leaves an event worth
+running, and the diagnostic says which one went missing.
+
+**`trigger_type` is written into the script as a comment, not as a gate.** GD5
+fires an event for the AI, the player, or both; a map script has no notion of
+whose turn it is running on, so gating on it would invent a rule.
+
+A GD5 event lives under a nation in `meta.json` and carries no owner of its
+own, so a standalone file has to supply one — either `"owner"` on each event,
+or once for the file:
+
+```
+#OD/MapEngine/5 volatile gd5
+{ "owner": "ITA",
+  "events": [ { "name": "...", "conditions": [...], "actions": [...] } ] }
+```
+
+### Adding a dialect
+
+`src/script/Dialects.cpp` holds the registry: a name, a revision, and a
+function from text to text. It links no part of the game — not `ScriptEngine`,
+not `Game`, not raylib — which is what lets `tests/script_dialect_test.cpp`
+check every mapping with no world loaded. If a dialect ever needs a world to
+link, it has stopped being a translator.
+
+`tools/script_surface.py --check` fails when the registry changes, and names
+this section as one of the places to update.
 
 ## Limitations
 

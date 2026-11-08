@@ -1107,6 +1107,11 @@ void Game::processCountryTurn(int countryId) {
     // the m_pending* queues as it is issued, which is exactly what the
     // executors' own push_backs did -- see src/sim/Order.h.
     if (m_ai && !humanHolds(countryId)) {
+        // The surrogate advisor fills this country's steering just before it
+        // decides, so llmIntentFor returns it on the same path the real advisor
+        // uses. Off by default -- a run without OD_AI_SURROGATE never calls this
+        // and m_llmIntent stays untouched, so play is byte-identical.
+        if (aiSurrogateEnabled()) computeSurrogateIntent(countryId);
         sim::ImmediateOrderSink orders(this);
         static_cast<AIPlayer*>(m_ai)->takeTurn(countryId, orders);
     }

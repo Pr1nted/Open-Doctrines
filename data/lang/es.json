@@ -520,6 +520,8 @@
  "Confirm?": "¿Confirmar?",
  "Confirmed": "Confirmado",
  "Confirmed (modified rules)": "Confirmado (reglas modificadas)",
+ "Confirms in about %d hours": "Se confirma en unas %d horas",
+ "Confirms in about %d minutes": "Se confirma en unas %d minutos",
  "Conflicts": "Conflictos",
  "Conflicts with %s, which is active. Repeal it first.": "Entra en conflicto con %s, que está en vigor. Deróguela primero.",
  "Connecting...": "Conectando...",

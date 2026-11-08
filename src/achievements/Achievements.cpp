@@ -103,6 +103,7 @@ struct Tracker::Impl {
     std::string play;               // current play ticket
     long long playAt = 0;
     std::string playAccount;
+    long long tokenRefreshedAt = 0;
     std::string status;
     std::map<std::string, long long> retryAt;   // id -> earliest next claim
 
@@ -220,6 +221,24 @@ struct Tracker::Impl {
     // ---- the network half. Runs off the game thread on desktop. ----
 
     void syncOnce();
+
+    // The play ticket outlives the run. It is the service's only evidence of how
+    // long a sitting has lasted, so losing it at exit would restart that clock:
+    // somebody who earned a 30-minute achievement and left could only ever have
+    // it confirmed by staying 30 minutes in one later sitting.
+    fs::path playPath() const { return fs::path(dataDir) / "achievements" / "play.json"; }
+    void loadPlay() {
+        std::string text;
+        if (!readFile(playPath(), text)) return;
+        json j = json::parse(text, nullptr, false);
+        if (!j.is_object()) return;
+        play = j.value("play", "");
+        playAt = j.value("at", 0LL);
+        playAccount = j.value("account", "");
+    }
+    void savePlay() const {
+        writeFileAtomic(playPath(), json{{"play", play}, {"at", playAt}, {"account", playAccount}}.dump());
+    }
 };
 
 Tracker& Tracker::get() {
@@ -253,6 +272,7 @@ void Tracker::init(const std::string& dataDir, const std::string& build, unsigne
     m_impl->seal = buf;
     m_impl->loadProgress();
     m_impl->loadGrants();
+    m_impl->loadPlay();
     m_impl->absorbImportsLocked();
     m_impl->ready = true;
     m_impl->nextSyncAt = nowUnix() + 5;
@@ -372,6 +392,10 @@ std::vector<Entry> Tracker::entries() const {
             break;
         }
         e.progress = m_impl->statValue(e.def->stat);
+        if (e.earned && !e.granted) {
+            auto r = m_impl->retryAt.find(e.def->id);
+            if (r != m_impl->retryAt.end()) e.retryAt = r->second;
+        }
         out.push_back(e);
     }
     return out;
@@ -433,6 +457,18 @@ void Tracker::Impl::syncOnce() {
         }
     }
 
+    // A long sitting outlives a twelve-hour session token, and the only other
+    // refresh is at launch. Every few hours keeps the window sliding.
+    {
+        bool due;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            due = nowUnix() - tokenRefreshedAt > 4 * 3600;
+            if (due) tokenRefreshedAt = nowUnix();
+        }
+        if (due && ac.refreshSession(nullptr)) token = ac.sessionToken();
+    }
+
     // Grants earned on other devices come down first, so a claim is never
     // spent on something already held.
     {
@@ -467,21 +503,17 @@ void Tracker::Impl::syncOnce() {
             std::lock_guard<std::mutex> lock(mutex);
             status = "not_issuing";
             return;
+        } else if (res.status == 401) {
+            // The session itself has gone. Nothing here can succeed until the
+            // player signs in again, so say that rather than go quiet.
+            std::lock_guard<std::mutex> lock(mutex);
+            status = "sign_in";
+            return;
         }
     }
-    if (pending.empty()) {
-        std::lock_guard<std::mutex> lock(mutex);
-        status.clear();
-        // Steam may have missed a grant held from before Steam was running.
-        for (auto& [ach, g] : grants)
-            if (g.sub == account) if (const Def* d = findDef(ach)) odsteam::setAchievement(d->steam);
-        return;
-    }
 
-    // A play ticket per account per 30 hours: the service's clock for this
-    // sitting. Started when the first claim needs one, which is close enough
-    // to the session's real start for the session-length rules, because the
-    // ticket is fetched at startup too (Tracker::update's first call).
+    // The ticket comes before any early return: it starts the session clock, so
+    // it has to exist from the start of a sitting, not from its first claim.
     std::string play;
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -497,7 +529,7 @@ void Tracker::Impl::syncOnce() {
         HttpResponse res = httpRequest(req);
         if (!res.ok()) {
             std::lock_guard<std::mutex> lock(mutex);
-            status = "unreachable";
+            status = res.status == 401 ? "sign_in" : res.status == 503 ? "not_issuing" : "unreachable";
             return;
         }
         play = httpJsonString(res.body, "play", 4096);
@@ -505,6 +537,16 @@ void Tracker::Impl::syncOnce() {
         this->play = play;
         playAt = nowUnix();
         playAccount = account;
+        savePlay();
+    }
+
+    if (pending.empty()) {
+        std::lock_guard<std::mutex> lock(mutex);
+        status.clear();
+        // Steam may have missed a grant held from before Steam was running.
+        for (auto& [ach, g] : grants)
+            if (g.sub == account) if (const Def* d = findDef(ach)) odsteam::setAchievement(d->steam);
+        return;
     }
 
     // Batches of the service's maximum.
@@ -527,7 +569,16 @@ void Tracker::Impl::syncOnce() {
         HttpResponse res = httpRequest(req);
         if (res.status == 401) {
             std::lock_guard<std::mutex> lock(mutex);
-            this->play.clear();     // a stale play ticket; the next pass starts another
+            // Two different things answer 401. A stale ticket is ours to replace,
+            // straight away; a dead session is the player's to renew.
+            if (httpJsonString(res.body, "code", 64) == "bad_play") {
+                this->play.clear();
+                playAt = 0;
+                savePlay();
+                nextSyncAt = nowUnix() + 2;
+            } else {
+                status = "sign_in";
+            }
             return;
         }
         if (!res.ok()) {
@@ -553,7 +604,10 @@ void Tracker::Impl::syncOnce() {
                     // "requires:" settles itself once the tier below is
                     // granted; anything else will never succeed as sent.
                     const std::string why = d.value("refused", "");
-                    retryAt[ach] = now + (why.rfind("requires:", 0) == 0 ? 300 : 24 * 3600);
+                    retryAt[ach] = now + (why.rfind("requires:", 0) == 0 ? 300 : why == "no_session" ? 60 : 24 * 3600);
+                    // The service has no session for this ticket's account any
+                    // more (a wiped record, say). A new ticket opens one.
+                    if (why == "no_session") { this->play.clear(); playAt = 0; savePlay(); }
                 }
             }
             if (!newlyGranted.empty()) saveGrants();
@@ -584,9 +638,18 @@ void Tracker::update() {
         const long long now = nowUnix();
         if (now < im.nextSyncAt) return;
         im.absorbImportsLocked();
+        // Signed out: tell them why nothing is being confirmed, and look again
+        // soon, so that signing in confirms within seconds rather than minutes.
+        if (AccountClient::get().status() != AccountClient::Status::SignedIn) {
+            bool unconfirmed = false;
+            for (auto& [id, when] : im.earned) if (!im.grants.count(id)) unconfirmed = true;
+            im.status = unconfirmed ? "sign_in" : "";
+            im.nextSyncAt = now + 5;
+            return;
+        }
+        if (im.status == "sign_in") im.status.clear();
         im.nextSyncAt = now + 120;
     }
-    if (AccountClient::get().status() != AccountClient::Status::SignedIn) return;
     im.busy = true;
 #if defined(__EMSCRIPTEN__) || defined(OD_NO_THREADS)
     im.syncOnce();

@@ -73,10 +73,22 @@ public:
     // than as an error, and making it fail now would break scripts that guard
     // on it.
     //
+    // 5 adds the two things a script needed to make the map act on its own
+    // rather than be redrawn by a precomputed list: `foreach neighbour in
+    // province.<id>`, which is the adjacency graph the turn logic already
+    // keeps, and `foreach province in array.NAME`, which lets a script hold a
+    // frontier it collected and apply it afterwards. Those two together are
+    // the difference between a script that plays back a shape and one that
+    // spreads -- see docs/scripting.md, "Spreading across the map".
+    //
+    // `random.N` came with it and is NOT gated, because it is a reference and
+    // references have never been: one that names nothing has always read as an
+    // empty value rather than as an error.
+    //
     // Version 1 and 2 files still run: everything added is backward compatible,
     // and a file that declares an older version GETS that version's language,
     // which is what makes pinning mean something.
-    static const int ENGINE_VERSION = 4;
+    static const int ENGINE_VERSION = 5;
     static const int MIN_ENGINE_VERSION = 1;
 
     /**
@@ -122,7 +134,60 @@ private:
     // and the only kind that keeps the simulation deterministic.
     struct PendingTask { std::string name; std::vector<std::string> lines; std::string label; };
     std::vector<PendingTask> m_pendingTasks;
+
+    /**
+     * The WHOLE script runLines is working through, for `spawn` to capture.
+     *
+     * executeBlock is handed one SEGMENT -- the lines up to the next top-level
+     * waitUntil -- so a `spawn` that captured what executeBlock can see could
+     * only ever reach a label inside that segment. With one task that is
+     * invisible, because its label is in the spawner's own segment; with
+     * several, each body ends at its own waitUntil and every label but the
+     * first falls outside, and the task fails with "spawn: no label".
+     *
+     * `jump` already resolves against every line for exactly this reason ("so
+     * a jump can cross the waitUntil boundaries this loop splits on"). This
+     * gives `spawn` the same reach. Saved and restored around each call
+     * because runLines re-enters itself when it drains the tasks.
+     */
+    const std::vector<std::string>* m_scriptLines = nullptr;
     static const int MAX_LIVE_TASKS = 64;
+
+    // ── The `province.*` locals, saved so loops can nest ──
+    //
+    // The province loops bind their fields as literal local keys (so
+    // `province.population` in a body is an exact lookup, not a reference the
+    // resolver takes apart) by const_cast-ing the caller's map, and they used
+    // to clean up with erase(). That is wrong the moment one province loop
+    // sits inside another: the inner loop's cleanup deleted the OUTER loop's
+    // binding, and the rest of the outer body then saw no province at all.
+    //
+    // Nobody could hit it before, because there was only one way to loop over
+    // provinces. `foreach neighbour` inside `foreach province` is the whole
+    // point of having neighbours, so the keys are saved and put back instead.
+    class ProvinceLocals {
+    public:
+        explicit ProvinceLocals(std::unordered_map<std::string, ScriptValue>& v) : m_vars(v) {}
+        ~ProvinceLocals() { restore(); }
+        ProvinceLocals(const ProvinceLocals&) = delete;
+        ProvinceLocals& operator=(const ProvinceLocals&) = delete;
+        /// Bind one key, remembering whatever it held first.
+        void set(const std::string& key, const ScriptValue& val);
+        /// Put every key back as it was. Called by the destructor.
+        void restore();
+    private:
+        std::unordered_map<std::string, ScriptValue>& m_vars;
+        std::vector<std::pair<std::string, ScriptValue>> m_saved;   // key → old value
+        std::vector<std::string> m_added;                            // keys that were absent
+    };
+
+    /// Set once `foreach neighbour` has asked the game to build the
+    /// adjacency graph, so a map whose provinces genuinely have no neighbours
+    /// does not re-run the label pass on every loop.
+    bool m_adjacencyAsked = false;
+
+    /// Bind every `province.*` field for one province id, through `scope`.
+    void bindProvinceLocals(ProvinceLocals& scope, int pid);
 
     // Tokenize a line into space-separated tokens (respecting quoted strings)
     std::vector<std::string> tokenize(const std::string& line);

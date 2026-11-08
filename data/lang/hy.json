@@ -520,6 +520,8 @@
  "Confirm?": "Հաստատե՞լ",
  "Confirmed": "Հաստատված է",
  "Confirmed (modified rules)": "Հաստատված է (փոփոխված կանոններ)",
+ "Confirms in about %d hours": "Հաստատում մոտ %d ժամից",
+ "Confirms in about %d minutes": "Հաստատում մոտ %d րոպեից",
  "Conflicts": "Հակամարտություններ",
  "Conflicts with %s, which is active. Repeal it first.": "Հակասում է %s-ին, որը գործող է։ Նախ չեղարկեք այն։",
  "Connecting...": "Միացում...",

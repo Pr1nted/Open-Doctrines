@@ -520,6 +520,8 @@
  "Confirm?": "Confirmas?",
  "Confirmed": "Confirmatum",
  "Confirmed (modified rules)": "Confirmatum (regulis mutatis)",
+ "Confirms in about %d hours": "Confirmabitur circiter %d horis",
+ "Confirms in about %d minutes": "Confirmabitur circiter %d minutis",
  "Conflicts": "Certamina",
  "Conflicts with %s, which is active. Repeal it first.": "Cum %s pugnat, quae actuosa est. Eam prius abroga.",
  "Connecting...": "Coniungitur...",

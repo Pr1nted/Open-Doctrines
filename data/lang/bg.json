@@ -520,6 +520,8 @@
  "Confirm?": "Потвърждавате ли?",
  "Confirmed": "Потвърдено",
  "Confirmed (modified rules)": "Потвърдено (променени правила)",
+ "Confirms in about %d hours": "Потвърждаване след около %d ч.",
+ "Confirms in about %d minutes": "Потвърждаване след около %d мин.",
  "Conflicts": "Конфликти",
  "Conflicts with %s, which is active. Repeal it first.": "В противоречие е с действащата %s. Първо я отменете.",
  "Connecting...": "Свързване...",

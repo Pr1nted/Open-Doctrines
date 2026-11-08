@@ -338,7 +338,7 @@ private:
     std::unordered_map<std::string, SfxEntry> m_sfx_map;
     float m_master = 1.0f;
     float m_music  = 0.6f;
-    float m_sfx    = 0.8f;
+    float m_sfx    = 0.45f;   // matches Config::sfxVolume; see the note there
 
     bool  m_mapAtmosphere = true;
     float m_atmoIntensity = 0.0f;   // 0..1, set per frame by the game

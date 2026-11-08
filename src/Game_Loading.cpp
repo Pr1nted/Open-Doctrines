@@ -745,6 +745,11 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
             // Cleared unconditionally, so a Quick Start that found nothing
             // playable falls back to country select rather than staying armed
             // and choosing a country for the next world opened by hand.
+            // How close Quick Start may come. 1.2 shows a compact country
+            // (Germany in 1939 is 253x147 px) at about a third of the screen,
+            // with its neighbours around it. The old flat 2.5 was twice that
+            // again, and showed a border region nobody could place.
+            constexpr float kQuickStartMaxZoom = 1.2f;
             if (m_quickStartPending) {
                 m_quickStartPending = false;
                 if (m_currentScreen == SCREEN_COUNTRY_SELECT) {
@@ -754,9 +759,71 @@ if (m_currentScreen != SCREEN_COUNTRY_SELECT) {
                         // The loader framed the whole world for country select.
                         // Nobody choosing their own country needs to be told
                         // where it is; somebody who was handed one does.
+                        //
+                        // FRAMED FROM THE COUNTRY'S OWN EXTENT, not a constant.
+                        // This was a flat 2.5, which is 22x the whole-world
+                        // zoom on a 1024x768 window -- so Quick Start, the
+                        // first thing a new player clicks, opened on two or
+                        // three provinces and a coastline. The one thing that
+                        // makes this game worth looking at is that it is the
+                        // whole world, and the opening shot hid it.
+                        //
+                        // THE SPREAD IS THE MIDDLE 80%, NOT THE BOUNDING BOX.
+                        // Measured on 1939: a full box puts Britain at
+                        // 8049x3091 px and France at 7533x2260, because an
+                        // empire's outlying provinces are most of the planet
+                        // apart -- so "fit the country" collapsed to the world
+                        // view for exactly the countries Quick Start hands
+                        // out. Trimming the outer tenth each way leaves France
+                        // at 2622x1390 and the USSR at 2497x880, which frame
+                        // the country somebody actually plays, while Britain
+                        // still opens on the globe because Britain IS global.
                         auto cit = m_countryCenters.find(cid);
-                        if (m_renderer && cit != m_countryCenters.end())
-                            m_renderer->flyTo(cit->second.x, cit->second.y, 2.5f, 3.0f);
+                        if (m_renderer && cit != m_countryCenters.end()) {
+                            std::vector<float> xs, ys;
+                            for (const auto& [pid, prov] : m_provinces.getAllProvinces()) {
+                                if (prov.countryId != cid) continue;
+                                auto pc = m_provinceCenters.find(pid);
+                                if (pc == m_provinceCenters.end()) continue;
+                                xs.push_back(pc->second.x);
+                                ys.push_back(pc->second.y);
+                            }
+                            const float worldZ =
+                                std::min((float)m_screenW / (float)m_landSea.getWidth(),
+                                         (float)m_screenH / (float)m_landSea.getHeight()) * 0.9f;
+                            // A country of one province has no spread, and the
+                            // clamp below is what decides it. Named so, rather
+                            // than left as a constant that is always overridden.
+                            float z = kQuickStartMaxZoom;
+                            if (xs.size() >= 2) {
+                                std::sort(xs.begin(), xs.end());
+                                std::sort(ys.begin(), ys.end());
+                                auto pct = [](const std::vector<float>& v, float q) {
+                                    const float i = (float)(v.size() - 1) * q;
+                                    const size_t lo = (size_t)i;
+                                    const size_t hi = std::min(lo + 1, v.size() - 1);
+                                    return v[lo] + (v[hi] - v[lo]) * (i - (float)lo);
+                                };
+                                const float ex = pct(xs, 0.90f) - pct(xs, 0.10f);
+                                const float ey = pct(ys, 0.90f) - pct(ys, 0.10f);
+                                // 1.6x the spread, so the country sits inside
+                                // the frame with its neighbours around it -- a
+                                // border you cannot see the far side of reads
+                                // as nothing at all.
+                                if (ex > 0.0f && ey > 0.0f)
+                                    z = std::min((float)m_screenW / (ex * 1.6f),
+                                                 (float)m_screenH / (ey * 1.6f));
+                            }
+                            z = std::clamp(z, worldZ, kQuickStartMaxZoom);
+                            // Said out loud, because the alternative is reading
+                            // three constants and a percentile to work out why
+                            // the camera went where it did.
+                            LoadLog() << "[QuickStart] framing " << xs.size()
+                                      << " province(s) at zoom " << z << " (world "
+                                      << worldZ << ", cap " << kQuickStartMaxZoom << ")"
+                                      << std::endl;
+                            m_renderer->flyTo(cit->second.x, cit->second.y, z, 1.6f);
+                        }
                     } else {
                         LoadLog() << "[QuickStart] no playable country on "
                                   << m_newWorldMapPath << " — falling back to "
@@ -2175,6 +2242,65 @@ void Game::ensureAdjacencyScan(int w, int h) {
                     a.pairs.emplace_back(pid, npid);
             }
         }
+    }
+}
+
+// ── The adjacency graph, buildable before the rest of the load ──
+//
+// computeCountryLabels() owns the authoritative m_provinceNeighbors, but it
+// cannot run this early: it derives every province's owner by walking
+// m_provinceCenters, and the centres do not exist yet when a map's scripts
+// run. Asked at that point it filters all 6,896 scanned pairs away and leaves
+// the graph empty, which is what `foreach neighbour` found.
+//
+// Scripts run before the centres in every loader -- runMapScripts() at line
+// 383 of this file, the labels pass at 475 -- so a script that wants the
+// graph needs one that can be built from what IS loaded: the raster, and each
+// province's own countryId.
+//
+// This is deliberately NOT a second definition of "adjacent". It fills the
+// graph only when it is empty, from the same cached scan, with the same
+// filter; computeCountryLabels clears and rebuilds it on its next pass, and
+// from then on that is the graph. The one difference is that it reads
+// Province::countryId where the labels pass reads displayOwners() -- which
+// differ only where fog or a rebellion is showing somebody a map that is not
+// the truth, and neither of those is up yet at load.
+void Game::ensureProvinceNeighbors() {
+    if (!m_provinceNeighbors.empty()) return;
+    int w = m_provinces.getWidth(), h = m_provinces.getHeight();
+    if (!m_provinces.hasPixels()) { w = 0; h = 0; }
+    ensureAdjacencyScan(w, h);
+
+    auto pack = [](int a, int b) {
+        if (a > b) std::swap(a, b);
+        return (static_cast<int64_t>(a) << 32) | static_cast<uint32_t>(b);
+    };
+    auto ownerOf = [&](int pid) -> int {
+        const Province* p = m_provinces.getProvinceById(pid);
+        return p ? p->countryId : 0;
+    };
+
+    // Insertion order is load-bearing: the graph is built by iterating this
+    // set, the simulation and the AI walk the result, and a reordered
+    // neighbour list is a different game. Replaying the cached scan in scan
+    // order is what the labels pass does too.
+    std::unordered_set<int64_t> pairs;
+    for (const auto& [pid, npid] : m_adjacencyScan.pairs) {
+        const int cid = ownerOf(pid);
+        if (cid <= 0 || cid == BLC_CID) continue;
+        pairs.insert(pack(pid, npid));
+    }
+    for (const auto& [a, b] : m_provinces.fullResolutionAdjacency()) {
+        if (a <= 0 || b <= 0) continue;
+        const int ca = ownerOf(a), cb = ownerOf(b);
+        if (ca <= 0 && cb <= 0) continue;
+        pairs.insert(pack(a, b));
+    }
+    for (int64_t pr : pairs) {
+        const int a = static_cast<int>(pr >> 32);
+        const int b = static_cast<int>(pr & 0xFFFFFFFF);
+        m_provinceNeighbors[a].push_back(b);
+        m_provinceNeighbors[b].push_back(a);
     }
 }
 

@@ -1415,6 +1415,26 @@ bool Game::init(int screenW, int screenH, const char* title) {
     // window's pixel height (UiScale), so a dense panel gets a larger
     // interface rather than a smaller one.
     (void)m_config.highDpi;
+#elif defined(PLATFORM_WEB) || defined(__EMSCRIPTEN__)
+    // ── ON WEB, THE SCREEN IS ALREADY DEVICE PIXELS ──
+    //
+    // tools/patch_raylib_web_dpi.py sizes the canvas backing store to the DEVICE
+    // resolution (innerWidth*dpr), so GetScreenWidth()/GetScreenHeight() -- what
+    // the UI lays itself out against -- are device pixels, and the GL framebuffer
+    // is the same size. There is no logical->device scale left, which is exactly
+    // what FLAG_WINDOW_HIGHDPI asserts there IS. Setting it was harmless for
+    // drawing and input (GetMousePosition uses Mouse.scale, not the DPI) but it
+    // is read by ONE thing: BeginScissorMode, which then multiplies the clip rect
+    // by GetWindowScaleDPI() (= devicePixelRatio) a SECOND time -- doubling and
+    // offsetting every scissor. That is issue #58: the Politics tab's Available,
+    // Analysis and Ethnic lists (the three sections that clip with
+    // BeginScissorMode) drew outside their mis-scaled clip and vanished, while
+    // hit-testing -- which scissor does not touch -- still worked, so a click
+    // landed on an invisible row. Not setting the flag makes BeginScissorMode
+    // take its unscaled branch, which is correct when screen == framebuffer.
+    // Desktop keeps the flag below: there the framebuffer really is denser and
+    // the scale is genuinely needed.
+    (void)m_config.highDpi;
 #else
     if (m_config.highDpi) winFlags |= FLAG_WINDOW_HIGHDPI;
 #endif

@@ -520,6 +520,8 @@
  "Confirm?": "Potvrdit?",
  "Confirmed": "Potvrzeno",
  "Confirmed (modified rules)": "Potvrzeno (upravená pravidla)",
+ "Confirms in about %d hours": "Potvrzení asi za %d h",
+ "Confirms in about %d minutes": "Potvrzení asi za %d min",
  "Conflicts": "Konflikty",
  "Conflicts with %s, which is active. Repeal it first.": "Je v rozporu s platnou doktrínou %s. Nejprve ji zrušte.",
  "Connecting...": "Připojování...",

@@ -520,6 +520,8 @@
  "Confirm?": "확인할까요?",
  "Confirmed": "확인됨",
  "Confirmed (modified rules)": "확인됨 (규칙 변경됨)",
+ "Confirms in about %d hours": "약 %d시간 후 확인",
+ "Confirms in about %d minutes": "약 %d분 후 확인",
  "Conflicts": "충돌",
  "Conflicts with %s, which is active. Repeal it first.": "시행 중인 %s와 충돌합니다. 먼저 폐지하세요.",
  "Connecting...": "연결 중...",
