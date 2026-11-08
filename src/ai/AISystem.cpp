@@ -3268,6 +3268,20 @@ void AISystem::difficultyParams(float& temperature, float& epsilon) const {
                                 EPSILON_ANNEAL_SAMPLES;
         const float t = (float)std::min(1.0, progress);
         epsilon = EPSILON_START + (EPSILON_FINAL - EPSILON_START) * t;
+        // OD_VCALIB_EPS / OD_VCALIB_TEMP: measurement-only override of the
+        // self-play exploration, so a collection run can push states OFF the
+        // greedy manifold and we can check the value head still tracks realized
+        // return there (counterfactual-critic de-risk for the grounded planner).
+        // The play-time OD_PLAY_* knobs below are unreachable in self-play; these
+        // are their training-path twins. Gated on env => byte-identical unset.
+        if (const char* e = std::getenv("OD_VCALIB_EPS")) {
+            const float x = (float)atof(e);
+            if (x >= 0.0f && x <= 1.0f) epsilon = x;
+        }
+        if (const char* e = std::getenv("OD_VCALIB_TEMP")) {
+            const float tp = (float)atof(e);
+            if (tp >= 0.01f && tp <= 5.0f) temperature = tp;
+        }
         return;
     }
     const DifficultyProfile& d = difficulty();
@@ -3301,6 +3315,21 @@ const AISystem::DifficultyProfile& AISystem::difficulty() const {
     const int t = selfPlayLearning()
                       ? DIFFICULTY_SELFPLAY
                       : std::clamp(m_g ? m_g->m_config.aiDifficulty : 2, 0, 3);
+    // OD_SEARCH_DEPTH: measurement-only override of the lookahead depth. Search
+    // ships OFF (searchDepth=0 on every rung); this lets a bench turn it on to
+    // re-verify search-on vs search-off independently. Unset (or <0) => the
+    // shipped profiles, returned unchanged, so play is byte-identical.
+    static const int sdOverride = []{ const char* e = std::getenv("OD_SEARCH_DEPTH");
+                                      return (e && *e) ? atoi(e) : -1; }();
+    if (sdOverride >= 0) {
+        static AISystem::DifficultyProfile ov[5];
+        static bool built = false;
+        if (!built) {
+            for (int i = 0; i < 5; ++i) { ov[i] = DIFFICULTY[i]; ov[i].searchDepth = sdOverride; }
+            built = true;
+        }
+        return ov[t];
+    }
     return DIFFICULTY[t];
 }
 
@@ -3907,10 +3936,25 @@ void AISystem::takeTurn(int cid) {
             std::vector<bool> anyStance((size_t)STANCE_COUNT, true);
             float sScore = 0.0f;
             float sLogProb = 0.0f;
-            const int sc = pickAction(m_leagueThisCountry ? m_leagueStance
-                                                          : m_stanceHead,
-                                      emb, anyStance, sScore,
-                                      /*graveAction=*/-1, nullptr, &sLogProb);
+            int sc = pickAction(m_leagueThisCountry ? m_leagueStance
+                                                    : m_stanceHead,
+                                emb, anyStance, sScore,
+                                /*graveAction=*/-1, nullptr, &sLogProb);
+            // OD_STANCE_FORCE=<0..3>: stance-bias A/B. The head emits a constant
+            // (trunk saturated, see trunk-embedding-is-saturated); this pins the
+            // PRIMARY model cohort to a chosen fixed stance while the opponent
+            // cohort keeps its natural one, so --vs-model same-vs-same measures
+            // whether a different fixed stance beats the natural default. Applied
+            // only to !m_leagueThisCountry so the two cohorts differ by exactly
+            // the stance. graveAction/logProb left as-is: this is a measurement
+            // override, not a learned choice.
+            static const int s_forceStance = []{
+                const char* e = std::getenv("OD_STANCE_FORCE");
+                return e ? atoi(e) : -1;
+            }();
+            if (s_forceStance >= 0 && s_forceStance < STANCE_COUNT &&
+                !m_leagueThisCountry)
+                sc = s_forceStance;
             // [STANCE] -- does this decision ever get made? A switching cost
             // on a head that never switches would be friction on nothing, and
             // saturated-heads-return-one-number says a rule built on a head
@@ -3919,6 +3963,52 @@ void AISystem::takeTurn(int cid) {
             if (stIt != m_stance.end() && stIt->second.first != sc) ++s_stanceSwitch;
             ++s_stancePick;
             if (sc >= 0 && sc < STANCE_COUNT) ++s_stanceChosen[sc];
+            // OD_STANCE_DIAG: per-decision stance logits + input spread, to tell
+            // weight-collapse (rows ~0), bias/weight dominance (one output always
+            // wins while emb varies) and reachability (emb itself flat) apart.
+            static const bool s_sdiag = std::getenv("OD_STANCE_DIAG") != nullptr;
+            if (s_sdiag) {
+                const NeuralNet& sn = m_leagueThisCountry ? m_leagueStance
+                                                          : m_stanceHead;
+                const std::vector<float>& lg = sn.debugLastOutput();
+                double mn = 0.0; const size_t en = emb.empty() ? 1 : emb.size();
+                for (float x : emb) mn += x; mn /= (double)en;
+                double var = 0.0; for (float x : emb) { double d = x - mn; var += d * d; }
+                var /= (double)en;
+                if (lg.size() >= (size_t)STANCE_COUNT)
+                    fprintf(stderr,
+                        "[SDIAG] cid=%d l0=%.4f l1=%.4f l2=%.4f l3=%.4f "
+                        "b0=%.4f b1=%.4f b2=%.4f b3=%.4f "
+                        "rn0=%.4f rn1=%.4f rn2=%.4f rn3=%.4f "
+                        "embMean=%.4f embStd=%.4f sc=%d\n",
+                        cid, lg[0], lg[1], lg[2], lg[3],
+                        sn.debugOutBias(0), sn.debugOutBias(1),
+                        sn.debugOutBias(2), sn.debugOutBias(3),
+                        std::sqrt(sn.debugRowSqNorm(0)), std::sqrt(sn.debugRowSqNorm(1)),
+                        std::sqrt(sn.debugRowSqNorm(2)), std::sqrt(sn.debugRowSqNorm(3)),
+                        mn, std::sqrt(var), sc);
+                // Trunk per-layer signature, to locate WHERE saturation sets in:
+                // acts[0]=input features, acts[1]=hidden h0 (512), back()=emb
+                // (320). Across decisions, the deepest layer whose mean still
+                // VARIES is the one a rescale can act on; a layer already flat
+                // and saturated (satFrac high) has destroyed the information.
+                if (!m_leagueThisCountry) {
+                    const auto& A = m_trunk.debugActs();
+                    auto sig = [](const std::vector<float>& v, double& mean, double& satf) {
+                        mean = 0.0; satf = 0.0; const size_t n = v.empty() ? 1 : v.size();
+                        for (float x : v) { mean += x; if (std::fabs(x) > 0.95f) satf += 1.0; }
+                        mean /= (double)n; satf /= (double)n;
+                    };
+                    if (A.size() >= 3) {
+                        double fm, fs, hm, hs, em, es;
+                        sig(A[0], fm, fs); sig(A[1], hm, hs); sig(A.back(), em, es);
+                        fprintf(stderr,
+                            "[TDIAG] cid=%d featMean=%.5f featSat=%.3f "
+                            "h0Mean=%.5f h0Sat=%.3f embMean=%.5f embSat=%.3f\n",
+                            cid, fm, fs, hm, hs, em, es);
+                    }
+                }
+            }
             m_stance[cid] = {sc, m_turn};
             exp.action[MOD_COUNT + 1] = sc;
             exp.acted[MOD_COUNT + 1]  = true;
@@ -11549,6 +11639,24 @@ void AISystem::endTurn() {
             if (nextFeats) {
                 w.nextFeatures = *nextFeats;
                 w.bootDiscount = BOOTSTRAP_DISCOUNT;
+                // OD_FDYN_DUMP: transition tuples (module, action, features,
+                // nextFeatures) for the offline feature-space 1-ply planner
+                // feasibility gate -- is the next state predictable from state +
+                // action, and do different actions move features distinguishably?
+                static const bool s_fdyn = std::getenv("OD_FDYN_DUMP") != nullptr;
+                if (s_fdyn && exp.features.size() == (size_t)FEATURE_COUNT &&
+                    nextFeats->size() == (size_t)FEATURE_COUNT) {
+                    static long long s_fdynRows = 0;
+                    if (s_fdynRows++ < 400000) {
+                        std::string line = "[FDYN] m=" + std::to_string(m) +
+                                           " a=" + std::to_string(exp.action[m]) + " |";
+                        char bb[24];
+                        for (float x : exp.features) { snprintf(bb, sizeof bb, " %.5g", x); line += bb; }
+                        line += " |";
+                        for (float x : *nextFeats) { snprintf(bb, sizeof bb, " %.5g", x); line += bb; }
+                        fprintf(stderr, "%s\n", line.c_str());
+                    }
+                }
             }
             m_work.push_back(std::move(w));
         }
@@ -13104,6 +13212,14 @@ void AISystem::runLearningWork() {
             // accumulateActionValueInto.
             m_trunk.forwardInto(ws.trunk, w.features);
             m_q[m].forwardInto(ws.q[m], ws.trunk.acts.back());
+            // OD_QCALIB: realized return vs the two predictors of it -- the value
+            // head (baseline) and Q on the taken action (what the planner scores
+            // with). Single-threaded here (s_updTrace), so lines don't interleave.
+            if (std::getenv("OD_QCALIB") && m >= 0 && m < MOD_COUNT &&
+                w.action >= 0 && w.action < (int)ws.q[m].acts.back().size()) {
+                fprintf(stderr, "[QCALIB] %d %.6f %.6f %.6f\n",
+                        m, target, baseline, ws.q[m].acts.back()[w.action]);
+            }
             m_q[m].accumulateActionValueInto(ws.q[m], w.action, target);
             // THE TRUNK'S GRADIENT. Without this line the encoder receives
             // nothing and stays at its initialisation forever, while every head
@@ -13675,8 +13791,13 @@ bool AISystem::s_readOnlyLocked = false;
 // trace off would write a file of zeroes and look like a model that never
 // learned anything. Separate OD_ENV call sites: each caches its own static, so
 // there is no initialisation order between these two lines.
+// OD_QCALIB logs (module, realized return, value-head baseline, Q-of-taken-action)
+// per training sample, to measure whether the value head and the planner's Q
+// actually predict outcomes (workstream E prerequisite). It forces the
+// single-threaded update path (via s_updTrace) so the log lines don't interleave.
 bool AISystem::s_updTrace = OD_ENV("OD_UPDATE_TRACE") != nullptr ||
-                            OD_ENV("OD_TRAIN_CURVE") != nullptr;
+                            OD_ENV("OD_TRAIN_CURVE") != nullptr ||
+                            OD_ENV("OD_QCALIB") != nullptr;
 const char* AISystem::s_trainCurve = OD_ENV("OD_TRAIN_CURVE");
 bool AISystem::s_scriptedControl = false;
 int AISystem::s_exploitVariant = -1;
@@ -14771,6 +14892,16 @@ bool AISystem::loadModel() {
                 // every advantage infinite on the first update after a load.
                 if (std::isfinite(var) && var > 1e-6f) m_rVar[m] = var;
             }
+        }
+    }
+    // OD_TRUNK_RESCALE=k: de-saturate the trunk by shrinking its pre-activations
+    // (see trunk-embedding-is-saturated). Diagnostic/experiment hook; applied to
+    // the in-memory trunk only, so model.bin is never modified by loading it.
+    if (const char* e = std::getenv("OD_TRUNK_RESCALE")) {
+        const float k = (float)atof(e);
+        if (k > 0.0f) {
+            m_trunk.debugScaleAllLayers(k);
+            fprintf(stderr, "[TRUNK] rescaled all trunk layers by 1/%.3f\n", k);
         }
     }
     return true;

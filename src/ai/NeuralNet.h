@@ -43,6 +43,46 @@ public:
     // raw output (logits / value). No allocations after the first call.
     const std::vector<float>& forward(const std::vector<float>& in);
 
+    // ── Read-only diagnostics (OD_STANCE_DIAG etc.) ──
+    // No weights touched; safe to call any time after a forward().
+    // debugLastOutput: raw output of the most recent forward() (a head's logits).
+    // debugOutBias(o): final-layer bias for output o.
+    // debugRowSqNorm(o): squared L2 of output o's weight row (caller sqrts),
+    //   to tell a weight-collapsed row (≈0) from a live one.
+    const std::vector<float>& debugLastOutput() const {
+        return m_acts.empty() ? m_empty : m_acts.back();
+    }
+    // Activations of every layer from the most recent forward() (index 0 is the
+    // input copy, back() is the output), to locate where a trunk saturates.
+    const std::vector<std::vector<float>>& debugActs() const { return m_acts; }
+    // OD_TRUNK_RESCALE: divide every layer's weights and biases by k, shrinking
+    // each layer's pre-activations so tanh units leave saturation. Mutates the
+    // in-memory net only (the on-disk model is untouched). Adam moments are
+    // scaled too so a subsequent retrain does not fight the edit on step one.
+    void debugScaleAllLayers(float k) {
+        if (k == 0.0f) return;
+        const float inv = 1.0f / k;
+        for (Layer& L : m_layers) {
+            for (float& w : L.w) w *= inv;
+            for (float& b : L.b) b *= inv;
+            for (float& m : L.mw) m *= inv; for (float& v : L.vw) v *= inv * inv;
+            for (float& m : L.mb) m *= inv; for (float& v : L.vb) v *= inv * inv;
+        }
+    }
+    float debugOutBias(int o) const {
+        if (m_layers.empty()) return 0.0f;
+        const Layer& L = m_layers.back();
+        return (o >= 0 && o < L.out && (size_t)o < L.b.size()) ? L.b[(size_t)o] : 0.0f;
+    }
+    double debugRowSqNorm(int o) const {
+        if (m_layers.empty()) return 0.0;
+        const Layer& L = m_layers.back();
+        if (o < 0 || o >= L.out) return 0.0;
+        double s = 0.0;
+        for (int i = 0; i < L.in; ++i) { float w = L.w[(size_t)o * L.in + i]; s += (double)w * w; }
+        return s;
+    }
+
     /**
      * The same forward pass, for many inputs that share a leading slice.
      *
