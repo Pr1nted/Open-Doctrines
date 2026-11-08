@@ -26,6 +26,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLACEHOLDERS = {"OD_X", "OD_SOMETHING_OFF"}
 TOKEN = re.compile(r"\bOD_[A-Z0-9]+(?:_[A-Z0-9]+)*\b")
 
+# The accessor every gate in the codebase reads through; the canary below.
+CANARY = "OD_ENV"
+# THE HAYSTACK: code and harness only. **docs/ MUST NEVER BE ADDED HERE**, and
+# the loop below refuses outright if a pattern reaches it -- see
+# DOCS_IS_NOT_A_HAYSTACK at the read. Adding it looks reasonable (the harness
+# gates ARE documented in docs/ai/) and it would kill this check silently.
+HAYSTACK = ("src/*.cpp", "src/*.h", "src/ai/*.cpp", "src/ai/*.h",
+            "src/*/*.cpp", "src/*/*.h", "tools/*.py", "tools/*.sh")
+
 
 def main() -> int:
     loop = os.path.join(ROOT, "docs", "ai", "LOOP.md")
@@ -47,11 +56,31 @@ def main() -> int:
     # check: it is the exact failure it was written to catch, in itself.
     present = set()
     read = 0
-    for pattern in ("src/*.cpp", "src/*.h", "src/ai/*.cpp", "src/ai/*.h",
-                    "src/*/*.cpp", "src/*/*.h", "tools/*.py", "tools/*.sh"):
+    docs = os.path.join(ROOT, "docs") + os.sep
+    for pattern in HAYSTACK:
         for path in glob.glob(os.path.join(ROOT, pattern)):
             if os.path.abspath(path) == os.path.abspath(__file__):
                 continue      # never count this script's own mentions
+            # DOCS_IS_NOT_A_HAYSTACK. The canary below only means anything
+            # because the needles and the haystack are different files. The
+            # needles come FROM docs/ai/LOOP.md, and OD_ENV is also written in
+            # LOOP.md, BACKLOG.md and LOOP_JOURNAL.md -- so a haystack that
+            # includes docs/ contains the canary AND every needle by
+            # construction, and this check passes forever without reading a
+            # line of code. That is not a theoretical edit: the harness gates
+            # are documented in docs/ai/, so "scan the docs too" is a plausible
+            # thing for somebody to add to HAYSTACK. Refuse loudly here rather
+            # than skip quietly, so the mistake fails in CI on the commit that
+            # makes it. tests/ai_instruments_check.py makes exactly this edit
+            # to a copy of this file and requires the refusal.
+            if os.path.abspath(path).startswith(docs):
+                print(f"check_ai_instruments: {os.path.relpath(path, ROOT)} is "
+                      f"in the haystack. docs/ names the instruments this "
+                      f"check looks FOR, and docs/ai/*.md also contain the "
+                      f"{CANARY} canary -- scanning docs/ makes the check "
+                      f"self-satisfying and it would pass forever. Remove the "
+                      f"docs pattern from HAYSTACK.")
+                return 1
             with open(path, encoding="utf-8", errors="replace") as fh:
                 present |= set(TOKEN.findall(fh.read()))
             read += 1
@@ -68,7 +97,17 @@ def main() -> int:
     # consisting of nothing but this file contained the canary and the guard
     # passed. Self-exclusion is right regardless -- the PLACEHOLDERS set and
     # these comments mention OD_ tokens, which could mask a real phantom.
-    CANARY = "OD_ENV"
+    #
+    # THE CANARY IS ONE-SIDED, and that is worth knowing before trusting it.
+    # Of LOOP.md's 33 instruments, 28 live only in src/, 3 only in tools/
+    # (OD_BENCH_SEEDS, OD_BENCH_TURNS, OD_MAX_GAMES) and 2 in both. OD_ENV is
+    # in the src half and not the tools half. So a read that loses tools/ --
+    # which would report those 3 harness knobs as phantoms -- is caught, while
+    # a read that loses src/ -- which would report the other 28 -- is not. The
+    # second direction is unreachable in practice rather than by construction:
+    # this script lives in tools/ and excludes its own file from the count, so
+    # you would need a tools/ holding nothing but this script beside a
+    # populated src/. Not worth coding around; worth not rediscovering.
     if read and CANARY not in present:
         print(f"check_ai_instruments: read {read} file(s) but not {CANARY}, which "
               f"every gate uses -- the read is broken, so this is NOT a report "
