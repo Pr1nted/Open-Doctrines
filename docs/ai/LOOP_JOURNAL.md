@@ -41563,3 +41563,53 @@ instrument and the `OD_SEARCH_RELBLEND` relative-scale blend, both inert when un
 (`ARCH` 8->9), `src/Game_AITrain.cpp` (feature-forward-model status line), `~/.claude/plans/vectorized-crafting-minsky.md`
 (plan, not in-tree). No model file written (warmed v9 lives in an isolated scratch dir); default play bit-identical
 (OFF hash `8994391960344024459`).
+
+## 550 — discrimination check: the feature-value head does not rank actions; featValue ≈ V(s)
+
+549 set the gate for the Stage-5 retrain: before spending it, show the feature-value head can RANK counterfactual
+actions better than the policy. New read-only instrument `OD_DISCRIM` (inert when unset; forced single-threaded via
+`s_updTrace` so lines don't interleave) logs, per held-out training decision, the realized n-step return G, the value
+baseline V(s), Q(taken), and featValue(taken) = `m_value(features + m_featDynamics(features, a_taken))` -- the
+planner's own feature-path scorer -- plus the within-state means of featValue and the policy logit over the VALID
+set, and each scorer's argmax agreement with the taken action.
+
+Ran on **46,056 held-out decisions** (a fresh 2-map 120-turn self-play burst off the warmed v9 model, isolated
+`--data` dir, `data/ai/model.bin` untouched; 100% of lines well-formed). Result, decisive:
+
+```
+r(predictor,G)   V(s): r2=0.887   Q(taken): r2=0.437   featValue(taken): r2=0.886
+incremental over V(s)  featValue partial-r +0.033 (r2 0.001)   Q partial-r -0.001 (r2 0.000)
+within-state adv vs G-adv  featValue pref r +0.019   policy-logit pref r -0.011
+argmax==taken  featValue 52.7%   policy 87.3%
+per module incremental-r2 (econ/pol/war/navy): 0.001 / 0.001 / 0.002 / 0.000
+```
+
+featValue explains the SAME variance in G as the state baseline and no more. The raw r2 are both inflated by
+bootstrap autocorrelation (G = reward + gamma*V(end) shares the value head), so the clean statistic is the
+INCREMENTAL correlation after residualising both on V(s): featValue's partial-r with G is +0.033, **r2 = 0.001 --
+one part in a thousand of the action-specific variance.** Q is worse still (r2 0.437 overall, 0.11 econ / 0.13
+politics -- the uncalibrated-Q finding again) and also adds ~0 over the baseline. The within-state preferences track
+realised advantage at noise level (|r| < 0.04 everywhere). featValue's argmax matches the taken action about half the
+time vs the policy's 87% (the selection bias made explicit), but since featValue carries no action-value signal those
+disagreements are uninformed.
+
+So the feature-value path is a **state-value predictor wearing an action's clothes: featValue(s,a) ~ V(s) for every
+a.** This is the held-out, selection-bias-controlled confirmation of why 549's fixed-blend search only compressed
+outcome variance toward the mean -- there is no action-ranking signal in featValue to steer with.
+
+The mechanism is sharper than "action-blind forward model" (546 fixed that: `m_featDynamics` has action_R2 ~0.18 in
+feature space). The collapse is at the COMPOSITION: featValue = `m_value(state + m_featDynamics(state,a))`. The
+action-induced feature delta is small next to the state, and the value head is nearly flat in that direction, so the
+18% action signal in the delta is washed out when the value head reads it. The forward model's output differs across
+actions; the value head barely notices.
+
+**Consequence: the Stage-5 retrain premise as written -- "the fixed forward model carries action-ranking the policy
+lacks" -- is NOT supported. Steering by featValue is steering by V(s).** Do not spend the retrain on it. The next
+measurable question, if this thread is pursued: is the value head sensitive to REAL one-step feature deltas at all
+(log `m_value(realized_next_features) - V(s)` vs G)? If even real deltas don't move the value head, the fix is a
+value head trained to be action-sensitive (a dedicated feature-space action-value), not another search layer -- a
+from-scratch head, not a blend. Either way nothing here touches a player.
+
+PENDING COMMIT: journal **550** and the `OD_DISCRIM` instrument in `src/ai/AISystem.cpp` (plus `OD_DISCRIM` added to
+the `s_updTrace` single-thread list), inert when unset. No model file written (the burst wrote only the isolated
+`discrim-data` scratch dir); default play bit-identical.

@@ -13610,6 +13610,57 @@ void AISystem::runLearningWork() {
                 fprintf(stderr, "[QCALIB] %d %.6f %.6f %.6f\n",
                         m, target, baseline, ws.q[m].acts.back()[w.action]);
             }
+            // OD_DISCRIM (journal 550): on held-out transitions, can the feature
+            // forward model + value head RANK the taken action's realized return
+            // better than Q, and does it beat the state baseline (= capture any
+            // action-specific value at all)? Logs, per decision, G (realized
+            // return), V(s) baseline, Q(taken), featValue(taken) and the within-
+            // state means of featValue and the policy logit over the VALID set,
+            // plus whether each scorer's argmax equals the taken action. The
+            // featValue-vs-baseline gap is bias-free (both score the same taken
+            // action against the same G); the policy-argmax column exposes the
+            // selection bias directly. Needs the feature net warm; forced
+            // single-threaded via s_updTrace so lines do not interleave.
+            if (std::getenv("OD_DISCRIM") && m >= 0 && m < MOD_COUNT &&
+                w.action >= 0 &&
+                m_featDynamics.updateCount() >= DYN_WARMUP_UPDATES) {
+                const int nActs = (m == MOD_ECONOMY) ? ECON_ACTIONS
+                                : (m == MOD_POLITICS) ? POL_ACTIONS
+                                : (m == MOD_WAR) ? WAR_ACTIONS : NAVY_ACTIONS;
+                const std::vector<float>& emb = ws.trunk.acts.back();
+                const std::vector<float>& logits = m_policy[m].forward(emb);
+                const int fdim = (int)w.features.size();
+                std::vector<float> fin(w.features);
+                fin.resize((size_t)fdim + DYN_ACTION_ONEHOT, 0.0f);
+                std::vector<float> pf((size_t)fdim);
+                double fvSum = 0, lgSum = 0; int nv = 0;
+                float fvTaken = 0, lgTaken = 0, fvBest = -1e30f, lgBest = -1e30f;
+                int fvArg = -1, lgArg = -1;
+                for (int a = 0; a < nActs; ++a) {
+                    if (a < (int)w.validMask.size() && !w.validMask[a]) continue;
+                    std::fill(fin.begin() + fdim, fin.end(), 0.0f);
+                    fin[(size_t)fdim + m * MAX_MODULE_ACTIONS + a] = 1.0f;
+                    const std::vector<float>& d = m_featDynamics.forward(fin);
+                    float fv = 0.0f;
+                    if ((int)d.size() == fdim) {
+                        for (int k = 0; k < fdim; ++k) pf[(size_t)k] = w.features[(size_t)k] + d[(size_t)k];
+                        const std::vector<float>& v = m_value[m].forward(pf);
+                        if (!v.empty()) fv = v[0];
+                    }
+                    const float lg = (a < (int)logits.size()) ? logits[(size_t)a] : 0.0f;
+                    fvSum += fv; lgSum += lg; ++nv;
+                    if (fv > fvBest) { fvBest = fv; fvArg = a; }
+                    if (lg > lgBest) { lgBest = lg; lgArg = a; }
+                    if (a == w.action) { fvTaken = fv; lgTaken = lg; }
+                }
+                if (nv >= 2) {
+                    fprintf(stderr,
+                        "[DISCRIM] %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d %d %d\n",
+                        m, target, baseline, ws.q[m].acts.back()[w.action],
+                        fvTaken, (float)(fvSum / nv), lgTaken, (float)(lgSum / nv),
+                        (fvArg == w.action) ? 1 : 0, (lgArg == w.action) ? 1 : 0, nv);
+                }
+            }
             m_q[m].accumulateActionValueInto(ws.q[m], w.action, target);
             // THE TRUNK'S GRADIENT. Without this line the encoder receives
             // nothing and stays at its initialisation forever, while every head
@@ -14190,7 +14241,8 @@ bool AISystem::s_readOnlyLocked = false;
 // single-threaded update path (via s_updTrace) so the log lines don't interleave.
 bool AISystem::s_updTrace = OD_ENV("OD_UPDATE_TRACE") != nullptr ||
                             OD_ENV("OD_TRAIN_CURVE") != nullptr ||
-                            OD_ENV("OD_QCALIB") != nullptr;
+                            OD_ENV("OD_QCALIB") != nullptr ||
+                            OD_ENV("OD_DISCRIM") != nullptr;
 const char* AISystem::s_trainCurve = OD_ENV("OD_TRAIN_CURVE");
 bool AISystem::s_scriptedControl = false;
 int AISystem::s_exploitVariant = -1;
