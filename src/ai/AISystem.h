@@ -4135,6 +4135,7 @@ private:
      * not available. Blended into the logits exactly as the Q head is.
      */
     void searchScores(int module, const std::vector<float>& emb,
+                      const std::vector<float>& features,
                       const std::vector<bool>& valid, std::vector<float>& out);
     /** What a PREDICTED embedding is worth. Read through Q, which is the head
      *  that takes an embedding -- see the definition for why not m_value. */
@@ -4641,6 +4642,12 @@ private:
      * exactly the things worth planning about.
      */
     NeuralNet m_dynamics;
+    /// FEATURE-space forward model (journal 545): predicts the next-FEATURE
+    /// delta from [features; (module,action) one-hot], where the action signal
+    /// survives (18% in features vs 1.25% in the trunk latent m_dynamics uses).
+    /// Scored in search with m_value on the predicted features. In-memory only
+    /// for now (not serialized) -- a validation net until it earns the v9 slot.
+    NeuralNet m_featDynamics;
     /**
      * WHOM to attack, as a learned choice rather than a rule.
      *
@@ -4943,6 +4950,8 @@ private:
         /// The dynamics head, and a second trunk scratch for its target state.
         NeuralNet::Scratch dynamics;
         NeuralNet::Scratch trunkNext;
+        /// The feature-space forward model (m_featDynamics).
+        NeuralNet::Scratch featDynamics;
         /// The FROZEN PARENT's activations, for the anchor term. Separate
         /// scratches because NeuralNet::forward() mutates m_acts and the update
         /// runs on several workers; forwardInto() is const and takes these.
@@ -5564,6 +5573,7 @@ public:
      *  with yet. Reported by the bench so "search is off" is visible rather
      *  than inferred from behaviour that looks identical either way. */
     unsigned long long dynamicsUpdates() const { return m_dynamics.updateCount(); }
+    unsigned long long featDynamicsUpdates() const { return m_featDynamics.updateCount(); }
     bool searchActive() const { return searchReady(); }
     unsigned long long moduleUpdates(int m) const {
         return (m >= 0 && m < MOD_COUNT) ? m_policy[m].updateCount() : 0;

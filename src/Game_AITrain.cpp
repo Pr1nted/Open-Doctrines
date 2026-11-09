@@ -2621,7 +2621,7 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
     // warmup and play is then bit-identical to a build without it, which is
     // exactly what makes the state impossible to read off behaviour. See
     // AISystem::DYN_WARMUP_UPDATES.
-    if (m_ai)
+    if (m_ai) {
         printf("[EVAL] forward model %llu update(s), %.0f%% of warmup -- search %s\n",
                m_ai->dynamicsUpdates(),
                100.0 * (double)m_ai->dynamicsUpdates() /
@@ -2630,6 +2630,13 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                    : (m_ai->dynamicsUpdates() >= AISystem::DYN_WARMUP_UPDATES
                           ? "trained, but this difficulty does not search"
                           : "still warming up"));
+        printf("[EVAL] feature forward model %llu update(s), %.0f%% of warmup -- %s\n",
+               m_ai->featDynamicsUpdates(),
+               100.0 * (double)m_ai->featDynamicsUpdates() /
+                   (double)AISystem::DYN_WARMUP_UPDATES,
+               m_ai->featDynamicsUpdates() >= AISystem::DYN_WARMUP_UPDATES
+                   ? "feature-search path eligible" : "feature net cold -> latent fallback");
+    }
     // The playability line. Not about how well it plays -- about whether the
     // player is waiting for it. 185 countries thinking on the present-day map
     // is where this stops being free.

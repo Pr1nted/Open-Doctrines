@@ -133,7 +133,7 @@
 namespace ai {
 
 inline constexpr const char* NAME        = "ParrotZero";
-inline constexpr int         ARCH        = 8;   // == the model file format byte
+inline constexpr int         ARCH        = 9;   // == the model file format byte
 inline constexpr int         RULES       = 6;   // 8.6.0: see the RULES HISTORY entry for 6.x
 inline constexpr int         PATCH       = 0;
 

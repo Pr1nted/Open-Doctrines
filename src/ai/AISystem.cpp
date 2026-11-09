@@ -1242,6 +1242,86 @@ void AISystem::updateCoalition() {
                m_coalition.combinedArmy, targetArmy);
 }
 
+// ── OD_SEARCH_RELBLEND / OD_SEARCH_DIAG: the decision-influence instruments ──
+//
+// Journal 548 located the wall: the (now action-sensitive) forward model's
+// opinion enters the choice as `SEARCH_BLEND * centred(scores)` added to the
+// policy logits, and never flips an argmax -- search changes zero decisions.
+// Two things are needed to move past it, both OFF by default so shipped play is
+// byte-identical:
+//
+//   OD_SEARCH_DIAG  -- read-only. In the decision path, measure the std of the
+//       search contribution actually added, the std of the policy logits it is
+//       added to, and how often it alone would flip the policy's argmax. This is
+//       the "why is it a no-op" number: if ss_std << logit_std the fault is SCALE,
+//       and the fix is a scale, not a bigger constant.
+//   OD_SEARCH_RELBLEND=f  -- behaviour. Replaces the fixed SEARCH_BLEND multiplier
+//       with a per-decision normalisation: scale the centred search scores so their
+//       std over the valid actions is f logit-units. f is then interpretable as
+//       "search's voice, in the same units as the policy logits", independent of
+//       whatever absolute range the value head happens to output. Unset -> the
+//       shipped SEARCH_BLEND path, bit-identical.
+namespace {
+float g_searchRelBlend = []{
+    const char* e = std::getenv("OD_SEARCH_RELBLEND");
+    return e ? (float)std::atof(e) : -1.0f;   // <0 => use the fixed SEARCH_BLEND
+}();
+bool g_searchDiag = std::getenv("OD_SEARCH_DIAG") != nullptr;
+double g_sdN = 0.0;        // decisions measured (>=2 valid actions)
+double g_sdSsStd = 0.0;    // sum of per-decision std(search contribution)
+double g_sdPlStd = 0.0;    // sum of per-decision std(policy logits)
+double g_sdRatio = 0.0;    // sum of per-decision ss_std/pl_std
+double g_sdFlip  = 0.0;    // decisions where search alone flips the policy argmax
+void dumpSearchDiag() {
+    if (!g_searchDiag || g_sdN < 1.0) return;
+    printf("[SEARCHDIAG] decisions=%.0f  ss_std=%.5f  pl_std=%.5f  "
+           "mean(ss/pl)=%.5f  argmax_flips=%.0f (%.2f%%)\n",
+           g_sdN, g_sdSsStd / g_sdN, g_sdPlStd / g_sdN, g_sdRatio / g_sdN,
+           g_sdFlip, 100.0 * g_sdFlip / g_sdN);
+}
+// stdev over the valid actions of v, and the index of the max of (v+bias).
+void searchDiagAccumulate(const std::vector<bool>& valid,
+                          const std::vector<float>& logits,
+                          const std::vector<float>& ss) {
+    const int n = (int)logits.size();
+    if (n < 1 || (int)ss.size() < n) return;
+    double lSum = 0, lSum2 = 0, sSum = 0, sSum2 = 0; int cnt = 0;
+    int amPol = -1, amBoth = -1; float bestPol = -1e30f, bestBoth = -1e30f;
+    for (int a = 0; a < n; ++a) {
+        if (a < (int)valid.size() && !valid[a]) continue;
+        const double l = logits[a], s = ss[a];
+        lSum += l; lSum2 += l * l; sSum += s; sSum2 += s * s; ++cnt;
+        if ((float)l > bestPol) { bestPol = (float)l; amPol = a; }
+        if ((float)(l + s) > bestBoth) { bestBoth = (float)(l + s); amBoth = a; }
+    }
+    if (cnt < 2) return;   // no choice was being made; see pickAction
+    const double lStd = std::sqrt(std::max(0.0, lSum2 / cnt - (lSum / cnt) * (lSum / cnt)));
+    const double sStd = std::sqrt(std::max(0.0, sSum2 / cnt - (sSum / cnt) * (sSum / cnt)));
+    if (g_sdN < 0.5) { static const bool reg = (std::atexit(&dumpSearchDiag), true); (void)reg; }
+    g_sdN += 1.0;
+    g_sdSsStd += sStd;
+    g_sdPlStd += lStd;
+    g_sdRatio += (lStd > 1e-9 ? sStd / lStd : 0.0);
+    if (amPol != amBoth) g_sdFlip += 1.0;
+}
+// Scale the centred search scores in `out`. Default: the fixed SEARCH_BLEND
+// multiplier (passed in, since it is private to AISystem). With OD_SEARCH_RELBLEND=f
+// set, normalise instead so std(out) over the valid actions equals f logit-units.
+void applySearchScale(std::vector<float>& out, const std::vector<bool>& valid,
+                      int nActs, float mean, float fixedBlend) {
+    if (g_searchRelBlend < 0.0f) {
+        for (int a = 0; a < nActs; ++a) out[a] = fixedBlend * (out[a] - mean);
+        return;
+    }
+    double s2 = 0.0; int m2 = 0;
+    for (int a = 0; a < nActs; ++a)
+        if (a >= (int)valid.size() || valid[a]) { const double d = out[a] - mean; s2 += d * d; ++m2; }
+    const float sd = m2 > 0 ? (float)std::sqrt(s2 / (double)m2) : 0.0f;
+    const float k = sd > 1e-9f ? g_searchRelBlend / sd : 0.0f;
+    for (int a = 0; a < nActs; ++a) out[a] = k * (out[a] - mean);
+}
+} // namespace
+
 std::vector<float> AISystem::dynamicsInput(const std::vector<float>& emb,
                                            int module, int action) {
     std::vector<float> in(emb);
@@ -1437,6 +1517,7 @@ void AISystem::mctsPolicy(int module, const std::vector<float>& emb,
 }
 
 void AISystem::searchScores(int module, const std::vector<float>& emb,
+                            const std::vector<float>& features,
                             const std::vector<bool>& valid,
                             std::vector<float>& out) {
     out.clear();
@@ -1446,6 +1527,44 @@ void AISystem::searchScores(int module, const std::vector<float>& emb,
                     : (module == MOD_POLITICS) ? POL_ACTIONS
                     : (module == MOD_WAR) ? WAR_ACTIONS : NAVY_ACTIONS;
     out.assign((size_t)nActs, 0.0f);
+
+    // ── FEATURE-SPACE ROLLOUT (journal 546) ──
+    //
+    // The latent path below scores max_a Q(m_dynamics(emb,a)); m_dynamics is
+    // action-blind (the trunk ate the signal) and Q is read off-distribution on
+    // a synthetic latent. Instead, when the feature forward model has warmed up,
+    // predict the next FEATURES with m_featDynamics (which keeps the action
+    // signal) and read them with the calibrated m_value head -- the space it was
+    // trained in. Falls back to the latent path until the feature net is warm,
+    // and OD_SEARCH_LATENT forces the old path for an A/B. One ply: the feature
+    // net is a single-step delta model.
+    if (!features.empty() &&
+        m_featDynamics.updateCount() >= DYN_WARMUP_UPDATES &&
+        std::getenv("OD_SEARCH_LATENT") == nullptr) {
+        const int fdim = (int)features.size();
+        std::vector<float> fin(features);
+        fin.resize((size_t)fdim + DYN_ACTION_ONEHOT, 0.0f);
+        std::vector<float> pf((size_t)fdim);
+        for (int a = 0; a < nActs; ++a) {
+            if (a < (int)valid.size() && !valid[a]) continue;
+            std::fill(fin.begin() + fdim, fin.end(), 0.0f);
+            fin[(size_t)fdim + module * MAX_MODULE_ACTIONS + a] = 1.0f;
+            const std::vector<float>& d = m_featDynamics.forward(fin);
+            if ((int)d.size() != fdim) continue;
+            for (int k = 0; k < fdim; ++k) pf[(size_t)k] = features[k] + d[k];
+            const std::vector<float>& v = m_value[module].forward(pf);
+            if (!v.empty()) out[a] = v[0];
+        }
+        // Centred and scaled exactly as the latent path is (see below).
+        float mean = 0.0f; int n = 0;
+        for (int a = 0; a < nActs; ++a)
+            if (a >= (int)valid.size() || valid[a]) { mean += out[a]; ++n; }
+        if (n > 0) {
+            mean /= (float)n;
+            applySearchScale(out, valid, nActs, mean, SEARCH_BLEND);
+        }
+        return;
+    }
 
     // ── ONE PLY: what is the world worth after I do this? ──
     //
@@ -1508,7 +1627,7 @@ void AISystem::searchScores(int module, const std::vector<float>& emb,
         if (a >= (int)valid.size() || valid[a]) { mean += out[a]; ++n; }
     if (n > 0) {
         mean /= (float)n;
-        for (int a = 0; a < nActs; ++a) out[a] = SEARCH_BLEND * (out[a] - mean);
+        applySearchScale(out, valid, nActs, mean, SEARCH_BLEND);
     }
 }
 
@@ -1647,6 +1766,10 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // updates discovering that.
     m_dynamics = NeuralNet({TRUNK_OUT + DYN_ACTION_ONEHOT, 320, TRUNK_OUT}, 800);
     m_dynamics.setTanhOutput(true);
+    // The feature-space forward model: [features; (module,action) one-hot] ->
+    // next-feature DELTA. Linear output, because a feature delta is not bounded
+    // to [-1, 1] the way a tanh'd embedding is. See m_featDynamics / journal 545.
+    m_featDynamics = NeuralNet({FEATURE_COUNT + DYN_ACTION_ONEHOT, 256, FEATURE_COUNT}, 801);
     // An empty path is a scratch model used for merging peer files, not a
     // model anybody is training. It loads nothing, saves nothing, and should
     // say nothing.
@@ -4112,7 +4235,7 @@ void AISystem::takeTurn(int cid) {
             // instead would be more accurate for both; it is left alone
             // because it would change what the shipped critic does, and that
             // is a separate change with its own measurement.
-            searchScores(m, emb, valid, ss);
+            searchScores(m, emb, exp.features, valid, ss);
             for (size_t i = 0; i < ss.size() && i < qbias.size(); ++i) {
                 qbias[i] += ss[i];
                 any = true;
@@ -4294,6 +4417,17 @@ void AISystem::takeTurn(int cid) {
                 qbUsed = qBiasFor(mod);
                 act = pickAction(brainFor(mod), useEmb, valid, score, graveAction,
                                  qbUsed, &lp, netDriven ? &nprob : nullptr);
+                // OD_SEARCH_DIAG: measure the search contribution against the
+                // policy logits it is added to (read-only; see the namespace
+                // above dynamicsInput). Recompute ss in isolation so the ratio
+                // is attributable to search alone, not the whole qbias.
+                if (g_searchDiag && netDriven && !m_leagueThisCountry &&
+                    mod >= 0 && mod < MOD_COUNT && searchReady()) {
+                    std::vector<float> ssD;
+                    searchScores(mod, emb, exp.features, valid, ssD);
+                    if (!ssD.empty())
+                        searchDiagAccumulate(valid, brainFor(mod).forward(useEmb), ssD);
+                }
             }
             // ── A MOD MAY CHOOSE INSTEAD (Gearbox 1.3, Neural.Decide) ──
             //
@@ -11472,6 +11606,124 @@ bool AISystem::decideDiplomacy(int targetCid, const std::string& action,
 
 // ─── Learning ────────────────────────────────────────────
 
+// ── OD_DYN_DIAG: forward-model action-sensitivity instrument (Stage 0) ──
+//
+// Off by default and read-only. With the flag unset, g_dynDiag is false,
+// nothing below runs, and training/play are bit-identical. When OD_DYN_DIAG is
+// set the learner is forced single-threaded (the g_dynDiag term in the worker
+// gate), so these plain counters need no locking. It measures two things the
+// planner depends on and that nothing currently surfaces:
+//   * pred_R2   -- one-step prediction accuracy of m_dynamics (1 - MSE/Var).
+//   * action_frac / action_var -- how much the predicted next latent moves when
+//     ONLY the action changes, versus how much it moves at all. This is the
+//     "actions barely move the state" number; on the current model it is ~0,
+//     which is exactly why max_a Q(dynamics(emb,a)) cannot rank actions.
+//   * delta_corr -- correlation of predicted vs observed delta on the taken
+//     action.
+namespace {
+bool   g_dynDiag  = std::getenv("OD_DYN_DIAG") != nullptr;
+double g_ddN = 0.0, g_ddSumT = 0.0, g_ddSumT2 = 0.0, g_ddSSE = 0.0;   // R^2
+double g_agN = 0.0, g_agActVar = 0.0, g_agMoveVar = 0.0;              // action-gain (latent)
+double g_fagN = 0.0, g_fagActVar = 0.0, g_fagMoveVar = 0.0;           // action-gain (feature net)
+double g_dcN = 0.0, g_dcPX = 0.0, g_dcPY = 0.0,
+       g_dcPX2 = 0.0, g_dcPY2 = 0.0, g_dcPXY = 0.0;                   // delta corr
+long long g_ddStride = 0;   // strides the expensive all-actions sweep
+// Target action-dependence: a one-way ANOVA of the OBSERVED next-state delta
+// grouped by (module,action). r2() = SS_between/SS_total = the share of the
+// real state change that knowing the action explains -- an UPPER BOUND
+// (confounded by state, since the policy picks the action FROM the state) on
+// what any stronger action input could ever let the dynamics head learn. ~0
+// means the fix is the target (stage 2), not the input (stage 1). Computed in
+// raw FEATURE space at three horizons, to pick which the dynamics target should
+// use (stage-2 design): the next same-module pick, the end of the country-turn,
+// and the next turn's opening.
+constexpr int kGrp = AISystem::MOD_COUNT * AISystem::MAX_MODULE_ACTIONS;  // 48
+struct Anova {
+    std::vector<double> grpSum;   // [kGrp * dim]
+    double grpN[kGrp] = {0};
+    std::vector<double> grandSum; // [dim]
+    double grandN = 0.0, grandSq = 0.0;
+    int dim = 0;
+    void add(int flat, const std::vector<float>& a, const std::vector<float>& b) {
+        if (a.empty() || a.size() != b.size()) return;
+        if (dim == 0) { dim = (int)a.size();
+            grpSum.assign((size_t)kGrp * dim, 0.0); grandSum.assign((size_t)dim, 0.0); }
+        if (flat < 0 || flat >= kGrp || (int)a.size() != dim) return;
+        grpN[flat] += 1.0; grandN += 1.0;
+        double* gs = &grpSum[(size_t)flat * dim];
+        for (int k = 0; k < dim; ++k) {
+            const double d = (double)b[k] - a[k];
+            gs[k] += d; grandSum[k] += d; grandSq += d * d;
+        }
+    }
+    double r2() const {
+        if (grandN <= 1.0 || dim == 0) return 0.0;
+        double gm2 = 0.0;
+        for (int k = 0; k < dim; ++k) { const double gm = grandSum[k] / grandN; gm2 += gm * gm; }
+        const double ssT = grandSq - grandN * gm2;
+        if (ssT <= 1e-12) return 0.0;
+        double ssB = 0.0;
+        for (int a = 0; a < kGrp; ++a) {
+            if (grpN[a] < 1.0) continue;
+            const double* gs = &grpSum[(size_t)a * dim];
+            double acc = 0.0;
+            for (int k = 0; k < dim; ++k) {
+                const double diff = gs[k] / grpN[a] - grandSum[k] / grandN;
+                acc += diff * diff;
+            }
+            ssB += grpN[a] * acc;
+        }
+        return ssB / ssT;
+    }
+};
+Anova g_tavNextPick, g_tavEOT, g_tavNextTurn;
+// Same next-pick transition as g_tavNextPick but in LATENT space (trunk output),
+// to measure how much of the feature-space action signal the trunk destroys.
+Anova g_tavLatentNextPick;
+// Per-cid cache of this turn's (flat group, pick features), paired against next
+// turn's opening to fill g_tavNextTurn. Single-threaded with g_dynDiag on.
+std::unordered_map<int, std::vector<std::pair<int, std::vector<float>>>> g_prevTurn;
+
+void dumpDynDiag() {
+    if (!g_dynDiag || g_ddN < 1.0) return;
+    const double meanT = g_ddSumT / g_ddN;
+    const double sst   = g_ddSumT2 - g_ddN * meanT * meanT;
+    const double r2    = sst > 1e-12 ? 1.0 - g_ddSSE / sst : 0.0;
+    const double actV  = g_agN > 0 ? g_agActVar  / g_agN : 0.0;
+    const double moveV = g_agN > 0 ? g_agMoveVar / g_agN : 0.0;
+    const double frac  = (actV + moveV) > 1e-12 ? actV / (actV + moveV) : 0.0;
+    double corr = 0.0;
+    if (g_dcN > 1.0) {
+        const double cov = g_dcPXY / g_dcN - (g_dcPX / g_dcN) * (g_dcPY / g_dcN);
+        const double vx  = g_dcPX2 / g_dcN - (g_dcPX / g_dcN) * (g_dcPX / g_dcN);
+        const double vy  = g_dcPY2 / g_dcN - (g_dcPY / g_dcN) * (g_dcPY / g_dcN);
+        if (vx > 1e-12 && vy > 1e-12) corr = cov / std::sqrt(vx * vy);
+    }
+    fprintf(stderr,
+            "[DYNDIAG] samples=%.0f  pred_R2=%.4f  action_var=%.6g  move_var=%.6g"
+            "  action_frac=%.4f  delta_corr=%.4f  states_swept=%.0f\n",
+            g_ddN / 320.0, r2, actV, moveV, frac, corr, g_agN);
+    fprintf(stderr,
+            "[DYNDIAG] target_action_R2 (feature space):  next_pick=%.4f (n=%.0f)"
+            "  end_of_turn=%.4f (n=%.0f)  next_turn=%.4f (n=%.0f)\n",
+            g_tavNextPick.r2(), g_tavNextPick.grandN,
+            g_tavEOT.r2(),      g_tavEOT.grandN,
+            g_tavNextTurn.r2(), g_tavNextTurn.grandN);
+    fprintf(stderr,
+            "[DYNDIAG] next_pick action_R2:  feature=%.4f  latent=%.4f  "
+            "(trunk keeps %.1f%% of the action signal)\n",
+            g_tavNextPick.r2(), g_tavLatentNextPick.r2(),
+            g_tavNextPick.r2() > 1e-9 ? 100.0 * g_tavLatentNextPick.r2() / g_tavNextPick.r2() : 0.0);
+    const double fActV  = g_fagN > 0 ? g_fagActVar  / g_fagN : 0.0;
+    const double fMoveV = g_fagN > 0 ? g_fagMoveVar / g_fagN : 0.0;
+    const double fFrac  = (fActV + fMoveV) > 1e-12 ? fActV / (fActV + fMoveV) : 0.0;
+    fprintf(stderr,
+            "[DYNDIAG] feature-net (m_featDynamics):  action_var=%.6g  delta_var=%.6g"
+            "  action_frac=%.4f  states=%.0f  (vs latent action_frac=%.4f)\n",
+            fActV, fMoveV, fFrac, g_fagN, frac);
+}
+}  // namespace
+
 void AISystem::endTurn() {
     Game& g = *m_g;
     if (!g.m_config.aiLearning) { m_pending.clear(); return; }
@@ -11514,6 +11766,39 @@ void AISystem::endTurn() {
             m_outcomeBuf.push_back({exp.features, cid});
         for (int m = 0; m < MOD_COUNT; ++m) rewardSum[m] += rewards[m];
         rewardN++;
+        // OD_DYN_DIAG (stage-2 design): the target's action-dependence at three
+        // horizons, in feature space, measured here where the full pick list is
+        // in hand. No training change -- picks which horizon the dynamics target
+        // should use. Single-threaded (applyUpdate is Phase 1).
+        if (g_dynDiag) {
+            for (int m = 0; m < MOD_COUNT; ++m) {
+                const std::vector<float>* lastFeat = nullptr;
+                for (const auto& ea : exp.extras)
+                    if (ea.module == m && ea.action >= 0 && !ea.features.empty())
+                        lastFeat = &ea.features;
+                int prevFlat = -1; const std::vector<float>* prevFeat = nullptr;
+                for (const auto& ea : exp.extras) {
+                    if (ea.module != m || ea.action < 0 || ea.features.empty()) continue;
+                    const int flat = m * AISystem::MAX_MODULE_ACTIONS + ea.action;
+                    if (prevFeat) g_tavNextPick.add(prevFlat, *prevFeat, ea.features);
+                    if (lastFeat && lastFeat != &ea.features)
+                        g_tavEOT.add(flat, ea.features, *lastFeat);     // -> end of turn
+                    prevFlat = flat; prevFeat = &ea.features;
+                }
+            }
+            // next_turn: last turn's picks (cached) -> this turn's opening.
+            auto it = g_prevTurn.find(cid);
+            if (it != g_prevTurn.end() && !exp.features.empty())
+                for (const auto& pr : it->second)
+                    g_tavNextTurn.add(pr.first, pr.second, exp.features);
+            std::vector<std::pair<int, std::vector<float>>> cur;
+            for (const auto& ea : exp.extras)
+                if (ea.module >= 0 && ea.module < MOD_COUNT && ea.action >= 0 &&
+                    !ea.features.empty())
+                    cur.push_back({ea.module * AISystem::MAX_MODULE_ACTIONS + ea.action,
+                                   ea.features});
+            g_prevTurn[cid] = std::move(cur);
+        }
         for (int m = 0; m < MOD_COUNT; ++m) {
             if (!exp.acted[m] || exp.action[m] < 0) continue;
             // Normalise reward by running statistics so advantage scale is
@@ -12569,6 +12854,7 @@ void AISystem::endTurn() {
     // rate rather than the policy one -- it is fitting a target, not shifting a
     // distribution, and nothing about it answers to the KL trust region.
     m_dynamics.flushBatch(LR_VALUE * lrScale());
+    m_featDynamics.flushBatch(LR_VALUE * lrScale());
     m_diplo.flushBatch(LR_DIPLO);
 
     // How far that step actually moved the policy, and therefore how big the
@@ -13037,6 +13323,110 @@ void AISystem::runLearningWork() {
                 std::vector<float> g(pred.size());
                 for (size_t k = 0; k < pred.size(); ++k) g[k] = pred[k] - target[k];
                 m_dynamics.accumulateVectorGradInto(ws.dynamics, g);
+
+                // ── THE FEATURE-SPACE FORWARD MODEL (journal 545) ──
+                // Same transition, but predict the next-FEATURE delta from
+                // [features; (module,action) one-hot]. The trunk discards 93% of
+                // the action signal; raw features keep it, so this is where a
+                // planner that must tell actions apart has to live. Regression,
+                // MSE, same value learning rate -- it answers to no trust region.
+                if (w.features.size() == w.nextFeatures.size() && !w.features.empty() &&
+                    w.dynModule >= 0 && w.dynModule < MOD_COUNT &&
+                    w.action >= 0 && w.action < MAX_MODULE_ACTIONS) {
+                    std::vector<float> fin(w.features);
+                    fin.resize(w.features.size() + DYN_ACTION_ONEHOT, 0.0f);
+                    fin[w.features.size() + w.dynModule * MAX_MODULE_ACTIONS + w.action] = 1.0f;
+                    const std::vector<float>& fpred = m_featDynamics.forwardInto(ws.featDynamics, fin);
+                    if (fpred.size() == w.features.size()) {
+                        std::vector<float> fg(fpred.size());
+                        for (size_t k = 0; k < fpred.size(); ++k)
+                            fg[k] = fpred[k] - (w.nextFeatures[k] - w.features[k]);  // pred - delta
+                        m_featDynamics.accumulateVectorGradInto(ws.featDynamics, fg);
+                    }
+                }
+                if (g_dynDiag) {
+                    static const bool reg = (std::atexit(&dumpDynDiag), true); (void)reg;
+                    // Copy out of ws before the all-actions sweep reuses net scratch.
+                    const std::vector<float> predC(pred.begin(), pred.end());
+                    const std::vector<float> emb(ws.trunk.acts.back().begin(),
+                                                 ws.trunk.acts.back().end());
+                    // (a) one-step accuracy, over every (sample, dim) scalar.
+                    for (size_t k = 0; k < predC.size(); ++k) {
+                        const double t = target[k], e = (double)predC[k] - target[k];
+                        g_ddN += 1.0; g_ddSumT += t; g_ddSumT2 += t * t; g_ddSSE += e * e;
+                    }
+                    // (c) predicted vs observed delta on the TAKEN action.
+                    for (size_t k = 0; k < predC.size() && k < emb.size(); ++k) {
+                        const double px = (double)predC[k] - emb[k];     // predicted delta
+                        const double py = (double)target[k] - emb[k];    // observed delta
+                        g_dcN += 1.0; g_dcPX += px; g_dcPY += py;
+                        g_dcPX2 += px * px; g_dcPY2 += py * py; g_dcPXY += px * py;
+                    }
+                    // (d) latent next-pick ANOVA: the SAME transition the feature
+                    // ANOVA sees, but in trunk-output space, so the two r2's bracket
+                    // how much action signal the trunk encoder keeps vs destroys.
+                    g_tavLatentNextPick.add(
+                        w.dynModule * AISystem::MAX_MODULE_ACTIONS + w.action, emb, target);
+                    // (b) ACTION-GAIN: sweep every action on this state (strided,
+                    // since each is an extra forward pass), measure how much the
+                    // prediction varies across actions vs how far it moved at all.
+                    if ((g_ddStride++ & 63) == 0 && !emb.empty()) {
+                        const int nActs = (w.dynModule == MOD_ECONOMY) ? ECON_ACTIONS
+                                        : (w.dynModule == MOD_POLITICS) ? POL_ACTIONS
+                                        : (w.dynModule == MOD_WAR) ? WAR_ACTIONS : NAVY_ACTIONS;
+                        std::vector<double> s1(emb.size(), 0.0), s2(emb.size(), 0.0);
+                        int swept = 0;
+                        for (int a = 0; a < nActs; ++a) {
+                            const std::vector<float>& nx =
+                                m_dynamics.forward(dynamicsInput(emb, w.dynModule, a));
+                            if (nx.size() != emb.size()) continue;
+                            for (size_t k = 0; k < nx.size(); ++k) {
+                                s1[k] += nx[k]; s2[k] += (double)nx[k] * nx[k];
+                            }
+                            ++swept;
+                        }
+                        if (swept > 1) {
+                            double actVar = 0.0, moveVar = 0.0;
+                            for (size_t k = 0; k < emb.size(); ++k) {
+                                const double mean = s1[k] / swept;
+                                actVar  += s2[k] / swept - mean * mean;   // across actions
+                                const double mv = mean - emb[k];
+                                moveVar += mv * mv;                       // from the input
+                            }
+                            g_agActVar += actVar; g_agMoveVar += moveVar; g_agN += 1.0;
+                        }
+                        // The SAME sweep for the feature-space net: does its
+                        // predicted delta move with the action where the latent's
+                        // does not? (Its output IS the delta, so move_var is the
+                        // delta magnitude.)
+                        if (!w.features.empty()) {
+                            const int fdim = (int)w.features.size();
+                            std::vector<float> fin(w.features);
+                            fin.resize((size_t)fdim + DYN_ACTION_ONEHOT, 0.0f);
+                            std::vector<double> fs1(fdim, 0.0), fs2(fdim, 0.0);
+                            int fswept = 0;
+                            for (int a = 0; a < nActs; ++a) {
+                                std::fill(fin.begin() + fdim, fin.end(), 0.0f);
+                                fin[(size_t)fdim + w.dynModule * MAX_MODULE_ACTIONS + a] = 1.0f;
+                                const std::vector<float>& fnx = m_featDynamics.forward(fin);
+                                if ((int)fnx.size() != fdim) continue;
+                                for (int k = 0; k < fdim; ++k) {
+                                    fs1[k] += fnx[k]; fs2[k] += (double)fnx[k] * fnx[k];
+                                }
+                                ++fswept;
+                            }
+                            if (fswept > 1) {
+                                double av = 0.0, mv = 0.0;
+                                for (int k = 0; k < fdim; ++k) {
+                                    const double mean = fs1[k] / fswept;
+                                    av += fs2[k] / fswept - mean * mean;   // across actions
+                                    mv += mean * mean;                     // delta magnitude
+                                }
+                                g_fagActVar += av; g_fagMoveVar += mv; g_fagN += 1.0;
+                            }
+                        }
+                    }
+                }
                 continue;
             }
             if (w.module == MOD_COUNT) {
@@ -13452,6 +13842,7 @@ void AISystem::runLearningWork() {
             m_diploValue.initScratch(ws.diploValue);
             m_diploValue.initScratch(ws.diploValueNext);
             m_dynamics.initScratch(ws.dynamics);
+            m_featDynamics.initScratch(ws.featDynamics);
             m_trunk.initScratch(ws.trunkNext);
             m_diplo.initScratch(ws.diplo);
             ws.ready = true;
@@ -13460,7 +13851,8 @@ void AISystem::runLearningWork() {
 
     // Tracing accumulates into shared counters, so it forces the
     // single-threaded path -- exact numbers matter more than speed here.
-    if (threads <= 1 || s_updTrace) {
+    // OD_DYN_DIAG (g_dynDiag) does the same, for the same reason.
+    if (threads <= 1 || s_updTrace || g_dynDiag) {
         runRange(0, m_work.size(), m_scratch[0]);
     if (s_updTrace && ++m_updTraceBatches % 20 == 0) {
         static const char* MN[MOD_COUNT] = {"econ", "politics", "war", "navy"};
@@ -13563,6 +13955,7 @@ void AISystem::runLearningWork() {
         m_attack.mergeScratch(m_scratch[t].attack);
         m_diploValue.mergeScratch(m_scratch[t].diploValue);
         m_dynamics.mergeScratch(m_scratch[t].dynamics);
+        m_featDynamics.mergeScratch(m_scratch[t].featDynamics);
         m_diplo.mergeScratch(m_scratch[t].diplo);
         for (int m = 0; m < MOD_COUNT; ++m) {
             WorkerScratch::HeadStats& hs = m_scratch[t].head[m];
@@ -14042,9 +14435,9 @@ void AISystem::saveModel() {
     // model plays exactly as it did until it can do better.
     // The AI's own ARCH number; see src/ai/AIVersion.h. static_assert rather
     // than a literal so the version header and the file format cannot drift.
-    static_assert(ai::ARCH == 8, "AIVersion ARCH must equal the model format byte");
+    static_assert(ai::ARCH == 9, "AIVersion ARCH must equal the model format byte");
     out.push_back((uint8_t)ai::ARCH);
-    out.push_back(MOD_COUNT * 3 + 9); // ...+ attack, + dynamics
+    out.push_back(MOD_COUNT * 3 + 10); // ...+ attack, + dynamics, + featDynamics
     { std::vector<uint8_t> b; m_trunk.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_stanceHead.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_relEncoder.serialize(b); appendBlob(out, b); }
@@ -14063,6 +14456,10 @@ void AISystem::saveModel() {
     { std::vector<uint8_t> b; m_diploValue.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_attack.serialize(b); appendBlob(out, b); }
     { std::vector<uint8_t> b; m_dynamics.serialize(b); appendBlob(out, b); }
+    // v9 appends the feature-space forward model after the latent one. v8 is a
+    // strict prefix: a v8 file has the reward-norm stats right here, so loadModel
+    // reads featDynamics only when fileVersion >= 9 and a v8 file leaves it fresh.
+    { std::vector<uint8_t> b; m_featDynamics.serialize(b); appendBlob(out, b); }
     // Reward normalisation statistics.
     //
     // The whole AISystem is destroyed and rebuilt on every map rotation
@@ -14613,10 +15010,11 @@ bool AISystem::loadOpponentModel(const std::string& path) {
     // the eval printed no `land held` line, and the pool's own regression check
     // reported "bench did not produce a result" and kept an unchecked merge.
     // The version accepted here is the version this build can WRITE.
-    if (buf[4] < 6 || buf[4] > 8)
-        return fail("pre-trunk model (v<6); this build needs v6, v7 or v8");
+    if (buf[4] < 6 || buf[4] > 9)
+        return fail("pre-trunk model (v<6); this build needs v6-v9");
     {
-        const int want = MOD_COUNT * 3 + (buf[4] >= 8 ? 9 : buf[4] >= 7 ? 8 : 7);
+        const int want = MOD_COUNT * 3 +
+            (buf[4] >= 9 ? 10 : buf[4] >= 8 ? 9 : buf[4] >= 7 ? 8 : 7);
         if (buf[5] != want) return fail("unexpected net count");
     }
 
@@ -14760,7 +15158,7 @@ bool AISystem::loadModel() {
     // their cold-start values. Refusing them would throw away every hour of
     // training already invested in the file on disk.
     const int fileVersion = buf[4];
-    if (fileVersion < 1 || fileVersion > 8) {
+    if (fileVersion < 1 || fileVersion > 9) {
         m_loadError = "format byte is " + std::to_string(fileVersion) +
                       "; this build reads 6 to 8";
         return false;
@@ -14791,7 +15189,11 @@ bool AISystem::loadModel() {
     // v8 appends the dynamics head; v7 is a strict prefix of it and loads in
     // full, leaving the forward model at its initial weights.
     const bool hasDynamics = (fileVersion >= 8);
-    if (count != MOD_COUNT * 3 + (hasDynamics ? 9 : hasAttack ? 8 : 7)) return false;
+    // v9 appends the feature-space forward model; v8 is a strict prefix and loads
+    // in full, leaving m_featDynamics at its initial weights until it warms up.
+    const bool hasFeatDyn = (fileVersion >= 9);
+    if (count != MOD_COUNT * 3 +
+        (hasFeatDyn ? 10 : hasDynamics ? 9 : hasAttack ? 8 : 7)) return false;
     const bool hasDiploValue = true;
     const bool hasTarget = hasDiploValue || (count == MOD_COUNT * 3 + 2);
     const bool hasQ = hasTarget || (count == MOD_COUNT * 3 + 1);
@@ -14874,6 +15276,7 @@ bool AISystem::loadModel() {
         if (!readBlob(m_dynamics)) return false;
         m_dynamics.setTanhOutput(true);
     }
+    if (hasFeatDyn && !readBlob(m_featDynamics)) return false;
     if (fileVersion >= 2 && p + 4 <= buf.size()) {
         uint32_t len = buf[p] | (buf[p+1] << 8) | (buf[p+2] << 16) | ((uint32_t)buf[p+3] << 24);
         p += 4;

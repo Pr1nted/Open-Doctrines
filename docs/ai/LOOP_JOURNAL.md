@@ -41285,3 +41285,281 @@ its own text is.
 **And the thing that nearly cost more than the red job:** for as long as Windows has run this check, its verdict on
 this loop's instruments was noise. Anyone reading only a Windows log would have concluded LOOP.md plans from a
 document of fictions.
+
+## 543 — the forward model predicts the next state perfectly and the action not at all
+
+Workstream E, stage 0 (the plan at `~/.claude/plans/vectorized-crafting-minsky.md`, "Fix the dynamics
+first"). Before changing the dynamics model so lookahead can rank actions, I built the number that says whether
+it can. There was none: the dynamics residual is computed and thrown away (`AISystem.cpp` dynamics branch,
+`MOD_COUNT+2`), and nothing measured how much the predicted next-latent depends on the **action** — the only
+thing a planner varies. `OD_DYN_DIAG`, off by default, single-threaded like `OD_QCALIB`, now accumulates it and
+dumps at exit.
+
+On the shipped model (an isolated `--train-ai 1 40`, `OD_DATA_DIR` copy, `data/ai/model.bin` sha unchanged):
+
+```
+[DYNDIAG] samples=13654  pred_R2=0.9986  action_var=0  move_var=0.5955  action_frac=0.0000  delta_corr=0.0094
+```
+
+Read it the right way round. **`pred_R2=0.9986` is not good news — it is the trap.** The next latent is almost
+entirely a function of the *current* one (one intra-turn pick barely moves the world), so a model that ignores
+the action still nails the state. `move_var=0.60` confirms the prediction is not the identity — it travels a real
+distance from the input. But `action_var=0` and `action_frac=0.0000`: sweeping all actions on a fixed state moves
+the prediction by **nothing**. `delta_corr=0.009`: predicted and observed per-action deltas are uncorrelated. So
+`embeddingValue = max_a Q(m_dynamics(emb,a))` scores the *same* latent for every `a`, the scores centre to ~0, and
+search expresses no preference — which is why depth-2 was measured worse than depth-0 and why forcing it on this
+session changed play without strengthening it.
+
+Two structural causes, both to be attacked in stage 1+: the action enters `dynamicsInput` as a single `1.0` among
+~321 active inputs (~0.3%, never scaled), and its training target (next-pick embedding through a tanh-saturated
+trunk) carries almost no action-conditioned variance to fit.
+
+Inert with the flag off, proven the way the merge was cleared this session: `--eval-ai 3 60` fingerprint
+(`[ACTHIST]` + CSV) is byte-identical to the pre-instrument baseline, sha `1c82b308`. The threading change
+(`g_dynDiag` added to the single-thread worker gate) only fires when the flag is set.
+
+PENDING COMMIT: journal **543**, `src/ai/AISystem.cpp` (the `OD_DYN_DIAG` instrument: anonymous-namespace
+accumulators + `dumpDynDiag` before `runLearningWork`, the `g_dynDiag` term in the worker gate, and the diag block
+in the dynamics branch). No model file written; no behaviour change with the flag off.
+
+## 544 — stage 1 was the wrong lever, and one cheap number said so before the retrain
+
+The plan's stage 1 was "make the action a first-class input" — scale the one-hot, append a learned action
+embedding, migrate the model, retrain through the 200k dynamics warm-up, and check `action_frac` rises off zero.
+That is hours of retrain. Before spending them I asked the question the whole stage presupposes: **is the action
+input actually the bottleneck, or is the net ignoring the action because the action is redundant in the target?**
+A net minimising MSE sets the action weights to ~0 when the action explains nothing — and no input scaling, no
+embedding, no FiLM can conjure a signal the target does not carry.
+
+So I extended `OD_DYN_DIAG` with a one-way ANOVA of the OBSERVED next-state delta grouped by `(module,action)`:
+`target_action_R2 = SS_between/SS_total`, the share of the real state change that knowing the action explains. It
+is an **upper bound** — confounded by state, since the policy picks the action from the state, so it credits the
+action with variance the state actually caused. Measured on the shipped model (isolated `--train-ai 3 60`,
+`model.bin` sha unchanged):
+
+```
+[DYNDIAG] pred_R2=0.9985  action_var=0  move_var=0.5064  action_frac=0.0000  delta_corr=0.0057  target_action_R2=0.0085
+```
+
+**0.85%, and that is the ceiling.** The next-state, as the forward model is currently fed it — the features
+re-read at the *very next pick of the same module* (`applyUpdate`, the `MOD_COUNT+2` pairing) — barely depends on
+which action was taken. "Build industry" and "save" look nearly identical by the next pick; the treasury spent and
+the order queued have not yet moved the 143-feature vector the trunk sees. So the net is **correct** to zero the
+action: at this horizon the action is redundant. Stage 1 would have migrated the model and burned the retrain to
+move `action_frac` from 0.0000 to approximately nothing, and the plan's own escalation (FiLM) would have failed for
+the same reason.
+
+**The bottleneck is the horizon of the target, not the representation of the input.** The lever is the old stage 2:
+pair the state against a LATER snapshot — end of the country-turn, or the next turn's opening — where the action's
+consequences have materialised, and predict the delta. Only there can `target_action_R2` be non-trivial, and only
+then is strengthening the input (or adding search) worth anything. The plan file is updated to promote the target
+fix to the active stage and to mark the input fix measured-futile.
+
+The general form worth keeping: **before a fix that costs a retrain, measure the ceiling of what it could buy.**
+`action_frac` is what the model does; `target_action_R2` is what the data would let any model do. A fix aimed at
+the first when the second is ~0 is motion without travel.
+
+PENDING COMMIT: journals **543-544**, `src/ai/AISystem.cpp` (the `OD_DYN_DIAG` instrument incl. the
+`target_action_R2` ANOVA), `~/.claude/plans/vectorized-crafting-minsky.md` (plan, not in-tree). No model file
+written; no behaviour change with the flag off.
+
+## 545 — the trunk encoder, not the horizon, is eating the action
+
+544 said the target carries no action signal and pointed at the horizon (predict a later state). Before building
+that I measured it — the `OD_DYN_DIAG` ANOVA now runs at three horizons in **feature** space, from the pick list in
+`applyUpdate`: the next same-module pick, the end of the country-turn, and the next turn's opening. Two surprises,
+both from the same isolated `--train-ai 3 60` (`model.bin` sha unchanged):
+
+```
+target_action_R2 (feature):  next_pick=0.183  end_of_turn=0.128  next_turn=0.018
+next_pick action_R2:         feature=0.183  latent=0.0125   (trunk keeps 6.8% of the action signal)
+```
+
+**The horizon is a red herring.** `next_pick` is the *best* of the three; lengthening it — exactly what 544 and the
+plan proposed — makes it worse (`next_turn` is a tenth of it: a turn of other countries' churn buries the action).
+So the stage-2-as-written horizon fix was also wrong, and measuring killed it before a retrain, the same way the
+input fix died in 544.
+
+**The real culprit is the trunk.** The action explains **18%** of the next-state change in the raw 143 features but
+**1.25%** in the 320-float trunk embedding the forward model is trained to predict. The tanh-saturated trunk —
+trained for the policy, stop-gradient to the dynamics — throws away **93%** of the action-relevant variance before
+the dynamics sees it. The dynamics then learns an action-blind transition faithfully (`pred_R2≈0.998`), because
+action-blindness is all its target space can express. `max_a Q(m_dynamics(emb,a))` was doomed two steps upstream of
+Q and of the search.
+
+**The fix the measurement points to** (next iteration, needs a retrain to validate): keep the next-pick horizon;
+change the dynamics TARGET from the trunk latent to the next-FEATURE **delta**, which retains the 18% signal and
+drops the identity baseline; and score rollouts with the feature-space value head `m_value` (calibrated ~0.86) on
+the predicted features, not `max_a Q` on a synthetic latent — which also retires the off-distribution-Q problem.
+This is an observation-prediction MuZero variant, and it is simpler than what the plan had.
+
+The method that keeps paying: **bracket the quantity you're about to spend a retrain on.** feature-space R² is the
+ceiling; latent-space R² is what the architecture leaves on the table; the gap between them was the whole diagnosis.
+
+PENDING COMMIT: journals **543-545**, `src/ai/AISystem.cpp` (the three-horizon + latent ANOVAs in `OD_DYN_DIAG`;
+the diag namespace moved above `endTurn` so `applyUpdate` can reach it), `~/.claude/plans/vectorized-crafting-minsky.md`
+(plan, not in-tree). No model file written; no behaviour change with the flag off.
+
+## 546 — a forward model that predicts features moves with the action; the one that predicts the latent does not
+
+545 pinned the fault on the trunk: 18% of the next-state's action signal in raw features, 1.25% in the latent the
+forward model predicts. So I built the net the diagnosis asks for. `m_featDynamics` ({FEATURE_COUNT+48, 256,
+FEATURE_COUNT}, linear) predicts the next-FEATURE **delta** from `[features; (module,action) one-hot]`, trained as
+MSE beside the existing `m_dynamics` in the `MOD_COUNT+2` branch, same value LR. It is **in-memory only** — not in
+the model file — on purpose: a validation net costs nothing to add and, by not touching the serialiser, cannot
+re-initialise the shipped weights the way a mis-matched blob would. Confirmed: the isolated run loaded the v8 file
+in full (`Model saved ... 354,371,565 updates`, continuing, not zero) and `model.bin` sha was unchanged.
+
+`OD_DYN_DIAG` now sweeps both nets over the actions on a fixed state. One map, ~34k updates:
+
+```
+latent net  (m_dynamics):     action_frac = 0.0000
+feature net (m_featDynamics):  action_frac = 0.1047   delta_var=4.40  action_var=0.515
+next_pick action_R2: feature=0.6355  latent=0.0170   (trunk keeps 2.7%)
+```
+
+The feature net's prediction already moves **10.5%** with the action after a fraction of a warm-up, against the
+latent net's **exact zero** — the first time anything in this forward model has responded to the action at all.
+The target it is fitting carries up to 64% action signal on this map, so there is room for `action_frac` to climb
+with full warm-up. Play is bit-identical to baseline (`--eval-ai 3 60` fingerprint sha `1c82b308`): the net trains
+but nothing reads it yet, and eval does not train.
+
+The architecture is validated. What remains to make it count, each its own pass: (1) **serialise** `m_featDynamics`
+as v9 (append after `m_dynamics`, bump `ai::ARCH` to 9 and BOTH acceptance gates, read it only when `fileVersion>=9`)
+so a real multi-map retrain can warm it past `DYN_WARMUP_UPDATES` instead of resetting every rotation; (2) **wire
+`searchScores`/`embeddingValue`** to score a rollout as `m_value(features + m_featDynamics(features,a))` instead of
+`max_a Q(m_dynamics(emb,a))`, gated on the feature net's own warm-up; (3) **retrain and bench** search-on vs
+search-off (the Stage-5 gate). Only after (3) does any of this touch a player.
+
+PENDING COMMIT: journals **543-546**, `src/ai/AISystem.cpp` (the `OD_DYN_DIAG` instrument across 543-545, plus
+`m_featDynamics`: member + WorkerScratch slot in `AISystem.h`, construction, scratch init/merge/flush, the
+feature-delta training in the `MOD_COUNT+2` branch, and its action-gain sweep in the diag),
+`~/.claude/plans/vectorized-crafting-minsky.md` (plan, not in-tree). No model file written; play bit-identical.
+
+## 547 — the feature forward model earns a slot (v9) and the search reads it
+
+546 proved `m_featDynamics` learns the action; this makes it permanent and puts it in front of the planner, both
+gated so nothing moves until it is trained.
+
+**Model format v9.** `ai::ARCH` 8 -> 9; the net count byte +9 -> +10; `m_featDynamics.serialize` appended after
+`m_dynamics` and before the reward-norm stats, so **v8 is a strict prefix of v9**. loadModel reads the feature net
+only when `fileVersion >= 9` and a v8 file loads in full with the feature net left fresh — the same prefix trick
+that added Q (v?), the attack head (v7) and the latent dynamics (v8). The `--vs-model` opponent gate was widened in
+lockstep (accepts v6-v9, count `+10` at v9); it stops reading after the diplomacy head, so the two new trailing
+blobs never reach it. Both halves verified: the shipped **v8** model loads with no re-init and play is bit-identical
+(`--eval-ai 3 60` fingerprint `1c82b308`); a short train writes a **v9** file that reloads with the feature net
+present, no "unexpected net count", update counts continuing from 354M — not the from-scratch re-init a mismatched
+blob would have caused. `data/ai/model.bin` never touched.
+
+**Search reads the feature net.** `searchScores` gained a `features` argument (the caller already had `exp.features`).
+When `m_featDynamics` has passed `DYN_WARMUP_UPDATES` it scores each action as `m_value(features +
+m_featDynamics(features,a))` — the calibrated value head reading the predicted FEATURES — instead of
+`max_a Q(m_dynamics(emb,a))` on a synthetic latent. It falls back to the latent path until the feature net is warm,
+and `OD_SEARCH_LATENT=1` forces the old path for an A/B. All of it sits behind `searchDepth>0`, which ships 0, so
+default play is unchanged (proven by the fingerprint above) and on the shipped model the feature net is cold, so
+even a bench with `OD_SEARCH_DEPTH>0` uses the latent path until a retrain warms the new net.
+
+**What is left is the expensive half:** a real multi-map retrain (now that v9 persists the feature net across
+rotations) to carry `m_featDynamics` past its warm-up, then the Stage-5 gate — `OD_SEARCH_DEPTH>0` with the feature
+path vs `OD_SEARCH_LATENT=1` and vs search-off, `--vs-model`/`od_bench`, enough seeds. Only a win there touches a
+player. The wiring is done and inert; the training and the verdict are the next pass.
+
+PENDING COMMIT: journals **543-547**, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (as 546, plus the v9 serialize/
+load/opponent-gate changes and the `searchScores` feature path), `src/ai/AIVersion.h` (`ARCH` 8 -> 9),
+`~/.claude/plans/vectorized-crafting-minsky.md` (plan, not in-tree). No model file written; default play bit-identical.
+
+## 548 — the forward model was fixed; the wall moved to how search reaches the decision
+
+Retrained the feature net (isolated `--train-ai 8 300`, `caffeinate -u` because the server binary still opens a
+window on macOS and the display had slept; `model.bin` sha unchanged, restored once after a quick test slipped and
+wrote it). On the retrained v9 model the new `[EVAL] feature forward model` line reads **1,053,858 updates, 527% of
+warmup -- feature-search path eligible** (shipped model: 0, cold -> latent fallback, as designed). So the feature
+forward model is trained and the feature-search path is the one that runs, not a fallback.
+
+Then the Stage-5 bench, and the result is unambiguous. Decision hash, same model and seed, three ways:
+
+```
+OFF      8994391960344024459   [does not search]
+FEATURE  8994391960344024459   [search ACTIVE]
+LATENT   8994391960344024459   [search ACTIVE]
+```
+
+**Search runs and changes ZERO decisions.** Every bench seat came out byte-identical across configs (manual A/B,
+4 rung seats x 3 seeds, feature vs off: 11.1=11.1, 22.8=22.8, ... ; od_bench could not even be used because it does
+not propagate `OD_SEARCH_DEPTH` to its eval subprocesses -- its "feature" arm silently re-scored the off result).
+The feature net having an action-differentiated opinion (journal 546, `action_frac` 10.5%) does not help, because
+that opinion enters the choice as `SEARCH_BLEND * centred(scores)` added to the policy logits, and the policy is
+confident enough that the added bias never flips an argmax -- the same "Q subsumes the forward model" wall this loop
+has hit before, now LOCATED: not the forward model (fixed), but the BLEND.
+
+So the arc 543-548 did exactly what measurement-first promised: it refused three plausible-but-wrong fixes (action
+input, horizon, and now "just train a better forward model and search will help") and left the problem standing in
+one specific place. The forward model is no longer action-blind and is a permanent, inert-by-default part of the
+model (v9). What remains is a DECISION-INFLUENCE problem: raise `SEARCH_BLEND`, or route the forward model's opinion
+through something stronger than an additive centred bias (a soft constraint, or search only where the policy is
+uncertain), and measure whether decisions move AND whether moving them helps -- against BACKLOG 03's warning that a
+hand floor/override on a head measured worse. That is the next pass; today's is that the forward-model half is done
+and benched, and search is still a no-op until the blend changes.
+
+PENDING COMMIT: journals **543-548**, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (543-547 plus
+`featDynamicsUpdates()`), `src/ai/AIVersion.h` (`ARCH` 8->9), `src/Game_AITrain.cpp` (the feature-forward-model
+status line in the eval report), `~/.claude/plans/vectorized-crafting-minsky.md` (plan, not in-tree). No model file
+written (the retrained v9 model lives in an isolated scratch dir, not `data/ai/`); default play bit-identical.
+
+## 549 — the blend was mis-scaled, not dead; but steering the frozen net regresses to the mean
+
+Picked up 548's named next pass: route the forward model's opinion through something stronger than the swamped
+additive bias, and measure whether decisions move AND whether moving them helps. Two read-only instruments and one
+off-by-default knob, all inert when unset (OFF decision hash `8994391960344024459`, bit-identical to 548):
+
+- `OD_SEARCH_DIAG` — accumulates, over real bench decisions, the std of the policy logits vs the std of the centred
+  search scores across valid actions, and how often adding the search term flips the argmax. On the warmed v9 model:
+  `decisions=5448  ss_std=0.048  pl_std=2988.5  argmax_flips=0`. The search term is **~1500x too small**, not wrong.
+- `OD_SEARCH_RELBLEND=f` — normalises the centred search scores to std `f` logit-units before adding them (vs the
+  fixed `SEARCH_BLEND` additive path, unchanged when the knob is off). This is the "route it through something
+  stronger" lever, scaled relative to the policy's own spread rather than a fixed constant.
+
+**`pl_std=2989` is a mean hiding a skewed distribution, not a uniform wall.** The relblend sweep shows decisions
+start flipping at **f=2.0** (hash moves off OFF), and the flip rate plateaus: f=2 -> 2.2%, f=4 -> 15.2%, f=8 ->
+15.7%. So ~85% of decisions are hard-locked by a handful of astronomically-saturated logits (unreachable at any sane
+scale), and ~15% are genuinely contestable and flippable at f~2-4. The 548 "search is a no-op" was the shipped
+`SEARCH_BLEND=0.7` sitting three orders of magnitude below the contestable band — a scaling bug, not a dead
+mechanism.
+
+**Does moving the contestable ~15% help? No — on the frozen net it regresses to the mean.** Strength A/B, warmed v9
+model, OFF vs relblend f=2 vs f=4, the six od_bench seats x 3 seeds (land-share, 120 turns, difficulty 3). Three
+seats are LOCKED and never move (1914 SWE wiped to 0.0, 1939 NOR hood pinned at 0.4, modern CHN flat at 4.7) —
+exactly the 85%. Movement concentrates on the one actively-expanding seat, France. At 3 seeds f4 looked like a gain
+(rung +2.6, rush +4.6), so I ran 6 FRESH seeds, OFF vs f4, on both France seats to resolve it:
+
+```
+1914 FRA rung  OFF [8.9 .. 17.0] mean 12.15   f4 [10.3 .. 13.5] mean 11.73   fresh d -0.42 p 0.78 | pooled(9) +0.59 p 0.68
+1914 FRA rush  OFF [4.3 .. 15.0] mean  9.33   f4 [ 9.4 .. 13.1] mean 11.23   fresh d +1.90 p 0.32 | pooled(9) +2.79 p 0.082
+```
+
+The fresh seeds dissolve the gain. What f4 actually does is **collapse the variance**: OFF's range (rung 8.1, rush
+10.7) shrinks ~3x under f4 (rung 3.2, rush 3.7). Search steered by the frozen forward model rescues the disaster
+seeds (rush 4.3 -> ~10) and caps the strong ones (rung 17.0 -> ~12), pulling every outcome to a middling ~11-12%. It
+reduces outcome variance, not ranking error. The one apparent gain (rush) is a wide-variance OFF arm being
+compressed, not a mean lift — pooled n=9 still only reaches p=0.082, nowhere near the ~90-pt-equivalent bench bar,
+and rung is a flat wash. And at f4 the 1939 USA seat REGRESSED (4.0 -> 1.7). Net aggregate over all six seats was
+within noise from the start (OFF 5.01 -> f4 5.79, sign 2-up/2-down of the four non-tied seats).
+
+This is BACKLOG 03 confirmed cleanly on a measured seat: a hand-scaled override on a saturated policy head regresses
+toward the mean rather than improving the ranking. **Verdict: REJECT the fixed-blend path.** The mechanism is now
+fully characterised (decisions move from f~2, ~15% contestable, 85% locked) and that was worth finding — but a blend
+of the frozen forward model's opinion is not better-than-policy, so there is nothing to promote and the knob ships
+off.
+
+**It also does NOT green-light the plan's Stage-5 retrain-with-search.** The premise of that spend was that the
+fixed forward model carries useful action-ranking the policy lacks; this A/B says its steering is variance-reducing,
+not error-reducing, on the one seat where the policy leaves room. A search-in-the-loop retrain could still co-adapt
+the two, but this result is amber, not green — the next pass should first establish that the feature-value head can
+RANK counterfactual actions better than the policy (a discrimination metric on held-out transitions), before
+committing to a multi-map retrain on the strength of "decisions move."
+
+PENDING COMMIT: journals **543-549**, `src/ai/AISystem.cpp` + `src/ai/AISystem.h` (543-548 plus the `OD_SEARCH_DIAG`
+instrument and the `OD_SEARCH_RELBLEND` relative-scale blend, both inert when unset), `src/ai/AIVersion.h`
+(`ARCH` 8->9), `src/Game_AITrain.cpp` (feature-forward-model status line), `~/.claude/plans/vectorized-crafting-minsky.md`
+(plan, not in-tree). No model file written (warmed v9 lives in an isolated scratch dir); default play bit-identical
+(OFF hash `8994391960344024459`).
