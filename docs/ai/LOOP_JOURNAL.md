@@ -41613,3 +41613,44 @@ from-scratch head, not a blend. Either way nothing here touches a player.
 PENDING COMMIT: journal **550** and the `OD_DISCRIM` instrument in `src/ai/AISystem.cpp` (plus `OD_DISCRIM` added to
 the `s_updTrace` single-thread list), inert when unset. No model file written (the burst wrote only the isolated
 `discrim-data` scratch dir); default play bit-identical.
+
+## 551 — workstream D: the surrogate advisor leaves no trace at a bounded budget (density 11%, A/B flat)
+
+Pivoted off look-ahead (E, parked at 550 on a flat value head) to workstream D: does training with the deterministic
+surrogate advisor (`OD_AI_SURROGATE`, `computeSurrogateIntent`, on main as of e899ce34) produce a stronger policy?
+Measurement-first, two steps.
+
+**Density first (new inert instrument `OD_SURR_DIAG`).** The surrogate only leans when a country fights >=2 wars or
+is bankrupt, touching 4 (module,action) pairs. On a 1914 full-world 120-turn game it fired on **909/8195
+country-turns = 11.1%**, ALL from the wars>=2 condition; the bankruptcy lean fired **0.00%** (treasury is never
+strictly negative -- AI treasuries sit at zero, so half the surrogate's vocabulary is dead code). So the live signal
+is one-dimensional: nudge multi-war countries toward ceasefire / away from declaring. Sparse but well clear of inert
+(not the personality-hook failure mode) -- enough to justify the A/B.
+
+**The A/B.** Two policies trained from an identical shared base (`cmp`-equal copies), same seed 777, same
+`--train-ai 4 150 100`, differing ONLY in `OD_AI_SURROGATE`; 600 turns / ~5 min each; `data/ai/model.bin` never
+touched. The resulting models are distinct (354,920,287 vs 354,920,635 updates). Benched WITHOUT the flag (measuring
+the learned policy, not runtime steering) on the 6 od_bench seats x 3 seeds:
+
+```
+mean-over-seats  OFF 3.75   ON 3.66   (d -0.09)   sign 2 up / 2 down   no per-seat p < 0.30
+```
+
+Flat. And on the surrogate's OWN target metric it is flat too: on a war-heavy seat the ON and OFF models offer
+ceasefires at the same near-zero rate (seat-cohort ceasefires offered 0.00 in both). The gentle (0.25-weight),
+one-dimensional ceasefire nudge, applied over a bounded continuation from an already-converged 354.9M-update base,
+left **no measurable trace** -- not in land share, not in ceasefire propensity.
+
+**Verdict: not resolvable at this budget, and the result confirms the plan's own D-step-1 premise rather than
+condemning the LLM channel.** The plan opens D with "expand the LLM's tool surface" precisely because a handful of
+narrow levers cannot produce a trainable, measurable signal; this A/B is the empirical version of that. Three things
+each independently cap the effect: (1) the surrogate is one-dimensional with half its vocabulary dead; (2) the
+channel weight is gentle by design (0.25, clamped); (3) a bounded continuation from a converged policy barely moves
+it, and the land-share bench is not pointed where a ceasefire nudge would show. Abandoning the channel on this is not
+warranted; the productive next pass is to BROADEN the surrogate (more leans -- war-aim, tempo, risk, budget, target
+-- denser firing, and a non-dead solvency condition), optionally raise the weight, and re-measure on a metric aligned
+with what it steers (war duration / overextension survival / ceasefire rate), ideally from a less-converged base so
+the policy can actually learn to use it.
+
+PENDING COMMIT: journal **551** and the `OD_SURR_DIAG` density instrument in `src/Game_Llm.cpp` (inert when unset).
+No model file written (both A/B arms wrote only isolated scratch dirs); default play bit-identical.

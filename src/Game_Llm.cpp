@@ -2169,6 +2169,30 @@ void Game::computeSurrogateIntent(int cid) {
     const Country* c = m_countries.getCountry(cid);
     if (!c) return;
     constexpr int MOD_ECON = 0, MOD_WAR = 2;
+
+    // OD_SURR_DIAG (workstream D, journal 551): density probe. The surrogate
+    // only leans when a country is fighting >=2 wars or is bankrupt; if that is
+    // a rare fraction of country-turns the training signal is too sparse to move
+    // a bench (the personality-hook failure mode). Counts, per country-turn,
+    // whether ANY lean fired and which condition triggered it; prints at exit.
+    // Read-only, off by default, independent of whether the leans are applied.
+    static const bool surrDiag = std::getenv("OD_SURR_DIAG") != nullptr;
+    if (surrDiag) {
+        static long long calls = 0, firedWar = 0, firedBroke = 0, firedAny = 0;
+        static bool reg = false;
+        int warsD = 0; auto rD = m_relations.find(c->isoA3);
+        if (rD != m_relations.end())
+            for (const auto& [o, rel] : rD->second) if (rel.war) ++warsD;
+        const bool brokeD = c->treasury < 0.0;
+        ++calls; if (warsD >= 2) ++firedWar; if (brokeD) ++firedBroke;
+        if (warsD >= 2 || brokeD) ++firedAny;
+        if (!reg) { reg = true; atexit([]{
+            fprintf(stderr, "[SURRDIAG] country-turns=%lld  fired=%lld (%.2f%%)  "
+                    "wars>=2=%lld (%.2f%%)  broke=%lld (%.2f%%)\n",
+                    calls, firedAny, calls? 100.0*firedAny/calls:0.0,
+                    firedWar, calls? 100.0*firedWar/calls:0.0,
+                    firedBroke, calls? 100.0*firedBroke/calls:0.0); }); }
+    }
     auto setIntent = [&](int module, int action, float v) {
         const long long key = ((long long)cid << 20) |
                               ((long long)module << 8) | (long long)action;
