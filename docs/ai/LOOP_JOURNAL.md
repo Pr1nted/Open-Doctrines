@@ -41654,3 +41654,51 @@ the policy can actually learn to use it.
 
 PENDING COMMIT: journal **551** and the `OD_SURR_DIAG` density instrument in `src/Game_Llm.cpp` (inert when unset).
 No model file written (both A/B arms wrote only isolated scratch dirs); default play bit-identical.
+
+## 552 — workstream D: a broadened surrogate trains a stronger policy (CHN confirmed, p=0.006)
+
+551 found the narrow surrogate (one ceasefire nudge, 11% density) left no trace and pointed at the plan's own
+D-step-1: broaden the tool surface. Done. `computeSurrogateIntent` now leans across three dimensions, written in
+AISystem numbering (econ 0/1/2/7/9, war 1/2/4/6; action vocabulary per AISystem.h):
+- **War posture**, graded: 1 war -> reinforce (war 2) and do not casually open a second (war 4 -); >=2 wars -> the
+  551 brake, settle one (war 6 ceasefire +) and dig in (econ 2 fort +).
+- **Build in peace / catch up when the tree is bare**: at peace -> industry (econ 1) and research (econ 7); <10 of
+  107 nodes -> research (econ 7) and the buildings that unlock more (econ 9).
+- **Fiscal stress fixed**: 551's `treasury < 0` fired 0% (treasuries sit at zero); now `net < 0 && treasury < 50`
+  using `computeCountryIncome().net`.
+
+Density (OD_SURR_DIAG, extended) rose from 11% to **fired 100%** (build 100%, war 59%, fiscal 2.3% -- no longer 0%).
+Off-path is inert by construction: `computeSurrogateIntent` is only called under `aiSurrogateEnabled()`, so a run
+without the flag never touches the new code (surrogate-off hash on the shared base `9960213947257836570`).
+
+**A/B.** Two policies from an identical shared base, same seed 777, same `--train-ai 4 150 100`, differing ONLY in
+`OD_AI_SURROGATE`; `data/ai/model.bin` never touched. Benched (flag off -- the learned policy) on the 6 seats x 3
+seeds: mean land share **OFF 3.49 -> ON 3.97 (+0.48)**, sign 3 up / 1 down. Two seats sat at the 3v3 permutation
+floor (p=0.098): USA +1.0 and CHN +1.6. Per 549's hard lesson (a 3-seed FRA gain that dissolved on fresh seeds), I
+confirmed both on **6 fresh held-out seeds**:
+
+```
+USA rung  fresh OFF 1.28 -> ON 1.78  d +0.50  p 0.62   pooled(9) +0.66 p 0.31   DISSOLVED (3-seed artefact)
+CHN rung  fresh OFF 1.30 -> ON 2.65  d +1.35  p 0.060  pooled(9) +1.44 p 0.0061 HELD
+```
+
+CHN holds and strengthens. The ON policy holds ~2.65 on EVERY seed (2.6-2.7, 12/12 runs); the OFF policy is bimodal
+-- often collapses to 0, mean 1.3. The surrogate removes China's collapse mode (cf. "CHN dies to rebellion"): the
+dense consolidate/brake/solvency advice keeps a large multi-front power from overextending into collapse. The effect
+points exactly where the advice would bite -- a consolidation-prone seat -- which is the mechanism, not a lucky seed.
+
+**Verdict: the surrogate channel CAN train a stronger policy -- the first positive result in the 543-552 arc.** It
+is concentrated (CHN, by collapse-avoidance / variance reduction), USA dissolved, FRA and the locked seats flat, and
+there is no significant regression anywhere. So 551's flat result was under-powered DENSITY (11%), not a worthless
+channel -- broadening to 100% density across three dimensions surfaced a real, fresh-seed-confirmed gain. This
+validates workstream D's thesis and is committed.
+
+Honest limits: a single confirmed seat, and the gain reads as "stops collapsing" rather than demonstrated richer
+play -- CHN ON is suspiciously seed-invariant at 2.65, which may be turtling that merely holds its start. Worth
+checking whether it expands or just survives. Next passes for D: raise the channel weight past the gentle 0.25 (the
+plan's "widen via trained weight"), widen the bench to see if the collapse-avoidance generalises to other
+consolidation-prone seats, and read war/expansion stats to tell survival-by-turtling from genuine improvement.
+
+PENDING COMMIT: journal **552** and the broadened `computeSurrogateIntent` + extended `OD_SURR_DIAG` in
+`src/Game_Llm.cpp`. No model file written (both A/B arms wrote only isolated scratch dirs); default play
+bit-identical (surrogate off by construction).

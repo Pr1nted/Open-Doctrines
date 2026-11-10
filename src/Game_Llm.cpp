@@ -2169,30 +2169,6 @@ void Game::computeSurrogateIntent(int cid) {
     const Country* c = m_countries.getCountry(cid);
     if (!c) return;
     constexpr int MOD_ECON = 0, MOD_WAR = 2;
-
-    // OD_SURR_DIAG (workstream D, journal 551): density probe. The surrogate
-    // only leans when a country is fighting >=2 wars or is bankrupt; if that is
-    // a rare fraction of country-turns the training signal is too sparse to move
-    // a bench (the personality-hook failure mode). Counts, per country-turn,
-    // whether ANY lean fired and which condition triggered it; prints at exit.
-    // Read-only, off by default, independent of whether the leans are applied.
-    static const bool surrDiag = std::getenv("OD_SURR_DIAG") != nullptr;
-    if (surrDiag) {
-        static long long calls = 0, firedWar = 0, firedBroke = 0, firedAny = 0;
-        static bool reg = false;
-        int warsD = 0; auto rD = m_relations.find(c->isoA3);
-        if (rD != m_relations.end())
-            for (const auto& [o, rel] : rD->second) if (rel.war) ++warsD;
-        const bool brokeD = c->treasury < 0.0;
-        ++calls; if (warsD >= 2) ++firedWar; if (brokeD) ++firedBroke;
-        if (warsD >= 2 || brokeD) ++firedAny;
-        if (!reg) { reg = true; atexit([]{
-            fprintf(stderr, "[SURRDIAG] country-turns=%lld  fired=%lld (%.2f%%)  "
-                    "wars>=2=%lld (%.2f%%)  broke=%lld (%.2f%%)\n",
-                    calls, firedAny, calls? 100.0*firedAny/calls:0.0,
-                    firedWar, calls? 100.0*firedWar/calls:0.0,
-                    firedBroke, calls? 100.0*firedBroke/calls:0.0); }); }
-    }
     auto setIntent = [&](int module, int action, float v) {
         const long long key = ((long long)cid << 20) |
                               ((long long)module << 8) | (long long)action;
@@ -2200,24 +2176,73 @@ void Game::computeSurrogateIntent(int cid) {
         else m_llmIntent[key] = std::clamp(v, -1.0f, 1.0f);
     };
 
-    // Overextension brake: already fighting two or more wars -> lean against
-    // opening another (war action 4 is declare war) and toward ending one (war
-    // action 6 is ceasefire/peace; see AISystem qBiasFor and the lean vocabulary
-    // in Advisor.cpp). The ceasefire lean is the one that bites: declaring is
-    // rarely the winning action anyway, so suppressing it changes little, but a
-    // stretched country is often a close call between pressing on and settling.
+    // ── The board this minister reads ──
     int wars = 0;
     auto rit = m_relations.find(c->isoA3);
     if (rit != m_relations.end())
         for (const auto& [other, rel] : rit->second) if (rel.war) ++wars;
-    setIntent(MOD_WAR, 4, wars >= 2 ? -0.7f : 0.0f);
-    setIntent(MOD_WAR, 6, wars >= 2 ? +0.7f : 0.0f);
+    const float  net      = computeCountryIncome(cid).net;   // per-turn balance
+    const double treasury = c->treasury;
+    const int    research = (int)c->research.size();          // tech nodes held (of 107)
 
-    // Solvency: in the red -> stop recruiting (war action 1) and lean toward
-    // saving (econ action 0). A minister's first advice to a bankrupt state.
-    const bool broke = c->treasury < 0.0;
-    setIntent(MOD_WAR,  1, broke ? -0.5f : 0.0f);
-    setIntent(MOD_ECON, 0, broke ? +0.5f : 0.0f);
+    // ── War posture (journal 552: broadened from 551's >=2-war brake) ──
+    // One war: win the one you have -- reinforce it (war action 2) and do not
+    // casually open a second (action 4 declare; the war slot holds only one of
+    // your own choosing anyway). Two or more: the overextension brake -- settle
+    // one (action 6 ceasefire) and dig in (econ action 2 fort) -- which is the
+    // only lean 551 shipped. See the action vocabulary in AISystem.h / Advisor.cpp.
+    float declareLean = 0.0f, ceasefireLean = 0.0f, reinforceLean = 0.0f, fortLean = 0.0f;
+    if (wars >= 2)      { declareLean = -0.7f; ceasefireLean = +0.7f; fortLean = +0.3f; }
+    else if (wars == 1) { declareLean = -0.3f; reinforceLean = +0.3f; }
+    setIntent(MOD_WAR,  4, declareLean);
+    setIntent(MOD_WAR,  6, ceasefireLean);
+    setIntent(MOD_WAR,  2, reinforceLean);
+    setIntent(MOD_ECON, 2, fortLean);
+
+    // ── Build in peace, and catch up when the tech tree is bare ──
+    // A minister at peace builds industry (econ 1) and funds research (econ 7);
+    // one holding few of the 107 nodes funds research and the buildings that
+    // unlock the rest (econ 9), whatever the war situation. These fire on a
+    // broad fraction of country-turns -- the point of 552 is a denser,
+    // several-dimensional signal than the single ceasefire nudge 551 found too
+    // thin to train on.
+    float industryLean = (wars == 0) ? +0.4f : 0.0f;
+    float researchLean  = (wars == 0) ? +0.3f : 0.0f;
+    float focusBldgLean = 0.0f;
+    if (research < 10) { researchLean += 0.3f; focusBldgLean = +0.2f; }
+    setIntent(MOD_ECON, 1, industryLean);
+    setIntent(MOD_ECON, 7, researchLean);
+    setIntent(MOD_ECON, 9, focusBldgLean);
+
+    // ── Fiscal stress, by the per-turn balance ── 551's treasury<0 fired 0%
+    // because AI treasuries sit at zero; the real signal is a negative net with
+    // an empty purse. Then save (econ 0) and stop recruiting (war 1) -- a
+    // minister's first advice to a state that cannot pay.
+    const bool stressed = (net < 0.0f && treasury < 50.0);
+    setIntent(MOD_ECON, 0, stressed ? +0.5f : 0.0f);
+    setIntent(MOD_WAR,  1, stressed ? -0.5f : 0.0f);
+
+    // OD_SURR_DIAG (journal 551, extended 552): density probe -- how often any
+    // lean fires, split by category. Read-only, off by default, independent of
+    // whether the leans are applied downstream.
+    static const bool surrDiag = std::getenv("OD_SURR_DIAG") != nullptr;
+    if (surrDiag) {
+        static long long calls = 0, fWar = 0, fBuild = 0, fFiscal = 0, fAny = 0;
+        static bool reg = false;
+        const bool war   = declareLean != 0.0f || ceasefireLean != 0.0f ||
+                           reinforceLean != 0.0f || fortLean != 0.0f;
+        const bool build = industryLean != 0.0f || researchLean != 0.0f ||
+                           focusBldgLean != 0.0f;
+        ++calls; if (war) ++fWar; if (build) ++fBuild; if (stressed) ++fFiscal;
+        if (war || build || stressed) ++fAny;
+        if (!reg) { reg = true; atexit([]{
+            fprintf(stderr, "[SURRDIAG] country-turns=%lld fired=%lld (%.2f%%)  "
+                    "war=%lld (%.2f%%) build=%lld (%.2f%%) fiscal=%lld (%.2f%%)\n",
+                    calls, fAny, calls? 100.0*fAny/calls:0.0,
+                    fWar,    calls? 100.0*fWar/calls:0.0,
+                    fBuild,  calls? 100.0*fBuild/calls:0.0,
+                    fFiscal, calls? 100.0*fFiscal/calls:0.0); }); }
+    }
 }
 
 bool Game::llmSuppressesReflex(int cid, const char* reflex) const {
