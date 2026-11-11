@@ -41702,3 +41702,64 @@ consolidation-prone seats, and read war/expansion stats to tell survival-by-turt
 PENDING COMMIT: journal **552** and the broadened `computeSurrogateIntent` + extended `OD_SURR_DIAG` in
 `src/Game_Llm.cpp`. No model file written (both A/B arms wrote only isolated scratch dirs); default play
 bit-identical (surrogate off by construction).
+
+## 553 — workstream D: raising the surrogate channel weight gives nothing, and it corrects 552's CHN "win" to flat
+
+552's next-step was "raise the channel weight past the gentle 0.25 (the plan's 'widen via trained weight')". Did it.
+New inert instrument `OD_LLM_INTENT_W` (`src/ai/AISystem.cpp`, mirrors the `OD_SEARCH_RELBLEND` pattern) overrides the
+compile-time `AI_LLM_INTENT=0.25` at the one site the advisor/surrogate lean enters qbias. Inert by construction: the
+overridden line sits behind `if (want != 0.0f)`, reachable only with an advisor active, and unset the knob resolves to
+exactly `AI_LLM_INTENT` -- a no-surrogate run is bit-identical either way.
+
+**Sweep.** Four policies from ONE shared base (`retrain-data`), ONE binary, same seed 777, same `--train-ai 4 150
+100`, differing ONLY in the training-time weight: `off` (no surrogate), `w025`/`w050`/`w100`. Benched surrogate-off
+(the learned policy; bench is weight-independent) on the 6 seats x 3 seeds:
+
+```
+seat               off    w025   w050   w100
+1914 FRA rung     10.10  12.17   9.80   9.87
+1914 FRA rush      7.90   6.33   5.93   5.80
+1914 SWE rung      0.00   0.00   0.00   0.00     (dead seat)
+1939 NOR hood      0.30   0.30   0.30   0.30     (dead seat)
+1939 USA rung      0.00   0.67   0.00   2.17     (noise)
+modern CHN rung    3.87   1.80   2.60   2.73
+MEAN-over-seats    3.69   3.54   3.11   3.48
+```
+
+Every ON weight sits at or below OFF on the mean; nothing clears the 3v3 permutation floor (all p >= 0.10); w050 is
+the worst. **No weight beats OFF.**
+
+**CHN fresh-seed confirm (6 held-out seeds, off/w025/w100), the one seat that moves with the weight and where 552's
+gain lived:**
+
+```
+          6 fresh seeds                              pooled 9 (3 sweep + 6 fresh)
+off   mean 2.25 sd 2.56 [0.0 0.2 0.3 2.8 2.9 7.3]    mean 2.79 sd 2.28   (bimodal: collapses OR breaks out)
+w025  mean 3.40 sd 1.80 [0.1 2.7 2.7 4.7 5.1 5.1]    mean 2.87 sd 1.77   d +0.08 vs off  p 0.961
+w100  mean 2.50 sd 0.37 [1.7 2.5 2.6 2.7 2.7 2.8]    mean 2.58 sd 0.32   d -0.21 vs off  p 0.815
+```
+
+**Verdict: REJECT the weight lever, and CORRECT 552.** Two things, both robust across 9 seeds:
+
+1. Raising the weight does not raise the mean -- pooled, w025 is +0.08 (p 0.96) and w100 is -0.21 (p 0.82) vs OFF on
+   CHN, and <= OFF at every seat on the broad bench.
+2. What the weight actually buys is **variance reduction, not strength**: w100 collapses CHN's spread from sd 2.28
+   (OFF, bimodal 0-to-7) to sd 0.32, pinning every seed to ~2.6 -- it removes both the 0-land collapses and the
+   7-land breakouts. w025 is intermediate (sd 1.77). The surrogate is a variance clamp centred ~2.6 on this seat.
+
+So 552's "CHN 1.30->2.65, p=0.006" was this clamp landing above a 3-seed OFF sample that happened to catch the
+collapse mode -- not a mean gain. On 9 seeds the OFF mean is 2.79, equal to ON; the gain dissolves to +0.08. Exactly
+the fresh-seed lesson (549), re-earned: a concentrated single-seat effect measured on the seeds that defined it
+overcounts. The variance clamp is real and might even be useful as a *floor* (no more China-collapses-to-0), but it
+is a wash on land share and buying it costs the upside.
+
+Workstream D status after 551-553: the channel is trainable and its signal is real (551 density, 552 it moves play,
+553 it clamps variance), but neither broadening the tool surface nor raising the weight has produced a *mean* land
+gain that survives fresh seeds. The remaining D levers are the ones that change WHAT is measured, not how hard the
+same lever is pulled: a bench metric aligned with what the surrogate steers (war duration / overextension survival /
+ceasefire rate, where a variance clamp would show as a win), or a less-converged base so the policy can still learn
+to use the signal rather than meeting it at the margin of an already-settled 354.9M-update policy.
+
+PENDING COMMIT: journal **553** and the inert `OD_LLM_INTENT_W` instrument in `src/ai/AISystem.cpp` (defaults to the
+shipped 0.25; no-surrogate play bit-identical). No model file written (all four arms wrote only isolated scratch
+dirs); `data/ai/model.bin` untouched.

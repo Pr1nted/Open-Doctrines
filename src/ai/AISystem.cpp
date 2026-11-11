@@ -1266,6 +1266,17 @@ float g_searchRelBlend = []{
     const char* e = std::getenv("OD_SEARCH_RELBLEND");
     return e ? (float)std::atof(e) : -1.0f;   // <0 => use the fixed SEARCH_BLEND
 }();
+// OD_LLM_INTENT_W: overrides the compile-time AI_LLM_INTENT (0.25) weight that
+// the advisor/surrogate lean enters qbias at. Workstream D, journal 553: the
+// 0.25 "lean a close call" temperature was set for the real LLM; the surrogate
+// channel confirmed a CHN gain at it, and the plan's next step is to widen via
+// the trained weight. One build A/Bs several weights. Unset -> exactly
+// AI_LLM_INTENT, and since the surrogate contributes 0.0f when OFF (want==0 ->
+// continue, the branch is skipped), a no-surrogate run is bit-identical either way.
+float g_llmIntentW = []{
+    const char* e = std::getenv("OD_LLM_INTENT_W");
+    return e ? (float)std::atof(e) : AISystem::AI_LLM_INTENT;
+}();
 bool g_searchDiag = std::getenv("OD_SEARCH_DIAG") != nullptr;
 double g_sdN = 0.0;        // decisions measured (>=2 valid actions)
 double g_sdSsStd = 0.0;    // sum of per-decision std(search contribution)
@@ -4211,7 +4222,7 @@ void AISystem::takeTurn(int cid) {
         for (int i = 0; i < nActs; ++i) {
             const float want = m_g->llmIntentFor(cid, m, i);
             if (want == 0.0f) continue;
-            qbias[i] += AI_LLM_INTENT * want;
+            qbias[i] += g_llmIntentW * want;   // OD_LLM_INTENT_W override; defaults to AI_LLM_INTENT
             any = true;
         }
 
