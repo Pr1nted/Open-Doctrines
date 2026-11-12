@@ -41763,3 +41763,207 @@ to use the signal rather than meeting it at the margin of an already-settled 354
 PENDING COMMIT: journal **553** and the inert `OD_LLM_INTENT_W` instrument in `src/ai/AISystem.cpp` (defaults to the
 shipped 0.25; no-surrogate play bit-identical). No model file written (all four arms wrote only isolated scratch
 dirs); `data/ai/model.bin` untouched.
+
+---
+
+## 554 — Workstream D close: the surrogate is a shippable collapse-floor only if the metric values survival; on land share it is spent
+
+Closing D honestly with the one measurement 551-553 kept gesturing at but never ran at size: a **collapse-rate**
+sweep. 553 called the surrogate "a variance clamp, might be useful as a *floor*" — so measure the floor directly.
+No retrain; the three 553 models (`wsweep/{off,w025,w100}`, one base, one binary), surrogate OFF at bench, 20 fresh
+seeds disjoint from every prior D run. CHN is the collapse seat (bimodal 0..7); FRA/1914 is the upside-cost rung.
+
+```
+seat        arm    n   mean   sd    collapse(<=0.5)  breakout(>=5)
+modern:CHN  off    20   3.08  1.69     3/20 (15%)       1/20 ( 5%)
+modern:CHN  w025   20   3.48  1.56     1/20 ( 5%)       4/20 (20%)
+modern:CHN  w100   20   2.69  0.10     0/20 ( 0%)       0/20 ( 0%)
+1914:FRA    off    10  12.35  2.88     0/10 ( 0%)      10/10 (100%)
+1914:FRA    w100   10   9.20  0.93     0/10 ( 0%)      10/10 (100%)
+```
+
+**Verdict: D is closed. The clamp is real and total; it is net-negative wherever the metric rewards upside.**
+
+1. **The variance clamp is unambiguous** — w100 collapses CHN's sd 1.69 -> 0.10 and FRA's 2.88 -> 0.93. Confirmed
+   a fourth way.
+2. **The hard clamp's upside cost is significant; its collapse benefit is not.** FRA off->w100 is -3.15 land,
+   Welch t=3.29 (df 11, p~0.005) — a real, significant loss of upside. Against it, CHN collapse 15%->0% is 3/20 vs
+   0/20, Fisher two-sided p~0.23 — not significant at n=20 — and the CHN *mean* actually falls (3.08 -> 2.69). So
+   w100 buys a statistically-invisible collapse reduction by paying a statistically-real upside tax.
+3. **w025 (the shipped default) is the sweet spot and needs no change.** Directionally it both softens collapse
+   (15%->5%) and nudges the mean up (3.08 -> 3.48) with breakouts intact (20%) — but the mean move is t=0.78
+   (p~0.44), i.e. noise. It is already the default; ship nothing.
+
+So across 551-554 the surrogate channel is trainable (551), moves play (552), and clamps variance (553-554), but at
+no weight does it move the *mean* land share on fresh seeds, and forcing the clamp high sheds significant upside. The
+only way D becomes a win is to change WHAT is measured — a survival/overextension/war-duration metric where a
+variance clamp reads as a gain — not to pull the same weight lever harder. **No model shipped; `wsweep/*` and all
+run dirs are isolated scratch; `data/ai/model.bin` untouched.** Recommend leaving `AI_LLM_INTENT=0.25` as-is and
+marking D spent on the land metric.
+
+PENDING COMMIT: journal **554** only (this entry). No code, no model file.
+
+---
+
+## 555 — Workstream E, the 550 gate answered: the value head is NOT flat to real deltas; the composition is the weak link, and latent Q is anti-correlated
+
+550 left a named gate: *does the value head respond to a REAL one-step feature delta at all?* If not, no forward-model
+planner can ever work and the only fix is a from-scratch action-sensitive head. Ran it: extended `OD_DISCRIM` to also
+log `vReal = m_value(realized next features)` and `hasReal`, burst off the warmed v9 (`discrim-data`, past
+`DYN_WARMUP`), **163,630 held-out decisions**, 150,113 with a real next state. Clean statistic = incremental
+correlation with the bootstrapped return G after residualising on V(s) (G is autocorrelated with any value readout, so
+raw r is not it).
+
+```
+            incr-over-V(s) partial-r   (r2)                 argmax==taken
+module   n        fvTaken        Q           vReal<-GATE   featValue  policy   fv across-action spread |fvT-fvM|
+ALL   163630   +0.054 (.003) -0.006(.000) +0.214 (.046)     42.5%     86.0%
+econ   20631   +0.066 (.004) -0.011(.000) +0.039 (.002)     36.1%     94.5%    0.033
+pol    17731   +0.017 (.000) -0.116(.014) +0.613 (.376)     12.6%     74.2%    0.156
+war    84053   +0.041 (.002) -0.043(.002) +0.209 (.044)     62.2%     97.5%    0.027
+navy   41215   -0.007 (.000) +0.026(.001) -0.043(.002)      18.6%     63.2%    0.054
+```
+
+**The gate's answer, three findings:**
+
+1. **Branch 1 (give up) is REJECTED.** The value head is *not* flat to real deltas. `vReal` adds real incremental
+   signal over V(s) — **r2=0.376 in politics**, 0.044 in war — i.e. `m_value` strongly distinguishes states that
+   differ by a real one-step politics delta. (Caveat, stated so the number isn't oversold: the realized next state is
+   temporally closer to G and carries exogenous change the AI can neither control nor predict at decision time, so
+   vReal's r2 is an **upper bound** on achievable planning value, concentrated in one module, not a promise.)
+
+2. **The composition is dead and it is the weak link.** `fvTaken = m_value(features + m_featDynamics(features,a))`
+   adds **r2=0.003** over V(s) — unchanged from 550. So although featDynamics predicts the delta (R2=0.64, 546) and the
+   value head responds to real deltas (finding 1), composing them yields a ranker uncorrelated with G. The feature-value
+   *does vary across candidate actions* (pol spread 0.156, comparable to the real-delta sd 0.76) — it is not
+   action-flat; it ranks, just **wrongly**. The predicted delta's action-conditioned slice (action_frac ~10%, 546) is
+   swamped by the exogenous baseline it mostly fits.
+
+3. **The existing latent Q is worse than useless for ranking** — incr-r2 ~0 overall and **negative in politics
+   (-0.116)**. The MuZero scoring side (`embeddingValue = max_a Q(latent)`) is anti-correlated with outcomes exactly
+   where the planning signal lives. This is the saturated-trunk tax (features 0.183 vs latent 0.0125 action-R2, 543)
+   landing on the scorer, not just the dynamics.
+
+**So E is not exhausted — it is newly targeted.** The signal exists (politics, some war); the failure is the
+composition and the latent scorer, not the value head. The single indicated experiment is a **feature-space
+action-value head** `Qfeat(features, action-onehot) -> G`, trained on the bootstrapped return for the taken action,
+scoring candidates directly — no forward model, no saturated-trunk latent. Measurement-first before any ARCH bump:
+added `OD_FEATDUMP` (binary `(m, action, G, features)` tuples) to train `Qfeat` **offline** and test its held-out
+incremental ranking against the dead latent Q. If offline Qfeat clears the ~0.003 floor (esp. in politics) it earns an
+in-engine build + a search-on-vs-off bench; if it is also ~0, this representation cannot rank one ply ahead and E
+needs a trunk retrain, not a planner. Probe burst running (`featdump-data`, isolated; `data/ai/model.bin` untouched).
+
+PENDING COMMIT: journal **555** + the inert `OD_DISCRIM`/`OD_FEATDUMP` instruments in `src/ai/AISystem.cpp`
+(both read-only behind env gates; no-flag play bit-identical — the gate guard also requires featDynamics past warmup).
+No model file written.
+
+---
+
+## 556 — Workstream E, the probe decides it: the taken action adds ~0 to the one-step return over the state; a one-ply planner has nothing to rank
+
+555 named the one experiment that could rescue E: train a feature-space action-value `Qfeat(features, action)->G`
+offline and see if it ranks where the latent Q (anti-correlated) and the forward-model composition (r2 0.003) do not.
+Added `OD_FEATDUMP` (binary `(m, action, G, features)`), focused burst off warmed v9, **118,653 labeled decisions**.
+Trained two matched numpy MLPs per module on an 80/20 split: A = `MLP(features)->G` (feature-space state value),
+B = `MLP(features (+) action-onehot)->G` (feature-space action value). Held-out R2:
+
+```
+module      n     R2_state  R2_action   action adds
+econ    13178      0.749     0.740       -0.008
+pol     11265      0.883     0.887       +0.004
+war     65072      0.903     0.907       +0.004
+navy    29138      0.899     0.898       -0.001
+```
+
+**Verdict: E (one-ply lookahead) is measurement-blocked at the representation level. Stop building the planner.**
+
+1. **The action is ~uninformative about the one-step return.** Given the state features, knowing which action was
+   taken improves held-out return prediction by **+0.004 (pol), +0.004 (war), and negative for econ/navy** — noise. A
+   directly-trained feature-space Qfeat would rank actions no better than a state value, which cannot tell actions
+   apart at all. This is the cleanest of the three independent methods and it agrees with the other two.
+
+2. **It also explains away 555's one apparent bright spot.** The politics `vReal` r2=0.38 (555) was the temporal /
+   exogenous leak flagged there, not action-rankability: the realized next state predicts G because it is closer to G
+   and absorbs opponents' moves and resolved combat, none of which the AI's action at decision time controls or can
+   predict. Train on the action *directly* and that 0.38 collapses to 0.004.
+
+3. **The one-step return is almost entirely a function of the state, not the ply.** The state alone predicts G at
+   R2 0.75-0.90; the action's ceiling is the ~10-25% residual and it fills ~0.4% of it. You are mostly scored for
+   *where you already are*, not for *what you do this turn* — so one ply of lookahead has almost no signal to exploit,
+   which is why search-on has lost every time across 543-556 and why lengthening the horizon (543 ANOVA: next_pick
+   0.183 >> next_turn 0.018) made it worse, not better.
+
+**Convergent, three ways:** latent Q incr-r ~0/negative (555); forward-model composition r2 0.003 (550, 555); direct
+feature-space action-value +0.004 (556). The planner apparatus cannot be made to beat search-off on *this* model
+without a fundamentally different state representation — the saturated trunk (features carry 0.183 action signal,
+latent 0.0125; 543) is upstream of all of it. The only intervention left inside E is **plan Stage 3**: retrain a
+de-saturated trunk *from scratch* so actions produce separable states — a large, speculative bet (days of training,
+no evidence any planner beats search-off even then) that should not be launched without an explicit decision, because
+it is a different and much bigger intervention than "fix the forward model," which is now proven done-and-null.
+
+Recommendation: **mark E's one-ply-planner line closed (negative result, well-measured), keep search OFF as shipped,
+and spend the next effort on a lever that has moved numbers** rather than a from-scratch trunk retrain on spec. The
+instruments (`OD_DISCRIM`, `OD_FEATDUMP`, `train_qfeat.py`) are the reusable assets; the finding is the deliverable.
+
+PENDING COMMIT: journal **556** (and 555's instruments already noted). No code beyond the inert env-gated dumps; no
+model file written; `data/ai/model.bin` untouched.
+
+---
+
+## 557 — Ceasefire guards: both already built, both fire often, neither raises land (negative, pivot lever)
+
+The "pivot to a proven lever" step. The two guards the user originally asked for — *a winning AI should stop
+signing ceasefires* — turned out to be **already built and env-gated OFF** in `decideDiplomacy`
+(`src/ai/AISystem.cpp`): Rule B2 `OD_CEASEFIRE_WINNING` (refuse the 2nd+ costless beg while winning, no claim) and
+Rule C `OD_CEASEFIRE_STALL` (accept a stalled, non-ceding war when at the concurrent-war cap). Both are rules in the
+resolver, applied in `--train-ai` and `--eval-ai` alike, so no retrain is needed — pure measurement.
+
+**A/B sweep**, loop base (`retrain-data/ai/model.bin`), 3 arms × 3 seats × 10 fresh seeds = 90 evals, 120 turns,
+difficulty 3, paired on seed. Captured bench land-share + each guard's atexit fire counter.
+
+```
+seat        arm        n   mean   Δ vs off (paired)    t      fires (stall/win)
+modern:CHN  off       10   3.21     (baseline)                0/0
+modern:CHN  stall15   10   2.87       -0.340          -0.80   634/0
+modern:CHN  win1      10   2.86       -0.350          -1.12   0/80
+modern:RUS  off       10   5.97     (baseline)                0/0
+modern:RUS  stall15   10   5.84       -0.130          -0.29   576/0
+modern:RUS  win1      10   5.72       -0.250          -0.76   0/72
+1914:DEU    off/all   30   0.00     (dead seat)               0/0   <- 0 land every arm/seed, no guard fires
+pooled live (CHN+RUS): stall15 Δ=-0.235  win1 Δ=-0.30   (both |t|<1.2, within noise)
+total fires: CFSTALL 1210 accepts, CFWINNING 152 refusals
+```
+
+**Verdict: keep both guards OFF. Neither earns a default flip; the pivot lever did not prove out.**
+
+1. **Reachability is fine — the guards fire a lot.** 1210 stall-accepts and 152 winning-refusals across the live
+   seats. This is not a "never triggers" null; the rules are live and change real decisions.
+2. **But neither raises land.** Every live-seat delta is **negative**: stall15 −0.34/−0.13, win1 −0.35/−0.25. All
+   |t|<1.2, so none is significant against bench noise — but the sign is consistent and nothing is positive. Against
+   the pre-registered rule (ship a guard only if it does **not regress** land AND fires), both fail the land test.
+3. **`OD_CEASEFIRE_WINNING` is not the free correctness fix it looked like.** It is the *most* negative arm
+   (pooled −0.30), consistently so on both live seats. It cannot be shipped as "bench-neutral correctness"; the bench
+   says it costs a little land (not significantly, but not neutral either). Shipping it would be trading a small,
+   noisy land cost for a behavioural-correctness argument — a user call, not an auto-ship.
+4. **1914:DEU was a bad seat choice.** DEU holds 0 land in every arm and every seed and never fires either guard —
+   in 1914 at difficulty 3 it is wiped before it is ever in a winning/stalled-war position the guards target. It
+   contributes pure zeros; the live measurement is CHN+RUS only. A future ceasefire measurement wants seats that
+   actually reach a winning stalemate (large aggressors that survive), not a seat that dies early.
+
+**Why plausibly negative, not just noisy:** both guards make the AI *keep fighting* (refuse/relent less), and on this
+model continued war against a begging opponent is not reliably converted into held land — consistent with the
+long-standing [[stalled-wars-lock-the-war-slot]] and [[pacts-have-no-teeth]] findings. The guard changes *who holds
+the war slot*, but the model doesn't turn the extra fighting into territory, so the slot cost shows up as a small
+land drag. A guard that *helped* would need the combat/territory conversion to already pay — which is a model
+property, not a rule the guard can supply.
+
+**Where this leaves the session:** D closed null (554, variance clamp), E closed null (555/556, planner
+measurement-blocked), and now the ceasefire guards closed negative (557). Three concrete levers tried, three
+non-wins. The honest next-lever choices are the user's to make (see report): a different proven-lever candidate
+(personality bias socket I2, player-adaptation G — both untried and bench-measurable), the speculative Stage-3
+from-scratch trunk retrain (large, no guarantee), or stop here with search OFF and the guards OFF as the
+well-measured status quo. Not launching another multi-hour sweep on spec.
+
+PENDING COMMIT: journal **557**. No code change (both guards already exist, both stay OFF); no model written;
+`data/ai/model.bin` untouched. Reusable assets: `scratchpad/cfguard_sweep.sh`, `analyze_cfguard.py`,
+`cfguard_sweep.csv`.
