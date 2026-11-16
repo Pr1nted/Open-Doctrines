@@ -42062,3 +42062,64 @@ So outcome-reward alone, bounded, from 187, is a variance clamp on survival, not
 **Deliverable written up:** `docs/ai/WORKSTREAM_H.md` — the ruler, the 187 baseline, the reachability verdict, the outcome-reward null, why both cheap levers only clamp variance, and the three remaining (expensive) options. H is paused there pending an explicit direction.
 
 PENDING COMMIT: journal **559** + the historical-reward machinery (OD_HIST_REWARD / OD_HIST_ONLY / m_histStandingBonus) in src/ai/AISystem.{h,cpp} and src/Game_AITrain.cpp, all env-gated and off-path bit-identical. No model file written outside isolated `--data` trees; `data/ai/model.bin` untouched (md5 4a137043). Reusable assets: scratchpad/hist_ab.sh, hist_ab_result.txt.
+
+## 560 — Workstream E iter 1: a robustness veto on the (already resolver-grounded) assault scorer catches too few losers to help
+
+Context: the user shared a chat where dizzy reframes the planner from "predict the
+opponent" to "be robust to whatever the opponent does" (minimax flavour), and the
+user named the failure of the prediction frame — commit to a threat that may not
+come, waste resources, lose survivability. Reading the code first: the DECISIVE
+lookahead (is an assault winnable) is ALREADY resolver-grounded and on —
+`attackCandidates` (`AISystem.cpp`) scores each assault with the engine's own
+combat arithmetic (frontage/combatWidth, depthFactor, fort, defensive research).
+The learned generic search (`m_dynamics`/`searchScores`) is the action-blind one,
+and it already ships off. So the only NEW thing the chat proposes for the path
+that matters is dizzy's robustness: would this assault still win in the worst case?
+
+Built `OD_ROBUST_DIAG` (read-only, inert off, byte-identical): for every assault
+the AI actually launches, compute the worst-case defender = current garrison +
+every movable garrison the defender (or its allies) holds in the target's
+neighbours, scale `ch.margin` by the reinforced ratio, bucket the launch into four
+worst-case-margin bands, and in `noteAssaultOutcome` join each launch to its REAL
+resolved outcome. The question against the hard caution-regresses prior
+([[opportunism-under-siege-is-load-bearing]], the refuted siege guard −94): of the
+launches a worst-case veto would cancel, do they actually LOSE?
+
+Shipped-187, 3 seeds, full 6-scenario walk, 400 turns (~55k launches/seed; stable):
+
+```
+worst-case band   launches   real fights   loss-rate
+  <0.4             ~15k        ~11k          32-35%
+  0.4-0.7          ~7k         ~5k           40-42%
+  0.7-1.0          ~4.8k       ~3.5k         40-45%
+  >=1.0 (robust)   ~31k        ~16k          26-27%
+VETO (<1.0): loss 36-39% over ~20k fights;  KEEP (>=1.0): loss 27% over ~17k.
+```
+
+VERDICT: NEGATIVE, and quantified. A worst-case-reinforcement veto is not selective
+enough to help. (1) It fires on ~46% of all launches. (2) Even its best band
+(0.7-1.0) tops out at ~43% loss — a MINORITY — so vetoing it cancels the ~57% that
+win. (3) Even the "hopeless" <0.4 band still WINS ~65% of real fights: the worst
+case rarely materialises (the defender usually does not reinforce), so planning for
+it refuses mostly-winning attacks — the exact caution-regresses shape, now measured
+on the live resolver-grounded path. (4) The veto can't even push the surviving
+loss-rate below the 27% KEEP baseline, because losses are spread across ALL bands
+including the robust >=1.0 one (27%) — reinforcement is not the dominant cause of
+assault losses, so a reinforcement-robustness planner is aimed at the wrong target.
+
+So dizzy's reframing is correct in spirit and already realised where it's decisive
+(resolver-grounded scoring); the one addition (worst-case robustness) measurably
+HURTS on assaults, for the same reason every caution lever has
+([[withdrawing-loses-battles]], [[caution-rules-trade-growth]],
+[[a-quarter-of-actions-do-nothing]]). No bench spent: a read-only curve this clean,
+pointing the same way as the whole caution-lever record, does not need a strength
+run to tell us a hard veto would regress. The generic learned planner stays dead
+([[trunk-embedding-is-saturated]]); the only unexhausted lookahead root remains the
+from-scratch de-saturated trunk retrain (days, speculative, explicit decision).
+
+PENDING COMMIT: journal **560** + the `OD_ROBUST_DIAG` instrument in
+`src/ai/AISystem.cpp` (anonymous-namespace `RobustDiag` before `attackCandidates`,
+record at the assault issue-site, join in `noteAssaultOutcome`; all inert off,
+byte-identical). No model written (read-only eval); `data/ai/model.bin` md5
+4a137043 unchanged before/after. Reusable asset: `scratchpad/robust_diag.sh`,
+`robust_diag_result.txt`.

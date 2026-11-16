@@ -535,6 +535,61 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
     return true;
 }
 
+// ── OD_ROBUST_DIAG (workstream E, read-only) ──────────────────────────────
+//
+// The chat's question (dizzy): the AI's assault scorer reads the defender AS IT
+// STANDS NOW. A robust planner would ask the worst case -- could the defender
+// REINFORCE this target from its neighbours and turn a greenlit assault into a
+// loss? This instrument records, for every assault the AI actually launches,
+// whether that worst-case scenario would veto it, then joins the verdict to the
+// REAL resolved outcome (noteAssaultOutcome). The decisive number, against this
+// project's hard "caution regresses" prior (opportunism-under-siege -94, the
+// refuted siege guard): of the launches a robustness veto would cancel, do they
+// actually LOSE -- or would the veto just suppress attacks that win anyway?
+// Inert unless OD_ROBUST_DIAG is set; no behaviour change either way.
+namespace {
+// Four worst-case severity bands, so the veto's precision can be read as a curve
+// rather than at one arbitrary threshold: [<0.4] hopeless, [0.4,0.7), [0.7,1.0)
+// thin, and [>=1.0] robust (would NOT be vetoed).
+struct RobustDiag {
+    bool on = false;
+    bool registered = false;
+    std::map<std::pair<int,int>, float> launchMargin;  // (cid,toPid) -> worst-case margin
+    long long launched = 0;
+    static constexpr int NB = 4;
+    long long band[NB] = {0,0,0,0};          // launches per band
+    long long repulsed[NB] = {0,0,0,0};      // defended-and-lost per band
+    long long won[NB] = {0,0,0,0};           // defended-and-won per band
+    long long walkIn[NB] = {0,0,0,0};        // undefended per band
+    static int bandOf(float m) { return m < 0.4f ? 0 : m < 0.7f ? 1 : m < 1.0f ? 2 : 3; }
+};
+RobustDiag& robustDiag() {
+    static RobustDiag d = []{
+        RobustDiag r;
+        r.on = OD_ENV("OD_ROBUST_DIAG") && atoi(OD_ENV("OD_ROBUST_DIAG")) != 0;
+        return r;
+    }();
+    return d;
+}
+void dumpRobustDiag() {
+    const RobustDiag& d = robustDiag();
+    if (!d.on) return;
+    static const char* NAME[RobustDiag::NB] = {"<0.4  ", "0.4-0.7", "0.7-1.0", ">=1.0 "};
+    fprintf(stderr, "[ROBUST] launched=%lld. worst-case margin band -> real-fight loss-rate:\n", d.launched);
+    long long vetoF = 0, vetoR = 0, keepF = 0, keepR = 0;
+    for (int b = 0; b < RobustDiag::NB; ++b) {
+        const long long fights = d.repulsed[b] + d.won[b];
+        fprintf(stderr, "[ROBUST]   band %s n=%-6lld fights=%-6lld repulsed=%-5lld won=%-6lld loss=%.1f%%  walk-ins=%lld\n",
+                NAME[b], d.band[b], fights, d.repulsed[b], d.won[b],
+                fights ? 100.0 * d.repulsed[b] / fights : 0.0, d.walkIn[b]);
+        if (b < 3) { vetoF += fights; vetoR += d.repulsed[b]; } else { keepF += fights; keepR += d.repulsed[b]; }
+    }
+    fprintf(stderr, "[ROBUST] VETO (<1.0) loss-rate %.1f%% over %lld fights; KEEP (>=1.0) loss-rate %.1f%% over %lld fights.\n",
+            vetoF ? 100.0 * vetoR / vetoF : 0.0, vetoF, keepF ? 100.0 * keepR / keepF : 0.0, keepF);
+    fprintf(stderr, "[ROBUST] a veto helps only where its band's loss-rate is high AND it spares the >=1.0 winners.\n");
+}
+}  // namespace
+
 const std::vector<AISystem::AttackCandidate>&
 AISystem::attackCandidates(int cid) const {
     auto& slot = m_attackScanCache[cid];
@@ -7819,6 +7874,37 @@ std::string AISystem::execWar(int cid, int action) {
                     }
                 }
                 issueOrder(PendingMoveOrder{ch.fromPid, ch.toPid, pct, cid});
+                // OD_ROBUST_DIAG: record dizzy's worst-case verdict for this
+                // launch -- could the defender reinforce from its neighbours
+                // enough to win? Joined to the real outcome in noteAssaultOutcome.
+                if (robustDiag().on) {
+                    int reinforce = 0;
+                    const int defOwner = (ch.toPid >= 0 && ch.toPid < (int)g.m_provinceCountryLookup.size())
+                                       ? g.m_provinceCountryLookup[ch.toPid] : 0;
+                    auto rnb = g.m_provinceNeighbors.find(ch.toPid);
+                    if (defOwner > 0 && rnb != g.m_provinceNeighbors.end())
+                        for (int nb : rnb->second) {
+                            if (nb == ch.fromPid) continue;
+                            auto pa = g.m_provinceArmies.find(nb);
+                            if (pa == g.m_provinceArmies.end()) continue;
+                            for (const auto& u : pa->second)
+                                if (u.count > 0 && u.countryId > 0 &&
+                                    (u.countryId == defOwner || g.alliedCids(defOwner, u.countryId)))
+                                    reinforce += u.count;
+                        }
+                    const int effDef = ch.theirGarrison + reinforce;
+                    // ch.margin already folds in frontage/fort/defensive research
+                    // for the CURRENT defender; scale it down by the reinforced
+                    // garrison ratio to get the worst-case margin.
+                    const float robustMargin = effDef > 0
+                        ? ch.margin * (float)std::max(1, ch.theirGarrison) / (float)effDef
+                        : ch.margin;
+                    RobustDiag& d = robustDiag();
+                    if (!d.registered) { atexit(&dumpRobustDiag); d.registered = true; }
+                    d.launchMargin[std::make_pair(cid, ch.toPid)] = robustMargin;
+                    ++d.launched;
+                    ++d.band[RobustDiag::bandOf(robustMargin)];
+                }
                 // ── IS THIS A BATTLE WE HAVE ALREADY FOUGHT? (OD_REATTACK) ──
                 //
                 // Counted where the order is ISSUED, not where it resolves: the
@@ -15469,6 +15555,21 @@ long long AISystem::s_reatkKeptAfterWin = 0;
 // a return. Counters only; nothing reads s_reatkOutcome except the dump and the
 // classification beside it.
 void AISystem::noteAssaultOutcome(int attackerCid, int dstPid, bool repulsed, bool defended) {
+    // OD_ROBUST_DIAG join (read-only): classify this launch's real outcome by the
+    // worst-case verdict recorded at the issue site. Independent of OD_REATTACK.
+    {
+        RobustDiag& d = robustDiag();
+        if (d.on) {
+            auto it = d.launchMargin.find(std::make_pair(attackerCid, dstPid));
+            if (it != d.launchMargin.end()) {
+                const int b = RobustDiag::bandOf(it->second);
+                if (!defended)     ++d.walkIn[b];
+                else if (repulsed) ++d.repulsed[b];
+                else               ++d.won[b];
+                d.launchMargin.erase(it);
+            }
+        }
+    }
     // The MAP is maintained whenever something reads it -- the counters below, or
     // OD_REATTACK_REPULSE's rule. A rule cannot depend on a debug flag being set,
     // which is how a gate ends up measuring itself off (journal 463).
