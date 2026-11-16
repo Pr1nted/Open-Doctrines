@@ -91,6 +91,16 @@ GROUPS = [
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",
         "check_bindings.py", "check_abi_compat.py", "wasm_imports.py",
+        # gearbox.h declares the enums a mod compiles against and abi.json
+        # describes them; nothing tied the two together, so a value added to
+        # one could sit unmatched in the other. This compares them.
+        "check_sdk_enums.py",
+        # The map-scripting surface has four readers and the engine is one of
+        # them: docs/scripting.md, the editor's lint, dragoman's translator in
+        # a repository that cannot import this one, and any mod built on the
+        # ABI. Adding a statement updates one. This records the surface so the
+        # other three cannot go stale unnoticed.
+        "script_surface.py",
         # Those three check that every capability is DESCRIBED correctly. This
         # one makes each of them get CALLED: a mod per gearbox module that
         # invokes every import in it and counts what came back, generated from
