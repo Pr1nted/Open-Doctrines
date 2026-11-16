@@ -23,6 +23,14 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
+        # release.py takes the decisions as flags and acts on them. The two
+        # rules that have cost the most re-cut tags are not among those flags,
+        # because neither is about this repository's files: Test on main must be
+        # green AT THE COMMIT being tagged, and the SDK goes first when the ABI
+        # moved. release_tui.py reads both, prints them beside the versions, and
+        # refuses a release that contradicts either -- then hands the work to
+        # release.py, so there is still one implementation of a release.
+        "release_tui.py",
         "release.py", "odver.py", "package.py", "ci_plan.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_mp_order_coverage.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package

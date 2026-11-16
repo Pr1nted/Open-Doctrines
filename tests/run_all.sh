@@ -509,6 +509,13 @@ check "tool index" $PY "$root/tools/help.py" --check
 # page's buttons are three hand-kept lists of platforms; this keeps them one.
 check "release names: updater vs workflows vs page" $PY "$root/tools/check_release_names.py"
 
+# The release wizard gates on two rules that are not about this repository's
+# files -- Test green AT THE COMMIT being tagged, and the SDK first when the
+# ABI moved -- so its failure mode is going quiet rather than wrong, and a
+# release that silently stopped being gated looks like one that passed. This
+# drives every refusal and proves it can still see the ABI paths. No network.
+check "release wizard" $PY "$root/tools/release_tui.py" --check
+
 # Fails if a generated file was hand-edited or left stale after an ABI
 # change. Regenerate with: python3 tools/gen_bindings.py
 check "generated bindings vs abi.json" $PY "$root/tools/gen_bindings.py" --check
