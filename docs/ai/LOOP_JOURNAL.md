@@ -41967,3 +41967,98 @@ well-measured status quo. Not launching another multi-hour sweep on spec.
 PENDING COMMIT: journal **557**. No code change (both guards already exist, both stay OFF); no model written;
 `data/ai/model.bin` untouched. Reusable assets: `scratchpad/cfguard_sweep.sh`, `analyze_cfguard.py`,
 `cfguard_sweep.csv`.
+
+---
+
+## 558 — Workstream H iter 1: a history-fidelity ruler for 1939, and the 187 baseline (2.83/7; the sequence events are 0/6)
+
+The user chose Workstream H (train the AI on the real course of WW1/WW2, outcome-reward not imitation). H's blocker
+is measurement: the land-share bench cannot see "does this play like the actual war." So, measurement-first, build
+the ruler before authoring any historical data or spending a training run.
+
+**The instrument — `OD_HIST_SCORE`** (`src/Game_AITrain.cpp`, `runAIEvaluation`). Read-only, inert unless the env
+var is set AND the shipped scenario is "1939" (off-path bit-identical — no capture, no scan, no print). It captures
+each power's STARTING provinces at t==0 — the scenario's OWN start-state is the reference geometry, so no external
+map knowledge is baked in — then scores 7 coarse, state-representable WW2 checkpoints from `m_provinceCountryLookup`
+and `m_relations` and prints `[HIST] ... SCORE k/7` at map end. The AI is NOT scripted to meet them; this measures
+EMERGENT fidelity. Checkpoints: poland_falls (≥70% POL-start no longer POL), poland_to_axis (≥50% POL-start → GER|SOV),
+france_to_ger (≥50% FRA-start → GER), ger_sov_war (GER↔SOV war ever), usa_vs_axis (USA↔GER|JPN war ever),
+uk_survives (GBR holds ≥70% at end), ger_collapse (GER peak ≥1.5× start then end ≤1.1× start).
+
+**Baseline — shipped-187 (scratchpad/shipped-187.bin, md5 4a137043), all-AI, 6 seeds, 400 turns, difficulty 3:**
+
+```
+seed      poland_falls poland_to_axis france_to_ger ger_sov_war usa_vs_axis uk_surv ger_collapse  SCORE  (ger start/peak/end)
+13579        t9           t5            never        never       never       N       Y             3/7   (24/78/0)
+246810       t7           t5            never        never       never       N       Y             3/7   (24/65/0)
+555555       t12          t5            never        never       never       Y       N             3/7   (24/84/84)
+987654       t7           t5            never        never       never       N       Y             3/7   (24/39/0)
+3141592      t7           t5            never        never       never       N       N             2/7   (24/101/101)
+271828       t6           t5            never        never       never       N       Y             3/7   (24/58/0)
+MEAN 2.83/7
+```
+
+**Findings.**
+1. The two Poland checkpoints fire EVERY seed and early (t5-12) — but they are near-deterministic consequences of the
+   start-state (GER-POL war is live at turn 0, SOV partitions via the pre-set relations), so they are the easy half
+   and not evidence the policy "understands" WW2.
+2. **france_to_ger 0/6, ger_sov_war 0/6, usa_vs_axis 0/6.** The three historical SEQUENCE events never occur in
+   emergent play. Germany never fights the USSR (the Molotov-Ribbentrop NAP in the start relations holds forever — no
+   Barbarossa), the US never enters, France is never taken by Germany. Germany either over-expands and is annihilated
+   to 0 (4/6) or runs away and holds its peak (2/6, end 84/101). This is exactly the recon's structural finding — the
+   historical SEQUENCE is unrepresented anywhere, and self-play does not recreate it.
+
+**Honest caveat (do not oversell the ruler).** The three 0/6 gaps are a MIX of (a) the policy playing unlike history
+and (b) engine/scenario mechanics making the events structurally rare: the AI may almost never break a NAP (so
+Barbarossa has no path) and almost never projects a navy across an ocean (so US entry is near-impossible — cf.
+[[navy-unreachable-not-underpriced]]). Which of the two dominates per checkpoint is the cheapest next measurement and
+it decides the Iteration-2 design. Also: ger_collapse=Y currently fires on annihilation-to-0, more extreme than
+historical occupied-Germany; a later refinement could band the end-state.
+
+**Discipline for later H iterations (recorded so the ruler is not gamed).** The plan's interventions — stage the real
+event sequence via the UNUSED scripted-events engine (recon: `wait N turns` + `set country.GER.at_war_with.SOV true`,
+etc.) and/or an outcome-reward checkpoint term at `noteMapEnd` (`AISystem.cpp:14104`) — must be validated by benching
+the TRAINED policy on this ruler with staging OFF (the surrogate-A/B discipline: measure the learned policy, not
+runtime steering) AND must not regress the land-share bench. Staging events directly would make ger_sov_war trivially
+Y — staging is a training SEED, never scored. Net-saturation ([[training-from-187-is-exhausted]], 550-556) is a real
+risk that a historical arm moves nothing; the ruler is what will tell.
+
+PENDING COMMIT: journal **558** + the `OD_HIST_SCORE` instrument in `src/Game_AITrain.cpp` (read-only, env-gated,
+off-path bit-identical). No model file written (all runs used `OD_EVAL_MODEL` read-only; `data/ai/model.bin`
+untouched). Reusable assets: `scratchpad/hist_baseline.sh`, `scratchpad/hist_baseline.txt`.
+
+**558b — reachability probe (3 seeds):** extended OD_HIST_SCORE with a `reach:` line
+(start_naps / naps_broken / usa_wars_end / ger_sov_end). Result: start_naps=6,
+naps_broken=1 in 2/3 seeds, usa_wars_end=43/64/3, ger_sov_end="none" all three. So
+the three 0/6 gaps are NOT mechanism-blocked: the AI breaks NAPs and the US wages
+war on dozens of countries — it just wages a generic chaotic land-grab with no
+historical structure (no Axis/Allies alignment, GER consumed before the US reaches
+it, the GER-SOV NAP dissolves without war). H is feasible; the obstacles are net
+saturation and late-game chaos (usa_wars_end 43-64 is rebel-inflated collapse),
+not engine mechanics. The intervention's reward must impose STRUCTURE, not just
+cause war. Still read-only, no model written.
+
+---
+
+## 559 — Workstream H iter 2: the historical outcome-reward does NOT move the ruler (flat/negative, 2.0 vs 2.67; sequence events still 0/6)
+
+Iter 1 (558) gave a ruler (OD_HIST_SCORE, 1939, 187 baseline 2.83/7) and a reachability verdict (gaps are structural, not engine-blocked). The user chose "outcome-reward first". Built it: `m_histStandingBonus` on AISystem added to `m_finalStanding` in `noteMapEnd`; the trainer (Game_AITrain.cpp) captures the 1939 start geography, OR-accumulates the historical-war flags, and at map end gives a per-country terminal bonus (GER +1 took France, +1 fought SOV; USA +1 entered vs Axis; GBR +1 survived). Gated on `OD_HIST_REWARD`; `OD_HIST_ONLY` forces every training map to be 1939 so the signal has density. Off-path bit-identical (verified: real model.bin md5 4a137043 unchanged across the whole run).
+
+**Bounded A/B** (surrogate-discipline: measure the LEARNED policy, reward OFF at bench). Two arms from a fresh 187 base, same seed 777, `--train-ai 12 300 0 777 --data <isolated>`, OD_LR_SCALE=0.25, OD_HIST_ONLY=1 both, differing ONLY in OD_HIST_REWARD. `data/ai/model.bin` protected by `--data` (md5 identical before/after). Ruler bench, 3 seeds each:
+
+```
+OFF (control):  2/7, 3/7, 3/7   mean 2.67
+ON  (reward):   2/7, 2/7, 2/7   mean 2.00
+```
+
+**Verdict: negative.** The reward did not move the ruler up; it moved it DOWN, and the mechanism is the tell:
+- france_to_ger, ger_sov_war, usa_vs_axis are **still 0/6 in BOTH arms** — the reward produced NONE of the three historical sequence events it rewards. The saturated policy cannot reach those actions in a bounded run (cf. [[workstreams-d-and-e-are-closed]], [[trunk-embedding-is-saturated]]).
+- The ONE thing it changed: GER stopped collapsing. OFF has ger peak→end 35→0 / 48→1 / 73→0 (rise-and-fall); ON has 48→48 / 45→45 / 43→43 (rise-and-HOLD). The survival term (bonus only on surviving GER) taught GER not to overextend into annihilation — a survival/variance effect, exactly the [[surrogate-channel-needs-density]] "variance clamp" again. And because my ger_collapse checkpoint rewards the historical rise-AND-fall, GER-now-holds LOSES that point → 2/7.
+
+So outcome-reward alone, bounded, from 187, is a variance clamp on survival, not a teacher of historical structure. The sequence events are unreachable for the same saturated-net reason every other lever hit. Land-bench no-regression check was NOT run: the primary signal is flat/negative, so there is nothing to protect.
+
+**Where this leaves H:** the two cheap interventions (reward now; the surrogate earlier) both clamp variance and move no structure. The remaining H levers are the EXPENSIVE ones the plan flagged — staging the real event sequence as a training SEED (authoring + still bench-gamed unless measured on held-out generalisation), or the from-scratch de-saturated trunk retrain (days, speculative) — both needing an explicit decision. The ruler + baseline + reachability + this null are the committable deliverable.
+
+**Deliverable written up:** `docs/ai/WORKSTREAM_H.md` — the ruler, the 187 baseline, the reachability verdict, the outcome-reward null, why both cheap levers only clamp variance, and the three remaining (expensive) options. H is paused there pending an explicit direction.
+
+PENDING COMMIT: journal **559** + the historical-reward machinery (OD_HIST_REWARD / OD_HIST_ONLY / m_histStandingBonus) in src/ai/AISystem.{h,cpp} and src/Game_AITrain.cpp, all env-gated and off-path bit-identical. No model file written outside isolated `--data` trees; `data/ai/model.bin` untouched (md5 4a137043). Reusable assets: scratchpad/hist_ab.sh, hist_ab_result.txt.

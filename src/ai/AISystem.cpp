@@ -14084,6 +14084,13 @@ void AISystem::noteMapEnd() {
         const float share = (float)st.provinces / (float)total;
         m_finalStanding[cid] = 2.0f * std::tanh((share - fairShare) / fairShare);
     }
+    // Workstream H: fold in the historical-fidelity bonus for survivors (an
+    // eliminated country already took -4 and is not in m_finalStanding). Empty
+    // unless the trainer set it on a historical scenario, so off-path is a no-op.
+    for (const auto& [cid, bonus] : m_histStandingBonus) {
+        auto it = m_finalStanding.find(cid);
+        if (it != m_finalStanding.end()) it->second += bonus;
+    }
 
     // ── THE OUTCOME REGRESSION. See VALUE_MC_WEIGHT. ──
     //

@@ -5155,6 +5155,13 @@ private:
     // Set by noteMapEnd: cid -> terminal reward for a map that ran out rather
     // than being won. Empty on an ordinary turn.
     std::unordered_map<int, float> m_finalStanding;
+    // Workstream H: a per-country terminal bonus the trainer sets on a historical
+    // scenario (OD_HIST_REWARD) to reward matching the real course of the war.
+    // Added to m_finalStanding in noteMapEnd. Empty => bit-identical (off-path).
+    std::unordered_map<int, float> m_histStandingBonus;
+public:
+    void setHistStandingBonus(std::unordered_map<int, float> b) { m_histStandingBonus = std::move(b); }
+private:
     /// States awaiting their map's outcome. See VALUE_MC_WEIGHT.
     struct OutcomeSample { std::vector<float> features; int cid; };
     std::vector<OutcomeSample> m_outcomeBuf;

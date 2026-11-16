@@ -312,6 +312,11 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         const ShippedMap* ship = ((m + 1) % SHIPPED_TRAIN_EVERY == 0)
                                      ? &SHIPPED_MAPS[(m / SHIPPED_TRAIN_EVERY) % SHIPPED_COUNT]
                                      : nullptr;
+        // OD_HIST_ONLY (Workstream H): force every training map to be the 1939
+        // scenario so the historical reward sees enough density to be measurable
+        // (1939 is otherwise 1 map in 18). Inert unless the env var is set.
+        static const bool histOnly = std::getenv("OD_HIST_ONLY") != nullptr;
+        if (histOnly) for (const auto& sm : SHIPPED_MAPS) if (std::string(sm.name)=="1939") { ship=&sm; break; }
         // Cycle archetypes so every shape gets equal training time, jitter
         // everything else so no two rounds are the same world.
         const Scenario& sc = SCENARIOS[m % SCENARIO_COUNT];
@@ -521,10 +526,33 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         resetRealConquests();
         int turnsSinceProgress = 0;
         double lastFrameSec = -1; // wall-clock of the last dashboard draw (this map)
+        // ── OD_HIST_REWARD (Workstream H iter 2): reward matching the real course
+        // of WW2 on the 1939 scenario. Captures start geography at t==0,
+        // OR-accumulates the historical-war flags, and sets a per-country terminal
+        // bonus at map end (below). Inert unless the env var is set AND this is 1939.
+        static const bool histRewEnv = std::getenv("OD_HIST_REWARD") != nullptr;
+        const bool histRew = histRewEnv && ship && std::string(ship->name) == "1939";
+        std::vector<int> htStart;
+        int htPOL=-1,htFRA=-1,htGBR=-1,htGER=-1,htSOV=-1,htUSA=-1,htJPN=-1;
+        bool htGerSov=false, htUsaAxis=false;
+        auto htWar = [&](const char* a,const char* b){
+            auto it=m_relations.find(a); if(it==m_relations.end()) return false;
+            auto jt=it->second.find(b); return jt!=it->second.end() && jt->second.war; };
         for (int t = 0; t < turnsPerMap; ++t) {
             if (WindowShouldClose()) { aborted = true; break; }
+            if (histRew && t == 0) {
+                htStart = m_provinceCountryLookup;
+                htPOL=cidForIso("POL"); htFRA=cidForIso("FRA"); htGBR=cidForIso("GBR");
+                htGER=cidForIso("GER"); htSOV=cidForIso("SOV");
+                htUSA=cidForIso("USA"); htJPN=cidForIso("JPN");
+            }
             processTurn();
             totalTurns++;
+            if (histRew) {
+                if (htWar("GER","SOV")||htWar("SOV","GER")) htGerSov=true;
+                if (htWar("USA","GER")||htWar("GER","USA")||
+                    htWar("USA","JPN")||htWar("JPN","USA")) htUsaAxis=true;
+            }
 
             // Count REAL countries that actually hold land (conquered shells
             // stay in m_countries but own nothing), and the biggest one's size.
@@ -786,7 +814,27 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         // used to drop the last N_STEP turns of every country's decisions
         // unscored, and with them the only statement the run could make about
         // who finished the map ahead.
-        if (m_ai) m_ai->noteMapEnd();
+        if (m_ai) {
+            if (histRew && !htStart.empty()) {
+                int fraS=0,gbrS=0;
+                for (int o : htStart) { if (o==htFRA) ++fraS; else if (o==htGBR) ++gbrS; }
+                int fraGer=0,gbrHold=0;
+                const size_t N=std::min(htStart.size(), m_provinceCountryLookup.size());
+                for (size_t p=0;p<N;++p) {
+                    const int so=htStart[p], no=m_provinceCountryLookup[p];
+                    if (so==htFRA && no==htGER) ++fraGer;
+                    if (so==htGBR && no==htGBR) ++gbrHold;
+                }
+                std::unordered_map<int,float> bonus;
+                if (htGER>0) { float b=0; if (fraS>0 && fraGer>=0.50*fraS) b+=1.0f; if (htGerSov) b+=1.0f; if (b!=0) bonus[htGER]=b; }
+                if (htUSA>0 && htUsaAxis) bonus[htUSA]=1.0f;
+                if (htGBR>0 && gbrS>0 && gbrHold>=0.70*gbrS) bonus[htGBR]=1.0f;
+                m_ai->setHistStandingBonus(std::move(bonus));
+            } else {
+                m_ai->setHistStandingBonus({});
+            }
+            m_ai->noteMapEnd();
+        }
         m_aiTraining = false;
         // DOES THE ADVANTAGE DISCRIMINATE? See TrainStats::warAdvSum. Printed
         // per map because the AISystem is destroyed on rotation and these
@@ -1368,6 +1416,26 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         // reported 100.0% and the cross-check below is what sent me to read the site.
         std::unordered_map<int, int> reblocLastChange;
 
+        // ── OD_HIST_SCORE (Workstream H, iter 1): does emergent play track real
+        // history? Read-only, inert unless the env var is set AND this is a
+        // shipped historical scenario with a checkpoint table. Scores coarse,
+        // state-representable WW2 checkpoints against the scenario's OWN
+        // start-state -- each power's starting provinces are the reference
+        // geography, so no external map knowledge is baked in. The AI is not
+        // scripted to meet them; we measure whether emergent play does.
+        static const bool histScore = std::getenv("OD_HIST_SCORE") != nullptr;
+        const bool histActive = histScore && ship && std::string(ship->name) == "1939";
+        std::vector<int> histStart;                 // province -> start-owner cid
+        int hPOL=-1,hFRA=-1,hGBR=-1,hGER=-1,hSOV=-1,hUSA=-1,hJPN=-1;
+        int hPolStart=0,hFraStart=0,hGbrStart=0,hGerStart=0;
+        int hGerPeak=0,hGerEnd=0;
+        int cpPolFall=-1,cpPolAxis=-1,cpFraGer=-1,cpGerSov=-1,cpUsaAxis=-1;
+        // Reachability probe: are the 0/6 gaps policy-reachable or mechanism-blocked?
+        std::vector<std::pair<std::string,std::string>> histNaps; // start NAP pairs (deduped)
+        auto histWar = [&](const char* a,const char* b){
+            auto it=m_relations.find(a); if(it==m_relations.end()) return false;
+            auto jt=it->second.find(b); return jt!=it->second.end() && jt->second.war; };
+
         for (int t = 0; t < turnsPerMap; ++t) {
             if (WindowShouldClose()) { aborted = true; break; }
             const auto turnStart = std::chrono::steady_clock::now();
@@ -1423,7 +1491,40 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                     }
                 }
             }
+            if (histActive && t == 0) {
+                histStart = m_provinceCountryLookup;
+                hPOL=cidForIso("POL"); hFRA=cidForIso("FRA"); hGBR=cidForIso("GBR");
+                hGER=cidForIso("GER"); hSOV=cidForIso("SOV");
+                hUSA=cidForIso("USA"); hJPN=cidForIso("JPN");
+                for (int o : histStart) {
+                    if (o==hPOL) ++hPolStart; else if (o==hFRA) ++hFraStart;
+                    else if (o==hGBR) ++hGbrStart; else if (o==hGER) ++hGerStart;
+                }
+                hGerPeak=hGerStart;
+                for (const auto& [iso,inner] : m_relations)
+                    for (const auto& [iso2,rel] : inner)
+                        if (rel.nonAggression && iso < iso2) histNaps.push_back({iso,iso2});
+            }
             processTurn();
+            if (histActive && !histStart.empty()) {
+                int polLost=0,polAxis=0,fraGer=0,gerNow=0;
+                const size_t hN=std::min(histStart.size(), m_provinceCountryLookup.size());
+                for (size_t p=0;p<hN;++p) {
+                    const int so=histStart[p], no=m_provinceCountryLookup[p];
+                    if (so==hPOL){ if(no!=hPOL) ++polLost; if(no==hGER||no==hSOV) ++polAxis; }
+                    else if (so==hFRA){ if(no==hGER) ++fraGer; }
+                    if (no==hGER) ++gerNow;
+                }
+                if (gerNow>hGerPeak) hGerPeak=gerNow;
+                hGerEnd=gerNow;
+                const int tn=t+1;
+                if (cpPolFall<0 && hPolStart>0 && polLost>=0.70*hPolStart) cpPolFall=tn;
+                if (cpPolAxis<0 && hPolStart>0 && polAxis>=0.50*hPolStart) cpPolAxis=tn;
+                if (cpFraGer<0 && hFraStart>0 && fraGer>=0.50*hFraStart) cpFraGer=tn;
+                if (cpGerSov<0 && (histWar("GER","SOV")||histWar("SOV","GER"))) cpGerSov=tn;
+                if (cpUsaAxis<0 && (histWar("USA","GER")||histWar("GER","USA")||
+                                    histWar("USA","JPN")||histWar("JPN","USA"))) cpUsaAxis=tn;
+            }
             if (lostTo && lostSeat > 0 && !lostPrev.empty()) {
                 const size_t n2 = std::min(lostPrev.size(), m_provinceCountryLookup.size());
                 for (size_t pid = 0; pid < n2; ++pid) {
@@ -1517,6 +1618,28 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
                 printf("[EVAL]   turn %d/%d  %d alive  largest %.1f%%  (%.3f s/turn)\n",
                        t + 1, turnsPerMap, alive, r.largestShare * 100, secs / (t + 1));
             }
+        }
+
+        if (histActive && !histStart.empty()) {
+            int gbrHold=0; const size_t hN2=std::min(histStart.size(), m_provinceCountryLookup.size());
+            for (size_t p=0;p<hN2;++p) if (histStart[p]==hGBR && m_provinceCountryLookup[p]==hGBR) ++gbrHold;
+            const bool ukSurvive  = hGbrStart>0 && gbrHold>=0.70*hGbrStart;
+            const bool gerCollapse = hGerStart>0 && hGerPeak>=1.5*hGerStart && hGerEnd<=1.1*hGerStart;
+            const int score = (cpPolFall>=0)+(cpPolAxis>=0)+(cpFraGer>=0)+(cpGerSov>=0)
+                            +(cpUsaAxis>=0)+(ukSurvive?1:0)+(gerCollapse?1:0);
+            printf("[HIST] scenario=1939 turns=%d cids POL=%d FRA=%d GBR=%d GER=%d SOV=%d USA=%d JPN=%d\n",
+                   r.turns,hPOL,hFRA,hGBR,hGER,hSOV,hUSA,hJPN);
+            printf("[HIST] ger start=%d peak=%d end=%d | poland_falls=%d poland_to_axis=%d "
+                   "france_to_ger=%d ger_sov_war=%d usa_vs_axis=%d uk_survives=%s ger_collapse=%s | SCORE %d/7\n",
+                   hGerStart,hGerPeak,hGerEnd,cpPolFall,cpPolAxis,cpFraGer,cpGerSov,cpUsaAxis,
+                   ukSurvive?"Y":"N",gerCollapse?"Y":"N",score);
+            // Reachability: is NAP-breaking / US entry in the AI's repertoire at all?
+            int napsBroken=0; for (const auto& np : histNaps) if (histWar(np.first.c_str(),np.second.c_str())||histWar(np.second.c_str(),np.first.c_str())) ++napsBroken;
+            int usaWars=0; { auto it=m_relations.find("USA"); if(it!=m_relations.end()) for(const auto& [o,rel]:it->second) if(rel.war) ++usaWars; }
+            const char* gerSovEnd = histWar("GER","SOV")||histWar("SOV","GER") ? "war"
+                                  : (histWar("GER","SOV")==false && [&]{auto it=m_relations.find("GER"); if(it==m_relations.end())return false; auto jt=it->second.find("SOV"); return jt!=it->second.end()&&jt->second.nonAggression;}()) ? "nap" : "none";
+            printf("[HIST] reach: start_naps=%zu naps_broken=%d usa_wars_end=%d ger_sov_end=%s\n",
+                   histNaps.size(), napsBroken, usaWars, gerSovEnd);
         }
 
         if (m_ai) { r.stats = m_ai->trainStats(); r.rstats = m_ai->randomStats(); }
