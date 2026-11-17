@@ -93,7 +93,7 @@ public:
      * every request, so anything else living there would be visible on ordinary
      * turns and invisible on the turns diplomacy is decided.
      */
-    static constexpr int FEATURE_COUNT = 143;  // +24 for the relational slice, +3 compass
+    static constexpr int FEATURE_COUNT = 148;  // +24 relational, +3 compass, +5 personality/opponent (143..147)
     /** Political distance past which a province counts as a long way off. */
     static constexpr float COMPASS_FAR = 0.35f;
     /** How far back a trend looks: long enough to show a build-up, short

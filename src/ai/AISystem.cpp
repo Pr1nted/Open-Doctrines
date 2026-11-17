@@ -66,6 +66,26 @@ static bool aiPersonalitiesEnabled() {
 static constexpr double kPersonalityBar = 0.35;         // aggression/mindfulness, all wars
 static constexpr double kPersonalitySecondFront = 0.40;  // paranoia, opening a 2nd war
 static constexpr double kPersonalityTact = 0.30;         // tactfulness, unprovoked war
+// ── Personality on the CONTINUOUS surface (the fix for personality-hook-barely-
+// reached: the five dead hooks were all on saturated argmax heads; these knobs
+// are rule formulas, so a lean here actually lands). All default to a 1.0
+// multiplier when the trait is neutral (0.5), and the whole block is gated on
+// OD_AI_PERSONALITIES, so OFF is byte-identical. Tuned through the LOOP.
+// OD_PERS_TEACH: training-only trait-conditional BC teacher (see the injection
+// site). Makes traits predictive of the demonstrated action so the net has a
+// gradient to learn personality; off => no override.
+static bool aiPersTeach() {
+    static const bool on = std::getenv("OD_PERS_TEACH") &&
+                           atoi(std::getenv("OD_PERS_TEACH")) != 0;
+    return on;
+}
+static constexpr double kPersonalityRecruit = 0.60;      // militancy -> treasury share on troops
+static constexpr double kPersonalityCommit  = 0.25;      // militancy -> how hard to commit an assault
+static constexpr double kPersonalityFort    = 0.50;      // paranoia  -> fortify/garrison reflex strength
+// Militancy z in [-1.5,1.5]: aggressive + paranoid build military, cautious damps spend.
+static inline double personalityMilitancy(const PersonalityProfile& P) {
+    return (P.aggressiveness - 0.5) + (P.paranoia - 0.5) - (P.mindfulness - 0.5);
+}
 
 // Experimental fast adaptation to the human player's style (OD_AI_ADAPT). The
 // AI keeps a short-half-life estimate of how warlike the player is (beginTurn)
@@ -533,6 +553,68 @@ bool AISystem::bestEmbarkPort(int cid, int& outPid, int& outGarrison) const {
     why(6);                                             // PASSED
     outPid = bestPid; outGarrison = bestG;
     return true;
+}
+
+// OD_PERS_DIAG (read-only): does OD_AI_PERSONALITIES actually shape army sizes
+// by character? The decision HASH cannot see it -- recruitment is a continuous
+// amount, not an argmax action -- so this accumulates men recruited per country
+// and its militancy, and at exit reports the correlation and the extremes.
+namespace {
+struct PersDiag {
+    bool on = false, registered = false;
+    std::map<int,double> men;   // cid -> men recruited
+    std::map<int,double> mil;   // cid -> militancy z
+    std::map<int,double> fort;  // cid -> fort levels built
+    std::map<int,double> par;   // cid -> paranoia (0..1)
+};
+long long s_fortReach = 0, s_fortNoFrontier = 0, s_fortTooPoor = 0;
+PersDiag& persDiag() {
+    static PersDiag d = []{ PersDiag r; r.on = std::getenv("OD_PERS_DIAG") &&
+        atoi(std::getenv("OD_PERS_DIAG")) != 0; return r; }();
+    return d;
+}
+void dumpPersDiag() {
+    const PersDiag& d = persDiag();
+    if (!d.on) return;
+    fprintf(stderr, "[PERSDIAG] fortifyReflex: reached-scan=%lld no-frontier=%lld too-poor(treasury<cost)=%lld upgrades=%lld\n",
+            s_fortReach, s_fortNoFrontier, s_fortTooPoor, s_fortReach - s_fortNoFrontier - s_fortTooPoor);
+    if (d.men.size() < 3) return;
+    double n=0, sx=0, sy=0, sxx=0, syy=0, sxy=0;
+    int loC=-1, hiC=-1; double lo=1e9, hi=-1e9;
+    for (const auto& [cid, m] : d.mil) {
+        auto it = d.men.find(cid); const double y = it==d.men.end()?0.0:it->second;
+        n+=1; sx+=m; sy+=y; sxx+=m*m; syy+=y*y; sxy+=m*y;
+        if (m<lo){lo=m;loC=cid;} if (m>hi){hi=m;hiC=cid;}
+    }
+    const double cov=sxy-sx*sy/n, vx=sxx-sx*sx/n, vy=syy-sy*sy/n;
+    const double r = (vx>0&&vy>0)? cov/std::sqrt(vx*vy) : 0.0;
+    auto menOf = [&](int cid){ auto it=d.men.find(cid); return it==d.men.end()?0.0:it->second; };
+    fprintf(stderr, "[PERSDIAG] countries=%.0f  corr(militancy, men recruited)=%.3f\n", n, r);
+    fprintf(stderr, "[PERSDIAG]   most dovish cid=%d mil=%.2f men=%.0f | most militant cid=%d mil=%.2f men=%.0f\n",
+            loC, lo, menOf(loC), hiC, hi, menOf(hiC));
+    // Paranoia vs fortification (the peacetime-fort lever).
+    if (d.par.size() >= 3) {
+        double fn=0,fx=0,fy=0,fxx=0,fyy=0,fxy=0;
+        for (const auto& [cid, p] : d.par) {
+            auto it=d.fort.find(cid); const double y = it==d.fort.end()?0.0:it->second;
+            fn+=1; fx+=p; fy+=y; fxx+=p*p; fyy+=y*y; fxy+=p*y;
+        }
+        const double fcov=fxy-fx*fy/fn, fvx=fxx-fx*fx/fn, fvy=fyy-fy*fy/fn;
+        const double fr2 = (fvx>0&&fvy>0)? fcov/std::sqrt(fvx*fvy) : 0.0;
+        double fortTot=0; for (const auto& [cid,y]:d.fort) fortTot+=y;
+        fprintf(stderr, "[PERSDIAG] corr(paranoia, fort levels built)=%.3f  total fort levels=%.0f\n", fr2, fortTot);
+    }
+}
+}  // namespace
+
+// OD_LINEAR_TRUNK: make the shared trunk's output LINEAR instead of tanh, to
+// de-saturate the embedding for the workstream-E trunk retrain. Read once; off
+// by default so shipped play is byte-identical. See the note at the trunk's
+// construction. Must be set identically at train and eval time.
+static bool ai_linearTrunk() {
+    static const bool on = std::getenv("OD_LINEAR_TRUNK") &&
+                           atoi(std::getenv("OD_LINEAR_TRUNK")) != 0;
+    return on;
 }
 
 // ── OD_ROBUST_DIAG (workstream E, read-only) ──────────────────────────────
@@ -1796,7 +1878,14 @@ AISystem::AISystem(Game* game, const std::string& modelPath)
     // the low milliseconds.
     // One encoder, eight heads. See TRUNK_OUT.
     m_trunk = NeuralNet({FEATURE_COUNT, 512, TRUNK_OUT}, 100);
-    m_trunk.setTanhOutput(true);
+    // OD_LINEAR_TRUNK (workstream E, trunk retrain): the shipped trunk squashes
+    // its 320-d embedding through tanh, which saturates and destroys ~93% of the
+    // action signal (feature R2 0.183 vs latent 0.0125, journals 543-545). With
+    // the flag set the trunk output is LINEAR, so the embedding carries the signal
+    // a planner needs. Changes the embedding's meaning -> requires a from-scratch
+    // retrain (the heads relearn against it); set at BOTH train and eval. Off =>
+    // byte-identical to the shipped behaviour.
+    m_trunk.setTanhOutput(!ai_linearTrunk());
     m_relEncoder = NeuralNet({REL_FEATURES, REL_EMBED}, 106);
     m_relEncoder.setTanhOutput(true);
     m_relScore   = NeuralNet({REL_EMBED, 1}, 107);
@@ -3350,6 +3439,36 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     f[141] = st.compassGapWorst;
     f[142] = st.compassGapShare;
 
+    // ── 143-147: PERSONALITY + OPPONENT inputs ("fold into the trunk retrain") ──
+    // Four character traits and an opponent-aggression signal as NET INPUTS the
+    // (de-saturated) trunk can LEARN to condition on -- the version with a real
+    // mechanism, vs the dead additive-bias hooks (personality-hook-barely-reached).
+    // Traits centered on 0 (neutral) and present only when OD_AI_PERSONALITIES is
+    // set, so a model trained without them sees constant 0. OD_PERS_FORCE pins
+    // every country to one trait extreme for the conditionality test. Needs a
+    // from-scratch retrain WITH a trait-conditional teacher -- self-play gives
+    // traits no gradient on its own.
+    if (aiPersonalitiesEnabled()) {
+        Country* mc = g.m_countries.getCountry(cid);
+        if (mc) {
+            if (!mc->personality.set)
+                mc->personality = odpers::makePersonality(mc->id, mc->compassEconomic, mc->compassSocial);
+            float ag = mc->personality.aggressiveness, mi = mc->personality.mindfulness,
+                  pa = mc->personality.paranoia,       ta = mc->personality.tactfulness;
+            if (const char* fe = std::getenv("OD_PERS_FORCE")) {
+                const std::string s(fe); ag = mi = pa = ta = 0.5f;
+                if      (s == "agg")  ag = 1.0f; else if (s == "mind") mi = 1.0f;
+                else if (s == "par")  pa = 1.0f; else if (s == "tact") ta = 1.0f;
+            }
+            f[143] = 2.0f * (ag - 0.5f); f[144] = 2.0f * (mi - 0.5f);
+            f[145] = 2.0f * (pa - 0.5f); f[146] = 2.0f * (ta - 0.5f);
+        }
+    }
+    // f[147]: opponent aggression -- how besieged this country is (wars against
+    // it), the LEARNABLE form of player-adaptation G (the war-bar bias was dead
+    // both signs). Always present; a from-scratch net uses it or not.
+    f[147] = std::tanh((float)foreignWarCount(cid) / 2.0f);
+
     // 96-103: TRENDS -- direction and pace, against a baseline up to
     // TREND_WINDOW turns old. Squashed, so a runaway late-game value cannot
     // swamp the input the way a raw delta would.
@@ -4659,6 +4778,35 @@ void AISystem::takeTurn(int cid) {
             // those samples can now teach the policy head.
             if (booked && teach < 0 && act >= 0 && act < (int)valid.size() && valid[act])
                 teach = act;
+            // OD_PERS_TEACH: a TRAIT-CONDITIONAL teacher. Overriding the BC target
+            // toward the country's character is what makes the trait inputs
+            // (f[143..146]) PREDICTIVE of the demonstrated action -- without it
+            // self-play gives those inputs no gradient and the net correctly
+            // ignores them (personality-hook-barely-reached, approach 5). The
+            // de-saturated trunk (OD_LINEAR_TRUNK) is the new variable: can it now
+            // LEARN the conditioning the saturated trunk could not? Training-only,
+            // self-play seats only, extreme-trait countries only; off => no change.
+            if (aiPersTeach() && aiPersonalitiesEnabled() && selfPlayLearning() &&
+                !m_scriptedThisCountry && !m_leagueThisCountry) {
+                Country* mc = m_g->m_countries.getCountry(cid);
+                if (mc) {
+                    if (!mc->personality.set)
+                        mc->personality = odpers::makePersonality(mc->id, mc->compassEconomic, mc->compassSocial);
+                    const PersonalityProfile& P = mc->personality;
+                    auto ok = [&](int a){ return a >= 0 && a < (int)valid.size() && valid[a]; };
+                    int pref = -1;
+                    if (mod == MOD_ECONOMY) {
+                        if      (P.paranoia       > 0.60f && ok(2)) pref = 2;  // fortify
+                        else if (P.mindfulness    > 0.60f && ok(7)) pref = 7;  // research
+                        else if (P.aggressiveness > 0.60f && ok(1)) pref = 1;  // industry (war economy)
+                    } else if (mod == MOD_WAR) {
+                        if      (P.aggressiveness > 0.60f && ok(3)) pref = 3;  // attack
+                        else if (P.tactfulness    > 0.60f && ok(6)) pref = 6;  // ceasefire
+                        else if (P.mindfulness    > 0.60f && ok(2)) pref = 2;  // reinforce (defend)
+                    }
+                    if (pref >= 0) teach = pref;
+                }
+            }
             // ── THE MARGINAL THE COLLAPSE GUARD READS ──
             //
             // Only the learning policy's own choices. A booked turn is the
@@ -7503,6 +7651,20 @@ std::string AISystem::execWar(int cid, int action) {
             // it was; with it on, the conscription lever and the province's
             // unrest bind the AI too. See Game::recruitCap.
             long long maxRecruit = g.recruitCap(pop, pid, cid);
+            // OD_AI_PERSONALITIES: militancy = how much of its eligible population
+            // a country is willing to put under arms. Scales the manpower cap
+            // (the binding constraint here) AND the treasury share (the binding
+            // one in a money-poor/goods regime), so the lean lands whichever binds
+            // -- but never past availableManpower. Continuous, unsaturated surface
+            // (the fix for personality-hook-barely-reached). Off => mult 1.0.
+            double persMult = 1.0;
+            if (aiPersonalitiesEnabled()) {
+                if (!c.personality.set)
+                    c.personality = odpers::makePersonality(c.id, c.compassEconomic, c.compassSocial);
+                persMult = std::clamp(
+                    1.0 + kPersonalityRecruit * personalityMilitancy(c.personality), 0.4, 1.8);
+                maxRecruit = (long long)std::min((double)pop, (double)maxRecruit * persMult);
+            }
             // Spend at most 20% of treasury on this order. Clamp BEFORE the
             // cast: a runaway treasury times 10000 overflows long long (UB).
             // ── OD_RECRUIT_SHARE: the share of the treasury one order may spend ──
@@ -7515,8 +7677,11 @@ std::string AISystem::execWar(int cid, int action) {
             // describing the code.
             static const double kRecruitShare = OD_ENV("OD_RECRUIT_SHARE")
                                               ? atof(OD_ENV("OD_RECRUIT_SHARE")) : 0.20;
+            // Same militancy lean on the treasury share (persMult, computed above),
+            // so personality also lands when money binds instead of manpower.
+            const double recruitShare = kRecruitShare * persMult;
             long long budgetCount = (long long)std::min((double)INT32_MAX,
-                                                        c.treasury * kRecruitShare * 10000.0);
+                                                        c.treasury * recruitShare * 10000.0);
             int count = (int)std::min((long long)INT32_MAX,
                                       std::min(maxRecruit, budgetCount));
             if (count < 1000) return didNothing("recruit: too poor/small");
@@ -7564,6 +7729,14 @@ std::string AISystem::execWar(int cid, int action) {
                 return didNothing("recruit: no munitions");
             c.treasury -= price.money;
             money::add(money::BUY_TROOPS, -(double)price.money);
+            if (persDiag().on) {
+                PersDiag& d = persDiag();
+                if (!d.registered) { atexit(&dumpPersDiag); d.registered = true; }
+                if (!c.personality.set)
+                    c.personality = odpers::makePersonality(c.id, c.compassEconomic, c.compassSocial);
+                d.men[cid] += count;
+                d.mil[cid] = personalityMilitancy(c.personality);
+            }
             issueOrder(PendingRecruitment{pid, count, 1, kind});
             return TextFormat("recruit %d in prov %d ($%.0f%s)", count, pid, price.money,
                               price.munitions > 0.005f
@@ -7983,6 +8156,39 @@ std::string AISystem::execWar(int cid, int action) {
                 return didNothing("war: no suitable target");
             const Country* ec = g.m_countries.getCountry(wt.cid);
             if (!ec) return didNothing("war: target vanished");
+            // [EXPERIMENT] OD_NO_OPP_UNDER_SIEGE: refuse an OPPORTUNISTIC
+            // (unclaimed) war while a far stronger power is already at war
+            // with us OR has a declaration pending against us. The SWE floor
+            // seat declares a naval war on Panama the same turn Russia (20x its
+            // army) invades; this keeps a besieged small power's army at home.
+            // Inert when unset (byte-identical). mult via OD_SIEGE_MULT (def 3).
+            if (!wt.claimed && OD_ENV("OD_NO_OPP_UNDER_SIEGE")) {
+                const double mult = OD_ENV("OD_SIEGE_MULT")
+                                  ? atof(OD_ENV("OD_SIEGE_MULT")) : 3.0;
+                const auto me = m_stats.find(cid);
+                const long long myArmy = me != m_stats.end() ? me->second.army : 0;
+                const double need = mult * (double)(myArmy > 1 ? myArmy : 1);
+                bool besieged = false;
+                auto w = m_warWith.find(cid);
+                if (w != m_warWith.end())
+                    for (int e : w->second) {
+                        if (e >= Game::REBEL_CID_MIN) continue;
+                        const auto es = m_stats.find(e);
+                        if (es != m_stats.end() && (double)es->second.army >= need) {
+                            besieged = true; break;
+                        }
+                    }
+                if (!besieged)
+                    for (const auto& da : g.m_pendingDiplomaticActions) {
+                        if (da.action != "declare_war" || da.targetIso != c.isoA3) continue;
+                        const int s = g.cidForIso(da.sourceIso);
+                        const auto es = m_stats.find(s);
+                        if (es != m_stats.end() && (double)es->second.army >= need) {
+                            besieged = true; break;
+                        }
+                    }
+                if (besieged) return didNothing("war: under siege, no opportunism");
+            }
 
             // A NON-AGGRESSION PACT IS BROKEN BEFORE IT IS IGNORED.
             //
@@ -8035,6 +8241,15 @@ std::string AISystem::execWar(int cid, int action) {
                     return didNothing(std::string("war: declaration refused for ") + ec->name);
             }
             statsFor(cid).warsDeclared++;
+            if (OD_ENV("OD_DECL_TRACE") &&
+                (c.isoA3 == g.m_benchSeatIso || ec->isoA3 == g.m_benchSeatIso)) {
+                auto ia = m_stats.find(cid); auto id = m_stats.find(wt.cid);
+                fprintf(stderr, "[DECL] turn %d %s -> %s %s%s atkArmy %lld defArmy %lld\n",
+                        m_turn, c.isoA3.c_str(), ec->isoA3.c_str(),
+                        wt.naval ? "NAVAL " : "", wt.claimed ? "(claims)" : "(opp)",
+                        ia != m_stats.end() ? ia->second.army : -1,
+                        id != m_stats.end() ? id->second.army : -1);
+            }
             m_declaredUnprovoked = !wt.claimed;
             if (wt.naval)
                 return std::string("declare NAVAL war on ") + ec->name +
@@ -8632,7 +8847,18 @@ void AISystem::fortifyReflex(int cid) {
     Game& g = *m_g;
     Country* c = g.m_countries.getCountry(cid);
     if (!c) return;
-    if (foreignWarCount(cid) <= 0) return;
+    // OD_AI_PERSONALITIES: a PARANOID country fortifies its frontiers even in
+    // peacetime; everyone else only once at war. This is the visible "turtler"
+    // signal, on a rule-level reflex (not a saturated head) and persistent
+    // state (not manpower-pool-limited like recruitment). Off => the original
+    // at-war-only gate, byte-identical.
+    bool paranoidPeacetimeFort = false;
+    if (aiPersonalitiesEnabled()) {
+        if (!c->personality.set)
+            c->personality = odpers::makePersonality(c->id, c->compassEconomic, c->compassSocial);
+        paranoidPeacetimeFort = c->personality.paranoia > 0.60f;
+    }
+    if (foreignWarCount(cid) <= 0 && !paranoidPeacetimeFort) return;
     const CountryStat& st = m_stats[cid];
     int bestPid = -1, bestLvl = 0; double bestScore = -1;
     const int cap = fortCap(cid);
@@ -8647,13 +8873,22 @@ void AISystem::fortifyReflex(int cid) {
         double threat = (double)m_stats[fr.enemyCid].army / (1.0 + fl);
         if (threat > bestScore) { bestScore = threat; bestLvl = fl; bestPid = fr.pid; }
     }
-    if (bestPid < 0) return;
+    if (persDiag().on) ++s_fortReach;        // reached the frontier scan (passed the war/paranoia gate)
+    if (bestPid < 0) { if (persDiag().on) ++s_fortNoFrontier; return; }
     const int nextLv = bestLvl + 1;
     // Forts are not industry: no industry discount (see Game::upgradeQuote).
     const float cost = (float)FORT_COST[std::min(nextLv, 5)];
-    if (c->treasury < cost) return;
+    if (c->treasury < cost) { if (persDiag().on) ++s_fortTooPoor; return; }
     c->treasury -= cost;
     money::add(money::BUY_FORT, -(double)cost);
+    if (persDiag().on) {
+        PersDiag& d = persDiag();
+        if (!d.registered) { atexit(&dumpPersDiag); d.registered = true; }
+        if (!c->personality.set)
+            c->personality = odpers::makePersonality(c->id, c->compassEconomic, c->compassSocial);
+        d.fort[cid] += nextLv;
+        d.par[cid] = c->personality.paranoia;
+    }
     issueOrder(PendingUpgrade{bestPid, "fortification", nextLv, 1});
 }
 
@@ -15365,7 +15600,7 @@ bool AISystem::loadModel() {
         return ok;
     };
     if (!readBlob(m_trunk)) return false;
-    m_trunk.setTanhOutput(true);
+    m_trunk.setTanhOutput(!ai_linearTrunk());   // OD_LINEAR_TRUNK, see construction
     if (!readBlob(m_stanceHead)) return false;
     if (!readBlob(m_relEncoder)) return false;
     m_relEncoder.setTanhOutput(true);

@@ -42123,3 +42123,74 @@ record at the assault issue-site, join in `noteAssaultOutcome`; all inert off,
 byte-identical). No model written (read-only eval); `data/ai/model.bin` md5
 4a137043 unchanged before/after. Reusable asset: `scratchpad/robust_diag.sh`,
 `robust_diag_result.txt`.
+
+## 561 — Workstream E/personality: a DE-SATURATED trunk makes personality learnable (the trunk was the blocker)
+
+The user asked for per-country personality + fast player-adaptation. Both were
+already measured dead on the SATURATED trunk: personality failed six ways (four
+qbias hooks inert; a conditional-BC retrain with zero steerability; and this
+session, the continuous/reflex surface -- recruitment is manpower-pool-limited,
+peacetime forting has no frontiers), and adaptation (OD_AI_ADAPT) loses land vs a
+rusher in both war-bar signs. The common cause is [[trunk-embedding-is-saturated]]:
+a tanh-saturated 320-d trunk destroys ~93% of the signal, so neither a bias lean
+nor a new input column can reach the decision.
+
+So, per the user's call, folded personality + adaptation INTO the trunk retrain as
+the test of the de-saturation thesis. Code (all wt-main, gated, uncommitted):
+- `OD_LINEAR_TRUNK` -- trunk output LINEAR instead of tanh (`ai_linearTrunk()`,
+  applied at trunk construction and in loadModel).
+- FEATURE_COUNT 143->148: f[143..146] = the four character traits (centered on 0),
+  f[147] = opponent-aggression (the LEARNABLE form of adaptation G, since the
+  war-bar bias was dead both signs). buildFeatures.
+- `OD_PERS_TEACH` -- a trait-conditional BC teacher overriding the BC target toward
+  the country's character in econ/war, injected right after `teach=`.
+- `OD_PERS_FORCE` -- pins every country to a trait extreme, the conditionality probe.
+
+From-scratch retrain, 6 sessions, 7.75M updates (`scratchpad/pers_retrain.sh`),
+linear trunk + trait inputs + teacher + `OD_BC_FROM_SCRIPT=2`. GATE: force each
+trait extreme, compare the decision hash (eval-ai 1 150 7 2, deterministic):
+
+```
+none 6968275945147121546 | agg 10167236336118600237 | mind 8692060482000322263
+par  6764256726145403237 | tact 5816892343146245625     5 DISTINCT over 16800 decisions
+```
+
+The saturated-trunk version of this exact test (approach 5) gave IDENTICAL hashes
+across forced traits -- zero conditioning. Here, five distinct, reproduced. Since
+OD_PERS_FORCE only writes f[143..146] and the recruitment/fort levers read the real
+profile (not the force), the spread is PURELY the learned policy responding to the
+trait inputs. **Personality conditioning is learnable once the trunk is de-saturated.**
+The first positive after a long null run (D, E, G, H, robustness, six personality
+hooks). It validates the trunk as the root blocker, which bears on the planner and
+LLM channel too.
+
+CAVEATS: conditionality != good personalities or surviving strength (unmeasured);
+the model is a 7.75M-update from-scratch net, far below shipped 187, NOT shippable;
+adaptation's f[147] channel rides the same mechanism but was not separately tested;
+shipping de-saturation invalidates the 143-wide shipped model and needs a full
+retrain to strength first. `data/ai/model.bin` md5 4a137043 unchanged throughout.
+
+PENDING COMMIT: journal **561** + the `OD_LINEAR_TRUNK` / trait+opponent inputs
+(FEATURE_COUNT 148) / `OD_PERS_TEACH` / `OD_PERS_FORCE` machinery + the continuous
+personality levers (recruitment/fort, OD_PERS_DIAG) in `src/ai/AISystem.{h,cpp}`,
+all gated and off-path byte-identical except the FEATURE_COUNT bump (from-scratch
+only -- do NOT merge onto the shipped 143-wide model without a retrain). Assets:
+`scratchpad/pers_retrain.sh`, `pers_retrain_result.txt`.
+
+**561a — behavioral sensibility of the learned personalities (2026-11-17).** The
+gate proved play DIFFERS per trait; this asks whether it differs the RIGHT way.
+Read the ECON/WAR action mix per OD_PERS_FORCE (OD_ACT_HIST, `scratchpad/pers_behav*.sh`).
+The one econ lever that is both OFFERED and policy-driven is research (ECON a7),
+and pi(research) tracks the teacher map exactly: mind 0.985 (researches hard),
+par 0.006 (flees research toward fortify), agg 0.20 (below baseline, wants
+industry), tact 0.31 (≈ neutral) vs none 0.30. Directionally CORRECT on all four.
+The other teacher targets are UNREADABLE on this weak net: fortify (ECON a2) is
+never offered (no contested frontiers at peace), industry (a1) is a booked reflex
+(BY POLICY 0), and WAR attack(a3)/reinforce(a2) are NEVER OFFERED even at
+difficulty 3 / 200 turns / 3 maps because the 7.75M-update model holds 98% and
+barely fights. OD_WAR_BIAS does not force wars in --eval-ai (per-seat bench knob;
+war-biased run byte-identical). So: conditioning is sensible where observable
+(research), and the war/fortify personalities need a strength retrain to test --
+they can't be judged on a model too weak to ever fight. Inertness re-confirmed:
+shipped model under the 148-wide build, all flags off, hash 10276559031218734258
+= the twin (143-wide) hash, bit-identical. model.bin md5 4a137043 unchanged.
