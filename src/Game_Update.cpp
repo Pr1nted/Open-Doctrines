@@ -1990,6 +1990,7 @@ void Game::update(float dt) {
                                     Color{230, 160, 140, 255}, 6.0f);
                 } else {
                     m_config.aiLearning = !m_config.aiLearning;
+                    Audio::get().playSfx(m_config.aiLearning ? "toggle_on" : "toggle_off");
                 }
             // ── THE THREE EXPERIMENTAL ROWS THAT HAD NO HANDLER HERE ──
             //
@@ -2017,9 +2018,14 @@ void Game::update(float dt) {
                 } else {
                     m_config.gdtl = true;
                     Audio::get().playSfx("toggle_on");
+                    addNotification(T("On — experimental. Worlds can be translated to Greater Diplomacy 5 maps"),
+                                    Color{210, 200, 150, 255}, 4.0f);
                 }
             } else if (strcmp(s.label, "AI Correspondents") == 0) {
+                // Close the settings overlay like the main-menu path does, so
+                // the LLM setup panel is not left stacked under it.
                 openLlmSetup();
+                m_inSettings = false;
             } else if (strcmp(s.label, "Goods Economy") == 0) {
                 // Structural: read when a world is built, so toggling mid-game
                 // takes hold on the next new world, not this one.
@@ -2051,7 +2057,7 @@ void Game::update(float dt) {
                 m_config.fogOfWarWorlds = !m_config.fogOfWarWorlds;
                 Audio::get().playSfx(m_config.fogOfWarWorlds ? "toggle_on" : "toggle_off");
                 if (m_config.fogOfWarWorlds)
-                    addNotification(T("On — new worlds can be started with fog of war, from the map's info button."),
+                    addNotification(T("On — new worlds can be started with fog of war, from the map's info button. Still being built."),
                                     Color{210, 200, 150, 255}, 6.0f);
             } else if (strcmp(s.label, "AI Difficulty") == 0) {
                 m_config.aiDifficulty = (m_config.aiDifficulty + 1) % AI_DIFFICULTY_COUNT;
