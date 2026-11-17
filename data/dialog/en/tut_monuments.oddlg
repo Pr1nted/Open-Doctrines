@@ -1,0 +1,52 @@
+// Specialised: monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monuments -- open it. One great work to a province, and a rent you pay for
+every one you keep switched on.
+---
+@Signals Officer
+This is not a second industry track. Industry is a number every province has; a
+monument is a thing your whole country decides to have §**one**§ of, somewhere
+exact. Building one is cheap. Running it is not -- its own upkeep, and a
+surcharge that climbs with every slot you have already filled.
+---
+@Signals Officer
+So the question is never "build more". It is §**which few**§ you can afford this
+turn. Any of them switches off -- it frees its slot, costs nothing and does
+nothing -- and when a war starts you change your mind about which ones earn
+their rent.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+But where a monument §**stands**§ is most of what it does, so you raise one from
+a province's own panel, not from this list. Close this.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Pick one of ours. Its Monuments tab lists what you have researched, greys out
+what cannot go in this ground -- a coastal yard inland, say -- and tells you
+why.
+---
+@Signals Officer
+One of them catches everybody out: the §**Missile Silo**§. It is not a weapon
+that fires on its own. It is a launch pad -- it throws the §**artillery you
+have already researched**§, but clear over the horizon.
+---
+@Signals Officer
+So: switch the silo on, select the province it stands in, open the §**Army**§
+view and Fire Artillery exactly as you always would. The only thing that
+changes is the range -- now it reaches across the map. That is how you hit a
+province you share no border with, like a revolt with no neighbours.
+---
+@Signals Officer
+Its level is its reach: a long way, then most of the planet, then -- at the top
+-- anywhere at all, measured round the curve of the world, so the edge of the
+map is not a wall. Mind that the enemy's Air Defence System can still roll to
+knock a strike down.
+---
+@Signals Officer
+That is monuments. One to a province, a handful you can keep lit, and a silo
+that throws your guns across the world. Anything else?

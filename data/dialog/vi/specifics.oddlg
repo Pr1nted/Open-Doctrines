@@ -9,6 +9,7 @@ Chọn một mục và tôi sẽ đi sâu vào nó. Xong thì hỏi lại.
 > Tàu, cảng và đưa quân vượt biển -> script:tut_ships
 > Nghiên cứu, và vì sao chẳng thứ gì bạn bắt đầu chịu xong -> script:tut_research
 > Kinh tế, công nghiệp và tiền từ đâu ra -> script:tut_economy
+> Monuments, and the missile silo that fires over the horizon -> script:tut_monuments
 > Kinh tế hàng hóa: nuôi dân và cấp nhiên liệu cho chiến tranh -> script:tut_goods
 > Tuyên bố chủ quyền, bất ổn và mất tỉnh vào tay chính dân mình -> script:tut_unrest
 > Liên minh, ngừng bắn và phần còn lại của ngoại giao -> script:tut_diplomacy

@@ -9,6 +9,7 @@
 > Хөлөг онгоц, боомт, армийг усаар гаргах -> script:tut_ships
 > Судалгаа, эхлүүлсэн юм яагаад хэзээ ч дуусдаггүй вэ -> script:tut_research
 > Эдийн засаг, аж үйлдвэр, мөнгө хаанаас ирдэг вэ -> script:tut_economy
+> Monuments, and the missile silo that fires over the horizon -> script:tut_monuments
 > Барааны эдийн засаг: ард түмнээ хооллож, дайнд түлш өгөх -> script:tut_goods
 > Нэхэмжлэл, үймээн, мужаа өөрийн ард түмэнд алдах -> script:tut_unrest
 > Холбоо, гал зогсоолт болон бусад дипломат -> script:tut_diplomacy

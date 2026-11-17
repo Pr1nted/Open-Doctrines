@@ -71,6 +71,7 @@ const WalkRoute ROUTES[] = {
     {"intro",         false},
     {"tutorial",      true},
     {"specifics",     true},
+    {"tut_monuments", true},
     {"tut_ships",     true},
     {"tut_research",  true},
     {"tut_economy",   true},
@@ -233,6 +234,7 @@ void Game::walkSatisfy(const std::string& cond) {
         if (arg == "research") { m_inResearch = want; if (want) m_activeSidebarTab = 4; }
         if (arg == "politics") { m_inPolitics = want; if (want) m_activeSidebarTab = 1; }
         if (arg == "claims")   { m_inClaims   = want; if (want) m_activeSidebarTab = 3; }
+        if (arg == "monuments"){ m_inMonuments = want; if (want) m_activeSidebarTab = 5; }
         if (arg == "any" && !want) m_inEconomy = m_inResearch = m_inPolitics = m_inClaims = false;
         if (!want) m_activeSidebarTab = 0;
         return;

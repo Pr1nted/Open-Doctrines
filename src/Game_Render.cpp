@@ -6315,11 +6315,11 @@ void Game::drawInner() {
     if (m_inCeasefireScreen) drawCeasefireScreen();
 
     // Every overlay panel closes by the same X in the top right -- economy,
-    // politics, research and claims all place it at exactly this rectangle.
-    // Offered whenever one of them is up, because a tutorial that says "close
-    // it again" while ringing the TAB is pointing at the wrong control: the
-    // tab opened it, the X shuts it.
-    if (m_inEconomy || m_inPolitics || m_inResearch || m_inClaims)
+    // politics, research, claims and monuments all place it at exactly this
+    // rectangle. Offered whenever one of them is up, because a tutorial that
+    // says "close it again" while ringing the TAB is pointing at the wrong
+    // control: the tab opened it, the X shuts it.
+    if (m_inEconomy || m_inPolitics || m_inResearch || m_inClaims || m_inMonuments)
         offerUiTarget("panel.close", {(float)(m_screenW - 44), 8, 36, 36});
 
     // The pointer goes UNDER the textbox and over everything else: it rings a

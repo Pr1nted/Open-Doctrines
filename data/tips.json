@@ -29,6 +29,11 @@
     "The console window (debug mode) shows detailed game logs.",
     "You can play as any country - select one from the country selection screen.",
     "Spectator mode lets you observe the entire map without controlling any country.",
-    "Want to collect more money from province without upgrading level of industry in the province? Use specialisations!"
+    "Want to collect more money from province without upgrading level of industry in the province? Use specialisations!",
+    "Monuments are one great work per province - open the Monuments screen in the sidebar to build and switch them on.",
+    "Each monument you keep switched on costs upkeep every turn, and the slot surcharge climbs - run only the few that earn their rent.",
+    "A Missile Silo is a launch pad, not a weapon: switch it on, select its province, and Fire Artillery from the Army view (key 5).",
+    "The Missile Silo gives your researched artillery global range - it can hit a province you share no border with, like an isolated revolt.",
+    "An enemy Air Defence System monument can roll to shoot down an incoming strike."
   ]
 }

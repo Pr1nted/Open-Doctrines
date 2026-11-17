@@ -648,6 +648,7 @@ bool Game::tutorialConditionMet(const std::string& cond) {
         if (arg == "research") return m_inResearch == want;
         if (arg == "politics") return m_inPolitics == want;
         if (arg == "claims")   return m_inClaims   == want;
+        if (arg == "monuments") return m_inMonuments == want;
         if (arg == "any")
             return (m_inEconomy || m_inResearch || m_inPolitics || m_inClaims) == want;
     } else if (what == "war") {

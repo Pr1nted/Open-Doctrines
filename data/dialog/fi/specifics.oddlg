@@ -9,6 +9,7 @@ Valitse yksi, niin käyn sen kunnolla läpi. Kysy uudelleen, kun olet valmis.
 > Alukset, satamat ja armeijan saaminen veden yli -> script:tut_ships
 > Tutkimus, ja miksi mikään aloittamasi ei valmistu -> script:tut_research
 > Talous, teollisuus ja mistä raha tulee -> script:tut_economy
+> Monuments, and the missile silo that fires over the horizon -> script:tut_monuments
 > Tavaratalous: kansan ruokkiminen ja sodan polttoaine -> script:tut_goods
 > Vaateet, levottomuus ja maakuntien menettäminen omalle kansalle -> script:tut_unrest
 > Liitot, tulitauot ja muu diplomatia -> script:tut_diplomacy
