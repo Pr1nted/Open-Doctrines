@@ -1678,12 +1678,19 @@ endif()
 # Diplomacy 5's map directories. It is a separate MIT project with no code from
 # either game in it, fetched at a tag so a build is reproducible.
 #
-# OFF BY DEFAULT, and the reason is not build time. The feature it enables is
-# experimental, it writes maps a second game will read, and the option in the
-# Experimental tab is itself off until a player turns it on -- shipping the
-# dependency in every build to sit behind two switches is not worth the fetch.
-# Turn it on with -DOD_ENABLE_GDTL=ON.
-option(OD_ENABLE_GDTL "Build the Greater Diplomacy 5 translation layer (fetches open-dragoman)" OFF)
+# ON BY DEFAULT. The translation layer is now compiled into every build so the
+# Experimental-tab toggle actually works wherever the game ships, instead of
+# reporting "this build has no translation layer". The runtime option in the
+# Experimental tab is STILL off until a player turns it on -- compiling it in
+# only makes the feature available, it does not enable it for anyone.
+#
+# The cost this accepts: every configure now fetches open-dragoman, and because
+# OD_DRAGOMAN_REF defaults to `main` a build tracks that branch rather than a
+# fixed tag. Pin it for a build that must not move -- a release or a bisect:
+#     cmake -B build -DOD_DRAGOMAN_REF=v0.3.1
+# Turn the whole layer off (no fetch, toggle reports unavailable) with
+# -DOD_ENABLE_GDTL=OFF.
+option(OD_ENABLE_GDTL "Build the Greater Diplomacy 5 translation layer (fetches open-dragoman)" ON)
 
 set(OD_GDTL_BACKEND "none")
 if(OD_ENABLE_GDTL)
