@@ -1449,6 +1449,13 @@ opponent is not a league.
    **Consequence for journal 453:** the world rules it measured are at the front of the
    system prompt, so on the tools path they are exactly what gets dropped. 453's
    measurement stands; whether the GAME reproduces it does not, until this is fixed.
+   **DONE (option a).** A local runner is now addressed on native `/api/chat` with
+   `options.num_ctx` = `LOCAL_NUM_CTX` (8192): `chatUrlFor` in `Game_Llm.cpp` routes a
+   local endpoint there, `chatRequestBody` emits the native `options` body for it, and
+   the response parser already read either shape. Verified by `AdvisorTest` (the body
+   carries `num_ctx`/`num_predict`, not top-level `max_tokens`); NOT yet verified
+   end-to-end against a live model -- that the dropped-codeword survives needs a running
+   Ollama, which the dev box did not have at the time of the change.
 
 140. ~~**FOR THE USER -- a rule that shortens wars by a third and changes no score.**~~
    **CLAIM WITHDRAWN, journal 451. It does not shorten wars reliably.** Six seeds, both

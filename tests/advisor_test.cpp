@@ -396,6 +396,19 @@ int main() {
         ok(local.size() >= 16 &&
            local.compare(local.size() - 16, 16, ",\"stream\":false}") == 0,
            "and the body still ends with the tail the tools builder splices onto");
+        // ── NATIVE OLLAMA BODY (BACKLOG 141) ──
+        // A local runner is addressed on /api/chat, which reads generation
+        // settings from "options" and, crucially, honours num_ctx -- so the
+        // ~3,000-token tools prompt is not truncated to Ollama's 2,048 default.
+        // The /v1 surface ignored options and could not, which is why the front
+        // of the prompt (the world rules) was being dropped.
+        ok(local.find("\"options\":{") != std::string::npos &&
+           local.find("\"num_ctx\":8192") != std::string::npos,
+           "a local runner is given an options block with a context window");
+        ok(local.find("\"num_predict\":220") != std::string::npos,
+           "the token budget rides in num_predict, where native /api/chat reads it");
+        ok(local.find("\"max_tokens\"") == std::string::npos,
+           "and NOT top-level max_tokens, which native /api/chat ignores");
         // Models that reason first are asked to reason little, and given room:
         // at the default effort a 220-token budget is spent before the letter.
         const std::string oss = chatRequestBody(turns, "openai/gpt-oss-20b");
@@ -786,9 +799,11 @@ int main() {
     //
     // The user asked for the LLM path to cost less RAM. keep_alive was the
     // first half (Advisor.h LOCAL_KEEP_ALIVE, so a local model unloads instead
-    // of sitting resident); num_ctx was deferred because nobody had measured
-    // how big the prompt really is, and sizing a context window by guess is how
-    // you either truncate a letter or reserve memory for nothing.
+    // of sitting resident). num_ctx is now the second (LOCAL_NUM_CTX, BACKLOG
+    // 141): a local runner is addressed on native /api/chat with options.num_ctx
+    // set from the measurement below, rather than left at Ollama's 2,048 default
+    // which truncated the front of the tools prompt. The size guard here is what
+    // keeps that window correctly sized as the prompt grows.
     //
     // So this measures it and then GUARDS it. A prompt grows by a line at a
     // time -- journal 453 added two and this is where the next five get

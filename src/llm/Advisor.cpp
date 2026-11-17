@@ -845,17 +845,31 @@ std::string chatRequestBody(const std::vector<Turn>& turns, const std::string& m
     // Room for a little thought and a short letter. A free tier counts this
     // against its per-minute allowance before a word is written, so no more.
     if (!reasoning.empty() && maxTokens < 640) maxTokens = 640;
-    b << "],\"max_tokens\":" << maxTokens
-      // Warm rather than wild. A diplomat who is too predictable is a template
-      // and one who is too random stops tracking the conversation.
-      << ",\"temperature\":0.85";
-    if (!reasoning.empty()) b << ",\"reasoning_effort\":\"" << reasoning << "\"";
-    // LET A LOCAL MODEL GO WHEN IT IS DONE. See LOCAL_KEEP_ALIVE. Verified
-    // against a running Ollama that the field parses rather than 400s: a
-    // request carrying it and one without it return the identical error for a
-    // missing model. Placed BEFORE "stream", because chatRequestBodyWithTools
-    // splices onto the exact tail `,"stream":false}`.
-    if (localRunner) b << ",\"keep_alive\":\"" << LOCAL_KEEP_ALIVE << "\"";
+    b << "]";
+    // Warm rather than wild. A diplomat who is too predictable is a template
+    // and one who is too random stops tracking the conversation.
+    if (localRunner) {
+        // ── NATIVE OLLAMA /api/chat, NOT /v1 ──
+        //
+        // The send site routes a local runner to /api/chat (chatUrlFor in
+        // Game_Llm.cpp), because the OpenAI-compatible /v1 surface ignores
+        // "options" and so cannot widen the context window past the 2,048
+        // default -- which silently truncates the tools prompt (BACKLOG 141,
+        // LOCAL_NUM_CTX). Native /api/chat reads the generation settings from
+        // "options", not the top-level max_tokens/temperature, so they move
+        // there. The response parser already reads either shape.
+        b << ",\"options\":{\"num_ctx\":" << LOCAL_NUM_CTX
+          << ",\"num_predict\":" << maxTokens
+          << ",\"temperature\":0.85}";
+        // LET A LOCAL MODEL GO WHEN IT IS DONE. See LOCAL_KEEP_ALIVE. Placed
+        // BEFORE "stream", because chatRequestBodyWithTools splices onto the
+        // exact tail `,"stream":false}`.
+        b << ",\"keep_alive\":\"" << LOCAL_KEEP_ALIVE << "\"";
+    } else {
+        b << ",\"max_tokens\":" << maxTokens
+          << ",\"temperature\":0.85";
+        if (!reasoning.empty()) b << ",\"reasoning_effort\":\"" << reasoning << "\"";
+    }
     b << ",\"stream\":false}";
     return b.str();
 }

@@ -440,6 +440,20 @@ bool isLocal(const std::string& baseUrl);
 inline constexpr const char* LOCAL_KEEP_ALIVE = "60s";
 
 /**
+ * The context window a LOCAL runner is asked to open, in tokens.
+ *
+ * Ollama's default runtime window is 2,048, but a tools-path letter is a system
+ * prompt, the tool catalogue and a briefing -- ~3,015 tokens measured (BACKLOG
+ * 141) -- and the front of it (the world rules, the instructions) is exactly
+ * what a 2,048 window drops, so the model answered a prompt it had never fully
+ * seen and fired no tools. The OpenAI-compatible /v1 surface ignores "options"
+ * and cannot set this; the native /api/chat endpoint honours options.num_ctx,
+ * so a local runner is addressed there instead. 8192 leaves room for the prompt,
+ * several rounds of tool answers, and the reply, without being wasteful.
+ */
+inline constexpr int LOCAL_NUM_CTX = 8192;
+
+/**
  * The JSON body for a chat completion. Separated out so it can be tested.
  *
  * `localRunner` adds the residency hint above. It is a parameter rather than a

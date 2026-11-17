@@ -40,6 +40,18 @@
 
 namespace {
 
+// The endpoint a letter is POSTed to. A local Ollama is addressed on its NATIVE
+// /api/chat, which honours options.num_ctx (BACKLOG 141, llm::LOCAL_NUM_CTX);
+// everything else on the OpenAI-compatible /chat/completions. chatRequestBody
+// matches this -- it emits native "options" for a local runner -- so the two
+// must agree, and the choice lives in exactly one place.
+std::string chatUrlFor(const std::string& endpoint) {
+    if (llm::isLocal(endpoint)) return llm::apiRootOf(endpoint) + "/api/chat";
+    std::string u = endpoint;
+    while (!u.empty() && u.back() == '/') u.pop_back();
+    return u + "/chat/completions";
+}
+
 /// One answer, on its way back to the game thread.
 struct Answer {
     int from = 0;
@@ -383,9 +395,7 @@ void Game::askAdvisor(int fromCountry, int toCountry, int groupId) {
     auto turns = llm::buildConversation(thread->messages, fromCountry, persona,
                                         situation, languageName, 24, nameOf);
 
-    std::string url = m_config.llmEndpoint;
-    while (!url.empty() && url.back() == '/') url.pop_back();
-    url += "/chat/completions";
+    std::string url = chatUrlFor(m_config.llmEndpoint);
 
     // THE KEY GOES ONLY TO A REMOTE ENDPOINT THE PLAYER TYPED.
     //
@@ -1089,9 +1099,7 @@ void Game::testLlmRunner() {
     const std::string payload = llm::chatRequestBody(turns, m_config.llmModel, 16,
                                                     llm::isLocal(m_config.llmEndpoint));
 
-    std::string url = m_config.llmEndpoint;
-    while (!url.empty() && url.back() == '/') url.pop_back();
-    url += "/chat/completions";
+    std::string url = chatUrlFor(m_config.llmEndpoint);
     const std::string key = llm::isLocal(m_config.llmEndpoint)
                           ? std::string() : m_config.llmApiKey;
 
