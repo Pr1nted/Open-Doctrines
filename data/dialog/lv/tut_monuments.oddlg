@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Pieminekļi -- atver to. Viens liels darbs uz provinci, un īre, ko maksā par katru ieslēgto.
+---
+@Signals Officer
+Šī nav otra rūpniecības atzara. Rūpniecība ir skaitlis, kas ir katrai provincei; piemineklis ir kaut kas, no kā visa tava valsts nolemj turēt §**vienu**§, konkrētā vietā. Uzcelt to ir lēti. Uzturēt to nav -- paša uzturēšana un piemaksa, kas ceļas ar katru jau aizpildīto ligzdu.
+---
+@Signals Officer
+Tāpēc jautājums nekad nav "būvē vairāk". Tas ir §**kurus nedaudzos**§ tu vari atļauties šajā gājienā. Jebkuru var izslēgt -- tas atbrīvo savu ligzdu, neko nemaksā un neko nedara -- un, kad sākas karš, tu pārdomā, kurš ir savas īres vērts.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Bet §**kur piemineklis stāv**§ ir lielākā daļa no tā, ko tas dara, tāpēc tu to uzcel no pašas provinces paneļa, ne no šī saraksta. Aizver to.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Izvēlies vienu no mūsējām. Tās Pieminekļu cilne uzskaita, ko esi izpētījis, padara pelēku to, kas šajā zemē nevar stāvēt -- piemēram, piekrastes kuģu būvētavu iekšzemē -- un pasaka tev, kāpēc.
+---
+@Signals Officer
+Viens no tiem samulsina visus: §**Raķešu šahta**§. Tas nav ierocis, kas šauj pats no sevis. Tā ir palaišanas platforma -- tā met §**artilēriju, ko jau esi izpētījis**§, bet tālu aiz apvāršņa.
+---
+@Signals Officer
+Tātad: ieslēdz šahtu, izvēlies provinci, kurā tā stāv, atver §**Armijas**§ skatu un Šauj ar artilēriju tieši tāpat kā vienmēr. Vienīgais, kas mainās, ir darbības rādiuss -- tagad tas sniedzas pāri visai kartei. Tā tu trāpi provincei, ar kuru tev nav kopīgas robežas, kā sacelšanās bez kaimiņiem.
+---
+@Signals Officer
+Tās līmenis ir tās sniedzamība: tālu, tad lielākā planētas daļa, tad -- augšgalā -- vispār jebkur, mērot ap pasaules izliekumu, tā ka kartes mala nav siena. Ņem vērā, ka ienaidnieka Pretgaisa aizsardzības sistēma joprojām var notriekt triecienu.
+---
+@Signals Officer
+Tie ir pieminekļi. Viens uz provinci, sauja, ko vari turēt iedegtus, un šahta, kas met tavus lielgabalus pāri pasaulei. Vēl kaut kas?

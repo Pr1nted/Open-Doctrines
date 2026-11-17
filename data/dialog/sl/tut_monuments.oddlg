@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Spomeniki -- odpri to. Eno veliko delo na provinco in najemnina, ki jo plačuješ za vsakega, ki ga pustiš prižganega.
+---
+@Signals Officer
+To ni druga industrijska veja. Industrija je število, ki ga ima vsaka provinca; spomenik je nekaj, česar se vsa tvoja dežela odloči imeti §**enega**§, na natančnem mestu. Zgraditi ga je poceni. Vzdrževati ga ni -- lastno vzdrževanje in doplačilo, ki raste z vsakim že zapolnjenim mestom.
+---
+@Signals Officer
+Vprašanje torej nikoli ni "gradi več". Je §**katere maloštevilne**§ si lahko privoščiš to potezo. Vsakega lahko ugasneš -- sprosti svoje mesto, nič ne stane in nič ne počne -- in ko izbruhne vojna, si premisliš, kateri je vreden svoje najemnine.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+A §**kje spomenik stoji**§ je večina tega, kar počne, zato ga postaviš iz lastne plošče province, ne s tega seznama. Zapri to.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Izberi enega od naših. Njegov zavihek Spomeniki našteje, kaj si raziskal, osivi tisto, kar na tla ne spada -- obalno ladjedelnico v notranjosti, recimo -- in ti pove zakaj.
+---
+@Signals Officer
+Eden od njih zmede vsakogar: §**Raketni silos**§. Ni orožje, ki strelja samo. Je izstrelišče -- zaluča §**topništvo, ki si ga že raziskal**§, a prav onkraj obzorja.
+---
+@Signals Officer
+Torej: prižgi silos, izberi provinco, v kateri stoji, odpri pogled §**Vojska**§ in Sproži topništvo prav tako kot vedno. Edino, kar se spremeni, je doseg -- zdaj seže čez vso karto. Tako zadeneš provinco, s katero nimaš skupne meje, kot upor brez sosedov.
+---
+@Signals Officer
+Njegova stopnja je njegov doseg: daleč, nato večina planeta, nato -- na vrhu -- sploh kamor koli, merjeno po ukrivljenosti sveta, tako da rob karte ni zid. Upoštevaj, da lahko sovražnikov Sistem zračne obrambe udarec še vedno sestreli.
+---
+@Signals Officer
+To so spomeniki. Eden na provinco, peščica, ki jih lahko držiš prižgane, in silos, ki tvoje topove zaluča čez ves svet. Še kaj?

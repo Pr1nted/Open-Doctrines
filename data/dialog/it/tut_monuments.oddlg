@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenti -- aprilo. Una grande opera per provincia, e un affitto che paghi per ciascuno che tieni acceso.
+---
+@Signals Officer
+Questa non è una seconda linea d'industria. L'industria è un numero che ogni provincia possiede; un monumento è qualcosa di cui tutto il tuo paese decide di avere §**uno**§, in un luogo preciso. Costruirlo è a buon mercato. Farlo funzionare no -- il suo mantenimento, e un sovrapprezzo che sale con ogni posto già riempito.
+---
+@Signals Officer
+La domanda quindi non è mai "costruiscine di più". È §**quali pochi**§ puoi permetterti questo turno. Ciascuno si può spegnere -- libera il suo posto, non costa nulla e non fa nulla -- e quando scoppia una guerra, cambi idea su quale valga il suo affitto.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Ma §**dove sorge**§ un monumento è la maggior parte di ciò che fa, perciò ne erigi uno dal pannello stesso della provincia, non da questo elenco. Chiudi questo.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Scegline una delle nostre. La sua scheda Monumenti elenca ciò che hai ricercato, ingrigisce ciò che non può stare su questo terreno -- un cantiere costiero nell'entroterra, poniamo -- e ti dice perché.
+---
+@Signals Officer
+Uno di essi spiazza tutti: il §**Silo missilistico**§. Non è un'arma che spara da sola. È una rampa di lancio -- scaglia l'§**artiglieria che hai già ricercato**§, ma ben oltre l'orizzonte.
+---
+@Signals Officer
+Dunque: accendi il silo, seleziona la provincia in cui sorge, apri la vista §**Esercito**§ e Fai fuoco d'artiglieria esattamente come faresti sempre. L'unica cosa che cambia è la gittata -- ora arriva attraverso tutta la mappa. È così che colpisci una provincia con cui non condividi confine, come una rivolta senza vicini.
+---
+@Signals Officer
+Il suo livello è la sua portata: lontano, poi gran parte del pianeta, poi -- al massimo -- ovunque, misurata lungo la curvatura del mondo, cosicché il bordo della mappa non è un muro. Bada che il Sistema di difesa aerea del nemico può ancora riuscire ad abbattere un colpo.
+---
+@Signals Officer
+Questi sono i monumenti. Uno per provincia, una manciata che puoi tenere accesi, e un silo che scaglia i tuoi cannoni per tutto il mondo. Altro?

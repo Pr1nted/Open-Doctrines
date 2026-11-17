@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Emlékművek -- nyisd meg. Tartományonként egy nagy mű, és bérleti díj, amelyet minden bekapcsolva tartottért fizetsz.
+---
+@Signals Officer
+Ez nem egy második ipari ág. Az ipar egy szám, amivel minden tartomány rendelkezik; az emlékmű olyasmi, amiből az egész országod úgy dönt, hogy §**egyet**§ birtokol, egy pontos helyen. Megépíteni olcsó. Üzemeltetni nem -- a saját fenntartása, és egy pótdíj, amely minden már betöltött hellyel emelkedik.
+---
+@Signals Officer
+A kérdés tehát sosem az, hogy "építs többet". Hanem hogy §**melyik keveset**§ engedheted meg magadnak ebben a körben. Bármelyik kikapcsolható -- felszabadítja a helyét, semmibe sem kerül és semmit sem tesz -- és ha háború tör ki, meggondolod, melyik éri meg a bérét.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+De hogy §**hol áll**§ egy emlékmű, az a legtöbb abból, amit tesz, ezért a tartomány saját paneljéről emelsz egyet, nem erről a listáról. Zárd be ezt.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Válassz egyet a mieinkből. Az Emlékművek fülén felsorolja, mit kutattál ki, elszürkíti azt, ami nem fér el ezen a talajon -- mondjuk egy parti hajógyárat a szárazföld belsejében -- és megmondja, miért.
+---
+@Signals Officer
+Egyikük mindenkit megtéveszt: a §**Rakétasiló**§. Nem fegyver, amely magától tüzel. Indítóállvány -- elhajítja a §**már kikutatott tüzérségedet**§, de egyenesen a látóhatáron túlra.
+---
+@Signals Officer
+Tehát: kapcsold be a silót, válaszd ki a tartományt, amelyben áll, nyisd meg a §**Hadsereg**§ nézetet, és Tüzelj tüzérséggel pontosan úgy, ahogy mindig. Az egyetlen, ami változik, a hatótávolság -- most átér az egész térképen. Így találsz el egy tartományt, amellyel nincs közös határod, mint egy szomszédok nélküli lázadást.
+---
+@Signals Officer
+A szintje a hatótávolsága: messzire, aztán a bolygó java, aztán -- a csúcson -- egyáltalán bárhová, a világ görbülete mentén mérve, úgyhogy a térkép széle nem fal. Ügyelj rá, hogy az ellenség Légvédelmi Rendszere még mindig leszedheti a csapást.
+---
+@Signals Officer
+Ezek az emlékművek. Tartományonként egy, egy maréknyi, amit égve tarthatsz, és egy siló, amely a világon át hajítja az ágyúidat. Valami más?

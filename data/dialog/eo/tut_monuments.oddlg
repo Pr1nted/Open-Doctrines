@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumentoj -- malfermu ĝin. Unu granda verko po provinco, kaj lupago kiun vi pagas por ĉiu kiun vi tenas ŝaltita.
+---
+@Signals Officer
+Tio ĉi ne estas dua industria trako. Industrio estas nombro kiun havas ĉiu provinco; monumento estas io, de kiu via tuta lando decidas havi §**unu**§, en preciza loko. Konstrui ĝin estas malmultekoste. Funkciigi ĝin ne -- ĝia propra bontenado, kaj aldonpago kiu altiĝas kun ĉiu jam plenigita ingo.
+---
+@Signals Officer
+Do la demando neniam estas "konstruu pli". Ĝi estas §**kiujn malmultajn**§ vi povas pagi ĉi-vice. Ĉiun eblas malŝalti -- ĝi liberigas sian ingon, kostas nenion kaj faras nenion -- kaj kiam milito komenciĝas, vi repripensas kiu valoras sian lupagon.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Sed §**kie monumento staras**§ estas la plejparto de tio kion ĝi faras, do vi starigas ĝin el la propra panelo de la provinco, ne el ĉi tiu listo. Fermu tion.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Elektu unu el niaj. Ĝia langeto Monumentoj listigas tion kion vi esploris, grizigas tion kio ne taŭgas sur ĉi tiu tero -- marbordan ŝipejon enlande, ekzemple -- kaj diras al vi kial.
+---
+@Signals Officer
+Unu el ili konfuzas ĉiun: la §**Raketsilo**§. Ĝi ne estas armilo kiu pafas per si mem. Ĝi estas lanĉplatformo -- ĝi ĵetas la §**artilerion kiun vi jam esploris**§, sed tute trans la horizonton.
+---
+@Signals Officer
+Do: ŝaltu la silon, elektu la provincon en kiu ĝi staras, malfermu la vidon §**Armeo**§ kaj Pafu Artilerion ĝuste kiel vi ĉiam farus. La sola ŝanĝiĝanta afero estas la atingo -- nun ĝi atingas trans la tutan mapon. Tiel vi trafas provincon kun kiu vi dividas nenian limon, kiel ribelo sen najbaroj.
+---
+@Signals Officer
+Ĝia nivelo estas ĝia atingo: malproksimen, poste la plejparto de la planedo, poste -- en la supro -- entute ien ajn, mezurita laŭ la kurbiĝo de la mondo, do la rando de la mapo ne estas muro. Atentu ke la Kontraŭaera Defendsistemo de la malamiko ankoraŭ povas faligi baton.
+---
+@Signals Officer
+Jen monumentoj. Unu po provinco, manpleno kiun vi povas teni lumigitaj, kaj silo kiu ĵetas viajn kanonojn trans la mondon. Io alia?

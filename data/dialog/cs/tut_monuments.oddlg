@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenty -- otevři to. Jedno velké dílo na provincii, a nájem, který platíš za každé, jež necháváš zapnuté.
+---
+@Signals Officer
+Tohle není druhá průmyslová větev. Průmysl je číslo, které má každá provincie; monument je něco, čeho se celá tvá země rozhodne mít §**jeden**§, na přesném místě. Postavit ho je levné. Provozovat ho ne -- vlastní údržba a příplatek, který stoupá s každým již zaplněným slotem.
+---
+@Signals Officer
+Otázka tedy nikdy nezní "postav víc". Zní §**kterých pár**§ si tento tah můžeš dovolit. Kterýkoli lze vypnout -- uvolní svůj slot, nic nestojí a nic nedělá -- a když vypukne válka, změníš názor na to, který si svůj nájem zaslouží.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Ale §**kde monument stojí**§ je většina toho, co dělá, takže ho stavíš z vlastního panelu provincie, ne z tohoto seznamu. Zavři to.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Vyber jednu z našich. Její karta Monumenty vypisuje, co jsi vyzkoumal, zešedne to, co na tuto půdu nepatří -- třeba pobřežní loděnici ve vnitrozemí -- a řekne ti proč.
+---
+@Signals Officer
+Jeden z nich zaskočí každého: §**Raketové silo**§. Není to zbraň, která střílí sama. Je to odpalovací rampa -- vrhá §**dělostřelectvo, které jsi už vyzkoumal**§, ale rovnou za obzor.
+---
+@Signals Officer
+Takže: zapni silo, vyber provincii, v níž stojí, otevři pohled §**Armáda**§ a Zahaj dělostřeleckou palbu přesně jako obvykle. Jediné, co se mění, je dostřel -- teď dosáhne přes celou mapu. Tak zasáhneš provincii, s níž nesdílíš hranici, třeba povstání bez sousedů.
+---
+@Signals Officer
+Jeho úroveň je jeho dosah: daleko, pak většina planety, pak -- na vrcholu -- úplně kamkoli, měřeno po zakřivení světa, takže okraj mapy není zeď. Pamatuj, že nepřátelský Systém protivzdušné obrany pořád může úder sestřelit.
+---
+@Signals Officer
+To jsou monumenty. Jeden na provincii, hrstka, kterou udržíš rozsvícenou, a silo, které vrhá tvá děla přes celý svět. Ještě něco?

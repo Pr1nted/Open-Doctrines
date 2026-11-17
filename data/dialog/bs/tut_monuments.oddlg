@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Spomenici -- otvori to. Jedno veliko djelo po provinciji, i najam koji plaćaš za svaki koji držiš uključenim.
+---
+@Signals Officer
+Ovo nije druga industrijska traka. Industrija je broj koji svaka provincija ima; spomenik je nešto čega cijela tvoja zemlja odluči imati §**jedan**§, na tačno određenom mjestu. Izgraditi ga je jeftino. Održavati ga nije -- vlastito održavanje, i naknada koja raste sa svakim već popunjenim mjestom.
+---
+@Signals Officer
+Pitanje dakle nikada nije "gradi više". Nego §**kojih nekoliko**§ možeš priuštiti ovaj potez. Svaki od njih se može isključiti -- oslobodi svoje mjesto, ništa ne košta i ništa ne radi -- a kad počne rat, predomisliš se oko toga koji vrijedi svog najma.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Ali §**gdje spomenik stoji**§ najveći je dio onoga što radi, pa ga podižeš s vlastite ploče provincije, a ne s ovog spiska. Zatvori ovo.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Izaberi jednu od naših. Njena kartica Spomenici nabraja šta si istražio, zasivi ono što ne može stati na ovo tlo -- obalno brodogradilište u unutrašnjosti, recimo -- i kaže ti zašto.
+---
+@Signals Officer
+Jedan od njih zbuni svakoga: §**Raketni silos**§. Nije oružje koje puca samo od sebe. To je lansirna platforma -- izbacuje §**artiljeriju koju si već istražio**§, ali skroz preko horizonta.
+---
+@Signals Officer
+Dakle: uključi silos, izaberi provinciju u kojoj stoji, otvori prikaz §**Vojska**§ i otvori artiljerijsku vatru baš kao i uvijek. Jedino što se mijenja jeste domet -- sada doseže preko cijele karte. Tako pogodiš provinciju s kojom ne dijeliš granicu, poput pobune bez susjeda.
+---
+@Signals Officer
+Njen nivo je njen domet: daleko, zatim veći dio planete, zatim -- na vrhu -- bilo gdje uopšte, mjereno oko zakrivljenosti svijeta, pa rub karte nije zid. Imaj na umu da neprijateljski Sistem protuzračne odbrane i dalje može oboriti udar.
+---
+@Signals Officer
+To su spomenici. Jedan po provinciji, šačica koju možeš držati upaljenom, i silos koji baca tvoje topove preko svijeta. Još nešto?

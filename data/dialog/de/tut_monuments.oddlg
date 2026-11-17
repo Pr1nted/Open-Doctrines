@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumente -- öffne es. Ein großes Werk je Provinz, und eine Miete, die du für jedes zahlst, das du eingeschaltet lässt.
+---
+@Signals Officer
+Das ist kein zweiter Industriezweig. Industrie ist eine Zahl, die jede Provinz hat; ein Monument ist etwas, von dem dein ganzes Land beschließt, §**eines**§ zu besitzen, an einem bestimmten Ort. Es zu bauen ist billig. Es zu betreiben nicht -- sein eigener Unterhalt, und ein Aufschlag, der mit jedem bereits gefüllten Platz steigt.
+---
+@Signals Officer
+Die Frage lautet also nie "baue mehr". Sie lautet §**welche wenigen**§ du dir diesen Zug leisten kannst. Jedes lässt sich abschalten -- es gibt seinen Platz frei, kostet nichts und tut nichts -- und wenn ein Krieg beginnt, überdenkst du, welches seine Miete wert ist.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Aber §**wo ein Monument steht**§ ist das meiste von dem, was es tut, also errichtest du eines über das eigene Panel der Provinz, nicht über diese Liste. Schließe das.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Wähle eine von unseren. Ihr Monument-Reiter listet auf, was du erforscht hast, graut aus, was auf diesen Boden nicht passt -- eine Küstenwerft im Binnenland etwa -- und sagt dir warum.
+---
+@Signals Officer
+Eines verwirrt jeden: das §**Raketensilo**§. Es ist keine Waffe, die von selbst feuert. Es ist eine Startrampe -- es wirft die §**Artillerie, die du bereits erforscht hast**§, aber weit über den Horizont.
+---
+@Signals Officer
+Also: schalte das Silo ein, wähle die Provinz, in der es steht, öffne die §**Armee**§-Ansicht und feuere Artillerie genau wie immer. Das Einzige, was sich ändert, ist die Reichweite -- jetzt reicht sie über die ganze Karte. So triffst du eine Provinz, mit der du keine Grenze teilst, etwa einen Aufstand ohne Nachbarn.
+---
+@Signals Officer
+Seine Stufe ist seine Reichweite: weit, dann der größte Teil des Planeten, dann -- ganz oben -- überhaupt überallhin, gemessen um die Krümmung der Welt, sodass der Kartenrand keine Mauer ist. Bedenke, dass das Luftabwehrsystem des Feindes einen Schlag immer noch abfangen kann.
+---
+@Signals Officer
+Das sind Monumente. Eines je Provinz, eine Handvoll, die du angeschaltet halten kannst, und ein Silo, das deine Geschütze über die Welt wirft. Sonst noch etwas?

@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenty -- otwórz to. Jedno wielkie dzieło na prowincję i czynsz, który płacisz za każdy włączony.
+---
+@Signals Officer
+To nie druga gałąź przemysłu. Przemysł to liczba, którą ma każda prowincja; monument to coś, czego cały twój kraj postanawia mieć §**jeden**§, w konkretnym miejscu. Zbudowanie go jest tanie. Utrzymanie już nie -- własne utrzymanie i dopłata, która rośnie z każdym już zapełnionym miejscem.
+---
+@Signals Officer
+Pytanie nigdy więc nie brzmi "buduj więcej". Brzmi §**na które kilka**§ cię stać w tej turze. Każdy można wyłączyć -- zwalnia swoje miejsce, nic nie kosztuje i nic nie robi -- a gdy wybucha wojna, zmieniasz zdanie, który jest wart swego czynszu.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Ale §**gdzie monument stoi**§ to większość tego, co robi, więc wznosisz go z własnego panelu prowincji, nie z tej listy. Zamknij to.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Wybierz jedną z naszych. Jej zakładka Monumenty wylicza, co zbadałeś, wyszarza to, co nie może stanąć na tej ziemi -- powiedzmy nadmorską stocznię w głębi lądu -- i mówi ci dlaczego.
+---
+@Signals Officer
+Jeden z nich zwodzi wszystkich: §**Silos rakietowy**§. To nie broń, która strzela sama. To wyrzutnia -- ciska §**artylerię, którą już zbadałeś**§, ale hen za horyzont.
+---
+@Signals Officer
+Więc: włącz silos, wybierz prowincję, w której stoi, otwórz widok §**Armia**§ i Otwórz ogień artyleryjski dokładnie jak zawsze. Jedyne, co się zmienia, to zasięg -- teraz sięga przez całą mapę. Tak trafiasz prowincję, z którą nie dzielisz granicy, jak bunt bez sąsiadów.
+---
+@Signals Officer
+Jego poziom to jego zasięg: daleko, potem większość planety, potem -- na szczycie -- w ogóle gdziekolwiek, mierzony wokół krzywizny świata, tak że krawędź mapy nie jest murem. Pamiętaj, że wrogi System obrony powietrznej wciąż może strącić uderzenie.
+---
+@Signals Officer
+Oto monumenty. Jeden na prowincję, garstka, którą utrzymasz zapaloną, i silos, który ciska twe działa przez cały świat. Coś jeszcze?

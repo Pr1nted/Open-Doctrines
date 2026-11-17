@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Công trình -- mở nó ra. Mỗi tỉnh một kiệt tác, và một khoản thuê bạn trả cho mỗi cái giữ bật.
+---
+@Signals Officer
+Đây không phải nhánh công nghiệp thứ hai. Công nghiệp là một con số mà mọi tỉnh đều có; còn công trình là thứ mà cả nước bạn quyết định chỉ có §**một**§, ở một nơi cụ thể. Xây nó thì rẻ. Vận hành nó thì không -- phí duy trì của riêng nó, và một khoản phụ thu tăng theo mỗi ô bạn đã lấp.
+---
+@Signals Officer
+Vậy câu hỏi không bao giờ là "xây thêm". Mà là §**vài cái nào**§ bạn kham nổi lượt này. Cái nào cũng có thể tắt -- nó giải phóng ô của mình, không tốn gì và chẳng làm gì -- và khi chiến tranh nổ ra, bạn đổi ý về cái nào đáng khoản thuê của nó.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Nhưng §**công trình đứng ở đâu**§ mới là phần lớn việc nó làm, nên bạn dựng một cái từ bảng của chính tỉnh, không phải từ danh sách này. Đóng cái này lại.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Chọn một tỉnh của ta. Thẻ Công trình của nó liệt kê những gì bạn đã nghiên cứu, làm mờ thứ không thể đặt trên vùng đất này -- chẳng hạn một xưởng tàu ven biển nằm sâu trong đất liền -- và cho bạn biết tại sao.
+---
+@Signals Officer
+Một trong số đó khiến ai cũng bối rối: §**Hầm phóng tên lửa**§. Nó không phải vũ khí tự bắn. Nó là bệ phóng -- nó ném §**pháo binh bạn đã nghiên cứu**§, nhưng ra tận ngoài chân trời.
+---
+@Signals Officer
+Vậy: bật hầm phóng, chọn tỉnh nó đứng, mở ô §**Quân đội**§ và Khai hỏa pháo binh y như mọi khi. Thứ duy nhất thay đổi là tầm bắn -- giờ nó vươn khắp bản đồ. Đó là cách bạn đánh một tỉnh không chung biên giới, như một cuộc nổi loạn không có láng giềng.
+---
+@Signals Officer
+Cấp của nó là tầm với của nó: xa, rồi phần lớn hành tinh, rồi -- ở đỉnh -- bất cứ đâu, đo theo độ cong của thế giới, nên rìa bản đồ không phải bức tường. Nhớ rằng Hệ thống Phòng không của địch vẫn có thể bắn hạ một đòn đánh.
+---
+@Signals Officer
+Công trình là vậy. Mỗi tỉnh một cái, một nhúm bạn có thể giữ sáng, và một hầm phóng ném pháo của bạn ra khắp thế giới. Còn gì nữa không?

@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenta -- id aperi. Unum magnum opus per provinciam, et merces quam solvis pro quoque accenso.
+---
+@Signals Officer
+Hoc non est secunda industriae via. Industria numerus est quem omnis provincia habet; monumentum vero res est cuius tota patria §**unum**§ habere statuit, loco certo. Id aedificare vile est. Id gerere non est -- sua tutela, et additamentum quod cum omni iam impleto loco crescit.
+---
+@Signals Officer
+Quaestio igitur numquam est "plura aedifica". Est §**quae pauca**§ hoc tractu sustinere possis. Quodlibet exstingui potest -- locum suum liberat, nihil constat nihilque facit -- et cum bellum oritur, sententiam mutas de eo quod mercede sua dignum sit.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Sed §**ubi monumentum stat**§ maxima pars est eius quod facit, ideo unum ex ipsa provinciae tabula erigis, non ex hoc indice. Hoc claude.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Elige unam nostrarum. Eius tabella Monumentorum enumerat quae investigaveris, obscurat quod huic solo non convenit -- navale litorale in mediterraneo, exempli gratia -- et causam tibi dicit.
+---
+@Signals Officer
+Unum ex eis omnes fallit: §**Silo Missilium**§. Non est telum quod sua sponte iacit. Est area emittendi -- §**tormenta quae iam investigasti**§ coniicit, sed longe trans horizontem.
+---
+@Signals Officer
+Igitur: silo accende, provinciam in qua stat elige, prospectum §**Exercitus**§ aperi et Tormenta exple sicut semper. Unum quod mutatur spatium est -- nunc per totam tabulam pertingit. Sic provinciam ferias quacum nullum finem communicas, ut seditionem sine vicinis.
+---
+@Signals Officer
+Gradus eius spatium eius est: longe, deinde maxima pars planetae, deinde -- in summo -- omnino quolibet, circa curvaturam mundi mensum, ita ut ora tabulae murus non sit. Cave ne hostis Systema Defensionis Aeriae ictum adhuc deicere possit.
+---
+@Signals Officer
+Haec sunt monumenta. Unum per provinciam, pauca quae accensa servare potes, et silo quod tormenta tua per mundum iacit. Aliquid aliud?

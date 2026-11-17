@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Les monuments -- ouvre-le. Une grande œuvre par province, et un loyer que tu paies pour chacun que tu laisses allumé.
+---
+@Signals Officer
+Ce n'est pas une seconde voie industrielle. L'industrie est un nombre que chaque province possède ; un monument est une chose dont ton pays tout entier décide d'avoir §**un seul**§, à un endroit précis. Le bâtir est bon marché. Le faire tourner ne l'est pas -- son propre entretien, et une surtaxe qui monte avec chaque emplacement déjà occupé.
+---
+@Signals Officer
+La question n'est donc jamais "en bâtir plus". C'est §**lesquels, en petit nombre**§ tu peux te permettre ce tour-ci. Chacun s'éteint -- il libère son emplacement, ne coûte rien et ne fait rien -- et quand une guerre éclate, tu changes d'avis sur celui qui vaut son loyer.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Mais §**où se dresse**§ un monument fait l'essentiel de ce qu'il fait, alors tu en élèves un depuis le panneau de la province, pas depuis cette liste. Ferme ceci.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Choisis-en une des nôtres. Son onglet Monuments énumère ce que tu as recherché, grise ce qui ne peut tenir sur ce terrain -- un chantier côtier à l'intérieur des terres, disons -- et t'en dit la raison.
+---
+@Signals Officer
+L'un d'eux déroute tout le monde : le §**Silo à missiles**§. Ce n'est pas une arme qui tire toute seule. C'est une rampe de lancement -- il projette l'§**artillerie que tu as déjà recherchée**§, mais bien au-delà de l'horizon.
+---
+@Signals Officer
+Donc : allume le silo, sélectionne la province où il se dresse, ouvre la vue §**Armée**§ et Tire à l'artillerie exactement comme d'habitude. La seule chose qui change, c'est la portée -- elle atteint maintenant toute la carte. C'est ainsi que tu frappes une province avec laquelle tu ne partages aucune frontière, comme une révolte sans voisins.
+---
+@Signals Officer
+Son niveau est sa portée : loin, puis l'essentiel de la planète, puis -- au sommet -- absolument n'importe où, mesuré autour de la courbure du monde, si bien que le bord de la carte n'est pas un mur. Note que le Système de défense aérienne de l'ennemi peut encore abattre une frappe.
+---
+@Signals Officer
+Voilà les monuments. Un par province, une poignée que tu peux garder allumés, et un silo qui projette tes canons à travers le monde. Autre chose ?

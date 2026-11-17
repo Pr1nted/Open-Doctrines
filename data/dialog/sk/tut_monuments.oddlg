@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenty -- otvor to. Jedno veľké dielo na provinciu, a nájom, ktorý platíš za každé, čo necháš zapnuté.
+---
+@Signals Officer
+Toto nie je druhá priemyselná vetva. Priemysel je číslo, ktoré má každá provincia; monument je niečo, čoho sa celá tvoja krajina rozhodne mať §**jeden**§, na presnom mieste. Postaviť ho je lacné. Prevádzkovať ho nie -- vlastná údržba a príplatok, ktorý stúpa s každým už zaplneným slotom.
+---
+@Signals Officer
+Otázka teda nikdy neznie "postav viac". Znie §**ktoré zopár**§ si tento ťah môžeš dovoliť. Ktorékoľvek sa dá vypnúť -- uvoľní svoj slot, nič nestojí a nič nerobí -- a keď vypukne vojna, zmeníš názor na to, ktoré si svoj nájom zaslúži.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Ale §**kde monument stojí**§ je väčšina toho, čo robí, takže ho staviaš z vlastného panela provincie, nie z tohto zoznamu. Zavri to.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Vyber jednu z našich. Jej karta Monumenty vypisuje, čo si vyskúmal, zošedne to, čo na túto pôdu nepatrí -- povedzme pobrežnú lodenicu vo vnútrozemí -- a povie ti prečo.
+---
+@Signals Officer
+Jeden z nich zaskočí každého: §**Raketové silo**§. Nie je to zbraň, ktorá strieľa sama. Je to odpaľovacia rampa -- vrhá §**delostrelectvo, ktoré si už vyskúmal**§, ale rovno za obzor.
+---
+@Signals Officer
+Takže: zapni silo, vyber provinciu, v ktorej stojí, otvor pohľad §**Armáda**§ a Spusti delostreleckú paľbu presne ako vždy. Jediné, čo sa mení, je dostrel -- teraz dosiahne cez celú mapu. Takto zasiahneš provinciu, s ktorou nezdieľaš hranicu, ako povstanie bez susedov.
+---
+@Signals Officer
+Jeho úroveň je jeho dosah: ďaleko, potom väčšina planéty, potom -- na vrchole -- úplne kamkoľvek, meraný po zakrivení sveta, takže okraj mapy nie je múr. Pamätaj, že nepriateľský Systém protivzdušnej obrany môže úder stále zostreliť.
+---
+@Signals Officer
+To sú monumenty. Jeden na provinciu, hŕstka, ktorú udržíš rozsvietenú, a silo, ktoré vrhá tvoje delá cez celý svet. Ešte niečo?

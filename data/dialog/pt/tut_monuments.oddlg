@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumentos -- abre-o. Uma grande obra por província, e uma renda que pagas por cada um que mantens ligado.
+---
+@Signals Officer
+Isto não é uma segunda via de indústria. A indústria é um número que cada província tem; um monumento é algo de que o teu país inteiro decide ter §**um**§, num lugar exato. Construí-lo é barato. Mantê-lo a funcionar não é -- a sua própria manutenção, e uma sobretaxa que sobe com cada espaço que já preencheste.
+---
+@Signals Officer
+A pergunta nunca é, portanto, "constrói mais". É §**quais poucos**§ podes dar-te ao luxo neste turno. Qualquer um se desliga -- liberta o seu espaço, não custa nada e não faz nada -- e quando começa uma guerra, mudas de ideias sobre qual vale a sua renda.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Mas §**onde um monumento se ergue**§ é a maior parte do que ele faz, por isso ergues um a partir do próprio painel da província, não desta lista. Fecha isto.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Escolhe uma das nossas. O seu separador de Monumentos enumera o que pesquisaste, esbate o que não cabe neste terreno -- um estaleiro costeiro no interior, por exemplo -- e diz-te porquê.
+---
+@Signals Officer
+Um deles engana toda a gente: o §**Silo de Mísseis**§. Não é uma arma que dispara por si. É uma plataforma de lançamento -- arremessa a §**artilharia que já pesquisaste**§, mas bem para lá do horizonte.
+---
+@Signals Officer
+Então: liga o silo, seleciona a província em que se ergue, abre a vista §**Exército**§ e Dispara Artilharia tal como sempre farias. A única coisa que muda é o alcance -- agora chega a todo o mapa. É assim que atinges uma província com que não partilhas fronteira, como uma revolta sem vizinhos.
+---
+@Signals Officer
+O seu nível é o seu alcance: longe, depois a maior parte do planeta, depois -- no topo -- a qualquer lado, medido pela curvatura do mundo, de modo que a borda do mapa não é um muro. Repara que o Sistema de Defesa Aérea do inimigo ainda pode abater um golpe.
+---
+@Signals Officer
+São isto os monumentos. Um por província, um punhado que podes manter acesos, e um silo que arremessa os teus canhões por todo o mundo. Mais alguma coisa?

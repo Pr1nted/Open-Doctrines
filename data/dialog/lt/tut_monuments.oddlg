@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Paminklai -- atverk tai. Vienas didis kūrinys provincijai ir nuoma, kurią moki už kiekvieną įjungtą.
+---
+@Signals Officer
+Tai nėra antroji pramonės atšaka. Pramonė -- skaičius, kurį turi kiekviena provincija; paminklas -- tai, ko visa tavo šalis nusprendžia turėti §**vieną**§, tiksliai nurodytoje vietoje. Jį pastatyti pigu. Jį išlaikyti -- ne: nuosava priežiūra ir priemoka, kylanti su kiekvienu jau užpildytu lizdu.
+---
+@Signals Officer
+Tad klausimas niekada nėra „statyk daugiau“. Jis -- §**kuriuos kelis**§ gali sau leisti šį ėjimą. Bet kurį galima išjungti -- jis atlaisvina savo lizdą, nieko nekainuoja ir nieko nedaro -- o prasidėjus karui persigalvoji, kuris vertas savo nuomos.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Bet §**kur paminklas stovi**§ yra didžioji dalis to, ką jis daro, tad jį statai iš pačios provincijos skydelio, ne iš šio sąrašo. Užverk tai.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Pasirink vieną iš mūsų. Jos Paminklų kortelė išvardija, ką ištyrei, pilkai nuspalvina tai, kas šiam gruntui netinka -- tarkime, pajūrio laivų statyklą sausumos gilumoje -- ir pasako kodėl.
+---
+@Signals Officer
+Vienas iš jų suklaidina visus: §**Raketų šachta**§. Tai ne ginklas, šaudantis pats. Tai paleidimo aikštelė -- ji sviedžia §**artileriją, kurią jau ištyrei**§, bet toli už horizonto.
+---
+@Signals Officer
+Taigi: įjunk šachtą, pasirink provinciją, kurioje ji stovi, atverk §**Kariuomenės**§ rodinį ir Šauk artilerija lygiai kaip visada. Vienintelis dalykas, kuris keičiasi, -- nuotolis: dabar jis siekia per visą žemėlapį. Taip pataikai į provinciją, su kuria nedalijai sienos, kaip į maištą be kaimynų.
+---
+@Signals Officer
+Jos lygis yra jos siekis: toli, paskui didžioji planetos dalis, paskui -- viršuje -- apskritai bet kur, matuojant pagal pasaulio išlinkį, tad žemėlapio kraštas nėra siena. Nepamiršk, kad priešo Oro gynybos sistema vis dar gali numušti smūgį.
+---
+@Signals Officer
+Štai paminklai. Vienas provincijai, sauja, kurią gali laikyti įjungtą, ir šachta, sviedžianti tavo pabūklus per visą pasaulį. Dar ko nors?

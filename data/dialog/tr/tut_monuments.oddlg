@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Anıtlar -- onu aç. Her eyalete bir büyük eser, ve açık tuttuğun her biri için ödediğin bir kira.
+---
+@Signals Officer
+Bu ikinci bir sanayi kolu değil. Sanayi her eyaletin sahip olduğu bir sayıdır; anıt ise bütün ülkenin belirli bir yerde §**bir**§ tane bulundurmaya karar verdiği şeydir. İnşa etmesi ucuzdur. İşletmesi değil -- kendi bakımı, ve zaten doldurduğun her yuvayla yükselen bir ek ücret.
+---
+@Signals Officer
+Yani soru asla "daha çok inşa et" değildir. §**Hangi birkaçını**§ bu tur karşılayabileceğindir. Herhangi biri kapatılabilir -- yuvasını boşaltır, hiçbir şeye mal olmaz ve hiçbir şey yapmaz -- ve bir savaş başladığında hangisinin kirasını hak ettiği konusunda fikrini değiştirirsin.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Ama bir anıtın §**nerede durduğu**§ yaptığının çoğudur, bu yüzden onu bu listeden değil, eyaletin kendi panelinden dikersin. Bunu kapat.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Bizimkilerden birini seç. Anıtlar sekmesi araştırdıklarını sıralar, bu toprağa sığmayanı -- diyelim ki iç bölgedeki bir kıyı tersanesini -- griye çevirir ve nedenini söyler.
+---
+@Signals Officer
+Bunlardan biri herkesi şaşırtır: §**Füze Silosu**§. Kendi kendine ateş eden bir silah değildir. Bir fırlatma rampasıdır -- §**zaten araştırdığın topçuyu**§ fırlatır, ama tam ufkun ötesine.
+---
+@Signals Officer
+Öyleyse: siloyu aç, içinde durduğu eyaleti seç, §**Ordu**§ görünümünü aç ve her zamanki gibi Topçu Ateşi aç. Değişen tek şey menzildir -- artık harita boyunca ulaşır. Sınır paylaşmadığın bir eyaleti işte böyle vurursun, komşusuz bir isyan gibi.
+---
+@Signals Officer
+Seviyesi menzilidir: uzağa, sonra gezegenin çoğuna, sonra -- en üstte -- hiç fark etmeksizin her yere, dünyanın eğriliği boyunca ölçülür, yani haritanın kenarı bir duvar değildir. Unutma, düşmanın Hava Savunma Sistemi bir vuruşu hâlâ düşürebilir.
+---
+@Signals Officer
+İşte anıtlar. Eyalete bir tane, yanık tutabileceğin bir avuç, ve toplarını dünyanın öbür ucuna fırlatan bir silo. Başka bir şey?

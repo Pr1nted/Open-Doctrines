@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenten -- open het. Eén groot werk per provincie, en een huur die je betaalt voor elk dat je ingeschakeld houdt.
+---
+@Signals Officer
+Dit is geen tweede industrietak. Industrie is een getal dat elke provincie heeft; een monument is iets waarvan je hele land besluit er §**één**§ van te hebben, op een precieze plek. Het bouwen is goedkoop. Het draaiend houden niet -- het eigen onderhoud, en een toeslag die stijgt met elke plek die je al hebt gevuld.
+---
+@Signals Officer
+De vraag is dus nooit "bouw er meer". Het is §**welke paar**§ je je deze beurt kunt veroorloven. Elk ervan kun je uitschakelen -- het maakt zijn plek vrij, kost niets en doet niets -- en als er oorlog uitbreekt, bedenk je je over welke zijn huur waard is.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Maar §**waar een monument staat**§ is het meeste van wat het doet, dus je richt er een op vanuit het eigen paneel van de provincie, niet vanuit deze lijst. Sluit dit.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Kies er een van ons. Het tabblad Monumenten somt op wat je hebt onderzocht, maakt grijs wat niet op deze grond kan staan -- een kustwerf in het binnenland, zeg maar -- en zegt je waarom.
+---
+@Signals Officer
+Eén ervan zet iedereen op het verkeerde been: de §**Raketsilo**§. Het is geen wapen dat uit zichzelf vuurt. Het is een lanceerplatform -- het werpt de §**artillerie die je al hebt onderzocht**§, maar ver over de horizon.
+---
+@Signals Officer
+Dus: schakel de silo in, selecteer de provincie waarin hij staat, open het §**Leger**§-overzicht en Vuur artillerie precies zoals je altijd zou doen. Het enige dat verandert is het bereik -- nu reikt het over de hele kaart. Zo tref je een provincie waarmee je geen grens deelt, zoals een opstand zonder buren.
+---
+@Signals Officer
+Zijn niveau is zijn bereik: ver weg, dan het grootste deel van de planeet, dan -- bovenaan -- werkelijk overal, gemeten langs de kromming van de wereld, zodat de kaartrand geen muur is. Let op dat het Luchtverdedigingssysteem van de vijand een inslag nog altijd kan neerhalen.
+---
+@Signals Officer
+Dat zijn monumenten. Eén per provincie, een handvol die je brandend kunt houden, en een silo die je kanonnen over de wereld werpt. Nog iets?

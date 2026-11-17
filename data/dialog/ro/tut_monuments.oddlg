@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumente -- deschide-l. O singură operă măreață pe provincie, și o chirie pe care o plătești pentru fiecare pe care îl ții pornit.
+---
+@Signals Officer
+Aceasta nu e o a doua ramură a industriei. Industria e un număr pe care îl are fiecare provincie; un monument e ceva din care întreaga ta țară decide să aibă §**unul**§, într-un loc precis. Să-l construiești e ieftin. Să-l ții în funcțiune nu e -- întreținerea lui, și un supliment care crește cu fiecare loc deja ocupat.
+---
+@Signals Officer
+Așa că întrebarea nu e niciodată "construiește mai multe". E §**care câteva**§ ți le poți permite în această tură. Oricare se poate opri -- își eliberează locul, nu costă nimic și nu face nimic -- iar când izbucnește un război, te răzgândești care își merită chiria.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Dar §**unde stă**§ un monument e cea mai mare parte din ce face, așa că ridici unul din panoul propriu al provinciei, nu din această listă. Închide asta.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Alege una de-a noastră. Fila ei de Monumente enumeră ce ai cercetat, estompează ce nu încape pe acest teren -- un șantier de coastă în interior, să zicem -- și îți spune de ce.
+---
+@Signals Officer
+Unul dintre ele îi păcălește pe toți: §**Siloul de rachete**§. Nu e o armă care trage singură. E o rampă de lansare -- aruncă §**artileria pe care ai cercetat-o deja**§, dar tocmai dincolo de orizont.
+---
+@Signals Officer
+Deci: pornește siloul, selectează provincia în care stă, deschide vederea §**Armată**§ și Trage cu artileria exact cum ai face mereu. Singurul lucru care se schimbă e bătaia -- acum ajunge peste toată harta. Așa lovești o provincie cu care nu împarți graniță, ca o revoltă fără vecini.
+---
+@Signals Officer
+Nivelul lui e raza lui de acțiune: departe, apoi cea mai mare parte a planetei, apoi -- la vârf -- oriunde în general, măsurată de-a lungul curburii lumii, așa că marginea hărții nu e un zid. Ia seama că Sistemul de Apărare Aeriană al inamicului încă poate doborî o lovitură.
+---
+@Signals Officer
+Astea sunt monumentele. Unul pe provincie, o mână pe care le poți ține aprinse, și un silo care îți aruncă tunurile peste toată lumea. Altceva?

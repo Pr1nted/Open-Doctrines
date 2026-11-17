@@ -9,7 +9,7 @@ Valige üks ja ma räägin sellest põhjalikult. Kui olete valmis, küsige uuest
 > Laevad, sadamad ja kuidas armee üle vee viia -> script:tut_ships
 > Uuringud ja miks miski alustatu ei valmi -> script:tut_research
 > Majandus, tööstus ja kust raha tuleb -> script:tut_economy
-> Monuments, and the missile silo that fires over the horizon -> script:tut_monuments
+> Monumendid ja raketisilo, mis tulistab üle silmapiiri -> script:tut_monuments
 > Kaupade majandus: rahva toitmine ja sõja kütus -> script:tut_goods
 > Nõuded, rahutus ja provintside kaotamine oma rahvale -> script:tut_unrest
 > Liidud, relvarahud ja muu diplomaatia -> script:tut_diplomacy

@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monument -- öppna det. Ett storverk per provins, och en hyra du betalar för vart och ett du håller påslaget.
+---
+@Signals Officer
+Detta är inte ett andra industrispår. Industri är ett tal varje provins har; ett monument är något som hela ditt land beslutar att ha §**ett**§ av, på en bestämd plats. Att bygga det är billigt. Att driva det är inte det -- dess eget underhåll, och ett tillägg som stiger med varje plats du redan fyllt.
+---
+@Signals Officer
+Frågan är alltså aldrig "bygg fler". Den är §**vilka få**§ du har råd med denna tur. Vilket som helst kan stängas av -- det frigör sin plats, kostar ingenting och gör ingenting -- och när ett krig bryter ut ändrar du dig om vilket som är sin hyra värt.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Men §**var ett monument står**§ är det mesta av vad det gör, så du reser ett från provinsens egen panel, inte från den här listan. Stäng detta.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Välj en av våra. Dess Monument-flik listar vad du har forskat fram, gråtonar det som inte får plats på denna mark -- ett kustvarv i inlandet, säg -- och talar om varför.
+---
+@Signals Officer
+Ett av dem lurar alla: §**Raketsilon**§. Det är inte ett vapen som skjuter av sig självt. Det är en avskjutningsramp -- den slungar det §**artilleri du redan forskat fram**§, men långt bortom horisonten.
+---
+@Signals Officer
+Så: slå på silon, välj provinsen den står i, öppna §**Armé**§-vyn och Avfyra artilleri precis som du alltid skulle. Det enda som ändras är räckvidden -- nu når den tvärs över kartan. Så träffar du en provins du inte delar gräns med, som ett uppror utan grannar.
+---
+@Signals Officer
+Dess nivå är dess räckvidd: långt, sedan större delen av planeten, sedan -- i toppen -- överhuvudtaget var som helst, mätt runt världens krökning, så kartans kant är ingen mur. Observera att fiendens luftförsvarssystem fortfarande kan skjuta ner en träff.
+---
+@Signals Officer
+Det är monument. Ett per provins, en handfull du kan hålla tända, och en silo som slungar dina kanoner tvärs över världen. Något annat?

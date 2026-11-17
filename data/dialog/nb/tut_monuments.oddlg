@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenter -- åpne det. Ett stort verk per provins, og en leie du betaler for hvert du holder påslått.
+---
+@Signals Officer
+Dette er ikke et annet industrispor. Industri er et tall hver provins har; et monument er noe hele landet ditt bestemmer seg for å ha §**ett**§ av, på et bestemt sted. Å bygge det er billig. Å drive det er ikke -- dets eget vedlikehold, og et tillegg som stiger med hver plass du alt har fylt.
+---
+@Signals Officer
+Spørsmålet er altså aldri "bygg flere". Det er §**hvilke få**§ du har råd til denne runden. Hvilket som helst kan slås av -- det frigjør plassen sin, koster ingenting og gjør ingenting -- og når en krig bryter ut, ombestemmer du deg om hvilket som er leien verdt.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Men §**hvor et monument står**§ er mesteparten av hva det gjør, så du reiser ett fra provinsens eget panel, ikke fra denne listen. Lukk dette.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Velg en av våre. Monument-fanen dens lister opp hva du har forsket på, gråner ut det som ikke kan stå på denne grunnen -- et kystverft i innlandet, for eksempel -- og forteller deg hvorfor.
+---
+@Signals Officer
+Ett av dem lurer alle: §**Rakettsiloen**§. Det er ikke et våpen som skyter av seg selv. Det er en utskytningsrampe -- den kaster §**artilleriet du alt har forsket på**§, men langt forbi horisonten.
+---
+@Signals Officer
+Så: slå på siloen, velg provinsen den står i, åpne §**Hær**§-visningen og Avfyr artilleri akkurat som du alltid ville. Det eneste som endrer seg, er rekkevidden -- nå når den tvers over kartet. Slik treffer du en provins du ikke deler grense med, som et opprør uten naboer.
+---
+@Signals Officer
+Nivået dens er rekkevidden: langt, så mesteparten av planeten, så -- på toppen -- hvor som helst i det hele tatt, målt rundt verdens krumning, så kartkanten er ingen vegg. Merk at fiendens luftforsvarssystem fortsatt kan skyte ned et angrep.
+---
+@Signals Officer
+Det er monumenter. Ett per provins, en håndfull du kan holde tent, og en silo som kaster kanonene dine tvers over verden. Noe annet?

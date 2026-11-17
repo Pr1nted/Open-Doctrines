@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumentit -- avaa se. Yksi suurtyö provinssia kohden, ja vuokra, jonka maksat jokaisesta päällä pitämästäsi.
+---
+@Signals Officer
+Tämä ei ole toinen teollisuusraide. Teollisuus on luku, joka jokaisella provinssilla on; monumentti on jotakin, josta koko maasi päättää pitää §**yhden**§, tarkassa paikassa. Sen rakentaminen on halpaa. Sen ylläpito ei -- sen oma ylläpito, ja lisämaksu, joka nousee jokaisen jo täyttämäsi paikan myötä.
+---
+@Signals Officer
+Kysymys ei siis koskaan ole "rakenna lisää". Se on §**mitkä harvat**§ sinulla on tällä vuorolla varaa pitää. Minkä tahansa voi sammuttaa -- se vapauttaa paikkansa, ei maksa mitään eikä tee mitään -- ja kun sota alkaa, muutat mielesi siitä, mikä on vuokransa arvoinen.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Mutta §**missä monumentti seisoo**§ on suurin osa siitä, mitä se tekee, joten pystytät sen provinssin omasta paneelista, et tästä listasta. Sulje tämä.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Valitse yksi meikäläisistä. Sen Monumentit-välilehti luettelee, mitä olet tutkinut, himmentää sen, mikä ei sovi tähän maaperään -- vaikkapa rannikkotelakan sisämaahan -- ja kertoo miksi.
+---
+@Signals Officer
+Yksi niistä hämää kaikkia: §**Ohjussiilo**§. Se ei ole ase, joka ampuu itsestään. Se on laukaisualusta -- se heittää §**jo tutkimaasi tykistöä**§, mutta kauas horisontin taakse.
+---
+@Signals Officer
+Eli: kytke siilo päälle, valitse provinssi, jossa se seisoo, avaa §**Armeija**§-näkymä ja Ammu tykistöllä aivan kuten aina. Ainoa muuttuva asia on kantama -- nyt se ylettyy halki koko kartan. Näin isket provinssiin, jonka kanssa sinulla ei ole yhteistä rajaa, kuten kapinaan ilman naapureita.
+---
+@Signals Officer
+Sen taso on sen kantama: kauas, sitten suurin osa planeetasta, sitten -- huipulla -- minne tahansa, mitattuna maailman kaarevuutta pitkin, joten kartan reuna ei ole muuri. Muista, että vihollisen ilmapuolustusjärjestelmä voi yhä pudottaa iskun.
+---
+@Signals Officer
+Siinä monumentit. Yksi provinssia kohden, kourallinen jotka pidät palamassa, ja siilo, joka heittää tykkisi halki maailman. Vielä jotain?

@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumenter -- åbn det. Ét stort værk pr. provins, og en leje du betaler for hvert, du holder tændt.
+---
+@Signals Officer
+Dette er ikke et andet industrispor. Industri er et tal, hver provins har; et monument er noget, som hele dit land beslutter at have §**ét**§ af, et bestemt sted. At bygge det er billigt. At drive det er ikke -- dets egen drift, og et tillæg, der stiger med hver plads, du allerede har fyldt.
+---
+@Signals Officer
+Spørgsmålet er altså aldrig "byg flere". Det er §**hvilke få**§ du har råd til denne tur. Ethvert af dem kan slukkes -- det frigør sin plads, koster intet og gør intet -- og når en krig begynder, skifter du mening om, hvilket der er sin leje værd.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Men §**hvor et monument står**§ er det meste af, hvad det gør, så du rejser ét fra provinsens eget panel, ikke fra denne liste. Luk dette.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Vælg en af vores. Dens Monument-fane viser, hvad du har forsket i, gråtoner det, der ikke kan stå på denne jord -- en kystværft i indlandet, for eksempel -- og fortæller dig hvorfor.
+---
+@Signals Officer
+Et af dem narrer alle: §**Raketsiloen**§. Det er ikke et våben, der skyder af sig selv. Det er en affyringsrampe -- den kaster det §**artilleri, du allerede har forsket i**§, men helt ud over horisonten.
+---
+@Signals Officer
+Så: tænd siloen, vælg den provins, den står i, åbn §**Hær**§-visningen og Affyr artilleri præcis som altid. Det eneste, der ændrer sig, er rækkevidden -- nu når den tværs over kortet. Sådan rammer du en provins, du ikke deler grænse med, som et oprør uden naboer.
+---
+@Signals Officer
+Dens niveau er dens rækkevidde: langt væk, så det meste af planeten, så -- øverst -- hvor som helst overhovedet, målt rundt om verdens krumning, så kortets kant er ikke en mur. Husk, at fjendens luftforsvarssystem stadig kan skyde et angreb ned.
+---
+@Signals Officer
+Det er monumenter. Ét pr. provins, en håndfuld du kan holde tændt, og en silo, der kaster dine kanoner tværs over verden. Noget andet?

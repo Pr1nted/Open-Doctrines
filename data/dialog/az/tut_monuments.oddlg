@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Abidələr -- onu aç. Hər əyalətə bir böyük iş, və qoşulu saxladığın hər biri üçün ödədiyin icarə.
+---
+@Signals Officer
+Bu ikinci sənaye xətti deyil. Sənaye hər əyalətin malik olduğu bir rəqəmdir; abidə isə bütün ölkənin müəyyən bir yerdə §**bir**§ dənə saxlamağa qərar verdiyi şeydir. Onu tikmək ucuzdur. İşlətmək yox -- öz saxlanması, və artıq doldurduğun hər yuva ilə qalxan əlavə haqq.
+---
+@Signals Officer
+Deməli sual heç vaxt "daha çox tik" deyil. §**Hansı bir neçəsini**§ bu gediş ödəyə bilərsən -- sualı budur. Hər biri söndürülə bilər -- yuvasını boşaldır, heç nəyə başa gəlmir və heç nə etmir -- və müharibə başlayanda hansının icarəsini doğrultduğu barədə fikrini dəyişirsən.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Amma abidənin §**harada durduğu**§ onun etdiyinin çoxudur, ona görə onu bu siyahıdan yox, əyalətin öz panelindən tikirsən. Bunu bağla.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Bizimkilərdən birini seç. Onun Abidələr bölməsi araşdırdıqlarını sadalayır, bu torpağa yaraşmayanı -- məsələn, içəridə sahil tərsanəsini -- bozardır və səbəbini deyir.
+---
+@Signals Officer
+Onlardan biri hamını çaş salır: §**Raket Silosu**§. Öz-özünə atəş açan silah deyil. O, buraxılış meydançasıdır -- §**artıq araşdırdığın artilleriyanı**§ atır, amma düz üfüqün o tayına.
+---
+@Signals Officer
+Beləcə: silonu qoş, durduğu əyaləti seç, §**Ordu**§ görünüşünü aç və həmişəki kimi Artilleriya Atəşi et. Dəyişən yeganə şey mənzildir -- indi xəritə boyu çatır. Sərhəd bölüşmədiyin əyaləti belə vurursan, qonşusu olmayan üsyan kimi.
+---
+@Signals Officer
+Səviyyəsi onun çatımıdır: uzaq məsafə, sonra planetin çoxu, sonra -- ən yuxarıda -- ümumiyyətlə hər yer, dünyanın əyriliyi boyu ölçülür, deməli xəritənin kənarı divar deyil. Nəzərə al ki, düşmənin Hava Müdafiə Sistemi yenə də zərbəni vurub salmaq şansı tuta bilər.
+---
+@Signals Officer
+Budur abidələr. Hər əyalətə bir, işıqlı saxlaya bildiyin bir neçəsi, və toplarını dünya boyu atan bir silo. Başqa bir şey?

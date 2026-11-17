@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumendid -- ava see. Üks suurteos provintsi kohta, ja üür, mida maksad iga sisselülitatu eest.
+---
+@Signals Officer
+See ei ole teine tööstusharu. Tööstus on arv, mis igal provintsil on; monument on miski, millest kogu su riik otsustab omada §**üht**§, kindlas kohas. Selle ehitamine on odav. Selle käigushoidmine mitte -- oma ülalpidamine ja lisatasu, mis tõuseb iga juba täidetud pesaga.
+---
+@Signals Officer
+Nii et küsimus pole kunagi "ehita rohkem". See on §**millised vähesed**§ sa sel käigul endale lubada saad. Iga neist saab välja lülitada -- see vabastab oma pesa, ei maksa midagi ega tee midagi -- ja kui algab sõda, muudad meelt, milline oma üüri väärt on.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Aga §**kus monument seisab**§ on suurem osa sellest, mida ta teeb, nii et püstitad selle provintsi enda paneelilt, mitte sellest nimekirjast. Sulge see.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Vali üks meie omadest. Selle Monumentide sakk loetleb, mida oled uurinud, tuhmistab selle, mis sellele pinnasele ei sobi -- näiteks rannikulaevatehase sisemaale -- ja ütleb sulle miks.
+---
+@Signals Officer
+Üks neist ajab kõik segadusse: §**Raketisilo**§. See pole relv, mis ise tulistab. See on stardiplatvorm -- see paiskab §**suurtükiväge, mida oled juba uurinud**§, aga lausa üle silmapiiri.
+---
+@Signals Officer
+Niisiis: lülita silo sisse, vali provints, kus see seisab, ava §**Armee**§ vaade ja Tulista suurtükiväega just nagu alati. Ainus, mis muutub, on laskeulatus -- nüüd ulatub see üle kogu kaardi. Nii tabad provintsi, millega sul pole ühist piiri, nagu naabriteta mäss.
+---
+@Signals Officer
+Selle tase on selle ulatus: kaugele, siis suurem osa planeedist, siis -- tipus -- üldse ükskõik kuhu, mõõdetuna ümber maailma kõveruse, nii et kaardi serv ei ole müür. Pea meeles, et vaenlase õhutõrjesüsteem võib löögi ikka alla tulistada.
+---
+@Signals Officer
+Need ongi monumendid. Üks provintsi kohta, peotäis, mida suudad põlemas hoida, ja silo, mis paiskab su kahurid üle maailma. Veel midagi?

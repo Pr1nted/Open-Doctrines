@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumente -- maak dit oop. Een groot werk per provinsie, en 'n huur wat jy betaal vir elkeen wat jy aangeskakel hou.
+---
+@Signals Officer
+Dit is nie 'n tweede nywerheidsbaan nie. Nywerheid is 'n getal wat elke provinsie het; 'n monument is iets waarvan jou hele land besluit om §**een**§ te hê, op 'n presiese plek. Om een te bou is goedkoop. Om dit te laat loop is nie -- sy eie onderhoud, en 'n heffing wat styg met elke gleuf wat jy reeds gevul het.
+---
+@Signals Officer
+Die vraag is dus nooit "bou meer" nie. Dit is §**watter paar**§ jy hierdie beurt kan bekostig. Enigeen kan afgeskakel word -- dit maak sy gleuf vry, kos niks en doen niks -- en wanneer 'n oorlog begin, verander jy van plan oor watter een sy huur werd is.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Maar waar 'n monument §**staan**§ is die meeste van wat dit doen, so jy rig een op vanuit 'n provinsie se eie paneel, nie vanuit hierdie lys nie. Maak dit toe.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Kies een van ons s'n. Sy Monumente-oortjie lys wat jy nagevors het, maak grys wat nie in hierdie grond kan staan nie -- 'n kuswerf binneland, sê nou -- en vertel jou hoekom.
+---
+@Signals Officer
+Een van hulle vang almal uit: die §**Missielsilo**§. Dit is nie 'n wapen wat op sy eie skiet nie. Dit is 'n lanseerblad -- dit gooi die §**artillerie wat jy reeds nagevors het**§, maar heeltemal oor die horison.
+---
+@Signals Officer
+So: skakel die silo aan, kies die provinsie waarin dit staan, maak die §**Weermag**§-aansig oop en Vuur Artillerie net soos jy altyd sou. Die enigste ding wat verander is die trefafstand -- nou reik dit oor die kaart. Dis hoe jy 'n provinsie tref waarmee jy geen grens deel nie, soos 'n opstand sonder bure.
+---
+@Signals Officer
+Sy vlak is sy reikwydte: 'n ver ent, dan die meeste van die planeet, dan -- heel bo -- enige plek hoegenaamd, gemeet om die kromming van die wêreld, so die rand van die kaart is nie 'n muur nie. Let op dat die vyand se Lugverdedigingstelsel steeds kan rol om 'n aanval af te skiet.
+---
+@Signals Officer
+Dis monumente. Een per provinsie, 'n handjievol wat jy aan kan hou, en 'n silo wat jou gewere oor die wêreld gooi. Enigiets anders?

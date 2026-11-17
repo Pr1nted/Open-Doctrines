@@ -1,0 +1,33 @@
+// Monuments, and the one everybody asks about -- the silo.
+
+:: anchor=left size=20 pad=26 enter=type speed=44 line=1.4
+
+@Signals Officer
+:: point=tab.monuments gate=1 until=open:monuments
+Monumentet -- hape atë. Një vepër e madhe për çdo krahinë, dhe një qira që paguan për çdo njërin që e mban të ndezur.
+---
+@Signals Officer
+Kjo nuk është një degë e dytë industrie. Industria është një numër që e ka çdo krahinë; monumenti është diçka nga e cila gjithë vendi yt vendos të ketë §**një**§, në një vend të saktë. Ta ndërtosh është lirë. Ta mbash në punë jo -- mirëmbajtja e vet, dhe një tarifë që ngjitet me çdo vend që ke mbushur tashmë.
+---
+@Signals Officer
+Pra pyetja nuk është kurrë "ndërto më shumë". Është §**cilat pak**§ mund t'i përballosh këtë radhë. Secilin mund ta fikësh -- liron vendin e vet, nuk kushton asgjë dhe nuk bën asgjë -- dhe kur nis një luftë, ndërron mendje se cili ia vlen qiranë.
+---
+@Signals Officer
+:: point=panel.close gate=1 until=closed:monuments
+Por §**ku qëndron**§ një monument është pjesa më e madhe e asaj që bën, prandaj e ngre një nga paneli i vetë krahinës, jo nga kjo listë. Mbylle këtë.
+---
+@Signals Officer
+:: point=panel.province until=selected:own
+Zgjidh një nga tonat. Skeda e saj e Monumenteve rendit çfarë ke hulumtuar, zbeh atë që nuk hyn në këtë tokë -- një kantier bregdetar në brendësi, le të themi -- dhe të thotë pse.
+---
+@Signals Officer
+Njëri prej tyre i ngatërron të gjithë: §**Siloja e raketave**§. Nuk është armë që qëllon vetë. Është një platformë lëshimi -- hedh §**artilerinë që tashmë e ke hulumtuar**§, por fare përtej horizontit.
+---
+@Signals Officer
+Pra: ndize silon, zgjidh krahinën ku qëndron, hap pamjen §**Ushtria**§ dhe Qëllo me artileri pikërisht si gjithmonë. E vetmja gjë që ndryshon është rrezja -- tani arrin përtej gjithë hartës. Kështu godet një krahinë me të cilën nuk ndan kufi, si një kryengritje pa fqinjë.
+---
+@Signals Officer
+Niveli i saj është rrezja e saj: larg, pastaj pjesa më e madhe e planetit, pastaj -- në majë -- fare kudo, matur rreth lakimit të botës, kështu që buza e hartës nuk është mur. Ki parasysh se Sistemi i Mbrojtjes Ajrore i armikut ende mund ta rrëzojë një goditje.
+---
+@Signals Officer
+Këto janë monumentet. Një për krahinë, një grusht që i mban të ndezur, dhe një silo që i hedh topat e tu përtej botës. Dicka tjetër?
