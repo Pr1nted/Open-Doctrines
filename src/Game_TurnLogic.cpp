@@ -662,7 +662,27 @@ void Game::processTurn() {
     // Country AI: created lazily on the first processed turn so map load stays
     // instant; the model persists across saves in the game data directory. Done
     // here, not inside resolveTurnCore, so the core allocates nothing.
-    if (!m_ai) m_ai = new AISystem(this, m_dataDir + m_aiModelPath);
+    if (!m_ai) {
+        std::string modelPath = m_dataDir + m_aiModelPath;
+        // A player's own game must never mutate the shipped/shared model when
+        // "AI Learning" is on. Redirect reads AND writes to a per-install
+        // learned copy, seeded once from the shared model so a first game still
+        // starts from the shipped weights and every later one carries the
+        // player's own learning -- without ever touching data/ai/model.bin.
+        // Headless/training/bench keep the shared path: their isolated --data
+        // dirs and read-only locks (lockReadOnlyModel, BACKLOG 226) govern what
+        // they may write, and must stay reproducible against the shared model.
+        if (!m_headless) {
+            const std::string localPath = m_dataDir + "ai/model.local.bin";
+            if (!FileExists(localPath.c_str()) && FileExists(modelPath.c_str())) {
+                std::ifstream src(modelPath, std::ios::binary);
+                std::ofstream dst(localPath, std::ios::binary);
+                if (src && dst) dst << src.rdbuf();
+            }
+            if (FileExists(localPath.c_str())) modelPath = localPath;
+        }
+        m_ai = new AISystem(this, modelPath);
+    }
     // "AI LEARNING: OFF" must also mean "do not write the model": aiLearning
     // gates learning, but saveModel() (destructor + timer) is stopped only by
     // s_readOnlyModel. Set every turn because the Experimental toggle can flip

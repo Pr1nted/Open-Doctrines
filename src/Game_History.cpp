@@ -694,12 +694,6 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
         m_historyStatus = T("This world has fog of war: its history stays hidden.");
         return false;
     }
-    // A Risky-RAM world has no province image to repaint from -- the one thing
-    // that mode trades away. Say so rather than claim no world is loaded.
-    if (!m_provinces.getImage().data) {
-        m_historyStatus = "Turn rewind needs the full map -- turn off Risky RAM";
-        return false;
-    }
     std::string stateJson = SaveManager::readTurnState(savePath, turn);
     if (stateJson.empty()) {
         m_historyStatus = "Turn " + std::to_string(turn) + " has no snapshot (older save)";
@@ -712,6 +706,18 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
         return false;
     }
     const TurnSnapshot& s = snaps[turn];
+
+    // A Risky-RAM or reduced-raster world holds the map compact, with no RGBA
+    // image to repaint from -- the one thing those modes trade away. Rebuild it
+    // on demand (exact, from the compact id lookup) for this deliberate, heavy
+    // operation, where the temporary memory spike is acceptable, and drop back
+    // to compact once the repaint is done. Done AFTER the cheap validations
+    // above so an early failure never pays for the rebuild.
+    const bool rebuiltForRewind = !m_provinces.getImage().data;
+    if (rebuiltForRewind && !m_provinces.ensureFullImage()) {
+        m_historyStatus = "Turn rewind needs the full map, which could not be rebuilt";
+        return false;
+    }
 
     restoreRebels(savePath);
     for (auto& [pid, cid] : s.owner) {
@@ -734,6 +740,11 @@ bool Game::applyTurnRewind(const std::string& savePath, int turn) {
 
     buildPopulationLookups();
     reloadBorders();   // regenerates the political texture too
+
+    // Back to the compact form the world was playing in (no-op if it already
+    // had the full image). The political texture is built, so the raster is not
+    // needed again for ordinary play.
+    if (rebuiltForRewind) m_provinces.releaseFullImage();
 
     m_currentSavePath = savePath;
     m_inHistory = false;

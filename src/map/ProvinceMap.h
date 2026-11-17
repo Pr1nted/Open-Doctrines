@@ -108,6 +108,25 @@ public:
     bool compact();
 
     /**
+     * Rebuild the full RGBA image from the compact index on demand, for the two
+     * paths that still read the raster directly -- turn-rewind and the timelapse
+     * export -- when a world is held compact (Risky RAM, or a reduced raster).
+     * The reconstruction is EXACT: idAt() already answers identically from
+     * either form, so rasterGeneration() is deliberately left unchanged and
+     * every cache keyed on it stays valid. The compact index/palette are kept,
+     * so releaseFullImage() can drop straight back afterwards. Returns false
+     * only when there is no raster in either form to rebuild from.
+     */
+    bool ensureFullImage();
+
+    /**
+     * Drop the RGBA image rebuilt by ensureFullImage() and return to the compact
+     * form. A no-op unless the compact index is present to answer idAt() after,
+     * so it can never erase the only copy of the raster.
+     */
+    void releaseFullImage();
+
+    /**
      * Changes whenever the raster may have: every load, clear, paint, pixel
      * update and compaction takes a new value, unique across all maps in the
      * process. A cache derived from the pixels alone (the province adjacency,

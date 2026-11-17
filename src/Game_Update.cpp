@@ -2043,7 +2043,7 @@ void Game::update(float dt) {
                 m_config.riskyRamOps = !m_config.riskyRamOps;
                 Audio::get().playSfx(m_config.riskyRamOps ? "toggle_on" : "toggle_off");
                 if (m_config.riskyRamOps)
-                    addNotification(T("On — fits low-memory devices; turn-rewind and the timelapse need the full map. From your next new world."),
+                    addNotification(T("On — fits low-memory devices; turn-rewind and the timelapse rebuild the full map on demand. From your next new world."),
                                     Color{210, 200, 150, 255}, 6.0f);
             } else if (strcmp(s.label, "Fog of War worlds") == 0) {
                 // Only offers the choice; the world in play keeps whatever it

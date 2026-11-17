@@ -3752,7 +3752,7 @@ void Game::updateSettingsFromMenu() {
             m_config.riskyRamOps = !m_config.riskyRamOps;
             Audio::get().playSfx(m_config.riskyRamOps ? "toggle_on" : "toggle_off");
             m_menuFeedback = m_config.riskyRamOps
-                ? T("On — fits low-memory devices; turn-rewind and the timelapse need the full map. From your next new world.")
+                ? T("On — fits low-memory devices; turn-rewind and the timelapse rebuild the full map on demand. From your next new world.")
                 : T("Off");
             m_menuFeedbackTimer = 6.0f;
         } else if (strcmp(s.label, "Fog of War worlds") == 0) {

@@ -375,9 +375,11 @@ const int ADVANCED_COUNT = 11;
 
 // Experimental: behaviour that changes how the game plays rather than how it
 // looks. "AI Learning" moved here from Advanced and now defaults OFF — it runs
-// reinforcement-learning updates on every AI decision during a normal session
-// and writes data/ai/model.bin, which costs time and mutates the shared model
-// that self-play training is building.
+// reinforcement-learning updates on every AI decision during a normal session,
+// which costs time. It writes a per-install ai/model.local.bin (seeded once
+// from the shared model), NOT data/ai/model.bin, so a player's learning never
+// mutates the shipped model self-play training is building. See the player-game
+// AISystem construction in Game_TurnLogic.cpp.
 const Setting EXPERIMENTAL_ITEMS[] = {
     {"AI Learning", false, -1},
     // Greater Diplomacy translation layer. Off by default: it writes maps for
@@ -409,9 +411,10 @@ const Setting EXPERIMENTAL_ITEMS[] = {
     // Free the province image after its texture is built -- the only thing that
     // lets a memory-starved phone browser hold a world. Borders, selection, the
     // claim tint and district overlay are all rebuilt from the compact id
-    // lookup, so normal play is unchanged; only turn-rewind and the timelapse
-    // export, which repaint from the full raster, still need it (and would spike
-    // the very memory this saves). See Config::riskyRamOps.
+    // lookup, so normal play is unchanged. Turn-rewind and the timelapse export
+    // repaint from the full raster, so they rebuild it on demand (exact, from
+    // the compact lookup; ProvinceMap::ensureFullImage) for the duration of that
+    // one heavy operation and drop it again after. See Config::riskyRamOps.
     {"Risky RAM", false, -1},
     // Offers fog of war in the New World map popup. Behind a switch while it is
     // built phase by phase; see docs/design/fog-of-war-plan.md.

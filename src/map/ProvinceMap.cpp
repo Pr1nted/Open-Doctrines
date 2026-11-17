@@ -382,6 +382,44 @@ bool ProvinceMap::compact() {
     return true;
 }
 
+bool ProvinceMap::ensureFullImage() {
+    if (m_image.data) return true;        // already in the full RGBA form
+    if (m_index.empty()) return false;    // nothing to rebuild from
+    const size_t total = (size_t)m_width * (size_t)m_height;
+    auto* px = static_cast<uint8_t*>(MemAlloc((unsigned int)(total * 4)));
+    if (!px) return false;
+    // The exact inverse of idAt()'s encoding: province id -> RGB, alpha opaque.
+    // compact() lost nothing, so this reproduces the original raster bit for bit.
+    for (size_t i = 0; i < total; ++i) {
+        const int id = m_palette[m_index[i]];
+        uint8_t* p = px + i * 4;
+        p[0] = (uint8_t)((id >> 16) & 0xFF);
+        p[1] = (uint8_t)((id >> 8) & 0xFF);
+        p[2] = (uint8_t)(id & 0xFF);
+        p[3] = 255;
+    }
+    m_image.data = px;
+    m_image.width = m_width;
+    m_image.height = m_height;
+    m_image.mipmaps = 1;
+    m_image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+    // Representation change only -- do NOT bumpRaster(): idAt() answers the same
+    // value from the image now as it did from the index, so caches keyed on
+    // rasterGeneration() must stay valid.
+    return true;
+}
+
+void ProvinceMap::releaseFullImage() {
+    // Only safe to free the image while the compact index can still answer
+    // idAt(); otherwise this would throw the raster away entirely.
+    if (m_image.data && !m_index.empty()) {
+        UnloadImage(m_image);
+        m_image = Image{};
+        m_image.width = m_width;
+        m_image.height = m_height;
+    }
+}
+
 void ProvinceMap::clear() {
     bumpRaster();
     if (m_loaded && m_image.data) UnloadImage(m_image);
