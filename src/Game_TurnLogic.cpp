@@ -7406,10 +7406,20 @@ float Game::supplyFactor(int countryId, int provinceId) const {
 // See DEPTH_PER_DOUBLING in Game.h for why this exists and why it is a log.
 float Game::depthFactor(long long troops, long long width) {
     if (width <= 0 || troops <= width) return 1.0f;
+    // OD_DEPTH_SLOPE / OD_DEPTH_MAX: balance A/B for whether concentrated depth
+    // should break a frontage-pinned line (backlog item 215 / journal 524's
+    // "the 66.3% is the lever"). Inert unless set -- the fallbacks are the
+    // shipped constants, so the env-off path is byte-identical. Binds the human
+    // player too, so a win here is a ship decision for the user, not an
+    // auto-ship. OD_ENV caches per call site (hot: per assault round).
+    const char* se = OD_ENV("OD_DEPTH_SLOPE");
+    const char* ce = OD_ENV("OD_DEPTH_MAX");
+    const double slope = se ? atof(se) : (double)DEPTH_PER_DOUBLING;
+    const double cap   = ce ? atof(ce) : (double)DEPTH_MAX;
     const double ratio = (double)troops / (double)width;
     const double doublings = std::log2(ratio);
-    const double f = 1.0 + (double)DEPTH_PER_DOUBLING * doublings;
-    return (float)std::min((double)DEPTH_MAX, f);
+    const double f = 1.0 + slope * doublings;
+    return (float)std::min(cap, f);
 }
 
 // === combatWidth ===
