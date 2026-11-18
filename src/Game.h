@@ -28,6 +28,7 @@
 #include "Gamepad.h"
 #include "Touch.h"
 #include "UiScale.h"
+#include "UiTheme.h"   // the active interface skin; reads no raylib it shadows
 // The interface in another language, and the two raylib calls that draw it.
 // After UiScale.h and before anything that draws: both headers shadow raylib
 // functions and the order they do it in is the order they are applied.

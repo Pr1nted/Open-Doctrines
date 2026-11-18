@@ -219,6 +219,8 @@ bool Config::load(const std::string& path) {
     usageReports = findBool(json, "usageReports", false);
     chatPlays = findBool(json, "chatPlays", false);
     accentColor = findInt(json, "accentColor", 0xFFD700);
+    uiStyle = findInt(json, "uiStyle", 0);
+    if (uiStyle < 0 || uiStyle > 2) uiStyle = 0;   // unknown skin falls back to Current
     // OD_ACCOUNT_ISSUER is baked in at BUILD time, and is empty unless the
     // person building set it. See the note in Config.h: a source build must not
     // guess at a host, because whoever made it may be running their own and a
@@ -383,6 +385,7 @@ bool Config::save(const std::string& path) {
     file << "  \"usageReports\": " << (usageReports ? "true" : "false") << ",\n";
     file << "  \"chatPlays\": " << (chatPlays ? "true" : "false") << ",\n";
     file << "  \"accentColor\": " << accentColor << ",\n";
+    file << "  \"uiStyle\": " << uiStyle << ",\n";
     file << "  \"accountIssuer\": \"" << accountIssuer << "\",\n";
     file << "  \"feedbackEndpoint\": \"" << feedbackEndpoint << "\",\n";
     file << "  \"installId\": \"" << installId << "\",\n";

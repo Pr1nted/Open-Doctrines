@@ -1989,6 +1989,10 @@ void Game::applyUiScale() {
     const float physicalRows = (float)GetScreenHeight() * odUi::scale();
     const float roomFor = std::max(1.0f, physicalRows / kMinLogicalRows);
     odUi::setScale(std::min(m_uiScaleBase * m_config.uiScale, std::max(m_uiScaleBase, roomFor)));
+    // Push the active interface skin to the process-wide slot free draw helpers
+    // read (drawButton etc.). Harmless to redo here; 1.4.0b's settings picker
+    // will also call setActiveTheme on apply so a style change needs no resize.
+    odUi::setActiveTheme(themeOf(m_config));
     m_screenW = GetScreenWidth();
     m_screenH = GetScreenHeight();
 }

@@ -53,12 +53,21 @@ Button buttonAt(float x, float y, float w, float h, Vector2 mouse) {
 
 void drawButton(const Button& b, const char* label, int fontSize,
                 Color base, Color border, bool enabled = true) {
-    const Color bg = !enabled ? Color{30, 30, 34, 200}
-                   : b.hovered ? Color{(unsigned char)(base.r + 20), (unsigned char)(base.g + 20),
-                                       (unsigned char)(base.b + 20), 240}
+    // The one shared button primitive for the account / multiplayer / LFG /
+    // mod-directory screens, so routing its structural colours through the
+    // active theme (UiTheme.h) reskins ~90 buttons at once. `base`/`border`
+    // stay the caller's choice; the theme owns disabled/hover/text/radius.
+    // Inert on Current -- the tokens equal the literals that were here.
+    const UiTheme& t = odUi::activeTheme();
+    const Color bg = !enabled ? t.buttonDisabledFace
+                   : b.hovered ? Color{(unsigned char)(base.r + t.buttonHoverLift),
+                                       (unsigned char)(base.g + t.buttonHoverLift),
+                                       (unsigned char)(base.b + t.buttonHoverLift),
+                                       (unsigned char)t.buttonHoverAlpha}
                                : base;
-    DrawRectangleRounded(b.rect, 0.15f, 8, bg);
-    DrawRectangleRoundedLines(b.rect, 0.15f, 8, enabled ? border : Color{70, 70, 80, 180});
+    DrawRectangleRounded(b.rect, t.buttonRadius, t.buttonSegments, bg);
+    DrawRectangleRoundedLines(b.rect, t.buttonRadius, t.buttonSegments,
+                              enabled ? border : t.buttonDisabledBorder);
     const char* shown = T(label);
     // THE LABEL IS TRANSLATED HERE, not at the hundred call sites.
     //
@@ -70,7 +79,7 @@ void drawButton(const Button& b, const char* label, int fontSize,
     const int tw = MeasureText(shown, fontSize);
     DrawText(shown, (int)(b.rect.x + (b.rect.width - tw) / 2),
              (int)(b.rect.y + (b.rect.height - fontSize) / 2), fontSize,
-             enabled ? (b.hovered ? WHITE : LIGHTGRAY) : Color{110, 110, 120, 255});
+             enabled ? (b.hovered ? t.textBright : t.textBody) : t.textDisabled);
 }
 
 /**

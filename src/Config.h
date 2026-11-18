@@ -480,6 +480,21 @@ struct Config {
     int accentOverride = -1;
     int accent() const { return accentOverride >= 0 ? accentOverride : accentColor; }
 
+    /**
+     * Which interface skin is active: 0 = Current (today's look, the default and
+     * inert), 1 = Classic, 2 = Modern (see UiTheme.h / enum UiStyle). Persisted.
+     * 1.4.0b adds the settings picker and the real palettes; for now this is the
+     * groundwork lever and only Modern previews a provisional, distinct look.
+     * Kept as a plain int so Config.h stays free of raylib and UiTheme.h.
+     */
+    int uiStyle = 0;            // UI_CURRENT
+
+    /// A mod's style override, or -1 for none. NEVER WRITTEN TO DISK -- same
+    /// reasoning as accentOverride: a mod gets the interface while it runs, and
+    /// gives it back the moment it stops. Read through uiStyleActive().
+    int uiStyleOverride = -1;
+    int uiStyleActive() const { return uiStyleOverride >= 0 ? uiStyleOverride : uiStyle; }
+
     Config() {
         for (int i = 0; i < ACTION_COUNT; ++i)
             keybinds[i] = DEFAULT_KEYBINDS[i];
