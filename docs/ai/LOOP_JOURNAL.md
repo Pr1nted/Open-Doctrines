@@ -42194,3 +42194,56 @@ war-biased run byte-identical). So: conditioning is sensible where observable
 they can't be judged on a model too weak to ever fight. Inertness re-confirmed:
 shipped model under the 148-wide build, all flags off, hash 10276559031218734258
 = the twin (143-wide) hash, bit-identical. model.bin md5 4a137043 unchanged.
+
+## 562 — AI Correspondents live: the 2048-truncation premise does not reproduce on Ollama 0.40.3; the fix's real bug was native-argument parsing (2026-11-18)
+
+BACKLOG 141's fix (160d994a) routed local endpoints to native `/api/chat` with
+`options.num_ctx=8192`, on journal 454's premise that Ollama's 2,048 runtime
+window drops the front of the ~3,015-token tools prompt and so tool-firing never
+triggers (0/10 with llama3.1:8b). This session put it in front of a live Ollama
+(0.40.3, qwen2.5:3b) for the first time. Three findings, two of them overturning
+the premise.
+
+Setup: a two-arm A/B built from the REAL request builders (`chatRequestBodyWithTools`)
+and the REAL parser (`toolCallsFromResponse`/`parseLean`), on the real 1914
+"Serbia is massing" letter. CONTROL = `/v1`, `localRunner=false` (no num_ctx).
+FIXED = `/api/chat`, `localRunner=true` (num_ctx=8192). 5 attempts each.
+(`scratchpad/llm_ctx_ab.cpp`, `llm_native_plumbing.cpp`.)
+
+1. **No truncation on this version.** `prompt_tokens: 3044` on BOTH arms — the
+   full prompt was accepted and evaluated INTACT on plain `/v1` (native
+   `prompt_eval_count: 3044` too). num_ctx changed nothing: tool-firing 0/5 both
+   arms, byte-identical `[[RECORD]]` text output. The 2050 pin journal 454 saw
+   was an older-version behaviour; 0.40.3 does not truncate `/v1` the same way.
+   So num_ctx is a harmless truncation guard, NOT the lever that fixes firing.
+
+2. **The native routing surfaced a real regression, now fixed.** Ollama's
+   `/api/chat` returns `tool_calls[].function.arguments` as a bare JSON OBJECT
+   (`{"lean":"..."}`), not the `/v1` stringified form. `toolCallsFromResponse`
+   only read the string shape, so every local tool call came back with an EMPTY
+   argument and failed `parseLean` — fired-but-useless. Fixed to accept both
+   shapes, brace-matched and string-aware (836f6515); `advisor_test.cpp` covers
+   both + a brace-in-value case (189 checks, 0 failed). Live probe: a forced
+   `intend` now reads `intend(more recruitment)` → `parseLean OK`.
+
+3. **The firing gap is the MODEL, not the context.** Handed the real letter,
+   qwen2.5:3b writes a `[[RECORD]]` disposition block instead of calling a
+   steering tool — the exact journal-445 0/10 shape. Handed a task that plainly
+   calls for a tool, it fires one and the whole chain now works end-to-end
+   (request → tool_call → parse → parseLean → usable lean). So the remaining gap
+   is prompt/model: small local models under-call tools on the prose prompt.
+   That is the proper successor to 141, and it is NOT a transport or window
+   problem.
+
+COULD NOT TEST: llama3.1:8b (not pulled — the model the original 0/10 used);
+qwen3.6:35b (pulled but too slow to return a single response on this box, killed
+after ~8 min); the in-game `--llm-letter` walk (needs a save+config+screenshot —
+used the faithful harness, which drives the identical Advisor request/parse
+chain). Committed+pushed: 160d994a, 836f6515, BACKLOG 141 corrected in place.
+No training ran; `data/ai/model.bin` md5 4a137043 untouched.
+
+Also landed this arc but OUT of AI-journal scope (git + AGENTS.md record them):
+the `OD_DEPTH_SLOPE`/`OD_DEPTH_MAX` combat-depth A/B lever (77ae3216, inert
+unset, +30/rush-safe on a weak base — 187 validation still OPEN); experimental-
+menu hardening + pause/main-menu sync (13291dc4, 1db1e135, faaa2ca7); and the
+Monuments tutorial topic + silo tips in 44 languages (62bde869, 081aaf1d).
