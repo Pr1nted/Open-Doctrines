@@ -706,6 +706,25 @@ int main() {
             R"("arguments":"{\"nation\":\"France\"}"}}]})");
         ok(renamed.size() == 1 && renamed[0].argument == "France",
            "a renamed parameter is still read");
+
+        // Ollama's native /api/chat (which local endpoints are routed to for
+        // the context window, BACKLOG 141) sends `arguments` as a bare OBJECT,
+        // not a JSON string. The exact shape qwen2.5:3b returned live.
+        const auto native = toolCallsFromResponse(
+            R"({"message":{"role":"assistant","content":"","tool_calls":[)"
+            R"({"id":"call_x","function":{"index":0,"name":"intend",)"
+            R"("arguments":{"lean":"more recruitment"}}}]},"done":true})");
+        ok(native.size() == 1 && native[0].name == "intend",
+           "a native bare-object tool call is read out");
+        ok(native.size() == 1 && native[0].argument == "more recruitment",
+           "and its argument, out of the bare object native runners send");
+
+        // A brace inside the argument value must not close the object early.
+        const auto braced = toolCallsFromResponse(
+            R"({"tool_calls":[{"id":"d","function":{"name":"intend",)"
+            R"("arguments":{"lean":"attack {the} north"}}}]})");
+        ok(braced.size() == 1 && braced[0].argument == "attack {the} north",
+           "a brace inside a native argument value does not truncate it");
     }
 
     section("answering one goes back as a tool turn");

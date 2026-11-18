@@ -1293,13 +1293,34 @@ std::vector<ToolCall> toolCallsFromResponse(const std::string& json) {
             if (iq != std::string::npos) call.id = readJsonString(json, iq);
         }
 
-        // Arguments arrive as a STRING containing JSON, which is the shape the
-        // API specifies and the thing most easily got wrong.
+        // Arguments arrive one of two ways. The OpenAI /v1 shape wraps the
+        // object in a JSON STRING: "arguments":"{\"lean\":\"...\"}". Ollama's
+        // native /api/chat sends a bare OBJECT: "arguments":{"lean":"..."}.
+        // Local endpoints are routed to native for the context window (BACKLOG
+        // 141), so both must parse or a fired steering call comes back empty.
         const size_t argsAt = json.find("\"arguments\"", fn);
         if (argsAt != std::string::npos) {
-            const size_t aq = json.find('"', json.find(':', argsAt) + 1);
-            if (aq != std::string::npos) {
-                const std::string inner = readJsonString(json, aq);
+            size_t p = json.find(':', argsAt);
+            if (p != std::string::npos) {
+                ++p;
+                while (p < json.size() && (json[p] == ' ' || json[p] == '\t' ||
+                                           json[p] == '\n' || json[p] == '\r')) ++p;
+                std::string inner;
+                if (p < json.size() && json[p] == '"') {
+                    inner = readJsonString(json, p);        // /v1: string-wrapped JSON
+                } else if (p < json.size() && json[p] == '{') {
+                    int depth = 0; size_t s = p; bool inStr = false;  // native: bare object
+                    for (; p < json.size(); ++p) {
+                        const char ch = json[p];
+                        if (inStr) {
+                            if (ch == '\\') { ++p; continue; }
+                            if (ch == '"') inStr = false;
+                        } else if (ch == '"') inStr = true;
+                        else if (ch == '{') ++depth;
+                        else if (ch == '}' && --depth == 0) { ++p; break; }
+                    }
+                    inner = json.substr(s, p - s);
+                }
                 // One argument, whatever it is called: take the first string
                 // value in the object rather than matching the name, because a
                 // model that renames the parameter is commoner than one that

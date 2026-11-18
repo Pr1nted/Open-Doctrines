@@ -1449,13 +1449,29 @@ opponent is not a league.
    **Consequence for journal 453:** the world rules it measured are at the front of the
    system prompt, so on the tools path they are exactly what gets dropped. 453's
    measurement stands; whether the GAME reproduces it does not, until this is fixed.
-   **DONE (option a).** A local runner is now addressed on native `/api/chat` with
-   `options.num_ctx` = `LOCAL_NUM_CTX` (8192): `chatUrlFor` in `Game_Llm.cpp` routes a
-   local endpoint there, `chatRequestBody` emits the native `options` body for it, and
-   the response parser already read either shape. Verified by `AdvisorTest` (the body
-   carries `num_ctx`/`num_predict`, not top-level `max_tokens`); NOT yet verified
-   end-to-end against a live model -- that the dropped-codeword survives needs a running
-   Ollama, which the dev box did not have at the time of the change.
+   **DONE (option a), WITH TWO CORRECTIONS FROM THE LIVE RUN (2026-11-18, Ollama 0.40.3,
+   qwen2.5:3b).** A local runner is addressed on native `/api/chat` with `options.num_ctx`
+   = `LOCAL_NUM_CTX` (8192): `chatUrlFor` in `Game_Llm.cpp` routes a local endpoint there,
+   `chatRequestBody`/`...WithTools` emit the native `options` body. Shipped in 160d994a.
+   But end-to-end verification against a live Ollama changed the picture:
+   - **The truncation premise did NOT reproduce on 0.40.3.** The full ~3,044-token tools
+     prompt was accepted and evaluated INTACT on plain `/v1` (`prompt_tokens: 3044`, native
+     `prompt_eval_count: 3044`) -- nothing dropped. `num_ctx=8192` therefore changed nothing
+     about tool-firing in an A/B (0/5 both arms). The 2,048 pin (journal 454) was a
+     different-version behaviour; newer Ollama does not truncate `/v1` the same way. The
+     num_ctx routing is a harmless truncation guard, not the thing that fixes firing here.
+   - **Routing local to native surfaced a real parser bug, now fixed.** Ollama's `/api/chat`
+     returns `tool_calls[].function.arguments` as a bare JSON OBJECT, not the `/v1`
+     stringified form. `toolCallsFromResponse` only handled the string form, so every local
+     tool call came back with an EMPTY argument and failed `parseLean` (fired-but-useless).
+     Fixed to accept both shapes (brace-matched, string-aware); `advisor_test.cpp` covers it;
+     live probe now reads `intend(more recruitment)` -> `parseLean OK`.
+   - **What actually blocks firing on the prose prompt is the model, not the context.**
+     qwen2.5:3b, handed the real letter, writes a `[[RECORD]]` text block instead of calling
+     a steering tool (0/5), exactly the journal-445/0-of-10 shape with llama3.1:8b. When the
+     task plainly calls for a tool it fires one and the whole chain now works end-to-end.
+     So the remaining gap is prompt/model (small local models under-call tools), tracked
+     separately -- NOT a transport or window problem.
 
 140. ~~**FOR THE USER -- a rule that shortens wars by a third and changes no score.**~~
    **CLAIM WITHDRAWN, journal 451. It does not shorten wars reliably.** Six seeds, both
