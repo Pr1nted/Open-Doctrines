@@ -27,6 +27,13 @@ static Game* s_actHistGame = nullptr;
 std::vector<long long> g_fsCount;
 std::vector<double> g_fsSum, g_fsSq, g_fsMin, g_fsMax;
 
+// OD_FEATDUMP=<file>: one row per AI decision, for the NN delta/history probe
+// (does the DIFFERENCE between states over k turns carry signal the single
+// frame does not?). File-scope so an atexit closer can flush it on normal exit;
+// written streaming in buildFeatures. Nothing touches this unless the var is set.
+static FILE* g_featDumpFile = nullptr;
+static void closeFeatDump() { if (g_featDumpFile) { fclose(g_featDumpFile); g_featDumpFile = nullptr; } }
+
 // Journal 466: the policy net's unrest INPUT f[24], under OD_F24. Nothing reads these
 // unless the variable is set.
 double g_f24Sum = 0.0, g_f24Raw = 0.0, g_f24FactorSum = 0.0;
@@ -3528,6 +3535,39 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // poisons weight updates. Zero them at the source.
     for (float& v : f)
         if (!std::isfinite(v)) v = 0.0f;
+
+    // ── OD_FEATDUMP=<file>: the NN delta/history probe's raw data (NN brainstorm, 2026-11) ──
+    //
+    // dizzy's idea: do the DIFFERENCE between states over k turns, and a country's
+    // own recent trajectory, carry signal the single frame does not? This is the
+    // measurement that gates a retrain on it. Dump the exact 143-float vector the
+    // net consumes, tagged by game/turn/country/fog, plus the raw land (provinces,
+    // pixels) so the LAST row per (game,country) is the outcome label. The
+    // information-gain question is then pure offline ML -- predict final land from
+    // f_t alone vs from [f_t, f_t - f_{t-k}] -- and needs NO retrain to answer.
+    // Under fog the relational features are the fogged view the net actually saw,
+    // which is the point: can deltas recover what a single fogged frame loses.
+    // File, not stderr (od_bench discards stderr, journal 518). Only emit live
+    // countries. Gated on env => byte-identical when unset.
+    if (const char* fdPath = OD_ENV("OD_FEATDUMP")) {
+        static bool fdInit = false;
+        static const char* fdTag = "0";
+        if (!fdInit) {
+            fdInit = true;
+            g_featDumpFile = fopen(fdPath, "a");
+            if (const char* t = OD_ENV("OD_FEATDUMP_TAG")) fdTag = t;
+            if (g_featDumpFile) atexit(&closeFeatDump);
+        }
+        if (g_featDumpFile && st.provinces > 0) {
+            const long long px = (cid >= 0 && cid < (int)g.m_countryPixelCount.size())
+                                 ? (long long)g.m_countryPixelCount[cid] : 0;
+            fprintf(g_featDumpFile, "%s %d %d %d %d %lld", fdTag, (int)m_turn, cid,
+                    g.m_fogOfWar ? 1 : 0, (int)st.provinces, px);
+            for (float v : f) fprintf(g_featDumpFile, " %.6g", v);
+            fputc('\n', g_featDumpFile);
+        }
+    }
+
     // ── WHICH FEATURES ACTUALLY MOVE? OD_FEATSTAT=1 (journal 482) ──
     //
     // Journal 481 found f[24] weighted at the 65th percentile of 143 while pinned at

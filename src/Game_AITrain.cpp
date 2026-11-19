@@ -1209,6 +1209,19 @@ bool Game::runAIEvaluation(int numMaps, int turnsPerMap, unsigned int baseSeed,
         // this from also inheriting the training exploration schedule.
         m_aiTraining = true;
 
+        // OD_FOG: the headless eval's way into a fog world (journal 563 probe).
+        // The interactive/new-world doors call takeNewWorldFog() and the save and
+        // .odmap-save paths call fogBeginWorld()+recomputeFog(); this generated-
+        // world eval path goes through NONE of them (LOAD_CREATE_SAVE is gated on
+        // m_loadingShouldCreateSave, which eval leaves off), so fog was silently
+        // impossible here. Honour OD_FOG and run the SAME one-time init the other
+        // doors use; the per-turn recomputeFog() in the turn loop (Game_TurnLogic
+        // :578) carries it from there. Gated on env => byte-identical when unset.
+        if (const char* e = std::getenv("OD_FOG")) {
+            m_fogOfWar = (*e && *e != '0');
+            if (m_fogOfWar) { fogBeginWorld(); recomputeFog(); }
+        }
+
         MapResult r;
         r.scenario = evalMap ? evalMapName.c_str() : ship ? ship->name : sc.name;
         r.seed = p.seed;

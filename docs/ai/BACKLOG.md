@@ -5956,3 +5956,20 @@ rather than gains — correctly, but it is the ceiling.
 
 Phase 9 is this loop's to run (the fog session handed it over); it is **not this loop's to authorise**, because it
 is an 8-hour machine commitment and the model it produces replaces the reference every bench uses.
+
+## 232. The "own recent moves as input" half of the NN brainstorm (journal 563)
+
+Journal 563 closed the state-DELTA half: RED, both arms (deltas add +0.0019 nofog,
+-0.0059 fog; the single frame already predicts final land at R²≈0.88 because own-
+state dominates and is fog-invariant). See [[nn-state-deltas-add-no-signal]].
+
+UNTESTED: dizzy's other half — feed the net its OWN RECENT ACTIONS so play is
+connected turn-to-turn (commitment/continuity). This is NOT an outcome-prediction
+question, so the journal-563 probe does not speak to it; its target is next-action
+continuity. It lines up with the one POSITIVE finding in this family (commitment
+won, [[foresight-fails-here]]), not the dead planner/delta nulls. A probe would
+dump the chosen action per (turn,cid) alongside features (OD_FEATDUMP captures
+features only today) and ask whether conditioning on the last m actions predicts
+the next action's VALUE / reduces policy churn. Needs a retrain to USE either way
+(new input channel), so gate it on a probe first, like 563. Lower priority than
+the trunk-desaturation thread (journal 561).
