@@ -5957,7 +5957,15 @@ rather than gains — correctly, but it is the ceiling.
 Phase 9 is this loop's to run (the fog session handed it over); it is **not this loop's to authorise**, because it
 is an 8-hour machine commitment and the model it produces replaces the reference every bench uses.
 
-## 232. The "own recent moves as input" half of the NN brainstorm (journal 563)
+## 232. ~~The "own recent moves as input" half of the NN brainstorm~~ — DONE, RED (journal 564)
+
+Measured: the AI does NOT churn. Where it has real choice (economy 4.4 eff actions,
+navy) it repeats MORE than chance; where the gap looks ~0 (war/politics) the head is
+near-constant (1.07-1.41 eff actions), not thrashing. Continuity memory addresses a
+non-problem; the real pathology is over-commitment. All three NN-brainstorm strands
+are closed on this model. Original note kept below.
+
+
 
 Journal 563 closed the state-DELTA half: RED, both arms (deltas add +0.0019 nofog,
 -0.0059 fog; the single frame already predicts final land at R²≈0.88 because own-

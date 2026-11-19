@@ -42353,3 +42353,82 @@ hook is a latent-defect fix that makes fog eval possible at all. Left for the us
     offline information-gain probes. OD_FOG now also governs headless
     generated-world eval (it reached none of the fog doors before). Both inert
     unless their env var is set.
+
+## 564 — NN probe, the other half: does the AI CHURN its decisions (so own-move memory would help)? (PRE-REGISTERED, result pending)
+
+**Origin.** Backlog 232, the untested half of dizzy's brainstorm: feed the net its
+OWN RECENT MOVES so play is connected turn-to-turn (commitment/continuity). The
+state-delta half is RED (journal 563). This half targets continuity, not outcome,
+so 563 does not speak to it — it needs its own gate.
+
+**Strong prior from the existing record (this is why it may be RED on arrival).**
+The AI's documented pathology is OVER-commitment, not churn: journals 477-490 and
+the OD_STALL_SUE reflex (AISystem.cpp:4677) exist because France holds ONE war slot
+~90 turns bleeding ~160 provinces to an 8-province Switzerland and NEVER offers
+ceasefire. [[stalled-wars-lock-the-war-slot]], and "commitment won"
+([[foresight-fails-here]]). A memory that imposes MORE continuity would, on the war
+module, worsen exactly this. But war is one module; econ/politics/navy could still
+thrash, so measure churn across all four rather than reason from the war evidence.
+
+**Hypothesis (pre-registered).** If the AI thrashes (so own-move memory could impose
+useful continuity), then per-(country,module) action autocorrelation is LOW — the
+repeat rate P(a_t == a_{t-1}) is near the shuffle baseline Σ p_a² (actions ≈
+independent turn-to-turn) — AND higher continuity correlates with better outcome. If
+the AI is already continuous (or over-committed), repeat rate ≫ shuffle baseline.
+
+**Pre-registered GREEN (own-move memory worth a retrain):** per-module repeat rate
+is within ~0.05 of its shuffle baseline (near-independent decisions) for at least
+one real module, AND a country's mean continuity correlates POSITIVELY with its
+final land. RED otherwise (continuity already present, or it doesn't help).
+
+**Instrument.** NONE NEW — OD_AI_TRACE=<file> (docs/ai/TRACE_FORMAT.md) already
+records turn/cid/module/action per decision and does not change what the AI decides
+(re-runs the nets into scratch; OD_DECISION_HASH verifies). f[8] in the record is a
+land proxy for the outcome correlation.
+
+**Measured.** PENDING. OpenDoctrinesServer --eval-ai with OD_AI_TRACE, a few seeds,
+~80 turns (the trace is ~9 KB/decision). Offline: parse (turn,cid,module,action),
+compute repeat rate vs shuffle baseline per module, correlate continuity with final
+land. Result in a follow-up note.
+
+### 564 — RESULT: RED. The AI does not churn; it continues where it has a choice and is stuck where it does not.
+
+**Measured.** OD_AI_TRACE on OpenDoctrinesServer --eval-ai 1 60 <seed> 2, seeds
+13579/246810/555555, ~500 (cid,module) action sequences (≥10 turn-transitions each),
+pick-0 per turn. repeat_rate = P(a_t==a_{t-1}); shuffle_base = Σ freq_a²; eff
+actions = 1/shuffle.
+
+    module    n    repeat  shuffle   gap     eff.actions
+    economy   59   0.404   0.230   +0.174      4.39
+    politics  59   0.704   0.714   -0.010      1.41
+    war       59   0.947   0.942   +0.005      1.07
+    navy      59   0.961   0.737   +0.224      1.46
+    continuity vs final value: Pearson r = +0.266 (n=59)
+
+**Verdict. RED** — and the pre-registered GREEN was MET by a technicality that the
+effective-actions column exposes, so read this before quoting the gap. politics and
+war sit within 0.05 of shuffle NOT because the AI thrashes among real alternatives
+but because those heads are near-CONSTANT (1.07 and 1.41 effective actions of 12):
+when a distribution is a near point-mass, repeat ≈ shuffle ≈ 1 trivially. That is the
+saturated-head degeneracy ([[saturated-heads-return-one-number]],
+[[the-stance-head-never-switches]]), not churn. Where the AI has REAL choice --
+economy (4.4 effective actions) and navy -- repeat_rate EXCEEDS shuffle (gap +0.17,
++0.22): continuity is already present. No module thrashes. The +0.266
+continuity/value correlation is the idea's claim REVERSED and confounded: a stable,
+winning country both continues and scores (success → stability), which is not
+evidence that imposing continuity causes success.
+
+**Criterion lesson (for the next probe).** "repeat_rate within X of shuffle_base"
+detects thrashing ONLY on a non-degenerate distribution. A near-constant head passes
+it for free. Gate it on effective-actions (1/shuffle) ≥ ~2 before reading the gap --
+otherwise a saturated head reads as "independent" when it is the opposite.
+
+**Consequence.** All three strands of the NN brainstorm are now closed on this model:
+state-deltas as input RED (563); recursive planning already dead (search no-op,
+workstream D, 1-ply planner); own-moves-for-continuity RED (564, this). The AI's
+real decision pathology is OVER-commitment (stalled wars, OD_STALL_SUE), the opposite
+of what a continuity memory addresses.
+
+**Touched.** None in the tree — OD_AI_TRACE already existed; analysis in scratch.
+**Reverted.** n/a.
+**Backlog.** Strike 232.
