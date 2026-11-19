@@ -1993,6 +1993,7 @@
  "Specialization bonus: +%.1f%% resource income": "Specialization bonus: +%.1f%% resource income",
  "Specialization: %s": "Specialization: %s",
  "Specialize (%s) ($%.0f, 3t)": "Specialize (%s) ($%.0f, 3t)",
+ "Specialize (needs industry)": "Specialize (needs industry)",
  "Specializing to %s... (3t)": "Specializing to %s... (3t)",
  "Spectator Mode": "Spectator Mode",
  "Spectator mode lets you observe the entire map without controlling any country.": "Spectator mode lets you observe the entire map without controlling any country.",

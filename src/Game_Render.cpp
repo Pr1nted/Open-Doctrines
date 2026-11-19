@@ -1997,10 +1997,16 @@ void Game::drawCountryPanel() {
         // The resource name is an argument, and arguments are not looked up:
         // "Specialize (Rubber)" came out with the sentence translated and the
         // resource still in English, in the middle of it.
-        const char* specLabel = specPending
-                               ? TextFormat(T("Specializing to %s... (3t)"),
-                                   od::i18n::tr(specTarget))
-                               : TextFormat(T("Specialize (%s) ($%.0f, 3t)"),
+        const char* specLabel;
+        if (specPending)
+            specLabel = TextFormat(T("Specializing to %s... (3t)"), od::i18n::tr(specTarget));
+        else if (indLevel < 1)
+            // Named, not just greyed: specialisation needs a factory to direct,
+            // so a bare province is told what it lacks rather than shown a
+            // priced "choose one" button it can never press.
+            specLabel = T("Specialize (needs industry)");
+        else
+            specLabel = TextFormat(T("Specialize (%s) ($%.0f, 3t)"),
                                    currentSpec.empty() ? T("choose one")
                                                        : od::i18n::tr(currentSpec), specCost);
         if (drawActBtn(panelX + pad, specBtnY, btnW * 2 + btnGap, btnH, specLabel, !canSpec, specBg, specBd) && canSpec) {
