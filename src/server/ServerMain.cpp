@@ -21,6 +21,7 @@
 #include "../Game.h"
 #include "../ai/AISystem.h"   // mergeModelFiles; see --merge-ai below
 #include "../llm/Runner.h"    // the advisor runner; see --llm-install
+#include "../util/PlatformInfo.h"
 #include <filesystem>
 
 #include <algorithm>   // std::clamp, for --vs-exploit
@@ -223,6 +224,7 @@ int llmCommand(const std::string& what, const std::string& dataDir) {
 }
 
 int main(int argc, char** argv) {
+    logPlatformInfo();   // ABI/platform report, before any path can fail. See PlatformInfo.
     // ── The advisor-runner flags, first ──
     //
     // Before any of the heavy paths below: installing or removing a runner

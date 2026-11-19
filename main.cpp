@@ -3,6 +3,7 @@
 #include "ai/AISystem.h"
 #include "WinFatalDialog.h"
 #include "util/SoftwareGlRelaunch.h"
+#include "util/PlatformInfo.h"
 #include "GifEncoder.h"
 #include "platform/Vita.h"
 #include <cstdio>
@@ -20,6 +21,10 @@ int main(int argc, char** argv) {
     // Banked before anything can chdir, so a software-GL retry can re-exec this
     // exact binary with the exact arguments. See util/SoftwareGlRelaunch.
     odRememberRelaunch(argc, argv);
+
+    // The ABI/platform report, before anything can fail -- so a crash log from a
+    // machine nobody can reach still says what it was built for. See PlatformInfo.
+    logPlatformInfo();
 
 #if defined(__DJGPP__)
     // One console on DOS, and COMMAND.COM can redirect only standard output:

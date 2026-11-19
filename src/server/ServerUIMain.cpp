@@ -24,6 +24,7 @@
 #include "ServerConsole.h"
 
 #include "../Game.h"
+#include "../util/PlatformInfo.h"
 
 #include "raylib.h"
 
@@ -82,6 +83,7 @@ struct CommandBar {
 }  // namespace
 
 int main(int argc, char** argv) {
+    logPlatformInfo();   // ABI/platform report. See PlatformInfo.
     std::string configPath = "server.json";
     std::string dataOverride;
     for (int i = 1; i < argc; ++i) {
