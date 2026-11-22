@@ -157,11 +157,17 @@ int main() {
             // free of a JSON parser it does not otherwise need -- and checks
             // the grid was honoured, which is the whole reason dg_convert_unciv
             // exists instead of a field on dg_options.
-            size_t hexes = 0, at = 0;
-            while ((at = text.find("\"position\"", at)) != std::string::npos) {
-                ++hexes;
-                ++at;
-            }
+            // Each tile carries a "position". Since dragoman 0.5.5 ("Unciv as
+            // an extension mod"), a mod-less Unciv map ALSO writes per-nation
+            // startingLocations, and each of those carries a "position" too --
+            // plus a "nation", which a tile never has. So the tile grid is the
+            // positions that are not starting locations: count("position") minus
+            // count("nation"). (Counting both keeps this test parser-free.)
+            size_t totalPos = 0, at = 0;
+            while ((at = text.find("\"position\"", at)) != std::string::npos) { ++totalPos; ++at; }
+            size_t nations = 0; at = 0;
+            while ((at = text.find("\"nation\"", at)) != std::string::npos) { ++nations; ++at; }
+            const size_t hexes = totalPos - nations;
             check(hexes == 24 * 15, "the grid size was honoured");
 
             // And home again, through the SAME call the GD5 import uses:

@@ -37,7 +37,7 @@ const char* kShipped[] = {
     // state is flushed, so seven megabytes of read-only content the build
     // ships was being deflated at maximum effort once a minute, on the frame
     // thread. tools/check_shipped_data.py now fails when the two disagree.
-    "comms", "lang", "dialog",
+    "comms", "lang", "dialog", "events",
     "policies.json", "district_laws.json", "parties.json", "menu_bg.png",
     // Not content, but not the player's either.
     "Icon", "MANAGED", "VERSION",

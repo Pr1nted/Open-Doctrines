@@ -132,6 +132,11 @@ DATA_ALLOWLIST = [
                       # copy inside the .odmap; this is the fallback every
                       # other map uses, including generated ones, which is
                       # every map the AI trains on.
+    "events",         # random events (experimental, off by default): the game
+                      # reads data/events/<set>.json at turn time. Ships so a
+                      # world that enables the feature finds a set. The CMake
+                      # list, this list and OdState's kShipped must agree --
+                      # check_shipped_data.py fails when they do not.
 ]
 
 # Present in a working copy, never in a release. Listed only so the packaging

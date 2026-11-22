@@ -43,6 +43,7 @@
 #include "mod_world_stub.h"
 
 #include <cstdio>
+#include <cstdlib>   // atoi -- transitively included elsewhere on desktop, not under emscripten
 #include <cstring>
 #include <string>
 #include <vector>

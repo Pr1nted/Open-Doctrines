@@ -2548,6 +2548,12 @@ set(OD_SHIPPED_DATA STDmaps audio flags fonts icons symbols licenses comms
                     # preload and the installers, both built from this list --
                     # is missing them. 3.2 MB together.
                     lang dialog
+                    # Random events (experimental, off by default): the game
+                    # reads data/events/<set>.json at turn time, so the directory
+                    # ships to let a world that turns the feature on find it.
+                    # Arrived with events-scaffold; check_shipped_data.py flags a
+                    # tracked data/ directory that neither ships nor is user data.
+                    events
                     ai/model.bin tips.json credits.txt policies.json
                     # Missing from 1.2.2a on every platform: the Districts tab
                     # listed no laws, parties were absent, and the installers
