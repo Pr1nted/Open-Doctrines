@@ -35,8 +35,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "src", "server", "ServerRaylibStubs.cpp")
 
-# Where raylib.h is, in preference order. FetchContent puts one under each
-# build directory; any of them will do, they are the same pinned release.
+# Where raylib.h might be. NOT in preference order -- find_header() below
+# chooses by version, because these are NOT all the same release: a build tree
+# left over from before a raylib bump still holds the old one, and Homebrew's
+# copy is whatever Homebrew last shipped.
 #
 # A SYSTEM raylib counts too. This used to look only under build/, which meant
 # the check failed outright on a machine that builds against Homebrew's raylib
@@ -54,11 +56,64 @@ CANDIDATES = [
 ]
 
 
+CMAKELISTS = os.path.join(ROOT, "CMakeLists.txt")
+
+
+def pinned_version():
+    """The raylib release CMakeLists.txt builds against, or None.
+
+    `FetchContent_Declare(raylib ... GIT_TAG 6.2)` is the authority: a system
+    copy is only used when find_package accepts that same version.
+    """
+    try:
+        text = open(CMAKELISTS, encoding="utf-8", errors="ignore").read()
+    except OSError:
+        return None
+    m = re.search(r"FetchContent_Declare\s*\(\s*raylib\b(.*?)\)", text, re.S)
+    if m:
+        tag = re.search(r"GIT_TAG\s+v?([0-9][0-9.]*)", m.group(1))
+        if tag:
+            return tag.group(1)
+    m = re.search(r"find_package\s*\(\s*raylib\s+v?([0-9][0-9.]*)", text)
+    return m.group(1) if m else None
+
+
+def header_version(path):
+    m = re.search(r'#define\s+RAYLIB_VERSION\s+"([^"]+)"',
+                  open(path, encoding="utf-8", errors="ignore").read())
+    return m.group(1) if m else None
+
+
 def find_header():
-    for p in CANDIDATES:
-        if os.path.exists(p):
+    """The raylib.h matching the version CMakeLists.txt pins.
+
+    NOT simply the first one that exists. This machine had three -- a 6.0
+    FetchContent tree under build/, the pinned 6.2 under cmake-build-debug/,
+    and Homebrew's 6.0 -- and taking the first by directory order read 6.0,
+    which regenerated the COMMITTED AND CORRECT file backwards into a stale
+    API: ChangeDirectory back to bool, ComputeCRC32 losing its const,
+    DrawCircleLinesEx and three siblings deleted outright. The server would
+    then have failed to link naming symbols that raylib does export.
+
+    A generator is only as authoritative as its input, so this one refuses to
+    guess: if nothing on disk is the pinned version it says what it found and
+    stops, rather than emitting a wrong file that --check then enforces.
+    """
+    want = pinned_version()
+    found = [(p, header_version(p)) for p in CANDIDATES if os.path.exists(p)]
+    if not found:
+        sys.exit("no raylib.h found -- configure a build directory, or install raylib")
+    if want is None:
+        return found[0][0]
+    for p, ver in found:
+        if ver == want:
             return p
-    sys.exit("no raylib.h found -- configure a build directory, or install raylib")
+    lines = [f"no raylib {want} header found, and CMakeLists.txt pins {want}.",
+             "Found instead:"]
+    lines += [f"  {ver or 'unversioned'}  {p}" for p, ver in found]
+    lines.append("Configure a build tree so FetchContent checks out the pinned "
+                 "release, then re-run.")
+    sys.exit("\n".join(lines))
 
 
 def declarations(header_text):

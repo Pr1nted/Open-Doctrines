@@ -359,6 +359,13 @@
     {"commandArgs", gbxlua_command_args},
 #endif /* GBX_WITH_SCRIPTS */
 
+/* ---- Shaders (3) ---- */
+#if GBX_WITH_SHADERS
+    {"shadersSetEffect", gbxlua_shaders_set_effect},
+    {"shadersClear", gbxlua_shaders_clear},
+    {"shadersSupported", gbxlua_shaders_supported},
+#endif /* GBX_WITH_SHADERS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
     {"get", gbxlua_get},

@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
 
     uint64_t grants = m.modules;
     for (const auto& name : revoked) {
-        uint32_t bit = modModuleFromName(name);
+        uint64_t bit = modModuleFromName(name);
         if (!bit) { printf("\nunknown module to revoke: %s\n", name.c_str()); return 2; }
         grants &= ~bit;
         printf("  revoking    %s\n", name.c_str());

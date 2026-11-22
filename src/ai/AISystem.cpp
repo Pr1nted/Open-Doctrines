@@ -3204,7 +3204,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     //
     // f[22], f[52] and f[62] are raw army ratios, and f[62] carries the 96th percentile of
     // weight across 143 inputs. But journal 480 derived that the resolver stops reading
-    // army at 5.66 x combat width = 113,137 men (depthFactor caps at DEPTH_MAX = 1.5), so
+    // army past the multiple of combat width where depthFactor reaches DEPTH_MAX, so
     // a 10:1 raw ratio and a 1:1 raw ratio describe the SAME fight once both sides are
     // past saturation. The net's heaviest war feature cannot tell those apart -- the same
     // defect journal 490 found in the ceasefire mask, here in the feature space.
@@ -3213,7 +3213,8 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // the gate off every number below is bit-identical.
     static const bool effArmy = OD_ENV("OD_FEAT_EFFARMY") &&
                                 atoi(OD_ENV("OD_FEAT_EFFARMY")) != 0;
-    const double armySat = (double)Game::COMBAT_WIDTH_MIN * 5.656854;
+    const double armySat = (double)Game::COMBAT_WIDTH_MIN *
+        std::exp2(((double)Game::DEPTH_MAX - 1.0) / (double)Game::DEPTH_PER_DOUBLING);
     auto effA = [&](double a) -> double { return effArmy ? std::min(a, armySat) : a; };
     const double myEff = std::max(1.0, effA((double)myA));
     f[22] = weakestWar >= 0 ? (float)std::tanh(std::log1p(effA((double)weakestWar) / myEff)) : 0.0f;
@@ -5100,6 +5101,8 @@ void AISystem::takeTurn(int cid) {
     navalReflex(cid);
     if (!reflexAblated("campaign") && !m_g->llmSuppressesReflex(cid, "campaign"))
         campaignReflex(cid);
+    if (!reflexAblated("colonize") && !m_g->llmSuppressesReflex(cid, "colonize"))
+        colonizeReflex(cid);
     // ...and end the wars it is not about
     if (!reflexAblated("peace") && !m_g->llmSuppressesReflex(cid, "peace"))
         peaceReflex(cid);
@@ -6389,8 +6392,8 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // ── OD_PEACE_EFFECTIVE=1: compare EFFECTIVE strength, not headcount (journal 491) ──
     //
     // The ratio below is raw army, and the combat resolver stops reading army at
-    // 5.66 x combat width -- 113,137 men at COMBAT_WIDTH_MIN -- because depthFactor
-    // caps at DEPTH_MAX = 1.5 (journal 480's derivation from Game.h:5082-5083). So a
+    // the multiple of combat width where depthFactor reaches DEPTH_MAX (journal 480;
+    // 5.66x when the cap was 1.5). So a
     // 44M-man army reads as decisively ahead of a 1M-man one and is exactly level at
     // the frontage, and this mask bit was measured OFFERED ZERO TIMES in 400 turns on
     // a seat that then sat in one unwinnable war for 304 of them (journal 490).
@@ -6401,7 +6404,8 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     static const bool peaceEff = OD_ENV("OD_PEACE_EFFECTIVE") &&
                                  atoi(OD_ENV("OD_PEACE_EFFECTIVE")) != 0;
     if (peaceEff) {
-        const long double sat = (long double)Game::COMBAT_WIDTH_MIN * 5.656854L;
+        const long double sat = (long double)Game::COMBAT_WIDTH_MIN *
+            std::exp2(((long double)Game::DEPTH_MAX - 1.0L) / (long double)Game::DEPTH_PER_DOUBLING);
         auto eff = [&](long long a) -> long double {
             return (long double)a < sat ? (long double)a : sat;
         };
@@ -9602,6 +9606,53 @@ void AISystem::peaceReflex(int cid) {
         if (traceCid == cid)
             fprintf(stderr, "[PEACE] turn %d cid=%d offers white peace to %s (army %lld) to concentrate on %d\n",
                     m_turn, cid, ec->isoA3.c_str(), best, camp->targetCountry);
+    }
+}
+
+void AISystem::colonizeReflex(int cid) {
+    // Settle adjacent UNCLAIMED land. The net never learned to do this -- it
+    // trained on maps (modern, 1914, 1939) with almost no unclaimed territory --
+    // so on a sparse map like 50 BC, where 83% of the land starts unclaimed, the
+    // empty world would sit there forever (measured: 0 of 2509 taken in 15 turns).
+    // This is a hand rule, not a net change: a solvent, unthreatened country sends
+    // part of a border garrison into a neighbouring unclaimed province to claim
+    // it, at most a few a turn, so expansion is gradual rather than a land grab.
+    // OD_COLONIZE=0 turns it off; being appended here and gated, it cannot change
+    // a map that has no unclaimed land, so other scenarios are unaffected.
+    static const bool on = !OD_ENV("OD_COLONIZE") || atoi(OD_ENV("OD_COLONIZE")) != 0;
+    if (!on) return;
+    Game& g = *m_g;
+    const auto sIt = m_stats.find(cid);
+    if (sIt == m_stats.end()) return;
+    if (sIt->second.provincesLost > 0) return;            // losing ground: hold, don't expand
+    if (g.computeCountryIncome(cid).net < 2.0f) return;   // needs a real surplus to spare men
+    // Pace: at most ONE claim per country every few turns, so expansion is a
+    // slow frontier creep, not a sprint across a continent. Keyed per country.
+    static std::unordered_map<int,int> s_lastColonize;
+    auto lc = s_lastColonize.find(cid);
+    if (lc != s_lastColonize.end() && m_turn - lc->second < 3) return;
+    auto garrisonOf = [&](int pid) -> long long {
+        auto it = g.m_provinceArmies.find(pid); long long n = 0;
+        if (it != g.m_provinceArmies.end())
+            for (auto& u : it->second) if (u.countryId == cid) n += u.count;
+        return n;
+    };
+    std::unordered_set<int> busy;
+    for (const auto& mo : g.m_pendingMoveOrders)
+        if (mo.countryId == cid) busy.insert(mo.fromProvince);
+    const auto& allProv = g.m_provinces.getAllProvinces();
+    for (int pid : g.provincesOf(cid)) {
+        if (busy.count(pid)) continue;
+        if (garrisonOf(pid) < 6000) continue;              // keep a real holding force at home
+        auto nIt = g.m_provinceNeighbors.find(pid);
+        if (nIt == g.m_provinceNeighbors.end()) continue;
+        for (int nid : nIt->second) {
+            auto np = allProv.find(nid);
+            if (np == allProv.end() || np->second.countryId != Game::UNC_CID) continue;
+            issueOrder(PendingMoveOrder{pid, nid, 30, cid});   // 30% of the garrison claims it
+            s_lastColonize[cid] = m_turn;
+            return;                                         // one claim per country per visit
+        }
     }
 }
 

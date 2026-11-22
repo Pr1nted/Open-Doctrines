@@ -411,6 +411,7 @@ void Game::updateLoading() {
                     m_renderer->setNight(night);
                     }
                 m_renderer->setFallbackFont(m_gameFont);
+                m_renderer->setModEffects(&m_modEffects);
             }
             m_loadingPhase = LOAD_BUILD_POP;
             break;
@@ -2841,7 +2842,15 @@ bool Game::loadFromODM(const std::string& odmPath) {
                 // art never lands on the player's disk.
                 bool isCast = entryName.rfind("comms/", 0) == 0 || entryName.rfind("dialog/", 0) == 0;
                 if (entryName.rfind("licenses/", 0) == 0 || entryName.rfind("symbols/", 0) == 0 ||
-                    (entryName.rfind("flags/", 0) == 0 && entryName.find(".svg") != std::string::npos) ||
+                    // Flags travel in the archive, SVG or PNG. A scenario's own
+                    // flags (e.g. the ancient powers of a 50 BC map) are PNGs that
+                    // live nowhere on disk, so they must come out of here into
+                    // m_odmJsonData -- FlagRenderer::render() looks the imagePath
+                    // up there first (src/renderer/FlagRenderer.cpp). Extracting
+                    // only .svg left those PNG flags grey.
+                    (entryName.rfind("flags/", 0) == 0 &&
+                     (entryName.find(".svg") != std::string::npos ||
+                      entryName.find(".png") != std::string::npos)) ||
                     isScript || isCast) {
                     // Check if already extracted
                     bool already = false;
@@ -3782,6 +3791,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
         m_renderer->setNight(night);
         }
     m_renderer->setFallbackFont(m_gameFont);
+    m_renderer->setModEffects(&m_modEffects);
 
     setLoadingProgress(0.6f, "Building population data...");
     drawLoadingScreen();

@@ -918,6 +918,12 @@ void Game::processTurn() {
             m_mapDate = std::string(MONTHS[mi+1]) + " " + std::to_string(yr) + " " + era;
         } else if (isBC && yr > 1) {
             m_mapDate = std::string("January ") + std::to_string(yr - 1) + " BC";
+        } else if (isBC) {
+            // December 1 BC rolls to January 1 AD. There is no year zero, so
+            // 1 BC is followed directly by 1 AD -- not "2 AD", which is what
+            // the yr+1 path below used to produce here, skipping 1 AD and
+            // leaving every later AD year one too high.
+            m_mapDate = std::string("January 1 AD");
         } else {
             m_mapDate = std::string("January ") + std::to_string(yr + 1) + " AD";
         }

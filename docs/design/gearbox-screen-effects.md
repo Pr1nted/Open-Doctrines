@@ -1,8 +1,72 @@
 # A Shaders capability for a future Gearbox
 
-**Status:** proposal, partly superseded. Tier A (host effects with clamped
-parameters) and the targets stand. Tier B (mod-authored WGSL) is replaced by
-[gearbox-effect-expressions.md](gearbox-effect-expressions.md).
+**Status:** Tier A is BUILT and shipped in Gearbox 1.4 as the `Shaders`
+capability. Tier B (mod-authored WGSL) is replaced by
+[gearbox-effect-expressions.md](gearbox-effect-expressions.md) and remains
+unbuilt.
+
+What landed, against what this document proposed:
+
+| proposed | built |
+|---|---|
+| `set_effect(target, effect, permille)`, `clear(target)` | both, plus `supported(target, effect)` so a mod can degrade on an older host |
+| targets MAP, MAP_WORLD, SCREEN, PANEL | MAP, PANEL and SCREEN. MAP_WORLD is not built — see below |
+| effects hue rotate, saturation, wobble, vignette, grain | hue rotate, saturation, vignette, grain, and HUE_CYCLE, which was not proposed. Wobble distorts geometry rather than colour, so it is not one uniform on the same pass |
+| clamp every parameter host-side | `odeffect::Layer::setEffect`, and a mod cannot tell it was applied |
+| clamp the flash rate, and the per-frame luminance delta | ONE mechanism does both: the rendered value slews toward the requested one at 1.5 of range per second. `tests/mod_effect_test.cpp` drives it the way a hostile mod would and measures 0 half-cycles per second against WCAG's 6 |
+| an accessibility setting a mod cannot read | Settings → Display → Mod Screen Effects. Nothing in the ABI reports it |
+| the Mod Menu clears effects before opening | every frame it is open, not on entry: a mod draws every frame and could re-assert |
+| headless is a no-op | by construction — the server's `LoadShaderFromMemory` stub returns id 0 and the pass never binds |
+| screenshots and OJH captures run with effects off | both, and neither asks the mod |
+| one pass, host-written | one fragment shader bound around draws that were going to happen anyway: no extra geometry, no render target, no resolve |
+
+**HUE_CYCLE was not in this proposal and should have been.** `mod_draw_panel`
+is the only per-frame export the ABI has, so every proposal here quietly
+assumed a mod would drive its own animation from a panel it registered as a
+clock — which is what LSDoctrines did, and why it had a window on screen that
+existed only to tick. Worse, it put the animation RATE in the mod's hands, and
+the rate is the parameter this document spends two sections worrying about. So
+one effect takes a SPEED instead of a value, the host integrates the phase at
+up to half a turn per second, and a mod that wants movement does not need a
+frame hook at all. The capability is smaller and the dangerous number is the
+host's.
+
+**SCREEN is built, and the way round the seam problem was to stop needing a
+seam.** This document assumed the world layer had to be captured BELOW the
+interface, and `Game::drawInner()` has no such boundary — it interleaves world
+drawing with panels and click handlers across two thousand lines. But the
+request that prompted it was for the interface to move as well, and capturing
+the WHOLE frame needs no boundary at all: `beginFrameCapture()` right after
+`BeginDrawing`, `endFrameCapture()` at the top of `endFrame()`, and everything
+`endFrame` draws afterwards — toasts, the feedback form, the pad cursor — is
+the always-on-top layer that stays clean. The Mod Menu suppresses effects
+outright while it is open, so the off switch is never in the pass.
+
+It is off unless asked: with no mod holding SCREEN the capture returns before
+it touches anything, and the frame goes to the back buffer as it always did.
+That is the only basis on which redirecting the whole frame is reasonable.
+
+**MAP_WORLD is still not built** and is deliberately NOT declared: a target
+that exists and does nothing is worse than one honestly absent.
+
+**WOBBLE was not in this proposal under that name** (it was listed as an
+effect and then dropped as "geometry, not colour"). It turns out to be neither
+— it is a displacement of the texture coordinate inside the same pass, so it
+costs nothing extra and can only move what the pass was already drawing.
+
+What it CANNOT do is move hit boxes. Input resolves against the layout, not
+the picture, so a button drawn fifteen pixels from itself still answers where
+it really is. That is why the amplitude is capped per target and capped hardest
+on SCREEN: enough to read as movement, not enough to make a control miss. A
+mod cannot reach the cap.
+
+**The globe is not covered either.** The sphere samples a cached composite
+inside its own shader, so there is nowhere to bind the pass; doing it needs
+either a rebuild of that composite every frame or a second target whose
+orientation wants checking against a real globe. A mod cannot ask which view is
+up, so for now MAP means the flat map.
+
+What follows is the original proposal, unedited.
 
 Written after LSDoctrines
 (`sdk/examples/lsdoctrines`) ran into the ceiling: a mod can tint provinces and

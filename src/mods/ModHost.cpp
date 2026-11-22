@@ -3,6 +3,7 @@
 #include "ModHost.h"
 #include "ModPackage.h"   // kHostGearboxMajor/Minor: the one version
 #include "ModRuntime.h"
+#include "../ModEffectLayer.h"   // Target/Effect ranges for shd_supported
 
 #include <cstdio>
 #include <cstring>
@@ -401,6 +402,7 @@ ModListBridge g_listBridge;
 ModCountryBridge g_countryBridge;
 ModScriptBridge g_scriptBridge;
 ModRenderBridge g_renderBridge;
+ModShaderBridge g_shaderBridge;
 ModContentBridge g_contentBridge;
 
 uint32_t net_send(ExecEnv e, int32_t peer, uint32_t dataPtr, uint32_t dataLen) {
@@ -1291,6 +1293,33 @@ uint32_t rnd_label_count(ExecEnv e) {
     ModInstance* mi = self(e);
     if (!mi || !mi->has(MODULE_RENDER) || !g_renderBridge.labelCount) return 0;
     return g_renderBridge.labelCount(mi->id());
+}
+
+// ---- Shaders: a target, a host effect, and a clamped number ----
+//
+// The clamp is in the layer rather than here, with the rule it enforces. This
+// is wiring: the capability, the mod's own id, and nothing else.
+uint32_t shd_set_effect(ExecEnv e, uint32_t target, uint32_t effect, uint32_t permille) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SHADERS) || !g_shaderBridge.setEffect) return 0;
+    return g_shaderBridge.setEffect(mi->id(), target, effect, permille) ? 1u : 0u;
+}
+uint32_t shd_clear(ExecEnv e, uint32_t target) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SHADERS) || !g_shaderBridge.clearTarget) return 0;
+    g_shaderBridge.clearTarget(mi->id(), target);
+    return 1;
+}
+// Answered from the build's own enums, not through the bridge: it is a question
+// about what this host CAN do, which a mod needs in order to degrade gracefully
+// on an older build rather than discovering a refusal effect by effect. It says
+// nothing about whether anything is being drawn -- on a server, as with audio,
+// there is nobody to draw to and the calls do nothing.
+uint32_t shd_supported(ExecEnv e, uint32_t target, uint32_t effect) {
+    ModInstance* mi = self(e);
+    if (!mi || !mi->has(MODULE_SHADERS)) return 0;
+    return (target < (uint32_t)odeffect::Target::Count_ &&
+            effect < (uint32_t)odeffect::Effect::Count_) ? 1u : 0u;
 }
 
 // ---- Scripts: commands a mod adds to the map script language ----
@@ -2255,6 +2284,9 @@ const ModHostFn kHostFunctions[] = {
     {"gearbox:render", "clear", "()i", (void*)rnd_clear, MODULE_RENDER},
     {"gearbox:render", "tint_count", "()i", (void*)rnd_tint_count, MODULE_RENDER},
     {"gearbox:render", "label_count", "()i", (void*)rnd_label_count, MODULE_RENDER},
+    {"gearbox:shaders", "set_effect", "(iii)i", (void*)shd_set_effect, MODULE_SHADERS},
+    {"gearbox:shaders", "clear", "(i)i", (void*)shd_clear, MODULE_SHADERS},
+    {"gearbox:shaders", "supported", "(ii)i", (void*)shd_supported, MODULE_SHADERS},
     {"gearbox:scripts", "command_text", "(ii)i", (void*)scr_command_text, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_args", "(ii)i", (void*)scr_command_args, MODULE_SCRIPTS},
     {"gearbox:scripts", "command_add", "(ii)i", (void*)scr_command_add, MODULE_SCRIPTS},
@@ -2577,10 +2609,19 @@ void modReleaseAudio(const std::string& modId) {
     if (g_audioBridge.stopAll) g_audioBridge.stopAll(modId);
 }
 
+void modReleaseRender(const std::string& modId) {
+    if (g_renderBridge.clear) g_renderBridge.clear(modId);
+}
+
+void modReleaseEffects(const std::string& modId) {
+    if (g_shaderBridge.clearAll) g_shaderBridge.clearAll(modId);
+}
+
 void modSetListBridge(const ModListBridge& bridge) { g_listBridge = bridge; }
 void modSetCountryBridge(const ModCountryBridge& b) { g_countryBridge = b; }
 void modSetScriptBridge(const ModScriptBridge& b) { g_scriptBridge = b; }
 void modSetRenderBridge(const ModRenderBridge& b) { g_renderBridge = b; }
+void modSetShaderBridge(const ModShaderBridge& b) { g_shaderBridge = b; }
 void modSetContentBridge(const ModContentBridge& b) { g_contentBridge = b; }
 const ModContentBridge& modContentBridge() { return g_contentBridge; }
 

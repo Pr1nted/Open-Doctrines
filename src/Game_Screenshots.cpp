@@ -892,6 +892,21 @@ bool Game::tickScreenshotTour() {
             m_modAdvancedFor = m_modDeleteFor = m_modAiWarnFor = -1;
             ModManager::get().rescan();
             m_currentScreen = SCREEN_MODS;
+            // OD_SHOT_MOD_PERMS=<row> photographs the permissions popup over the
+            // list instead of the list alone.
+            //
+            // A development aid with a specific job: that panel's size is
+            // derived from how many capabilities the build has (see PermLayout),
+            // so every release that adds one changes its shape -- and the way it
+            // breaks is a toggle that is drawn under the Close button, which
+            // reads perfectly well in a screenshot of the list and cannot be
+            // clicked. This is how you look at it without a human at the
+            // keyboard.
+            if (const char* mp = std::getenv("OD_SHOT_MOD_PERMS")) {
+                const int row = std::atoi(mp);
+                if (row >= 0 && row < (int)ModManager::get().mods().size())
+                    m_modAdvancedFor = row;
+            }
         } else if (name == "multiplayer") {
             openMultiplayerMenu();
         } else if (name == "map-editor") {

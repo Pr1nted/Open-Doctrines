@@ -1806,6 +1806,7 @@ endif()
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
+    src/DateSystems.cpp
     src/DevLink.cpp
     # One seat played from outside a turn at a time: the FIFO agent door and
     # the browser build both go through it. See its header comment.
@@ -1859,6 +1860,7 @@ set(GAME_SOURCES
     src/CountryFields.cpp
     src/ScriptCommands.cpp
     src/ModRenderLayer.cpp
+    src/ModEffectLayer.cpp
     src/ModContent.cpp
     src/Parties.cpp
     src/Feedback.cpp
@@ -1952,6 +1954,7 @@ set(GAME_SOURCES
     src/util/PngRows.cpp
     src/map/CountryMap.cpp
     src/renderer/MapRenderer.cpp
+    src/renderer/EffectPass.cpp
     src/renderer/GlobeView.cpp
     src/map/SkyFile.cpp
     src/map/HistoryFile.cpp
@@ -3640,6 +3643,13 @@ add_executable(ModRenderLayerTest EXCLUDE_FROM_ALL
                tests/mod_render_layer_test.cpp src/ModRenderLayer.cpp)
 target_include_directories(ModRenderLayerTest PRIVATE src tests)
 
+# Screen effects a mod may ask for. The property under test is NOT the colour:
+# it is that no sequence of calls produces a strobe, because that is the one
+# failure here that hurts a person rather than a picture.
+add_executable(ModEffectTest EXCLUDE_FROM_ALL
+               tests/mod_effect_test.cpp src/ModEffectLayer.cpp)
+target_include_directories(ModEffectTest PRIVATE src tests)
+
 # Content a mod adds to the catalogues. The properties under test are that ids
 # are global within a catalogue (a save records a doctrine BY ID), that AI
 # visibility is opt-in, and that a persisted definition outlives its mod.
@@ -4090,6 +4100,15 @@ target_include_directories(ScriptDialectTest PRIVATE src)
 add_executable(ThemeTest EXCLUDE_FROM_ALL tests/theme_test.cpp)
 target_include_directories(ThemeTest PRIVATE src)
 target_link_libraries(ThemeTest PRIVATE raylib)
+
+# The calendar/era conversions (BC/AD, AUC, sexagenary, Kōki, Juche, Anno Mundi,
+# Holocene). Links only src/DateSystems.cpp -- the arithmetic is dependency-free
+# so the anchors (1 AD == 辛酉, 753 BC == 1 AUC, the no-year-zero boundary) are
+# pinned without a window or a map.
+add_executable(DateSystemsTest EXCLUDE_FROM_ALL
+    tests/date_systems_test.cpp
+    src/DateSystems.cpp)
+target_include_directories(DateSystemsTest PRIVATE src)
 
 add_executable(MonumentsTest EXCLUDE_FROM_ALL
     tests/monuments_test.cpp

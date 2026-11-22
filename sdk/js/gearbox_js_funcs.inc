@@ -359,6 +359,13 @@
     JS_CFUNC_DEF("commandArgs", 0, gbxjs_command_args),
 #endif /* GBX_WITH_SCRIPTS */
 
+/* ---- Shaders (3) ---- */
+#if GBX_WITH_SHADERS
+    JS_CFUNC_DEF("shadersSetEffect", 3, gbxjs_shaders_set_effect),
+    JS_CFUNC_DEF("shadersClear", 1, gbxjs_shaders_clear),
+    JS_CFUNC_DEF("shadersSupported", 2, gbxjs_shaders_supported),
+#endif /* GBX_WITH_SHADERS */
+
 /* ---- Storage (3) ---- */
 #if GBX_WITH_STORAGE
     JS_CFUNC_DEF("get", 1, gbxjs_get),

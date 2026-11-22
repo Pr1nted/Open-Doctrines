@@ -10,9 +10,9 @@
 
 #define SY_WIDTH_MIN         20000
 #define SY_WIDTH_PER_AREA    25
-#define SY_FORT_NARROW_PCT   12
+#define SY_FORT_NARROW_PCT   8
 #define SY_DEPTH_PER_DBL     20  /* x100, as an integer */
-#define SY_DEPTH_MAX         150  /* x100, as an integer */
+#define SY_DEPTH_MAX         200  /* x100, as an integer */
 
 /* The map views the C++ owns, in its order. */
 

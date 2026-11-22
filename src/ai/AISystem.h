@@ -5652,6 +5652,7 @@ private:
     void siegeReflex(int cid);
     void pacificationReflex(int cid);
     void campaignReflex(int cid);
+    void colonizeReflex(int cid);   // settle adjacent unclaimed land (OD_COLONIZE)
     void peaceReflex(int cid);
     /** What a campaign is projected to cost and whether it can be finished.
      *  See projectCampaign: the AI's lookahead, in closed form over the

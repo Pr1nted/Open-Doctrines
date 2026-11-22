@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
         std::string capName;
         if (imp.contains("capability") && !imp["capability"].is_null())
             capName = imp["capability"].get<std::string>();
-        uint32_t wantCap = capName.empty() ? 0u : modModuleFromName(capName);
+        uint64_t wantCap = capName.empty() ? 0ull : modModuleFromName(capName);
         if (!capName.empty() && wantCap == 0) {
             check(k + " capability is a known module", false, capName);
         } else {
@@ -205,7 +205,11 @@ int main(int argc, char** argv) {
         }
         // Every capability bit the host defines must be described, or the
         // Advanced permissions panel would show a module the docs never mention.
-        for (uint32_t bit = 1; bit; bit <<= 1) {
+        // uint64_t, and not a tidy-up: as a uint32_t this loop shifted off the
+        // end at bit 31 and stopped, so a capability above it would have gone
+        // undescribed with the test still green -- the check quietly ceasing to
+        // cover the newest thing in the file.
+        for (uint64_t bit = 1; bit; bit <<= 1) {
             std::string nm = modModuleMaskToString(bit);
             if (nm.empty()) continue;
             bool found = false;

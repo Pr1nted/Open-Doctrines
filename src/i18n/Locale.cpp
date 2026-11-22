@@ -581,6 +581,24 @@ bool setLanguage(const std::string& code, const std::string& dataDir) {
     if (anyDevanagari)
         for (int c = 0x0900; c <= 0x097F; ++c) cps.insert(c);
 
+    // THE DATE-SYSTEM GLYPHS, in every language, for the same reason as the
+    // names above. The HUD date can be read in a calendar whose label is not
+    // Latin -- the Chinese sexagenary cycle (the ten stems 甲..癸, the twelve
+    // branches 子..亥, and 年), Japanese Kōki (皇紀) and Korean Juche (주체).
+    // None of these characters appear in any UI string, so without this the
+    // date panel drew "February ???" for those systems. It is a fixed, tiny
+    // set; 11 MB unifont (desktop) has every one, and they cost ~26 glyphs in
+    // the atlas. See src/DateSystems.cpp.
+    collectCodepoints(
+        "\xE7\x94\xB2\xE4\xB9\x99\xE4\xB8\x99\xE4\xB8\x81\xE6\x88\x8A"  // 甲乙丙丁戊
+        "\xE5\xB7\xB1\xE5\xBA\x9A\xE8\xBE\x9B\xE5\xA3\xAC\xE7\x99\xB8"  // 己庚辛壬癸
+        "\xE5\xAD\x90\xE4\xB8\x91\xE5\xAF\x85\xE5\x8D\xAF\xE8\xBE\xB0"  // 子丑寅卯辰
+        "\xE5\xB7\xB3\xE5\x8D\x88\xE6\x9C\xAA\xE7\x94\xB3\xE9\x85\x89"  // 巳午未申酉
+        "\xE6\x88\x8C\xE4\xBA\xA5\xE5\xB9\xB4"                          // 戌亥年
+        "\xE7\x9A\x87\xE7\xB4\x80"                                      // 皇紀 (Kōki)
+        "\xEC\xA3\xBC\xEC\xB2\xB4",                                     // 주체 (Juche)
+        cps);
+
     std::unordered_map<std::string, const char*> table;
     std::unordered_map<std::string, std::string> names;
     int translated = 0, total = 0;

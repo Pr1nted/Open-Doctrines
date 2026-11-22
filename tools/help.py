@@ -23,6 +23,14 @@ TOOLS = os.path.join(ROOT, "tools")
 # list of forty scripts is not help.
 GROUPS = [
     ("Releasing", [
+        # release.py takes the decisions as flags and acts on them. The two
+        # rules that have cost the most re-cut tags are not among those flags,
+        # because neither is about this repository's files: Test on main must be
+        # green AT THE COMMIT being tagged, and the SDK goes first when the ABI
+        # moved. release_tui.py reads both, prints them beside the versions, and
+        # refuses a release that contradicts either -- then hands the work to
+        # release.py, so there is still one implementation of a release.
+        "release_tui.py",
         "release.py", "odver.py", "package.py", "ci_plan.py", "sign_release.py", "gen_release_key.py", "check_shipped_data.py", "check_registry_modules.py", "check_mod_capability_guards.py", "check_mod_host_signatures.py", "check_relay_limits.py", "check_mp_order_coverage.py", "check_web_font.py", "build.py", "screenshots.sh",
         # The AppImage, the .deb and the .rpm, repackaged from the tarball the
         # build already produced rather than compiled again -- so a package
@@ -91,6 +99,16 @@ GROUPS = [
     ("The mod ABI and SDKs", [
         "gen_bindings.py", "gen_abi_docs.py", "gen_wiki.py", "publish_wiki.py",
         "check_bindings.py", "check_abi_compat.py", "wasm_imports.py",
+        # gearbox.h declares the enums a mod compiles against and abi.json
+        # describes them; nothing tied the two together, so a value added to
+        # one could sit unmatched in the other. This compares them.
+        "check_sdk_enums.py",
+        # The map-scripting surface has four readers and the engine is one of
+        # them: docs/scripting.md, the editor's lint, dragoman's translator in
+        # a repository that cannot import this one, and any mod built on the
+        # ABI. Adding a statement updates one. This records the surface so the
+        # other three cannot go stale unnoticed.
+        "script_surface.py",
         # Those three check that every capability is DESCRIBED correctly. This
         # one makes each of them get CALLED: a mod per gearbox module that
         # invokes every import in it and counts what came back, generated from

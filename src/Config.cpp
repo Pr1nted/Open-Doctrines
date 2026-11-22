@@ -164,7 +164,9 @@ bool Config::load(const std::string& path) {
     streamChatChannel = findConfigString(json, "streamChatChannel", "");
     streamChatSeconds = findFloat(json, "streamChatSeconds", 30.0f);
     language = findConfigString(json, "language", "en");
+    dateSystem = findConfigString(json, "date_system", "bc_ad");
     uiScale = findFloat(json, "uiScale", 1.0f);
+    modScreenEffects = findBool(json, "modScreenEffects", true);
     colourBlindMode = findInt(json, "colourBlindMode", 0);
     if (colourBlindMode < 0 || colourBlindMode > 3) colourBlindMode = 0;
     highContrast  = findBool(json, "highContrast", false);
@@ -341,7 +343,9 @@ bool Config::save(const std::string& path) {
     file << "  \"streamChatChannel\": \"" << streamChatChannel << "\",\n";
     file << "  \"streamChatSeconds\": " << streamChatSeconds << ",\n";
     file << "  \"language\": \"" << language << "\",\n";
+    file << "  \"date_system\": \"" << dateSystem << "\",\n";
     file << "  \"uiScale\": " << uiScale << ",\n";
+    file << "  \"modScreenEffects\": " << (modScreenEffects ? "true" : "false") << ",\n";
     file << "  \"colourBlindMode\": " << colourBlindMode << ",\n";
     file << "  \"highContrast\": " << (highContrast ? "true" : "false") << ",\n";
     file << "  \"reduceMotion\": " << (reduceMotion ? "true" : "false") << ",\n";

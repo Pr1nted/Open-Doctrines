@@ -31,7 +31,7 @@ struct ModHostFn {
     const char* name;        // import name, e.g. "log"
     const char* signature;
     void*       fn;
-    uint32_t    capability;  // ModModuleBit required to import this
+    uint64_t    capability;  // ModModuleBit required to import this
 };
 
 const ModHostFn* modHostFunctions(size_t& count);

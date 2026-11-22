@@ -7,6 +7,7 @@
 #include "WorldProvenance.h"
 #include "ModContent.h"
 #include "ModRenderLayer.h"
+#include "ModEffectLayer.h"
 #include "ScriptCommands.h"
 #include "CountryFields.h"
 #include "Parties.h"
@@ -3803,6 +3804,38 @@ public:
     odrender::Layer m_modRenderLayer;
     /** Draw the mods' tints and labels. Does nothing when none are set. */
     void drawModRenderLayer(const std::function<Vector2(Vector2)>& worldToScreen) const;
+    /** Screen effects mods have asked for. See src/ModEffectLayer.h. */
+    odeffect::Layer m_modEffects;
+    /**
+     * Where the frame is drawn when a mod holds the SCREEN target.
+     *
+     * OFF UNLESS ASKED. With no screen effect live, beginFrameCapture returns
+     * before it touches anything and the frame goes straight to the back
+     * buffer exactly as it always did -- so a session without an effect mod
+     * cannot be affected by any of this, which is the only basis on which
+     * redirecting the whole frame is a reasonable thing to do.
+     */
+    RenderTexture2D m_fxTarget{};
+    bool            m_fxCapturing = false;
+    /** Redirect the frame into m_fxTarget. Right after BeginDrawing. */
+    void beginFrameCapture();
+    /** Resolve it to the screen through the effect. At the top of endFrame. */
+    void endFrameCapture();
+    /**
+     * Move the effects toward what mods asked for. Once a frame, beside the
+     * audio pump, and from the FRAME path rather than from update(): an effect
+     * that only advanced while the game was unpaused would freeze mid-fade on a
+     * menu, which is the one moment the player most wants it gone.
+     */
+    void advanceModEffects();
+    /**
+     * The player's switch, applied to the layer and saved.
+     *
+     * One function because three rows reach it -- the arrow keys, the row's
+     * arrows and the reset button -- and the setting means nothing until it has
+     * reached the layer.
+     */
+    void setModScreenEffects(bool on);
     /** Map-script commands mods have claimed. See src/ScriptCommands.h. */
     odscript::Registry m_scriptCommands;
     /** Fields mods have added to countries. See src/CountryFields.h. */
@@ -5484,7 +5517,7 @@ private:
     // have retired this rule as pointless.
     static constexpr float COMBAT_WIDTH_PER_AREA = 25.0f;    ///< men per unit of area
     static constexpr float COMBAT_WIDTH_MIN      = 20000.0f; ///< even a pass fits some
-    static constexpr float COMBAT_WIDTH_FORT_PCT = 12.0f;    ///< narrowing per fort level
+    static constexpr float COMBAT_WIDTH_FORT_PCT = 8.0f;     ///< narrowing per fort level
     /** Men either side can bring to bear in one assault on this province. */
     long long combatWidth(int provinceId) const;
 
@@ -5703,18 +5736,19 @@ private:
     // was built to stop. 1.5 keeps that, and is the only setting that beats the
     // baseline on both instruments.
     //
-    // THE HONEST COST: at 0.20 per doubling the cap is reached at 5.7x the
-    // frontage, so above that men stop helping again and two stacks that both
-    // hugely overfill the ground still tie on modifiers. That is the original
-    // bug, surviving in a corner. It is accepted rather than hidden, for two
-    // reasons: real fights on the shipped maps run at two to six times the
-    // frontage, so the live range is the range where depth works; and "beyond
-    // six times what the ground can hold, more men stop mattering" is a
-    // defensible statement about frontage, where "men never mattered at any
-    // ratio" was not. Raising the cap to fix the corner costs 9-17 points of
-    // survival, measured above, and is not worth it.
+    // RAISED TO 2.0 (Nov 2026), with fort narrowing 12% -> 8% per level, after
+    // a player report of large stacks failing against small garrisons. The
+    // sweep above did not reproduce on ParrotZero 8.6.0: same three seeds,
+    // one tree, two binaries, survival 54.6/53.4/56.9 -> 56.2/52.3/55.6,
+    // largest power 20.2/20.6/19.7 -> 17.7/21.0/20.1, rebellions
+    // 15.8/15.4/15.4 -> 18.8/15.5/14.8 -- mixed in sign, no cost visible.
+    //
+    // At 0.20 per doubling the cap is now reached at 32x the frontage, so the
+    // corner where two stacks that both hugely overfill the ground tie on
+    // modifiers still exists, but far outside the two-to-six-times range real
+    // fights on the shipped maps run at.
     static constexpr float DEPTH_PER_DOUBLING = 0.20f;
-    static constexpr float DEPTH_MAX          = 1.5f;
+    static constexpr float DEPTH_MAX          = 2.0f;
     /**
      * The multiplier a stack of `troops` earns on a frontage of `width`.
      *

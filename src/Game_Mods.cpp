@@ -12,6 +12,8 @@
 #include "mods/ModManager.h"
 #include "mods/ModUpdates.h"
 #include "mods/ModHost.h"
+#include "renderer/EffectPass.h"
+#include "rlgl.h"
 #include "net/Host.h"
 #include "net/Session.h"
 #include "net/Lobby.h"
@@ -1629,6 +1631,150 @@ void modSoundsCollect() {
 
 }  // namespace
 
+/// Frames resolved through the whole-screen pass, for OD_MOD_FX_DEBUG. A
+/// counter rather than a flag: the debug line prints between frames, when the
+/// flag is always false, which made it useless for the one question it was
+/// added to answer.
+static unsigned g_fxFrames = 0;
+
+void Game::setModScreenEffects(bool on) {
+    m_config.modScreenEffects = on;
+    m_modEffects.setEnabled(on);
+    m_config.save(m_configPath);
+}
+
+void Game::advanceModEffects() {
+    // The setting is pushed here rather than only where it is toggled, because
+    // it also arrives from the config file at startup and from a reset, and a
+    // guarantee that depends on every one of those paths remembering to call
+    // the setter is a guarantee that holds until somebody adds a fourth.
+    // ── AND OFF WHEREVER A FRAME IS EVIDENCE ──
+    //
+    // The screenshot tour produces the pictures in the README and on the store
+    // page, and an OJH capture produces frame times somebody compares between
+    // builds. A mod that could tint either one could silently alter what a bug
+    // report shows or what a benchmark measures. Both refuse effects outright,
+    // and neither asks the mod's permission.
+    // OD_SHOT_FX=1 keeps effects ON during the screenshot tour. The tour
+    // normally refuses them -- a mod must not be able to alter a picture
+    // somebody files a bug with -- but that also makes the tour the only way
+    // to photograph the feature itself without a human at the keyboard, so
+    // the refusal has one explicit way round it that nothing but a developer
+    // can set.
+    static const bool fxInShot = std::getenv("OD_SHOT_FX") != nullptr;
+    m_modEffects.setEnabled(m_config.modScreenEffects);
+    // ── FRAMES THAT ARE EVIDENCE ──
+    //
+    // Suppressed rather than disabled: suppression holds the output at neutral
+    // IMMEDIATELY and leaves what the mod asked for intact, so a tour or a
+    // benchmark cannot be tinted and the mod's request survives it. Disabling
+    // would slew, and the first frames of a capture would still carry the
+    // effect on its way out.
+    //
+    // (The Mod Menu used to suppress too. It is protected by draw order now --
+    // see drawModsMenu -- because suppression made enabling a mod look like
+    // nothing had happened, which is indistinguishable from a broken mod.)
+    m_modEffects.setSuppressed((m_shotTour && !fxInShot) || m_ojhFps);
+    // OD_MOD_FX_DEBUG=1 answers the only question worth asking when a screen
+    // effect does nothing: WHICH link is broken. Before the early return, as
+    // with the audio pump, or "no mod ever asked" and "the layer was never
+    // advanced" print the same nothing.
+    static const bool fxDebug = std::getenv("OD_MOD_FX_DEBUG") != nullptr;
+    if (fxDebug) {
+        static int n = 0;
+        if (++n % 60 == 0) {
+            // Every target, because "nothing is happening" is a different
+            // fault on each one and the map's state says nothing about the
+            // screen's.
+            std::printf("[mod fx] screen=%d whole-screen frames=%u enabled=%d\n",
+                        (int)m_currentScreen, g_fxFrames,
+                        m_modEffects.enabled() ? 1 : 0);
+            static const char* kNames[] = {"map", "panel", "screen"};
+            for (uint32_t i = 0; i < (uint32_t)odeffect::Target::Count_; ++i) {
+                const auto t = (odeffect::Target)i;
+                std::printf("         %-6s owner=%-32s hue=%4u sat=%4u wob=%4u active=%d\n",
+                            kNames[i],
+                            m_modEffects.owner(t).empty() ? "-" : m_modEffects.owner(t).c_str(),
+                            m_modEffects.huePermille(t),
+                            m_modEffects.rendered(t, odeffect::Effect::Saturation),
+                            m_modEffects.rendered(t, odeffect::Effect::Wobble),
+                            m_modEffects.active(t) ? 1 : 0);
+            }
+            std::fflush(stdout);
+        }
+    }
+    // One comparison in the overwhelming case: no effect mod is loaded.
+    if (m_modEffects.empty()) return;
+    m_modEffects.advance(GetFrameTime());
+}
+
+// ── THE WHOLE SCREEN, WHEN A MOD HOLDS THAT TARGET ──
+//
+// The frame is drawn into a texture and then drawn back through the one effect
+// shader. Not a seam carved out of drawInner(): that function interleaves world
+// drawing with panels and click handlers over two thousand lines and has no
+// boundary to cut at. Capturing the WHOLE frame needs no boundary -- and it is
+// what was asked for, because the interface is meant to move too.
+//
+// What stays out of it: everything endFrame() draws afterwards. Toasts, the
+// feedback form, the mail notice, the pad cursor -- and the Mod Menu, which
+// additionally suppresses every effect while it is open. The frame can be
+// pushed around; the way to stop it being pushed around cannot.
+void Game::beginFrameCapture() {
+    if (m_fxCapturing) return;
+    if (m_aiTraining || m_headless) return;
+    if (!m_modEffects.active(odeffect::Target::Screen)) return;
+
+    const int w = GetRenderWidth(), h = GetRenderHeight();
+    if (w <= 0 || h <= 0) return;
+    if (m_fxTarget.id == 0 || m_fxTarget.texture.width != w ||
+        m_fxTarget.texture.height != h) {
+        if (m_fxTarget.id != 0) UnloadRenderTexture(m_fxTarget);
+        m_fxTarget = LoadRenderTexture(w, h);
+        if (m_fxTarget.id == 0) return;      // the GPU refused it; draw normally
+        // Bilinear, because the wobble samples between texels.
+        SetTextureFilter(m_fxTarget.texture, TEXTURE_FILTER_BILINEAR);
+    }
+
+    // raylib's own macro, NOT odBeginTextureModeScaled: this is not a texture
+    // the UI draws into, it is the frame itself redirected. odUi's inTexture
+    // flag would stop scissor rectangles being scaled, and every clipped panel
+    // in the game would clip in the wrong place.
+    (BeginTextureMode)(m_fxTarget);
+    ClearBackground(BLACK);
+    // A render target's projection is its own pixel size, while the frame is
+    // laid out in logical points. Without this the whole screen would draw
+    // into the top-left quarter on any display with a scale factor.
+    const float sx = (float)w / (float)std::max(1, GetScreenWidth());
+    const float sy = (float)h / (float)std::max(1, GetScreenHeight());
+    if (sx != 1.0f || sy != 1.0f) {
+        rlMatrixMode(RL_PROJECTION);
+        rlScalef(sx, sy, 1.0f);
+        rlMatrixMode(RL_MODELVIEW);
+    }
+    odApplyScaleToProjection();   // and the player's UI scale, as on the backbuffer
+    m_fxCapturing = true;
+}
+
+void Game::endFrameCapture() {
+    if (!m_fxCapturing) return;
+    m_fxCapturing = false;
+    ++g_fxFrames;
+    (EndTextureMode)();           // restores the unscaled screen projection
+
+    // In framebuffer pixels, 1:1, because that is what the projection above is
+    // now in. Negative source height: a render target is stored bottom-up.
+    const float w = (float)m_fxTarget.texture.width;
+    const float h = (float)m_fxTarget.texture.height;
+    const bool fx = odeffect::beginPass(m_modEffects, odeffect::Target::Screen,
+                                        {0.0f, 0.0f, w, h});
+    DrawTexturePro(m_fxTarget.texture, {0.0f, 0.0f, w, -h}, {0.0f, 0.0f, w, h},
+                   {0.0f, 0.0f}, 0.0f, WHITE);
+    if (fx) odeffect::endPass();
+    // Put the player's UI scale back for whatever endFrame draws on top.
+    if (odUi::inFrame()) odApplyScaleToProjection();
+}
+
 void Game::pumpModAudio() {
     // The debug report comes FIRST, before the early return, or the one
     // question it exists to answer -- "is anything reaching the bus?" --
@@ -1880,6 +2026,22 @@ void Game::installModBridges() {
     };
     modSetRenderBridge(rnd);
 
+    // Shaders: a target, an effect, and a clamped number. Everything that makes
+    // this safe -- the clamp, the one-owner-per-target rule and the slew limit
+    // that is the photosensitivity guarantee -- is in the layer, with the
+    // reasoning. This is wiring.
+    ModShaderBridge shd;
+    shd.setEffect = [this](const std::string& mod, uint32_t target, uint32_t effect,
+                           uint32_t permille) {
+        return m_modEffects.setEffect(mod, (odeffect::Target)target,
+                                      (odeffect::Effect)effect, permille);
+    };
+    shd.clearTarget = [this](const std::string& mod, uint32_t target) {
+        m_modEffects.clearTarget(mod, (odeffect::Target)target);
+    };
+    shd.clearAll = [this](const std::string& mod) { m_modEffects.clearMod(mod); };
+    modSetShaderBridge(shd);
+
     // Content: entries a mod adds to the catalogues.
     ModContentBridge con;
     con.add = [this](uint32_t kind, const std::string& mod, const std::string& id,
@@ -2041,9 +2203,19 @@ void Game::drawModPanels() {
     for (auto& p : ui.panels()) {
         if (!p.visible) continue;
         Rectangle r{p.x, p.y, p.w, p.h};
+        // ── A MOD'S EFFECT ON ITS OWN PANEL ──
+        //
+        // The safest of the targets, and worth having for its own sake: a panel
+        // is already scissor-clipped to its rectangle below, so an effect bound
+        // here cannot reach a pixel outside it whatever it computes.
+        //
+        // The frame and the mod's own drawing are inside the pass; the TITLE is
+        // not. A mod may make its panel look like a damaged readout and still
+        // cannot make its own name unreadable, which is what a player uses to
+        // work out which mod to switch off.
+        const bool fx = odeffect::beginPass(m_modEffects, odeffect::Target::Panel, r);
         DrawRectangleRounded(r, 0.06f, 8, Color{15, 15, 25, 230});
         DrawRectangleRoundedLines(r, 0.06f, 8, Color{60, 60, 90, 200});
-        DrawText(p.title.c_str(), (int)p.x + 10, (int)p.y + 6, 14, accent);
 
         // Everything the mod drew is clipped to its own rectangle. Coordinates
         // are translated here, so a negative or huge coordinate from a mod
@@ -2084,6 +2256,10 @@ void Game::drawModPanels() {
             }
         }
         EndScissorMode();
+        if (fx) odeffect::endPass();
+        // Last and outside the pass, so a mod cannot make its own name
+        // illegible -- see the note above.
+        DrawText(p.title.c_str(), (int)p.x + 10, (int)p.y + 6, 14, accent);
     }
 }
 
@@ -2102,6 +2278,20 @@ static const char* kModDirectoryUrl = "https://opendoctrines.pages.dev/mods";
 
 void Game::drawModsMenu() {
     drawMenuBackground(true);
+    // ── THE MOD MENU IS PROTECTED BY DRAW ORDER, NOT BY A SWITCH ──
+    //
+    // Resolving the frame capture HERE means the scrolling background behind
+    // this screen carries whatever effect is live -- so a player who has just
+    // enabled a screen mod can see that it works without leaving the menu --
+    // while every control below this line is drawn straight to the screen and
+    // cannot be touched by it.
+    //
+    // This replaces suppressing effects outright while the menu is open. That
+    // worked, but it meant enabling a mod appeared to do nothing until you had
+    // left the screen, which reads exactly like a broken mod. The guarantee is
+    // the same one either way and this is the original form of it: the
+    // interface composites on top, after the effect.
+    endFrameCapture();
     Color accent = hexToColor(m_config.accent());
     ModManager& mm = ModManager::get();
     auto& mods = mm.mods();
@@ -2309,20 +2499,41 @@ void Game::drawModsMenu() {
 
 // Permissions rows, laid out once for both the draw and the hit test.
 //
-// TWO COLUMNS BECAUSE THERE ARE TWENTY-TWO OF THEM. One column at 34px was fine
-// for the ten this panel used to hardcode; Gearbox 1.1 took the list to
-// twenty-two, which is 748px of rows in a 600px box -- the last capabilities
-// would have drawn straight through the conflicts section and off the bottom.
+// COLUMNS, NOT A TALLER BOX, and the box is measured rather than written down.
+// One column at 34px was fine for the ten this panel used to hardcode; Gearbox
+// 1.1 took the list to twenty-two and it went to two columns in a 520x600 box.
+// Both of those numbers were then LITERALS, in two places each -- the draw and
+// the hit test -- and the list kept growing underneath them. By thirty
+// capabilities the last rows were drawing through the reload note, and the
+// thirty-first (Shaders) landed under the Close button: visible, and
+// impossible to click. A capability a player cannot grant is not a capability.
 //
-// Returns the toggle's rectangle for row `i`. The label sits to its left, and
-// the two columns split the panel down the middle.
+// So nothing here is a constant that has to be revisited. The column count
+// grows when the rows would be too tall, the box is as wide as its columns and
+// as tall as its contents, and the draw and the hit test ask the same struct.
+// The list can double again without anyone touching this.
 struct PermLayout {
     int x, y, w;
     static constexpr int kRowH = 30;
     // 80 before Core.Protected's warning needed two lines above the rows.
     static constexpr int kTop = 104;
-    int rows() const { return ((int)modAllModuleBits().size() + 1) / 2; }
-    int colW() const { return (w - 40) / 2; }
+    static constexpr int kColW = 240;        // a label and its toggle, comfortably
+    static constexpr int kMaxRowsH = 420;    // past this, add a column instead
+    static constexpr int kConflictsH = 134;  // heading plus the three rows it caps at
+    static constexpr int kFooterH = 80;      // the reload note and Close
+
+    static int count() { return (int)modAllModuleBits().size(); }
+    static int cols() {
+        int c = 2;
+        while (c < 4 && ((count() + c - 1) / c) * kRowH > kMaxRowsH) ++c;
+        return c;
+    }
+    static int rows() { return (count() + cols() - 1) / cols(); }
+    /// The whole popup, so the draw and the hit test cannot disagree about it.
+    static int boxW() { return 40 + cols() * kColW; }
+    static int boxH() { return kTop + rows() * kRowH + kConflictsH + kFooterH; }
+
+    int colW() const { return (w - 40) / cols(); }
     Rectangle toggle(int i) const {
         const int col = i / rows(), row = i % rows();
         const int cx = x + 20 + col * colW();
@@ -2340,9 +2551,11 @@ void Game::drawModAdvanced() {
     Vector2 mouse = getMouse();
 
     DrawRectangle(0, 0, m_screenW, m_screenH, Color{0, 0, 0, 170});
-    // Taller than it was: the conflicts section lives below the permissions.
-    int w = 520, h = 600;
+    // MEASURED, not written down -- see PermLayout. The hit test asks the same
+    // two functions, so there is no pair of literals to keep in step.
+    const int w = PermLayout::boxW(), h = PermLayout::boxH();
     int x = m_screenW / 2 - w / 2, y = m_screenH / 2 - h / 2;
+    if (y < 10) y = 10;   // a short window crops the bottom, never the title
     DrawRectangleRounded({(float)x, (float)y, (float)w, (float)h}, 0.05f, 10,
                          Color{20, 20, 32, 245});
     DrawRectangleRoundedLines({(float)x, (float)y, (float)w, (float)h}, 0.05f, 10,
@@ -2372,7 +2585,7 @@ void Game::drawModAdvanced() {
     const PermLayout pl{x, y, w};
     const auto& bits = modAllModuleBits();
     for (int i = 0; i < (int)bits.size(); i++) {
-        const uint32_t bit = bits[(size_t)i];
+        const uint64_t bit = bits[(size_t)i];
         bool requested = (e.manifest.modules & bit) != 0;
         bool granted = (e.grants & bit) != 0 || bit == MODULE_CORE;
         std::string label = modModuleMaskToString(bit);
@@ -2654,14 +2867,15 @@ void Game::updateModsMenu() {
     if (m_modAdvancedFor >= 0) {
         if (m_modAdvancedFor >= (int)mods.size()) { m_modAdvancedFor = -1; return; }
         ModEntry& e = mods[m_modAdvancedFor];
-        int w = 520, h = 600;              // must match drawModAdvanced
+        const int w = PermLayout::boxW(), h = PermLayout::boxH();
         int x = m_screenW / 2 - w / 2, y = m_screenH / 2 - h / 2;
+        if (y < 10) y = 10;                // as in drawModAdvanced
 
         // The same layout the draw uses, so the hit boxes cannot drift from it.
         const PermLayout pl{x, y, w};
         const auto& bits = modAllModuleBits();
         for (int i = 0; i < (int)bits.size(); i++) {
-            const uint32_t bit = bits[(size_t)i];
+            const uint64_t bit = bits[(size_t)i];
             bool locked = !(e.manifest.modules & bit) || bit == MODULE_CORE;
             if (!locked && click && CheckCollisionPointRec(mouse, pl.toggle(i)) &&
                 (Audio::get().playSfx("click_light"), true))

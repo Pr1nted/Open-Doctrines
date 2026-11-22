@@ -15,7 +15,7 @@ using json = nlohmann::json;
 
 namespace {
 
-struct ModuleEntry { const char* name; uint32_t bit; };
+struct ModuleEntry { const char* name; uint64_t bit; };
 
 // Order is display order in the Advanced panel.
 const ModuleEntry kModules[] = {
@@ -52,6 +52,7 @@ const ModuleEntry kModules[] = {
     {"Fog.Write",       MODULE_FOG_WRITE},
     {"Render",          MODULE_RENDER},
     {"Content",         MODULE_CONTENT},
+    {"Shaders",         MODULE_SHADERS},
 };
 
 }  // namespace
@@ -64,16 +65,16 @@ const ModuleEntry kModules[] = {
 // see them nor revoke them. Gearbox 1.1 would have added nine more of the same.
 // A capability the player cannot see is not a capability, it is a permission
 // granted by default, and the whole model rests on that not being true.
-const std::vector<uint32_t>& modAllModuleBits() {
-    static const std::vector<uint32_t> bits = [] {
-        std::vector<uint32_t> v;
+const std::vector<uint64_t>& modAllModuleBits() {
+    static const std::vector<uint64_t> bits = [] {
+        std::vector<uint64_t> v;
         for (const auto& m : kModules) v.push_back(m.bit);
         return v;
     }();
     return bits;
 }
 
-uint32_t modModuleFromName(const std::string& name) {
+uint64_t modModuleFromName(const std::string& name) {
     for (const auto& m : kModules)
         if (name == m.name) return m.bit;
     return 0;
@@ -370,13 +371,13 @@ ModLoadResult parseModManifest(const std::string& text,
     for (const auto& m : *mit) {
         if (!m.is_string()) return bad("\"modules\" must contain only strings");
         std::string mn = m.get<std::string>();
-        uint32_t bit = modModuleFromName(mn);
+        uint64_t bit = modModuleFromName(mn);
         if (!bit) {
             // Hard error by design: silently dropping a capability the mod
             // believes it holds is worse than refusing to load.
             diagnostic = "MANIFEST.json requests unknown module \"" + mn +
                          "\". Known modules: " +
-                         modModuleMaskToString(0xFFFFFFFFu);
+                         modModuleMaskToString(~0ull);
             return ModLoadResult::UnknownModule;
         }
         out.modules |= bit;

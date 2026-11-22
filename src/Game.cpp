@@ -6,6 +6,8 @@
 #include "DevLink.h"
 #include "Game.h"
 #include "Access.h"
+#include "DateSystems.h"
+#include "renderer/EffectPass.h"
 #include "net/Socks5.h"
 #include "net/TorClient.h"
 #include "util/SoftwareGlRelaunch.h"
@@ -225,8 +227,8 @@ const int RES_COUNT = 5;
 // resolution row draws wider, the FPS row cycles, the accent row opens a
 // picker -- and every one of those is a bare `i == 5`. Inserting in the
 // middle moves all of them. "Back" is found by label, so the end is free.
-const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Font", true, -1}, {"Back", false, -1}};
-const int DISPLAY_COUNT = 12;
+const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Font", true, -1}, {"Mod Screen Effects", true, -1}, {"Date System", true, -1}, {"Back", false, -1}};
+const int DISPLAY_COUNT = 14;
 
 const char* AI_DIFFICULTY_NAMES[] = {"Easy", "Normal", "Hard", "Insane"};
 
@@ -678,6 +680,22 @@ bool settingUsesArrows(int tab, int index) {
     return false;
 }
 
+// i18n anchor: the date-system names and the HUD label words, written as literal
+// tr() calls so tools/i18n_extract.py collects them into data/lang/en.json. The
+// game translates them at runtime -- makeSettingLabel below via tr(systemName()),
+// and the HUD via the function pointer handed to od::yearField (src/DateSystems.cpp
+// takes a pointer precisely so it need not link i18n). This is never called; it
+// exists only to be scanned, which is why the strings are not drawn here.
+[[maybe_unused]] static void od_date_system_i18n_anchor() {
+    od::i18n::tr("BC / AD");              od::i18n::tr("BCE / CE");
+    od::i18n::tr("Ab urbe condita");     od::i18n::tr("Chinese (sexagenary)");
+    od::i18n::tr("Japanese (Kōki)");     od::i18n::tr("Korean (Juche)");
+    od::i18n::tr("Hebrew (Anno Mundi)"); od::i18n::tr("Holocene Era");
+    od::i18n::tr("BCE"); od::i18n::tr("CE");
+    od::i18n::tr("AUC"); od::i18n::tr("AM"); od::i18n::tr("HE");
+    od::i18n::tr("Kōki"); od::i18n::tr("Juche");
+}
+
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     const Setting& s = TAB_ITEMS[tab][index];
     std::string label = od::i18n::tr(s.label);
@@ -754,6 +772,12 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
         label += ": " + (fc == "pixel" ? std::string("Pixel")
                        : fc == "readable" ? std::string("Readable")
                        : fc == "hyperlegible" ? std::string("Hyperlegible") : fc);
+    } else if (tab == 0 && index == 11) {
+        label += onOff(cfg.modScreenEffects);
+    } else if (tab == 0 && index == 12) {
+        // The calendar the date is read in. systemName is English; it is
+        // translated here like every other value on this screen.
+        label += std::string(": ") + od::i18n::tr(od::systemName(od::systemFromToken(cfg.dateSystem)));
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
     } else if (isVolumeSetting(tab, index)) {
@@ -2534,6 +2558,10 @@ void Game::shutdown() {
 
     // Save the AI model on quit (unloadGameData also does this on world exit)
     if (m_ai) { delete m_ai; m_ai = nullptr; }
+    // The mod effect shader, if a mod ever asked for one. Compiled on first
+    // use, so a session that never loaded an effect mod has nothing to free.
+    odeffect::unloadPass();
+    if (m_fxTarget.id != 0) { UnloadRenderTexture(m_fxTarget); m_fxTarget = RenderTexture2D{}; }
     // m_politicalTex is the renderer's painted layer, freed with the renderer.
     for (auto& [cid, tex] : m_countryFlags) {
         if (tex.id > 0) UnloadTexture(tex);
@@ -3474,6 +3502,7 @@ void Game::run() {
         // -- it is only called on the gameplay branch, so a mod's sound went
         // unmixed at the menu, which is exactly where a mod load plays one.
         pumpModAudio();
+        advanceModEffects();
         // Also above the early-out: the resource panel is a system control, not
         // a game screen, so it has to answer F10 even with a popup up.
         samplePerformance();
@@ -3501,6 +3530,7 @@ void Game::run() {
         if (!m_popupQueue.empty()) {
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             // Still NOT drawInner(): it draws and takes clicks in one pass, so
             // the world behind would answer presses meant for the popup. The
             // captured frame gives the same picture and cannot be clicked.
@@ -3555,6 +3585,7 @@ void Game::run() {
             updateDevReports();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             if (m_currentScreen == SCREEN_MENU) drawMenuBackground();
             endFrame();
             if (m_shotTour && !tickScreenshotTour()) m_running = false;
@@ -3632,6 +3663,7 @@ void Game::run() {
             updateFeedbackForm();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             if (m_feedbackBackdrop.id != 0) {
                 DrawTexturePro(m_feedbackBackdrop,
                                {0, 0, (float)m_feedbackBackdrop.width,
@@ -3739,6 +3771,7 @@ void Game::run() {
             updateSplashScreen(dt);
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawSplashScreen();
             endFrame();
         } else if (m_currentScreen == SCREEN_MENU) {
@@ -3747,6 +3780,7 @@ void Game::run() {
                 updateSettingsFromMenu();
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
                 drawSettingsFromMenu();
                 if (m_config.showConsole) drawConsoleWindow();
                 drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3766,6 +3800,7 @@ void Game::run() {
                 }
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
                 drawMainMenu();
                 if (m_dialogOpen) { drawComms(); drawDialogue(); }
                 if (m_config.showConsole) drawConsoleWindow();
@@ -3777,6 +3812,7 @@ void Game::run() {
             updateSingleplayerMenu();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawSingleplayerMenu();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3788,6 +3824,7 @@ void Game::run() {
                 updateHistoryScreen();
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
                 drawHistoryScreen();
                 if (m_config.showConsole) drawConsoleWindow();
                 endFrame();
@@ -3796,6 +3833,7 @@ void Game::run() {
                 updateWorldBrowser();
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
                 drawWorldBrowser();
                 if (m_config.showConsole) drawConsoleWindow();
                 drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3805,6 +3843,7 @@ void Game::run() {
                 updateFileBrowser();
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
                 drawFileBrowser();
                 if (m_config.showConsole) drawConsoleWindow();
                 drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3815,6 +3854,7 @@ void Game::run() {
             updateMapBrowser();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawMapBrowser();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3841,6 +3881,7 @@ void Game::run() {
             }
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             if (m_showLoadingScreen) {
                 drawLoadingScreen();
             } else {
@@ -3861,6 +3902,7 @@ void Game::run() {
             updateCountrySelect();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawCountrySelect();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3870,6 +3912,7 @@ void Game::run() {
             updateAchievements();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawAchievements();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();
@@ -3879,6 +3922,7 @@ void Game::run() {
             updateCredits();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawCredits();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3888,6 +3932,7 @@ void Game::run() {
             updateCommunityMenu();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawCommunityMenu();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3897,6 +3942,7 @@ void Game::run() {
             updateModsMenu();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawModsMenu();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3905,6 +3951,7 @@ void Game::run() {
             updateMultiplayerMenu();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawMultiplayerMenu();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3913,6 +3960,7 @@ void Game::run() {
             updateAccountMenu();
             BeginDrawing();
             ClearBackground(BLACK);
+            beginFrameCapture();
             drawAccountMenu();
             if (m_config.showConsole) drawConsoleWindow();
             drawDebugOverlay();  // self-gates on debugMode; the resource panel is not gated
@@ -3935,6 +3983,7 @@ void Game::run() {
                 else updateMapEditor();
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
                 drawMapEditor();
                 if (m_inSettings) drawPauseMenu();
                 if (m_config.showConsole) drawConsoleWindow();
@@ -4309,6 +4358,10 @@ void Game::drawNowPlayingToast() {
 }
 
 void Game::endFrame() {
+    // FIRST: the frame itself, if a mod redirected it. Everything below this
+    // line is the always-on-top layer and is drawn clean, on purpose -- see
+    // Game::beginFrameCapture.
+    endFrameCapture();
     // Everything that has to sit above all other drawing goes here. run() has
     // fifteen separate draw blocks, one per screen state, and threading a new
     // overlay through each of them is how one of them ends up missing it.

@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "DateSystems.h"
 #include <filesystem>
 #include "util/LoadLog.h"
 #include "Palette.h"
@@ -3090,6 +3091,10 @@ bool Game::stepDisplayValueRow(int index, int dir) {
         // closed and reopened. -1 is the "stale" value every other invalidation
         // of it uses, so the next frame in that view repaints it.
         m_lastRelationsCountryId = -1;
+    } else if (index == 11) {
+        // A toggle rather than a cycle, handled here so the arrow keys, the
+        // row's arrows and the reset button all reach it through one path.
+        setModScreenEffects(!m_config.modScreenEffects);
     } else if (index == 10) {
         // Cycle the Font through the built-ins and every validated import.
         // reloadFonts rebuilds the atlas from the new outline and re-applies the
@@ -3101,6 +3106,13 @@ bool Game::stepDisplayValueRow(int index, int dir) {
         cur = (cur + step + (int)fonts.size()) % (int)fonts.size();
         m_config.fontChoice = fonts[cur];
         reloadFonts();
+    } else if (index == 12) {
+        // Cycle the calendar the date is read in. Stored as a token so the
+        // enum can be reordered later without rewriting anyone's config.
+        const int n = (int)od::DateSystem::COUNT;
+        int cur = (int)od::systemFromToken(m_config.dateSystem);
+        cur = (cur + step + n) % n;
+        m_config.dateSystem = od::systemToken((od::DateSystem)cur);
     } else {
         return false;
     }
@@ -3119,9 +3131,13 @@ bool Game::resetDisplayValueRow(int index) {
         odPalette::setMode(0);
         if (m_renderer) generatePoliticalTexture();
         m_lastRelationsCountryId = -1;   // see stepDisplayValueRow
+    } else if (index == 11) {
+        setModScreenEffects(true);
     } else if (index == 10) {
         m_config.fontChoice = "readable";
         reloadFonts();
+    } else if (index == 12) {
+        m_config.dateSystem = "bc_ad";
     } else {
         return false;
     }
@@ -3555,6 +3571,9 @@ void Game::updateSettingsFromMenu() {
         } else if (strcmp(s.label, "Order Input") == 0) {
             m_config.wheelClickMode = !m_config.wheelClickMode;
             Audio::get().playSfx(m_config.wheelClickMode ? "toggle_on" : "toggle_off");
+        } else if (strcmp(s.label, "Mod Screen Effects") == 0) {
+            setModScreenEffects(!m_config.modScreenEffects);
+            Audio::get().playSfx(m_config.modScreenEffects ? "toggle_on" : "toggle_off");
         } else if (strcmp(s.label, "Fullscreen") == 0) {
             m_config.fullscreen = !m_config.fullscreen;
             Audio::get().playSfx(m_config.fullscreen ? "toggle_on" : "toggle_off");

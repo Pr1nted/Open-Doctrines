@@ -140,11 +140,21 @@ struct Config {
     // bitmap as hard to read, so the vector face is the default. See
     // Game::applyFontStyle() and Game::availableFonts().
     std::string fontChoice = "readable";
+    // Screen effects a mod asked for (Gearbox Shaders). The player's switch,
+    // and NOT readable through the mod ABI: a mod that could see it could route
+    // round it, and the guarantee would be advice. See src/ModEffectLayer.h.
+    bool modScreenEffects = true;
     bool debugMode = false;
     bool showFps = false;
     bool showZoom = false;
     bool showConsole = false;
     int fpsTarget = 0; // -1=Unlimited, 0=VSync, 10-120=capped
+
+    /// Which calendar the game date is read in: a token from src/DateSystems.h
+    /// ("bc_ad", "bce_ce", "auc", "chinese", "koki", "juche", "hebrew_am",
+    /// "holocene"). A token, not the enum value, so the list can be reordered
+    /// without breaking saved configs. Unknown tokens fall back to BC/AD.
+    std::string dateSystem = "bc_ad";
 
     // Share of this machine the game is allowed to work at, 0.10..1.00.
     //
