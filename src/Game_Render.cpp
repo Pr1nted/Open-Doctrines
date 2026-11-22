@@ -1,5 +1,6 @@
 #include "Access.h"   // reduce motion: odAccess::wave
 #include "Game.h"
+#include "DateSystems.h"
 #include "util/LoadLog.h"
 #include "Palette.h"
 #include "BuildCosts.h"
@@ -107,7 +108,7 @@ void drawOrderLine(Vector2 a, Vector2 b, float thick, Color col, bool valid) {
 // Anything that does not parse -- a custom map's "Spring of the Third Age" --
 // is returned untouched, because it is prose somebody wrote, not a date this
 // code has any business rearranging.
-std::string localisedDate(const std::string& raw) {
+std::string localisedDate(const std::string& raw, od::DateSystem sys) {
     // SEASONS COUNT AS MONTHS HERE. A scenario is asked for "<Month> <Year>
     // <AD|BC>", but the tutorial map has always said "Spring 1936 AD" and no
     // check ever rejected it -- so the one date every new player sees was the
@@ -129,24 +130,52 @@ std::string localisedDate(const std::string& raw) {
     for (const char* m : kMonths) known = known || (month == m);
     if (!known) return raw;
 
-    // The three values are looked up FIRST and the tags named after, on lines
-    // of their own. Written the other way round -- {"{month}", tr(month)} --
-    // tools/i18n_extract.py sees a literal on a line with a tr() call, decides
-    // it is drawn text, and puts "{month}" in front of twenty translators as a
-    // string to translate. It is a placeholder; the only key here is the one
-    // above.
     const std::string monthText = od::i18n::tr(month);
-    const std::string eraText   = od::i18n::tr(era);
+    const bool isBC = (era == "BC");
 
-    std::string out = T("{month} {year} {era}");
-    auto put = [&out](const char* tag, const std::string& value) {
-        const size_t at = out.find(tag);
-        if (at != std::string::npos) out.replace(at, strlen(tag), value);
-    };
-    put("{month}", monthText);
-    put("{year}", year);
-    put("{era}", eraText);
-    return out;
+    // BC/AD and BCE/CE keep the translatable {month}{year}{era} template -- the
+    // same numbers, and it is what lets a language reorder the parts (Japanese
+    // writes the year first and glues 年 to it). Only the era WORD differs.
+    //
+    // The values are looked up FIRST and the tags named after, on lines of their
+    // own, and one tr() per line. Written the other way round -- {"{month}",
+    // tr(month)} -- tools/i18n_extract.py sees a literal on a tr() line, decides
+    // it is drawn text, and puts "{month}" in front of translators. These are
+    // placeholders; the only keys here are the month, the era words, and the
+    // template above.
+    if (sys == od::DateSystem::BC_AD || sys == od::DateSystem::BCE_CE) {
+        std::string eraText;
+        if (sys == od::DateSystem::BCE_CE)
+            eraText = isBC ? od::i18n::tr("BCE") : od::i18n::tr("CE");
+        else
+            eraText = od::i18n::tr(era);
+        std::string out = T("{month} {year} {era}");
+        auto put = [&out](const char* tag, const std::string& value) {
+            const size_t at = out.find(tag);
+            if (at != std::string::npos) out.replace(at, strlen(tag), value);
+        };
+        put("{month}", monthText);
+        put("{year}", year);
+        put("{era}", eraText);
+        return out;
+    }
+
+    // Every other system replaces the year-and-era field wholesale with its own
+    // label -- AUC, the sexagenary name, Kōki, Juche, Anno Mundi, Holocene --
+    // written in the active language: od::i18n::tr supplies the label words and
+    // the language's script the sexagenary characters. Month first; each reads
+    // correctly that way. The arithmetic lives in src/DateSystems.cpp.
+    od::ParsedDate d;
+    d.valid = true;
+    d.month = month;
+    d.isBC  = isBC;
+    try { d.year = std::stoll(year); } catch (...) { return raw; }
+    // A non-capturing lambda converts to the plain function pointer the pure
+    // module takes; it must not link i18n itself. See the anchor in Game.cpp
+    // that lists every label key for tools/i18n_extract.py.
+    static const od::TrFn trw = +[](const char* k) { return std::string(od::i18n::tr(k)); };
+    const od::Script sc = od::scriptForLanguage(od::i18n::language());
+    return monthText + " " + od::yearField(d, sys, sc, trw);
 }
 
 }  // namespace
@@ -5922,7 +5951,7 @@ void Game::drawInner() {
         const int mainBarW = std::min(880, m_screenW - 32);
         const int mainBarX = m_screenW - mainBarW - 16;
         const int mainBarY = m_screenH - bottomBarH() - 16;
-        const std::string shownDate = localisedDate(m_mapDate);
+        const std::string shownDate = localisedDate(m_mapDate, od::systemFromToken(m_config.dateSystem));
         const char* dateText = m_mapDate.empty() ? T("Spectator Mode") : shownDate.c_str();
         int dateW = MeasureText(dateText, fontDate);
         int dateH = fontDate + padY * 2;

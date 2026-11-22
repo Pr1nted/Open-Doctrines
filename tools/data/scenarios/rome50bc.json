@@ -1,0 +1,149 @@
+{
+ "$comment": "Late Roman Republic, 50 BC -- Caesar has just finished the Gallic Wars, Crassus is dead at Carrhae (53 BC), the Parthians are raiding Syria, Burebista's Dacia is at its height, and Ptolemaic Egypt is on the eve of Cleopatra's reign. Borders are APPROXIMATED with the modern province layer, the established method for every scenario in this project (see generate_scenario.py's header): whole modern countries via owns, partial regions via lon/lat boxes. No flag files -- antiquity had no national flags, so every power flies a procedural banner drawn from its colour, which carries no third-party licence. Rest of the world (the Americas, sub-Saharan Africa beyond Kush, the steppe, Arabia Felix, the Far East beyond Han, Australia) is left Unclaimed, as those regions had no state the scenario models.",
+ "schema": 1,
+ "id": "rome50bc",
+ "name": "The Late Republic",
+ "date": "March 50 BC",
+ "author": "OpenDoctrines",
+ "description": "50 BC. Caesar's legions have subdued Gaul, Crassus lies dead in Parthia, and the Republic stands at its greatest extent on the edge of civil war.",
+
+ "population_scale": 0.04,
+ "industry_scale": 0.012,
+ "industry_level_cap": 1,
+
+ "powers": [
+  {
+   "iso": "ROM", "name": "Roman Republic", "color": "#7c3048",
+   "owns": ["ITA", "ESP", "PRT", "BEL", "GRC", "MKD", "ALB", "HRV", "SVN", "TUN", "CYP", "SYR", "LBN"],
+   "boxes": [
+    {"from": "FRA", "bbox": [-5.5, 41.0, 9.9, 51.3]},
+    {"from": "TUR", "bbox": [26.0, 36.0, 36.0, 42.0]},
+    {"from": "LBY", "bbox": [19.0, 22.0, 25.5, 34.0]},
+    {"from": "CHE", "bbox": [5.9, 45.8, 7.6, 47.5]}
+   ],
+   "army": 250000, "navy": 140,
+   "compass": {"left": 0, "auth": 60},
+   "policies": ["conscription", "professional_army", "traditionalism", "patriotic_education"]
+  },
+  {
+   "iso": "AEG", "name": "Ptolemaic Egypt", "color": "#d4af37",
+   "owns": ["EGY"],
+   "army": 50000, "navy": 90,
+   "compass": {"left": 10, "auth": 85},
+   "policies": ["traditionalism", "agrarian_priority", "state_industry"]
+  },
+  {
+   "iso": "PAR", "name": "Parthian Empire", "color": "#7b1e1e",
+   "owns": ["IRN", "IRQ", "AFG"],
+   "boxes": [
+    {"from": "TKM", "bbox": [52.0, 35.0, 66.5, 42.0]},
+    {"from": "UZB", "bbox": [62.0, 37.0, 68.0, 41.5]}
+   ],
+   "army": 70000, "navy": 6,
+   "compass": {"left": 10, "auth": 80},
+   "policies": ["continental_army", "traditionalism", "decentralization"]
+  },
+  {
+   "iso": "ARM_K", "name": "Kingdom of Armenia", "color": "#9b5523",
+   "owns": ["ARM", "AZE", "GEO"],
+   "boxes": [{"from": "TUR", "bbox": [36.0, 37.0, 45.5, 41.5]}],
+   "army": 40000, "navy": 2,
+   "compass": {"left": 5, "auth": 80},
+   "policies": ["traditionalism", "continental_army"]
+  },
+  {
+   "iso": "DAC", "name": "Dacia", "color": "#4f7a3a",
+   "owns": ["ROU", "MDA"],
+   "boxes": [
+    {"from": "HUN", "bbox": [19.5, 45.0, 23.0, 48.6]},
+    {"from": "BGR", "bbox": [22.0, 43.0, 28.0, 44.3]}
+   ],
+   "army": 80000, "navy": 0,
+   "compass": {"left": -5, "auth": 75},
+   "policies": ["conscription", "mass_mobilisation", "traditionalism"]
+  },
+  {
+   "iso": "NUM", "name": "Kingdom of Numidia", "color": "#b08d57",
+   "owns": ["DZA"],
+   "army": 30000, "navy": 4,
+   "compass": {"left": 0, "auth": 75},
+   "policies": ["traditionalism", "continental_army"]
+  },
+  {
+   "iso": "MAU", "name": "Mauretania", "color": "#cd853f",
+   "owns": ["MAR"],
+   "army": 18000, "navy": 3,
+   "compass": {"left": 0, "auth": 70},
+   "policies": ["traditionalism"]
+  },
+  {
+   "iso": "NAB", "name": "Nabataean Kingdom", "color": "#c9a227",
+   "owns": ["JOR"],
+   "boxes": [{"from": "SAU", "bbox": [34.0, 24.0, 41.0, 32.0]}],
+   "army": 15000, "navy": 2,
+   "compass": {"left": 20, "auth": 70},
+   "policies": ["merchant_marine", "traditionalism"]
+  },
+  {
+   "iso": "JUD", "name": "Judea", "color": "#4f6f9c",
+   "owns": ["ISR", "PSE"],
+   "army": 15000, "navy": 1,
+   "compass": {"left": 0, "auth": 70},
+   "policies": ["traditionalism"]
+  },
+  {
+   "iso": "GER_T", "name": "Germanic & Celtic Tribes", "color": "#6f8a9a",
+   "owns": ["DEU", "NLD", "DNK", "CZE", "SVK", "AUT", "POL", "CHE", "HUN"],
+   "army": 120000, "navy": 0,
+   "compass": {"left": -15, "auth": 40},
+   "policies": ["decentralization", "continental_army", "traditionalism"]
+  },
+  {
+   "iso": "BRI", "name": "Celtic Britannia", "color": "#3f7d6e",
+   "owns": ["GBR", "IRL"],
+   "army": 50000, "navy": 4,
+   "compass": {"left": -15, "auth": 45},
+   "policies": ["decentralization", "traditionalism"]
+  },
+  {
+   "iso": "HAN", "name": "Han Dynasty", "color": "#c99a2e",
+   "owns": ["CHN"],
+   "army": 300000, "navy": 20,
+   "compass": {"left": 20, "auth": 90},
+   "policies": ["state_industry", "agrarian_priority", "traditionalism", "patriotic_education"]
+  },
+  {
+   "iso": "IND_K", "name": "Indian Kingdoms", "color": "#b5651d",
+   "owns": ["IND"],
+   "army": 150000, "navy": 12,
+   "compass": {"left": 5, "auth": 75},
+   "policies": ["traditionalism", "merchant_marine"]
+  },
+  {
+   "iso": "KUSH", "name": "Kingdom of Kush", "color": "#8a6d3b",
+   "owns": ["SDN"],
+   "army": 25000, "navy": 2,
+   "compass": {"left": 0, "auth": 80},
+   "policies": ["traditionalism"]
+  },
+  {
+   "iso": "BOS", "name": "Bosporan Kingdom", "color": "#6f9a86",
+   "boxes": [{"from": "UKR", "bbox": [33.0, 44.0, 37.2, 46.2]}],
+   "army": 10000, "navy": 8,
+   "compass": {"left": 10, "auth": 75},
+   "policies": ["merchant_marine", "traditionalism"]
+  }
+ ],
+
+ "relations": {
+  "alliances": [["ROM", "JUD"]],
+  "guarantees": [["ROM", "NUM"], ["ROM", "MAU"]],
+  "non_aggression": [["ROM", "AEG"], ["ROM", "DAC"]]
+ },
+ "claims": [
+  {"by": "ROM", "on": "PAR"},
+  {"by": "PAR", "on": "ROM"},
+  {"by": "DAC", "on": "ROM"},
+  {"by": "ARM_K", "on": "PAR"}
+ ]
+}

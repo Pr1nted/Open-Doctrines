@@ -150,6 +150,12 @@ struct Config {
     bool showConsole = false;
     int fpsTarget = 0; // -1=Unlimited, 0=VSync, 10-120=capped
 
+    /// Which calendar the game date is read in: a token from src/DateSystems.h
+    /// ("bc_ad", "bce_ce", "auc", "chinese", "koki", "juche", "hebrew_am",
+    /// "holocene"). A token, not the enum value, so the list can be reordered
+    /// without breaking saved configs. Unknown tokens fall back to BC/AD.
+    std::string dateSystem = "bc_ad";
+
     // Share of this machine the game is allowed to work at, 0.10..1.00.
     //
     // Two levers, because the two things that actually burn CPU here are not

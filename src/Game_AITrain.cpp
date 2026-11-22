@@ -410,6 +410,59 @@ void Game::runAITraining(int numMaps, int turnsPerMap, int numCountries, unsigne
         // the dashboard's reward graphs empty because nothing fed them.
         m_config.aiLearning = true;
 
+        // ── 2b. Teach the net to live with UNCLAIMED and BLOCKED land ──
+        // The procedural generator fills EVERY province, so the shipped net never
+        // trained against empty or impassable ground -- which is exactly why it
+        // sat idle on the 83%-unclaimed 50 BC map (0 of 2509 taken in 15 turns).
+        // For a share of generated rounds, vacate the smallest countries to
+        // UNCLAIMED (frontier to be colonised) and scatter a few BLOCKED
+        // (impassable) provinces, so self-play happens on colonisation-shaped
+        // worlds: the colonizeReflex expands into the empty space and the reward
+        // teaches the net to play with it present. OD_TRAIN_UNCLAIMED=0 turns it
+        // off; inert on shipped maps, which already carry their own empty land.
+        if (!ship) {
+            static const bool trainUnc =
+                !std::getenv("OD_TRAIN_UNCLAIMED") || atoi(std::getenv("OD_TRAIN_UNCLAIMED")) != 0;
+            if (trainUnc && (p.seed & 1)) {                 // ~half of generated rounds
+                std::vector<std::pair<int,int>> bySize;     // (province count, cid)
+                for (auto& [cid, provs] : m_countryProvinces) {
+                    if (cid <= 0 || cid == Game::UNC_CID || cid == Game::BLC_CID) continue;
+                    bySize.push_back({(int)provs.size(), cid});
+                }
+                std::sort(bySize.begin(), bySize.end());
+                const int vacate = std::max(1, (int)bySize.size() / 3);
+                std::vector<std::pair<int,int>> toUnc;      // (pid, oldOwner), collected first
+                for (int i = 0; i < vacate && i < (int)bySize.size(); ++i)
+                    for (int pid : provincesOf(bySize[i].second))
+                        toUnc.push_back({pid, bySize[i].second});
+                for (auto& pr : toUnc)
+                    if (Province* pp = m_provinces.getProvinceById(pr.first)) {
+                        pp->countryId = Game::UNC_CID;
+                        reindexProvinceOwner(pr.first, pr.second, Game::UNC_CID);
+                        m_provinceArmies.erase(pr.first);   // no stranded garrisons
+                    }
+                int blocked = 0;
+                const int targetBlocked = std::max(4, (int)m_provinces.getAllProvinces().size() / 80);
+                std::vector<std::pair<int,int>> toBlc;
+                for (auto& [pid, prov] : m_provinces.getAllProvinces()) {
+                    if ((int)toBlc.size() >= targetBlocked) break;
+                    const int o = prov.countryId;
+                    if (o <= 0 || o == Game::UNC_CID || o == Game::BLC_CID) continue;
+                    if (((unsigned)pid * 2654435761u) % 40u != 0u) continue;   // ~2.5% scatter
+                    toBlc.push_back({pid, o});
+                }
+                for (auto& pr : toBlc)
+                    if (Province* pp = m_provinces.getProvinceById(pr.first)) {
+                        pp->countryId = Game::BLC_CID;
+                        reindexProvinceOwner(pr.first, pr.second, Game::BLC_CID);
+                        m_provinceArmies.erase(pr.first);
+                        ++blocked;
+                    }
+                printf("[TRAIN]   unclaimed/blocked: vacated %d countr(ies) -> UNC, %d blocked tiles\n",
+                       vacate, blocked);
+            }
+        }
+
         // ── 3. Self-play ──
         auto mapStart = std::chrono::steady_clock::now();
         int alive = 0;

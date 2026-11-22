@@ -1799,6 +1799,7 @@ endif()
 set(GAME_SOURCES
     main.cpp
     src/Game.cpp
+    src/DateSystems.cpp
     src/DevLink.cpp
     # One seat played from outside a turn at a time: the FIFO agent door and
     # the browser build both go through it. See its header comment.
@@ -4092,6 +4093,15 @@ target_include_directories(ScriptDialectTest PRIVATE src)
 add_executable(ThemeTest EXCLUDE_FROM_ALL tests/theme_test.cpp)
 target_include_directories(ThemeTest PRIVATE src)
 target_link_libraries(ThemeTest PRIVATE raylib)
+
+# The calendar/era conversions (BC/AD, AUC, sexagenary, Kōki, Juche, Anno Mundi,
+# Holocene). Links only src/DateSystems.cpp -- the arithmetic is dependency-free
+# so the anchors (1 AD == 辛酉, 753 BC == 1 AUC, the no-year-zero boundary) are
+# pinned without a window or a map.
+add_executable(DateSystemsTest EXCLUDE_FROM_ALL
+    tests/date_systems_test.cpp
+    src/DateSystems.cpp)
+target_include_directories(DateSystemsTest PRIVATE src)
 
 add_executable(MonumentsTest EXCLUDE_FROM_ALL
     tests/monuments_test.cpp

@@ -97,5 +97,14 @@
     "license": "CC-BY-4.0",
     "thumbnail": "mars_thumb.png",
     "hasScripts": false
+  },
+  {
+    "name": "The Late Republic",
+    "filename": "rome50bc.odmap",
+    "author": "OpenDoctrines",
+    "description": "50 BC. Caesar's legions have subdued Gaul, Crassus lies dead in Parthia, and the Republic stands at its greatest extent on the edge of civil war.",
+    "license": "CC-BY-4.0",
+    "thumbnail": "rome50bc_thumb.png",
+    "hasScripts": false
   }
 ]

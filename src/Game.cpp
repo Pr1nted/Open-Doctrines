@@ -6,6 +6,7 @@
 #include "DevLink.h"
 #include "Game.h"
 #include "Access.h"
+#include "DateSystems.h"
 #include "renderer/EffectPass.h"
 #include "net/Socks5.h"
 #include "net/TorClient.h"
@@ -226,8 +227,8 @@ const int RES_COUNT = 5;
 // resolution row draws wider, the FPS row cycles, the accent row opens a
 // picker -- and every one of those is a bare `i == 5`. Inserting in the
 // middle moves all of them. "Back" is found by label, so the end is free.
-const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Font", true, -1}, {"Mod Screen Effects", true, -1}, {"Back", false, -1}};
-const int DISPLAY_COUNT = 13;
+const Setting DISPLAY_ITEMS[] = {{"Fullscreen", false, -1}, {"Show Actual Flags", false, -1}, {"Debug Mode", false, -1}, {"Max Zoom", true, -1}, {"Resolution", false, -1}, {"FPS", false, -1}, {"Accent Color", false, -1}, {"AI Difficulty", false, -1}, {"UI Scale", false, -1}, {"Colourblind Colours", false, -1}, {"Font", true, -1}, {"Mod Screen Effects", true, -1}, {"Date System", true, -1}, {"Back", false, -1}};
+const int DISPLAY_COUNT = 14;
 
 const char* AI_DIFFICULTY_NAMES[] = {"Easy", "Normal", "Hard", "Insane"};
 
@@ -676,6 +677,22 @@ bool settingUsesArrows(int tab, int index) {
     return false;
 }
 
+// i18n anchor: the date-system names and the HUD label words, written as literal
+// tr() calls so tools/i18n_extract.py collects them into data/lang/en.json. The
+// game translates them at runtime -- makeSettingLabel below via tr(systemName()),
+// and the HUD via the function pointer handed to od::yearField (src/DateSystems.cpp
+// takes a pointer precisely so it need not link i18n). This is never called; it
+// exists only to be scanned, which is why the strings are not drawn here.
+[[maybe_unused]] static void od_date_system_i18n_anchor() {
+    od::i18n::tr("BC / AD");              od::i18n::tr("BCE / CE");
+    od::i18n::tr("Ab urbe condita");     od::i18n::tr("Chinese (sexagenary)");
+    od::i18n::tr("Japanese (Kōki)");     od::i18n::tr("Korean (Juche)");
+    od::i18n::tr("Hebrew (Anno Mundi)"); od::i18n::tr("Holocene Era");
+    od::i18n::tr("BCE"); od::i18n::tr("CE");
+    od::i18n::tr("AUC"); od::i18n::tr("AM"); od::i18n::tr("HE");
+    od::i18n::tr("Kōki"); od::i18n::tr("Juche");
+}
+
 std::string makeSettingLabel(int tab, int index, const Config& cfg) {
     const Setting& s = TAB_ITEMS[tab][index];
     std::string label = od::i18n::tr(s.label);
@@ -754,6 +771,10 @@ std::string makeSettingLabel(int tab, int index, const Config& cfg) {
                        : fc == "hyperlegible" ? std::string("Hyperlegible") : fc);
     } else if (tab == 0 && index == 11) {
         label += onOff(cfg.modScreenEffects);
+    } else if (tab == 0 && index == 12) {
+        // The calendar the date is read in. systemName is English; it is
+        // translated here like every other value on this screen.
+        label += std::string(": ") + od::i18n::tr(od::systemName(od::systemFromToken(cfg.dateSystem)));
     } else if (tab == 1 && index == 0) {
         char b[64]; snprintf(b, sizeof(b), ": %.1f", cfg.flySpeed); label += b;
     } else if (isVolumeSetting(tab, index)) {

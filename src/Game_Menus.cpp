@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "DateSystems.h"
 #include <filesystem>
 #include "util/LoadLog.h"
 #include "Palette.h"
@@ -3105,6 +3106,13 @@ bool Game::stepDisplayValueRow(int index, int dir) {
         cur = (cur + step + (int)fonts.size()) % (int)fonts.size();
         m_config.fontChoice = fonts[cur];
         reloadFonts();
+    } else if (index == 12) {
+        // Cycle the calendar the date is read in. Stored as a token so the
+        // enum can be reordered later without rewriting anyone's config.
+        const int n = (int)od::DateSystem::COUNT;
+        int cur = (int)od::systemFromToken(m_config.dateSystem);
+        cur = (cur + step + n) % n;
+        m_config.dateSystem = od::systemToken((od::DateSystem)cur);
     } else {
         return false;
     }
@@ -3128,6 +3136,8 @@ bool Game::resetDisplayValueRow(int index) {
     } else if (index == 10) {
         m_config.fontChoice = "readable";
         reloadFonts();
+    } else if (index == 12) {
+        m_config.dateSystem = "bc_ad";
     } else {
         return false;
     }

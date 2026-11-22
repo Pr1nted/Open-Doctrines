@@ -4857,6 +4857,8 @@ void AISystem::takeTurn(int cid) {
     navalReflex(cid);
     if (!reflexAblated("campaign") && !m_g->llmSuppressesReflex(cid, "campaign"))
         campaignReflex(cid);
+    if (!reflexAblated("colonize") && !m_g->llmSuppressesReflex(cid, "colonize"))
+        colonizeReflex(cid);
     // ...and end the wars it is not about
     if (!reflexAblated("peace") && !m_g->llmSuppressesReflex(cid, "peace"))
         peaceReflex(cid);
@@ -9241,6 +9243,53 @@ void AISystem::peaceReflex(int cid) {
         if (traceCid == cid)
             fprintf(stderr, "[PEACE] turn %d cid=%d offers white peace to %s (army %lld) to concentrate on %d\n",
                     m_turn, cid, ec->isoA3.c_str(), best, camp->targetCountry);
+    }
+}
+
+void AISystem::colonizeReflex(int cid) {
+    // Settle adjacent UNCLAIMED land. The net never learned to do this -- it
+    // trained on maps (modern, 1914, 1939) with almost no unclaimed territory --
+    // so on a sparse map like 50 BC, where 83% of the land starts unclaimed, the
+    // empty world would sit there forever (measured: 0 of 2509 taken in 15 turns).
+    // This is a hand rule, not a net change: a solvent, unthreatened country sends
+    // part of a border garrison into a neighbouring unclaimed province to claim
+    // it, at most a few a turn, so expansion is gradual rather than a land grab.
+    // OD_COLONIZE=0 turns it off; being appended here and gated, it cannot change
+    // a map that has no unclaimed land, so other scenarios are unaffected.
+    static const bool on = !OD_ENV("OD_COLONIZE") || atoi(OD_ENV("OD_COLONIZE")) != 0;
+    if (!on) return;
+    Game& g = *m_g;
+    const auto sIt = m_stats.find(cid);
+    if (sIt == m_stats.end()) return;
+    if (sIt->second.provincesLost > 0) return;            // losing ground: hold, don't expand
+    if (g.computeCountryIncome(cid).net < 2.0f) return;   // needs a real surplus to spare men
+    // Pace: at most ONE claim per country every few turns, so expansion is a
+    // slow frontier creep, not a sprint across a continent. Keyed per country.
+    static std::unordered_map<int,int> s_lastColonize;
+    auto lc = s_lastColonize.find(cid);
+    if (lc != s_lastColonize.end() && m_turn - lc->second < 3) return;
+    auto garrisonOf = [&](int pid) -> long long {
+        auto it = g.m_provinceArmies.find(pid); long long n = 0;
+        if (it != g.m_provinceArmies.end())
+            for (auto& u : it->second) if (u.countryId == cid) n += u.count;
+        return n;
+    };
+    std::unordered_set<int> busy;
+    for (const auto& mo : g.m_pendingMoveOrders)
+        if (mo.countryId == cid) busy.insert(mo.fromProvince);
+    const auto& allProv = g.m_provinces.getAllProvinces();
+    for (int pid : g.provincesOf(cid)) {
+        if (busy.count(pid)) continue;
+        if (garrisonOf(pid) < 6000) continue;              // keep a real holding force at home
+        auto nIt = g.m_provinceNeighbors.find(pid);
+        if (nIt == g.m_provinceNeighbors.end()) continue;
+        for (int nid : nIt->second) {
+            auto np = allProv.find(nid);
+            if (np == allProv.end() || np->second.countryId != Game::UNC_CID) continue;
+            issueOrder(PendingMoveOrder{pid, nid, 30, cid});   // 30% of the garrison claims it
+            s_lastColonize[cid] = m_turn;
+            return;                                         // one claim per country per visit
+        }
     }
 }
 
