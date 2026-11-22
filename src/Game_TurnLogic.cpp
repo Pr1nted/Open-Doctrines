@@ -587,6 +587,8 @@ void Game::resolveTurnCore(const std::function<void(float, const char*)>& progre
             (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tcoreEnd-t6).count());
 }
 
+// loadEventPacks() and processEvents() live in src/Events.cpp.
+
 void Game::processTurn() {
     // Last turn's fights stop being last turn's the moment this one starts.
     m_lastTurnBattles.clear();
@@ -622,6 +624,12 @@ void Game::processTurn() {
     // nothing; a stale one is a stack fighting on last month's supply line.
     m_supplyCache.clear();
     m_seaSupplyCache.clear();   // and where the fleets were
+
+    // Random events (docs/design/random-events-plan.md): a property of the
+    // world, off by default. The ONLY line on the no-events path is this false
+    // guard. Placed here, early and fixed, so effects would be visible to the
+    // rest of the turn once real events land.
+    if (m_events) processEvents();
 
     // Lambda to draw a loading screen frame (no-op if loading screen not active)
     auto drawFrame = [&](float pct, const char* status) {

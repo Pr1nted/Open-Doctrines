@@ -1897,6 +1897,7 @@ set(GAME_SOURCES
     src/Game_TurnLogic.cpp
     src/Fog.cpp
     src/Game_Fog.cpp
+    src/Events.cpp
     src/Game_Spy.cpp
     src/Game_FogNet.cpp
     # What a remote player decides about their country, and the diplomacy

@@ -1,0 +1,41 @@
+{
+  "format": "od-events/1",
+  "events": [
+    {
+      "id": "gold_rush",
+      "weight": 10,
+      "cooldown": 8,
+      "scope": "province",
+      "when": { "owner": "any", "has_resource": "gold", "min_population": 50000 },
+      "chance": 0.03,
+      "title": "Gold Rush",
+      "text": "Prospectors flood the province. The treasury swells.",
+      "effects": [ { "op": "treasury", "add": "rand:20..60" } ]
+    },
+    {
+      "id": "harvest_boom",
+      "weight": 6,
+      "cooldown": 10,
+      "scope": "province",
+      "when": { "owner": "any", "min_population": 100000 },
+      "chance": 0.02,
+      "title": "Bumper Harvest",
+      "text": "A record harvest draws families in; the province grows.",
+      "effects": [ { "op": "population", "add": "rand:5000..25000" } ]
+    },
+    {
+      "id": "boom_town",
+      "weight": 4,
+      "cooldown": 12,
+      "scope": "province",
+      "when": { "owner": "any", "min_industry": 4, "min_population": 80000 },
+      "chance": 0.02,
+      "title": "Boom Town",
+      "text": "Industry draws workers and trade; coffers and population both rise.",
+      "effects": [
+        { "op": "treasury", "add": "rand:10..30" },
+        { "op": "population", "add": "rand:3000..12000" }
+      ]
+    }
+  ]
+}
