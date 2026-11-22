@@ -312,7 +312,7 @@ const KNOWN_MODULES = [
     "GameProcess", "GameState.Read", "GameState.Write", "Map", "Map.Write", "MapEditor",
     "Military.Read", "Military.Write", "Net", "Neural", "Neural.Decide",
     "Politics.Read", "Politics.Write", "Render", "Research.Read",
-    "Research.Write", "Scripts", "Storage", "UI",
+    "Research.Write", "Scripts", "Shaders", "Storage", "UI",
 ];
 
 export function parseDraft(body: unknown): Draft | Rejected {

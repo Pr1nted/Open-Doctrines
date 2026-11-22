@@ -3555,6 +3555,10 @@ void Game::draw() {
     if (m_currentScreen == SCREEN_PLAYING) flushMapRepaint();
     BeginDrawing();
     ClearBackground(BLACK);
+    // Everything below goes into a texture instead of the back buffer when a
+    // mod holds the SCREEN target, and comes back through the effect in
+    // endFrame(). Does nothing at all otherwise. See Game::beginFrameCapture.
+    beginFrameCapture();
     // Guard: if not in playing state, skip game rendering to avoid accessing freed data
     // endFrame() rather than EndDrawing(): this is the map's own frame, outside
     // run()'s draw blocks, and the now-playing toast has to land on it too.
@@ -5278,11 +5282,16 @@ void Game::drawInner() {
                 // inside processTurn, in the same resolution that asks -- see
                 // the note there.
                 setLoadingProgress(0.0f, "Processing turn...");
+                // This pair ENDS the frame mid-draw, so the capture has to be
+                // resolved first -- EndDrawing while a render target is bound
+                // presents an empty back buffer. Resumed on the other side.
+                endFrameCapture();
                 EndDrawing();
                 processTurn();
                 hideLoadingScreen();
                 BeginDrawing();
                 ClearBackground(BLACK);
+                beginFrameCapture();
             }
         }
     }

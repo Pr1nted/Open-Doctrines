@@ -3053,7 +3053,7 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     //
     // f[22], f[52] and f[62] are raw army ratios, and f[62] carries the 96th percentile of
     // weight across 143 inputs. But journal 480 derived that the resolver stops reading
-    // army at 5.66 x combat width = 113,137 men (depthFactor caps at DEPTH_MAX = 1.5), so
+    // army past the multiple of combat width where depthFactor reaches DEPTH_MAX, so
     // a 10:1 raw ratio and a 1:1 raw ratio describe the SAME fight once both sides are
     // past saturation. The net's heaviest war feature cannot tell those apart -- the same
     // defect journal 490 found in the ceasefire mask, here in the feature space.
@@ -3062,7 +3062,8 @@ void AISystem::buildFeatures(int cid, std::vector<float>& f) {
     // the gate off every number below is bit-identical.
     static const bool effArmy = OD_ENV("OD_FEAT_EFFARMY") &&
                                 atoi(OD_ENV("OD_FEAT_EFFARMY")) != 0;
-    const double armySat = (double)Game::COMBAT_WIDTH_MIN * 5.656854;
+    const double armySat = (double)Game::COMBAT_WIDTH_MIN *
+        std::exp2(((double)Game::DEPTH_MAX - 1.0) / (double)Game::DEPTH_PER_DOUBLING);
     auto effA = [&](double a) -> double { return effArmy ? std::min(a, armySat) : a; };
     const double myEff = std::max(1.0, effA((double)myA));
     f[22] = weakestWar >= 0 ? (float)std::tanh(std::log1p(effA((double)weakestWar) / myEff)) : 0.0f;
@@ -6148,8 +6149,8 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // ── OD_PEACE_EFFECTIVE=1: compare EFFECTIVE strength, not headcount (journal 491) ──
     //
     // The ratio below is raw army, and the combat resolver stops reading army at
-    // 5.66 x combat width -- 113,137 men at COMBAT_WIDTH_MIN -- because depthFactor
-    // caps at DEPTH_MAX = 1.5 (journal 480's derivation from Game.h:5082-5083). So a
+    // the multiple of combat width where depthFactor reaches DEPTH_MAX (journal 480;
+    // 5.66x when the cap was 1.5). So a
     // 44M-man army reads as decisively ahead of a 1M-man one and is exactly level at
     // the frontage, and this mask bit was measured OFFERED ZERO TIMES in 400 turns on
     // a seat that then sat in one unwinnable war for 304 of them (journal 490).
@@ -6160,7 +6161,8 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     static const bool peaceEff = OD_ENV("OD_PEACE_EFFECTIVE") &&
                                  atoi(OD_ENV("OD_PEACE_EFFECTIVE")) != 0;
     if (peaceEff) {
-        const long double sat = (long double)Game::COMBAT_WIDTH_MIN * 5.656854L;
+        const long double sat = (long double)Game::COMBAT_WIDTH_MIN *
+            std::exp2(((long double)Game::DEPTH_MAX - 1.0L) / (long double)Game::DEPTH_PER_DOUBLING);
         auto eff = [&](long long a) -> long double {
             return (long double)a < sat ? (long double)a : sat;
         };

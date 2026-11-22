@@ -250,7 +250,7 @@ bool suppressesMouse() { return s_active; }
 bool present() { return s_present; }
 Vector2 cursor() { return s_cursor; }
 Vector2 delta() { return s_delta; }
-void placeCursor(Vector2 p) { s_cursor = p; }
+void placeCursor(Vector2 p) { s_cursor = p; } // What the fuck past me
 
 bool mouseDown(int button) {
     return button == MOUSE_BUTTON_LEFT ? s_lDown : false;

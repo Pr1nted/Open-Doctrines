@@ -239,3 +239,10 @@ plan9/od_world_data.c
 plan9/od_map_data.c
 plan9/*.6
 plan9/6.*
+
+# Runtime secrets and per-user state — never committed (session 2026-11)
+data/onion-service/
+data/achievements/
+Dedicated.odsv
+# odseal source is a separate repo; only third_party/odseal (archive+header) is committed
+odseal-src/

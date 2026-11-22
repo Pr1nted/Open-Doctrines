@@ -5516,7 +5516,7 @@ private:
     // have retired this rule as pointless.
     static constexpr float COMBAT_WIDTH_PER_AREA = 25.0f;    ///< men per unit of area
     static constexpr float COMBAT_WIDTH_MIN      = 20000.0f; ///< even a pass fits some
-    static constexpr float COMBAT_WIDTH_FORT_PCT = 12.0f;    ///< narrowing per fort level
+    static constexpr float COMBAT_WIDTH_FORT_PCT = 8.0f;     ///< narrowing per fort level
     /** Men either side can bring to bear in one assault on this province. */
     long long combatWidth(int provinceId) const;
 
@@ -5735,18 +5735,19 @@ private:
     // was built to stop. 1.5 keeps that, and is the only setting that beats the
     // baseline on both instruments.
     //
-    // THE HONEST COST: at 0.20 per doubling the cap is reached at 5.7x the
-    // frontage, so above that men stop helping again and two stacks that both
-    // hugely overfill the ground still tie on modifiers. That is the original
-    // bug, surviving in a corner. It is accepted rather than hidden, for two
-    // reasons: real fights on the shipped maps run at two to six times the
-    // frontage, so the live range is the range where depth works; and "beyond
-    // six times what the ground can hold, more men stop mattering" is a
-    // defensible statement about frontage, where "men never mattered at any
-    // ratio" was not. Raising the cap to fix the corner costs 9-17 points of
-    // survival, measured above, and is not worth it.
+    // RAISED TO 2.0 (Nov 2026), with fort narrowing 12% -> 8% per level, after
+    // a player report of large stacks failing against small garrisons. The
+    // sweep above did not reproduce on ParrotZero 8.6.0: same three seeds,
+    // one tree, two binaries, survival 54.6/53.4/56.9 -> 56.2/52.3/55.6,
+    // largest power 20.2/20.6/19.7 -> 17.7/21.0/20.1, rebellions
+    // 15.8/15.4/15.4 -> 18.8/15.5/14.8 -- mixed in sign, no cost visible.
+    //
+    // At 0.20 per doubling the cap is now reached at 32x the frontage, so the
+    // corner where two stacks that both hugely overfill the ground tie on
+    // modifiers still exists, but far outside the two-to-six-times range real
+    // fights on the shipped maps run at.
     static constexpr float DEPTH_PER_DOUBLING = 0.20f;
-    static constexpr float DEPTH_MAX          = 1.5f;
+    static constexpr float DEPTH_MAX          = 2.0f;
     /**
      * The multiplier a stack of `troops` earns on a frontage of `width`.
      *

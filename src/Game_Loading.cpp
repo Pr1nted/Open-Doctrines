@@ -411,6 +411,7 @@ void Game::updateLoading() {
                     m_renderer->setNight(night);
                     }
                 m_renderer->setFallbackFont(m_gameFont);
+                m_renderer->setModEffects(&m_modEffects);
             }
             m_loadingPhase = LOAD_BUILD_POP;
             break;
@@ -3790,6 +3791,7 @@ bool Game::loadMapPack(const std::string& odmPath) {
         m_renderer->setNight(night);
         }
     m_renderer->setFallbackFont(m_gameFont);
+    m_renderer->setModEffects(&m_modEffects);
 
     setLoadingProgress(0.6f, "Building population data...");
     drawLoadingScreen();

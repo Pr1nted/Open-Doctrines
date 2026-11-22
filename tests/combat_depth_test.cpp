@@ -39,7 +39,7 @@ static void section(const char* n) { printf("\n== %s ==\n", n); }
 
 // Game::DEPTH_PER_DOUBLING / DEPTH_MAX / depthFactor, verbatim.
 static const double DEPTH_PER_DOUBLING = 0.20;
-static const double DEPTH_MAX          = 1.5;
+static const double DEPTH_MAX          = 2.0;
 
 static double depthFactor(long long troops, long long width) {
     if (width <= 0 || troops <= width) return 1.0;
@@ -123,19 +123,17 @@ int main() {
     {
         // Documented rather than pretended away: above the cap the original
         // "size does not matter" behaviour returns for two stacks that both
-        // hugely overfill the ground. See DEPTH_MAX in Game.h for why this is
-        // accepted -- raising the cap measured 9-17 points of survival worse.
+        // hugely overfill the ground. See DEPTH_MAX in Game.h.
         const long long W = 20000;
-        const double atCap = depthFactor((long long)(W * 5.66), W);
-        ok(std::abs(atCap - DEPTH_MAX) < 0.01, "the cap is reached at about 5.7x the frontage");
+        const double atCap = depthFactor(W * 32, W);
+        ok(std::abs(atCap - DEPTH_MAX) < 0.01, "the cap is reached at 32x the frontage");
+        ok(depthFactor(W * 16, W) < DEPTH_MAX, "and not before");
         ok(depthFactor(W * 100, W) == depthFactor(W * 1000, W),
            "beyond it, two enormous stacks do fight identically (known, accepted)");
         // Stated as an assertion so nobody rediscovers it as a bug: ten million
         // against one million on OPEN ground is a draw, because both are far
         // past the cap and a draw goes to the defender. This is the original
-        // width behaviour surviving in a corner, and the alternative -- raising
-        // the cap so it carries -- measured 9-17 points of survival worse
-        // across three seeds. See DEPTH_MAX in Game.h.
+        // width behaviour surviving in a corner. See DEPTH_MAX in Game.h.
         ok(!carries(10000000, 1000000, W, /*fort=*/0),
            "ten to one on open ground is still a draw above the cap");
         // But the live range of the shipped maps is below it.

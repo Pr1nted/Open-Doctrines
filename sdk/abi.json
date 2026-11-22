@@ -30,7 +30,7 @@
     "1.4 opens because 1.3 shipped: sdk/compat/abi-1.3.json is its frozen surface, and nothing in it may be renamed, re-signed or re-gated. Everything since carries \"since\": \"1.4\". The \"gearbox\" version field still reads 1.3 until tools/release.py sdk bumps it at release, which it does only once the 1.3 tag exists -- so a mod that uses a 1.4 import must declare \"gearbox\": \"1.4\" and will load only on a host that says so.",
     "1.4 also completes Diplomacy: alliances, non-aggression pacts and guarantees proposed and broken through the request queue the player's own buttons use, ceasefires and trades with their terms -- goods included -- through the deal screen's own path, and claims. Military.Write gains a withdrawal order, refused unless the country has a battle of its own there.",
     "1.4 adds monuments to the reads (province_monument, _level, _active under GameState.Read) and, under Economy.Read and Economy.Write, the economy surface that grew around them: building, upgrading, moving and switching monuments; sector taxes and subsidies; the goods economy's stockpiles, demand, shortfall and living standards, with \"good\" and \"raw\" enums mirroring the game's own; directed factories; and state industry. Military.Read gains combat width and who is attacking a province. EVERY WRITE TAKES THE ACTING COUNTRY EXPLICITLY and goes through the rule the player's click goes through, so cost, research, ownership and the compass-set limits bind a mod exactly as they bind a player -- a mod cannot do anything a player governing that country could not.",
-    "1.4 adds Shaders: a mod names a TARGET (the map, or its own panels) and picks from the host's effects with a per-mille parameter, and the host composites. It receives no framebuffer, no shader and no draw callback, so there is no sequence of calls that produces an arbitrary image -- and the interface, including the Mod Menu that is the only way to switch a mod off, draws AFTER every target. There is no target for the interface and there is not going to be one. The host also slews every parameter toward its requested value at a bounded rate: a mod alternating two legal values every frame would be a full-screen strobe, which is what triggers photosensitive seizures, so the rate limit is a clamp rather than a rule an author has to know about. A player can switch screen effects off entirely and nothing in this ABI reports that -- a mod that could read the setting could route round it."
+    "1.6 adds Shaders: a mod names a TARGET (the map, or its own panels) and picks from the host's effects with a per-mille parameter, and the host composites. It receives no framebuffer, no shader and no draw callback, so there is no sequence of calls that produces an arbitrary image -- and the interface, including the Mod Menu that is the only way to switch a mod off, draws AFTER every target. There is no target for the interface and there is not going to be one. The host also slews every parameter toward its requested value at a bounded rate: a mod alternating two legal values every frame would be a full-screen strobe, which is what triggers photosensitive seizures, so the rate limit is a clamp rather than a rule an author has to know about. A player can switch screen effects off entirely and nothing in this ABI reports that -- a mod that could read the setting could route round it."
   ],
   "gearbox": "1.5",
   "schema": 1,
@@ -272,7 +272,7 @@
       "import": "gearbox:shaders",
       "revocable": true,
       "implemented": true,
-      "since": "1.4",
+      "since": "1.6",
       "side": "client",
       "grants": "Apply the host's screen effects to the map or to your own panels",
       "notes": "Separate from Render because they are different sentences to show a player: \"may colour provinces\" against \"may change how the game looks\". Client-side only, like Audio: a server has nobody to draw to and the calls do nothing there."
@@ -6625,7 +6625,7 @@
       "name": "set_effect",
       "binding_name": "shaders_set_effect",
       "capability": "Shaders",
-      "since": "1.4",
+      "since": "1.6",
       "signature": "(iii)i",
       "params": [
         {
@@ -6654,7 +6654,7 @@
       "name": "clear",
       "binding_name": "shaders_clear",
       "capability": "Shaders",
-      "since": "1.4",
+      "since": "1.6",
       "signature": "(i)i",
       "params": [
         {
@@ -6674,7 +6674,7 @@
       "name": "supported",
       "binding_name": "shaders_supported",
       "capability": "Shaders",
-      "since": "1.4",
+      "since": "1.6",
       "signature": "(ii)i",
       "params": [
         {
