@@ -166,11 +166,19 @@ const server = createServer(async (req, res) => {
         return json(res, { dropped: true });
     }
 
-    // A stand-in language model: an OpenAI-style chat endpoint that answers
-    // every request with the same sentence. Enough to prove a letter reached
-    // the host's model and its reply reached the player -- what a real model
-    // would SAY is not this test's business. /llm-stats counts the asking.
-    if (req.method === "POST" && path === "/v1/chat/completions") {
+    // A stand-in language model that answers every request with the same
+    // sentence. Enough to prove a letter reached the host's model and its reply
+    // reached the player -- what a real model would SAY is not this test's
+    // business. /llm-stats counts the asking.
+    //
+    // TWO shapes, because the game addresses a LOCAL endpoint on Ollama's native
+    // /api/chat (it honours options.num_ctx; see chatUrlFor in Game_Llm.cpp) and
+    // everything else on the OpenAI-compatible /v1/chat/completions. A localhost
+    // issuer is "local", so the mail test hits /api/chat -- serve both, differing
+    // only in the success body. The 429s are parsed by their TPD/TPM text, not by
+    // envelope shape, so they are shared verbatim.
+    if (req.method === "POST" && (path === "/v1/chat/completions" || path === "/api/chat")) {
+        const native = path === "/api/chat";
         const body = await readBody(req);
         // MOCK_LLM_DAILY_SPENT=a,b: these models have used their DAILY allowance,
         // refused in Groq's words, so a caller is pushed onto its fallbacks.
@@ -195,9 +203,12 @@ const server = createServer(async (req, res) => {
         const slow = Number(process.env.MOCK_LLM_DELAY_MS || 0);
         if (slow > 0) await new Promise(r => setTimeout(r, slow));
         llmPrompts.push(JSON.stringify(body?.messages ?? []).slice(0, 40000));
+        const content = "Our ministry has read your letter and will consider it carefully.";
+        if (native)
+            return json(res, { model: body?.model ?? "test-model", done: true,
+                message: { role: "assistant", content } });
         return json(res, { choices: [{ index: 0, finish_reason: "stop",
-            message: { role: "assistant",
-                       content: "Our ministry has read your letter and will consider it carefully." } }] });
+            message: { role: "assistant", content } }] });
     }
     if (req.method === "GET" && path === "/llm-stats") {
         return json(res, { requests: llmRequests, refused: llm429Sent, dailyRefused: llmDailyRefused,
