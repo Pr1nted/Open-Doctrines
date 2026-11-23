@@ -1005,7 +1005,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/guard/odseal.cpp)
     # it simply does not carry the check. Refreshing the prebuilts (see
     # docs/odseal.md) is what turns it on for every platform.
     target_compile_definitions(odseal PUBLIC OD_HAS_T4 OD_HAS_P2)
-    set_target_properties(odseal PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    # PIC everywhere it works, but NOT on the Vita: its loader has no GOT and
+    # vita-elf-create rejects the R_ARM_BASE_PREL a PIC object emits ("Invalid
+    # relocation type 25"). The shipped Vita build links the prebuilt archive
+    # (already position-dependent); this keeps a maintainer's from-source Vita
+    # build working too.
+    if(NOT VITA)
+        set_target_properties(odseal PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
     if(NOT MSVC)
         target_compile_options(odseal PRIVATE
             -O3 -fvisibility=hidden -fno-rtti -fomit-frame-pointer)
