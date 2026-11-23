@@ -53,25 +53,28 @@ codename="${VERSION_CODENAME:?no VERSION_CODENAME in /etc/os-release}"
 sudo dpkg --add-architecture "$arch"
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
-    "g++-$triplet" pkg-config qemu-user-static binfmt-support \
+    "g++-$triplet" pkg-config qemu-user-static \
     "libasound2-dev:$arch" "libx11-dev:$arch" "libxrandr-dev:$arch" "libxi-dev:$arch" \
     "libgl1-mesa-dev:$arch" "libglu1-mesa-dev:$arch" "libgles-dev:$arch" "libxcursor-dev:$arch" \
     "libxinerama-dev:$arch" "libwayland-dev:$arch" "libxkbcommon-dev:$arch" "libudev-dev:$arch" \
     "libc6:$arch" "libstdc++6:$arch"
 
 # A cross-built target binary runs on this x86-64 host through qemu's binfmt
-# handler. qemu-user-static ships the handler but does not reliably load it in
-# CI, and the old registration was SILENT when binfmt-support was absent (as it
-# was) -- which is how riscv64 reached "Exec format error" while the toolchain
-# reported ready. Install binfmt-support (above), (re)load the handlers, then
-# VERIFY the one we need is registered rather than trusting that it is.
+# handler. On the CI runners update-binfmts/systemd-binfmt did NOT register the
+# qemu handlers (binfmt_misc held only llvm's), so riscv64 hit "Exec format
+# error". The multiarch container writes the handlers straight into binfmt_misc,
+# which is the mechanism docker/setup-qemu-action uses and the one that works
+# here. Best-effort and non-fatal: a build-only cross job never executes a
+# target binary, and the job that runs the suite fails at the first exec if this
+# did not take -- so this must not fail a pure cross-compile.
 qemu_name="qemu-${arch/armhf/arm}"
-sudo update-binfmts --enable "$qemu_name" 2>/dev/null || true
-sudo systemctl restart systemd-binfmt 2>/dev/null || true
-if [ ! -e "/proc/sys/fs/binfmt_misc/$qemu_name" ]; then
-    echo "::error::binfmt handler $qemu_name is not registered; a cross-built" \
-         "$arch binary cannot execute on this host." >&2
-    ls -1 /proc/sys/fs/binfmt_misc/ 2>/dev/null || true
-    exit 1
+if command -v docker >/dev/null; then
+    sudo docker run --rm --privileged multiarch/qemu-user-static \
+        --reset -p yes >/dev/null 2>&1 || true
 fi
-echo "cross toolchain ready: $triplet ($arch); binfmt $qemu_name registered"
+if [ -e "/proc/sys/fs/binfmt_misc/$qemu_name" ]; then
+    echo "cross toolchain ready: $triplet ($arch); binfmt $qemu_name registered"
+else
+    echo "cross toolchain ready: $triplet ($arch); binfmt $qemu_name NOT" \
+         "registered (fine for a build-only job; a run job will fail at exec)"
+fi
