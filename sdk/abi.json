@@ -32,7 +32,7 @@
     "1.4 adds monuments to the reads (province_monument, _level, _active under GameState.Read) and, under Economy.Read and Economy.Write, the economy surface that grew around them: building, upgrading, moving and switching monuments; sector taxes and subsidies; the goods economy's stockpiles, demand, shortfall and living standards, with \"good\" and \"raw\" enums mirroring the game's own; directed factories; and state industry. Military.Read gains combat width and who is attacking a province. EVERY WRITE TAKES THE ACTING COUNTRY EXPLICITLY and goes through the rule the player's click goes through, so cost, research, ownership and the compass-set limits bind a mod exactly as they bind a player -- a mod cannot do anything a player governing that country could not.",
     "1.6 adds Shaders: a mod names a TARGET (the map, or its own panels) and picks from the host's effects with a per-mille parameter, and the host composites. It receives no framebuffer, no shader and no draw callback, so there is no sequence of calls that produces an arbitrary image -- and the interface, including the Mod Menu that is the only way to switch a mod off, draws AFTER every target. There is no target for the interface and there is not going to be one. The host also slews every parameter toward its requested value at a bounded rate: a mod alternating two legal values every frame would be a full-screen strobe, which is what triggers photosensitive seizures, so the rate limit is a clamp rather than a rule an author has to know about. A player can switch screen effects off entirely and nothing in this ABI reports that -- a mod that could read the setting could route round it."
   ],
-  "gearbox": "1.5",
+  "gearbox": "1.6",
   "schema": 1,
   "modules": [
     {
@@ -8093,7 +8093,7 @@
   "constants": {
     "GEARBOX_INVALID": "0xFFFFFFFF",
     "GEARBOX_MAJOR": 1,
-    "GEARBOX_MINOR": 5
+    "GEARBOX_MINOR": 6
   },
   "env_struct": {
     "$comment": "Layout is ABI. Fields are only ever appended, never reordered or resized. Total size is 28 bytes on wasm32.",

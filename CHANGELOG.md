@@ -1,5 +1,23 @@
 # Changelog
 
+## sdk 1.6
+
+Gearbox 1.6 adds the **Shaders** capability (`gearbox:shaders`).
+
+A mod names a target — the map, or its own panels — and picks from the host's
+built-in effects with a per-mille strength; the host composites. A mod never
+receives a framebuffer, a shader or a draw callback, so it cannot produce an
+arbitrary image, and the interface (including the Mod Menu that switches a mod
+off) always draws after every target.
+
+The host slews each parameter toward its requested value at a bounded rate, so
+a mod cannot strobe the screen. A player can turn screen effects off entirely,
+and nothing in this ABI reports that.
+
+Imports: `set_effect`, `clear`, `supported`. Backwards compatible: every
+1.5 mod keeps working, and the new imports are refused unless the player grants
+the Shaders capability.
+
 ## sdk 1.5
 
 Two imports and one capability, all additive. A mod built against 1.4 runs
