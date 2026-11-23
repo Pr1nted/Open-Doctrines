@@ -394,6 +394,11 @@ struct WebHostRec {
     const char* module;
     const char* name;
     void*       fn;
+    // 32-bit on purpose: the JS side reads this record as four packed words
+    // (HEAPU32[r..r+3]), so the capability mask travels in one uint32. Every
+    // ModModuleBit in use fits in the low 32 bits (Shaders is bit 31); a module
+    // at bit 32 or above could not be imported on the web until this record and
+    // its JS reader both widen together.
     uint32_t    capability;
 };
 
@@ -403,7 +408,8 @@ std::vector<WebHostRec>& webTable() {
         size_t n = 0;
         const ModHostFn* h = modHostFunctions(n);
         for (size_t i = 0; i < n; i++)
-            t.push_back({h[i].module, h[i].name, h[i].fn, h[i].capability});
+            t.push_back({h[i].module, h[i].name, h[i].fn,
+                         static_cast<uint32_t>(h[i].capability)});
     }
     return t;
 }

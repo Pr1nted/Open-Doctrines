@@ -1,5 +1,7 @@
 #include "TurnStore.h"
 
+#include <cstdlib>   // strtoul -- transitively included elsewhere on desktop, not under emscripten
+
 const char* turnStoreName(TurnStoreKind k) {
     switch (k) {
         case TurnStoreKind::DurableObject: return "the session's own storage";
