@@ -51,8 +51,10 @@ codename="${VERSION_CODENAME:?no VERSION_CODENAME in /etc/os-release}"
 } | sudo tee /etc/apt/sources.list >/dev/null
 
 sudo dpkg --add-architecture "$arch"
-sudo apt-get update -qq
-sudo apt-get install -y -qq \
+# Acquire::Retries so a transient mirror 503 (azure.archive.ubuntu.com has
+# thrown them here) retries rather than fails the whole cross build.
+sudo apt-get -o Acquire::Retries=5 update -qq
+sudo apt-get -o Acquire::Retries=5 install -y -qq \
     "g++-$triplet" pkg-config qemu-user-static \
     "libasound2-dev:$arch" "libx11-dev:$arch" "libxrandr-dev:$arch" "libxi-dev:$arch" \
     "libgl1-mesa-dev:$arch" "libglu1-mesa-dev:$arch" "libgles-dev:$arch" "libxcursor-dev:$arch" \

@@ -688,9 +688,24 @@ jobs:
           # wider permission than the app wants, and dropping the line takes
           # gamepads away from the Flatpak alone, which README.md calls the
           # better way to play on a touch device.
-          sudo add-apt-repository -y ppa:flatpak/stable
-          sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder appstream
+          # Launchpad's PPA mirror returns transient 503s (it has failed a
+          # release here), so retry the whole add+update+install rather than let
+          # one bad fetch sink the job; apt retries each download too.
+          for attempt in 1 2 3 4 5; do
+            if sudo add-apt-repository -y ppa:flatpak/stable \
+               && sudo apt-get -o Acquire::Retries=5 update \
+               && sudo apt-get -o Acquire::Retries=5 install -y \
+                    flatpak flatpak-builder appstream; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "::error::could not install flatpak from ppa:flatpak/stable" \
+                   "after 5 attempts (Launchpad PPA outage)"; exit 1
+            fi
+            echo "flatpak install attempt $attempt failed (transient PPA 503?);" \
+                 "retrying in 15s" >&2
+            sleep 15
+          done
           flatpak --version
           sudo flatpak remote-add --if-not-exists flathub \
             https://flathub.org/repo/flathub.flatpakrepo
