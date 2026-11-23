@@ -4,6 +4,7 @@
 #define NOMINMAX
 #endif
 #include "SaveManager.h"
+#include "platform/ThreadLocalCompat.h"
 #include "util/WebPersist.h"
 #include "miniz.h"
 #include "miniz_zip.h"
@@ -772,7 +773,12 @@ static libdeflate_compressor* compressorFor(int level) {
         libdeflate_compressor* c[13] = {};
         ~Cache() { for (auto* p : c) if (p) libdeflate_free_compressor(p); }
     };
+#if defined(__vita__)
+    static odtls::PerThread<Cache> cacheTls;   // thread_local: no TLS on the Vita
+    Cache& cache = cacheTls.get();
+#else
     thread_local Cache cache;
+#endif
     level = level < 1 ? 1 : level > 12 ? 12 : level;
     if (!cache.c[level]) cache.c[level] = libdeflate_alloc_compressor(level);
     return cache.c[level];
@@ -783,7 +789,12 @@ static libdeflate_decompressor* decompressor() {
         libdeflate_decompressor* d = libdeflate_alloc_decompressor();
         ~Holder() { if (d) libdeflate_free_decompressor(d); }
     };
+#if defined(__vita__)
+    static odtls::PerThread<Holder> hTls;      // thread_local: no TLS on the Vita
+    Holder& h = hTls.get();
+#else
     thread_local Holder h;
+#endif
     return h.d;
 }
 

@@ -4,6 +4,7 @@
 #include "ModelBlob.h"
 #include "MoneyLedger.h"
 #include "../OdFile.h"
+#include "../platform/ThreadLocalCompat.h"
 #include "../Game.h"
 #include "../BuildCosts.h"
 #include "../GameInternals.h"
@@ -3879,7 +3880,14 @@ static bool actHistCountsCid(int cid) {
 // only for calls made by validWar() (the mask, not execution) and only for the country
 // OD_ACT_HIST_CID names, which exit each call takes and why each neighbour is rejected.
 // Counters only; nothing here is read by a decision.
-static thread_local bool s_wmFromMask = false;
+// Per-thread so parallel AI eval does not cross wires. thread_local everywhere
+// but the Vita, which has no TLS (see ThreadLocalCompat.h); reached through
+// wmFromMask() so the storage choice lives in one place.
+#if defined(__vita__)
+static bool& wmFromMask() { static odtls::PerThread<bool> t; return t.get(); }
+#else
+static bool& wmFromMask() { static thread_local bool v = false; return v; }
+#endif
 static std::atomic<long long> s_wm[16];
 static std::atomic<long long> s_wmSide{0}, s_wmNeed{0};
 static void dumpWarMaskProbe() {
@@ -3900,7 +3908,7 @@ static void dumpWarMaskProbe() {
 }
 static bool wmCounting(int cid) {
     static const bool on = OD_ENV("OD_WARMASK_PROBE") && atoi(OD_ENV("OD_WARMASK_PROBE")) != 0;
-    if (!on || !s_wmFromMask || !actHistCountsCid(cid)) return false;
+    if (!on || !wmFromMask() || !actHistCountsCid(cid)) return false;
     static const bool reg = (atexit(&dumpWarMaskProbe), true);
     (void)reg;
     return true;
@@ -6334,9 +6342,9 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     // a separate navalDeclarable test here that did not match exec's.
     {
         WarTarget wt;
-        s_wmFromMask = true;
+        wmFromMask() = true;
         v[4] = findWarTarget(cid, wt);
-        s_wmFromMask = false;
+        wmFromMask() = false;
     }
     // Artillery needs SHELLS. The comment used to say "ammo checked at exec",
     // which is true and is exactly the problem: exec answered "artillery: no
