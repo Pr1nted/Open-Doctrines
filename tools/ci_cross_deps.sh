@@ -53,16 +53,25 @@ codename="${VERSION_CODENAME:?no VERSION_CODENAME in /etc/os-release}"
 sudo dpkg --add-architecture "$arch"
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
-    "g++-$triplet" pkg-config qemu-user-static \
+    "g++-$triplet" pkg-config qemu-user-static binfmt-support \
     "libasound2-dev:$arch" "libx11-dev:$arch" "libxrandr-dev:$arch" "libxi-dev:$arch" \
     "libgl1-mesa-dev:$arch" "libglu1-mesa-dev:$arch" "libgles-dev:$arch" "libxcursor-dev:$arch" \
     "libxinerama-dev:$arch" "libwayland-dev:$arch" "libxkbcommon-dev:$arch" "libudev-dev:$arch" \
     "libc6:$arch" "libstdc++6:$arch"
 
-# 32-bit Arm on an x86-64 host is always emulated, but make sure the handler is
-# on: Debian-family systems skip registering qemu-arm on hosts they believe can
-# run armhf natively, and an arm64 guest without AArch32 (Apple Silicon) cannot.
-if command -v update-binfmts >/dev/null; then
-    sudo update-binfmts --enable "qemu-${arch/armhf/arm}" 2>/dev/null || true
+# A cross-built target binary runs on this x86-64 host through qemu's binfmt
+# handler. qemu-user-static ships the handler but does not reliably load it in
+# CI, and the old registration was SILENT when binfmt-support was absent (as it
+# was) -- which is how riscv64 reached "Exec format error" while the toolchain
+# reported ready. Install binfmt-support (above), (re)load the handlers, then
+# VERIFY the one we need is registered rather than trusting that it is.
+qemu_name="qemu-${arch/armhf/arm}"
+sudo update-binfmts --enable "$qemu_name" 2>/dev/null || true
+sudo systemctl restart systemd-binfmt 2>/dev/null || true
+if [ ! -e "/proc/sys/fs/binfmt_misc/$qemu_name" ]; then
+    echo "::error::binfmt handler $qemu_name is not registered; a cross-built" \
+         "$arch binary cannot execute on this host." >&2
+    ls -1 /proc/sys/fs/binfmt_misc/ 2>/dev/null || true
+    exit 1
 fi
-echo "cross toolchain ready: $triplet ($arch)"
+echo "cross toolchain ready: $triplet ($arch); binfmt $qemu_name registered"
