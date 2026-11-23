@@ -1,5 +1,38 @@
 # Changelog
 
+## game 1.3.4b
+
+## Dating systems and the Roman Republic
+
+The in-game date can be shown in eight calendars — BC/AD, BCE/CE, *Ab urbe
+condita*, the Chinese sexagenary cycle, Kōki, Juche, the Hebrew calendar and the
+Holocene era — switched from Settings → Display.
+
+A new **Roman 50 BC** map ships with it: the Republic at its greatest extent,
+with real historical borders drawn from OpenHistoricalMap.
+
+## AI that settles unclaimed land
+
+The AI now colonises unclaimed territory, so empty regions fill in over a
+campaign instead of staying blank.
+
+## Random events
+
+A world can be created with deterministic random events (Experimental). The
+same seed always produces the same run.
+
+## Greater Diplomacy translation layer, and the Shaders SDK
+
+GDTL ships enabled: convert a map to and from Greater Diplomacy 5 and Unciv.
+Gearbox SDK 1.6 adds the **Shaders** capability so a mod can apply the host's
+screen effects to the map or its own panels.
+
+## Fixes
+
+- Builds restored on every shipped port — DOS, PS Vita and the 3DS.
+- The web build and the AI correspondents (campaign mail) are fixed.
+- The Roman map ships with complete data and a correct preview.
+
 ## sdk 1.6
 
 Gearbox 1.6 adds the **Shaders** capability (`gearbox:shaders`).
