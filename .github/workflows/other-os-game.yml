@@ -818,6 +818,25 @@ jobs:
             -DOD_DISCORD_APP_ID=1547303703370014830
           cmake --build build --target eboot.bin-self -j 4
 
+      # When vita-elf-create rejects a relocation ("Invalid relocation type N"),
+      # the linked ELF it choked on is already on disk. Name the relocation, and
+      # the functions that carry it, so the cause is a source location rather
+      # than a number. Runs only on failure; harmless the rest of the time.
+      - name: Diagnose a rejected relocation
+        if: ${{ failure() }}
+        run: |
+          elf=build/OpenDoctrines
+          [ -f "$elf" ] || { echo "no linked ELF to inspect"; exit 0; }
+          echo "=== relocation type histogram ==="
+          arm-vita-eabi-readelf -rW "$elf" 2>/dev/null \
+            | awk '/R_ARM_/{print $3}' | sort | uniq -c | sort -rn | head -30
+          echo "=== BASE_PREL (type 25) relocations, with symbols ==="
+          arm-vita-eabi-readelf -rW "$elf" 2>/dev/null | grep -i "BASE_PREL" | head -20
+          echo "=== functions that emit a BASE_PREL ==="
+          arm-vita-eabi-objdump -dr "$elf" 2>/dev/null \
+            | awk '/^[0-9a-f]+ <.*>:/{fn=$0} /R_ARM_BASE_PREL/{print fn" | "$0}' \
+            | sort -u | head -40
+
       # A 32-bit Arm program for the Vita, not something the runner's own
       # compiler made: the ELF's machine, and the SELF magic on what was made
       # from it.
