@@ -6404,8 +6404,12 @@ void AISystem::validWar(int cid, std::vector<bool>& v) {
     static const bool peaceEff = OD_ENV("OD_PEACE_EFFECTIVE") &&
                                  atoi(OD_ENV("OD_PEACE_EFFECTIVE")) != 0;
     if (peaceEff) {
+        // exp2 in double, not long double: djgpp's libstdc++ has no long-double
+        // overload (no exp2l), so std::exp2(long double) is ambiguous there. The
+        // exponent is a small ratio, so double is exact enough; this mirrors the
+        // same formula at line ~3217. Widen the result back for the long-double sat.
         const long double sat = (long double)Game::COMBAT_WIDTH_MIN *
-            std::exp2(((long double)Game::DEPTH_MAX - 1.0L) / (long double)Game::DEPTH_PER_DOUBLING);
+            (long double)std::exp2(((double)Game::DEPTH_MAX - 1.0) / (double)Game::DEPTH_PER_DOUBLING);
         auto eff = [&](long long a) -> long double {
             return (long double)a < sat ? (long double)a : sat;
         };
