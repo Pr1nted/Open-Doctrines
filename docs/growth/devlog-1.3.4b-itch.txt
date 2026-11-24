@@ -1,0 +1,104 @@
+1.3.4b - eight calendars, Rome in 50 BC, and every exotic port back on its feet
+
+Hello everyone, 1.3.4b is out. This is a follow-up update to 1.3.3b and
+preparing ourselves for 1.4.0b. This update concentrates on more QOL features,
+enjoy! Here is everything.
+
+
+## Tell the time in eight calendars
+
+The in-game date can now be shown in eight different calendars, switched from
+Settings -> Display:
+
+- BC/AD and BCE/CE
+- *Ab urbe condita* - years from the founding of Rome
+- the Chinese sexagenary cycle
+- Kōki - the Japanese imperial calendar
+- Juche
+- the Hebrew calendar
+- the Holocene era
+
+Pick one and the whole HUD counts in it. They are all translated, like
+everything else.
+
+
+## Rome, 50 BC
+
+A new map ships with the dating systems: the Roman Republic at its greatest
+extent, the year Caesar stood on the far bank of the Rubicon. The borders are
+real, drawn from OpenHistoricalMap, and it comes with complete data and its own
+preview in the map browser. Set the date system to *Ab urbe condita* and play
+it the way a Roman would have read the year.
+
+
+## The AI settles the empty quarters
+
+The AI now colonises unclaimed territory. Blank regions of the map fill in over
+a campaign instead of sitting empty forever, so a long game looks lived-in by
+the end.
+
+
+## Watch the AI think
+
+Turn on Debug Mode (Settings -> Display) and then AI Debug (Settings ->
+Advanced), and press F8 in a game. Three panels open:
+
+- a running feed of every decision the AI made this turn - which country, which
+  module (war, navy, economy, politics) and what it chose;
+- a decision trace for the entry under the cursor, with the value the network
+  put on it;
+- a neural-activity view that replays a decision and shows the network itself,
+  its input, hidden, embedding and attention-head layers lighting up cell by
+  cell as it decides.
+
+It is a look straight into Parrot Zero's head, and the groundwork for the
+network tools coming in 1.4.0b.
+
+
+## Random events
+
+A world can be created with random events (Experimental). They are
+deterministic: the same seed always produces the same run, so a world you share
+plays out identically for whoever opens it.
+
+Three ship to start with, all of them good news for the province they land on:
+
+- **Gold Rush** - a gold-bearing province with a decent population strikes it
+  rich, and the treasury swells.
+- **Bumper Harvest** - a populous province has a record year and draws families
+  in; its population grows.
+- **Boom Town** - an industrial province pulls in workers and trade, and both
+  its coffers and its population rise.
+
+The event pack is plain data (the od-events/1 format), so a map or a mod can
+ship its own.
+
+
+## Modding: GDTL, and the Shaders SDK
+
+- **The Greater Diplomacy translation layer ships enabled.** Convert a map to
+  and from Greater Diplomacy 5 and from Unciv, both directions.
+- **Gearbox SDK 1.6 adds the Shaders capability.** A mod names a target - the
+  map, or its own panels - and picks from the host's built-in screen effects at
+  a strength it chooses; the host does the compositing. A mod never touches a
+  framebuffer or a shader, so it cannot draw an arbitrary image over the game,
+  the interface always draws on top, and the host slews each effect toward its
+  target so nothing can strobe the screen. A player can switch screen effects
+  off entirely. Every 1.5 mod keeps working untouched.
+
+
+## Fixes
+
+- **Every exotic port builds again.** DOS, the PlayStation Vita and the Nintendo
+  3DS had broken over the last cycle's toolchain churn - all three are green and
+  shipping. The Vita one was a buried PIC-relocation problem the Vita's ELF
+  tooling could not digest; it is sorted.
+- **The web build is fixed**, and so are the AI correspondents - the in-game
+  campaign mail talks to its model again.
+- The Roman map ships with complete data and a correct preview.
+
+
+Pick the build for your system from the download list. If you are on one of the
+homebrew ports - Vita, 3DS, DOS - we would love to hear how it runs.
+
+See you on the map.
