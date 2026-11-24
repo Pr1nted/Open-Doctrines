@@ -94,6 +94,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.3.4b" date="2026-11-24">
+      <description>
+        <p>Eight date-system calendars, a Roman 50 BC map, AI that settles unclaimed land, deterministic random events, and GDTL map conversion. Every exotic port building again.</p>
+      </description>
+    </release>
     <release version="1.2.2a" date="2026-09-21">
       <description>
         <p>Reported bugs, three of which stopped people playing: sign-in on Windows, and two save faults.</p>

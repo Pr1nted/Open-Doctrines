@@ -59,8 +59,8 @@ modules:
           /app/share/icons/hicolor/256x256/apps/io.github.Pr1nted.OpenDoctrines.png
     sources:
       - type: archive
-        url: https://github.com/Pr1nted/Open-Doctrines/releases/download/v1.2.2a/OpenDoctrines-linux-x64.zip
-        sha256: fa17cf028ec08b1f223a81752b2fbdf9dd2caac939dad14eca218f8894a41867
+        url: https://github.com/Pr1nted/Open-Doctrines/releases/download/v1.3.4b/OpenDoctrines-linux-x64.zip
+        sha256: c66eae144d985df40ebf1fa7a2c722edbeef7637f8e2df503218c1aa051b72e3
         # The archive wraps everything in OpenDoctrines-linux-x64/.
         strip-components: 1
       - type: file
